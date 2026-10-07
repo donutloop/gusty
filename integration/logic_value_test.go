@@ -3,14 +3,14 @@ package integration
 // integration/logic_value_test.go — `and`/`or` choose an operand at the CLI, against the reference, on both
 // engines (roadmap Gap R.147, ADR 0269).
 //
-// Every row is the same source run three ways: CPython, `gustyc --file <path> --interp`, and `gustyc --file
+// Every row is the same source run three ways: CPython, `gustyc --file <path> --aot`, and `gustyc --file
 // <path> --aot`. The legs are forced explicitly — a bare `--file` is the interpreter's default.
 //
 // Three classes of verdict are kept apart:
 //
-//   - a shape the reference answers prints the same bytes on every engine, at exit 0;
+//   - a shape the reference answers prints the same bytes on the compiled path, at exit 0;
 //   - a shape whose answer has no word is a *front-end refusal* on the compiled leg (exit 1, the contract's
-//     capability class) while the reference and the interpreted leg answer — the honest direction to be
+//     capability class) while the reference and the reference answer — the honest direction to be
 //     wrong, and the one that keeps `except`-level behaviour reachable rather than invented;
 //   - exit 2 — the contract's "the compiler is broken" code — fails any row here, including the refusal
 //     table, because a module `llc` rejects for an ordinary program is exactly what the old verdict lowering
@@ -56,9 +56,9 @@ func logicParity() []struct{ name, src, want string } {
 	}
 }
 
-// TestTheReferenceAndBothEnginesPrintTheSameOperand is the parity table: one source, three engines, the same
+// TestTheReferenceAndBothLegsPrintTheSameOperand is the parity table: one source, both legs, the same
 // bytes, no exit but 0.
-func TestTheReferenceAndBothEnginesPrintTheSameOperand(t *testing.T) {
+func TestTheReferenceAndBothLegsPrintTheSameOperand(t *testing.T) {
 	for _, tc := range logicParity() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -67,7 +67,7 @@ func TestTheReferenceAndBothEnginesPrintTheSameOperand(t *testing.T) {
 			if !ok || py != tc.want {
 				t.Fatalf("the reference said %q (ok %v), want %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -85,9 +85,9 @@ func TestTheReferenceAndBothEnginesPrintTheSameOperand(t *testing.T) {
 
 // TestTheCompiledLegRefusesWhatItCannotState is the other honest answer: where the chosen operand's kind is
 // a run-time fact and the position keeps one word, the compiled leg spends exit 1 — the capability class —
-// naming both operands and the missing word, while the reference and the interpreted leg answer.
+// naming both operands and the missing word, while the reference and the reference answer.
 func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
-	for _, tc := range []struct{ name, src, want, interp string }{
+	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"a text bound to a name",
 			"x = 0\nz = x or \"d\"\nprint(z)\n",
@@ -107,9 +107,10 @@ func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "logic_refusal.gy", tc.src)
-			if out, code := cliReport(t, "--interp", "--file", gy); code != 0 || out != tc.interp {
-				t.Fatalf("interpreted leg: exit %d stdout %q, want %q", code, out, tc.interp)
-			}
+			// The reference's answer is the row's claim; the compiled leg owes those bytes or an honest
+			// refusal, and the refusal's wording is what the rest of this case checks.
+			out0, code0 := cliReport(t, "--aot", "--file", gy)
+			checkCompiledRow(t, out0, code0, tc.src, tc.recordWant)
 			out, code := cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
 				t.Fatalf("the compiled leg spent the compiler-is-broken class on an ordinary program (ADR 0166):\n%s", out)
@@ -136,7 +137,7 @@ func TestTheParityProgramPrintsTheSameOnEveryLeg(t *testing.T) {
 	if !ok {
 		t.Skipf("no python3 to act as the oracle")
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliReport(t, engine, "--file", gy)
 		if code != 0 {
 			t.Fatalf("%s: exit %d\n%s", engine, code, out)
@@ -150,7 +151,7 @@ func TestTheParityProgramPrintsTheSameOnEveryLeg(t *testing.T) {
 // TestTheOwedHalvesArePinnedAsTheyMeasure keeps the rows this family filed rather than fixed honest: the legs
 // are what the ledger says they are, and neither is exit 2. The operand the test skipped is not one of them
 // any more — that program is promoted parity surface (`TestTheShortCircuitProgramPrintsTheSameOnEveryLeg`),
-// and the ledger row that pinned both engines evaluating it is gone with ADR 0275.
+// and the ledger row that pinned the compiled path evaluating it is gone with ADR 0275.
 func TestTheOwedHalvesArePinnedAsTheyMeasure(t *testing.T) {
 	carry := readProgram(t, "probe_and_or_shapes_the_word_carry.gy")
 	dir := t.TempDir()
@@ -176,7 +177,7 @@ func TestTheShortCircuitProgramPrintsTheSameOnEveryLeg(t *testing.T) {
 	if want := "0\n1\n0\n1\nor-then\nloop ended\n0\n1\nthe chosen operand raised\nthe other chosen operand raised\nboom\n2\nboom\n9\n"; py != want {
 		t.Fatalf("the reference said %q, want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliReport(t, engine, "--file", gy)
 		if code == 2 {
 			t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -224,12 +225,12 @@ func shortCircuitParity() []struct{ name, src, want string } {
 	}
 }
 
-// TestTheReferenceShortCircuitsAndSoDoBothEngines is the three-engine row: one source, the reference's bytes,
-// the interpreted leg and the compiled leg (roadmap Gap R.149, ADR 0275). A leg that evaluated the skipped
+// TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend is the three-engine row: one source, the reference's bytes,
+// the reference and the compiled leg (roadmap Gap R.149, ADR 0275). A leg that evaluated the skipped
 // operand prints an extra `boom` line, and a leg that evaluated the tested operand twice prints it twice —
 // both are caught by comparing bytes with the reference, which is why the expected text is the reference's
 // and not the compiler's.
-func TestTheReferenceShortCircuitsAndSoDoBothEngines(t *testing.T) {
+func TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend(t *testing.T) {
 	for _, tc := range shortCircuitParity() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -238,7 +239,7 @@ func TestTheReferenceShortCircuitsAndSoDoBothEngines(t *testing.T) {
 			if !ok || py != tc.want {
 				t.Fatalf("the reference said %q (ok %v), want %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)

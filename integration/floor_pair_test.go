@@ -1,14 +1,14 @@
 package integration
 
 // integration/floor_pair_test.go — `//` and `%` answer over a number whose kind crossed a call, at the CLI,
-// against the reference, on both engines (roadmap L11.6's numeric truth, Gap R.162, ADR 0278).
+// against the reference, on the compiled path (roadmap L11.6's numeric truth, Gap R.162, ADR 0278).
 //
 // The shape is the pair door's oldest gap behind ADR 0276's: the door served `+ - *` and the condition doors
 // served the comparisons, but the flooring operators were in neither list, so a parameter that could hold a
 // double never left the one-word road and the double was truncated into it before the floor ran. `print(f(5))`
 // and `print(f(5.0))` printed `2` and `2` for CPython's `2` and `2.0`, `print(modop(7.5, 2))` printed `1` for
 // `1.5`, `print(modop(-7.5, 2))` printed `1` for `0.5`, and a forwarded `print(outer(5.0))` printed `2` — all
-// at **exit 0**. The interpreter's answers were right on every one of them, which is the whole finding.
+// at **exit 0**. The record's answers were right on every one of them, which is the whole finding.
 //
 // Three claims, three tables:
 //
@@ -140,7 +140,7 @@ func floorParity() []struct{ name, src, want string } {
 		{
 			// A *call*'s answer as one arm of a pair expression: roadmap Gap R.164's other half, ADR 0280.
 			// ADR 0273 read a pair answer at `return other(v)` and nowhere wider, so `f(7.5)` printed nothing
-			// at exit 1 on the compiled leg while the interpreter printed 3.5 — both legs are checked.
+			// at exit 1 on the compiled leg while the record printed 3.5 — both legs are checked.
 			"a call answer as an arm",
 			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\nprint(f(7))\n", "4.5\n4\n",
 		},
@@ -179,7 +179,7 @@ func TestTheFlooringOperatorsAnswerOnAllThreeLegs(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
@@ -202,7 +202,7 @@ func TestThePromotedFlooringProbePrintsCPythonTenLines(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", path)
 		if code != 0 || out != want {
 			t.Errorf("%s: exit %d, stdout %q, want %q\nstderr: %s", engine, code, out, want, cliRun(t, engine, "--file", path))
@@ -238,7 +238,7 @@ func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "floor_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunMerged(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)

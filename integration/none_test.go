@@ -6,21 +6,21 @@ import (
 	"testing"
 )
 
-// Gap: None was the integer 0 in both backends, so `print(None)` printed 0, a procedure
+// Gap: None was the integer 0 in the compiled path, so `print(None)` printed 0, a procedure
 // "returned" the value of its last statement, `f() == None` was false, and `gustyc --file`
 // echoed a stray `0` after every program. ADR 0172 makes None a singleton; this file pins
-// the answers Python gives — not merely that the two backends agree, because they happily
+// the answers Python gives — not merely that the compiled backend agrees, because they happily
 // agreed on the wrong answer before.
 
 // noneExpected is CPython's own answer for the program, line for line. The three verdict
-// lines used to read 1/0/1, which is what both backends printed before ADR 0257 gave a
+// lines used to read 1/0/1, which is what the compiled path printed before ADR 0257 gave a
 // bool its rendering; the last 1 stays a 1 because that line prints `1 if ... else 0`.
 const noneExpected = "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n"
 
-func TestNoneValuesInterpreter(t *testing.T) {
-	out := runInterp(t, readProgramSrc("none_values"))
+func TestNoneValuesOnTheCompiledBackend(t *testing.T) {
+	out := runCompiled(t, readProgramSrc("none_values"))
 	if out != noneExpected {
-		t.Errorf("interpreter output =\n%s\nwant\n%s", out, noneExpected)
+		t.Errorf("the record leg output =\n%s\nwant\n%s", out, noneExpected)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestNoneIsNotZero(t *testing.T) {
 		{"def f():\n    pass\n\nif f():\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\n", "falsy\n"},
 	}
 	for _, tc := range cases {
-		got := runInterp(t, tc.src)
+		got := runCompiled(t, tc.src)
 		if got != tc.want {
 			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
 		}
@@ -59,9 +59,9 @@ func TestNoneIsNotZero(t *testing.T) {
 func TestVoidCallSideEffectsStay(t *testing.T) {
 	src := "def emit():\n    print(\"side\")\n\nprint(emit())\nprint(emit() == None)\n"
 	want := "side\nNone\nside\nTrue\n"
-	got := runInterp(t, src)
+	got := runCompiled(t, src)
 	if got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
+		t.Errorf("the record leg = %q, want %q", got, want)
 	}
 	if out := compileAndRun(t, src); out != want {
 		t.Errorf("AOT = %q, want %q", out, want)

@@ -11,7 +11,7 @@ import (
 //
 // ADR 0243 taught the compiled backend that an element the literal still describes is that number
 // for arithmetic — `xs[0] + 1`. This is the other half of that sentence: the **index** the program
-// computes. `xs = [1.5, "a"]; i = 0; print(xs[i] + 1)` answers 2.5 in CPython and in the interpreter;
+// computes. `xs = [1.5, "a"]; i = 0; print(xs[i] + 1)` answers 2.5 in CPython and on the record;
 // the compiled backend refused with "this context needs a single static kind", and worse, the one
 // shape that did reach the float arm emitted
 //
@@ -25,7 +25,7 @@ import (
 // holding anything else raises the TypeError CPython raises, named per kind and per operator — the
 // same shape `lenOfTaggedSlot` already uses to say `object of type 'int' has no len()`.
 
-func TestTaggedNumericUseMatchesCPythonInBothEngines(t *testing.T) {
+func TestTaggedNumericUseMatchesCPythonOnBothLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -103,7 +103,7 @@ func TestTaggedNumericUseTrapsWherePythonTraps(t *testing.T) {
 		class   string
 		message string
 		// aotOnly marks a row whose interpreter half is a separate, already-recorded defect: the
-		// compiled path is still checked, so the new door cannot regress, and the interpreter's wrong
+		// compiled path is still checked, so the new door cannot regress, and the record's wrong
 		// answer is not laundered into a pass (roadmap Gap R.89).
 		aotOnly bool
 	}{
@@ -148,8 +148,8 @@ func TestTaggedNumericUseTrapsWherePythonTraps(t *testing.T) {
 		{
 			// Unary minus has its own sentence in CPython, which is why the negation is its own door rather
 			// than a binary minus in a mask. Both halves now ask the question: the compiled one reads the
-			// kind off the expression and the literal, the interpreter reads it off the object. What this row
-			// pinned was Gap R.89's `aotOnly` — the interpreter answering a garbage number because `-` had
+			// kind off the expression and the literal, the record reads it off the object. What this row
+			// pinned was Gap R.89's `aotOnly` — the record answering a garbage number because `-` had
 			// never consulted a tag at all — and ADR 0266 paid it, so the row is no longer compiled-only.
 			"text in the slot negated",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",
@@ -277,7 +277,7 @@ func TestTaggedNumericUseRefusesWhatItCannotProve(t *testing.T) {
 			_, err := Compile(tc.src)
 			if err == nil {
 				out := captureStdout(t, tc.src)
-				t.Fatalf("%q compiled; want a refusal (the interpreter printed %q)\nsrc: %s", tc.src, out, tc.src)
+				t.Fatalf("%q compiled; want a refusal (the record printed %q)\nsrc: %s", tc.src, out, tc.src)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("refused with %q, want it to mention %q", err.Error(), tc.want)

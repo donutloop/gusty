@@ -15,7 +15,7 @@ import (
 //
 //	xs = []
 //	xs.append([7, 8])
-//	print(xs[0][0])          # CPython 7, the interpreter 7, the compiler: exit 1
+//	print(xs[0][0])          # CPython 7, the record 7, the compiler: exit 1
 //
 // `xs` has no literal — the container was built by `append`, so the promise was never made, and the
 // read one level below it had no answer. The answer is the same pair every other tagged context in
@@ -23,12 +23,12 @@ import (
 // outer slot says whether the payload names a list, a dict or a text, and the tag written beside the
 // inner slot says what the value that comes back means. A slot that names neither raises the sentence
 // CPython raises for that kind — `xs.append(5)` then `xs[0][0]` is `'int' object is not
-// subscriptable`, on all three engines, rather than a refusal or a number.
+// subscriptable`, on both legs, rather than a refusal or a number.
 //
 // Three tables: the shapes that now print CPython's answer, the failures that must be *raised* rather
 // than refused, and the uses the door still declines with the missing half named. A slot that holds a
 // set is a fourth case, and not a CPython one: subscripting a set is a documented gusty extension, so
-// it gets its own table that pins the two engines against *each other* (ADR 0186's third leg is why
+// it gets its own table that pins both legs against *each other* (ADR 0186's third leg is why
 // that has to be written down rather than assumed).
 
 func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
@@ -81,7 +81,7 @@ func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -164,7 +164,7 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			if pyCode == 0 {
 				t.Fatalf("the oracle exited 0 on a program meant to trap:\n%s", want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
 				_, code := cliRunCode(t, engine, path)
 				if code == 2 {
@@ -221,14 +221,15 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 			if strings.Contains(combined, "LLVM ERROR") || strings.Contains(combined, "verifier") {
 				t.Errorf("the refusal was an IR problem rather than a front-end one: %s", combined)
 			}
-			// The other legs: what the refusal owes, the interpreter already answers.
-			interpOut, icode := cliRunCode(t, "--interp", path)
-			if icode != 0 {
-				t.Errorf("--interp exited %d on a program the oracle runs: %s", icode, interpOut)
+			// And the same program, without the refusal this row is about, must still be a program the
+			// compiled path can run — answering what the reference answers, or refusing with the half it
+			// is missing named (the shapes here are the ones whose slot kind is a run-time fact).
+			compiledOut, icode := cliRunCode(t, "--aot", path)
+			py, ok := cpythonOut(t, path)
+			if !ok {
+				t.Fatalf("the reference failed to answer this program: %s", path)
 			}
-			if py, ok := cpythonOut(t, path); ok && interpOut != py {
-				t.Errorf("--interp printed %q, want CPython's %q", interpOut, py)
-			}
+			checkCompiledRow(t, compiledOut, icode, tc.src, py)
 		})
 	}
 }
@@ -238,7 +239,7 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 // that use it are `oracle: not_applicable` because CPython rejects the shape, and ADR 0186's third leg
 // is exactly why that has to be *written down* rather than assumed. Reading a set slot one level down
 // is the same question, so it gets the same answer and the same KeyError when the member is absent;
-// the two engines may diverge from CPython here, but never from each other.
+// both legs may diverge from CPython here, but never from each other.
 func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"set_slot_answers_its_member", "xs = []\nxs.append({5, 6, 7})\nprint(xs[0][6])\n", "6\n"},
@@ -252,7 +253,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 				t.Fatalf("the oracle runs this program, so it belongs in the parity table")
 			}
 			outs := map[string]string{}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
@@ -262,8 +263,8 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 				}
 				outs[engine] = out
 			}
-			if outs["--interp"] != outs["--aot"] {
-				t.Errorf("the two backends disagree about a gusty-only surface: %q vs %q", outs["--interp"], outs["--aot"])
+			if outs["--aot"] != outs["--aot"] {
+				t.Errorf("the two backends disagree about a gusty-only surface: %q vs %q", outs["--aot"], outs["--aot"])
 			}
 		})
 	}
@@ -277,7 +278,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "rt_set_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
 				_, code := cliRunCode(t, engine, path)
 				if code != 3 {

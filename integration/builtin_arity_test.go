@@ -2,7 +2,7 @@ package integration
 
 // Gap R.131 / ADR 0287 at the CLI. The contract being asserted here is the exit-code one: a builtin
 // called with no argument either IS a program the reference runs (then exit 0 with the reference's
-// answer, on both engines) or it IS a program the reference rejects (then a trap carrying the
+// answer, on the compiled path) or it IS a program the reference rejects (then a trap carrying the
 // reference's own sentence). What neither class may do is exit 2 — the code ADR 0166 reserves for a
 // compiler bug — and every row in the first two tables did exactly that before this cycle.
 
@@ -13,7 +13,7 @@ import (
 
 func TestBuiltinWithNoArgumentAtTheCLI(t *testing.T) {
 	dir := t.TempDir()
-	// Constructors: the reference answers, so both engines must too.
+	// Constructors: the reference answers, so the compiled path must too.
 	rows := []struct {
 		name string
 		src  string
@@ -40,7 +40,7 @@ func TestBuiltinWithNoArgumentAtTheCLI(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("row is stale: python3 prints %q, row pins %q", want, r.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "ctor", r.src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {
@@ -81,17 +81,17 @@ func TestBuiltinArityTrapAtTheCLI(t *testing.T) {
 			if !strings.Contains(pyOut, "TypeError") {
 				t.Fatalf("row is stale: python3 does not raise TypeError for %q (%s)", r.src, pyOut)
 			}
-			// The interpreter raises the reference's sentence and exits 3 (a trap the reference traps on).
+			// The record raises the reference's sentence and exits 3 (a trap the reference traps on).
 			p := writeSrc(t, dir, "arity", r.src)
-			out, code := cliRunMerged(t, "--interp", "--file", p)
+			out, code := cliRunMerged(t, "--aot", "--file", p)
 			if code == 2 {
-				t.Fatalf("--interp exited 2 where the reference raises: %s", out)
+				t.Fatalf("--aot exited 2 where the reference raises: %s", out)
 			}
 			if code != 3 {
-				t.Errorf("--interp exited %d, want 3 (a trap the reference also traps on): %s", code, out)
+				t.Errorf("--aot exited %d, want 3 (a trap the reference also traps on): %s", code, out)
 			}
 			if !strings.Contains(out, r.msg) {
-				t.Errorf("--interp did not carry the reference's sentence %q: %s", r.msg, out)
+				t.Errorf("--aot did not carry the reference's sentence %q: %s", r.msg, out)
 			}
 			if strings.Contains(out, "index out of range") || strings.Contains(out, "goroutine") {
 				t.Errorf("the Go runtime described the program instead of the compiler: %s", out)
@@ -120,7 +120,7 @@ func TestBuiltinWithNoArgumentNeverExitsTwo(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			src := "print(" + name + "())\n"
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "noarg", src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {

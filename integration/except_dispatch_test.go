@@ -13,7 +13,7 @@ import (
 // only `Excepts[0]` and then cleared the exception flag, so: a matching arm in position two or
 // three never ran; a bare `except:` after a typed arm never ran; a nested try never reached
 // its outer arm; and an exception no arm matched was deleted — the program continued past the
-// try, printed nothing, and exited 0. Every case below was measured against the interpreter and
+// try, printed nothing, and exited 0. Every case below was measured against the record and
 // CPython first, and both were right, which is the shape of a bug that a two-engine parity check
 // cannot see.
 
@@ -21,9 +21,7 @@ func TestExceptArmDispatchAgreesOnEveryPath(t *testing.T) {
 	src := readProgram(t, "except_arm_order.gy")
 	want := "second arm\nthird arm\nbare arm\nouter arm\nexception base\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -71,7 +69,7 @@ func TestUnhandledExceptionEscapingATryIsTheRuntimeClass(t *testing.T) {
 
 	bin := cliBin(t)
 	file := writeTrapCase(t, t.TempDir(), "escape.gy", src)
-	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--interp", file}} {
+	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--aot", file}} {
 		cmd := exec.Command(bin, args...)
 		var stdout, stderr strings.Builder
 		cmd.Stdout = &stdout

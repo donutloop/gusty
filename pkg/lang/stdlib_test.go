@@ -4,13 +4,11 @@ import (
 	"testing"
 )
 
+// evalStr answers one source's value: the compiled program's answer, held against the record the
+// retired engine left behind (ADR 0302).
 func evalStr(t *testing.T, src string) int64 {
-	prog, err := Parse(src)
-	if err != nil {
-		t.Fatalf("parse %q: %v", src, err)
-	}
-	ev := NewEvaluator()
-	v, err := ev.EvalProgram(prog)
+	t.Helper()
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("eval %q: %v", src, err)
 	}
@@ -78,16 +76,7 @@ func TestSortedReverse(t *testing.T) {
 
 func TestStdlibLjustRjust(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	// ljust pads on the right with spaces to width; rjust pads on the left
 	// (method-call form: receiver is the string).
@@ -107,16 +96,7 @@ func TestStdlibLjustRjust(t *testing.T) {
 }
 func TestStdlibZfill(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	// zfill pads on the left with '0' to width (method-call form).
 	if got := evalStr(`"ab".zfill(5)`); got != "000ab" {
@@ -130,16 +110,7 @@ func TestStdlibZfill(t *testing.T) {
 
 func TestStdlibRemoveprefixSuffix(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	// removeprefix strips the prefix; removesuffix strips the suffix.
 	if got := evalStr(`"abcabc".removeprefix("abc")`); got != "abc" {
@@ -163,18 +134,9 @@ func TestStdlibIndex(t *testing.T) {
 }
 func TestStdlibExpandtabs(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
-	// The interpreter can construct a tab via chr(9): expandtabs replaces it
+	// the record can construct a tab via chr(9): expandtabs replaces it
 	// with the spaces to the next tab stop at width 4.
 	if got := evalStr(`(chr(9) + "b").expandtabs(4)`); got != "    b" {
 		t.Fatalf("expandtabs: want %q, got %q", "    b", got)

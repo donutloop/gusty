@@ -74,7 +74,7 @@ func bool2int(b bool) int {
 	return 0
 }
 
-func TestNumericEqualityMatchesCPythonOnBothEngines(t *testing.T) {
+func TestNumericEqualityMatchesCPythonOnBothLegs(t *testing.T) {
 	src, want := numericEqualitySource()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "numeric_equality.gy")
@@ -103,7 +103,7 @@ func TestNumericEqualityMatchesCPythonOnBothEngines(t *testing.T) {
 	}
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		if code := runCode(t, bin, engine, path); code != 0 {
 			t.Fatalf("%s exited %d", engine, code)
 		}
@@ -137,7 +137,7 @@ func TestMixedNumericListEqualityIsNotAnsweredByTruncation(t *testing.T) {
 		if py, ok := cpythonOut(t, path); ok && py != tc.want {
 			t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 		}
-		for _, engine := range []string{"--interp", "--aot"} {
+		for _, engine := range cliEngines {
 			out, code := cliRunCode(t, engine, path)
 			if code == 2 {
 				t.Fatalf("%s rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))

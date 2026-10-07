@@ -16,7 +16,7 @@ const heapRuntimeIR = `@heap_count = internal global i32 0
 ; Cached handle for the None singleton (heap kind 4). None cannot be an immediate the way
 ; ints are: any i32 value is a legal integer, so no bit pattern is free to mean "no value".
 ; The handle is allocated once and never freed, so "x = None" and "x == None" behave the
-; same in the compiled backend and the interpreter (ADR 0172).
+; same in the compiled backend and the record (ADR 0172).
 @none_h = internal global i32 -1
 @gc_mark = internal global [1024 x i8] zeroinitializer
 @gc_urgent = internal global i32 0
@@ -304,7 +304,7 @@ entry:
 }
 
 ; rt_sort is an in-place insertion sort over a heap list. Stable, in the order-preserving sense
-; that equal elements keep their relative positions — the compiled twin of the interpreter's
+; that equal elements keep their relative positions — the compiled twin of the record's
 ; sortElems, and the reason sorted(key=) will be able to sit on top of it later. The heap element
 ; array is 256 deep, so the quadratic cost is bounded by the representation, not by luck.
 define internal void @rt_sort(i32 %h, i32 %mode) {
@@ -823,7 +823,7 @@ term:
   ret i32 %idx
 }
 
-; rt_str_strip trims ASCII whitespace at both ends. The interpreter trims the full Unicode set
+; rt_str_strip trims ASCII whitespace at both ends. the record trims the full Unicode set
 ; of spaces; the compiled backend trims bytes at or below space, which is the documented limit
 ; of this cut (roadmap Gap R.47) rather than a silent approximation.
 define internal i32 @rt_str_strip(i32 %s) {
@@ -870,7 +870,7 @@ empty:
 }
 
 ; rt_str_of_int is str(n) for a number the compiler cannot read: digits written backwards into
-; a block that is then interned from the first digit onward. The interpreter has always answered
+; a block that is then interned from the first digit onward. the record has always answered
 ; this; the compiled backend refused, so str(get()) was unreachable while str(42) worked.
 define internal i32 @rt_str_of_int(i32 %v) {
 entry:
@@ -1223,7 +1223,7 @@ num:
 }
 
 ; rt_set_print_str renders a set whose members are interned strings: set() when empty,
-; {'a', 'b'} otherwise, matching the interpreter's Repr.
+; {'a', 'b'} otherwise, matching the record's Repr.
 define internal void @rt_set_print_str(i32 %h, i32 %nl) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -1268,7 +1268,7 @@ fin:
 }
 
 ; rt_dict_print_s renders a dict whose keys and/or values are interned strings; the two
-; flags say which, so {'a': 1} and {1: 'a'} and {'a': 'b'} all print like the interpreter.
+; flags say which, so {'a': 1} and {1: 'a'} and {'a': 'b'} all print like the record.
 define internal void @rt_dict_print_s(i32 %h, i32 %nl, i32 %ks, i32 %vs) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -1626,7 +1626,7 @@ nothing:
 }
 
 ; rt_print_mixed_value renders one element by its tag, using the same three texts the
-; interpreter's Repr produces: numbers with %d, interned strings through the repr slot
+; record's Repr produces: numbers with %d, interned strings through the repr slot
 ; (Python quotes elements inside a container), and the None singleton as "None".
 define internal void @rt_print_mixed_value(i32 %v, i32 %t, i32 %quote) {
 entry:
@@ -2534,7 +2534,7 @@ notMixed:
   %mb = and i32 %flags, 1
   %msb = icmp ne i32 %mb, 0
   %mstr = zext i1 %msb to i32
-  ; Python renders the empty set as set(), not {} (which is a dict); the interpreter's
+  ; Python renders the empty set as set(), not {} (which is a dict); the record's
   ; Repr already does this, so the compiled renderer must agree or printing an empty set
   ; differs between the backends.
   %isEmpty = icmp eq i32 %len, 0
@@ -3086,6 +3086,7 @@ miss:
 // not fit raises rather than wrapping (L12.12 owns the word; until then it owns the message).
 const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
 @rt.num.negfmt = private constant [46 x i8] c"TypeError: bad operand type for unary -: '%s'\00"
+@rt.num.absfmt = private constant [44 x i8] c"TypeError: bad operand type for abs(): '%s'\00"
 @rt.num.ofmt = private constant [121 x i8] c"OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)\00"
 @rt.num.msg = private global [192 x i8] zeroinitializer
 @rt.k.int = private constant [4 x i8] c"int\00"
@@ -3114,7 +3115,7 @@ const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError:
 @rt.num.dzm = private constant [32 x i8] c"ZeroDivisionError: float modulo\00"
 
 ; rt_kind_name answers the word CPython puts inside the quotes of its operand-type message, from the
-; canonical tag in value.go — the same table the printer, the comparison and the interpreter read, so
+; canonical tag in value.go — the same table the printer, the comparison and the record read, so
 ; one tag vocabulary names a value everywhere and nowhere twice. The default is 'object', which is
 ; what the reference calls an instance of a user class.
 define internal i8* @rt_kind_name(i32 %t) {
@@ -3152,11 +3153,19 @@ entry:
   ; interpolate. One variadic call serving both printed a bare minus where CPython prints the operand's
   ; kind — measured the day this shipped, and the reason the two formats are not shared.
   %isneg = icmp eq i32 %op, 3
+  %isabs = icmp eq i32 %op, 6
+  %signless = or i1 %isneg, %isabs
   %buf = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
-  br i1 %isneg, label %neg, label %bin
+  br i1 %signless, label %neg, label %bin
 neg:
+  ; Two signless sentences, chosen by which call the operand came from: abs writes
+  ; "bad operand type for abs(): 'str'" and the unary minus writes "bad operand type for unary -: 'str'".
+  ; Sharing one format is how ADR 0271's rule got broken the first time -- abs of a text naming the
+  ; minus in a program that never wrote one.
+  %isneg2 = icmp eq i32 %op, 3
+  %fmt = select i1 %isneg2, i8* getelementptr inbounds ([46 x i8], [46 x i8]* @rt.num.negfmt, i32 0, i32 0), i8* getelementptr inbounds ([44 x i8], [44 x i8]* @rt.num.absfmt, i32 0, i32 0)
   %ln0 = call i8* @rt_kind_name(i32 %lt)
-  %w0 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([46 x i8], [46 x i8]* @rt.num.negfmt, i32 0, i32 0), i8* %ln0)
+  %w0 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* %fmt, i8* %ln0)
   ret void
 bin:
   %o0 = icmp eq i32 %op, 0
@@ -3198,7 +3207,7 @@ lifted:
 
 ; rt_pair_truth answers the question and/or have to ask of the operand they test when that operand's
 ; kind is the run time's fact and not the compiler's: is the value the pair describes true or false. The tag
-; is the module's own vocabulary (value.go's ValueTag) and the answer is the interpreter's truthy for the
+; is the module's own vocabulary (value.go's ValueTag) and the answer is the record's truthy for the
 ; same object — a number in either family is true when it is not zero (so a float slot is unboxed by
 ; rt_lift_num rather than read as a handle, which is what made a float box always true), an empty text or an
 ; empty container is false, None is false, and any other heap object is true. It is the door that lets the
@@ -3278,6 +3287,7 @@ calc:
   %o3 = icmp eq i32 %op, 3
   %o4 = icmp eq i32 %op, 4
   %o5 = icmp eq i32 %op, 5
+  %o6 = icmp eq i32 %op, 6
   ; the two operators whose divisor may be zero, and the reference raises rather than
   ; answering. The lifted divisor is the honest test — an int 0 and a float 0.0 both lift to zero, and
   ; negative zero compares equal to it, which is what CPython raises for too.
@@ -3318,7 +3328,12 @@ have:
   %c2 = select i1 %o2, double %prd, double %c0
   %c3 = select i1 %o3, double %neg, double %c2
   %c4 = select i1 %o4, double %fl, double %c3
-  %r = select i1 %o5, double %md, double %c4
+  %c5 = select i1 %o5, double %md, double %c4
+  ; abs is the signless call: a number out, or the reference's raise. The magnitude is the lifted
+  ; value with its sign removed, which is the honest test for -0.0 too (abs answers 0.0).
+  %isnegv = fcmp olt double %af, 0.000000e+00
+  %absv = select i1 %isnegv, double %neg, double %af
+  %r = select i1 %o6, double %absv, double %c5
   %hi = fcmp oge double %r, 2147483648.000000e+00
   %lo = fcmp olt double %r, -2147483648.000000e+00
   %oor = or i1 %hi, %lo
@@ -3525,7 +3540,7 @@ func llvmCString(s string) string {
 }
 
 // gcRootReportLine is what the compiled backend prints for --gc-stats, mirroring the
-// interpreter's report so one assertion can read either backend.
+// record's report so one assertion can read either backend.
 const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d\n"
 
 // gcRootOverflowMessage is the loud failure for a root stack that ran out. A handle
@@ -3642,6 +3657,8 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// `--emit-source-map` wants the line table without asking for DWARF. Turning marks
 	// into metadata is the gated part (ADR 0231).
 	g.dbgOn = opts != nil && opts.Debug != nil
+	g.echoOn = opts != nil && opts.EchoResult
+	g.echoKinds = map[string]string{}
 	g.decoratorNames = map[string]bool{}
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -3784,12 +3801,23 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	g.funcRaiseExit = "main.raiseexit"
 	g.inMain = true
+	// The REPL's echo, compiled: the last statement of a snippet is a *question* the reader
+	// asked (L11.1's `1 + 1`, L11.2's repr of a text), so the caller that asked it gets the
+	// answer back on the tool channel. Only a REPL/`--eval` caller turns this on; a program is
+	// never echoed, because a program's stdout is only what the program printed (ADR 0204).
+	echoTarget := g.echoTarget(prog)
 	for _, st := range prog.Stmts {
 		if _, ok := st.(*FuncDef); ok {
 			continue
 		}
 		g.dbgMark(&b, st.Span())
 		g.gcCall(&b)
+		if st == echoTarget {
+			if err := g.echoStmt(&b, st.(*ExprStmt).Expr); err != nil {
+				return "", nil, err
+			}
+			continue
+		}
 		if err := g.stmt(&b, st); err != nil {
 			return "", nil, err
 		}
@@ -3812,7 +3840,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	b.WriteString("main.raiseexit:\n")
 	// An uncaught exception used to fall off the end of main and exit 0 printing
 	// nothing, so a program that raised looked like a program that succeeded to any
-	// script that ran it. Report it on stderr and exit non-zero, like the interpreter --
+	// script that ran it. Report it on stderr and exit non-zero, like the record --
 	// and with the *same code as every other trap*, because ADR 0211 says a failure class
 	// has one code whichever path produced it. This is the compiled binary's own exit code,
 	// not the CLI's: `gustyc --aot prog.gy` and `./prog` must not disagree about whether the
@@ -3866,6 +3894,24 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			g.globals.WriteString(heapRuntimeIR)
 		}
 		g.globals.WriteString(numArithRuntimeIR)
+	}
+	// The REPL echo's writer (roadmap L13.1, ADR 0302) rides with the heap block for the same
+	// reason the arithmetic door does: it renders through `rt_str_ptr`/`rt_str_len`, which live
+	// there, and a referenced internal function that was never emitted is the module `llc`
+	// rejects.
+	if g.echoUsed || runtimeBlockReferenced(echoRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		// The pair half of the echo announces a value's kind from its tag, and the tag vocabulary lives in
+		// the tagged-arithmetic block (`rt_kind_name`) — the one table the operand-type messages read, so
+		// the prompt, a TypeError and a container printer call a slot the same thing (ADR 0259). A
+		// referenced internal function that was never emitted is the module llc rejects (ADR 0173), so the
+		// block rides with the echo the way it rides with the heap.
+		if !g.arithUsed && !runtimeBlockReferenced(numArithRuntimeIR, bodyText) {
+			g.globals.WriteString(numArithRuntimeIR)
+		}
+		g.globals.WriteString(echoRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
 	// allocates: every function prologue calls rt_frame_open, and a referenced but
@@ -4244,6 +4290,12 @@ type irGen struct {
 	runtimeDicts map[string]bool
 	runtimeSets  map[string]bool
 	heapUsed     bool
+	// echoOn records that this module was built for a caller that wants the value of a snippet
+	// back (the REPL, `--eval`), and echoUsed that the module actually calls the writer — which
+	// is what gates echoRuntimeIR. Roadmap L13.1, ADR 0302.
+	echoOn    bool
+	echoUsed  bool
+	echoKinds map[string]string
 	// curFnSrc is the source-level name of the function being lowered, for the
 	// traceback frame; empty means module level, which renders as <module>.
 	curFnSrc string
@@ -4321,7 +4373,7 @@ type irGen struct {
 	nextSlot int
 
 	// genFuncs records generator function names; calling one yields a runtime
-	// heap list handle (mirroring the interpreter's eager yield semantics).
+	// heap list handle (mirroring the record's eager yield semantics).
 	genFuncs map[string]bool
 	// staticLists maps a compile-time list global name (@.lstN) to its literal,
 	// so a call site can copy it into the runtime heap when the callee expects a
@@ -4393,6 +4445,9 @@ type irGen struct {
 	// (roadmap L11.2, Gap R.170/R.171).
 	moduleBinds     map[string][]Expr
 	strArgBindCache map[string][]Expr
+	// strArgInFlight holds the names whose binding is currently being asked about, so a name whose
+	// own binding mentions it (`s = s + x`) is refused instead of recursed into. See strArgIsNumberish.
+	strArgInFlight map[string]bool
 	// unwritten is the checker's answer to "which names may this body read before assigning them",
 	// keyed by the FuncDef whose body the read sits in (nil key: the module's own statements). It is
 	// the same walk the checker runs and already warns about, asked a second question (ADR 0228) --
@@ -4434,7 +4489,7 @@ type irGen struct {
 	moduleSlotDecls string
 	// moduleNames is every name the module binds, constant or not. A read of one that is not a
 	// constant is refused with the reason that names the missing machinery, instead of the typo
-	// message that claims the interpreter reports the same error -- it does not (Gap R.38).
+	// message that claims the record reports the same error -- it does not (Gap R.38).
 	moduleNames map[string]bool
 	// curModGlobals holds folded module-global constants for the module
 	// function currently being emitted; bare Name refs resolve against it.
@@ -4898,7 +4953,7 @@ func (g *irGen) exprIsString(e Expr) bool {
 // callReturnsStr answers whether the value a call produces is a string, in the language's
 // representation -- an index into @str_tab. Module functions were answered by `strReturningFuncs`;
 // methods had no such registration, so `print(Dog().sound())` printed the index as a number while
-// the interpreter and CPython printed the text (roadmap Gap R.42, ADR 0224).
+// the record and CPython printed the text (roadmap Gap R.42, ADR 0224).
 func (g *irGen) callReturnsStr(c *Call) bool {
 	if nm, ok := c.Fn.(*Name); ok {
 		return g.strFuncs[nm.Value]
@@ -5114,7 +5169,7 @@ func (g *irGen) receiverClass(recv Expr) string {
 	// `Dog().sound()` — the receiver is a fresh instance of a class the source names. Without
 	// this the receiver's class is unknown, so the call fell to the dynamic switch and the
 	// question "does this method return a string?" had nobody to ask, printing the @str_tab
-	// index where the interpreter and CPython print the text (Gap R.42, ADR 0224).
+	// index where the record and CPython print the text (Gap R.42, ADR 0224).
 	if c, ok := recv.(*Call); ok {
 		if n, ok2 := c.Fn.(*Name); ok2 {
 			if _, isClass := g.classInfos[n.Value]; isClass {
@@ -5363,7 +5418,7 @@ func dictLiteralKeys(dl *DictLit) ([]int64, error) {
 	for i, k := range dl.Keys {
 		il, ok := k.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer keys only; the interpreter supports string and other keys (a compiled string needs the runtime string table, roadmap Gap I.2)")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer keys only; CPython supports string and other keys (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		keys[i] = il.Value
 	}
@@ -5377,7 +5432,7 @@ func dictLiteralVals(dl *DictLit) ([]int64, error) {
 	for i, v := range dl.Vals {
 		il, ok := v.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer values only; the interpreter supports string and other values (a compiled string needs the runtime string table, roadmap Gap I.2)")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer values only; CPython supports string and other values (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		vals[i] = il.Value
 	}
@@ -5390,7 +5445,7 @@ func setLiteralElems(sl *SetLit) ([]int64, error) {
 	// A SET has one member per distinct VALUE, so a literal with duplicates collapses. The static
 	// global was built straight from the source elements, which made `len({1, 2, 2, 3})` answer 4 and
 	// `len({1, 1, 1})` answer 3 — a set that printed with braces and behaved like a list (roadmap Gap
-	// R.181). The interpreter deduplicates with `eqVal` and keeps the FIRST spelling inserted (ADR
+	// R.181). the record deduplicates with `eqVal` and keeps the FIRST spelling inserted (ADR
 	// 0259's `{True, 1}`); this road only admits integer literals, so distinct words are distinct
 	// values here, and insertion order is preserved the same way.
 	seen := make(map[int64]bool, len(sl.Elems))
@@ -5472,10 +5527,10 @@ func constIntMemberVal(e Expr) (int64, bool) {
 // handles, so a string operand lowers to a global fed to an i32 parameter — LLVM rejects it
 // ("global variable reference must have pointer type") and the exit-code contract then calls
 // valid user code a compiler bug (exit 2). Refusing with a clear message is the honest
-// alternative; the interpreter supports strings in containers, and the plan for AOT is an
+// alternative; the record supports strings in containers, and the plan for AOT is an
 // interned string table (roadmap Gap I.2).
 func runtimeStringErr(slot, op string) error {
-	return fmt.Errorf("codegen: cannot %s a string as a runtime %s in the AOT backend yet; the interpreter supports it — a compiled container slot holds an int/bool value, and strings need the runtime string table (roadmap Gap I.2)", op, slot)
+	return fmt.Errorf("codegen: cannot %s a string as a runtime %s in the AOT backend yet; CPython answers it — a compiled container slot holds an int/bool value, and strings need the runtime string table (roadmap Gap I.2)", op, slot)
 }
 
 // rejectRuntimeString reports whether e would put (or look up) a string in a heap container
@@ -5655,7 +5710,7 @@ func listCallElems(a Expr) ([]Expr, bool) {
 // listArgLen returns the length of a list-producing expression, which may
 // itself be a nested list-producing builtin call (sorted/reversed/enumerate/
 // zip/partition/split/rsplit). It recursively unwraps calls to match the
-// interpreter's length semantics.
+// record's length semantics.
 func (g *irGen) listArgLen(a Expr) (int, bool) {
 	switch v := a.(type) {
 	case *ListLit:
@@ -5704,7 +5759,7 @@ func (g *irGen) listArgLen(a Expr) (int, bool) {
 }
 
 // listLen returns the length of a list-producing builtin call over literal
-// arguments, matching the interpreter semantics:
+// arguments, matching the record semantics:
 //
 //	enumerate(x)   -> len(x)         (x must be an inline list literal)
 //	zip(a, b)      -> min(len(a), len(b))
@@ -5794,7 +5849,7 @@ func (g *irGen) emitList(ln *ListLit) (string, error) {
 		il, ok := el.(*IntLit)
 		if !ok {
 			if _, isFloat := el.(*FloatLit); isFloat {
-				return "", fmt.Errorf("a compiled container cannot hold a float yet: the element slot is an i32 word and %s has no representation in one (the interpreter and CPython both answer this program; compiled floats in containers are roadmap L11.6)", exprTyName(el))
+				return "", fmt.Errorf("a compiled container cannot hold a float yet: the element slot is an i32 word and %s has no representation in one (CPython answers this program; compiled floats in containers are roadmap L11.6)", exprTyName(el))
 			}
 			return "", fmt.Errorf("list literal elements must be integers, not %s", exprTyName(el))
 		}
@@ -6327,9 +6382,9 @@ func (g *irGen) powerAnswersDouble(n *BinOp) bool {
 
 // intPowerOverflow asks whether a literal `a ** b` would leave the 64-bit word, so the compiled leg can
 // REFUSE instead of wrapping. The reference has arbitrary-precision integers — `2 ** 100` is a 31-digit
-// number — and both backends printed `0` for it at exit 0, which is a wrong answer with a plausible face.
+// number — and the compiled backend printed `0` for it at exit 0, which is a wrong answer with a plausible face.
 // A bounded integer is this language's defensible 2026 design (docs/roadmap-details.md's Phase 12 note); a
-// silently WRAPPING one is not, and the wrap is invisible to parity because both backends wrap the same way.
+// silently WRAPPING one is not, and the wrap was invisible to parity because the two engines wrapped alike.
 func (g *irGen) intPowerOverflow(l, r Expr) (string, bool) {
 	lv, lok := intLiteralOf(l)
 	rv, rok := intLiteralOf(r)
@@ -6845,7 +6900,7 @@ func (g *irGen) minMaxKindTrap(b *strings.Builder, args []Expr, wantMin bool, sp
 
 // minMaxKindName is the word the TypeError sentence writes for a candidate whose comparison the
 // fold settles statically. The family is what the trap compares; the name is what the program
-// reads, and a verdict reads `bool` — the same word the interpreter's compareOrder and ADR 0259's
+// reads, and a verdict reads `bool` — the same word the record's compareOrder and ADR 0259's
 // element tag use for the very same operand.
 func (g *irGen) minMaxKindName(e Expr, family string) string {
 	if family == "int" && g.printsAsBool(e) {
@@ -7347,7 +7402,7 @@ func (g *irGen) moduleStateErr(nm string) error {
 		return nil // the body binds it: this is a local, and its own rules apply
 	}
 	if g.moduleNames[nm] {
-		return fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", nm)
+		return fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)", nm)
 	}
 	return nil
 }
@@ -7406,7 +7461,7 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	defer func() { g.doubleDomain-- }()
 	// `mod.NAME` for a data import carries its own double: the value is the literal the module declares,
 	// and the generic path below would lower the attribute through `value()` — the integer road — and
-	// `sitofp` the truncated word, so `print(math.PI)` came out `3.0` beside the interpreter's
+	// `sitofp` the truncated word, so `print(math.PI)` came out `3.0` beside the record's
 	// `3.141592653589793` (roadmap L11.6, the typed stdlib constants).
 	if lit, folded := g.foldedModuleAttr(e); folded {
 		return g.floatValue(b, lit)
@@ -7449,6 +7504,19 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			t := g.newTmp()
 			fmt.Fprintf(b, "  %s = load double, double* %%_%s\n", t, n.Value)
 			return t
+		}
+		// A name the pair road bound — an arithmetic answer, a slot read, a loop element over a container
+		// that mixes kinds — has no single word to widen: the payload beside its tag is a float BOX handle,
+		// an interned text index, or the number itself, and only the tag says which. The float domain reaches
+		// it through the same per-tag arms a slot read walks: the float arm unboxes, the int/bool arm
+		// converts, and every other tag raises the sentence CPython writes for THIS operator and that kind
+		// (roadmap L11.1, Gap R.148 — the row that kept `n / 4` and `n > 2.5` refusing while `2.5 - n`
+		// answered). A widening that merely called `rt_lift_num` here would print the interned index of a
+		// text as a number, which is the wrong-answer-at-exit-0 family this loop keeps filing.
+		if g.taggedVars[n.Value] && g.taggedOrigin != nil && g.numCtx != nil {
+			if d, okD, derr := g.pairDoubleInCtx(b, e); derr == nil && okD && d != "" {
+				return d
+			}
 		}
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
@@ -7752,7 +7820,7 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	// expression lowers to, and for a text that i32 is its index in `@str_tab` — so `print("%.2f" % 3.5)`,
 	// whose left operand is a format string this backend does not implement, emitted
 	// `sitofp i32 %t2 to double` and `frem`'d it against 3.5, answering `0.0` at exit 0 where CPython
-	// answers `3.50` and the interpreter raises TypeError (roadmap L11.2, Gap R.165, ADR 0282). Refusing
+	// answers `3.50` and the record raises TypeError (roadmap L11.2, Gap R.165, ADR 0282). Refusing
 	// here is the same judgement the sibling shapes already make — `"%d items" % 3` and `"%s!" % "hi"`
 	// exit 1 naming the operator and both kinds — reached one road earlier: those arrive with a left
 	// operand the checker types as text, and a `%`-conversion in the literal kept this one off that path.
@@ -8092,7 +8160,7 @@ func (g *irGen) asI1(b *strings.Builder, v string) string {
 	return g.markI1(t)
 }
 
-// asBoolI32 renders a boolean-producing expression the way the interpreter stores
+// asBoolI32 renders a boolean-producing expression the way the record stores
 // booleans — an i32 0/1 — so `not x`, `a and b`, `x in xs` can be printed, stored
 // in a variable and tested again instead of leaking a bare i1 into an i32 slot.
 func (g *irGen) asBoolI32(b *strings.Builder, v string) string {
@@ -8262,7 +8330,7 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	nm, ok := ix.Obj.(*Name)
 	if !ok {
-		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; the interpreter supports more forms", ix.Obj)
+		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
 	}
 	v, err := g.value(b, val)
 	if err != nil {
@@ -8420,7 +8488,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 		return nil
 	case g.runtimeSets[nm.Value]:
-		return fmt.Errorf("codegen: sets do not support item assignment (s[k] = v); the interpreter raises TypeError")
+		return fmt.Errorf("codegen: sets do not support item assignment (s[k] = v); CPython raises TypeError")
 	case isStringExpr(ix.Obj) || (g.strVals != nil && g.strVals[nm.Value] != ""):
 		return fmt.Errorf("codegen: strings are immutable, so s[k] = v is not allowed")
 	}
@@ -8621,8 +8689,9 @@ func (g *irGen) emitDunderBinOp(b *strings.Builder, n *BinOp) (string, bool) {
 	if dunder == "" {
 		return "", false
 	}
-	// The interpreter dispatches the left operand's dunder first, then a
-	// reflected method on the right operand (jit.go evalBinOp).
+	// The reference dispatches the left operand's dunder first, then a
+	// reflected method on the right operand (the rule the retired interpreter reached
+	// by asking the value; ADR 0302).
 	clsL := g.receiverClass(n.L)
 	if clsL != "" {
 		if fn, ok := g.resolveMethod(clsL, dunder); ok {
@@ -8667,7 +8736,7 @@ func nameShadowed(shadowed func(string) bool, name string) bool {
 // in which case the name belongs to the program, and codegen must not read a call to it
 // as the built-in of that name.
 //
-// Both the interpreter and CPython let a `def` shadow a built-in, and the interpreter
+// Both the record and CPython let a `def` shadow a built-in, and the record
 // already resolves it that way; the compiled path read the call by name instead, so
 //
 //	def float(x):
@@ -8766,7 +8835,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// before this line, so a name the program assigned keeps its meaning, and only a name that is
 		// purely a declaration is refused.
 		if kindName, isValue := g.nameIsAValueWithNoSign(n.Value); isValue {
-			return "", fmt.Errorf("codegen: %q names %s, which the compiled backend has no value for: a %s is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `%s` with a %s object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)", n.Value, kindName, kindName, n.Value, kindName)
+			return "", fmt.Errorf("codegen: %q names %s, which the compiled backend has no value for: a %s is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `%s` with a %s object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)", n.Value, kindName, kindName, n.Value, kindName)
 		}
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
@@ -8832,11 +8901,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return g.value(b, folded)
 			}
 			if g.moduleNames[n.Value] && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
-				return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", n.Value)
+				return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (CPython answers this program; compiled module globals are roadmap Gap R.35)", n.Value)
 			}
 		}
 		if !g.nameIsBound(n.Value) {
-			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the interpreter reports the same error", n.Value)
+			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the reference reports the same error", n.Value)
 		}
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		if g.unionVars[n.Value] {
@@ -9156,7 +9225,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				if isCompareOpForContainer(n.Op) && !exprIsContainerShape(n.L) && !exprIsContainerShape(n.R) {
 					continue
 				}
-				return "", fmt.Errorf("`%s` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)", exprSurface(n))
+				return "", fmt.Errorf("`%s` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)", exprSurface(n))
 			}
 			for _, side := range []Expr{n.L, n.R} {
 				kindName, isValue := g.valueWithNoSign(side)
@@ -9189,7 +9258,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				// whose textness the compiler cannot prove — a parameter, typically, whose kind the call
 				// sites do not agree on in a way this pass can carry into the body (Gap R.38: a refusal
 				// that claims something false about the language is its own defect).
-				return "", fmt.Errorf("codegen: operator %q on a string (%s) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)", n.Op, exprSnippet(n.L))
+				return "", fmt.Errorf("codegen: operator %q on a string (%s) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)", n.Op, exprSnippet(n.L))
 			}
 			if n.Op == "+" && (isStrOperand(n.L) || isStrOperand(n.R)) {
 				if _, ok := g.stringVal(n.L); ok {
@@ -9212,9 +9281,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return g.rtStrCall(b, "rt_str_cat", "i32 "+ls, "i32 "+rs), nil
 				}
 				if lok != rok {
-					return "", fmt.Errorf("codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython and the interpreter raise TypeError for it")
+					return "", fmt.Errorf("codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython raises TypeError for it")
 				}
-				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; the interpreter supports it — building a new string needs a buffer allocation (roadmap Gap J.5)")
+				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; CPython answers it — building a new string needs a buffer allocation (roadmap Gap J.5)")
 			}
 		}
 		// `s == "yes"` where s is a string parameter, a container element, or the result of a
@@ -9735,7 +9804,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// an i32 slot, literalNeedsTags whether a slot can say what it holds. A bool answers the
 		// first yes and the second no — the 0/1 fits, and nothing beside it names it — so asking
 		// only the first kept [True] on the static path, printing [1] (roadmap Gap R.112, ADR 0259).
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
 			// carry the meaning the container-wide kind used to. The list branch asked this later
 			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
@@ -9755,7 +9824,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// global — that layout is i32-only — so build a heap dict and intern (Gap J.6).
 		// A dict that mixes kinds is not a refusal when every slot can be tagged: it is a
 		// dict with no kind, and the tags carry the meaning (ADR 0232).
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			if literalMixedKinds(n) && !g.taggableMixedDict(n) {
 				return "", mixedKindErr("dict")
 			}
@@ -9770,7 +9839,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// The set gate is the dict gate: a bool's 0/1 fits an i32 slot perfectly and has no way
 		// to say what it is, so the static global path has to hand it to the tagged builder.
 		// Asking literalNeedsHeap alone refused {True, 1} as "either strings or numbers".
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			if literalMixedKinds(n) && !g.taggableMixedSet(n) {
 				return "", mixedKindErr("set")
 			}
@@ -9916,7 +9985,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				runes := []rune(txt)
 				i := normPosIndex(key, int64(len(runes)))
 				if i < 0 || i >= int64(len(runes)) {
-					return "", fmt.Errorf("string index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("text"))
 				}
 				return g.internStr(b, string(runes[i])), nil
 			}
@@ -9961,10 +10030,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					keyTag = kt
 				}
 				if keyTag != "" {
-					g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Span())
+					g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Idx, n.Span())
 					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, hs, keyOp, keyTag))
 				} else {
-					g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Span())
+					g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Idx, n.Span())
 					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
 				}
 				return fmt.Sprintf("%%g%d", hs), nil
@@ -10057,7 +10126,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// exit-code contract classifies as a compiler bug (ADR 0168's rule).
 			li := int(normPosIndex(key, int64(len(obj.Elems))))
 			if li < 0 || li >= len(obj.Elems) {
-				return "", fmt.Errorf("list index out of range")
+				return "", fmt.Errorf("%s", outOfRangeRead("list"))
 			}
 			return g.value(b, obj.Elems[li])
 		case *DictLit:
@@ -10104,7 +10173,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				n := g.compLen[obj]
 				key = normPosIndex(key, int64(n))
 				if key < 0 || key >= int64(n) {
-					return "", fmt.Errorf("list index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("list"))
 				}
 				v := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
@@ -10149,7 +10218,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			runes := []rune(str)
 			key = normPosIndex(key, int64(len(runes)))
 			if key < 0 || key >= int64(len(runes)) {
-				return "", fmt.Errorf("string index out of range")
+				return "", fmt.Errorf("%s", outOfRangeRead("text"))
 			}
 			return g.internStr(b, string(runes[key])), nil
 		case *Call:
@@ -10160,7 +10229,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if elems, ok2 := g.indexListElems(obj); ok2 {
 				key = normPosIndex(key, int64(len(elems)))
 				if key < 0 || int(key) >= len(elems) {
-					return "", fmt.Errorf("list index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("list"))
 				}
 				return g.value(b, elems[key])
 			}
@@ -10199,7 +10268,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// line, and both engines answer those (roadmap Gap R.150, Gap R.151, ADR 0283).
 		// (The callable positions — a lambda called directly, bound as a decorator, or handed to the
 		// closure road — register their FuncDef at their own sites and never come through here.)
-		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the interpreter prints `<closure>`, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)")
+		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the reference prints a function object, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)")
 	case *ChainCompare:
 		// The comparison roads read g.numCtx to know which operator an operand is being lowered for;
 		// a chain must set it, or a container subscript inside a chain loses the answer its
@@ -10261,7 +10330,7 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 		// containers fine, and L11.1's tagged value word is what lets the compiled leg do the same
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		if g.chainOperandIsContainer(o) {
-			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the interpreter chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
+			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
 		}
 		slot := fmt.Sprintf("chain%d", g.ldN)
 		if !g.allocd[slot] {
@@ -10829,7 +10898,7 @@ func chainOperandIsCheap(e Expr) bool {
 
 // foldConstInt evaluates e to a compile-time integer constant using the
 // current constBindings, or returns (0, false) when not compile-time-known.
-// It mirrors the interpreter's constant arithmetic so comprehension bodies can
+// It mirrors the record's constant arithmetic so comprehension bodies can
 // be unrolled at codegen time without emitting IR.
 func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 	switch n := e.(type) {
@@ -11430,7 +11499,7 @@ func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
 		}
 		return items, itemExprs, nil
 	}
-	return nil, nil, fmt.Errorf("codegen: comprehension iterable must be an inline list literal, range(), or a container variable")
+	return nil, nil, fmt.Errorf("codegen: a comprehension over %s is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)", exprSurface(c.Iter))
 }
 
 // foldConstUnder folds one operand of a comprehension with the loop variable bound to one item,
@@ -11711,7 +11780,7 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 }
 
 // genExpr lowers a generator expression `(elem for var in iter [if cond])`
-// to a runtime heap list handle, matching the interpreter's eager semantics.
+// to a runtime heap list handle, matching the record's eager semantics.
 // The iterable is unrolled at codegen time when it is a constant range() call
 // or list literal (mirroring comp()); each element is appended to the list.
 func (g *irGen) genExpr(b *strings.Builder, gen *Generator) (string, error) {
@@ -11930,8 +11999,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// representation: the receiver is wrapped as {tag=instance,
 			// payload=heap-handle}, its kind tag is verified, and the payload
 			// (the instance heap handle) is extracted before the class-id is
-			// read from instance slot 0. Both AOT and interpreter derive these
-			// tags from the same canonical table (value.go).
+			// read from instance slot 0. The compiled runtime and the retired engine both
+			// derived these tags from the same canonical table (value.go).
 			recv := g.newTmp() // %obj
 			b.WriteString(fmt.Sprintf("  %s = call %%obj @rt_mkobj(i32 %d, i32 %s)\n", recv, int(TagInstance), h))
 			isInst := g.newTmp() // i1
@@ -12227,7 +12296,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				elems := append(append([]Expr{}, ll.Elems...), c.Args[0])
 				return g.value(b, &ListLit{Elems: elems})
 			}
-			return "", fmt.Errorf("unsupported list method %s", attr.Name.Value)
+			// Three words ("unsupported list method index") tell a reader nothing they can act on. The
+			// sentence now says which door this is, what the reference does for this method, and the row
+			// that owns the rest (ADR 0166's rule: a refusal names the half it lacks).
+			return "", fmt.Errorf("codegen: %s is refused: this backend builds the list methods it can lower against the container's own word (append, extend, insert, remove, pop, clear, sort, reverse, index-of-a-literal, count, and membership), and %s needs a run-time search the compiled doors do not have — the reference answers it (with %s when the value is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)", exprSurface(&Attr{Obj: attr.Obj, Name: attr.Name, Src: attr.Src}), attr.Name.Value, referenceMethodTrap(attr.Name.Value))
 		}
 		// dict methods: `{1: 2, 3: 4}.keys()` -> [1, 3], `.values()` -> [2, 4].
 		if dl, ok := attr.Obj.(*DictLit); ok {
@@ -12268,7 +12340,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// the same arrangement ADR 0172 set for a void return (roadmap Gap R.174, ADR 0291).
 				return g.value(b, &NoneLit{})
 			default:
-				return "", fmt.Errorf("unsupported dict method %s", attr.Name.Value)
+				return "", fmt.Errorf("codegen: %s is refused: this backend builds the dict methods it can lower against the container's own word (get, keys, values, items, clear, and a literal read), and %s needs a run-time search the compiled doors do not have — the reference answers it (with %s when the key is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)", exprSurface(&Attr{Obj: attr.Obj, Name: attr.Name, Src: attr.Src}), attr.Name.Value, referenceMethodTrap(attr.Name.Value))
 			}
 		}
 		// string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
@@ -12306,7 +12378,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// this are the same ones the loop and subscript roads read, so the refusal cannot disagree
 			// with the codegen beside it (roadmap Gap R.174, ADR 0291).
 			if nm, ok2 := attr.Obj.(*Name); ok2 && g.nameHoldsContainer(nm.Value) {
-				return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
+				return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
 			}
 			return "", fmt.Errorf("string-method %s on a receiver that is not a text the compiler can read: %s (roadmap Gap I.2, ADR 0166)", attr.Name.Value, g.exprSummary(attr.Obj))
 		}
@@ -12739,7 +12811,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if idx >= 0 && idx < len(fd.Params) {
 				what = fmt.Sprintf("parameter %q of %s", fd.Params[idx].Name, fnName)
 			}
-			return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); the interpreter supports them", what)
+			return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); CPython answers them", what)
 		}
 		argVal := func(a Expr, idx int) (string, error) {
 			if h, ok, err := g.heapArg(b, a); ok || err != nil {
@@ -12875,7 +12947,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("codegen: positional argument after keyword argument for %s", fnName)
 			}
 			if pos >= n {
-				return "", fmt.Errorf("codegen: too many arguments for %s", fnName)
+				return "", fmt.Errorf("codegen: too many arguments for %s", callableSurfaceName(fnName))
 			}
 			if provided[pos] {
 				return "", fmt.Errorf("codegen: multiple values for argument %q of %s", fd.Params[pos].Name, fnName)
@@ -13006,7 +13078,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			sl, isStr := kw.Value.(*StrLit)
 			if !isStr {
-				return "", fmt.Errorf("codegen: print's %s must be a compile-time string constant (the interpreter accepts any expression)", kw.Name)
+				return "", fmt.Errorf("codegen: print's %s must be a compile-time string constant (CPython accepts any expression)", kw.Name)
 			}
 			switch kw.Name {
 			case "sep":
@@ -13082,12 +13154,45 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						fmtLit += strings.ReplaceAll(part.Lit, "%", "%%")
 						continue
 					}
+					// A name the pair road bound — from a slot read, a loop variable, an arithmetic
+					// answer or a call — contributes the digits the module's ONE tag-reading printer
+					// writes for its (payload, tag) pair, which is the same helper `str()` calls: the
+					// field, `str(n)` and `print(n)` cannot disagree about `7` versus `7.0`, and a text
+					// slot contributes its text rather than its interned index. A field that asked for
+					// `!r` asks the same door with the quote flag on, which is what `repr()` does — so
+					// `f"{n!r}"` writes `'a'` where it used to write nothing at all (roadmap L11.1,
+					// Gap R.146's rendering positions; ADR 0303's one door, ADR 0187's pair). A field
+					// that asked for a FORMAT SPEC still goes to the spec engine below: this door renders
+					// a value, it does not pad one.
+					if part.Spec == "" {
+						if fp, ft, isPair, perr := g.filedPairOf(b, part.Expr); perr != nil {
+							return "", perr
+						} else if isPair {
+							quote := "0"
+							if part.Conv == ConvRepr {
+								quote = "1"
+							}
+							fmtLit += "%s"
+							sv := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %s, i32 %s)\n", sv, fp, ft, quote))
+							sp := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, sv))
+							operands = append(operands, "i8* "+sp)
+							continue
+						}
+					}
 					// A field that ASKED for a format is answered by the shared spec engine, at
 					// compile time where the value is a constant and by refusing where it is not.
 					// Falling through to the plain %d/%s below is the defect this row exists to end:
 					// `f"{3.5:.2f}"` printed `3.5` here and on the interpreter at exit 0, and the two
 					// engines agreeing is exactly why parity never saw it (Gap R.186, ADR 0299).
-					if part.Spec != "" || part.Conv != ConvNone {
+					// A TEXT field asked for `!r` is not folded into the format string: quoting is the
+					// printer's job, and the door below asks it with the quote flag on. Embedding the quoted
+					// literal in `@.fmtN` is what made `print(f"{'a'!r}")` spend the contract's forbidden exit 2
+					// — `@.fmt1` came out `[0 x i8]` against a `[4 x i8]` use, which `llc` rejects (roadmap
+					// Gap R.192; ADR 0166's rule, ADR 0303's one door).
+					printerQuotes := part.Spec == "" && part.Conv == ConvRepr && g.fieldWantsPrinterQuotes(part.Expr)
+					if !printerQuotes && (part.Spec != "" || (part.Conv != ConvNone && fieldIsConstantLiteral(part.Expr))) {
 						lit, ok := g.formatFieldConst(part)
 						if !ok {
 							return "", fmt.Errorf("codegen: the format spec %q needs a value this backend "+
@@ -13097,6 +13202,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						continue
 					}
 					if part.Expr != nil {
+						// A name the pair road bound — from a slot read, a loop variable, an arithmetic
+						// answer or a call — contributes the digits the module's ONE tag-reading printer
+						// writes for its (payload, tag) pair, which is the same helper `str()` calls: the
+						// field, `str(n)` and `print(n)` cannot disagree about `14` versus `14.0`, and a
+						// text slot contributes its text rather than its interned index (roadmap L11.1,
+						// Gap R.146's rendering positions; ADR 0303's one door, ADR 0187's pair).
 						if exprIsContainerShape(part.Expr) {
 							// A container interpolated into an f-string is a heap object, and this road
 							// builds ONE printf format string: the only words it can hand printf are an
@@ -13109,19 +13220,6 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							// reference (Gap R.186 / Gap R.60's remainder, ADR 0299, owed to L11.1).
 							return "", fmt.Errorf("codegen: an f-string field that is a container has no word to " +
 								"travel in beside the text around it (AOT backend)")
-						}
-						if nm, isName := part.Expr.(*Name); isName && g.numericPairVar(nm.Value) {
-							// An interpolated name the arithmetic door bound contributes the digits the
-							// printer writes for its (payload, tag) pair — the same helper str() calls,
-							// so the field, `str(n)` and `print(n)` agree on `14` versus `14.0`
-							// (roadmap L11.1, Gap R.143).
-							fmtLit += "%s"
-							p, t := g.numericPairRegs(b, nm.Value)
-							sv := g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %s, i32 0)\n", sv, p, t))
-							sp := g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, sv))
-							operands = append(operands, "i8* "+sp)
 						} else if g.isFloat(part.Expr) {
 							// %s of rt_fmt_double's text, not %.17g: Python's str(0.1) is
 							// "0.1" and str(2.0) is "2.0".
@@ -13142,6 +13240,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							vv, err := g.value(b, part.Expr)
 							if err != nil {
 								return "", err
+							}
+							// `!r` of a text asks the module's one printer with the quote flag on — the same
+							// door `repr()` uses — rather than the raw bytes `!s` wants. The conversion used to
+							// be answered with an empty string here, at exit 0, for any field that was not a
+							// literal (roadmap Gap R.186, Gap R.192; ADR 0303's one door).
+							if part.Conv == ConvRepr {
+								g.heapUsed = true
+								qv := g.newTmp()
+								b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %d, i32 1)\n", qv, vv, int(TagStr)))
+								vv = qv
 							}
 							sp := g.newTmp()
 							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, vv))
@@ -13573,7 +13681,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) == 1 {
 			// Copying another container is a loop over its elements; the interpreter
 			// supports it, so say which backend does rather than miscompile (ADR 0166).
-			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with %s() and add elements", calleeName(c), calleeName(c))
+			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; CPython answers them — build the container with %s() and add elements", calleeName(c), calleeName(c))
 		}
 		// Allocate a fresh heap container. Lowering to an empty literal instead would
 		// hand back a compile-time global (@.set1), and `s = set()` would then store that
@@ -13793,7 +13901,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// global in an i32 slot: llc refuses it, and the exit-code contract calls that a
 				// compiler bug for an ordinary program (ADR 0166). The interpreter, whose elements
 				// are boxed values, answers `any([[1], [2]])` (roadmap L11.1).
-				return "", fmt.Errorf("%s asks each element whether it is truthy, and %s is a container the compiled fold has no word for; the interpreter answers this program (roadmap L11.1)", fnName, exprSnippet(elem))
+				return "", fmt.Errorf("%s asks each element whether it is truthy, and %s is a container the compiled fold has no word for; CPython answers this program (roadmap L11.1)", fnName, exprSnippet(elem))
 			}
 		}
 		if len(elems) == 0 {
@@ -14013,7 +14121,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// refuses, and the exit-code contract counts as a compiler bug for an ordinary
 				// program (ADR 0166). Python compares lists element by element and answers this;
 				// the interpreter, whose elements are boxed, agrees with it (roadmap L11.1).
-				return "", fmt.Errorf("%s compares its elements, and %s is a container: the compiled fold has no word for comparing two containers, so it would compare globals (the interpreter answers this program; roadmap L11.1)", fnName, exprSnippet(elem))
+				return "", fmt.Errorf("%s compares its elements, and %s is a container: the compiled fold has no word for comparing two containers, so it would compare globals (CPython answers this program; roadmap L11.1)", fnName, exprSnippet(elem))
 			}
 		}
 		if trap, raised, err := g.minMaxKindTrap(b, elems, fnName == "min", c.Span()); raised || err != nil {
@@ -14251,7 +14359,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				g.checkStrSentinels(b, r, "RuntimeError", strFullMessage, c.Span(), "stoint")
 				return r, nil
 			}
-			return "", fmt.Errorf("str on non-integer")
+			// `str(v)` where v is not a number the renderer can name. The old sentence was three words —
+			// `str on non-integer` — which told a reader nothing about what was missing, and an agent
+			// could not act on it (ADR 0166's rule is that a refusal names the half it lacks).
+			return "", fmt.Errorf("codegen: str(%s) is refused: this backend renders a text through the one str/repr table, which reaches an integer, a text, None, bool and the container literals, and has no word for this argument's kind — the reference answers str() of any value, and doing the same needs the value word that carries its own kind (roadmap L11.1/L11.2, Gap R.171)", exprSurface(c.Args[0]))
 		}
 		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 		return g.internStr(b, fmt.Sprintf("%d", n)), nil
@@ -14361,7 +14472,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 		if !ok {
-			return "", fmt.Errorf("sorted: codegen folds only an inline list literal")
+			// Three words is not a refusal a reader can act on. The sentence says what the door takes,
+			// what this program handed it, and which roadmap row owns the rest (ADR 0166).
+			return "", fmt.Errorf("codegen: sorted(%s) is refused: this backend sorts an inline list literal it can evaluate at compile time, and this argument is not one — the reference sorts any iterable by building the container at run time, which needs the value word that carries its own kind (roadmap L11.1)", exprSurface(c.Args[0]))
 		}
 		vals := make([]int64, len(ln.Elems))
 		for i, el := range ln.Elems {
@@ -14513,6 +14626,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("float expects one argument")
 		}
+		// A name the pair road bound has no one word to widen — the payload beside its tag is a float box,
+		// an interned text, or the number, and only the tag says which. `rt_lift_num` answers the double and
+		// raises CPython's own sentence for a kind that has no number in it (roadmap L11.1, Gap R.148).
+		if nm, isName := c.Args[0].(*Name); isName && g.taggedVars[nm.Value] {
+			p, t := g.numericPairRegs(b, nm.Value)
+			return g.liftPair(b, p, t), nil
+		}
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
 		}
@@ -14558,7 +14678,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// for every handle ever allocated, `bool([])` included. Refusing is the honest answer until the
 		// tagged value word lets the object be asked (roadmap Gap R.131, ADR 0287, L11.1).
 		if g.nameIsContainerRecorded(c.Args[0]) {
-			return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)")
+			return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)")
 		}
 		// A TEXT asks a different question than a number: `bool("")` is False and `bool("x")` is
 		// True, and a text's word is its interned INDEX, whose being non-zero says nothing about
@@ -14582,7 +14702,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", val, bit))
 		return val, nil
 	default:
-		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
+		// The name is called and the backend cannot find a callable behind it. The reference raises
+		// TypeError here — `'int' object is not callable` — because it asks the value what it is at
+		// the moment of the call; this backend decides at the compile door, and says so with the half
+		// it is missing rather than the word "unsupported" alone (ADR 0166's vocabulary, and the
+		// tagged value word of roadmap L11.1 is what would let the question be asked at run time).
+		return "", fmt.Errorf("codegen: %q is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)", fnName)
 	}
 }
 
@@ -14635,11 +14760,11 @@ func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 
 func exnCode(name string) int {
 	// The canonical list (and its codes) lives in exceptions.go, shared with the
-	// interpreter's isExnClass and the checker's name table.
+	// record's isExnClass and the checker's name table.
 	return exnClassCode(name)
 }
 
-// raiseRuntimeIR reports an uncaught exception the way the interpreter does — a
+// raiseRuntimeIR reports an uncaught exception the way the record does — a
 // traceback header and the exception line — on stderr (fd 2, via write so it links on
 // every platform without depending on a libc `stderr` symbol) before main returns 1.
 const floatRuntimeIR = `; rt_fmt_double renders a runtime double the way Python's str() does, because the
@@ -14714,7 +14839,7 @@ done:
 ; round(0.025, 2) is 0.03 and scales to 2.5, round(0.075, 2) is 0.07 and scales to 7.5,
 ; round(2.675, 2) is 2.67 and scales to 267.5. What CPython rounds is the *exact decimal value of
 ; the double*, ties to even, and the answer is the nearest double to that decimal. That is a
-; correctly-rounded double-to-decimal conversion — the same named operation the interpreter asks
+; correctly-rounded double-to-decimal conversion — the same named operation the record asks
 ; of Go's dtoa (strconv.FormatFloat/ParseFloat), asked here of the C library's. The two were swept
 ; against CPython over 531,272 (value, ndigits) pairs compared bit for bit and agree with it
 ; everywhere but the 143 far-magnitude negative-digit cases their own scale step causes (all
@@ -14753,7 +14878,7 @@ zeroed:
 pick:
   br i1 %down, label %scaled, label %text
 scaled:
-  ; 10^(-n) one multiplication at a time — the sequence the interpreter's pow10 walks, so the
+  ; 10^(-n) one multiplication at a time — the sequence the record's pow10 walks, so the
   ; two backends round the same products rather than each finding its own power.
   br label %sloop
 sloop:
@@ -14843,7 +14968,7 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	} else {
 		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
 	}
-	// The interpreter prints one frame per stack level; the compiled report prints the
+	// the record prints one frame per stack level; the compiled report prints the
 	// raise site's own frame, which is the line that answers "where". Full call stacks
 	// need the debug line tables of L8.5 (roadmap Gap K.8).
 	if frame := g.raiseFrame(sp); frame != "" {
@@ -14960,7 +15085,7 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 }
 
 // isNoneExpr reports whether an expression evaluates to the None singleton. The AOT
-// representation of a value is an untagged i32, so unlike the interpreter this cannot be
+// representation of a value is an untagged i32, so unlike the record this cannot be
 // decided at run time: None is recognised where the source says so — the literal, a variable
 // whose latest assignment was None, and a call to a function whose body never returns a value
 // (ADR 0172).
@@ -14976,9 +15101,9 @@ func (g *irGen) forgetVarBool(name string) {
 // printsAsBool answers whether print and str render this expression as True/False. The
 // value itself is the 0/1 the comparison produced — a bool has no word of its own to carry
 // a kind, and the tagged value word that would give it one is the L11.1 destination, not
-// this rung — so the answer comes from the AST, where it has always been. The interpreter's
+// this rung — so the answer comes from the AST, where it has always been. the record's
 // print, the CLI's --json type field and this backend all ask the one predicate in
-// pkg/lang/boolvalue.go, so the two engines cannot disagree about what is a bool
+// pkg/lang/boolvalue.go, so both legs cannot disagree about what is a bool
 // (roadmap L11.1 step 2, ADR 0257).
 func (g *irGen) printsAsBool(e Expr) bool {
 	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate})
@@ -15043,6 +15168,21 @@ func (g *irGen) strArgIsNumberish(e Expr) bool {
 		if len(vals) == 0 {
 			return false
 		}
+		// A name whose last binding is an expression that mentions the name itself — `s = s + x`,
+		// the accumulator every loop writes — asks this predicate the same question again. The answer
+		// is not provable from the bindings (the value depends on what was already there), and the
+		// honest refusal is what the digits road wants. Without the guard the question recursed until
+		// the process ran out of stack: the fold crashed instead of refusing, which is the one answer
+		// a compiler is never allowed (roadmap Gap R.38's rule; surfaced by ADR 0302's echo, which
+		// asks the pair about a snippet's final `s`).
+		if g.strArgInFlight == nil {
+			g.strArgInFlight = map[string]bool{}
+		}
+		if g.strArgInFlight[n.Value] {
+			return false
+		}
+		g.strArgInFlight[n.Value] = true
+		defer delete(g.strArgInFlight, n.Value)
 		return g.strArgIsNumberish(vals[len(vals)-1])
 	case *BinOp:
 		switch n.Op {
@@ -15399,7 +15539,7 @@ func (g *irGen) nameIsBound(nm string) bool {
 	return false
 }
 
-// raiseFrame renders one traceback frame the way the interpreter does, e.g.
+// raiseFrame renders one traceback frame the way the record does, e.g.
 //
 //	File "prog", line 12, in area
 //
@@ -15418,8 +15558,8 @@ func (g *irGen) raiseFrame(sp Span) string {
 
 // raiseTo records a raise of an exception the *machine* detected (an out-of-range
 // index, a missing key) and transfers to the innermost handler, or out of the function
-// to the uncaught path. The interpreter raises the same typed errors, so `except
-// IndexError:` works on both backends.
+// to the uncaught path. the record raises the same typed errors, so `except
+// IndexError:` works on the compiled backend.
 func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string, sp Span) {
 	g.setExn(b, code, typeName, msg, sp)
 	if len(g.handlerStack) > 0 {
@@ -15659,7 +15799,7 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 // checkKeyReadTagged is checkKeyRead for a dict whose keys are tagged: the same KeyError, raised
 // by the same path, asked of the (payload, tag) key. Without the tag the check would answer "the
 // key is there" for {0: 1} when asked for "0", and the raise below would never come.
-func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, sp Span) {
+func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, keyExpr Expr, sp Span) {
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has_tagged(i32 %s, i32 %s, i32 %s)\n", ok, h, key, keyTag))
 	isZero := g.newTmp()
@@ -15668,13 +15808,13 @@ func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, sp
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", g.keyNotFoundMessage(keyExpr), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
 // checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
 // key used to return 0, where Python raises KeyError.
-func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
+func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp Span) {
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", ok, h, key))
 	isZero := g.newTmp()
@@ -15683,8 +15823,72 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", g.keyNotFoundMessage(keyExpr), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
+}
+
+// outOfRangeRead words the refusal a constant out-of-range read produces. The reference does not
+// refuse: it runs the program and raises IndexError when the position is reached, so a program that
+// catches the read (`try: xs[9] except IndexError:`) is a legal program the reference answers. This
+// backend decides at the compile door instead, because the position is a literal it can see — and that
+// is roadmap Gap R.37's asymmetry, which asks for the runtime trap rather than this refusal. Until
+// then the honest thing is to say which door stopped the program, what the reference does there, and
+// who owes the change (ADR 0166's rule: a refusal names the half it lacks).
+func outOfRangeRead(kind string) string {
+	return fmt.Sprintf("codegen: the %s position this program asks for is out of range, and this backend refuses to build the read rather than answer it wrongly: the reference runs the program and raises IndexError when that position is reached, so a `try:`/`except IndexError:` around it is legal and answered there — making this a runtime trap instead of a compile-time stop is roadmap Gap R.37 (see also L11.1 for a position whose kind is a run-time fact)", kind)
+}
+
+// callableSurfaceName turns a compiled function's internal name back into the name the reference
+// would use in the same message. A lambda is compiled to a generated symbol (`lambda_0`) that no
+// source line contains; printing it in a diagnostic blames a name the programmer never wrote, while
+// the reference says `<lambda>` — and an arity sentence is exactly the message a reader acts on.
+func callableSurfaceName(fnName string) string {
+	if strings.HasPrefix(fnName, "lambda_") {
+		return "<lambda>"
+	}
+	return fnName
+}
+
+// referenceMethodTrap names what the reference raises for the container methods whose whole job is to
+// fail loudly, so a refusal can say what the compiled program would have to do, not merely that it
+// will not. Methods that answer instead of raising return a description of their answer.
+func referenceMethodTrap(name string) string {
+	switch name {
+	case "index":
+		return "ValueError: … is not in list"
+	case "pop":
+		return "KeyError: <the missing key>"
+	case "remove":
+		return "ValueError: list.remove(x): x not in list"
+	case "discard":
+		return "no error (it is remove without the raise)"
+	}
+	return "its documented answer"
+}
+
+// keyNotFoundMessage words the KeyError the way the reference does: `KeyError: 'z'`, the key itself
+// as the message — which is what a reader greps for and what makes a traceback actionable. A key the
+// compiler cannot see as a literal at this point (a name whose kind is a run-time fact, a computed
+// index) keeps the sentence the backend has always used, because inventing a key would be worse than
+// a generic one; naming it for those keys needs the tagged value word (roadmap L11.1), which is the
+// same debt that silences the echo of a value whose kind is not statically known.
+func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
+	switch k := keyExpr.(type) {
+	case *StrLit:
+		return pyReprString(k.Value)
+	case *IntLit:
+		return strconv.FormatInt(k.Value, 10)
+	case *FloatLit:
+		return pyFloatRepr(k.Value)
+	case *BoolLit:
+		if k.Value {
+			return "True"
+		}
+		return "False"
+	case *NoneLit:
+		return "None"
+	}
+	return "key not found"
 }
 
 // raiseStmt compiles `raise Exception("msg")` / `raise ValueError("msg")`.
@@ -15800,7 +16004,7 @@ func (g *irGen) runDeferredInnermost(b *strings.Builder) error {
 // takes the exception as still in flight. That is what happened — an arm ran, the program
 // continued, and the next user-function call's check branched to the handler again (or to the
 // raise-exit when no handler was in scope any more), reporting an exception the program had
-// already handled. The interpreter cleared it in Gap R.21 (ADR 0213: "falling out of a `try`
+// already handled. the record cleared it in Gap R.21 (ADR 0213: "falling out of a `try`
 // clears it"); this is the same rule on the compiled side (roadmap Gap R.21, compiled half).
 func (g *irGen) clearExn(b *strings.Builder) {
 	g.raiseUsed = true
@@ -16581,7 +16785,7 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) (string, 
 
 // matchEquality is where every non-structural pattern ends: evaluate the pattern expression and
 // compare it to the subject. A pattern that cannot be evaluated matches nothing — the next case is
-// tried, which is what the interpreter's `return false, nil` says for the same shape.
+// tried, which is what the record's `return false, nil` says for the same shape.
 func (g *irGen) matchEquality(b *strings.Builder, sub string, pat Expr) (string, error) {
 	pv, err := g.value(b, pat)
 	if err != nil {
@@ -16597,7 +16801,7 @@ func (g *irGen) matchEquality(b *strings.Builder, sub string, pat Expr) (string,
 // and every capture name must name an attribute the instance actually has. That last conjunct is the
 // half that was missing: @heap's data words cannot tell an attribute that was never written from a
 // stored 0, so `case Point(a, b):` matched an instance carrying neither and printed `pt 0 0` while
-// the interpreter and the documentation both say the pattern fails (roadmap Gap B, ADR 0235).
+// the record and the documentation both say the pattern fails (roadmap Gap B, ADR 0235).
 func (g *irGen) matchInstance(b *strings.Builder, sub, class, classVal string, args []Expr) (string, error) {
 	kind := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
@@ -16918,6 +17122,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// means nothing without its tag, so both travel and print(y) dispatches on the tag
 					// instead of guessing a kind (roadmap L11.1, ADR 0241).
 					g.bindTaggedVar(b, nm.Value, v, t)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
@@ -16928,6 +17133,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						return err
 					}
 					g.bindTaggedVar(b, nm.Value, val, tag)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
@@ -16938,6 +17144,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// Rebinding over a container or a tagged value: the door frees the old heap slot and
 					// marks the root dead, the way every other immediate binding does.
 					g.bindTaggedVar(b, nm.Value, val, tag) // the tagged slot is written too (ADR 0228)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 			}
@@ -16955,6 +17162,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
 				return aerr
+			} else if handled {
+				return nil
+			}
+			// `n = xs[0]` over a container the program built: the kind lives in the object, so the binding
+			// carries the tag beside the payload or the name means nothing on its own (ADR 0185, applied
+			// by the one binding road that had not asked — roadmap L11.1, Gap R.146).
+			if handled, perr := g.bindSlotReadPair(b, nm.Value, n.Value); perr != nil {
+				return perr
 			} else if handled {
 				return nil
 			}
@@ -16983,7 +17198,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// one at a time. print has always chosen its printer from the record kept beside
 				// the compiler; str() and repr() ask the object, so the object has to answer.
 				estrBits := 0
+				// A pair-bound element (`y = [n]` with `n = xs[0]`) is an element whose two words only
+				// exist at run time: the static layout has no place for the tag and `value()` rightly
+				// refuses the name. Both words come from the name's own allocas, and the object is told
+				// to let its slots speak (roadmap L11.1, Gap R.146; ADR 0187, ADR 0232).
+				if g.literalHasPairElement(lit) {
+					mixed = true
+				}
 				for i, el := range lit.Elems {
+					if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+						b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, pt))
+						b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, pv))
+						continue
+					}
 					// heapElemKind, not value(): an assigned container literal is still a
 					// runtime container, so a string element becomes an index into @str_tab
 					// instead of the global pointer that LLVM rejects in an i32 parameter
@@ -17172,9 +17399,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
 				for i := range dl.Keys {
-					// Keys and values go through the container-word rule: a string becomes its
-					// @str_tab index and the dict's key/value kinds record which side did, so
-					// {"a": 1} and {1: "v"} both build and print like the interpreter does.
+					// A key or value the pair road bound (`d = {"k": n}`) brings its own tag register:
+					// the element has no one word to store, and asking its `value()` is the refusal
+					// Gap R.146 kept for this shape (roadmap L11.1; ADR 0187's payload-never-without-tag).
 					kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
 					if err != nil {
 						return err
@@ -17903,6 +18130,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tagT, hVal, pos))
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tagT, loopVar))
 				g.taggedVars[loopVar] = true
+				if g.taggedOrigin == nil {
+					g.taggedOrigin = map[string]string{}
+				}
+				// Recorded so a refusal this variable may meet later can say "a loop stepped over it"
+				// truthfully, rather than a fallback sentence guessing at a loop the program never wrote
+				// (roadmap Gap R.38, L11.1).
+				g.taggedOrigin[loopVar] = taggedOriginLoop
 			}
 			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 			for _, s := range n.Body {

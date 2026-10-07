@@ -53,6 +53,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 	"unsafe"
 )
@@ -74,6 +75,15 @@ type JITResult struct {
 	// (roadmap Gap R.17, ADR 0211).
 	Code int    `json:"code"`
 	IR   string `json:"ir"`
+	// Result is what a snippet's final bare expression evaluated to, as the module reported it:
+	// the kind and the repr. It is nil unless the caller asked for the echo (JITOptions
+	// .EchoResult — the REPL and `--eval` do) and the pair named a form for the expression.
+	//
+	// It is not program output. The answer arrives on the tool channel (fd 2) and is lifted out
+	// of Stderr here, so `output` stays byte-for-byte what the program printed and the answer is
+	// still separable from the traceback and the collector line that share the channel
+	// (ADR 0179's channel rule, ADR 0302's REPL echo).
+	Result *EchoResult `json:"result,omitempty"`
 	// Debug is what the module handed to `llc` really carries, read back from it; nil when
 	// the build asked for no debug info (L8.5).
 	Debug       *DebugInfo   `json:"debug,omitempty"`
@@ -83,12 +93,38 @@ type JITResult struct {
 
 // JIT compiles src to a native shared object (codegen -> llc -> cc -shared),
 // dlopen's it into this process, and calls its generated `main`. It returns
-// the machine-executed stdout alongside the IR and toolchain commands. This is
-// the AOT-underneath-in-process path powering `gustyc --jit` REPL/eval.
+// the machine-executed stdout alongside the IR and toolchain commands. This is the compiled
+// in-process path powering `gustyc --eval`, `--file` and the REPL — the only execution path the
+// language has, since ADR 0302 retired the AST interpreter.
 // JIT is JITWithOptions with no debug request: the module is the one every other path
 // builds, with no metadata in it.
 func JIT(src string, optLevel int) (*JITResult, error) {
 	return JITWithOptions(src, optLevel, nil)
+}
+
+// RunSource compiles and runs one source program in-process and returns what it printed to
+// stdout, together with the failure it ran into (a compile refusal, a trap). It is the single
+// "run this program" entry point: the CLI's run paths, the harnesses and the test suite all go
+// through it, so a program cannot behave differently depending on who asked.
+//
+// Like the InterpreterRun it replaces, it captures the process-wide stdout for the duration of
+// the call, so it is not safe for concurrent use.
+func RunSource(src string) (string, error) {
+	res, err := JIT(src, 0)
+	if err != nil {
+		return "", err
+	}
+	if res.Code != 0 {
+		return res.Output, fmt.Errorf("program exited with status %d: %s", res.Code, firstLine(res.Stderr))
+	}
+	return res.Output, nil
+}
+
+// RunSnippet compiles and runs a REPL/`--eval` snippet with the echo asked for, and returns the
+// whole structured result: the program's stdout, the tool-channel diagnostics with the echo
+// lifted out of them, and Result — the value of the snippet's final bare expression (ADR 0302).
+func RunSnippet(src string) (*JITResult, error) {
+	return JITWithOptions(src, 0, &JITOptions{EchoResult: true})
 }
 
 // JITOptions is what a caller asks of the in-process JIT beyond the source. Debug is nil
@@ -97,6 +133,11 @@ func JIT(src string, optLevel int) (*JITResult, error) {
 // .so on disk that a debugger can read (L8.5, ADR 0231).
 type JITOptions struct {
 	Debug *DebugOptions
+	// EchoResult asks the module to report the value of the program's final bare expression on
+	// the tool channel, which is what turns the in-process runner into a REPL: an interactive
+	// caller that typed `1 + 1` wants `2` back, not silence. Only a snippet caller sets it; a
+	// program is never echoed (ADR 0204). Roadmap L13.1, ADR 0302.
+	EchoResult bool
 }
 
 // JITWithOptions compiles the program, lowers it to an object and a shared library, loads
@@ -129,12 +170,21 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	var derr error
 	if opts != nil && opts.Debug != nil {
 		var dbg *DebugInfo
-		ir, dbg, derr = GenerateIRReport(prog, &IRGenOptions{Debug: opts.Debug.normalized()})
+		ir, dbg, derr = GenerateIRReport(prog, &IRGenOptions{Debug: opts.Debug.normalized(), EchoResult: opts.EchoResult})
 		res.Debug = dbg
+	} else if opts != nil && opts.EchoResult {
+		ir, _, derr = GenerateIRReport(prog, &IRGenOptions{EchoResult: true})
 	} else {
 		ir, derr = GenerateIR(prog)
 	}
 	if derr != nil {
+		// One stage prefix per line. The codegen errors carry their own ("codegen: …"), and wrapping
+		// them produced `jit: codegen: codegen: …` — the same message the build path is tested not to
+		// repeat, arriving twice on this one, which is exactly the diagnostic noise that makes an agent
+		// grep for a substring that no longer exists (ADR 0166's readability rule).
+		if strings.HasPrefix(derr.Error(), "codegen: ") {
+			return nil, fmt.Errorf("jit: %w", derr)
+		}
 		return nil, fmt.Errorf("jit: codegen: %w", derr)
 	}
 	ir = OptimizeIR(ir, optLevel)
@@ -180,6 +230,15 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	res.Output = out
 	res.Stderr = errOut
 	res.Code = code
+	// Lift the snippet's answer out of the tool channel before anyone reads Stderr: the answer is
+	// a fact about the run, and the transcript of the run must not show it twice (ADR 0302).
+	if opts != nil && opts.EchoResult {
+		if echo, ok := ParseEchoLine(errOut); ok {
+			e := echo
+			res.Result = &e
+			res.Stderr = StripEchoLine(errOut)
+		}
+	}
 	return res, nil
 }
 

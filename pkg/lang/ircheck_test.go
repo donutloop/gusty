@@ -215,7 +215,7 @@ func TestIRModuloCompilesWithLLC(t *testing.T) {
 	if !strings.Contains(res.IR, "i32 2") {
 		t.Fatalf("constant modulo should fold to 2, got:\n%s", res.IR)
 	}
-	// runtime modulo lowers to srem (mirrors the interpreter's %%).
+	// runtime modulo lowers to srem (mirrors the record's %%).
 	res, err = Compile("x = 17\nprint(x % 5)")
 	if err != nil {
 		t.Fatalf("compile runtime %%%%: %v", err)
@@ -1014,7 +1014,7 @@ func TestIRLjustRjustFolds(t *testing.T) {
 		t.Fatalf("rjust(ab,5) should fold to a padded global, got:\n%s", ir)
 	}
 
-	// When len(s) >= w both are no-ops (mirror the interpreter).
+	// When len(s) >= w both are no-ops (mirror the record).
 	ir = llcCompiles(t, `"abc".ljust(2)`)
 	if !strings.Contains(ir, "c\"abc\\00\"") {
 		t.Fatalf("ljust no-op should fold to c\"abc\\00\", got:\n%s", ir)
@@ -1035,7 +1035,7 @@ func TestIRZfillFolds(t *testing.T) {
 		t.Fatalf("zfill(ab,5) should fold to a 000ab global, got:\n%s", ir)
 	}
 
-	// When len(s) >= w it is a no-op (mirror the interpreter).
+	// When len(s) >= w it is a no-op (mirror the record).
 	ir = llcCompiles(t, `"abc".zfill(2)`)
 	if !strings.Contains(ir, "abc") {
 		t.Fatalf("zfill no-op should keep abc, got:\n%s", ir)
@@ -1154,7 +1154,7 @@ print(f + 1.0)`)
 	ir = llcCompiles(t, `print(round(2.5))`)
 	if !strings.Contains(ir, "i32 2") || strings.Contains(ir, "i32 3") {
 		// Ties go to the nearest EVEN value: round(2.5) folds to 2, as CPython's does. This pin read
-		// `i32 3` — the constant-fold path tying away from zero, agreeing with the interpreter's
+		// `i32 3` — the constant-fold path tying away from zero, agreeing with the record's
 		// `math.Round` and nobody asking CPython (roadmap Gap R.50, ADR 0236).
 		t.Fatalf("round(2.5) should fold to 2, got:\n%s", ir)
 	}
@@ -1392,7 +1392,7 @@ func TestIRFloatFloorModNeg(t *testing.T) {
 func TestIRRoundFloatVar(t *testing.T) {
 	// round(float variable) must emit the ties-to-even intrinsic + fptosi, not error with
 	// "folds only a constant integer arg". This pin used to require `llvm.round.f64` and call it
-	// "(half-away)" — half of the reason both backends answered round(2.5) = 3 and the parity matrix,
+	// "(half-away)" — half of the reason the compiled backend answered round(2.5) = 3 and the parity matrix,
 	// which compares us to ourselves, recorded nothing (roadmap Gap R.50, ADR 0236).
 	ir := llcCompiles(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))")
 	if !strings.Contains(ir, "llvm.roundeven.f64") || !strings.Contains(ir, "fptosi double") {
@@ -1518,7 +1518,7 @@ func TestIRImportStringGlobals(t *testing.T) {
 	_ = res
 }
 
-func TestIRImportStringInterpVsAOT(t *testing.T) {
+func TestIRImportStringOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
 	old, _ := os.Getwd()
@@ -1526,7 +1526,7 @@ func TestIRImportStringInterpVsAOT(t *testing.T) {
 	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := EvalExpr("import msg\nlen(msg.msg)")
+	v, _, err := evalGolden(t, "import msg\nlen(msg.msg)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1559,7 +1559,7 @@ func TestIRImportReversedString(t *testing.T) {
 	}
 }
 
-func TestIRImportReversedInterpVsAOT(t *testing.T) {
+func TestIRImportReversedOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
 	old, _ := os.Getwd()
@@ -1567,7 +1567,7 @@ func TestIRImportReversedInterpVsAOT(t *testing.T) {
 	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := EvalExpr("import msg\nlen(reversed(msg.msg))")
+	v, _, err := evalGolden(t, "import msg\nlen(reversed(msg.msg))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1600,14 +1600,14 @@ func TestIRImportListGlobals(t *testing.T) {
 	}
 }
 
-func TestIRImportListIndexInterpVsAOT(t *testing.T) {
+func TestIRImportListIndexOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
 
-	v, _, err := EvalExpr("import cfg\ncfg.l[0]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.l[0]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1638,13 +1638,13 @@ func TestIRImportDictGlobals(t *testing.T) {
 	}
 }
 
-func TestIRImportLenListInterpVsAOT(t *testing.T) {
+func TestIRImportLenListOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\nlen(cfg.l)")
+	v, _, err := evalGolden(t, "import cfg\nlen(cfg.l)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1675,13 +1675,13 @@ func TestIRImportSortedList(t *testing.T) {
 	}
 }
 
-func TestIRImportDictIndexInterpVsAOT(t *testing.T) {
+func TestIRImportDictIndexOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.d[1]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.d[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1713,13 +1713,13 @@ func TestIRImportReversedList(t *testing.T) {
 	}
 }
 
-func TestIRImportListArithInterpVsAOT(t *testing.T) {
+func TestIRImportListArithOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.l[0] + cfg.l[1]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.l[0] + cfg.l[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1735,13 +1735,13 @@ func TestIRImportListArithInterpVsAOT(t *testing.T) {
 	}
 }
 
-func TestIRImportLenDictInterpVsAOT(t *testing.T) {
+func TestIRImportLenDictOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\nlen(cfg.d)")
+	v, _, err := evalGolden(t, "import cfg\nlen(cfg.d)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1757,13 +1757,13 @@ func TestIRImportLenDictInterpVsAOT(t *testing.T) {
 	}
 }
 
-func TestIRImportDictArithInterpVsAOT(t *testing.T) {
+func TestIRImportDictArithOnTheCompiledBackend(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600)
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.d[1] + cfg.d[2]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.d[1] + cfg.d[2]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1786,7 +1786,7 @@ func TestIRImportReversedListParity(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(old)
 	// interpreter: len(reversed(cfg.l)) == 3
-	v, _, err := EvalExpr("import cfg\nlen(reversed(cfg.l))")
+	v, _, err := evalGolden(t, "import cfg\nlen(reversed(cfg.l))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}

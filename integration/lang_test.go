@@ -75,7 +75,7 @@ func assertOutput(t *testing.T, src, want string) {
 
 func TestExecMultiArgPrint(t *testing.T) {
 	// print(*args, sep=" ", end="\n") — Python's separator/terminator
-	// semantics, identical on the interpreter and the AOT backend (ADR 0165).
+	// semantics, identical on the record and the AOT backend (ADR 0165).
 	// Arguments are joined with a single space and the line ends with one
 	// newline; `sep`/`end` override them.
 	assertOutput(t, "print(1, 2)", "1 2\n")
@@ -201,7 +201,7 @@ func TestExecContinue(t *testing.T) {
 }
 
 func TestExecMatchWildcard(t *testing.T) {
-	// `case _:` wildcard matches any subject (like the interpreter).
+	// `case _:` wildcard matches any subject (like the record).
 	assertOutput(t, "x = 5\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)", "9\n")
 	// non-wildcard case still matches normally.
 	assertOutput(t, "x = 1\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)", "1\n")
@@ -237,7 +237,7 @@ func TestExecAndOrBool(t *testing.T) {
 	assertOutput(t, "print([1] and [2])", "[2]\n")
 	// and/or on runtime values.
 	assertOutput(t, "x = 1\ny = 0\nprint(x and y)\nprint(x or y)", "0\n1\n")
-	// floor division lowers to sdiv (mirrors the interpreter).
+	// floor division lowers to sdiv (mirrors the record).
 	assertOutput(t, "print(9 // 2)", "4\n")
 	assertOutput(t, "print(20 // 5)", "4\n")
 	assertOutput(t, "print(9 // 2 + 1)", "5\n")
@@ -519,7 +519,7 @@ func TestExecRoundIntVar(t *testing.T) {
 func TestExecRoundVar(t *testing.T) {
 	// round(float variable) ties to the nearest EVEN value, in the AOT binary and everywhere else.
 	// This asserted "3\n-3\n" — half-away — with the rule spelled out in the comment above it, which
-	// is the shape of mistake that survives review: the prose, the interpreter and the compiler all
+	// is the shape of mistake that survives review: the prose, the record and the compiler all
 	// said the same wrong thing, and the only dissenting voice was CPython, which was not in the room
 	// (roadmap Gap R.50, ADR 0236).
 	assertOutput(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))", "2\n-2\n")
@@ -533,7 +533,7 @@ func TestExecRound(t *testing.T) {
 
 func TestExecFloatFloorModNeg(t *testing.T) {
 	// Float `//` floor division, `%` remainder, and unary `-` on float
-	// variables must match the interpreter's float64-payload semantics
+	// variables must match the record's float64-payload semantics
 	// (and the AOT codegen emits llvm.floor/frem/fsub for them).
 	assertOutput(t, "a = 5.5\nb = 2.0\nprint(a // b)\nprint(-a)\nprint(a % b)", "2.0\n-5.5\n1.5\n")
 	assertOutput(t, "print(7.0 // 2)\nprint(5.5 % 2.0)\nprint(-2.5)", "3.0\n1.5\n-2.5\n")
@@ -542,7 +542,7 @@ func TestExecFloatFloorModNeg(t *testing.T) {
 func TestExecPrintStrFloat(t *testing.T) {
 	// str(float-constant) folds to its %g decimal string; print must emit a
 	// %s printf with the string-global pointer (valid IR), not a %d printf fed
-	// an i8*. Matches the interpreter's str()/Repr for floats.
+	// an i8*. Matches the record's str()/Repr for floats.
 	assertOutput(t, `print(str(3.5))`, "3.5\n")
 	assertOutput(t, `print(str(2))`, "2\n")
 	assertOutput(t, `print(str(1.0 + 2.0))`, "3.0\n")
@@ -567,7 +567,7 @@ func TestExecDictMinMaxMethods(t *testing.T) {
 
 func TestExecStrIndex(t *testing.T) {
 	// The character, not the byte: `98` was what this asserted until ADR 0225 made a string
-	// subscript a one-character string on both backends.
+	// subscript a one-character string on the compiled path.
 	assertOutput(t, `print("abc"[1])`, "b\n")
 }
 
@@ -750,7 +750,7 @@ func TestAnyAllCodegenIR(t *testing.T) {
 func TestListCallConsumersRun(t *testing.T) {
 	// len/sum/min/max/any/all fold over a list-returning builtin call
 	// (sorted/reversed) by unwrapping the underlying inline list literal;
-	// the element set is preserved, so results match the interpreter.
+	// the element set is preserved, so results match the record.
 	got := compileAndRun(t, `print(len(sorted([3, 1, 2])))`)
 	if got != "3\n" {
 		t.Fatalf("len(sorted([3,1,2])) = %q, want 3", got)
@@ -827,7 +827,7 @@ func TestOverEmptyNestedListsRun(t *testing.T) {
 }
 
 func TestRejectNonEmptyDicts(t *testing.T) {
-	// The interpreter rejects non-list/set collections for sum/min/max/any/all;
+	// the record rejects non-list/set collections for sum/min/max/any/all;
 	// the codegen must match by rejecting non-empty dict literals too.
 	for _, src := range []string{
 		`print(sum({1: 2}))`,

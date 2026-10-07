@@ -5,7 +5,7 @@ package integration
 // `(a < b) < c` compares an int against a boolean, which this front end answers rather than refusing, so
 // the wrong verdict arrived at exit 0 with no refusal, no crash and no odd digit — the class an agent
 // driving the compiler reads as success. Every row below is a chain whose nested reading gives the
-// OPPOSITE verdict, checked against a live `python3` before both engines run.
+// OPPOSITE verdict, checked against a live `python3` before the compiled path run.
 
 import (
 	"testing"
@@ -43,7 +43,7 @@ func TestComparisonChainsAtTheCLI(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("row is stale: python3 prints %q, row pins %q", want, r.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "chain", r.src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {
@@ -72,7 +72,7 @@ func TestTheMiddleOperandOfAChainRunsOnceAtTheCLI(t *testing.T) {
 	if want != "evaluated\nTrue\n" {
 		t.Fatalf("row is stale: python3 prints %q", want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		p := writeSrc(t, dir, "chainonce", src)
 		out, code := cliRunMerged(t, engine, "--file", p)
 		if code != 0 {

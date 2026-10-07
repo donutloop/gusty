@@ -1,16 +1,13 @@
 package lang
 
 import (
-	"bytes"
-	"errors"
-	"os"
 	"strings"
 	"testing"
 )
 
 // Gap R.25 (ADR 0214): a trap that carries a message but no exception class is invisible to the
 // language — `except TypeError:` cannot match what has no class, and the traceback prints a bare
-// sentence where an exception should be named. These shapes raised `*EvalError` with an empty
+// sentence where an exception should be named. These shapes raised `*TrapError` with an empty
 // ExnType; each now raises what CPython raises, in CPython's words.
 
 type trapCase struct {
@@ -51,31 +48,21 @@ var trapCases = []trapCase{
 }
 
 // trapRun evaluates src and returns the typed error, failing if nothing was raised.
-func trapRun(t *testing.T, src string) *EvalError {
+// trapRun runs a program that must fail and hands back the typed failure, so a case can ask which
+// class escaped. The record is what says the program was owed a failure at all: a snippet that
+// answers instead of trapping is a divergence, and a snippet the compiler cannot build is one too.
+func trapRun(t *testing.T, src string) *TrapError {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
+	err := goldenRunError(t, src)
+	if err == nil {
+		t.Fatalf("the program raised nothing where the record says it traps")
 	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	var drained bytes.Buffer
-	if _, err := drained.ReadFrom(r); err != nil {
-		t.Fatalf("drain: %v", err)
-	}
-	if evalErr == nil {
-		t.Fatalf("the program raised nothing; it printed %q", drained.String())
-	}
-	var ee *EvalError
-	if !errors.As(evalErr, &ee) {
-		t.Fatalf("want an *EvalError, got %T: %v", evalErr, evalErr)
+	ee, ok := err.(*TrapError)
+	if !ok {
+		t.Fatalf("want a *TrapError, got %T: %v", err, err)
 	}
 	return ee
 }
-
 func TestBuiltInTrapsCarryTheirClass(t *testing.T) {
 	for _, tc := range trapCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,22 +98,12 @@ func TestBuiltInTrapsAreCatchableByTheirClass(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			src := "try:\n    " + strings.ReplaceAll(strings.TrimRight(tc.src, "\n"), "\n", "\n    ") +
 				"\nexcept " + tc.class + ":\n    print(\"handled\")\n"
-			old := os.Stdout
-			r, w, err := os.Pipe()
-			if err != nil {
-				t.Fatalf("pipe: %v", err)
-			}
-			os.Stdout = w
-			_, _, evalErr := EvalExpr(src)
-			os.Stdout = old
-			w.Close()
-			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			out, evalErr := runGoldenStdout(t, src)
 			if evalErr != nil {
-				t.Fatalf("the %s handler did not run: %v (stdout %q)", tc.class, evalErr, buf.String())
+				t.Fatalf("the %s handler did not run: %v (stdout %q)", tc.class, evalErr, out)
 			}
-			if buf.String() != "handled\n" {
-				t.Errorf("stdout = %q, want \"handled\\n\"", buf.String())
+			if out != "handled\n" {
+				t.Errorf("stdout = %q, want %q", out, "handled\n")
 			}
 		})
 	}

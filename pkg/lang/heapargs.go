@@ -667,6 +667,12 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
 	for i, el := range ln.Elems {
+		// A pair-bound element writes its own two words; the tag is a register, not a constant.
+		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+			fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pt)
+			fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pv)
+			continue
+		}
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
@@ -688,6 +694,15 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
 	bits := 0
 	for i, el := range ln.Elems {
+		// A pair-bound element (`[n]` with `n = xs[0]`) is the element the static layout has no
+		// representation for and the ordinary path asks for one word: both words come from the
+		// name's own allocas, and the tag the objects wrote goes to `rt_tag_elem` as the register
+		// it is (roadmap L11.1, Gap R.146, ADR 0187).
+		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+			fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pv)
+			fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pt)
+			continue
+		}
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
@@ -715,7 +730,9 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	// different sink, and a renderer that asks the object can be handed a handle the builder's
 	// scope never saw. Answering [0, 1] for ["a", 1] was the object not saying what it holds
 	// (roadmap L11.2, ADR 0258 — Gap L.2's shape one level down).
-	if g.literalNeedsTags(ln) || literalMixedKinds(ln) {
+	if g.literalNeedsTags(ln) || literalMixedKinds(ln) || g.literalHasPairElement(ln) {
+		// A slot whose tag came from a register says so on the object too, or the printer reads
+		// the list's single kind and answers the payload of a text slot as a number.
 		bits |= 8
 	}
 	if bits != 0 {
@@ -726,7 +743,7 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 
 // heapDictFrom builds a heap dict from a literal, interning any string keys or values and
 // recording on the object which positions hold interned strings (rt_mark_estr), so
-// {"a": 1} and {1: "v"} build and print like the interpreter renders them (Gap J.6).
+// {"a": 1} and {1: "v"} build and print like the record renders them (Gap J.6).
 func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (string, error) {
 	if dictWantsContainerKey(dl) {
 		// Built anyway, the key would be the inner object's handle printed as a number: {([1, 2]): 3}
@@ -817,6 +834,7 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 			return "", err
 		}
 		if mixed {
+			// A member the pair road bound carries its own tag; the constant is what a literal answers.
 			t, _ := g.elemKindTag(el)
 			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %d)\n", h, v, t)
 			idx++
@@ -956,6 +974,64 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 		}
 		for _, v := range n.Vals {
 			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// literalHasPairElement asks the third question of a container literal, beside "does it need the heap" and
+// "can its slots say what they hold": is any element a value the compiler cannot write into a static global?
+// A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair
+// whose words only exist at run time — the static `{count, [N x i32]}` layout has no place for it, and
+// asking its `value()` is the refusal Gap R.146 kept printing for `[n]`, `{"k": n}` and `min([n, 3])`. The
+// heap builder already writes both words per slot (ADR 0187), so the answer is to route the literal there
+// rather than to refuse the element (roadmap L11.1).
+// pairElemPair is the element-side question: does this literal element name a value the pair road bound,
+// and if so what are its two words? The builders below take the tag as a constant, which is right for a
+// literal element and wrong for a pair, whose tag is a register the objects wrote. Passing the register to
+// the same call is the whole difference between `[n]` printing `[7]` and refusing (roadmap L11.1,
+// Gap R.146; ADR 0187's rule that a payload is never written without its tag).
+func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
+	nm, isName := e.(*Name)
+	if !isName || g.taggedVars == nil || !g.taggedVars[nm.Value] || g.taggedOrigin == nil {
+		return "", "", false
+	}
+	switch g.taggedOrigin[nm.Value] {
+	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
+		payload, tag = g.numericPairRegs(b, nm.Value)
+		return payload, tag, true
+	}
+	return "", "", false
+}
+
+func (g *irGen) literalHasPairElement(e Expr) bool {
+	pairName := func(x Expr) bool {
+		nm, isName := x.(*Name)
+		return isName && g.taggedVars[nm.Value] && g.taggedOrigin != nil
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if pairName(el) {
+				return true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if pairName(el) {
+				return true
+			}
+		}
+	case *DictLit:
+		for _, k := range n.Keys {
+			if pairName(k) {
+				return true
+			}
+		}
+		for _, v := range n.Vals {
+			if pairName(v) {
 				return true
 			}
 		}
@@ -1520,7 +1596,9 @@ func (g *irGen) mixedDictPair(b *strings.Builder, dictName string, key Expr, sp 
 	if !ok {
 		return "", "", fmt.Errorf("codegen: reading %q from a dict whose values are of more than one kind needs a key whose kind the compiler can prove; a bool, float or container key needs the tagged value word (roadmap L11.1, ADR 0232)", dictName)
 	}
-	g.checkKeyReadTagged(b, h, kv, kt, sp)
+	// The key's own expression travels so a missing key raises the reference's sentence — `KeyError: 'z'`,
+	// the key's repr — rather than the module's generic prose (roadmap Gap R.189).
+	g.checkKeyReadTagged(b, h, kv, kt, key, sp)
 	val = g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, h, kv, kt)
 	tag = g.newTmp()
@@ -1574,7 +1652,12 @@ func mixedReadErr(what string) error {
 // wants a number from it: printing dispatches on the tag, but arithmetic and calls have no
 // tag to carry (roadmap L11.1, ADR 0185).
 func mixedTaggedVarErr(name string) error {
-	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
+	// The historical sentence was "comes from a loop over a mixed list", which is only true of the loop
+	// road that sets the status without an origin. Every road that binds a pair now records where it came
+	// from (taggedOrigin), so this is the genuine unknown case: say what is known — the value's kind lives
+	// beside it, in the object it was read out of — and name neither a loop nor a container the reader may
+	// not have written (roadmap Gap R.38, L11.1).
+	return fmt.Errorf("codegen: %s holds a value whose kind lives beside it rather than in it, so this position cannot ask what it is: print(%s) dispatches on the tag, and a position that keeps one word for its operand has nowhere to put the second one — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1)", name, name)
 }
 
 // Where a tagged variable's (payload, tag) pair came from. The refusal a tagged name meets in a
@@ -1598,6 +1681,16 @@ const (
 	// taggedOriginParamArith is the pair a name holds when the body computed it out of a PARAMETER
 	// (`y = x + 1` / `return y`): arithmetic yes, run-time container no.
 	taggedOriginParamArith = "arithmetic over a parameter the caller supplied"
+	// taggedOriginSlot is the pair a plain binding took from a slot read — `n = xs[0]` over a container
+	// the program built — where no arithmetic, parameter or loop is involved. The name exists because the
+	// refusal it prevents was real: a program with no loop anywhere was told its value "comes from a loop
+	// over a mixed list", which is Gap R.38's defect (a message that describes a program the reader cannot
+	// find) reproduced by a fallback sentence rather than by a pasted template.
+	taggedOriginSlot = "a slot the program built at run time, read by position"
+	// taggedOriginLoop is the pair a `for`/comprehension loop variable takes over a container that mixes
+	// kinds. Recorded rather than inferred: "comes from a loop" is true only when a loop bound it, and the
+	// door that knows whether a loop ran is the door that should say so.
+	taggedOriginLoop = "the element a loop stepped over a container that mixes kinds"
 )
 
 // taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
@@ -1615,6 +1708,10 @@ func (g *irGen) taggedVarErr(name string) error {
 		// integer", which is a story about a different program — `y = x` / `return y` has no other arm at
 		// all — and a refusal that describes a program the reader cannot find is Gap R.38's own defect.
 		return fmt.Errorf("%s is a parameter the call site handed a double, so it arrives as a (payload, tag) pair and its kind lives beside it, not in the value: print(%s), a binding and the positions that read one number ask the tag, and this position keeps one word for its operand, so the tag has nowhere to go — the answer's kind is what the argument was, which is a run-time question this position cannot ask (roadmap L11.1, Gap R.146, Gap R.38)", name, name)
+	case taggedOriginSlot:
+		return fmt.Errorf("%s holds %s, which travels as a (payload, tag) pair: the object the slot was read out of says which kind it is, print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginSlot, name)
+	case taggedOriginLoop:
+		return fmt.Errorf("%s is %s, so it travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — using it as a number needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginLoop, name)
 	case taggedOriginFloat:
 		return fmt.Errorf("%s holds %s: the variable was bound to a number and rebound to a double, so its value travels as a (payload, tag) pair whose payload is a float box, print(%s) asks the tag, and this position keeps one word for its operand (roadmap L11.6, Gap R.155)", name, taggedOriginFloat, name)
 	}
@@ -1680,6 +1777,14 @@ func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag stri
 	// the two allocas together and the tag that arrives is the object's own, not a guess.
 	if nm, isName := e.(*Name); isName {
 		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+			return p, t, false, nil
+		}
+		// A name the pair road bound — `n = xs[0]` over a container the program built, or an arithmetic
+		// answer — already holds both words, so a container slot can be written from them. Asking this
+		// name for a payload alone is the mistake ADR 0185 forbids and Gap R.146 refuses: the word beside
+		// no tag is a number wearing another object's bits (roadmap L11.1).
+		if g.taggedVars[nm.Value] && g.taggedOrigin != nil {
+			p, t := g.numericPairRegs(b, nm.Value)
 			return p, t, false, nil
 		}
 	}
@@ -1863,7 +1968,7 @@ func (g *irGen) exprGist(e Expr) string {
 // containerKindProvable asks whether a container slot may be labelled for this expression at all.
 // A call that returns text on one path and a number on another is the case that may not: print can
 // ask when it prints, but a slot's label is fixed when it is built, and the number labelled as text
-// came out of the string table as `(null)` where the interpreter prints 7. The element is then not
+// came out of the string table as `(null)` where the record prints 7. The element is then not
 // "a number" or "a string", it is unlabelable, and the container says so (ADR 0232).
 func (g *irGen) containerKindProvable(e Expr) bool {
 	call, ok := e.(*Call)
@@ -1885,7 +1990,7 @@ func containerSlotLabel(slot string) string {
 // print asks. print asks "can this call hand back text", and answers well either way — the value is
 // rendered at the moment it is printed. A slot cannot: it holds one tag chosen at build time, so a
 // function that hands back text on one path and a number on the other has no honest tag, and the
-// number printed through the string table is `(null)` where the interpreter prints 7 (ADR 0232).
+// number printed through the string table is `(null)` where the record prints 7 (ADR 0232).
 // Such an expression is *unprovable*, and the mixed gate refuses rather than guessing.
 func (g *irGen) callReturnsOnlyStr(c *Call) bool {
 	nm, ok := c.Fn.(*Name)
@@ -2036,7 +2141,7 @@ func (g *irGen) mixedDictIndexRead(ix *Index) (string, bool) {
 
 // mixedKindErr is the diagnostic every mixed-container site reports.
 func mixedKindErr(what string) error {
-	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
+	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; CPython allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
 }
 
 // recordElemKind notes that a container variable holds strings (isStr) or numbers in a given
@@ -2045,7 +2150,7 @@ func mixedKindErr(what string) error {
 // string table — an honest diagnostic beats that (roadmap Gap J.6, ADR 0166).
 func (g *irGen) recordElemKind(name, slot string, isStr bool, e Expr) error {
 	if e != nil && !g.containerKindProvable(e) {
-		return fmt.Errorf("codegen: cannot put %s in a compiled %s: the compiler cannot prove one kind for it, because the function it calls hands back text on one path and a number on another. print asks that question when it prints and gets it right; a container slot is labelled once, and labelling it either way misprints the other (the interpreter answers this program; per-element asking is the tagged value word, roadmap L11.1, ADR 0232)", g.exprSummary(e), containerSlotLabel(slot))
+		return fmt.Errorf("codegen: cannot put %s in a compiled %s: the compiler cannot prove one kind for it, because the function it calls hands back text on one path and a number on another. print asks that question when it prints and gets it right; a container slot is labelled once, and labelling it either way misprints the other (CPython answers this program; per-element asking is the tagged value word, roadmap L11.1, ADR 0232)", g.exprSummary(e), containerSlotLabel(slot))
 	}
 	strMap, numMap, label := g.kindMapsFor(slot)
 	if isStr {
@@ -2704,7 +2809,7 @@ func (g *irGen) forgetTaggedBinding(name string) {
 // status"); what was missing is one place that applies it to *every* status. `boolVars` and `noneVars` each
 // have their own forget helper and their own call, and the interned-text pair has none: `x = "text"` then
 // `x = [1, 2]` left `internedVars[x]` standing, and the compiled `print(x)` answered `text` at exit 0 while
-// CPython and the interpreter answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
+// CPython and the record answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
 // doors of ADR 0271, which read the same records and would have raised on `x = "text"` / `x = 5` / `abs(x)`).
 //
 // It clears only what the new binding contradicts, and it is called before the binding records its own
@@ -2970,7 +3075,10 @@ func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *I
 
 	// ---- the dict arm: the entry whose key is the (payload, tag) pair, and the value one word past it.
 	fmt.Fprintf(b, "%s:\n", dictArm)
-	g.checkKeyReadTagged(b, base, key, keyTag, sp)
+	// The key expression rides along so the raise can name the key (Gap R.189): the payload-and-tag pair
+	// says which entry was asked for, and the program's own key expression says what to call it in the
+	// message. `ix.Idx`, not `key` — `key` here is the IR value the payload arrived in.
+	g.checkKeyReadTagged(b, base, key, keyTag, ix.Idx, sp)
 	dv := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", dv, base, key, keyTag)
 	dt := g.newTmp()
@@ -3184,7 +3292,7 @@ func (g *irGen) containerSlotRead(b *strings.Builder, base, kind string, key Exp
 			// A key: found by the payload-and-tag rule equality uses, and the value sits one word
 			// past it — rt_get_elem with the key as an index would read the key back and call it a
 			// value, which is what rt_dict_get_tagged and rt_dict_value_tag exist to avoid.
-			g.checkKeyReadTagged(b, base, kv, kt, sp)
+			g.checkKeyReadTagged(b, base, kv, kt, key, sp)
 			val = g.newTmp()
 			fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, base, kv, kt)
 			tag = g.newTmp()
@@ -3301,8 +3409,13 @@ func (g *irGen) textOrderSide(e Expr) bool {
 // either way is a run-time question with three possible answers, and the only thing that settles it is
 // the tag the object carries (roadmap L11.1, Gap R.82).
 type orderSide struct {
-	e         Expr   // the operand itself
-	ix        *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	e  Expr   // the operand itself
+	ix *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	// pairName is a name the pair road bound (`n = xs[0]`, a loop element over a container that mixes
+	// kinds). Its payload means a different thing per kind, so the ordering asks the tag the same way a
+	// slot read does — which is the difference between `n > 7` answering and comparing the interned index
+	// of "a" as a number (roadmap L11.1, Gap R.148).
+	pairName  string
 	fromTag   bool   // the side's kinds come from the object: no literal describes the slots (Gap R.93)
 	canText   bool   // the side can report text
 	canNum    bool   // the side can report a number
@@ -3319,8 +3432,12 @@ type orderSide struct {
 // number?": a register for a slot the object has to be asked about, and a settled yes or no for
 // anything the compiler already read. The chain that decides the arms folds on these, so a side read
 // off the literal never costs a test at run time (roadmap L11.1, Gap R.82).
+// asksTag reports that this side's kind is a run-time fact the door has to test: either a slot read out of
+// an object, or a name the pair road bound. Both carry a tag register; neither is settled at compile time.
+func (s *orderSide) asksTag() bool { return s.ix != nil || s.pairName != "" }
+
 func (s *orderSide) textTest() string {
-	if s.ix == nil {
+	if !s.asksTag() {
 		if s.tagC == int32(TagStr) {
 			return "true"
 		}
@@ -3330,7 +3447,7 @@ func (s *orderSide) textTest() string {
 }
 
 func (s *orderSide) numberTest() string {
-	if s.ix == nil {
+	if !s.asksTag() {
 		if s.tagC == int32(TagInt) || s.tagC == int32(TagBool) || s.tagC == int32(TagFloat) {
 			return "true"
 		}
@@ -3340,14 +3457,14 @@ func (s *orderSide) numberTest() string {
 }
 
 func (s *orderSide) definitelyNotText() bool {
-	if s.ix == nil {
+	if !s.asksTag() {
 		return s.tagC != int32(TagStr)
 	}
 	return !s.canText
 }
 
 func (s *orderSide) definitelyNotNumber() bool {
-	if s.ix == nil {
+	if !s.asksTag() {
 		return s.tagC != int32(TagInt) && s.tagC != int32(TagBool) && s.tagC != int32(TagFloat)
 	}
 	return !s.canNum
@@ -3422,6 +3539,16 @@ func (g *irGen) orderSlotIsObject(ix *Index) bool {
 // the compiler already knows the tag of.
 func (g *irGen) orderShapeOf(e Expr) orderSide {
 	s := orderSide{e: e}
+	// A name the pair road bound is an ordering side whose kind the run time owns: the payload is a float
+	// box, an interned text or the number, and only the tag says which. It walks the same three arms a slot
+	// read out of an object walks, so `n > 7` compares numbers or raises the reference's own sentence for
+	// the kind it found rather than keeping one word for the operand (roadmap L11.1, Gap R.148).
+	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] && g.taggedOrigin != nil {
+		switch g.taggedOrigin[nm.Value] {
+		case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
+			return orderSide{e: e, pairName: nm.Value, fromTag: true, canNum: true, canText: true, ok: true}
+		}
+	}
 	if ix, isIdx := e.(*Index); isIdx {
 		if g.orderSlotIsObject(ix) {
 			// No literal describes this slot, so the compiler has no list of kinds to read: the side may
@@ -3526,7 +3653,7 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 	if !ls.ok || !rs.ok {
 		return false
 	}
-	if ls.ix == nil && rs.ix == nil {
+	if !ls.asksTag() && !rs.asksTag() {
 		return false
 	}
 	// A side whose kind the object reports names itself in the raise sentence, which names *two* types
@@ -3545,7 +3672,13 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 // orderTagOf reads the tag one side reports, together with its payload. A side the compiler already
 // read has no tag to ask and leaves the register empty, which the arm tests below read as "settled".
 func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
-	if s.ix == nil {
+	if !s.asksTag() {
+		return true
+	}
+	if s.pairName != "" {
+		// A pair-bound name already carries both words; the door reads them from the name's own slots.
+		payload, tag := g.numericPairRegs(b, s.pairName)
+		s.payload, s.tag = payload, tag
 		return true
 	}
 	var payload, tag string
@@ -3567,7 +3700,7 @@ func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
 // orderAskTags reads each slot side's tag once, in the block the comparison starts in, and records the
 // two tests the arms and the raise sentence branch on.
 func (g *irGen) orderAskTags(b *strings.Builder, s *orderSide) {
-	if s.ix == nil || s.tag == "" {
+	if !s.asksTag() || s.tag == "" {
 		return
 	}
 	s.tagIsText = g.newTmp()
@@ -3617,7 +3750,7 @@ func (g *irGen) orderIsNum(b *strings.Builder, tag string) string {
 // raise arm — which the gate above makes unreachable, but the arm still has to end somewhere legal
 // rather than run off the end of the block (ADR 0166's rule against inventing an operand).
 func (g *irGen) orderDoubleTo(b *strings.Builder, s *orderSide, cur string) (string, string, error) {
-	if s.ix == nil {
+	if !s.asksTag() {
 		d := g.floatValue(b, s.e)
 		if d == "" {
 			return "", "", g.floatOperandRefusal(s.e)
@@ -4228,7 +4361,7 @@ func (g *irGen) numericUseKind(e Expr) string {
 }
 
 // unsupportedNumberOp is CPython's sentence for an arithmetic use of a value that has no number in
-// it, spelled the way the interpreter spells it — which is not one sentence: text against `+` gets
+// it, spelled the way the record spells it — which is not one sentence: text against `+` gets
 // the concatenation wording, everything else the operand-type one. Getting this wrong is worse than
 // refusing, because the test table compares the string, and a program's `except TypeError` reads it.
 func unsupportedNumberOp(op, kind, other string) (string, string) {
@@ -4512,9 +4645,63 @@ func (g *irGen) taggedDoubleFromObject(b *strings.Builder, ix *Index, n *BinOp, 
 	if !ok || payload == "" || tag == "" {
 		return "", false, nil
 	}
+	return g.taggedDoubleFromPair(b, payload, tag, ix.Span(), n, side, otherName, sentence)
+}
+
+// pairDoubleInCtx lifts a pair-bound name into the double an operator wants, asking the per-tag arms the
+// slot read already walks — which is the difference between `n / 4` answering 1.75 and a text slot
+// answering the interned index of "a" as a number. The other operand's kind comes from where the operator
+// spelled it, and the sentence is CPython's for this operator with that kind (ADR 0253, ADR 0252).
+func (g *irGen) pairDoubleInCtx(b *strings.Builder, e Expr) (string, bool, error) {
+	n := g.numCtx
+	if n == nil {
+		return "", false, nil
+	}
+	other := "int"
+	for _, side := range []Expr{n.L, n.R} {
+		if side != e {
+			if k := g.numericUseKind(side); k != "" {
+				other = k
+			} else if _, isIx := side.(*Index); !isIx {
+				if g.arithWouldRefuse(side) {
+					// The other side is itself pair-shaped (`abs(n) / 2`): this door would lift THIS side
+					// as a double and read the sibling as one word, which is the truncation the door
+					// exists to prevent — and lowering it through the double road here made the two doors
+					// call each other until the goroutine's stack gave out, a compiler failure ADR 0166
+					// counts as exit 2. So the door keeps its hand off and the position refuses.
+					return "", false, nil
+				}
+				if d := g.floatValue(b, side); d == "" {
+					return "", false, nil // an operand whose kind would make the message a guess
+				}
+			}
+		}
+	}
+	slotOnLeft := n.L == e
+	sentence := func(kindName string) (string, string) {
+		if slotOnLeft {
+			return unsupportedNumberOp(n.Op, kindName, other)
+		}
+		return unsupportedNumberOp(n.Op, other, kindName)
+	}
+	nm, isName := e.(*Name)
+	if !isName {
+		return "", false, nil
+	}
+	payload, tag := g.numericPairRegs(b, nm.Value)
+	return g.taggedDoubleFromPair(b, payload, tag, e.Span(), n, e, other, sentence)
+}
+
+// taggedDoubleFromPair is the same door asked of a pair it is handed rather than one it reads out of a
+// slot: the float arm unboxes, the int/bool arm converts, and every other tag raises the sentence CPython
+// writes for this operator and that kind. A name the pair road bound (`n = xs[0]`, a loop element over a
+// container that mixes kinds) has no word to widen — the payload is a float box, an interned text, or the
+// number, and only the tag says which — so the float domain reaches it here, through the arms the slot read
+// already walks, rather than through a second lift that guesses (roadmap L11.1, Gap R.148; ADR 0253's
+// per-kind raise, ADR 0252's closed tag set).
+func (g *irGen) taggedDoubleFromPair(b *strings.Builder, payload, tag string, sp Span, n *BinOp, side Expr, otherName string, sentence func(string) (string, string)) (string, bool, error) {
 	g.heapUsed = true
 	g.floatFmtUsed = true
-	sp := ix.Span()
 	if n != nil {
 		sp = n.Span()
 	}
@@ -4852,6 +5039,51 @@ func orderKindSlot(name string, isDict bool) string {
 // the pair — otherwise the ordinary road already gets the kind right — and anything the pairing cannot
 // name (a call, an attribute) declines, which leaves the existing refusal in place rather than
 // replacing a precise diagnostic with a wrong number.
+// fieldIsConstantLiteral reports the only f-string fields the compile-time spec engine can read: the literals
+// whose digits it writes itself. Everything else — a variable, a call, an arithmetic expression — has to reach
+// one of the value doors below, because the engine returns the empty text for a field it cannot see and used to
+// answer `f"{x!r}"` with nothing at all, at exit 0, for every variable in the language (roadmap Gap R.186,
+// Gap R.192; ADR 0299's spec engine).
+// fieldWantsPrinterQuotes reports the f-string fields whose `!r` is a rendering rather than a fold: a text
+// the intern table already holds, or any expression the print road renders as interned text. Those go through
+// `rt_str_of_value` with the quote flag — the door `repr()` uses — instead of having quote characters spliced
+// into the module's format-string global (roadmap Gap R.192, a measured exit 2; ADR 0303's one printer).
+func (g *irGen) fieldWantsPrinterQuotes(e Expr) bool {
+	if _, isLit := e.(*StrLit); isLit {
+		return true
+	}
+	if _, known := g.stringVal(e); known {
+		return true
+	}
+	return g.printsAsInternedStr(e)
+}
+
+func fieldIsConstantLiteral(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *StrLit:
+		return true
+	}
+	return false
+}
+
+// filedPairOf is the f-string field's version of the same question print asks: does this expression travel
+// as a (payload, tag) pair, and if so what are its two words? Two sources. A name the pair road bound reads
+// its own two allocas; an expression built over one (`n - 1`, `-n`, `n // 2`) goes through the arithmetic
+// door print uses, so the field, `print()` and `str()` cannot disagree about `6` versus `6.0` — and an
+// operator that door will not vouch for (`+` over a slot whose kind is a run-time fact) answers not-ok and
+// the field keeps the refusal it has always printed, rather than reading a payload alone (roadmap L11.1,
+// Gap R.146's rendering positions; ADR 0303's one printer, ADR 0265's per-kind door).
+func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok bool, err error) {
+	if nm, isName := e.(*Name); isName && (g.numericPairVar(nm.Value) || (g.taggedVars != nil && g.taggedVars[nm.Value])) {
+		payload, tag = g.numericPairRegs(b, nm.Value)
+		return payload, tag, true, nil
+	}
+	if g.taggedVars == nil {
+		return "", "", false, nil
+	}
+	return g.taggedArithPair(b, e)
+}
+
 func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok bool, err error) {
 	var op int
 	var l, r Expr
@@ -4873,6 +5105,17 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 			return "", "", false, nil
 		}
 		l, r = n.L, n.R
+		sp = n.Src
+	case *Call:
+		// abs(x) is the signless call: one operand, the magnitude out, CPython's raise when the tag says
+		// the value has no sign. The door takes the operand twice because it is binary-shaped — the second
+		// word is read only by the operators that ask for a divisor (roadmap L11.1, Gap R.146; ADR 0271's
+		// wording rule, which `rt_num_bad` keeps per call rather than per operator).
+		nm, isName := n.Fn.(*Name)
+		if !isName || nm.Value != "abs" || len(n.Args) != 1 {
+			return "", "", false, nil
+		}
+		op, l, r = 6, n.Args[0], n.Args[0]
 		sp = n.Src
 	case *UnOp:
 		if n.Op != "-" {
@@ -5014,6 +5257,12 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		// alone is the truncated number Gap R.161 and Gap R.164 were measured on. So an arm that is such a
 		// call may take the door — and an arm that is any other call keeps the road it has always had.
 		if nm, ok := n.Fn.(*Name); ok {
+			if nm.Value == "abs" && len(n.Args) == 1 {
+				// abs of a pair is the signless call over a value whose kind the run time decides: the
+				// reference answers a number or raises, so the door takes it whatever the slot holds —
+				// the same rule `-x` follows, with its own sentence (roadmap L11.1, Gap R.146).
+				return g.arithWouldRefuse(n.Args[0])
+			}
 			return g.pairRetDone[nm.Value]
 		}
 		return false
@@ -5021,8 +5270,13 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		return g.indexKindIsRuntimeObject(n)
 	case *Name:
 		// A name the arithmetic door bound carries its kind in the object, and the ordinary numeric
-		// road refuses it for exactly that reason — so the door is the road for it too.
-		return g.numericPairVar(n.Value)
+		// road refuses it for exactly that reason — so the door is the road for it too. A name bound
+		// from a SLOT asks the same door: the pair is already bound (ADR 0303), the tag says which of
+		// the families the payload means, and `rt_num_arith` raises CPython's own sentence per kind when
+		// the slot holds something without a sign. That widening is the one L11.1 owes this position
+		// (Gap R.146); `+`, `*` and `%` stay behind the number proof below, because the reference ANSWERS
+		// `"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (Gap R.82).
+		return g.numericPairVar(n.Value) || g.taggedVars[n.Value]
 	}
 	return false
 }
@@ -5179,6 +5433,43 @@ func (g *irGen) liftPair(b *strings.Builder, payload, tag string) string {
 // bindArithmeticPair is the pair road of an assignment, asked the same way from the plain statement and
 // from an augmented one: when the ordinary numeric road would refuse the expression, ask the objects and
 // bind the name with the pair the answer arrived in (roadmap L11.1, ADR 0267).
+// bindSlotReadPair is `n = xs[0]` over a container the program BUILT (`xs = []` / `xs.append(3)`), where
+// the element's kind is a fact about the object rather than about the literal. The pair door the print
+// dispatch, the comparisons and `len` already use answers it, and binding only the payload would leave a
+// number wearing another object's bits — the interned index of a text reads back as the integer 4 (ADR
+// 0185's rule, applied to the one binding road that had not been taken). `n = xs[0][0] * 2` has always
+// come through bindArithmeticPair; the plain read had nowhere to go, so `str(n)` refused and `n + 1`
+// blamed a loop that was never written (roadmap L11.1, Gap R.146, ADR 0302's diagnostic pass).
+func (g *irGen) bindSlotReadPair(b *strings.Builder, name string, e Expr) (bool, error) {
+	p, t, ok := g.runtimeSlotPairDeep(b, e)
+	if !ok {
+		return false, nil
+	}
+	g.bindTaggedVar(b, name, p, t)
+	if g.taggedOrigin == nil {
+		g.taggedOrigin = map[string]string{}
+	}
+	g.taggedOrigin[name] = taggedOriginSlot
+	// The payload may be a float box or a container handle, both of which are heap objects: the slot is a
+	// root for as long as the name holds it (ADR 0181's rule for every handle-carrying store).
+	g.gcReg(b, name)
+	return true, nil
+}
+
+// recordSlotOrigin says where a name's pair came from when the door that bound it read a slot. The
+// origin is what lets a later refusal name the truth (taggedVarErr); a binding that leaves it unset
+// falls through to a sentence that has to guess, and the guess it used to make — "comes from a loop
+// over a mixed list" — was false for every program with no loop in it (roadmap Gap R.38).
+func (g *irGen) recordSlotOrigin(name string) {
+	if g.taggedOrigin == nil {
+		g.taggedOrigin = map[string]string{}
+	}
+	if g.taggedOrigin[name] != "" {
+		return
+	}
+	g.taggedOrigin[name] = taggedOriginSlot
+}
+
 func (g *irGen) bindArithmeticPair(b *strings.Builder, name string, e Expr) (bool, error) {
 	if !g.arithWouldRefuse(e) {
 		return false, nil
@@ -5377,6 +5668,18 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 			return "", "", false, pairErr
 		} else if okPair {
 			return p, t, true, nil
+		}
+		if g.arithWouldRefuse(n) {
+			// An operand that is itself the door's answer — `abs(n) - 1`, `abs(n) * 2` — asks the same door
+			// for its two words. The recursion terminates because the door is asked of the call's ARGUMENT,
+			// never of the call (roadmap L11.1, Gap R.146; ADR 0265's door).
+			p, t, okPair, arithErr := g.taggedArithPair(b, e)
+			if arithErr != nil {
+				return "", "", false, arithErr
+			}
+			if okPair {
+				return p, t, true, nil
+			}
 		}
 	case *Index:
 		if v, t, okPair := g.runtimeSlotPairDeep(b, e); okPair {

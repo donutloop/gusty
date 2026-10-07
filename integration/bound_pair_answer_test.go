@@ -37,7 +37,7 @@ func TestABoundPairAnswerAtTheCLI(t *testing.T) {
 			if py != tc.want {
 				t.Fatalf("the pinned expectation is not the reference's: cpython %q, table %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunMerged(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2, the contract's compiler-bug code (ADR 0166):\n%s", engine, out)

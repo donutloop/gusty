@@ -1,6 +1,6 @@
 package lang
 
-// A ternary with text arms answers with one of its arms, and both backends must print that arm (Gap R.173,
+// A ternary with text arms answers with one of its arms, and the compiled backend must print that arm (Gap R.173,
 // ADR 0290).
 //
 // ADR 0262 paid the ternary's NUMBER half — it emitted the double `select` Gap R.102 was filed for — and left

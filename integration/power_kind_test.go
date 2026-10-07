@@ -1,18 +1,18 @@
 package integration
 
 // End-to-end coverage for Gap R.176 (ADR 0293): `x ** y` answers the KIND the reference answers with, on
-// both engines.
+// the compiled path.
 //
 // The shapes below were measured on a binary built from the pre-cycle HEAD, where each printed a number
-// CPython never prints, at exit 0, with the two engines agreeing with each other:
+// CPython never prints, at exit 0, with both legs agreeing with each other:
 //
-//	print(2 ** -1)     reference 0.5        both engines 0        (the int road returned 0 for a negative exponent)
+//	print(2 ** -1)     reference 0.5        the compiled path 0        (the int road returned 0 for a negative exponent)
 //	print(4 ** 0.5)    reference 2.0        compiled 1            (fptosi truncated llvm.pow.f64's answer)
 //	print(2.0 ** 10)   reference 1024.0     compiled 1024         (printed through %d)
 //	print(0 ** -1)     reference raises     compiled inf/2147483647
-//	print(2 ** 100)    reference a 31-digit int   both engines 0  (the multiply wrapped in silence)
+//	print(2 ** 100)    reference a 31-digit int   the compiled path 0  (the multiply wrapped in silence)
 //
-// A wrong number both engines agree on is invisible to the parity matrix; the oracle leg is the only
+// A wrong number the compiled path agree on is invisible to the parity matrix; the oracle leg is the only
 // instrument that sees it, which is why every row here is checked against a live python3 rather than
 // against the other engine.
 
@@ -41,9 +41,9 @@ func TestPowerExitCodesStayOnTheContract(t *testing.T) {
 	}
 }
 
-// TestPowerMatchesTheReferenceOnBothEngines runs the promoted probe and a table of single expressions,
+// TestPowerMatchesTheReferenceOnBothLegs runs the promoted probe and a table of single expressions,
 // each against a live python3, on BOTH legs.
-func TestPowerMatchesTheReferenceOnBothEngines(t *testing.T) {
+func TestPowerMatchesTheReferenceOnBothLegs(t *testing.T) {
 	dir := t.TempDir()
 	// The probe's own output is the reference's output, line for line.
 	src := readProgram(t, "probe_a_power_answers_the_right_kind.gy")
@@ -51,7 +51,7 @@ func TestPowerMatchesTheReferenceOnBothEngines(t *testing.T) {
 	if !wantOK {
 		t.Skip("no usable oracle")
 	}
-	if got, _ := cliRunMerged(t, "--interp", "--file", writeSrc(t, dir, "pow_probe.gy", src)); got != want {
+	if got, _ := cliRunMerged(t, "--aot", "--file", writeSrc(t, dir, "pow_probe.gy", src)); got != want {
 		t.Errorf("interpreter differs from CPython:\n got: %q\nwant: %q", got, want)
 	}
 	if got, _ := cliRunMerged(t, "--aot", "--file", writeSrc(t, dir, "pow_probe.gy", src)); got != want {
@@ -71,7 +71,7 @@ func TestPowerMatchesTheReferenceOnBothEngines(t *testing.T) {
 			if !ok {
 				t.Skip("no usable oracle")
 			}
-			if got, _ := cliRunMerged(t, "--interp", "--eval", line); got != want {
+			if got, _ := cliRunMerged(t, "--aot", "--eval", line); got != want {
 				t.Errorf("interpreter printed %q, reference prints %q", got, want)
 			}
 			if got, _ := cliRunMerged(t, "--aot", "--eval", line); got != want {
@@ -93,7 +93,7 @@ func TestPowerRaiseAndRefusalAreCatchableOrWords(t *testing.T) {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
 			wrapped := "try:\n    " + strings.ReplaceAll(r.src, "\n", "\n    ") + "\nexcept ZeroDivisionError:\n    print(\"caught\")\n"
-			for _, leg := range []string{"--interp", "--aot"} {
+			for _, leg := range cliEngines {
 				leg := leg
 				got, _ := cliRunMerged(t, leg, "--file", writeSrc(t, dir, "pow_try.gy", wrapped))
 				if !strings.Contains(got, "caught") {
@@ -108,7 +108,7 @@ func TestPowerRaiseAndRefusalAreCatchableOrWords(t *testing.T) {
 			if !strings.Contains(wantLine, "ZeroDivisionError") {
 				t.Fatalf("the row is stale: the reference prints %q", wantLine)
 			}
-			for _, leg := range []string{"--interp", "--aot"} {
+			for _, leg := range cliEngines {
 				got, _ := cliRunMerged(t, leg, "--eval", r.src)
 				if !strings.Contains(got, "ZeroDivisionError") {
 					t.Errorf("%s printed %q, want the reference's %q", leg, got, r.marker)

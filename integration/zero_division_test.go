@@ -18,9 +18,7 @@ func TestZeroDivisionAgreesOnEveryPath(t *testing.T) {
 	src := readProgram(t, "zero_division.gy")
 	want := "2.0\n2\n3\ncaught division\ncaught modulo\ncaught floor division\ncaught float modulo\ncaught a divisor computed at run time\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -46,7 +44,7 @@ func TestUncaughtDivisionByZeroIsTheRuntimeClass(t *testing.T) {
 	bin := cliBin(t)
 	dir := t.TempDir()
 	file := writeTrapCase(t, dir, "divzero.gy", src)
-	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--interp", file}} {
+	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--aot", file}} {
 		if code := runCode(t, bin, args...); code != 3 {
 			t.Errorf("gustyc %v: exit = %d, want 3 (an uncaught ZeroDivisionError is the runtime class)", args, code)
 		}

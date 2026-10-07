@@ -2,17 +2,20 @@
 #
 # A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the
 # positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What is
-# left is the positions that take a whole *value*: a builtin's argument and a container's element. Each has
-# one word for its operand, and the second word — the tag — has no place to be stored, so the compiled leg
-# declines rather than print the payload alone. CPython and the interpreted leg answer all four lines
-# (roadmap Gap R.146, the same missing word Gap R.139 names on the calling side).
+# left is the positions that take a whole *value*: a builtin's argument keeps one word for its operand, and
+# the second word — the tag — has no place to be stored, so the compiled leg declines rather than print the
+# payload alone. CPython answers both lines (roadmap Gap R.146, the same missing word Gap R.139 names on the
+# calling side).
 #
-# The `and` line is not part of that debt any more: an operator that chooses an operand can ask the pair
-# directly, and `n and 3` prints CPython's `3` on all three legs (Gap R.147, ADR 0269).
+# Two lines left this program as the shape they were filed with changed sides. An operator that chooses an
+# operand can ask the pair directly, so `n and 3` prints CPython's `3` (Gap R.147, ADR 0269); and a container
+# element is no longer a one-word position — `[n]` prints `[14]`, the heap builder writing the element's tag
+# beside its payload — so that line lives in programs/probe_pair_bound_name_enters_a_container.gy (Gap R.146's
+# element half, ADR 0306). A dict entry, a set member and a literal `sum`/`min`/`max` folds into a static
+# array still owe the same missing word.
 xs = []
 xs.append([7, 8])
 n = xs[0][0] * 2
 print(abs(n))
 print(min(n, 3))
-print([n])
 print(n and 3)

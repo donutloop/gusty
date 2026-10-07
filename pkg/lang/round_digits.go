@@ -46,7 +46,7 @@ import (
 )
 
 // roundArityMessage is the arity sentence, written once and read by both backends: the evaluator
-// raises it as an EvalError and codegen refuses with it. Two spellings of one event is the shape
+// raises it as an TrapError and codegen refuses with it. Two spellings of one event is the shape
 // ADR 0236 and ADR 0262 both had to come back for, and `round()` with no argument was, until this
 // pair of lines, a Go panic in the evaluator (roadmap Gap R.131).
 func roundArityMessage(given int) string {
@@ -57,7 +57,7 @@ func roundArityMessage(given int) string {
 }
 
 // roundToDigits is the whole rule, in the one place both the evaluator and the compiler's constant
-// fold reach. It is the interpreter's half of the pair above; the compiled runtime's half is
+// fold reach. It is the record's half of the pair above; the compiled runtime's half is
 // `rt_round_digits` in floatRuntimeIR, which performs the same two named operations on the target.
 func roundToDigits(v float64, n int) float64 {
 	// An infinity or a NaN has no decimal point to move. CPython with an explicit digit count
@@ -99,7 +99,7 @@ func roundToDigits(v float64, n int) float64 {
 
 // pow10 is 10^k for the k the negative-digit branch can ask for (1..308), built by multiplying by
 // ten k times. That is deliberately the *slow* way: it is the same sequence of roundings the
-// compiled runtime's loop walks, instruction for instruction, so the two backends cannot differ in
+// compiled runtime's loop walks, instruction for instruction, so the compiled backend cannot differ in
 // the last bits of the scale the way they would if one called libm `pow` and the other squared its
 // way there. Every power up to 10^22 is exact; beyond that the two loops round identically.
 func pow10(k int) float64 {
@@ -199,7 +199,7 @@ func (g *irGen) roundNdigitsKind(nd Expr) string {
 // roundNdigitsValue lowers the digit count to the i32 the runtime asks for, raising what CPython
 // raises when what arrived is not an integer. The raise is a real one — the same catchable door an
 // out-of-range index uses — so `try: round(2.345, 1.5) except TypeError:` behaves here the way it
-// behaves in the interpreter and in the reference, rather than being a refusal to build the
+// behaves on the record and in the reference, rather than being a refusal to build the
 // program at all (ADR 0166: exit 1 is for a program the reference itself rejects).
 func (g *irGen) roundNdigitsValue(b *strings.Builder, nd Expr, sp Span) (string, error) {
 	if bad := g.roundNdigitsKind(nd); bad != "" {
@@ -220,23 +220,4 @@ func (g *irGen) raiseNdigitsTypeMismatch(b *strings.Builder, msg string, sp Span
 	fmt.Fprintf(b, "  %s = icmp slt i32 0, 1\n", always)
 	g.markI1(always)
 	g.branchRaise(b, always, "TypeError", msg, sp, "roundnd")
-}
-
-// roundNdigits is the interpreter's half of the digit-count check the compiled backend asks of
-// `roundNdigitsValue`: the count must be an integer, and what arrives that is not one is the
-// TypeError CPython raises, worded with the kind that turned up — `round(2.345, 1.5)` is
-// "type 'float' is not what round() asked for" territory, and the reference says
-// `'float' object cannot be interpreted as an integer`. Truncating a 1.5 to 1 instead would be the
-// Gap R.69 mistake wearing a different hat: answering a program the reference stops on.
-//
-// A verdict is an integer here for the same reason it is one everywhere else since ADR 0257:
-// `round(2.345, True)` is 2.3 in the reference, because True *is* 1.
-func (e *Evaluator) roundNdigits(v int64) (int, error) {
-	if o, ok := e.heap[v]; ok && o.kind != "bool" {
-		return 0, exnError("TypeError", e.valueTypeName(v)+" object cannot be interpreted as an integer")
-	}
-	if o, ok := e.heap[v]; ok {
-		return int(o.bval), nil
-	}
-	return int(v), nil
 }

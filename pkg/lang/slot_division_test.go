@@ -32,11 +32,11 @@ import (
 // `1.5 / 0` says `float division by zero`, and with one operand's kind only in the object, a guard
 // after the merge could only guess which sentence the program's `except` is matching.
 //
-// Both engines below, CPython in the sibling integration file: parity rows, the traps that must be
+// Both legs below, CPython in the sibling integration file: parity rows, the traps that must be
 // raised rather than refused, the refusals that remain (each naming the half that is missing), and an
 // IR row that fails if the module stops branching on the tag or starts inventing an operand again.
 
-func TestTrueDivisionOfAnUnliteralisedSlotAnswersInBothEngines(t *testing.T) {
+func TestTrueDivisionOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the program Gap R.96 measured, and its float twin.
 		{"an appended int slot divided", "xs = []\nxs.append(3)\nprint(xs[0] / 4)\n", "0.75\n"},
@@ -231,13 +231,12 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			}
 			// The compiled leg's KeyError is a module constant, not the key's repr, until the tagged
 			// word lets it render the key at run time (Gap R.189 PARTIAL, ADR 0301).
+			// A KeyError carries the key's repr, in the compiled program as in the reference — the
+			// raise site renders a literal key into the message the way the reference words it
+			// (roadmap Gap R.189, paid by the compiled leg in ADR 0302's cycle). A key the compiler
+			// cannot see as a literal keeps the generic sentence, and L11.1's tagged word is what would
+			// name those too; a row here asserting the old prose would be asserting a regression.
 			compiledWant := tc.message
-			if tc.class == "KeyError" && strings.HasPrefix(tc.message, "'") {
-				// Only a KeyError whose message is a QUOTED key is the asymmetry: the compiled leg
-				// cannot render a key at run time. A KeyError with its own sentence ("not in set",
-				// "popitem(): dictionary is empty") is a constant both legs already agree on.
-				compiledWant = "key not found"
-			}
 			if !strings.Contains(out, compiledWant) {
 				t.Errorf("compiled message missing %q:\n%s", compiledWant, out)
 			}
@@ -331,7 +330,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 		{
 			"a comprehension whose iterable is a slot one level below",
 			"xs = []\nxs.append([4])\nprint([w / 2 for w in xs[0]])\n",
-			"comprehension iterable must be",
+			"is refused: this backend builds a comprehension over",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -409,13 +408,13 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 					"answer (%s), delete this row and close %s", tc.name, out, tc.aotWant, tc.oracle, tc.gap)
 			}
 			if got := captureStdout(t, tc.src); got != tc.oracle {
-				t.Errorf("%s: the interpreter prints %q, want the oracle's %q", tc.name, got, tc.oracle)
+				t.Errorf("%s: the record leg prints %q, want the oracle's %q", tc.name, got, tc.oracle)
 			}
 		})
 	}
 }
 
-// TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow now answers CPython on both engines, so
+// TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow now answers CPython on both legs, so
 // it is pinned as an answer and not as a divergence: the row out of the filed table above, kept where it
 // was written so the day it came back is visible next to the row that recorded it going.
 func TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow(t *testing.T) {
@@ -429,7 +428,7 @@ func TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow(t *testing.T
 		t.Errorf("the compiled leg printed %q, want CPython's \"[3.0]\\n\" (roadmap Gap R.99, ADR 0262)", out)
 	}
 	if out := captureStdout(t, src); out != "[3.0]\n" {
-		t.Errorf("the interpreter printed %q, want CPython's \"[3.0]\\n\"", out)
+		t.Errorf("the record leg printed %q, want CPython's \"[3.0]\\n\"", out)
 	}
 }
 
@@ -672,7 +671,7 @@ func TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := captureStdout(t, tc.src); got != tc.oracle {
-				t.Errorf("%s: the interpreter prints %q, want the oracle's %q", tc.name, got, tc.oracle)
+				t.Errorf("%s: the record leg prints %q, want the oracle's %q", tc.name, got, tc.oracle)
 			}
 			_, err := Compile(tc.src)
 			if err == nil {

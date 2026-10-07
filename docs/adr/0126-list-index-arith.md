@@ -7,7 +7,7 @@ constant folding, but lacked unit/integration coverage.
 
 ## Decision
 Add an end-to-end integration test (TestExecImportListArith) and an
-interpreter-vs-AOT parity unit test (TestIRImportListArithInterpVsAOT)
+interpreter-vs-AOT parity unit test (TestIRImportListArithOnTheCompiledBackend)
 covering `cfg.l[0] + cfg.l[1]`.
 
 ## Consequences

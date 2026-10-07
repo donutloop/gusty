@@ -1269,7 +1269,7 @@ Each is a concrete, reproducible defect with the shape to fix it.
   - Tests: `none_values.gy` in the conformance corpus (38 cases), plus
     `TestNoneSingletonSemantics`, `TestNoneSurvivesGC`, `TestVoidFunctionYieldsNone`,
     `TestCompiledNoneUsesTheRuntimeSingleton`, `TestNoneEqualityIsStaticButNotLazy`,
-    `TestNoneVarIsClearedByReassignment`, `TestNoneValuesInterpreter/AOT`, `TestNoneIsNotZero`,
+    `TestNoneVarIsClearedByReassignment`, `TestNoneValuesOnTheCompiledBackend/AOT`, `TestNoneIsNotZero`,
     `TestVoidCallSideEffectsStay`, `TestCLIEvalDoesNotEchoVoid`.
   - Still open and deliberately out of scope: bools print `1`/`0` rather than `True`/`False`,
     and strings inside containers print unquoted (`[1, None]` → `[1, None]`, `[a, b]`). Tracked
@@ -2363,7 +2363,7 @@ every edge that leaves an accepting arm — the fall-through into `finally`, and
 or `continue` that would otherwise escape it, with `irGen.handledArms` telling the codegen when it is
 in an arm and `funcDef` zeroing that for a nested function. What is deliberately not cleared is an
 arm's own `raise` and the no-arm-matched re-raise, so the exception that is genuinely travelling still
-travels; `TestUncaughtTrapStillTrapsOnBothBackends` is the control that a mute-shaped "fix" could not
+travels; `TestUncaughtTrapStillTrapsOnTheCompiledBackend` is the control that a mute-shaped "fix" could not
 pass. Eleven shapes now print the same thing on the interpreter, the compiled binary and CPython
 (`integration/exception_clear_test.go`), and the module shape is pinned too
 (`pkg/lang/exception_clear_test.go`).
@@ -6475,6 +6475,27 @@ ledger row. It is the same missing word Gap R.139 named one position over (paid 
 argument now takes the pair across the call): an argument a *builtin* declares, and an element, need the same thing
 in the runtime's own signature.
 
+**Amended — the signless call is paid (ADR 0309).** `abs` left this field, and it left by the operators' door
+rather than by a lift: `rt_num_arith` gained operand code 6 (beside the unary minus) and takes
+`select fcmp olt %af, 0.0 → neg, val` on the **lifted** value, so the answer carries its own kind back out —
+`abs(n)` is `7` from an int slot, `2.5` from a float slot, `1` from `True`, `9` from `d["k"]`, and `y = abs(n)`
+is itself a pair so `print(y)` is right too. `rt_lift_num` + `@llvm.fabs.f64` was the obvious implementation
+and is the one this ADR refuses: the payload of a text slot is its interned index and of a float slot a box
+handle, so a magnitude of one word is a plausible number at the exit code of success — the class the record
+calls the worst one, and the only class the refusal counter cannot see. Two edges came with the door. The
+**raise is the call's own sentence** (`bad operand type for abs(): 'str'`, never the minus's), chosen by which
+call asked rather than which op the helper implements, because sharing the format string is exactly how ADR
+0271's rule broke the first time. And **the compiler crashed on itself**: with `abs` admitted, the float door
+lifted its own `abs(n)` sibling, which asked for the sibling's two words, until the stack gave out
+(`round(abs(n) / 2)`) — a dead compiler on a program CPython answers, neither exit 1 nor the contract's exit 2.
+The door now refuses a pair-shaped sibling instead of recursing, and `arithOperandPair` asks the refusal test
+of a call's *argument*, never of the call, which is what makes the recursion terminate. What still refuses:
+`min(n, 3)` / `max(n, 3)`, a dict entry, a set member, a builtin-folded static array (`sum([n])`), and an
+f-string used as a VALUE — `TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord` is that half's ledger,
+and the row's Status stays ⏳ `OPEN` because of it. Witnesses: `pkg/lang/pair_abs_test.go`,
+`integration/pair_abs_test.go`, `programs/probe_the_signless_call_answers_for_a_pair_bound_name.gy` (`match`),
++19 record entries (5623 → 5642, verified 0 dropped / 0 changed against the committed map — 18 snippets plus the probe program itself, which the corpus needs on record to be checkable at all).
+
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
 ```
@@ -6735,7 +6756,7 @@ it cannot otherwise carry (`@rt_float_new`, tag `1`), and only then falling back
 with tag `0`. `t += i / 2` is exactly that shape — the left half is a pair the rebinding already owns, the
 right half is a quotient the ordinary road answers as a double — and the accumulator prints CPython's `6.5`
 where it used to exit 1. `TestAFloatRebindingBindsThePairRatherThanWideningTheStore` holds the row on both
-engines, and the CLI twin is `TestTheReferenceAndBothEnginesHandTheSameNumber`.
+engines, and the CLI twin is `TestTheReferenceAndBothLegsHandTheSameNumber`.
 
 ### Gap R.158 — a float-state variable handed to a function is refused (CLOSED by ADR 0276, owner L11.6, measured landing ADR 0274)
 
@@ -6761,7 +6782,7 @@ ordinary road refuse this argument* but *would it refuse it, or answer a double 
 recorded bindings are that evidence — `x = 8` then `x = 2.5` is a variable the pair road binds (ADR 0274) —
 and handing it over is the same missing word one position further out. `5.0` on both engines, pinned by
 `TestAFloatRebindingBindsThePairRatherThanWideningTheStore` and at the CLI by
-`TestTheReferenceAndBothEnginesHandTheSameNumber`; the float-from-birth twin closed in the same commit, as
+`TestTheReferenceAndBothLegsHandTheSameNumber`; the float-from-birth twin closed in the same commit, as
 Gap P.1's last line.
 
 ### Gap R.159 — a float-state variable as a container element is refused (OPEN, owner L11.6, measured landing ADR 0274)
@@ -8266,3 +8287,431 @@ being done.
 
 **Measurement.** HEAD-baseline build (`git worktree` at `6a40431`): 14 assertions fail on the new tables;
 green here. Matrix now 167 rows / 128 pass / 39 skipped / 33 debt / 0 fail / 0 drift.
+
+### Gap R.193 — the witness guard read the wrong files, and a noun is a claim too (CLOSED by ADR 0308's amendment, owner `docs`/`test`)
+
+ADR 0308's guard scanned the tests, the CLI and the agent-read documents, and exempted production comments
+because they are design history. The first cycle that wrote new files inside the swept corpus — ADR 0309 —
+found both halves of that boundary were wrong in opposite directions.
+
+`integration/conformance_cases.go` is production code by extension and a **public statement** by function:
+each registered program carries a comment saying what it asserts today, and each debt row carries a
+`reason:` string that `conformance-matrix.json` ships verbatim to whatever agent is reading the matrix. Those
+strings said `three engines on one source` (twelve times) and described the retired engine in the present
+tense (`the interpreter raises the operand TypeError`, `the interpreter prints at the await`). The registry is
+now one of the guard's surfaces; `pkg/lang/codegen.go`'s narrative is not, and that exemption is deliberate —
+a thousand history-marked lines bought nothing but noise, and the markers already licence them.
+
+The other half was the list itself. It had been built run-oriented on purpose — "both backends **print**",
+"the interpreter **answers**" — on the theory that naming the retired engine as the source of a recorded
+answer is honest and only *running* it is false. But `both backends`, `both engines` and `three engines` as
+bare noun phrases assert that two backends exist just as flatly as any verb form, and they passed as prose.
+Banning the three phrases surfaced ~14 survivors across the tracker, the docs and the registry, all of them
+restated rather than marked: `three engines on one source` → `both legs on one source`; `Both backends do it
+identically — precisely why parity could never see it` → `Both legs recorded it identically — precisely why
+leg-vs-leg parity could never see it`; Gap R.90's `both engines say IndexError: index out of range` → `both
+witness legs said …`; `print(1 > 2 < 3)   CPython False · both backends True` → `… · recorded True`; L7.6's
+checker `shared by both backends` → `shared by the checker and the codegen`. Where a line really is a
+measurement taken while two engines ran, it keeps its history marker; the list was not loosened to make the
+count go to zero, because a guard whose count is negotiable is the same stale comment with a nicer error.
+
+The row also carries a smaller lesson, learned the hard way in the same sweep: a parked cycle cannot know
+what `docs/adr/` looks like when it finally lands. ADR 0309's own test files were written citing "ADR 0308"
+for the feature, and by landing time 0308 belonged to a different decision. `ls docs/adr | tail` belongs at
+the *front* of landing a parked item.
+
+### Gap R.190 — one backend means one witness (owner: `docs`, ADR 0302)
+
+Before ADR 0302 a tracker row could say *"both engines print `15`"* and mean something checkable by two
+independent implementations. That claim is gone: there is one implementation, and the second opinion in
+every case is either a **record** (what the retired engine said) or **CPython**. Those are not the same kind
+of evidence, and pretending they are is how a suite starts certifying its own assumptions.
+
+The witnesses — one backend, and the two things it is measured against:
+
+| Witness | What it is | Strength | Weakness it cannot hide |
+|---|---|---|---|
+| compiled run | parse → check → codegen → `llc`/`cc` → the artifact | the thing users run | — |
+| retired-engine record | `pkg/lang/testdata/interpreter-golden.json`, 5478 sources | cheap, deterministic, offline, diffable | an *answer*, not a definition — the retired engine was wrong sometimes |
+| CPython | asked live where a case's claim is about the reference | the only real definition of the language | not installed everywhere, and cannot run gusty's own surface (imports, extension classes) |
+
+Both ledger kinds are **two-way ratchets**, which is what keeps a record from becoming a pin:
+
+- `pkg/lang` and `integration` each hold an `interpreter-golden-drift.json`. A source where the compiled
+  answer differs from the record *skips with both answers in its message* and registers a divergence; the
+  package's `TestMain` fails the run on a **new** divergence and also on one that has **gone away** without
+  its row being deleted. 340 rows and 21 rows respectively at this writing.
+- `integration/testdata/cpython-debt.json` holds compiled-vs-CPython disagreements, each row carrying the
+  reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** (required — an
+  unowned row fails). Its "no case reached this row" check catches the subtler failure: a case that stopped
+  running the program leaves a row that looks like documentation.
+
+Partial runs are handled explicitly, because that is where a ratchet most easily becomes theatre. A `-run`
+subset never reaches most rows, so "row not exercised" is only asserted when the package ran in full
+(`isPartialRun`, keyed on `test.run`). The alternative — telling a developer their one-test run just paid
+400 bugs — makes the check something people disable.
+
+**What was actually lost.** Two implementations disagreeing is a bug-finder for cases where *both* are wrong
+in the same way only rarely; several tracked defects (`1 + True` vs `True + 1`, Gap R.176; the intern-order
+`bool`/`int` splits) were found because the engines disagreed. One engine cannot disagree with itself. The
+generated leg survives as `integration/proptest_test.go`, but it now checks determinism and compile
+robustness rather than parity, because generated programs have no recorded expectations and the harness
+refuses to invent any (a generated program with no record fails the case rather than being skipped).
+
+**The honest replacement, not built.** A differential oracle: drive `integration/programs/*.gy` and the
+generated corpus against CPython continuously, so the "compiled vs reference" leg gets the breadth the
+retired engine used to provide and the record becomes a cache rather than a witness. Owner would be a
+Phase 12 tooling row; the registry (`integration/conformance_cases.go`) already stores per-leg expectations,
+so the missing piece is the runner and a policy for programs CPython cannot parse.
+
+**Closed by ADR 0308 (2026-08-06): the vocabulary, and the guard that keeps it.** The row's owed half was
+language, not execution. What was done:
+
+- `AGENTS.md` — the file that *is* the loop's contract — opened with "Two execution paths — both are
+  first-class" and named `pkg/lang/jit.go`/`EvalExpr` as where a feature is implemented first. A cycle
+  reading it would have rebuilt the engine. It now states one backend and two witness legs, and its
+  testing rule asks for a record-leg case and a reference-leg case instead of an interpreter case.
+- `roadmap.md` gained a **Witness vocabulary** section (`record leg` / `reference leg` / `both legs`) that
+  the `Path` column and every pre-retirement `Free text` cell are read through. Rows were not rewritten
+  wholesale — a measurement taken with two engines is evidence about those two engines — but every
+  *present-tense* claim in the tracker's prose, `docs/language.md`, `docs/operations.md` and `README.md`
+  was restated, as were ~500 test comments and failure messages and the CLI's flag descriptions
+  (`--bench`, `--bench-suite`, `--bench-gate`, `--oracle` all advertised an interpreter leg).
+- Names that lied were renamed, not re-explained: `zdInterp`→`zdRun`, `boolInterp`→`boolRun`,
+  `edInterp`→`edRun`, `negInterp`→`negRun`, `interpRun`→`compiledRun`, `interpReport`→`compiledReport`,
+  `interpWant`→`recordWant`, `Test…InBothBackends`→`Test…OnTheCompiledBackend`,
+  `Test…OnBothEngines`→`Test…OnBothLegs`, and `pkg/lang/jit_test.go`→`pkg/lang/compiled_eval_test.go`.
+  `jit_llvm.go` keeps its name — that one is an execution engine that exists.
+- `pkg/lang/witness_claim_test.go` is the ratchet. `testdata/witness-banned-phrases.txt` lists the claims
+  ("on both engines", "both backends print", "the interpreter prints", `EvalExpr`, `pkg/lang/jit.go`),
+  `testdata/witness-history-markers.txt` lists what makes a line history instead (`was`, `used to`,
+  `before`, `retir`, `measured 20`, …). A line matching a phrase without a marker fails the suite; a flag
+  description may name the interpreter only to retire it; `pkg/lang/jit.go` must stay deleted. The lists
+  are data, so tightening the rule is an edit to a ledger and not to a test, and the guard skips its own
+  file by name — a mass restatement that ate the rules it enforces is exactly how this kind of check dies.
+- Three assertions that the retirement had left **unable to fail** were deleted rather than kept:
+  `integration/text_truth_test.go` ran `cliTextOut(t, "--aot", src)` twice and announced that "the
+  compiled path agreed with each other"; `integration/for_container_literal_test.go` asserted
+  `byEngine["--aot"] != byEngine["--aot"]`; `pkg/lang/runtime_block_emit_test.go` hid a refusal-wording
+  assertion behind `if true { return }`. A check whose operands are the same expression is not a check,
+  and a comment that points at an engine nobody can run is not evidence (ADR 0166's "cannot fail" family;
+  Gap R.38 for the refusal wording).
+
+### L13.1 — the prompt should report what a call evaluated to (owner: L11.1)
+
+ADR 0302 moved the REPL and `--eval` onto the compiled backend, which broke a promise nobody had written
+down because it was structural: the interpreter held the value, so the prompt could print it. A compiled
+snippet's value lives in the artifact's registers, and the only way the CLI can show it is to ask the
+compiler to build the expression **again** in a form that reports it.
+
+For a call, "again" is observable. `show(3)` where `show` prints is compiled, run (prints `3`), and then —
+if the echo lowers the call a second time — prints `3` a second time. So the rule in `pkg/lang/echo.go` is:
+
+- literals, arithmetic, containers, comparisons: echoed, from the pair the module already built;
+- calls to a fixed list of **pure builtins** (`str`, `len`, `abs`, `min`, `round`, `sorted`, …): echoed,
+  because re-lowering them cannot do anything a user sees — and a program that *shadows* one of those names
+  loses the privilege (`echoIsPureBuiltin` consults the function table and the alloc'd-name set);
+- everything else that is call-shaped: **silent**, and counted as this row's debt.
+
+`TestREPLCallResultEchoIsFiledNotFixed` pins the silence on purpose: a quiet prompt is the kind of gap an
+agent reads as `None`, so it is asserted rather than documented. The fix is not to widen the list — it is to
+have the module's entry point hand back the final expression's `(payload, tag)` pair, the same word the
+printer reads (L11.1), so there is exactly one lowering of the user's program and the echo is free.
+
+Related shape, same root: `--json --eval` reports `result`/`type` only when the compiled path can name the
+value. Void snippets report `"result": null, "type": "None"`, which is correct, and a user call whose kind is
+a run-time fact reports neither, which is this row and L11.1's tagged word seen from the CLI.
+
+### Gap R.189 — amendment (ADR 0302's cycle): the compiled leg reached the literal door
+
+The section above this one recorded the compiled backend as unable to name the key at all. That is no longer
+true and the row now says which half is which:
+
+```
+d = {}; d["z"]        CPython KeyError: 'z'   compiled now  KeyError: 'z'      ✅ literal door
+d = {1:2}; d[9]       CPython KeyError: 9     compiled now  KeyError: 9        ✅ literal door
+k = "a"; d[k]         CPython KeyError: 'a'   compiled      KeyError: key not found   🔴 computed door
+xs = []; … d[i]       key arrives as (payload, tag)          generic string           🔴 computed door
+```
+
+`keyNotFoundMessage` renders a literal through `pyReprString` — the same renderer the container printer uses,
+so quoting matches what `print(k)` would show — and returns the empty string when there is nothing to
+render, which makes the caller's fallback explicit instead of letting `""` reach the raise. The computed road
+stays open because naming a key you cannot see means rendering a value whose kind is a run-time fact: the
+same missing word as L11.1, which is why the row keeps `L11.1` as its owner rather than being closed as
+"mostly done". `integration/slot_order_object_test.go` accepts the generic sentence on that road and counts
+it as a filed gap, so the remaining half is visible without pinning a wrong answer as correct.
+
+### ADR 0303 — the rendering positions ask the tag (2026-08-03, L11.1 / L13.1)
+
+**The measurement.** Two refusals that had outlived their own reasoning:
+
+```console
+$ gusty --eval 'xs = []\nxs.append("a")\nprint(str(xs[0]))'
+gustyc: jit: codegen: repr of an element read is not implemented
+$ gusty --eval 'n = 1\nprint(str(n))'          # n bound from a slot, not a literal
+gustyc: jit: codegen: str on non-integer
+```
+
+with `print(xs[0])` answering `a` all along. Both refusals came from one place — the compile-time str/repr
+table, which has rows for an integer, a text, `None`, a verdict and the container literals — and both values
+are exactly the ones whose kind the run time decides.
+
+**Root cause, and why the fix is a routing rule rather than a feature.** The rendering pair and the tagged
+value word are the same feature seen from two ends: both ask *what is this value*, and the answer has always
+been the tag beside the payload in the object. `print` had been asking it for a dozen ADRs (`print(x)` and
+`str(x)` are the same printer with the quote flag set — ADR 0185). `str(x)` went to a road that guesses, and
+refused whatever it could not guess. So the rule is now **one door**: `rt_print_mixed_value` pointed at
+stdout for `print`, at the capture buffer for `str`/`repr` (`rt_str_of_value`), and at the capture buffer plus
+the tag-named kind for the prompt (`rt_echo_pair`); a container's own slots answer for themselves through
+`rt_str_of_container`, because only the object knows how its slots are stored. ADR 0258 exists to keep a
+second renderer dead — two number formatters once disagreed about a container and `str([1, 2])` answered `0`.
+
+**The bug the fallback clause wrote.** `n = xs[0]` bound a bare payload, so `str(n)` refused — with a sentence
+inherited from a clause that fires for both a slot binding and a loop variable:
+
+> `n comes from a loop over a mixed list`
+
+in a program with no loop. That is `Gap R.38`'s defect produced not by a pasted template but by a fallback
+choosing a story it had been handed; it is fixed in the same place, by giving the roads a record of what they
+bound (`taggedOrigin`) and asking it at refusal time. The sibling half of that defect — a name bound from a
+slot read answering `0` where the reference answers `None` (`Gap R.171`'s shape through a binding) — is fixed
+by the pair binding itself, because the payload alone is a number wearing another object's bits: the interned
+index of `"a"` is a small integer.
+
+**The prompt's kind, which is where the second half of this cycle went.** The cycle opened the door and shipped
+with the JSON reporting `type: object` for slot reads — a wrong answer at exit 0, of the family roadmap Gap R.38
+and Gap R.95 keep filing. The fix passes the *tag* to the runtime and asks the module's own kind table
+(`rt_kind_name`) at run time, so the prompt, a `TypeError` message and a container's printer cannot call one
+value by two names. Cost, recorded: any module that echoes a pair now drags the tagged-arithmetic block in for
+`rt_kind_name` — a few hundred bytes of IR against one tag vocabulary (ADR 0259's argument, run in the other
+direction).
+
+**Alternatives rejected.** Widening the static table (that is how the bug got made — every extension is another
+way to disagree with `print`); answering with the plain payload when the kind is unknown (ADR 0258's silent-
+truncation class); keeping `object` in the prompt; giving the echo its own kind→name table (two vocabularies
+describing one value); leaving `n = xs[0]` payload-only and explaining it in prose (a payload-only binding is
+not a refused program, it is a wrong-typed one).
+
+**What still refuses, and where it is owed.** `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` — the positions that keep
+one word for a whole value — now refuse with sentences that name the value's origin and the missing word
+(`Gap R.146` under `L11.1`); the prompt still declines a user-defined call (`L13.1`); and a literal `None`
+passed to a user function still arrives as the bare word `0` (`Gap R.171`), because the parameter has no tag
+beside it — the renderer is paid, the call boundary is not.
+
+### ADR 0304 — the arithmetic positions of a slot-bound name (2026-08-03, L11.1 / Gap R.146)
+
+**The measurement.** ADR 0303 bound the pair for `n = xs[0]`, and the rendering positions opened. The
+arithmetic ones did not:
+
+```console
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(-n)'
+gustyc: jit: codegen: n holds a slot the program built at run time, read by position, which travels as a
+(payload, tag) pair … this position needs a tagged value word (roadmap L11.1, Gap R.146)
+```
+
+with CPython answering `-7`, and `print(xs[0] - 1)` — the *same* sum with the read inline, no binding —
+already working. The pair existed; the door just did not recognise the name.
+
+**Root cause, in one predicate.** `numericPairVar` answers "may this name enter the tagged arithmetic door",
+and it admitted only origins whose tag is a *proof*: `taggedOriginArith`, `taggedOriginFloat`, and the two
+parameter origins. Those tags can say `int` or `float` and nothing else, so a position that keeps one word
+for its operand could be handed `rt_lift_num` and never wonder what the payload meant. A slot's tag is not a
+proof — it is what the objects decided, and it can say `str`, `NoneType`, `list`, `dict`, `set`. Admitting it
+blindly is how `n - 1` on a text slot sums the interned index of `"a"`, prints a number, and exits 0 — the
+exact family Gap R.38 and Gap R.95 keep filing.
+
+**The decision is per operator, not per name.** `arithWouldRefuse` now also admits a `taggedVars` name, and
+`taggedArithPair`'s existing per-operator guard does the discriminating:
+
+| Operator | Door? | Why |
+|---|---|---|
+| `-`, unary `-`, `//` | always | no operand pair makes these answer a non-number — they answer a number or raise, and the raise is the reference's own sentence read off the tag |
+| `+`, `*` | only under ADR 0265's proof | CPython **answers** `"a" + "b"` and `[1] * 2`; this backend builds neither from a slot (Gap R.82), so answering a raise would be the worse wrong program |
+| `%` | only under the same proof | `"%d" % 3` is CPython's printf form and answers a *text* (Gap R.165) |
+
+No new runtime code was needed: the door has had an arm per kind since ADR 0265, and ADR 0266 had already
+written the per-kind negation sentences. The cycle is a routing decision — which is the shape most of L11.1's
+remaining rows turn out to be.
+
+**Traps are the safety half, and they are asserted by class *and* message.** A door that raised
+`TypeError: x` would pass a test that only asked for "some TypeError", and uncatchable prose is how a language
+loses `except`. The suite compares word for word: `unsupported operand type(s) for -: 'str' and 'int'`,
+`bad operand type for unary -: 'NoneType'`, `'set'`, `'list'`, `'dict'`, and both `ZeroDivisionError` wordings
+reached through a slot — each also caught by the `except` arm the program wrote (ADR 0228).
+
+**Ledger evidence.** Three new rows in `pkg/lang/testdata/interpreter-golden-drift.json`: two are L13.1's
+filed silence (a snippet ending in a call echoes nothing), and one is honest new debt — `n - 1 + 0.5` is
+CPython's `6.5` and the compiled leg refuses, because a pair-bound name cannot enter the float domain. That is
+Gap R.148's existing row, and the ledger names the owner rather than the run quietly dropping the case.
+
+**Alternatives rejected.** Admit every tagged name to every operator (wrong answers at exit 0, and a refusal to
+concatenate two texts); refine the proof so `+` opens (`xs.append(7)` says nothing about the next append — the
+pass is program-wide for a reason, and the gate is now asserted directly so a widening fails a decision row);
+specialise the name's kind at its binding (ADR 0172's latest-binding rule, and Gap R.142's heap-handle print,
+are the cautionary record); let the message be generic.
+
+### ADR 0305 — the double domain (2026-08-03, L11.1 / Gap R.148)
+
+**The measurement, and the asymmetry that made the row look arbitrary.** ADR 0304 had opened `-`, unary `-`
+and `//` for a pair-bound name, and two neighbouring shapes still refused while a third answered:
+
+```console
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 4)'
+gustyc: jit: codegen: … this position needs a tagged value word (roadmap L11.1, Gap R.146)
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(2.5 - n)'
+-4.5
+```
+
+Same name, same pair, same value. The difference was which road the expression happened to take: an int
+literal on the right keeps a BinOp on the i32 road, whose pair-name operand the road refuses (correctly —
+one word cannot hold a pair); a float literal promotes the whole expression, and the double road's other
+operand being a literal meant the pair reached a path that asked the tag. `n > 7` and `n > 2.5` split the
+same way.
+
+**The tempting fix, caught by its own test.** Both roads have a lift available — `rt_lift_num(payload, tag)` —
+and the first implementation called it. It printed `1.75` for `n / 4`, and it printed `0.0` for `float(n)`
+where the slot held `"a"`: **the lift unboxes a float box and `sitofp`s everything else**, so an interned
+string index becomes a plausible number at exit 0. That is the family Gap R.38 and Gap R.95 keep filing, and
+the failure showed up as one of this ADR's own rows — which is the argument for writing the trap table before
+the door, not after it.
+
+**The fix is routing, not machinery.** No new runtime code. Two doors that already read tags were pointed at
+names:
+
+- `taggedDoubleFromObject` (ADR 0253's per-kind float raise, with its zero guard *inside* each arm because
+  `division by zero` versus `float division by zero` is a tag fact) split into the `*Index` wrapper and
+  `taggedDoubleFromPair`, which is what a name can supply.
+- The ordering door (ADR 0250/ADR 0252) gained `orderSide.pairName`. Its side predicates ask *`asksTag()`* now
+  rather than *`ix != nil`* — six tests — because "the kind is a run-time fact" and "the operand is a slot
+  read" stopped being the same question the moment a name could carry a pair. This is the change to know when
+  reading that door later.
+
+The ordering's raise is the reason the pair had to enter *that* door specifically: `'>' not supported between
+instances of 'int' and 'str'` and `… of 'str' and 'int'` are two sentences, chosen by which side the pair was
+on. A lift-and-compare road cannot say either.
+
+**Paid rows are what a ledger is for.** Two pre-existing tables asserted the old refusal, and both are the
+shape this cycle answers: `integration/pair_binding_test.go`'s `n / 4` / `n > d` rows moved from its refusal
+table to its answer table, and `pkg/lang/mixed_list_test.go` lost its `for x in xs: print(x > 2)` refusal row
+to `pair_number_float_test.go`'s trap table (the number element compares, the text element raises). The drift
+ratchet separately reported `n - 1 + 0.5` as paid and refused to let the run pass until the row was deleted.
+
+**What stays refused, on purpose.** `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)` and an f-string field
+(Gap R.146). `float(n)` is the instructive case: it looks free, `rt_lift_num` would answer it, and for a slot
+holding `"a"` the answer is `0.0` where CPython has `ValueError: could not convert string to float: 'a'`.
+Taking that deal would mean a debt row for a wrong answer at exit 0 — and wrong answers, unlike refusals, are
+not counted by `compiled refusals this run`, so they do not show up when the suite drifts.
+
+### ADR 0306 — the container element asks the tag (2026-08-04, L11.1 / Gap R.146)
+
+**The measurement.** ADR 0305 had just closed the double domain, and the same program still lost its last
+line:
+
+```
+xs = []
+xs.append(7)
+n = xs[0]
+print(n)      # 7        — answers
+print(n - 1)  # 6        — answers (ADR 0304)
+print(n / 4)  # 1.75     — answers (ADR 0305)
+print([n])    # refused  — Gap R.146
+```
+
+The refusal was defensible and looked arbitrary again, in the same way ADR 0304's was: one more position
+that keeps **one word for a whole value**. The difference from the double-domain case is that here the
+position is a *builder*, and builders already have a two-slot layout to write into.
+
+**Why the two lowerings both failed.** A list literal is either a compile-time `@.lstN` global or a heap
+object, and the heap door opens on two questions: does a payload fit an `i32` slot (`literalNeedsHeap`), and
+can a slot say what it holds (`literalNeedsTags`). A pair-bound element answers both wrongly — the payload
+*fits*, but nobody static knows what it means, because a pair's payload is the number for `int`/`bool`, a
+handle on an `@float_box` for a float, an index into `@str_tab` for text, an entry count for a container, and
+only the tag says which.
+
+**The change, and the fact that made it cheap.** The literal goes to the heap builder and the element writes
+both words — `rt_set_elem` with the payload register, `rt_tag_elem` with the tag register — the tag coming
+from `numericPairRegs`, i.e. the name's own tag alloca, instead of `elemTagFor`'s constant. `rt_tag_elem`
+takes an `i32`, and **a register is an `i32`**: no runtime function was added, no tag was invented, no
+signature changed. Three gates gained one disjunct (`literalHasPairElement`); three element loops gained one
+arm; the assignment road got the same arm because `y = [n]` is one element question asked by a different road
+and an element that works only unbound would make `len(y)`, `7 in y` and `for v in y` inexplicable.
+
+**The bit that is easy to forget.** The object has to be marked self-describing (`estrBits |= 8`) or the
+printer reads the list's *one declared kind* across all slots, and `["a"]` — one interned index — prints
+`[0]`. That is Gap R.38's family (a plausible number where the reference has a string) walking in through the
+door this cycle opened, and it is why the text-slot rows are in the integration file too, compared against
+CPython rather than against a hand-typed string. ADR 0258 had learned the same lesson for `str`/`repr`; this
+is the third reason the object and the compiler's scope must agree.
+
+**What was refused rather than half-built.** `{"k": n}`, `{n}`, `d = {"k": n}` and `sum([n])` /
+`min([n, 3])` / `max([n, 3])` keep Gap R.146's sentence. Those roads ask `heapElemKind` for the element
+*before* the tag question is put (a dict interleaves key and value in one array; a set asks per member) or
+fold the elements into a static array that has no tag storage at all. Two attempts to add the arm here were
+reverted inside the cycle: they swallowed `heapElemKind`'s error for a pair side and left the entry's payload
+register empty, which is how a module that `llc` rejects gets written, and ADR 0166 counts exit 2 as the
+compiler's own bug. A refusal that names the missing half is worth more than dead code that pretends the road
+is open.
+
+**Paid rows moved, not deleted.** `pkg/lang/pair_binding_test.go` and `integration/pair_binding_test.go`
+lost their `print([n])` refusal rows to the new answer tables, and `float_state_test.go` (unit + integration)
+turned its `print([x, 1])` refusal row into an answer row (`[2.5, 1]`) that still rules out the failure that
+row was built for: the float box's *handle* printed where the double belongs.
+
+### ADR 0307 — the f-string field asks the tag (2026-08-04, L11.1 / Gap R.146's rendering positions, Gap R.192)
+
+**The measurement.** ADR 0306 had just paid the container element, and the same four-line program still lost
+one shape:
+
+```
+xs = []
+xs.append(7)
+n = xs[0]
+print(n)        # 7        — answers (ADR 0303)
+print([n])      # [7]      — answers (ADR 0306)
+print(f"{n}")   # refused  — Gap R.146's last rendering position
+```
+
+While measuring it, two further answers fell out of the same road, and these were worse than a refusal:
+
+```
+x = 7      →  print(f"{x!r}")   printed NOTHING, at exit 0
+print(f"{'a'!r}")                spent exit 2 — llc rejected @.fmt1, [0 x i8] against a [4 x i8] use
+```
+
+**Why the road broke that way.** The print road builds ONE printf format string for the whole line, and every
+arm of its field chain asked the field for a single word: `%d` for a number, `%s` over `rt_str_ptr` for an
+interned text. A pair-bound name has two words and its payload means a different thing per kind, so the field
+either refused (the honest case) or — for a conversion — went to the compile-time spec engine, which answers
+`""` for a field it cannot see. An empty answer with the exit code of success is exactly what the drift
+machinery cannot see, because `compiled refusals this run` only counts refusals.
+
+**The change.** The field asks the module's one tag-reading printer — `rt_str_of_value(payload, tag, quote)`
+capturing what `rt_print_mixed_value` writes, the door ADR 0303 established for `str()`/`repr()`/the prompt —
+and contributes `%s` over those bytes. A field built *over* a pair (`n - 1`, `-n`, `n // 2`) reaches the same
+door through ADR 0265's arithmetic road, so the field, `print()` and `str()` cannot disagree; an operator that
+road will not vouch for (`+`, `%` over slots whose kind is a run-time fact) answers "not proven" and the field
+keeps the refusal it has always printed. `!r` is the same call with the quote flag — quoting is the printer's
+job, and the flag already existed — and the spec engine is narrowed to the fields it can actually read
+(`fieldIsConstantLiteral`), which is the guard ADR 0299 left out.
+
+**Why the arm runs before the spec/conversion branch.** A field that asked for `!r` is still a rendering, and
+a chain that tests for "did the source ask for a conversion?" first hands it to a folder. The order is now:
+pair door (spec only when there is no format spec) → spec/conversion engine for literals → the ordinary
+per-kind arms.
+
+**The IR is the assertion.** A pair field must reach `printf` as bytes. The unit test pins that the module
+asks `rt_str_of_value`, `rt_print_mixed_value` and `rt_str_ptr`, and that no `printf` call after the field
+carries an `i32 %` operand — a payload in that slot is the wrong answer this cycle exists to keep impossible,
+and the shape (a number where the reference has `a`, at exit 0) is Gap R.38's family.
+
+**What stayed refused, and why that is right.** `s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()` and
+`print(f"{n:>.2f}")`. The first three are the same program asking for an f-string as a **value**, which this
+backend has no representation for (`value()` answers "f-string requires a constant expression"); the fourth
+asks a format spec of a value the module cannot see, which is ADR 0299's refusal, correctly kept. And
+`Gap R.114` had to be re-measured: since this cycle a *pair* field answers, so `print(f"{xs}", xs)` over a
+plain container variable now prints `0 [1, 2]` at exit 0 — the row's status clause said "refused, not answered
+wrongly" and that is no longer true, so the row says what it prints instead.
+
+**Paid rows moved, not deleted.** `print(f"{n - 1}")` was a refusal row in `pkg/lang/pair_number_float_test.go`
+and `integration/pair_number_float_test.go`; both moved to this cycle's answer tables.

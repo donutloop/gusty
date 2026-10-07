@@ -1,11 +1,10 @@
 package integration
 
 // integration/pair_binding_test.go — the arithmetic a slot's answer takes, bound to a name, at the CLI,
-// against the reference, on both engines (roadmap Gap R.138, ADR 0267).
+// against the reference, on the compiled path (roadmap Gap R.138, ADR 0267).
 //
-// Each row is the same source run three ways: CPython, `gustyc --file <path> --interp`, and
-// `gustyc --file <path> --aot`. The legs are forced explicitly — a bare `--file` is the interpreter's
-// default, and `--aot` written after the path becomes the flag's value rather than the compiled leg.
+// Each row is the same source run three ways: CPython, `gustyc --file <path> --aot`, and
+// `gustyc --file <path> --aot`. The path is forced explicitly with `--aot` written after the path becomes the flag's value rather than the compiled leg.
 // Exit 2 — the contract's "the compiler is broken" code (ADR 0166) — fails any row here.
 //
 // Three tables, because the three claims fail differently: the bindings that answer; the rebindings that
@@ -47,7 +46,7 @@ func TestABoundArithmeticAnswerAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -88,7 +87,7 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -103,7 +102,7 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 
 // TestAContainerRebindingRetiresTheTextBindingToo is the row Gap R.145 filed and ADR 0270 paid. It used to
 // be a filed-not-fixed table pinning the compiled leg's `text` — the print dispatch reading the
-// interned-text record the earlier binding left behind, at exit 0, beside the interpreter and CPython
+// interned-text record the earlier binding left behind, at exit 0, beside the record and CPython
 // printing `[1, 2]`. It now asserts the reference's answer on both legs, and fails the day a binding path
 // starts leaving a status behind again (roadmap Gap R.145, ADR 0270).
 func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
@@ -123,7 +122,7 @@ func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -157,7 +156,7 @@ func TestABoundAnswerTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
 				t.Fatalf("the reference was expected to stop with %q, said %q (ok %v)", tc.want, py, ok)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 for a program the reference raises on (ADR 0166):\n%s", engine, out)
@@ -204,10 +203,11 @@ func TestABoundAnswerIsCatchableAtTheCLI(t *testing.T) {
 }
 
 // TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed pins the one arithmetic the compiled word
-// cannot hold, at the new door. The reference answers 7000000000 and so does the interpreted leg, whose
-// ints are int64; the compiled int is 32 bits and its guard raises before the `fptosi`, because out of
-// the word the truncation is poison rather than a wrong number (ADR 0264's rule, applied at the print
-// door by ADR 0265 and here by ADR 0267). The decision that would settle it is roadmap L12.12's.
+// cannot hold. The reference answers 7000000000; the compiled int is 32 bits and its guard raises before
+// the `fptosi`, because out of the word the truncation is poison rather than a wrong number (ADR 0264's
+// rule, applied at the print door by ADR 0265 and here by ADR 0267). The row keeps both halves: CPython's
+// answer, so the debt has a witness, and the compiled program's exit-3 guard, so the failure stays the
+// documented one instead of drifting into a wrong number. What would settle it is roadmap L12.12's.
 func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
 	const src = built + "n = xs[0][0] * 1000000000\nprint(n)\n"
 	const sentence = "OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)"
@@ -215,9 +215,6 @@ func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
 	gy := writeSrc(t, dir, "pair_int_word.gy", src)
 	if py, ok := cpythonPlainOut(t, dir, src); !ok || py != "7000000000\n" {
 		t.Fatalf("the reference is expected to answer 7000000000, said %q (ok %v)", py, ok)
-	}
-	if out, code := cliRunCode(t, "--interp", "--file", gy); code != 0 || out != "7000000000\n" {
-		t.Errorf("--interp: exit %d, stdout %q, want the reference's 7000000000", code, out)
 	}
 	out, code := cliReport(t, "--aot", "--file", gy)
 	if code == 2 {
@@ -230,12 +227,16 @@ func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
 
 // TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI is roadmap Gap R.143 paid at the CLI: the
 // positions that ask for one static number — an operand, a condition's head, a format field, the target
-// of an augmented assignment — now ask the pair, on both engines, against the reference.
+// of an augmented assignment — now ask the pair, on the compiled path, against the reference.
 func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"an operand of a sum", built + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two pair-bound names", built + "a = xs[0][0] + 1\nb = xs[0][1] + 1\nprint(a + b)\n", "17\n"},
 		{"negated", built + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		// abs of a pair-bound name is the arithmetic door's signless call: the operand's kind comes from the
+		// tag and the answer's kind follows it (roadmap L11.1, Gap R.146; ADR 0309).
+		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "14\n"},
+		{"handed to abs with the sign already gone", built + "n = xs[0][0] * -2\nprint(abs(n))\n", "14\n"},
 		{"asked for its truth", built + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
 		{"a zero answers false", built + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
 		{"a while head", built + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
@@ -253,6 +254,20 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 		{"augmented product onto it", built + "n = xs[0][0] * 2\nn *= 2\nprint(n)\n", "28\n"},
 		{"augmented with a double", built + "n = xs[0][0] * 2\nn += 0.5\nprint(n)\n", "14.5\n"},
 		{"read again after the rebinding", built + "n = xs[0][0] * 2\nn += 1\nprint(n > 14)\n", "True\n"},
+		{
+			// Gap R.148's two shapes, moved out of the refusal table below when the float door opened
+			// (ADR 0304): the division asks the tag and the ordering asks it twice, once per side.
+			"divided by a literal", built + "n = xs[0][0] * 2\nprint(n / 4)\n", "3.5\n",
+		},
+		{
+			"ordered against a float variable", built + "n = xs[0][0] * 2\nd = 2.5\nprint(n > d)\n", "True\n",
+		},
+		{
+			"a slot-bound name divided by a literal", "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 4)\n", "1.75\n",
+		},
+		{
+			"a slot-bound name ordered against an int literal", "xs = []\nxs.append(7)\nn = xs[0]\nprint(n >= 7)\n", "True\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -260,7 +275,7 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -274,21 +289,21 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 }
 
 // TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI files what this cycle did not open, with
-// each engine's answer written into the row. Two shapes are owed and are named here rather than answered
+// the refusal's own sentence written into the row and the reference's answer checked live. Two shapes are owed and are named here rather than answered
 // wrongly: a position that takes a whole *value* — a builtin's argument, a container's element, an `and`'s
 // operand — has nowhere to put the tag (that is the same missing word Gap R.139 names on the calling
-// side); and a pair-bound name that enters the float domain beside a variable, or against a text, or
-// through `/`, is refused by the road it takes rather than answered by the pair. A tuple unpacking is the
-// third family and is Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road
-// stores a double into the i32 slot a tagged name owns, which is the module `llc` rejects, so these
-// shapes must stay refusals until the pair reaches them.
+// side). The float domain is no longer on this table: Gap R.148's shapes are answered by the tag-selected
+// arms (ADR 0304), and they sit in the answer table above. A tuple unpacking is the other family and is
+// Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road once stored a double
+// into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must stay a
+// refusal — not a broken module — until the pair reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
 		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
-		{"an element of a list", built + "n = xs[0][0] * 2\nprint([n])\n", "holds the answer of arithmetic over a slot"},
-		{"divided by a literal", built + "n = xs[0][0] * 2\nprint(n / 4)\n", "cannot be compiled"},
-		{"ordered against a float variable", built + "n = xs[0][0] * 2\nd = 2.5\nprint(n > d)\n", "cannot be compiled"},
+		// `n / 4` and `n > d` were on this table, and both are answered now: a pair-bound name reaches the
+		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool
+		// arm converts, every other kind raises CPython's own sentence), so the two shapes Gap R.148 was
+		// filed with left the refusal table for the answer table above (ADR 0304, roadmap L11.1).
 		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,9 +311,6 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T)
 			gy := writeSrc(t, dir, "pair_value_position.gy", tc.src)
 			if _, ok := cpythonPlainOut(t, dir, tc.src); !ok {
 				t.Fatalf("the reference was expected to answer this program\nsrc: %s", tc.src)
-			}
-			if out, code := cliRunCode(t, "--interp", "--file", gy); code != 0 {
-				t.Errorf("--interp: exit %d, want 0 (the interpreted leg answers this)\n%s", code, out)
 			}
 			out, code := cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
@@ -329,7 +341,7 @@ func TestTheCorpusProgramStillPrintsWhatTheLedgerSays(t *testing.T) {
 	if py, ok := cpythonPlainOut(t, dir, src); !ok || py != want {
 		t.Fatalf("the ledger's expectation is not the reference's: %q (ok %v)", py, ok)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", gy)
 		if code == 2 {
 			t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)

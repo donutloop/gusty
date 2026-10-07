@@ -8,7 +8,7 @@ package lang
 // and 3)` said `1` and `print("" or "d")` said `1`, at exit 0, no diagnostic, on an operator every Python
 // program uses. Four things are pinned here, each a different way to be wrong:
 //
-//   - the parity rows — the chosen operand answers, in its own representation, on both engines;
+//   - the parity rows — the chosen operand answers, in its own representation, on both legs;
 //   - the conservative rows — `1 or True` is the number `1` and `True or 1` is the verdict `True`, the pair
 //     ADR 0261 refuses to break, asked of the operand the test chose rather than of the operator;
 //   - the condition rows — a condition asks only whether the answer is true, so two operands that share no
@@ -327,9 +327,9 @@ func TestTheConstantTestDropsTheOperandTheReferenceDrops(t *testing.T) {
 
 const shortCircuitBoom = "def boom():\n    print(\"boom\")\n    return 9\n\n"
 
-// TestTheOperandTheTestDidNotChooseIsNeverRunOnBothBackends is the row: the effects, the traps and the
-// count are the reference's, on the interpreter and in the compiled module.
-func TestTheOperandTheTestDidNotChooseIsNeverRunOnBothBackends(t *testing.T) {
+// TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend is the row: the effects, the traps and the
+// count are the reference's, on the record and in the compiled module.
+func TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"a falsy test skips a call", shortCircuitBoom + "x = 0\nprint(x and boom())\n", "0\n"},
 		{"a truthy test skips the fallback", shortCircuitBoom + "y = 1\nprint(y or boom())\n", "1\n"},
@@ -478,8 +478,8 @@ func TestTheSkippedOperandIsNotInTheCompiledModule(t *testing.T) {
 
 // TestTheOperandTheTestReachedStillTraps keeps the other half of the promise: skipping what the test
 // excluded must not swallow what it included. The division the program reached raises the reference's
-// error, catchably, on both engines — otherwise the branch would be a way to lose a trap.
-func TestTheOperandTheTestReachedStillTrapsOnBothBackends(t *testing.T) {
+// error, catchably, on both legs — otherwise the branch would be a way to lose a trap.
+func TestTheOperandTheTestReachedStillTrapsOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, message string }{
 		{
 			"a chosen division traps",

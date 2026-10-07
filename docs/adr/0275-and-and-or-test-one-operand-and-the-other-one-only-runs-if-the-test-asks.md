@@ -168,15 +168,15 @@ to `logicChosen` exactly as before — so ADR 0261's pair (`print(True or 1)` is
 
 ## Verification
 
-- `pkg/lang/logic_value_test.go` — four tables, both engines: `TestTheOperandTheTestDidNotChooseIsNeverRunOnBothBackends`
+- `pkg/lang/logic_value_test.go` — four tables, both engines: `TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend`
   (24 rows: a skipped call, a skipped trap, a skipped condition test, a skipped `while` head, chains, texts,
   containers, `None`, tagged-slot tests that must ask the runtime door);
   `TestTheSkippedOperandIsNotInTheCompiledModule` (IR shape: call counts, the call behind the branch, `phi
   i32`/`phi i1`, `@rt_pair_truth`, and no `select i1` in the operator's function);
-  `TestTheOperandTheTestReachedStillTrapsOnBothBackends` (three traps that must still raise, with the
+  `TestTheOperandTheTestReachedStillTrapsOnTheCompiledBackend` (three traps that must still raise, with the
   reference's message, on both legs); `TestTheTrapTheTestSkippedIsNotRaised` (the `except` arm that must not
   run).
-- `integration/logic_value_test.go` — `TestTheReferenceShortCircuitsAndSoDoBothEngines` (20 rows × CPython +
+- `integration/logic_value_test.go` — `TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend` (20 rows × CPython +
   `--interp` + `--aot`, exit 2 forbidden by every row), `TestTheShortCircuitProgramPrintsTheSameOnEveryLeg`
   (the promoted program, plus the count of `boom` lines the reference never prints), and
   `TestTheOwedHalvesArePinnedAsTheyMeasure` reduced to the refusal probe the row still owes.

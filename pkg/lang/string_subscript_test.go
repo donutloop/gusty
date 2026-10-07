@@ -7,16 +7,16 @@ import (
 
 // Artifact-level coverage for roadmap Gap R.45 (ADR 0225): a subscript of a string is a
 // one-character string, counted in code points — on both backends. Both used to answer the *byte*:
-// the interpreter returned an int and the codegen fold emitted `%d` of that int, so the wrong type
+// the record returned an int and the codegen fold emitted `%d` of that int, so the wrong type
 // spread to everything the value touched — `s[0] + s[2]` did arithmetic, `s[1] == "b"` said false,
 // and `len(s[1])`, `s[1].upper()`, `ord(s[1])` trapped.
 
-func interpPrints(t *testing.T, src string) string {
+func compiledPrints(t *testing.T, src string) string {
 	t.Helper()
 	return captureStdout(t, src)
 }
 
-func TestStringSubscriptIsTextInTheInterpreter(t *testing.T) {
+func TestStringSubscriptIsTextOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"s = \"abc\"\nprint(s[1])\n", "b\n"},
 		{"s = \"abc\"\nprint(s[-1])\n", "c\n"},
@@ -32,7 +32,7 @@ func TestStringSubscriptIsTextInTheInterpreter(t *testing.T) {
 		{"s = \"café\"\nprint(s[1])\nprint(s[-1])\nprint(len(s))\n", "a\né\n4\n"},
 		{"s = \"café\"\nprint(ord(s[3]))\n", "233\n"},
 	} {
-		if got := interpPrints(t, tc.src); got != tc.want {
+		if got := compiledPrints(t, tc.src); got != tc.want {
 			t.Fatalf("%q printed %q, want %q", tc.src, got, tc.want)
 		}
 	}
@@ -59,10 +59,10 @@ func TestStringSubscriptIsTextInCompiledCode(t *testing.T) {
 }
 
 // TestStringSubscriptTrapIsTyped: an out-of-range character subscript is the program's mistake, and
-// the interpreter says so with the class CPython uses, not an untyped message.
+// the record says so with the class CPython uses, not an untyped message.
 func TestStringSubscriptTrapIsTyped(t *testing.T) {
-	_, _, err := EvalExpr("s = \"abc\"\nprint(s[9])\n")
-	ee, ok := err.(*EvalError)
+	_, _, err := evalGolden(t, "s = \"abc\"\nprint(s[9])\n")
+	ee, ok := err.(*TrapError)
 	if !ok || ee.ExnType != "IndexError" {
 		t.Fatalf("expected a typed IndexError, got %#v", err)
 	}

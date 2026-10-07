@@ -29,9 +29,9 @@ import (
 
 const floatArgTwice = "def twice(v):\n    return v * 2\n\n"
 
-// TestTheFloatArgumentAnswersOnBothBackends is the payoff: every row is a program the compiled leg
-// answered with a truncated number at exit 0, now CPython's answer on both engines.
-func TestTheFloatArgumentAnswersOnBothBackends(t *testing.T) {
+// TestTheFloatArgumentAnswersOnTheCompiledBackend is the payoff: every row is a program the compiled leg
+// answered with a truncated number at exit 0, now CPython's answer on both legs.
+func TestTheFloatArgumentAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the row Gap P.1 filed",

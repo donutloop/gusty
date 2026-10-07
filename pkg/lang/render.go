@@ -32,19 +32,6 @@ const (
 // a list and `str` of that list agree.
 func (f ValueForm) QuotesText() bool { return f == FormRepr }
 
-// renderOf is the interpreter's half of the pair. Repr is already the single renderer that
-// print, str() and the REPL echo share, so str is it unchanged; repr differs only where
-// Python's own pair differs — a text hands back its quoted form. Everything else delegates,
-// which is the whole point of putting the pair in one function instead of two.
-func (e *Evaluator) renderOf(v int64, form ValueForm) string {
-	if form.QuotesText() {
-		if o, ok := e.heap[v]; ok && o.kind == "str" {
-			return pyReprString(o.sval)
-		}
-	}
-	return e.Repr(v)
-}
-
 // renderPair lowers str(x) and repr(x) in the compiled backend onto the printers the module
 // already has, by pointing those printers at a capture buffer instead of at stdout
 // (rt_str_of_value / rt_str_of_container, heapRuntimeIR). handled=false means "this form is
@@ -55,6 +42,25 @@ func (e *Evaluator) renderOf(v int64, form ValueForm) string {
 // order the pair table test walks. A container is asked first because a container is the form
 // the number formatter used to swallow: its slots answer for themselves (@estr flags, per-slot
 // tags), which no static guess can improve on (ADR 0232's rule, applied to the pair).
+// pairForEcho is the pair door's own question, asked by the prompt: the (payload, tag) words a slot
+// read or a slot-bound name lives in, when the value's kind is something only the tag can say. The
+// echo asks this before the form table so the ANNOUNCED kind comes from the tag rather than from what
+// the compiler could guess — `xs = [True, 1]` / `xs[0]` is a bool, and a prompt that says `object` is
+// reporting its own blind spot instead of the program's value (roadmap L13.1, ADR 0259's rule for what
+// a slot is, applied to the prompt).
+func (g *irGen) pairForEcho(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
+	if nm, isName := e.(*Name); isName {
+		if g.numericPairVar(nm.Value) {
+			p, t := g.numericPairRegs(b, nm.Value)
+			return p, t, true
+		}
+		if p, t, okTag := g.taggedLoopVarRead(b, nm.Value); okTag {
+			return p, t, true
+		}
+	}
+	return g.runtimeSlotPairDeep(b, e)
+}
+
 func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) (string, bool, error) {
 	quote := 0
 	if form.QuotesText() {
@@ -69,6 +75,27 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 	// disagree about a container (ADR 0258's rule, one statement later; roadmap L11.1, Gap R.143).
 	if nm, isName := e.(*Name); isName && g.numericPairVar(nm.Value) {
 		p, t := g.numericPairRegs(b, nm.Value)
+		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
+	}
+
+	// A name whose kind the OBJECT chose — the loop variable of a container that mixes kinds, or a name
+	// bound from a slot read — carries its tag in its own alloca, and that pair is the whole answer.
+	// It goes to the module's one tag-reading printer rather than to a guess, which is the rule this
+	// file exists to enforce: `str(x)`, `repr(x)` and `print(x)` over the same value agree because all
+	// three ask the same door (ADR 0258, extended to the slot-bound name this road used to refuse;
+	// roadmap L11.1, Gap R.171).
+	if nm, isName := e.(*Name); isName {
+		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+			return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
+		}
+	}
+
+	// A slot read out of a container the program built: the (payload, tag) pair the tagged-read door
+	// already produces for `print`, the comparisons and `len` is exactly what the printer reads, so
+	// `print(xs[i])` and `str(xs[i])` are the same question asked twice rather than two rules that can
+	// drift. A slot holding a container is answered by that container's own object, which is why the
+	// tag has to travel with the payload here as well.
+	if p, t, ok := g.runtimeSlotPairDeep(b, e); ok {
 		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
 	}
 

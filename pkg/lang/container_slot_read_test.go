@@ -16,7 +16,7 @@ import (
 // to a container literal and never mutated or handed off. Where that promise runs out the answer is a
 // refusal that names the promise, not a payload read back as a handle.
 
-func TestContainerSlotReadsAnswerInBothEngines(t *testing.T) {
+func TestContainerSlotReadsAnswerOnBothLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -111,7 +111,7 @@ func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			// (Four rows used to sit here demanding refusals: `len(xs[0])` after an `append`, after a
 			// rebinding, after an item assignment, and after handing the name to a function this pass
 			// cannot see. All four answer CPython's answer now — the object carries the tags its writers
-			// left — and they are pinned in TestContainerSlotReadsAnswerInBothEngines (ADR 0246). What is
+			// left — and they are pinned in TestContainerSlotReadsAnswerOnBothLegs (ADR 0246). What is
 			// left below really is out of reach: a payload the tag has not yet been allowed to explain.)
 			"arithmetic on a container element",
 			// The read is licensed and the answer needs the tag; the context wants a bare i32. That is

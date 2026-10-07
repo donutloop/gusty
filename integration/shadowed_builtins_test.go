@@ -12,7 +12,7 @@ import (
 //
 // A built-in call name is a name, not a keyword. `def str`, `def float`, `def len`, `def abs`,
 // `def min`, `def round` are legal, and afterwards `str(1)` means the program's function — that
-// is what the interpreter did and what CPython does. The compiled path had read the call by name
+// is what the record did and what CPython does. The compiled path had read the call by name
 // through the built-in's meaning instead, which showed up two ways: `float(1)` folded to the
 // conversion (1.0 for a function returning x + 7), and `str(1)` / `chr(1)` were emitted as the
 // program's call and then *used* as the built-in's string result, so llc rejected the module.
@@ -20,9 +20,7 @@ func TestShadowedBuiltinsAgreeOnEveryPath(t *testing.T) {
 	src := readProgramSrc("shadowed_builtins")
 	want := "8\n9\n8\n9.5\n3\n4\n9\n3\n10\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

@@ -1021,7 +1021,7 @@ exceptions in the interpreter (`except IndexError:` could not catch them — whi
   checked. Nothing had ever asked a compiled program about a dict's later keys.
 
 **Process notes.**
-- Writing the *test table* first keeps paying off: `TestRuntimeErrorsAreCatchableOnBothBackends`
+- Writing the *test table* first keeps paying off: `TestRuntimeErrorsAreCatchableOnTheCompiledBackend`
   asserted Python's answer and immediately failed four cases that "both backends agree"
   tests would have blessed.
 - Two self-inflicted 20-minute losses, both the same lesson: **LLVM-IR comments are `;`,
@@ -1069,7 +1069,7 @@ test, not more care.**
   codegen gap and was actually four layers deep (parser-side builtin table, checker, both
   runtimes).
 - I again nearly misread parity: the CLI `--eval` path echoes the final value, so
-  `interp="...|0"` vs `aot="..."` is not a mismatch. The library `runInterp` has no echo —
+  `interp="...|0"` vs `aot="..."` is not a mismatch. The library `runCompiled` has no echo —
   use the harness, not the CLI, for stdout comparisons.
 - `python3` is installed here: `python3 prog.py` gives the oracle for free. The container
   program matched Python on every line except our `1`/`0` booleans, which is documented
@@ -7869,7 +7869,7 @@ when an operator's message names a type, check which operand's type it is *befor
 `HEAD`: **34** subtest failures in `pkg/lang`, **22** exit-2 failures in `integration`, all pass on the
 new binary. The first attempt at this printed `0 / 0` because a bad relative path had silently skipped the
 copy — a baseline that fails nothing is a baseline that proves nothing, so the counts are written down here
-next to the rule. `TestContainerArithmeticRaiseArmsRunOnBothEngines` needed care: a `try:` arm that never
+next to the rule. `TestContainerArithmeticRaiseArmsRunOnBothLegs` needed care: a `try:` arm that never
 runs prints *nothing*, so "both engines agree" would pass on two silent programs — it now requires the arms
 to have fired, and asks the reference to run the same source.
 
@@ -8248,3 +8248,501 @@ sentence) beat guessing. One regex table-rewrite corrupted a test file; I `git c
 one-line surgical change instead. Two heredoc escaping failures moved the row-authoring into real `.py`
 files, which is where ledger rows with quotes inside them belong. Baseline (`6a40431`): 14 failing
 assertions on the new tables, 0 here. Matrix 167/128/39, 33 debt, 0 fail, 0 drift.
+
+## Cycle: the interpreter is retired; one compiled backend is the language (ADR 0302; Gap R.190, L13.1 filed)
+
+The AST interpreter is gone — `pkg/lang/jit.go` deleted, its `func (e *Evaluator)` methods stripped out of
+eight files, `EvalExpr`/`EvalProgram`/`InterpreterRun` gone, `--interp` a usage error, one `backend` in every
+machine payload, a two-leg oracle instead of a three-leg one. Baseline before touching anything: `go test
+-tags=llvm20 ./...` green in ~3m40. Same command green at the end, ~5m.
+
+**The deletion order is the whole decision.** Roughly 2900 `pkg/lang` cases and several hundred in
+`integration` asked the interpreter a question. Deleting them with the engine produces a perfectly green
+suite over removed coverage, which is the worst available outcome because the green is the bug. So: instrument
+the old engine in a `git worktree` at the pre-retirement commit, record every source its own suite asked about
+(5478 entries eventually, with value/type/stdout/trap class+message/front-end refusal), convert each case to
+run the compiled path against that record, and only then delete. `go test` was green at every commit boundary
+in that sequence, which is the only property that made a change this size reviewable.
+
+**A missing record must fail, and a disagreement must be a ratchet rather than an expectation.** Three
+mechanisms, and each one exists because of a specific way the naive version fails:
+
+- *missing record fails the case* — otherwise deleting an entry silently deletes coverage;
+- *a compiled answer that differs from the record skips with both answers in its message* and registers a
+  divergence — asserting the compiled answer would pin a wrong value, failing it would make the suite
+  unrunnable for a week;
+- *the ledger is two-way*: new divergences fail, and divergences that **went away** also fail until the row is
+  deleted. This earned its keep immediately — improving `KeyError` to name its key (ADR 0301's rule, now on
+  the compiled door) flipped two rows to green and the ratchet said "remove them" instead of letting the file
+  rot into describing a compiler nobody has.
+
+**`TestMain` in a non-test file is a silent no-op.** The `pkg/lang` drift ratchet lived in
+`golden_main.go`. Go only calls `TestMain` from a `_test.go` file, so for a full cycle the ratchet did not
+run: 341 divergences were being collected into memory, compared against nothing, and the package reported
+`ok`. Moved to `golden_testmain_test.go`, and the first run that actually checked found 340 rows (one had
+quietly paid) and surfaced the one new divergence my own diagnostic rewording had introduced. **A harness
+that cannot fail is not a harness** — the fix for a ratchet is to watch it fail once, deliberately, before
+believing it green. Related, same family: `go vet` doesn't catch it, the compiler doesn't, and the test suite
+passing is exactly what you'd expect.
+
+**Two ledger checks must not live where test order can reach them.** I put the "row on the ledger but no case
+reached it" check in a test function; `reference_debt_test.go` sorts before `scoping_test.go`, so the check ran
+before the cases that own the rows and reported them as fiction. Moved to `TestMain`, after `m.Run()`. Same
+class of bug as the `TestMain` one: an assertion whose verdict depends on which *file* a case happens to live
+in is not an assertion. And partial runs: `-run` subsets never reach most rows, so "not exercised" is only
+asserted on a full-package run (`isPartialRun`, keyed on the `test.run` flag) — the same rule the golden
+ledger runs by, discovered the hard way twice in one cycle.
+
+**`python3` being *absent* and `python3` *raising* are different events.** The reference helper cached
+"python3 is not here" on any error from `cmd.Run()`, including the exit-1 that a program which *raises*
+produces — and half the reference's answers in this suite are raises. One raise anywhere in the run poisoned
+the flag, every later case skipped its reference comparison, and the debt ledger's rows went unexercised.
+Distinguish `*exec.ExitError` (the binary ran, the program failed) from a real spawn failure. This is the
+general shape: an oracle that fails **quietly** converts a checked claim into an unchecked one, and only the
+ledger's "nobody asked" check caught it.
+
+**The golden record is an answer, not a definition — so it needed a second ledger.** Some retired-engine
+answers were wrong against CPython (`sum([1,2,3].append(4))` → `10` where the reference raises `TypeError`; a
+`match` `case y:` binding instead of evaluating `y`; ordering two built slots answering instead of raising
+`TypeError`). Turning those into passing tests by asserting the record's value would have converted the
+retired engine's mistakes into gusty's specification. Hence
+`integration/testdata/cpython-debt.json`: the reference's answer, the compiled answer, a `why`, and a required
+`roadmap` field, with the same two-way ratchet plus an "its case stopped running" check. Rule that fell out and
+is worth keeping: **a refusal counts as exercising a row** (the case asked, and declined honestly) — otherwise
+filed gaps get reported as untested whenever the compiler happens to refuse them.
+
+**Corrections to the record are data, not comments.** Three classes of recorder error had to be fixed *in the
+entries*: a compound-statement snippet (`if x: …`) has no value *to* echo, so the recorded repr came from
+`EvalExpr`'s statement value rather than from what any interface displayed (a hand-written probe proved the
+REPL printed nothing for those); a void has no visible repr, so `repr` is empty and the CLI reports `null`;
+and the type name was plain-wrong for `10 ** 6 // 7` (`float` for an `int`). Each fix went in as a `note`
+field on the entry, because an over-broad cleanup that "helpfully" blanked reprs by shape had to be reverted
+(`git checkout -- …golden.json`, re-record, redo carefully) and the next re-recording needs to know why those
+entries look the way they do.
+
+**The compiler's refusals were the real finding.** Everything that ran through the whole suite for the first
+time in this cycle was a capability the LLVM path never had and the interpreter's answers had been hiding:
+comprehension/iteration over a run-time text, `sorted` over a non-literal container, `dict(<dict>)` copies,
+`list.index`/`dict.pop` as expressions, higher-order calls and functions-as-values, `str()`/repr of a value
+whose kind is a run-time fact. None of those is a regression; all of them are `L11.1`/`Gap I.2`/`L12.11`/
+`Gap R.37` work now attached to named gaps, and the count of them is printed at the end of every run
+(`compiled refusals this run: 56`). Several were diagnosed into existence by the rule that a refusal must name
+the door, the reference's behaviour there, and the row that owns it — `unsupported call "x"`, `str on
+non-integer`, `unsupported list method index`, `sorted: codegen folds only an inline list literal`, `list index
+out of range` were all rewritten, and each rewrite turned an unactionable message into either a fixed bug or a
+filed gap. `unsupported call` naming the value's *actual* kind (`"5" is called… CPython raises TypeError: 'int'
+object is not callable`) is the pattern.
+
+**Two real compiler bugs fell out of the conversion, not test churn.** (1) `strArgIsNumberish`/
+`strArgBindings` recursed infinitely on `s = s + x` inside a function — the guard (`strArgInFlight`) refuses
+the shape, and the test asserts the guard rather than the compiler's ability to hang itself. (2) The `dict()`
+copy road contained placeholder IR that did not parse (`store { … }`) and had never been verified, because
+`Compile` refused the shape before reaching it; the unit test that "verified" it was verifying nothing. Also a
+latent test bug that only bites under `-tags=llvm20`: the bench-gate test rebuilt its "generous" baseline by
+indexing a *filtered* slice against an *unfiltered* one, so the doctored row survived and the gate correctly
+reported a 220x regression on the case it was supposed to pass. Index by key, not by position, when two lists
+can differ in length.
+
+**Diagnostics are features.** A generated lambda's arity message said `too many arguments for lambda_0`; the
+reference says `<lambda>` and a reader can't act on a name they never wrote (`callableSurfaceName`). Echo of a
+final expression has a purity rule, because rendering a user call means lowering it twice and `show(3)` printing
+twice is worse than a quiet prompt — the silence is `L13.1`, and `TestREPLCallResultEchoIsFiledNotFixed` pins it
+so nobody reads a quiet prompt as `None`. The REPL persists state by **replaying source** for state-establishing
+turns and *not* replaying queries, for the same reason: replaying `print` twice is a compiler that contradicts
+the user's own program.
+
+**What was genuinely lost, recorded as `Gap R.190`.** Two implementations disagreeing is how `1 + True` vs
+`True + 1` (Gap R.176) and the intern-order bool/int splits were found. One engine cannot disagree with
+itself, and the record cannot substitute for that — it's the same answers. `integration/proptest_test.go`
+survives as a determinism/compile-robustness leg (generated programs with no recorded expectation are refused
+by the harness rather than skipped — inventing an expectation is worse than not having one), but the honest
+replacement is a differential oracle driving CPython continuously, and that is not built. Saying so in the
+tracker is the difference between a decision and a drift.
+
+**Conformance semantics had to be re-derived, not just re-run.** With three engines, `OracleNA`/`OracleDebt`
+rows could compare engine-to-engine. With one, demanding compiled stdout equal CPython stdout for a row whose
+own registry entry says "CPython can't answer this" is incoherent — those classes are now judged against their
+registry pins (`Conformant = Asserted && pinsOK && len(Pins) > 0`), while ordinary rows keep demanding real
+agreement. Two refusal-wording pins moved because I improved the sentences they quoted; the fix was to update
+the pins, never to soften the harness.
+
+**Measurements.** Suite: `pkg/lang` ~280s, `integration` ~296s, `cmd/gustyc` ~20s, whole repo green both with
+and without `-tags=llvm20`. Record: 5478 sources. Ledgers: 340 + 21 drift rows, 7 reference-debt rows, each
+naming its owner. Refusals taken during a full run: 56.
+
+**Small things that cost time and are worth writing down.** `-count=1` hides nothing but patience; Go runs a
+package's tests in *file order*, which is a real dependency you must not exploit; `t.Errorf` (not `Fatalf`) in
+the missing-record path converts an afternoon of one-missing-source-per-run into one run; the corpus test needed
+`HasGoldenAnswer` precisely so it could report *all* ten unrecorded programs at once; and the shell's quoting
+inside a Python heredoc will happily write a Go string literal with a real newline in it, so multi-line Go
+strings go through the `edit` tool or a real `.py` file.
+
+---
+
+## Cycle — `str()` and `repr()` answer for a value whose kind the run time decides (ADR 0303)
+
+**Feature (roadmap L11.1 / L13.1, closing the renderer half of Gap R.171 and taking Gap R.146 / R.189
+further).** Two refusals that had outlived their own reasoning — `str(xs[0])` over a container the program
+built refused with `repr of an element read is not implemented`, and `str(n)` for a name bound from a slot
+refused with `str on non-integer` — while `print(xs[0])` had been answering correctly for a dozen ADRs. Both
+went to the compile-time str/repr table, which has rows for an integer, a text, `None`, a verdict and the
+container literals, i.e. for exactly the values whose kind the compiler can see.
+
+- **Decision: one door, not one more renderer.** `rt_print_mixed_value` is pointed at stdout for `print`, at the
+  capture buffer for `str`/`repr` (`rt_str_of_value`), and at the capture buffer *plus the tag-named kind* for the
+  prompt (`rt_echo_pair`). The `quote` flag is the str/repr half of the pair (ADR 0185). A container's own slots
+  answer through `rt_str_of_container` — only the object knows how its slots are stored. ADR 0258 exists to keep
+  a second renderer dead; this cycle is that ADR applied to the road `str()` takes.
+- **`n = xs[0]` was binding one word.** A payload without its tag is a number wearing another object's bits (the
+  interned index of `"a"` *is* a small integer), so the name was unusable everywhere except where the tag is
+  re-derived. `bindSlotReadPair` now writes both words, as ADR 0185 always required. `TestThePairBindingWritesBoth
+  Words` asserts the tag alloca is written — the regression there is silent.
+- **A fallback clause can write a lie.** The refusal for a one-word position is assembled by a clause that fires
+  for a loop variable *and* a slot binding, and it said `n comes from a loop over a mixed list` in a program with
+  no loop — `Gap R.38`'s defect produced not by a pasted template but by a fallback choosing a story it was handed.
+  Roads now record what they bound (`taggedOriginSlot` / `taggedOriginLoop`) and the sentence asks the record; a
+  test fails if the word "loop" appears for a program that has none.
+- **The prompt's `type` was reporting the compiler's blind spot.** After shipping the door, `--json --eval` of
+  `xs = [True, 1]` / `xs[0]` answered `"type": "object"`. A wrong answer at exit 0 is exactly the family Gaps R.38
+  and R.95 keep filing, and the fix is not a better guess: pass the tag to the runtime and ask `rt_kind_name`, the
+  table the operand-type messages already read, so the prompt, a `TypeError` and a container printer cannot call one
+  value by two names. Cost recorded in the ADR: echoing a pair now drags `numArithRuntimeIR` into the module.
+- **`KeyError` names its key on two more doors** (`Gap R.189`): `heapargs.go` was passing `nil` for the key
+  expression on the pair roads; threading it makes `d = {}` / `print(str(d["z"]))` raise `KeyError: 'z'` and the
+  tag-gated dict read raise `KeyError: 'k'`.
+- **Ledger hygiene, measured:** four drift rows went *paid* by this cycle (two `KeyError` messages, one echoed
+  value, one trap message) and the ratchet refused to let the suite pass until they were deleted — `GUSTY_GOLDEN_UPDATE=1`
+  rewrote 340 → 334. The record grew 5478 → 5501 as the new tests' sources were harvested from the pre-change
+  binary. The pattern to keep: **the ratchet's "PAID debt still on the ledger" failure is a good sign** — it is the
+  case where a fix lands and the tracker notices.
+- **Refusal-wording pins are a real API.** Four pre-existing tests pinned the substring `needs a tagged value` in
+  loop-variable refusals; rewriting the sentences to name the true origin broke them. The right move was to keep the
+  phrase *and* the truth ("needs a tagged value word, the one that carries the kind beside the payload"), not to
+  relax the pins — a pin on wording is how a diagnostic keeps its contract.
+- **Still owed:** `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` (the one-word positions, `Gap R.146` under `L11.1`); the
+  prompt's silent user call (`L13.1`); and `def f(v): return str(v)` with `f(None)` answering `0` (`Gap R.171`) —
+  the renderer is paid, the **call boundary** is not, because a literal `None` crosses into a user function with no
+  tag beside it. That last distinction is the cycle's finding worth keeping: fixing the printer does not fix a value
+  that arrives undressed.
+
+---
+
+## Cycle — a name bound from a slot answers the positions that need a number (ADR 0304)
+
+**Feature (roadmap L11.1, Gap R.146's arithmetic half).** ADR 0303 gave `n = xs[0]` its tag; the arithmetic
+positions still refused — `print(-n)` with Gap R.146's sentence while CPython answered `-7`, and while the
+*same* sum written inline (`print(xs[0] - 1)`) had worked for a dozen ADRs. The pair existed; one predicate
+did not recognise the name.
+
+- **The gate was a proof, and it should have been a question.** `numericPairVar` admitted only origins whose
+  tag can say `int` or `float` and nothing else. A slot's tag is not a proof, it is a fact the objects decided —
+  so the right shape is two questions, not one: *may this name enter the door at all* (any tagged name), and
+  *is its tag a proof* (the operators where raising where CPython answered would be the worse wrong program).
+  `arithWouldRefuse` widened; `taggedArithPair`'s per-operator guard did the rest, unchanged.
+- **Per operator, never per name.** `-`, unary `-`, `//` take the door whatever the slot holds, because no
+  operand pair makes them answer a non-number. `+`, `*`, `%` stay behind ADR 0265's program-wide number proof:
+  CPython answers `"a" + "b"`, `[1] * 2` and `"%d" % 3`, and this backend builds none of those from a slot
+  (Gap R.82, Gap R.165). So Gap R.146 stays open for `n + 1`, `n * 2`, `n % 3` — with a test that asks the gate
+  **directly**, so a future widening of `+` fails a decision row instead of silently changing which programs compile.
+- **A trap is the safety half of every widening.** Admitting a slot's tag to arithmetic without asserting the
+  raise **by class and message, per kind** is how a language ends up summing the interned index of `"a"` and
+  printing a number at exit 0. The suite compares word for word — `'str'`, `'NoneType'`, `'list'`, `'dict'`,
+  `'set'`, both `ZeroDivisionError` wordings — and each raise is additionally caught by the `except` the program
+  wrote (ADR 0228), because a raise a helper performed for itself is unreachable to the programmer.
+- **Two ledger accidents to remember, both near-misses, both caught by the harness rather than by luck:**
+  1. Merging harvested answers into `pkg/lang/testdata/interpreter-golden.json` with a script that assumed the
+     wrong top-level shape truncated the record to 26 entries. `git checkout --` restored it; the file is
+     `{"entries": …, "meta": …}`, and a merge must verify the count *after* writing.
+  2. `GUSTY_GOLDEN_UPDATE=1` under a `-run` **subset** rewrote the drift ledger down to the three rows that
+     subset saw — 334 rows nearly lost. The ledger writer has no subset-safe mode: **never regenerate a ledger
+     under `-run`**; regenerate on the whole package (or hand-append in the row schema), and assert the row count.
+- **Honest new debt beats a dropped case.** `n - 1 + 0.5` is CPython's `6.5` and the compiled leg refuses it:
+  a pair-bound name cannot enter the float domain. That is Gap R.148's existing row, and the row went on the
+  drift ledger with that attribution rather than the case being trimmed out of the table to make it green.
+- **Measured after the cycle:** record 5525 (+24 harvested from the pre-retirement recorder), `pkg/lang` drift
+  337 (+3), `integration` drift 21, CPython debt 7, 296 ADRs to 0304 — and the snapshot table corrected, since
+  it had drifted (it claimed 294 ADRs / highest 0302 / 5478 sources).
+
+---
+
+## Cycle — a pair-bound name enters the double domain by way of the tag (ADR 0305, Gap R.148 closed)
+
+**Feature (roadmap L11.1, Gap R.148).** `print(n / 4)` and `print(n > d)` were refused while `print(2.5 - n)`
+answered, for the same `n = xs[0]`. The asymmetry was road luck: an int literal on the right keeps the BinOp on
+the i32 road (which refuses a pair correctly), a float literal promotes to the double road (which happened to
+ask the tag).
+
+- **The lift is a trap, literally.** The first implementation called `rt_lift_num(payload, tag)` — the obvious
+  door — and it printed `1.75` for `n / 4`, and `0.0` for `float(n)` with a **text** in the slot: the lift
+  unboxes a float box and `sitofp`s every other tag, so an interned string index becomes a plausible number at
+  exit 0. The wrong answer surfaced as a failing row in the trap table I had written *first*. Rule worth keeping:
+  **write the per-kind trap rows before the door, not after** — a door that only answers is unmeasurable.
+- **Routing, not machinery: zero new runtime code.** `taggedDoubleFromObject` (ADR 0253's per-kind float raise,
+  zero guard inside each arm) split into an `*Index` wrapper plus `taggedDoubleFromPair`; the ordering door
+  (ADR 0250/0252) gained a `pairName` side. Both doors already knew how to raise the reference's sentence per
+  kind — the cycle pointed them at names.
+- **A predicate drift to remember:** the ordering door asked `s.ix == nil` in six places to mean "this side's
+  kind is settled". With a pair-carrying name that is false but `ix` is still nil, so the meaning moved to
+  `asksTag()`. When a struct field starts standing in for a *property*, name the property.
+- **The ordering's sentence proves the door choice.** `'>' not supported between instances of 'int' and 'str'`
+  vs `… of 'str' and 'int'` differ by which side the pair was on — a lift-and-compare road cannot produce
+  either, which is the test for "did I enter the right door or just a door that compiles".
+- **Paying a row means editing the tests that pinned the old refusal** — not deleting them:
+  `integration/pair_binding_test.go` moved `n / 4` / `n > d` from its refusal table to its answer table;
+  `pkg/lang/mixed_list_test.go` lost `for x in xs: print(x > 2)` to the new trap table. The drift ratchet
+  independently reported `n - 1 + 0.5` as paid and held the run red until the row was deleted.
+- **Refusals that stay, on purpose:** `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)`, f-string fields
+  (Gap R.146). `float(n)` is the instructive one — the lift answers it, and for a text slot answers `0.0`
+  where CPython raises `ValueError: could not convert string to float: 'a'`. A debt row for a wrong answer at
+  exit 0 is still a wrong answer, and unlike refusals it is not counted by `compiled refusals this run`.
+- **Ledger state after the cycle:** record 5565, `pkg/lang` drift 338 (two L13.1 echo-silence rows added),
+  `integration` drift 21, CPython debt 7, 297 ADR files to 0305. `go test -tags=llvm20 ./...` green.
+
+## Cycle — a pair-bound name enters a container by way of its tag (ADR 0306, Gap R.146's list element paid)
+
+**Feature (roadmap L11.1, Gap R.146).** After ADR 0305 the same four-line program answered `print(n)`,
+`print(n - 1)`, `print(n / 4)` and refused `print([n])`. A list literal had two lowerings — a compile-time
+`@.lstN` global, or a heap object opened by "does a payload fit an `i32`?" / "can a slot say what it holds?" —
+and a pair-bound element fell between them: the payload *fits*, but nobody static knows what it means.
+
+- **The cheapest fix in this whole arc, once the right question was asked.** `rt_tag_elem(i32 %h, i32 %i, i32
+  %tag)` takes an `i32`, and **a register is an `i32`**. What a literal element states as a constant, a pair
+  element states as a fact the objects wrote. Zero new runtime code: three gates gained one disjunct
+  (`literalHasPairElement`), three element loops gained one arm, the tag came from `numericPairRegs`. The
+  cycle had been blocked for as long as it looked like a value-model change; it was an arm.
+- **`y = [n]` is the same element question, and has to be paid in the same commit.** The assignment road has
+  its own element loop and its own record of the variable's element kinds. Allowing `[n]` only unbound would
+  have made `len(y)`, `7 in y` and `for v in y` inexplicable — the "one road works" increment is the one that
+  produces bug reports about the other.
+- **The self-describing bit is not decoration.** Without `estrBits |= 8` the printer reads the list's *one
+  declared kind* across every slot, and `["a"]` — one interned index — prints `[0]`. That is Gap R.38's
+  wrong-answer family arriving through the door this cycle opened, and it is the reason the text-slot rows sit
+  in the integration file compared against **CPython**, not against a string I typed. ADR 0258 learned the same
+  lesson for `str`/`repr`; this is the third time the object and the compiler's scope have to be told to agree.
+- **Two attempts at the dict/set arm were reverted inside the cycle.** The dict interleaves key and value in
+  one element array and its builder asks `heapElemKind` for both *before* any tag question is put; my first
+  patch swallowed that error for a pair side and left the payload register empty — the exact shape that writes
+  a module `llc` rejects, and ADR 0166 counts exit 2 as the compiler's own bug. `sum([n])`/`min([n, 3])` are
+  the same story with a static array instead of a table. They keep Gap R.146's refusal: dead code that pretends
+  a road is open is worse than a sentence that says which half is missing.
+- **These shapes had no record, so the reference was the only witness.** Every answer here is a container
+  printing a slot whose kind the compiler could not see, so recording them from the compiled backend would
+  have been circular. I recorded with a `cmd/gustyrecord` rebuilt against the working tree (the old one still
+  called the retired engine's `EvalExpr`), then refused to merge any entry whose stdout differed from what
+  CPython printed for the same source: 27 merged, 8 refusals left unrecorded and pinned with
+  `CompiledRefusal` instead.
+- **Paid rows moved, never deleted.** Four refusal tables pinned `print([n])` (`pkg/lang` + `integration`, in
+  `pair_binding_test.go` and in my own `pair_number*_test.go`), and `float_state_test.go` (both packages)
+  pinned `print([x, 1])`. Each moved into an answer table that still rules out the failure the row was built
+  for — a float box's handle printed where the double belongs.
+- **A new corpus program owes a record before it earns its place.** `TestGCCorpusCollectsAndAgrees` walks the
+  conformance corpus and fails any program with no golden answer, so registering
+  `programs/probe_pair_bound_name_enters_a_container.gy` without recording it broke the suite in a package
+  nothing else in the cycle touched. The recording path stays honest only because each entry is merged after
+  its stdout is compared with what CPython prints for the same source — the assert that guards the merge is the
+  one thing standing between "recorded" and "whatever the compiler did today".
+- **A pinned probe whose shape gets fixed has to change, and its ledger row with it.** `probe_pair_bound_name_takes_a_value.gy`
+  carried `print([n])` as debt; leaving it there would have pinned a refusal the language no longer makes, and
+  the row's `reason` still said "a list element". Both moved: the line lives in the new parity probe, the
+  `reason` names only what still refuses.
+- **One probe rewrite caught a new defect for free.** The first version of the parity program mixed a nested
+  slot read with an earlier text-storing container and refused; the refusal named a container the program never
+  mutated. Reproduced down to `w.append("a")` being the only difference between `[14]` and exit 1, and filed as
+  a fresh row (`Gap R.191`) rather than fixed under this cycle's commit — one feature per commit, and this one
+  is not mine.
+- **Ledger state after the cycle:** record 5593 (+28), `pkg/lang` drift 338, `integration` drift 21, CPython
+  debt 7, 298 ADR files to 0306, corpus 169 rows / the new probe `match` on both legs. `go test -tags=llvm20 ./...` green.
+
+## Cycle — an f-string field asks the tag (ADR 0307, Gap R.146's rendering positions; Gap R.192 closed)
+
+**Feature (roadmap L11.1).** After ADR 0306 the program answered `print(n)`, `print([n])`, `print(n / 4)` and
+still refused `print(f"{n}")`. The print road builds one printf format string per line, and each arm of its
+field chain asked the field for a single word.
+
+- **Two exit-0/exit-2 defects fell out of measuring a refusal.** Probing the field road turned up
+  `x = 7` / `print(f"{x!r}")` printing **nothing at all at exit 0**, and `print(f"{'a'!r}")` spending **exit 2**
+  (`@.fmt1 = private constant [0 x i8]` against a `[4 x i8]` use). Neither had ever been reported, because a
+  blank answer with the exit code of success is invisible to `compiled refusals this run` and an exit-2 on an
+  `!r` nobody typed is invisible to a corpus. Rule worth keeping: **when you open one road, sweep the arms
+  beside it** — the arms were the bug report.
+- **A fold that answers `""` for an unreadable input is worse than a refusal.** The conversion went to the
+  compile-time spec engine, which returns the empty text for a field it cannot see and the road accepted it.
+  ADR 0299 narrowed that engine for *specs* and left the *conversion* door open; `fieldIsConstantLiteral` is
+  the missing guard. The general form: a folder must be able to say "not mine", and the caller must treat that
+  as a routing question, not an answer.
+- **Quoting is the printer's job.** `rt_str_of_value(payload, tag, quote)` already had the flag `repr()` uses;
+  the f-string road had been splicing quote characters into a format-string global instead. One flag, no new
+  runtime function, and the exit 2 disappeared.
+- **Order the chain by what the source asked for, not by what is cheap to test.** The pair arm now runs
+  **before** the spec/conversion branch: a field that asked for `!r` is still a rendering. Chaining
+  "did the source ask for a conversion?" first hands the value to a folder, which is how the blank got written.
+- **`rt_lift_num` is still the trap.** It was the tempting route for `f"{n - 1}"` (one double, one `%.17g`) and
+  it converts every non-float payload — a text field would print its interned index as a number, at exit 0. The
+  arithmetic road ADR 0265 built is the one that knows what each tag means, so `f"{n - 1}"` and `print(n - 1)`
+  cannot disagree, and `f"{n + 1}"` keeps the refusal the operator already had.
+- **Re-measure the neighbours when a road starts answering.** `Gap R.114` claimed "the shape is refused, not
+  answered wrongly". With the pair road open, `print(f"{xs}", xs)` over a plain container variable prints
+  `0 [1, 2]` at exit 0 and `print(f"{d}")` prints `1`. The row's status clause is now what it actually prints;
+  a tracker that says "refused" where the binary prints a number is how wrong answers get inherited.
+- **A stale `/tmp/gustyc` is a false measurement.** Half-way through I read refusals from a binary built before
+  the edit and spent a cycle hunting a road that was already fixed; the marker build (returning an error with
+  its own name in it) is what settled it. Rebuild, then measure — and prefer a marker that *names* the arm.
+- **Ledger state after the cycle:** record 5623 (+30, each merged entry's stdout compared with CPython before
+  the merge), `pkg/lang` drift 338, `integration` drift 21, CPython debt 7, 299 ADR files to 0307, conformance
+  corpus 169 rows with `programs/probe_fstring_field_asks_the_tag.gy` `match` on both legs.
+  `go test -tags=llvm20 ./...` green.
+
+## Cycle — one backend means one witness vocabulary (ADR 0308, Gap R.190 closed)
+
+**Feature (roadmap Gap R.190, owner `docs`).** ADR 0302 deleted the AST interpreter — the code, the flags,
+the oracle's second leg — and left behind the language a 300-ADR repository had been written in. This cycle
+finished the retirement: it deleted the *claims* about the engine, kept the *measurements* made with it, and
+put a guard where the deleting ended.
+
+- **The most dangerous stale text was the contract itself.** `AGENTS.md` still opened with "Two execution
+  paths — both are first-class", still named `pkg/lang/jit.go`/`EvalExpr` as where a feature is implemented
+  first, and still required "an interpreter integration/unit case (`EvalExpr`)" for every feature. Docs that
+  are merely out of date get complained at; a **contract** that is out of date is an instruction to build the
+  deleted thing again. Deleting an engine means deleting its sentence from the file that tells the next
+  cycle what to do.
+- **Interface text is worse than prose.** Four flag descriptions sold a run that cannot happen — `--bench`
+  "through both backends (interpreter + AOT JIT)", `--bench-suite` "(interpreter vs AOT)", `--bench-gate`
+  "aot, interpreter or both", `--oracle` "run interpreter + compiled backend + CPython". An agent discovers
+  this CLI by exactly that text, so it is the most expensive stale sentence in the repository, and it is now
+  pinned: `TestTheCLINeverAdvertisesAnInterpreterLeg` fails if a description names the interpreter without
+  retiring it.
+- **A claim nobody can execute is not weak evidence, it is a false one.** "Every row below is checked on both
+  engines" sends a reader to look for an engine, and they cannot run it, so they cannot check the claim —
+  the exact property the machine-consumption contract exists to guarantee. The vocabulary that replaced it is
+  three phrases, defined once and enforced: **record leg**, **reference leg**, **both legs**.
+- **Restate the present tense; never restate the past.** `// round(2.5) answered 3 on both backends` stays — it
+  is a measurement taken while two engines ran and it is the only surviving evidence of the class of bug two
+  engines find by disagreeing. Rewriting it to "both legs" would describe a leg that never ran, which is worse
+  than stale: a fabricated measurement. So the sweep ran only on lines without a history marker, and the
+  guard's exemption list (`was`, `used to`, `before`, `retir`, `measured 20`, …) is the same list the sweep
+  honoured — the corpus is green because the rule is the edit, not because the edit was finished by hand.
+- **A ratchet, not a sweep.** `pkg/lang/witness_claim_test.go` + two testdata lists (`witness-banned-phrases.txt`,
+  `witness-history-markers.txt`) mean the next stale claim fails a build instead of accumulating. Data files,
+  not code, for the same reason the drift ledgers are: tightening the rule is a ledger edit and reviewable.
+- **The guard cannot be one of its own inputs, and its rules cannot live in it.** The mass restatement I ran
+  over `pkg/**/*.go` ate the guard's own phrase list — the banned strings were in the file that enforced them,
+  and the guard went green by being rewritten, silently. The phrases now live in `testdata/*.txt` and the guard
+  skips its own file **by name**. That is the general lesson for every self-checking corpus: keep the rules
+  outside the thing they police, and never let a check read a copy of itself.
+- **Three assertions the retirement left unable to fail.** `integration/text_truth_test.go` called
+  `cliTextOut(t, "--aot", src)` twice and reported "the compiled path agreed with each other instead";
+  `integration/for_container_literal_test.go` asserted `byEngine["--aot"] != byEngine["--aot"]`;
+  `pkg/lang/runtime_block_emit_test.go` kept `if true { return }` in front of an assertion about a refusal that
+  no longer exists, worded to promise the reader an interpreter. All three are second-operand-collapsed-to-the-
+  survivor bugs: the mechanical edit that retired the engine left the comparison between the survivor and
+  itself. A deleted check is honest; a check that cannot fail is a lie about coverage (ADR 0166's family, and
+  the same shape as the drift ratchet that had been living in a non-test file).
+- **Names are claims too.** `zdInterp`, `boolInterp`, `edInterp`, `negInterp`, `interpRun`, `interpReport`,
+  `interpWant`, `Test…OnBothBackends`, `Test…InTheInterpreter`, and `pkg/lang/jit_test.go` — every one of those
+  said "the interpreter" about a codegen run. Renamed to what they run (`…Run`, `compiledRun`,
+  `recordWant`, `Test…OnTheCompiledBackend`, `Test…OnBothLegs`, `compiled_eval_test.go`). `jit_llvm.go` keeps
+  its name: the LLVM execution engine exists, and renaming it would have made the file *less* truthful.
+- **`strings.Contains(err, "interpreter")` in a test is Gap R.38 wearing a test.** Two cases asserted that a
+  refusal message mentions the interpreter — i.e. pinned a diagnostic that points a user at an engine they
+  cannot run. They now require the message to name what is missing instead (the row that owns the general
+  rule stays open; this cycle only stopped pinning the lie).
+- **A comment describing a check that does not exist is worse than no comment.** `pkg/lang/bench_suite.go`
+  said an unknown `--bench-gate` "fails loudly at the flag"; the CLI accepted `interpreter` and gated
+  **nothing**, printing a clean verdict over an empty comparison. `--bench-gate` now exits 4 like
+  `--interp`, and the test is named for the fact (`TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone`).
+- **The committed conformance artifact could not be diffed.** A leg's `llc` error is stored in
+  `conformance-matrix.json`, and it embedded `/tmp/TestConformanceMatrix<digits>/…` — so the artifact
+  changed on every run and the diff said "the compiled leg failed differently" when nothing had. Leg
+  errors now go through `normalizeRunPaths` (`integration/conformance_test.go`); an artifact that cannot
+  be compared is not machine-readable, which is the whole reason it is committed.
+- **Process: measure before trusting a bulk edit.** 604 non-comment lines moved under the scripted renames; I
+  audited them down to the 13 that changed a **string literal** and read all 13 (help text, failure messages,
+  one schema `description`) before running anything. The audit script's first version read `sys.stdin` while a
+  heredoc owned it — a silent 0-line diff and a false "clean". A review that lists nothing is not a clean
+  review; assert the count is non-zero.
+- **Ledger state after the cycle:** record 5623, `pkg/lang` drift 338, `integration` drift 21, CPython debt 7,
+  300 ADR files to 0308. New: the witness-claim guard, 0 offenders across `pkg/lang`/`integration`/`cmd/gustyc`
+  and the five agent-read documents. `go vet -tags=llvm20 ./...` clean; `go test -tags=llvm20 ./...` green.
+
+## ADR 0309 — the signless call asks the tag (`abs` of a pair-bound name; Gap R.146, L11.1)
+
+- **The compiler crashing on itself is how a "safe" widening gets found.** Opening the arithmetic door to
+  `Call(abs, [n])` made `round(abs(n) / 2)` recurse until the goroutine's stack gave out: the float door lifts
+  its own sibling, the signless door lifts the sibling's argument, and the two hands kept lifting each other.
+  That is not an exit-1 refusal and not an exit-2 verifier rejection — it is the compiler dying on a program
+  CPython answers. The guard is now structural: `arithOperandPair` asks `arithWouldRefuse` **of a call's
+  argument, never of the call**, and a pair-shaped sibling makes the door return "not mine" so the position
+  refuses in words. Termination of these lifts is something you have to design, not something the type of the
+  function guarantees. (`TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord` pins seven neighbours and
+  `abs(-n)`, and the crash the fix came from is written in its doc comment.)
+- **A shared opcode table must not mean a shared sentence.** `abs` and unary `-` are one door (one tag read,
+  one lift, one `select` on `fcmp olt`) and two pieces of English: CPython writes `bad operand type for abs():
+  'str'` and `bad operand type for unary -: 'str'`. Picking the format from the op code the helper was *handed*
+  rather than from the op it implements is the difference — the first draft shared `@rt.num.negfmt` and printed
+  a minus's sentence for a program that never wrote one. ADR 0271's rule ("a trap says what the program wrote")
+  is only implementable if the trap knows which syntax it came from.
+- **Constant folding is a feature to re-assert after every widening.** `abs(7)`, `abs(-8)`, `abs(-2.5)`,
+  `abs(True)` and `abs(x)` for a plain `x = -7` still answer at compile time; the new door sits behind the
+  "is this a pair?" test rather than in front of the fold. A test that fails when a *literal* starts calling
+  `@llvm.fabs.f64` through the runtime helper is cheap and is the only thing that keeps a widening from
+  quietly degrading the positions that never needed it.
+- **A parked worktree item must re-check the ADR number it claims.** This cycle's files were written citing
+  "ADR 0308"; between then and now ADR 0308 was claimed by another landing (the witness vocabulary), so the
+  feature's own comments would have cited the wrong decision. ADR numbers are claimed at commit time —
+  `ls docs/adr | tail` is part of landing a parked item, not part of starting it.
+- **`git diff` on the golden record is not a count of what changed.** The abs cycle's record diff looked like
+  129 added / 111 removed entries because re-serialization re-wraps long keys; the truth is in the parsed
+  `entries` map — 0 dropped, 0 changed, **+18** (5623 → 5641). Counting with `grep -c '^  "'` on a diff would
+  have reported a feature that silently rewrote 111 recorded answers. Compare parsed maps whenever the record
+  is touched.
+- **A known defect constrains what a probe may contain.** `probe_the_signless_call_answers_for_a_pair_bound_name.gy`
+  deliberately omits the text-slot raise rows, because appending a text to *any* container in a program makes an
+  UNRELATED container's nested slot read refuse (measured, filed as Gap R.191). The raise rows live in the unit
+  and CLI tests instead; the probe's header says so, so the omission reads as a decision and not as an oversight.
+- **A widening is only half a row.** `abs(n)` leaving `Gap R.146` does not mean the pair-bound name works:
+  `min(n, 3)`, a dict entry, a set member, a builtin-folded static array and an f-string-as-value are still
+  refused, and the row's Status stays ⏳ `OPEN` with the refusal table as its evidence. The honest measure of
+  one of these cycles is the refusal test file as much as the answer test file.
+
+## Gap R.193 — the witness guard was reading the wrong files (ADR 0308 amended)
+
+- **An exemption written for one kind of file is a claim about every file it covers.** ADR 0308 exempted
+  "production comments" as design history, and that was right for `pkg/lang/codegen.go` and wrong for
+  `integration/conformance_cases.go`, which is production code whose every comment states what a *registered
+  program asserts today* and whose `reason:` strings ship verbatim inside `conformance-matrix.json` to an
+  agent. The registry said "three engines on one source" twelve times. Ask of each exempted file: does a
+  reader take this as a description of the past, or as a statement of what the tool does?
+- **Banning the verb and letting the noun through bans nothing.** "both backends print" was illegal while
+  "both backends" wandered free as prose; the bare noun phrase asserts the same two engines to the same
+  reader. The three bare phrases are now on the list, and the survivors got restated to legs rather than
+  marked — the count goes to zero by editing the language, not by loosening the list.
+- **A scanner written to check the guard must itself check every pattern.** My ad-hoc pre-scan `break`s after
+  the first matching phrase, so a long roadmap row that matched one history-marked phrase looked clean while a
+  second, unmarked phrase on the same line waited. One line, many phrases — the Go guard does that correctly
+  and caught the survivor my script missed (roadmap's Gap R.90 cell, "the one table both backends read their
+  messages from").
+
+## Registering a conformance program is a promise to three harnesses, not one (ADR 0309's own miss)
+
+- **A new asserted program owes the record, the matrix and the GC corpus at once.** ADR 0309's probe was
+  registered in `conformanceStandalone()` and the matrix row went green (`oracle: match`), so the cycle called
+  itself verified — but `TestGCCorpusCollectsAndAgrees` walks the *asserted* cases and fails any whose source
+  has no entry in `testdata/interpreter-golden.json` (ADR 0302 made a missing record a failure, not a skip).
+  The commit shipped with that failure in the same package, because the verification command run was
+  `-run TestConformanceMatrix` and not `go test ./integration/`. The lesson is about the *shape* of the check:
+  a targeted `-run` on a package whose cases are inter-dependent through shared artifacts (the record, the
+  matrix, the two ledgers) proves less than it looks like it proves — a new registered artifact must be
+  followed through every harness that reads the artifact family, and the package-level run is the cheap way to
+  do that.
+- **`meta.added_after_0302` is the honesty clause of a post-retirement record.** A source that was never alive
+  while the engine ran cannot have an answer "from the interpreter". It gets recorded from the reference, and
+  what keeps that from being self-certifying is that the matrix row compares the compiled leg to CPython
+  independently and the drift ledger fails on any new disagreement — so the entry is witness to two
+  comparisons rather than one. The `meta` block now says so, because the alternative is an agent reading the
+  record as an oracle that no longer exists.
+- **Editing a machine-readable artifact's prose is an interface change.** While filling that entry the record's
+  own `meta.fields` still described its columns as `Evaluator.Repr of the snippet's final value` and
+  `Evaluator.TypeOf` — API that ADR 0302 deleted. An agent that reads a schema pointing at a deleted type is
+  not guided, it is misdirected; the descriptions now say what the record *holds*, and the two historical
+  fields (`meta.source`, `meta.record_corrections`) keep their pre-retirement wording, because they report what
+  was done, not what is true.

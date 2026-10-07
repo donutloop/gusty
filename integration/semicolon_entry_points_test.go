@@ -41,7 +41,7 @@ func TestSemicolonProgramsGetOneVerdictFromEveryEntryPoint(t *testing.T) {
 				args []string
 				path bool
 			}{
-				{"--interp --file", []string{"--interp", "--file"}, true},
+				{"--aot --file", []string{"--aot", "--file"}, true},
 				{"--aot --file", []string{"--aot", "--file"}, true},
 				{"--jit --file", []string{"--jit", "--file"}, true},
 				{"--eval", []string{"--eval"}, false},
@@ -92,7 +92,7 @@ func TestSemicolonProgramsGetOneVerdictFromEveryEntryPoint(t *testing.T) {
 func TestSemicolonRejectsTheEmptyStatementEverywhere(t *testing.T) {
 	const src = "a = 1;;b = 2\nprint(a)\n"
 	for _, args := range [][]string{
-		{"--interp", "--file"}, {"--aot", "--file"}, {"--jit", "--file"}, {"--eval"},
+		{"--aot", "--file"}, {"--aot", "--file"}, {"--jit", "--file"}, {"--eval"},
 	} {
 		full := args
 		if args[len(args)-1] == "--file" {

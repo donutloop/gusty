@@ -46,7 +46,7 @@ func TestTernaryWithTextArmsAtTheCLI(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("row is stale: python3 prints %q, row pins %q", want, r.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "tern", r.src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {
@@ -80,7 +80,7 @@ func TestThePromotedTernaryTextProbeMatchesTheReference(t *testing.T) {
 	if want != "a\nx\n" {
 		t.Fatalf("probe changed underneath the ledger: python3 prints %q", want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		p := writeSrc(t, dir, "ternprobe", src)
 		out, code := cliRunMerged(t, engine, "--file", p)
 		if code != 0 || out != want {

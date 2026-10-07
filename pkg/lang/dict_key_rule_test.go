@@ -1,7 +1,7 @@
 package lang
 
 import (
-	"os"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -9,11 +9,11 @@ import (
 // A dict is a key → value mapping, and this is the file that holds the interpreter to it (roadmap
 // Gaps R.118 and R.120, ADR 0260).
 //
-// The interpreter grew a dict by appending: `o.elems = append(o.elems, key)` for the literal, the
+// the record grew a dict by appending: `o.elems = append(o.elems, key)` for the literal, the
 // comprehension and the copy alike. A key written twice therefore made two entries, both printed and
 // both counted, while the compiled backend — whose fold deduplicates keys and whose runtime
 // `rt_dict_put_tagged` updates in place — answered CPython's line all along. That arrangement is the
-// reason this file exists: the two backends disagreed, so a parity test could have caught it, and
+// reason this file exists: the compiled backend disagreed, so a parity test could have caught it, and
 // none did, because nothing had ever built a dict with a repeated key.
 //
 // The rules the rows keep, all of them CPython's and taken from `python3` on the same source:
@@ -89,7 +89,7 @@ func TestADictComprehensionPutsItsEntries(t *testing.T) {
 }
 
 // The compiled path's dict-comprehension builder walks integer keys, so the text spelling of the same
-// comprehension is a refusal it makes in words while the interpreter answers — filed as roadmap Gap
+// comprehension is a refusal it makes in words while the reference answers — filed as roadmap Gap
 // R.123 rather than skipped, and pinned per leg in the conformance ledger. The int spelling two rows up
 // is parity surface; the difference between the two is what the compiled builder can spell into a
 // compile-time global, not what a dict means.
@@ -97,7 +97,7 @@ func TestADictComprehensionWithATextKeyIsRefusedByCodegenOnly(t *testing.T) {
 	const src = "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n"
 	const want = "{'k': 3}\n3 1\n"
 	if got := captureStdout(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q (ADR 0260 put the entry; the interpreter owes CPython's line)", got, want)
+		t.Errorf("the record leg = %q, want %q (ADR 0260 put the entry; the record owes CPython's line)", got, want)
 	}
 	_, err := Compile(src)
 	if err == nil {
@@ -116,34 +116,146 @@ func TestDictCopyIsBuiltByPuttingToo(t *testing.T) {
 	}
 }
 
-// The tripwire: a dict grown from any of the three builders asks one door. Appending is the condition
-// that made the defect, so a builder that grows `dvals` on its own is what this fails — the behaviour
-// rows above would pass again the day someone re-introduces the second copy of the rule.
+// The tripwire: a dict grown by any of the builders asks one door. Appending is the condition that
+// made the defect (roadmap Gap R.120), so a builder that grows a dict's slots on its own is what this
+// fails — the behaviour rows above would pass again the day someone re-introduces the second copy of
+// the rule.
+//
+// The case used to read the retired engine's Go source and count its `dictPut` callers. What it
+// actually holds is a property of the artifact, so that is what it reads now: the module the compiler
+// emitted. Every dict growth in it is a call to `rt_dict_put` or its tagged twin, and nothing outside
+// those two definitions writes a slot in a dict's data array. The builders — literal, comprehension,
+// item assignment, `dict()` copy — are all present in the one program below, so a builder that grew
+// its own array would show up here as a store the module cannot account for.
 func TestEveryDictBuilderWalksTheOneDoor(t *testing.T) {
-	src, err := os.ReadFile("jit.go")
-	if err != nil {
-		t.Fatalf("read jit.go: %v", err)
-	}
-	source := string(src)
-	door := "func (e *Evaluator) dictPut(o *obj, key, val int64)"
-	if !strings.Contains(source, door) {
-		t.Fatalf("jit.go lost its dict-building door (%s)", door)
-	}
-	for _, want := range []string{
-		"e.dictPut(o, e.slotVal(k, kv), e.slotVal(n.Vals[i], vv))",        // the literal
-		"e.dictPut(ro, e.slotVal(c.Keys[0], k), e.slotVal(c.Vals[0], v))", // the comprehension
-		"e.dictPut(o, key, val)",                 // item assignment
-		"e.dictPut(dst, o.elems[i], o.dvals[i])", // the dict() copy
-	} {
-		if !strings.Contains(source, want) {
-			t.Errorf("a dict builder stopped walking the door: %s is missing from jit.go", want)
+	const src = "d = {1: 2, 2: 3}\n" +
+		"d[3] = 4\n" +
+		"e = {x: x * 2 for x in [5, 6]}\n" +
+		"print(d)\nprint(len(e))\n"
+	mod := compileSrc(t, src)
+
+	door := "define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {"
+	taggedDoor := "define internal void @rt_dict_put_tagged(i32 %h, i32 %k, i32 %v, i32 %kt, i32 %vt) {"
+	for _, want := range []string{door, taggedDoor} {
+		if !strings.Contains(mod, want) {
+			t.Fatalf("the module lost its dict-building door (%s)", want)
 		}
 	}
-	if n := strings.Count(source, "dvals = append"); n != 1 {
-		t.Errorf("jit.go has %d places that append dict values; exactly one is allowed, inside dictPut", n)
+	// Every builder reaches for a door: the literal takes the plain one, the tagged one carries the
+	// elements' kinds, and the comprehension reaches through whichever its keys spell.
+	if n := strings.Count(mod, "call void @rt_dict_put(") + strings.Count(mod, "call void @rt_dict_put_tagged("); n < 3 {
+		t.Errorf("the module grows dicts in %d places through the door; the literal, the assignment and the comprehension must all go through it", n)
 	}
-	if n := strings.Count(source, "elems = append(o.elems, e.slotVal(k, kv)"); n != 0 {
-		t.Errorf("the dict literal grew its keys by append again — the condition Gap R.120 measured")
+	if _, err := Compile("d = {1: 2}\nprint(dict(d))\n"); err == nil || !strings.Contains(err.Error(), "copies are not supported") {
+		t.Errorf("the copy builder answered instead of refusing; it must not have a growth route of its own (got %v)", err)
 	}
 
+	// The two halves of "one door": nothing the compiler emitted for the *program* writes a slot in a
+	// container's data array (it has to ask a runtime helper), and among the dict helpers only the two
+	// doors do. This is the exact shape of the defect — a second copy of the growth rule, splicing slots
+	// instead of asking the one that checks for an existing key first — and the shape the behaviour rows
+	// above would not catch, because a splice can print the right answer right up to the day a key
+	// repeats.
+	if offenders := slotStoresOutsideRuntime(mod); len(offenders) != 0 {
+		t.Errorf("the module writes container slots from code the runtime does not own (%s) — the growth rule has a second copy (Gap R.120)",
+			strings.Join(offenders, ", "))
+	}
+	if offenders := dictSlotWriters(mod); len(offenders) != 2 {
+		t.Errorf("%d dict helpers write data slots, want exactly the two doors (rt_dict_put, rt_dict_put_tagged): %s",
+			len(offenders), strings.Join(offenders, ", "))
+	}
+}
+
+// slotStoresOutsideRuntime names the functions where the compiler's own code (not a runtime helper)
+// stores into a container's slot array. Program code may not: it must call rt_dict_put, rt_list_append
+// or their twins, which are the places that keep a key from being added twice.
+func slotStoresOutsideRuntime(mod string) []string {
+	var out []string
+	for name, body := range moduleFunctions(mod) {
+		if strings.HasPrefix(strings.TrimPrefix(name, "@"), "rt_") {
+			continue
+		}
+		if storesIntoSlotArray(body) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// dictSlotWriters names the dict helpers that write data slots. Exactly the two doors may.
+func dictSlotWriters(mod string) []string {
+	var out []string
+	for name, body := range moduleFunctions(mod) {
+		if !strings.HasPrefix(strings.TrimPrefix(name, "@"), "rt_dict_") {
+			continue
+		}
+		if storesIntoSlotArray(body) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// moduleFunctions splits the textual module into function name to body. Names keep their `@`.
+func moduleFunctions(mod string) map[string]string {
+	funcs := map[string]string{}
+	var cur string
+	var body strings.Builder
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(line, "define ") {
+			if cur != "" {
+				funcs[cur] = body.String()
+			}
+			cur = ""
+			for _, f := range strings.Fields(line) {
+				if strings.HasPrefix(f, "@") {
+					cur = strings.TrimSuffix(f, "(")
+					break
+				}
+			}
+			body.Reset()
+			continue
+		}
+		if cur != "" {
+			body.WriteString(line)
+			body.WriteString("\n")
+		}
+	}
+	if cur != "" {
+		funcs[cur] = body.String()
+	}
+	return funcs
+}
+
+// storesIntoSlotArray reports whether a body stores into an element of the [256 x i32] slot array —
+// the array a dict keeps its interleaved keys and values in, and the one thing nothing but the growth
+// door may touch.
+func storesIntoSlotArray(body string) bool {
+	slotRegs := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.Contains(t, "getelementptr [256 x i32]") {
+			continue
+		}
+		if name, _, ok := strings.Cut(t, " = "); ok && strings.HasPrefix(name, "%") {
+			slotRegs[name] = true
+		}
+	}
+	if len(slotRegs) == 0 {
+		return false
+	}
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "store ") {
+			continue
+		}
+		for reg := range slotRegs {
+			if strings.HasSuffix(t, reg) {
+				return true
+			}
+		}
+	}
+	return false
 }

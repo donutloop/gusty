@@ -13,7 +13,7 @@ package lang
 //
 // Four claims, four tables:
 //
-//   - the answers on both engines, including the two sign rules that make flooring worth testing — the floor
+//   - the answers on both legs, including the two sign rules that make flooring worth testing — the floor
 //     goes down rather than toward zero, and the remainder takes the divisor's sign — and the integer control
 //     rows, which must keep answering integers from the same `define`;
 //   - the module: the two new operator codes are asked of `@rt_num_arith`, the divide-by-zero guard is on the
@@ -59,8 +59,8 @@ func runIRAllowingTrap(t *testing.T, ir string) (int, string) {
 	return code, string(out)
 }
 
-// TestTheFlooringOperatorsAnswerOverAPairOnBothBackends is the row itself.
-func TestTheFlooringOperatorsAnswerOverAPairOnBothBackends(t *testing.T) {
+// TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend is the row itself.
+func TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the row: a floor and a remainder over a parameter that carries a double",
@@ -229,7 +229,7 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 			}
 		})
 	}
-	// Catchable, on both engines: the class name is the contract an `except` reads.
+	// Catchable, on both legs: the class name is the contract an `except` reads.
 	for _, tc := range []struct{ name, src string }{
 		{"the floor", "def f(v):\n    return v // 0\n\ntry:\n    print(f(5.0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n"},
 		{"the remainder", "def f(v):\n    return v % 0\n\ntry:\n    print(f(5.0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n"},
@@ -249,13 +249,13 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 	}
 }
 
-// TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends is Gap R.166 paid. ADR 0278 served the
+// TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend is Gap R.166 paid. ADR 0278 served the
 // flooring operators at the *top* of an expression; the arms of one were still asked of the ordinary road, so
 // `(v - 1) * 2`, `v + 1 + 1` and ADR 0216's own flooring identity refused for a parameter that carries a pair —
 // after a first draft of this cycle answered them from their payloads, which printed 7 where the reference
 // prints 7.5. The arm question now walks its leaves (`slotArithmeticIsProven` recurses through `BinOp`,
 // `UnOp` and `CondExpr`), so each arm is answered by the same door the whole is.
-func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends(t *testing.T) {
+func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// The acceptance row ADR 0216 named: floor and remainder reassemble the value they were given,

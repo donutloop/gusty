@@ -8,8 +8,8 @@ import (
 )
 
 // Tests for Gap R.29 (roadmap), ADR 0221: `==` between an int and a float is one question about
-// two numbers. The interpreter answered `1 == 1.0` with False while `1.0 == 1` answered True, and
-// the compiled path was right — so the two backends disagreed, and the direction that worked was the
+// two numbers. the record answered `1 == 1.0` with False while `1.0 == 1` answered True, and
+// the compiled path was right — so the compiled backend disagreed, and the direction that worked was the
 // one nobody thought to test.
 
 func TestIntFloatEqualityIsSymmetric(t *testing.T) {
@@ -46,7 +46,7 @@ func TestIntFloatEqualityIsSymmetric(t *testing.T) {
 }
 
 // TestCrossTypeComparisonGridBothWays is the sign-and-direction grid: every int/float pair, in both
-// operand orders, through the interpreter. 300 comparisons, checked against values computed here
+// operand orders, through the record. 300 comparisons, checked against values computed here
 // from the Python rules rather than from anything the implementation printed.
 func TestCrossTypeComparisonGrid(t *testing.T) {
 	ints := []string{"0", "1", "2", "-3", "7"}

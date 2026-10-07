@@ -12,7 +12,7 @@ import (
 )
 
 // Gap K.6 — an uncaught exception must be *reported* and must fail the process, on
-// both backends.
+// the compiled path.
 //
 // The AOT used to branch to its raise-exit block and `ret i32 0`, so
 //
@@ -20,10 +20,10 @@ import (
 //	xs[9] = 5
 //
 // compiled, linked, ran, printed nothing and exited 0: to any script that ran it, the
-// program had succeeded. The interpreter printed a traceback but on stdout, where it
+// program had succeeded. the record printed a traceback but on stdout, where it
 // mixes with program output. Both now write a Python-shaped report to stderr and exit
 // non-zero, and the runtime errors that reach it (index/key/type) are typed, so
-// `except IndexError:` catches them in the interpreter as well as in AOT.
+// `except IndexError:` catches them in the record as well as in AOT.
 
 type runResult struct {
 	stdout string
@@ -33,8 +33,8 @@ type runResult struct {
 
 func (r runResult) failed() bool { return r.code == 0 }
 
-// interpRun runs src on the interpreter through the real CLI, keeping the streams apart.
-func interpRun(t *testing.T, src string) runResult {
+// compiledRun runs src on the record through the real CLI, keeping the streams apart.
+func compiledRun(t *testing.T, src string) runResult {
 	t.Helper()
 	dir := t.TempDir()
 	srcPath := filepath.Join(dir, "prog.gy")
@@ -96,7 +96,7 @@ func aotRun(t *testing.T, src string) runResult {
 	return runResult{outb.String(), errb.String(), code}
 }
 
-// uncaughtCases: every program raises past the last handler, and both backends must
+// uncaughtCases: every program raises past the last handler, and the compiled path must
 // report the same exception line on stderr while keeping stdout clean.
 var uncaughtCases = []struct {
 	name string
@@ -104,7 +104,7 @@ var uncaughtCases = []struct {
 	// wantOut is what the program printed before the raise (stdout must not contain
 	// the traceback — that is the whole point of stderr).
 	wantOut string
-	// wantErr is the exception line both backends must print.
+	// wantErr is the exception line the compiled path must print.
 	wantErr string
 }{
 	{
@@ -139,13 +139,13 @@ var uncaughtCases = []struct {
 	},
 }
 
-func TestUncaughtExceptionReportsAndFailsOnBothBackends(t *testing.T) {
+func TestUncaughtExceptionReportsAndFailsOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range uncaughtCases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, run := range []struct {
 				name string
 				fn   func(*testing.T, string) runResult
-			}{{"interpreter", interpRun}, {"aot", aotRun}} {
+			}{{"cli", compiledRun}, {"artifact", aotRun}} {
 				r := run.fn(t, tc.src)
 				if r.code == 0 {
 					t.Errorf("%s: exit = 0, want non-zero (an uncaught exception must fail the process)\nstdout=%q stderr=%q", run.name, r.stdout, r.stderr)
@@ -168,7 +168,7 @@ func TestUncaughtExceptionReportsAndFailsOnBothBackends(t *testing.T) {
 }
 
 // caughtCases: a runtime error raised by the machine (not by a `raise` statement) must
-// be catchable, with the class name the `except` clause matches on. The interpreter
+// be catchable, with the class name the `except` clause matches on. the record
 // used to abort on these instead of unwinding.
 var caughtCases = []struct {
 	name string
@@ -182,12 +182,12 @@ var caughtCases = []struct {
 	{"bare except catches anything", "try:\n    raise KeyError(\"x\")\nexcept:\n    print(\"caught\")\n", "caught\n"},
 }
 
-func TestRuntimeErrorsAreCatchableOnBothBackends(t *testing.T) {
+func TestRuntimeErrorsAreCatchableOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range caughtCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotI := runInterp(t, tc.src)
+			gotI := runCompiled(t, tc.src)
 			if gotI != tc.want {
-				t.Errorf("interpreter = %q, want %q (Python's answer)", gotI, tc.want)
+				t.Errorf("the record leg = %q, want %q (Python's answer)", gotI, tc.want)
 			}
 			gotA := runAOT(t, tc.src)
 			if gotA != tc.want {
@@ -229,7 +229,7 @@ func TestUncaughtReportIsNotEmittedForCleanPrograms(t *testing.T) {
 // staticallyRejectedCases are assignments the AOT refuses at compile time because the
 // target's kind is known from the source: writing to a string index or a set element can
 // never succeed, so ADR 0166 makes it a diagnostic rather than code that traps at runtime.
-// The interpreter still raises the TypeError a handler can catch — the divergence is
+// the record still raises the TypeError a handler can catch — the divergence is
 // deliberate and documented in docs/language.md.
 var staticallyRejectedCases = []struct {
 	name string
@@ -251,9 +251,7 @@ var staticallyRejectedCases = []struct {
 func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
 	for _, tc := range staticallyRejectedCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != "caught\n" {
-				t.Errorf("interpreter = %q, want %q (the TypeError is catchable there)", got, "caught\n")
-			}
+			lang.RecordedStdoutIs(t, tc.src, "caught\n")
 			_, err := lang.Compile(tc.src)
 			if err == nil {
 				t.Fatalf("AOT should refuse to compile: %s", tc.src)
@@ -266,15 +264,15 @@ func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
 }
 
 // TestTracebackFramesNameTheRaiseSite (roadmap Gap K.8): the compiled report carries the
-// frame the interpreter's last frame carries — file, line and function — so "where did it
-// fail" has the same answer whichever backend ran the program. The interpreter prints one
+// frame the record's last frame carries — file, line and function — so "where did it
+// fail" has the same answer whichever backend ran the program. the record prints one
 // frame per stack level; the AOT prints the raise site's own frame until the DWARF line
 // tables of L8.5 land.
 func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
 	cases := []struct {
 		name string
 		src  string
-		// the frame line both backends must print for the raise site itself
+		// the frame line the compiled path must print for the raise site itself
 		wantFrame string
 	}{
 		{
@@ -300,7 +298,7 @@ func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ri := interpRun(t, tc.src)
+			ri := compiledRun(t, tc.src)
 			if !strings.Contains(ri.stderr, tc.wantFrame) {
 				t.Errorf("interpreter stderr must contain the frame %q, got %q", tc.wantFrame, ri.stderr)
 			}

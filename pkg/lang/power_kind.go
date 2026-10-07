@@ -15,7 +15,7 @@ package lang
 // Before this file the compiled leg answered EVERY `**` as an int: `**` was absent from the operator list
 // that tells `print` what kind an expression answers with, so the correct double from `llvm.pow.f64` was
 // pushed back through `fptosi` and printed with `%d` — `print(2.0 ** 10)` said `1024` where the reference
-// says `1024.0`, and `print(4 ** 0.5)` said `1` where it says `2.0`. The interpreter had the other half
+// says `1024.0`, and `print(4 ** 0.5)` said `1` where it says `2.0`. the record had the other half
 // wrong: `if r < 0 { return 0 }`, under a comment claiming it mirrored Python.
 //
 // The rule lives here, asked once, because four roads need the same answer: the print formatter, the
@@ -266,7 +266,7 @@ func powerExponentIsNegativeKnown(r Expr, kindOf func(Expr) string) bool {
 
 // powerComplexIsAsked reports a negative base raised to a fractional exponent, which in the reference
 // produces a COMPLEX number. This language has no complex value, so the roads refuse it in words rather
-// than printing `nan` — which is what both backends did before, at exit 0.
+// than printing `nan` — which is what the compiled backend did before, at exit 0.
 func powerComplexIsAsked(l, r Expr, kindOf func(Expr) string) bool {
 	if powerKindOf(r, kindOf) != "float" {
 		return false
@@ -363,7 +363,7 @@ func powerNumberSurface(e Expr) string {
 
 // powerComplexResult reports the reference's third answer to `**`: a negative base to a fractional power
 // is a COMPLEX number (`(-8) ** (1/3)` is `(1.0000000000000002+1.7320508075688772j`). This language has no
-// complex value, so the roads refuse rather than printing `nan`, which is what both backends did at exit 0
+// complex value, so the roads refuse rather than printing `nan`, which is what the compiled backend did at exit 0
 // before this row (Gap R.176).
 func powerComplexResult(base, exp float64) (raised bool, asked bool) {
 	if base >= 0 || exp == math.Trunc(exp) {
@@ -377,8 +377,8 @@ func powerComplexResult(base, exp float64) (raised bool, asked bool) {
 
 // powerComplexRefusal is the words for that refusal: naming what the reference answers with and what this
 // language lacks (Gap R.38 — a diagnostic must describe the program the reader is holding).
-func powerComplexRefusal() *EvalError {
-	return &EvalError{
+func powerComplexRefusal() *TrapError {
+	return &TrapError{
 		ExnType: "ValueError",
 		Msg: "a negative base raised to a fractional power is a complex number in the reference, " +
 			"and this language has no complex value; the compiled leg declines the program rather " +
@@ -386,54 +386,11 @@ func powerComplexRefusal() *EvalError {
 	}
 }
 
-// powerNegativeExponentFromZeroFor is the raise test for two evaluated operands, where the caller has
-// already unboxed them: a zero base and a negative exponent, either spelling. The base may be a boxed 0.0
-// or the bare int 0, and the exponent may arrive as a negative int or as a boxed negative float.
-func powerNegativeExponentFromZeroFor(l, r int64, e *Evaluator) bool {
-	// `l` and `r` are the unboxed WORDS the numeric road carries, and a float is a heap HANDLE, not its
-	// value — `0.0 ** -1` arrives as l=281474976710658 (the box), so testing `l != 0` declined the raise
-	// and pow answered `inf`. The value has to be asked of the heap before the sign is judged.
-	lv, isFloat := float64(0), false
-	if e != nil {
-		if f, ok := e.floatOf(l); ok {
-			lv, isFloat = f, true
-		} else if b, ok := e.heap[l]; ok && b.kind == "float" {
-			lv, isFloat = b.fval, true
-		}
-	}
-	if isFloat {
-		if lv != 0 {
-			return false
-		}
-		if r < 0 {
-			return true
-		}
-		if e != nil {
-			if rf, ok := e.floatOf(r); ok {
-				return rf < 0
-			}
-		}
-		return false
-	}
-	if l != 0 {
-		return false
-	}
-	if r < 0 {
-		return true
-	}
-	if e != nil {
-		if rf, ok := e.floatOf(r); ok {
-			return rf < 0
-		}
-	}
-	return false
-}
-
 // The last-digit gap that powToReference tried to close is FILED, not closed: see Gap R.178. Go's
 // math.Pow and the host libm the compiled leg reaches through llvm.pow.f64 disagree by one ULP on part of
 // the fractional-exponent grid — `math.Pow(2, 1.5)` ends ...3bcc where glibc ends ...3bcd — so
-// `print(2 ** 1.5)` differs in its LAST DIGIT between the two engines. A refinement built from exact
+// `print(2 ** 1.5)` differs in its LAST DIGIT between both legs. A refinement built from exact
 // integer powers plus math.Sqrt was tried here and made the grid worse (21 divergences either way, on
 // different rows), so it was removed rather than shipped: a private libm is L11.6's to settle, and a
-// "fix" that moves which rows are wrong is not a fix. Both engines are one ULP from each other, which the
+// "fix" that moves which rows are wrong is not a fix. Both legs are one ULP from each other, which the
 // reference's own repr makes visible but no parity check can see.

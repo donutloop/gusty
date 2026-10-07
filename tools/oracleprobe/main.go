@@ -11,17 +11,17 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// oracleprobe prints, for every named program (or merged group), the three legs
-// and the classification the harness would compute — as JSON, so a ledger row in
+// oracleprobe prints, for every named program (or merged group), the two legs and
+// the classification the harness would compute — as JSON, so a ledger row in
 // integration/conformance_cases.go can be written from measured data instead of
-// memory (roadmap L11.9, ADR 0186).
+// memory (roadmap L11.9, ADR 0186; two legs since ADR 0302 retired the AST interpreter).
 //
 //	go run ./tools/oracleprobe probe_tuple features_a merged:ctrl_a,ctrl_b,ctrl_c
 //
 // It reuses the harness's own classifier (lang.BuildOracleReport) and the harness's
-// own legs (lang.InterpreterRun, Compile+llc+cc, lang.PythonRun), so a verdict
-// printed here is the verdict the matrix will record — there is no second
-// implementation of "does this behave like Python?" to drift.
+// own legs (Compile+llc+cc, lang.PythonRun), so a verdict printed here is the
+// verdict the matrix will record — there is no second implementation of "does this
+// behave like Python?" for the probe to drift from.
 func main() {
 	dir := "integration/programs"
 	args := os.Args[1:]
@@ -33,10 +33,8 @@ func main() {
 		ID     string `json:"id"`
 		Status string `json:"status"`
 		Notes  string `json:"notes,omitempty"`
-		Interp string `json:"interp"`
 		AOT    string `json:"aot"`
 		Python string `json:"python"`
-		IErr   string `json:"interp_err,omitempty"`
 		AErr   string `json:"aot_err,omitempty"`
 		PErr   string `json:"python_err,omitempty"`
 	}
@@ -67,14 +65,13 @@ func main() {
 			src = string(b)
 			id = "programs/" + spec
 		}
-		ip, ierr := safeInterp(src)
 		ao, aerr := safeAOT(src)
 		po, perr := safePy(src)
-		rep := lang.BuildOracleReport(ierr == nil, ip, errStr(ierr), aerr == nil, ao, errStr(aerr), nil, perr == nil, po, errStr(perr))
+		rep := lang.BuildOracleReport(aerr == nil, ao, errStr(aerr), nil, perr == nil, po, errStr(perr))
 		out = append(out, row{
 			ID: id, Status: rep.Status, Notes: strings.Join(rep.Notes, "; "),
-			Interp: ip, AOT: ao, Python: po,
-			IErr: errStr(ierr), AErr: errStr(aerr), PErr: errStr(perr),
+			AOT: ao, Python: po,
+			AErr: errStr(aerr), PErr: errStr(perr),
 		})
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
@@ -90,15 +87,6 @@ func errStr(err error) string {
 		s = s[:i]
 	}
 	return s
-}
-
-func safeInterp(src string) (out string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			out, err = "", fmt.Errorf("compiler panic: %v", r)
-		}
-	}()
-	return lang.InterpreterRun(src)
 }
 
 func safeAOT(src string) (out string, err error) {

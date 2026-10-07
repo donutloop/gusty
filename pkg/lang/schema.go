@@ -1145,6 +1145,15 @@ const ASTIRSchema = `{
         "exit": { "type": "integer", "description": "The exit code the CLI returns for this document: 0 clean, 1 refused (docs/operations.md § Exit codes)." }
       }
     },
+    "phaseTiming": {
+      "type": "object",
+      "required": ["phase", "ms"],
+      "description": "One phase of the compilation pipeline (--bench profile): parse, analyze, codegen, build, llvm.",
+      "properties": {
+        "phase": { "type": "string", "enum": ["parse", "analyze", "codegen", "build", "llvm"] },
+        "ms": { "type": "number" }
+      }
+    },
     "benchReport": {
       "type": "object",
       "required": ["total_ms", "mean_ms", "best_ms"],
@@ -1157,13 +1166,13 @@ const ASTIRSchema = `{
     },
     "benchCaseResult": {
       "type": "object",
-      "required": ["name", "interpreter", "aot", "speedup"],
-      "description": "One benchmark case measured on both execution backends. error is non-empty when the case could not be measured; the row is kept so a suite never silently shrinks.",
+      "required": ["name", "aot", "build"],
+      "description": "One benchmark case measured on the one backend (ADR 0302): aot is warm execution of the artifact, build is the one-off cost of producing it, profile breaks that cost into the pipeline. error is non-empty when the case could not be measured; the row is kept so a suite never silently shrinks.",
       "properties": {
         "name": { "type": "string" },
-        "interpreter": { "$ref": "#/definitions/benchReport" },
         "aot": { "$ref": "#/definitions/benchReport" },
-        "speedup": { "type": "number", "description": "interpreter best_ms / aot best_ms; > 1 means the compiled artifact is faster." },
+        "build": { "$ref": "#/definitions/benchReport" },
+        "profile": { "type": "array", "items": { "$ref": "#/definitions/phaseTiming" } },
         "error": { "type": "string" }
       }
     },
@@ -1182,14 +1191,13 @@ const ASTIRSchema = `{
         },
         "totals": {
           "type": "object",
-          "required": ["cases", "ran", "failed", "interpreter_total_ms", "aot_total_ms", "geomean_speedup"],
+          "required": ["cases", "ran", "failed", "aot_total_ms", "build_total_ms"],
           "properties": {
             "cases": { "type": "integer" },
             "ran": { "type": "integer" },
             "failed": { "type": "integer" },
-            "interpreter_total_ms": { "type": "number" },
             "aot_total_ms": { "type": "number" },
-            "geomean_speedup": { "type": "number" }
+            "build_total_ms": { "type": "number" }
           }
         }
       }
@@ -1200,7 +1208,7 @@ const ASTIRSchema = `{
       "description": "One regression-gate violation (--bench-baseline): a case slower than its baseline by more than the tolerance, above the noise floor.",
       "properties": {
         "name": { "type": "string" },
-        "backend": { "type": "string", "enum": ["aot", "interpreter"] },
+        "backend": { "type": "string", "enum": ["aot"] },
         "baseline_ms": { "type": "number" },
         "current_ms": { "type": "number" },
         "ratio": { "type": "number" },
@@ -1220,11 +1228,13 @@ const ASTIRSchema = `{
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "interpreter_best_ms", "aot_best_ms"],
+            "required": ["name", "aot", "build"],
             "properties": {
               "name": { "type": "string" },
-              "interpreter_best_ms": { "type": "number" },
-              "aot_best_ms": { "type": "number" }
+              "aot": { "type": "object", "description": "Best/mean/total ms of running the compiled artifact (lang.BenchReport): the only execution leg there is since ADR 0302." },
+              "build": { "type": "object", "description": "Best/mean/total ms of the whole compile (check → codegen → opt → llc → cc), which is the leg a compiler regression shows up in." },
+              "profile": { "type": "array", "description": "Per-phase timings of one compile: parse, analyze, codegen, build, llvm." },
+              "error": { "type": "string", "description": "Set when the case did not run; a failed case is reported, never dropped from the totals." }
             }
           }
         }
@@ -1327,7 +1337,7 @@ const ASTIRSchema = `{
     "gcStats": {
       "type": "object",
       "required": ["collections", "roots", "skipped", "marked", "freed", "live", "backend"],
-      "description": "What the garbage collector actually did while the program ran (gustyc --gc-stats; the \"gc\" member of an --eval/--file --json payload, the interpreter's InterpreterRunOpts report, and the compiled runtime's rt_gc_report line). Counts except collections and total_freed describe the most recent collection. The human form is the same numbers as one key=value line on stderr: gc: backend=interpreter collections=3 roots=4 ... — the compiled backend emits the same shape from inside the target program (gc: backend=aot ... top=17), which the CLI forwards and parses back into this object.",
+      "description": "What the garbage collector actually did while the program ran (gustyc --gc-stats; the \"gc\" member of an --eval/--file --json payload). Emitted by the compiled runtime's rt_gc_report line from inside the target program (gc: backend=aot collections=3 roots=4 ... top=17) and forwarded by the CLI, which parses it back into this object; there is one backend since ADR 0302, so the line's backend is always aot. Counts except collections and total_freed describe the most recent collection. The human form is the same numbers as one key=value line on stderr (the tool channel, never the program's stdout).",
       "properties": {
         "collections": { "type": "integer", "description": "Mark-and-sweep passes run so far (cumulative)." },
         "roots": { "type": "integer", "description": "Root handles the last collection traced: entries of the precise root set that really name a heap object (frame locals, declared root groups, permanent roots)." },
@@ -1337,10 +1347,10 @@ const ASTIRSchema = `{
         "total_freed": { "type": "integer", "description": "Heap objects reclaimed over the whole run (cumulative): the size of the garbage the program produced." },
         "live": { "type": "integer", "description": "Heap objects still resident after the last collection." },
         "frames": { "type": "integer", "description": "Call frames in the root set at the last collection. Zero means the collection happened at a top-level statement boundary." },
-        "protected": { "type": "integer", "description": "Objects the allocation watermark kept alive without tracing: they were minted after the last safe point, so the interpreter may still hold them in a register." },
+        "protected": { "type": "integer", "description": "Objects the allocation watermark kept alive without tracing: they were minted after the last safe point, so a register may still hold them." },
         "generational": { "type": "boolean", "description": "true when the last collection was a young (nursery) pass; false for a full sweep." },
-        "top": { "type": "integer", "description": "High-water mark of the compiled backend's root stack: the most simultaneous rooted handle slots in any call tree. Omitted (0) by the interpreter, whose root set has no fixed capacity. A program that exhausts the 4096-entry capacity stops itself rather than run with an unrooted handle." },
-        "backend": { "type": "string", "description": "Which collector reported: \"interpreter\" or \"aot\".", "enum": ["interpreter", "aot"] }
+        "top": { "type": "integer", "description": "High-water mark of the root stack: the most simultaneous rooted handle slots in any call tree. A program that exhausts the 4096-entry capacity stops itself rather than run with an unrooted handle." },
+        "backend": { "type": "string", "description": "Which collector reported; the compiled runtime is the only one (ADR 0302).", "enum": ["aot"] }
       }
     },
     "valueTag": {
@@ -1351,17 +1361,17 @@ const ASTIRSchema = `{
     },
     "oracleReport": {
       "type": "object",
-      "required": ["legs", "parity", "oracle"],
-      "description": "The three-leg verdict printed by 'gustyc --oracle <src>' / '--oracle-file <path>' (lang.OracleReport). Same classification as a conformance matrix row, computed by the same function, for one ad-hoc program an agent wants checked before trusting it (roadmap L11.9, ADR 0186). Exit codes: 0 match, 6 debt (the program does not behave like Python), 7 not_applicable (no verdict - the oracle could not run the source).",
+      "required": ["legs", "oracle"],
+      "description": "The two-leg verdict printed by 'gustyc --oracle <src>' / '--oracle-file <path>' (lang.OracleReport): the compiled backend and CPython. There used to be a third leg, the AST interpreter, and a \"parity\" member comparing the two gusty engines; the engine retired (ADR 0302) and with it the member — a field comparing one thing to itself is not a fact. Same classification as a conformance matrix row, computed by the same function, for one ad-hoc program an agent wants checked before trusting it (roadmap L11.9, ADR 0186). Exit codes: 0 match, 6 debt (the program does not behave like Python), 7 not_applicable (no verdict - the oracle could not run the source).",
       "properties": {
         "legs": {
           "type": "array",
-          "description": "Exactly three legs, in order: interpreter, aot, python. Each records whether the leg completed, its stdout, a first-line error when it did not, and whether its stdout is the oracle's once the documented rules are applied.",
+          "description": "Exactly two legs, in order: aot, python. Each records whether the leg completed, its stdout, a first-line error when it did not, and whether its stdout is the oracle's once the documented rules are applied.",
           "items": {
             "type": "object",
             "required": ["backend", "ok", "stdout", "matches_python"],
             "properties": {
-              "backend": { "type": "string", "enum": ["interpreter", "aot", "python"] },
+              "backend": { "type": "string", "enum": ["aot", "python"] },
               "ok": { "type": "boolean", "description": "false when the leg failed: a compile refusal, a trap, or a Go panic (recorded, never fatal)." },
               "stdout": { "type": "string" },
               "error": { "type": "string" },
@@ -1369,7 +1379,6 @@ const ASTIRSchema = `{
             }
           }
         },
-        "parity": { "type": "boolean" },
         "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"] },
         "notes": { "type": "array", "items": { "type": "string" }, "description": "Why the verdict is what it is, one line per leg that disagreed or failed." },
         "rules": { "type": "array", "items": { "type": "string" }, "description": "The documented comparison rules that were applied, so a reader can see exactly what was normalised away." }
@@ -1377,16 +1386,13 @@ const ASTIRSchema = `{
     },
     "conformanceRow": {
       "type": "object",
-      "required": ["case", "interp_ok", "aot_ok", "parity", "python_ok", "oracle", "oracle_declared"],
-      "description": "One row of the conformance matrix (integration/conformance-matrix.json, lang.ConformanceResult). Three legs per program: the AST interpreter, the LLVM AOT binary, and CPython. \"parity\" is interpreter stdout == AOT stdout; \"oracle\" is what both backends print against CPython, and \"oracle_declared\" is what the registry in integration/conformance_cases.go claims — the harness fails when the two disagree, in either direction (roadmap L11.9, ADR 0186). A row claiming \"match\" means \"matches the pinned oracle\": the matrix's own toolchain block records which interpreters produced it — toolchain.python (the banner of the CPython that ran), toolchain.min_python (the pin, lang.OracleMinPython, currently 3.12) and toolchain.llvm — and a row's declared verdict presupposes the pin, because some programs cannot be parsed by an older oracle at all (PEP 695 type statements, e.g. type X = int, need 3.12; ADR 0193).",
+      "required": ["case", "aot_ok", "python_ok", "aot_matches_python", "conformant", "oracle", "oracle_declared"],
+      "description": "One row of the conformance matrix (integration/conformance-matrix.json, lang.ConformanceResult). Two legs per program since ADR 0302: the compiled binary and CPython (the retired AST interpreter was a third, and \"parity\" — comparing the two gusty legs — left with it; see roadmap Gap R.190 for what that loss of witness is worth). \"oracle\" is what the compiled leg prints against CPython, and \"oracle_declared\" is what the registry in integration/conformance_cases.go claims — the harness fails when the two disagree, in either direction (roadmap L11.9, ADR 0186). \"conformant\" is the row's bottom line: an asserted row whose compiled stdout is CPython's; for a row the registry declares debt or not_applicable, CPython has no answer to compare against, so conformance is judged against the leg pins instead. A row claiming \"match\" means \"matches the pinned oracle\": the matrix's own toolchain block records which interpreters produced it — toolchain.python (the banner of the CPython that ran), toolchain.min_python (the pin, lang.OracleMinPython, currently 3.12) and toolchain.llvm — and a row's declared verdict presupposes the pin, because some programs cannot be parsed by an older oracle at all (PEP 695 type statements, e.g. type X = int, need 3.12; ADR 0193).",
       "properties": {
-        "interp_stdout": { "type": "string", "description": "Everything the AST interpreter wrote to stdout." },
         "aot_stdout": { "type": "string", "description": "Everything the compiled binary wrote to stdout." },
         "python_stdout": { "type": "string", "description": "Everything the oracle interpreter wrote to stdout for the same source (PYTHONHASHSEED=0, so a run is reproducible)." },
-        "parity": { "type": "boolean", "description": "interpreter stdout == AOT stdout (the shared-lowering contract)." },
-        "interp_matches_python": { "type": "boolean", "description": "interpreter stdout equals CPython's after the documented comparison rules." },
         "aot_matches_python": { "type": "boolean", "description": "compiled stdout equals CPython's after the documented comparison rules." },
-        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "Computed verdict: both backends print CPython's answer (match), at least one does not (debt — wrong value, refusal, or crash), or the source is not a CPython program at all (not_applicable)." },
+        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "Computed verdict: the compiled backend prints CPython's answer (match), at least one does not (debt — wrong value, refusal, or crash), or the source is not a CPython program at all (not_applicable)." },
         "oracle_declared": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "The registry's claim. Absence of a ledger row means the claim is \"match\", so a new divergence cannot enter the corpus silently." },
         "oracle_reason": { "type": "string", "description": "What is wrong, in one sentence (required for debt and not_applicable rows)." },
         "oracle_ref": { "type": "string", "description": "The roadmap item that owns the fix (required for debt rows)." },

@@ -38,7 +38,7 @@ func TestTextLeftPercentRefusesAtTheCLI(t *testing.T) {
 				t.Fatalf("--aot: exit 2 where the front end should refuse (ADR 0166):\n%s", out)
 			}
 			if code == 0 {
-				t.Fatalf("--aot answered a text-left %% with %q; CPython says %q and the interpreter raises, so a number at exit 0 is the wrong answer (Gap R.165)\nsrc: %s", out, py, tc.src)
+				t.Fatalf("--aot answered a text-left %% with %q; CPython says %q and the record raises, so a number at exit 0 is the wrong answer (Gap R.165)\nsrc: %s", out, py, tc.src)
 			}
 			if code != 1 {
 				t.Fatalf("--aot: exit %d, want the front-end refusal's 1\noutput: %s\nsrc: %s", code, out, tc.src)
@@ -72,7 +72,7 @@ func TestRemainderAtTheCLIIsUntouchedByThePercentGuard(t *testing.T) {
 			if py != tc.want {
 				t.Fatalf("the pinned expectation is not the reference's: cpython %q, table %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunMerged(t, engine, "--file", gy)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, out)

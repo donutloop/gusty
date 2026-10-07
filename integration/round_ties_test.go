@@ -10,7 +10,7 @@ import (
 // TestRoundTiesToEvenOnAllThreeLegs is the integration half of Gap R.50 (ADR 0236).
 //
 // `round(2.5)` answered 3 on both gusty backends and 2 in CPython. That is the defect class a
-// two-backend matrix is blind to by construction: the interpreter used `math.Round` and the compiled
+// two-backend matrix is blind to by construction: the record used `math.Round` and the compiled
 // runtime used `llvm.round.f64`, two independent implementations of the same *wrong* rule, so parity
 // passed and said nothing. The only instrument that sees it is the oracle leg — hence expectations
 // here are CPython's, run rather than remembered, and the corpus program `programs/round_ties.gy`
@@ -30,9 +30,7 @@ func TestRoundTiesToEvenOnAllThreeLegs(t *testing.T) {
 		{"tie_inside_an_expression", "n = 0.5\nprint(round(n) + 10)\nprint(round(2.5) * 2)\n", "10\n4\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != tc.want {
-				t.Errorf("interpreter\n got %q\nwant %q", got, tc.want)
-			}
+			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("compile: %v", err)

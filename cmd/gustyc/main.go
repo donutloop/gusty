@@ -10,7 +10,7 @@
 //	--target <triple>   target triple for codegen (informational)
 //	--opt-level <n>     optimization level (informational)
 //	--lang              list supported language features (self-describing)
-//	--oracle <src>      run interpreter + compiled backend + CPython and compare (exit 6 divergence, 7 no verdict)
+//	--oracle <src>      run the compiled backend and CPython and compare (exit 6 divergence, 7 no verdict)
 //	--variance          print the generic variance table as JSON (L6.6)
 //	--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
 //	--version           print version
@@ -32,6 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -94,23 +95,23 @@ func run() int {
 	// a usage error (4), so the parse failure has to be handled here to say that
 	// (roadmap Gap J.3).
 	fs := flag.NewFlagSet("gustyc", flag.ContinueOnError)
-	benchSrc := fs.String("bench", "", "benchmark a source program through both backends (interpreter + AOT JIT)")
+	benchSrc := fs.String("bench", "", "benchmark a source program through the compiled backend (compile, link, run)")
 	benchFile := fs.String("bench-file", "", "benchmark a source file")
-	benchRuns := fs.Int("bench-runs", 3, "runs per backend for benchmarks")
+	benchRuns := fs.Int("bench-runs", 3, "runs per measurement for benchmarks")
 	benchOpt := fs.Int("bench-opt", 2, "AOT optimization level for benchmarks")
-	benchSuite := fs.Bool("bench-suite", false, "benchmark the built-in corpus (interpreter vs AOT)")
+	benchSuite := fs.Bool("bench-suite", false, "benchmark the built-in corpus through the compiled backend")
 	benchDir := fs.String("bench-dir", "", "benchmark every *.gy in a directory (e.g. integration/programs)")
 	benchBaseline := fs.String("bench-baseline", "", "path to a baseline JSON to gate against")
 	benchBaselineUpdate := fs.String("bench-baseline-update", "", "write the measured suite as a baseline JSON to this path")
 	benchTolerance := fs.Float64("bench-tolerance", lang.DefaultBenchTolerance, "slowdown multiplier above which a case is a regression")
 	benchMinMs := fs.Float64("bench-min-ms", lang.DefaultBenchMinMs, "ignore baseline times below this many ms (noise floor)")
-	benchGate := fs.String("bench-gate", lang.BenchGateAOT, "which leg the regression gate watches: aot, interpreter or both")
+	benchGate := fs.String("bench-gate", lang.BenchGateAOT, "which measurement the regression gate watches: aot is the only gate since the interpreter was retired (ADR 0302); any other name is a usage error")
 	evalSrc := fs.String("eval", "", "evaluate a source string")
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
 	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
 	effects := fs.String("effects", "", "print each function's effect signature (awaits / yields / raises, whether it returns a value, whether its control flow can fall off the end) for a source string; --json for the machine document, `gustyc effects <file>...` for files (L7.6)")
-	oracleSrc := fs.String("oracle", "", "run a source string through interpreter + compiled backend + CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
+	oracleSrc := fs.String("oracle", "", "run a source string through the compiled backend and CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
 	oracleFile := fs.String("oracle-file", "", "same as --oracle, for a source file")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
 	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file (functions and, since version 2, the IR-line-to-source-line table)")
@@ -131,10 +132,10 @@ func run() int {
 	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
-	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
-	aot := fs.Bool("aot", false, "run through the compiled LLVM backend (alias of --jit); --file defaults to the interpreter, so say so explicitly")
-	interp := fs.Bool("interp", false, "run through the AST interpreter explicitly (the default; conflicts with --aot/--jit)")
-	showBackend := fs.Bool("show-backend", false, "print which backend executed the program (stderr; --json reports it in the payload)")
+	jit := fs.Bool("jit", false, "accepted for compatibility: the compiled LLVM backend is the only backend (ADR 0302)")
+	aot := fs.Bool("aot", false, "accepted for compatibility: the compiled LLVM backend is the only backend (ADR 0302)")
+	interp := fs.Bool("interp", false, "retired: the AST interpreter left with ADR 0302; passing it is a usage error")
+	showBackend := fs.Bool("show-backend", false, "print which backend executed the program (stderr; --json reports it in the payload) — there is one answer, and the payload still names it")
 	gcStats := fs.Bool("gc-stats", false, "report what the garbage collector did while the program ran (collections, roots traced, roots skipped as immediates, objects freed) on stderr; --json adds a gc object to the payload")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
@@ -159,6 +160,11 @@ func run() int {
 
 	if *stdlibDir != "" {
 		lang.SetStdlibDir(*stdlibDir)
+	}
+
+	if err := retiredBackendFlags(aot, jit, interp); err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitUsage
 	}
 
 	if *lsp {
@@ -294,7 +300,7 @@ func run() int {
 		return exitOK
 	}
 	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *effects == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *debugInfoF == "" && *debugInfoFile == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
-		return replMode(*jit)
+		return replMode()
 	}
 
 	if *verify != "" {
@@ -356,27 +362,37 @@ func run() int {
 		return oracleMode(*oracleSrc, *oracleFile, *jsonOut)
 	}
 	if *evalSrc != "" || *file != "" {
-		// Which backend ran used to be invisible: --file quietly used the AST
-		// interpreter, so "I compiled this program" could mean "I interpreted it",
-		// and AOT-only bugs hid behind the default path (roadmap Gap M.2). The
-		// choice is now explicit on the command line and explicit in the output.
-		if (*aot || *jit) && *interp {
-			fmt.Fprintln(os.Stderr, "gustyc: --aot/--jit and --interp contradict each other; choose one backend")
-			return exitUsage
+		// There is one engine, so there is nothing to choose. `--aot`/`--jit` remain accepted for
+		// the scripts that already say them; `--interp` is refused rather than ignored, because a
+		// flag whose engine no longer exists must not quietly keep running (ADR 0302, Gap M.2 —
+		// which asked for the compiled leg to become the default and is paid by becoming the only
+		// leg).
+		if *showBackend { // Program output stays on stdout; this is a statement about the tool.
+			fmt.Fprintf(os.Stderr, "gustyc: backend %s\n", backendAOT)
 		}
-		backend := backendInterpreter
-		if *aot || *jit {
-			backend = backendJIT
-		}
-		src := *evalSrc
-		if *showBackend {
-			// Program output stays on stdout; this is a statement about the tool.
-			fmt.Fprintf(os.Stderr, "gustyc: backend %s\n", backend)
-		}
-		return evalSrcOrFile(src, *file, *jsonOut, backend, *gcStats, *debugFlag)
+		return evalSrcOrFile(*evalSrc, *file, *jsonOut, *gcStats, *debugFlag)
 	}
 	usage(fs)
 	return exitUsage
+}
+
+// retiredBackendFlags wires ADR 0302 — the AST interpreter's retirement — into the flag set.
+//
+// `--aot` and `--jit` are accepted and mean nothing: they ask for the engine that runs anyway, so
+// a script that already says them keeps working. `--interp` is refused as a usage error, because
+// silently ignoring a flag whose engine no longer exists would let a stale script believe it
+// exercised something it did not — the same honesty rule that made `--verify` report the checks it
+// actually ran (docs/operations.md § Exit codes, exit 4).
+func retiredBackendFlags(aot, jit, interp *bool) error {
+	if interp != nil && *interp {
+		return fmt.Errorf("--interp is retired: the AST interpreter left with ADR 0302 and the LLVM backend is the only one; drop the flag (docs/operations.md)")
+	}
+	if aot != nil && *aot || jit != nil && *jit {
+		// Asked for the compiled engine by its old names. Nothing to do — that is what runs — but
+		// the CLI reads them so the retirement is a decision the code states, not a deleted case.
+		return nil
+	}
+	return nil
 }
 
 func srcOrFile(src, file string) (string, error) {
@@ -391,178 +407,212 @@ func srcOrFile(src, file string) (string, error) {
 }
 
 // Backend names the execution engine that ran a program. It travels with every
-// machine-readable result so an agent never has to infer it from flags.
-type backend string
+// machine-readable result so an agent never has to infer it from the flag list (Gap M.2).
+//
+// There is one answer now: the LLVM AOT backend, because ADR 0302 retired the AST
+// interpreter. The member stays — a result that names the engine which produced it is a
+// self-describing result, and a script that used to branch on it should not have to notice
+// the retirement to keep working.
+type backend = string
 
-const (
-	backendInterpreter backend = "interpreter"
-	backendJIT         backend = "aot"
-)
+const backendAOT backend = lang.BackendName
 
-func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats, debug bool) int {
+// evalSrcOrFile runs one source through the one backend the language has: codegen -> llc ->
+// cc -> run the artifact in-process (lang.JITWithOptions).
+//
+// A snippet (--eval) and a program (--file, a positional) differ in exactly one courtesy. A
+// snippet's final bare expression is a question the caller asked, so it comes back as the answer:
+// `result`/`type` on the machine path, and a printed line on the human one — what a REPL is for. A
+// program is never echoed to stdout, because a program's stdout is only what the program printed
+// (ADR 0204), which is what makes `gustyc prog.gy` and `./prog` print the same bytes.
+//
+// The distinction is about *stdout*, not about who is allowed to know the value. The module reports
+// its final expression's value on the tool channel either way (fd 2), and the runner lifts that line
+// out before anything reads stderr; the human path drops it, and `--json` presents it as `result` and
+// `type` for a program as well as for a snippet. Suppressing a courtesy is not a reason to blind an
+// agent (ADR 0204's machine path, kept through ADR 0302).
+// toolFailurePayload is the machine-readable form of "the program did not make it to a run".
+//
+// It used to be three keys — an error sentence, the backend, an exit code — which pushed whoever read
+// it back into prose: to tell "my source does not parse" from "the checker refused it" from "the
+// compiler declined to lower it" from "LLVM rejected the module we emitted", an agent had to match on
+// substrings of a sentence written for a human, and the position of the problem was in none of them.
+// So the payload names the phase, and carries the spans the sentence contains as data.
+//
+// The phase vocabulary is the pipeline's own: parse, check, codegen, verify, toolchain. `error` keeps
+// its old meaning and text for callers already reading it; `ok` says what the run was not.
+func toolFailurePayload(err error, exitCode int) string {
+	msg := err.Error()
+	phase := "compile"
+	switch {
+	case strings.Contains(msg, "parse error at") || strings.Contains(msg, "unexpected token"):
+		phase = "parse"
+	case strings.Contains(msg, "error(s) in source") || strings.Contains(msg, "error at "):
+		phase = "check"
+	case strings.Contains(msg, "codegen:"):
+		phase = "codegen"
+	case exitCode == exitIRVerify:
+		phase = "verify"
+	}
+	type pos struct {
+		Line int    `json:"line"`
+		Col  int    `json:"col"`
+		Msg  string `json:"msg"`
+	}
+	var list []pos
+	for _, m := range positionRE.FindAllStringSubmatch(msg, -1) {
+		line, _ := strconv.Atoi(m[1])
+		col, _ := strconv.Atoi(m[2])
+		list = append(list, pos{Line: line, Col: col, Msg: strings.TrimSpace(m[3])})
+	}
+	if list == nil {
+		list = []pos{}
+	}
+	b, jerr := json.Marshal(map[string]any{
+		"ok": false, "phase": phase, "error": msg, "errors": list,
+		"backend": backendAOT, "exit": exitCode,
+	})
+	if jerr != nil {
+		return fmt.Sprintf("{\"error\": %q, \"backend\": %q, \"exit\": %d}", msg, backendAOT, exitCode)
+	}
+	return string(b)
+}
+
+// positionRE finds the positions a front-end sentence carries — `parse error at 1:7: ...`,
+// `error at 3:2: ...` — so a payload can hand them over as numbers.
+var positionRE = regexp.MustCompile(`(?:parse error|error) at ([0-9]+):([0-9]+): (.*)$`)
+
+func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		// Nothing to run: the CLI was used wrongly (no source, unreadable file).
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		return exitUsage
 	}
-	if backend == backendJIT {
-		// The compiled backend reports its own collector numbers, from inside the
-		// program it just built (the counters live in the target's globals). --gc-stats
-		// turns that self-report on; it lands on fd 2, which the JIT captures for us.
-		lang.SetGCReport(gcStats)
-		defer lang.SetGCReport(false)
-		jitOpts := &lang.JITOptions{}
-		if debug {
-			// `--debug` is a request about the artifact, so it is honoured on every path
-			// that builds one — including the in-process JIT, whose module and object a
-			// debugger can read when GUSTY_KEEP_LLVM keeps the scratch dir (L8.5).
-			jitOpts.Debug = &lang.DebugOptions{File: "prog.gy"}
-		}
-		res, err := lang.JITWithOptions(s, 0, jitOpts)
-		if err != nil {
-			// Which failure class this is was invisible until now: the run path wrapped
-			// every toolchain failure in a plain error and reported "your program does not
-			// compile", while `--build` reported the same llc rejection as the compiler-bug
-			// class. One event, one code, whichever flag produced it (ADR 0211).
-			exitCode := exitCompileError
-			var rejection *lang.ToolchainRejectionError
-			if errors.As(err, &rejection) {
-				exitCode = exitIRVerify
-			}
-			if jsonOut {
-				fmt.Printf("{\"error\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), backend, exitCode)
-			} else {
-				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-			}
-			return exitCode
-		}
-		// The target's stderr (uncaught-exception reports, the collector line) is
-		// forwarded unchanged: stdout stays the program's, stderr stays the tool's.
-		if res.Stderr != "" {
-			fmt.Fprint(os.Stderr, res.Stderr)
-		}
-		// The compiled backend says what its module claims, on stderr like every other
-		// statement about the tool, and as a `debug` member for the machine path (L8.5).
-		if debug && res.Debug != nil {
-			fmt.Fprintf(os.Stderr, "gustyc: %s\n", res.Debug)
-		}
-		debugMember := ""
-		if res.Debug != nil {
-			if b, jerr := json.Marshal(res.Debug); jerr == nil {
-				debugMember = fmt.Sprintf(", \"debug\": %s", b)
-			}
-		}
-		gcMember := ""
-		if gcStats {
-			if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
-				gcMember = gcJSON(st, true)
-			}
-		}
-		// The target's own exit status is the answer to "did the program work?", and
-		// until now it was thrown away: a program that died from an uncaught exception
-		// printed its traceback and then reported success, on the one path an agent
-		// scripts a compiled run through. One failure class, one code, whichever
-		// backend ran it (roadmap Gap R.17, ADR 0211).
-		exitCode := exitOK
-		if res.Code != 0 {
-			exitCode = exitRuntime
-		}
-		stderrMember := ""
-		if res.Stderr != "" {
-			stderrMember = fmt.Sprintf(", \"stderr\": %q", res.Stderr)
+	snippet := src != ""
+	// The compiled backend reports its own collector numbers from inside the program it just
+	// built (the counters live in the target's globals). --gc-stats turns that self-report on;
+	// it lands on fd 2, which the in-process runner captures for us.
+	lang.SetGCReport(gcStats)
+	defer lang.SetGCReport(false)
+	jitOpts := &lang.JITOptions{EchoResult: true}
+	if debug {
+		// `--debug` is a request about the artifact, so it is honoured on every path that builds
+		// one — including the in-process runner, whose module and object a debugger can read when
+		// GUSTY_KEEP_LLVM keeps the scratch dir (L8.5).
+		jitOpts.Debug = &lang.DebugOptions{File: "prog.gy"}
+	}
+	res, err := lang.JITWithOptions(s, 0, jitOpts)
+	if err != nil {
+		// Which failure class this is must be visible: every toolchain failure used to be wrapped
+		// in a plain error and reported as "your program does not compile", while --build reported
+		// the same llc rejection as the compiler-bug class. One event, one code, whichever flag
+		// produced it (ADR 0211).
+		exitCode := exitCompileError
+		var rejection *lang.ToolchainRejectionError
+		if errors.As(err, &rejection) {
+			exitCode = exitIRVerify
 		}
 		if jsonOut {
-			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": %d%s%s%s}\n", res.Output, backend, exitCode, gcMember, stderrMember, debugMember)
+			fmt.Println(toolFailurePayload(err, exitCode))
 		} else {
-			fmt.Print(res.Output)
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}
 		return exitCode
 	}
-	ev := lang.NewEvaluator()
-	prog, err := lang.Parse(s)
-	if err != nil {
-		return reportParseErr(err, jsonOut)
+	// The target's stderr (uncaught-exception reports, the collector line) is forwarded
+	// unchanged: stdout stays the program's, stderr stays the tool's. The REPL echo's line has
+	// already been lifted out of it by the runner, so the answer is not shown twice.
+	if res.Stderr != "" {
+		fmt.Fprint(os.Stderr, res.Stderr)
 	}
-	v, err := ev.EvalProgram(prog)
-	gc := ev.GCStats()
-	if err != nil {
-		err = ev.FinalizeTraceback(err)
-		ee, isRT := err.(*lang.EvalError)
-		tb := ""
-		if isRT && len(ee.Traceback) > 0 {
-			tb = ee.RenderTraceback()
+	if debug && res.Debug != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %s\n", res.Debug)
+	}
+	// The artifact's own exit status is the answer to "did the program work?". One failure class,
+	// one code, whichever flag ran it (roadmap Gap R.17, ADR 0211).
+	exitCode := exitOK
+	if res.Code != 0 {
+		exitCode = exitRuntime
+	}
+	members := []string{
+		fmt.Sprintf("\"output\": %q", res.Output),
+		fmt.Sprintf("\"backend\": %q", backendAOT),
+		fmt.Sprintf("\"exit\": %d", exitCode),
+	}
+	if res.Stderr != "" {
+		members = append(members, fmt.Sprintf("\"stderr\": %q", res.Stderr))
+	}
+	if res.Debug != nil {
+		if b, jerr := json.Marshal(res.Debug); jerr == nil {
+			members = append(members, "\"debug\": "+string(b))
 		}
-		// A runtime failure always carries its exception class now (ADR 0214), so the machine
-		// path exposes it as data: an agent branching on `exception` never has to match on the
-		// message text, and does not have to parse the traceback it is also given.
-		exn := ""
-		if isRT && ee.ExnType != "" {
-			exn = fmt.Sprintf(", \"exception\": %q, \"exception_message\": %q", ee.ExnType, ee.ExnMsg)
+	}
+	if gcStats {
+		if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
+			members = append(members, `"gc": `+gcObject(st))
 		}
-		if jsonOut {
-			fmt.Printf("{\"error\": %q%s, \"traceback\": %q, \"backend\": %q, \"exit\": %d%s}\n", err.Error(), exn, tb, backend, exitRuntime, gcJSON(gc, gcStats))
-		} else if tb != "" {
-			// Tracebacks are diagnostics, not program output: they belong on stderr so
-			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT
-			// backend writes its uncaught-exception report to fd 2 as well).
-			fmt.Fprintln(os.Stderr, tb)
-		} else {
-			if gcStats {
-				fmt.Fprintln(os.Stderr, gc.String())
+	}
+	// A trap carries its exception class as data (ADR 0214): an agent branching on `exception`
+	// never has to match on the message text, and does not have to parse the traceback it is
+	// also given. The report the runtime wrote to fd 2 is where the truth lives; reading it here
+	// is what keeps that contract on the compiled path, where the interpreter used to be the only
+	// place a class name existed as a value.
+	if exitCode == exitRuntime {
+		trapLine, class, message := lang.ParseTrapReport(res.Stderr)
+		members = append(members, fmt.Sprintf("\"error\": %q", trapLine))
+		if class != "" {
+			members = append(members, fmt.Sprintf("\"exception\": %q, \"exception_message\": %q", class, message))
+		}
+		members = append(members, fmt.Sprintf("\"traceback\": %q", res.Stderr))
+	}
+	// The snippet's answer, if the pair named a form for it. `result` is the text the one str/repr
+	// table produced (ADR 0258) and `type` the kind the expression could prove.
+	//
+	// A snippet that ended with a call handing back the void answers `"result": null` with
+	// `"type": "None"` — which is what the REPL path answered before ADR 0302, and what CPython's
+	// prompt prints nothing for. The empty text on the echo line is that case: the program ran, and
+	// it owed no value.
+	if res.Result != nil {
+		if res.Result.Repr == "" {
+			kind := res.Result.Kind
+			if kind == "" || kind == "NoneType" || kind == "void" {
+				kind = "None"
 			}
-			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		}
-		// The front end accepted the program and it ran; this is a runtime failure,
-		// which is exactly the class an agent needs to tell apart from its own
-		// program being malformed (exit 1) or the CLI being mis-invoked (exit 4).
-		return exitRuntime
-	}
-	// Echoing the last value is a REPL courtesy for *snippets*, not a program feature.
-	// The distinction is where the source came from, not what it contains: `--eval "x = 1 +\n2\nx"`
-	// is a snippet, so it echoes 3; `gustyc --file prog.gy` is a program, and a program's stdout is
-	// only what the program printed — matching `python prog.py`, and matching the compiled backend,
-	// which never echoed anything (roadmap Gap R.13, ADR 0204). The earlier narrowing (only a bare
-	// final expression, only a non-`None` value) still left `--file` appending `10` to a program that
-	// ends in `f(5)`, so the same source had two different stdouts depending on which backend ran it.
-	finalExpr := false
-	var lastExpr lang.Expr
-	if n := len(prog.Stmts); n > 0 {
-		if es, ok := prog.Stmts[n-1].(*lang.ExprStmt); ok {
-			finalExpr, lastExpr = true, es.Expr
+			members = append(members, fmt.Sprintf("\"result\": null, \"type\": %q", kind))
+		} else {
+			members = append(members, fmt.Sprintf("\"result\": %q, \"type\": %q", res.Result.Repr, res.Result.Kind))
 		}
 	}
-	// A snippet ending in a verdict echoes the verdict, not the number it is stored as:
-	// `gustyc --eval '"y" == "y"'` answers True and --json names its type bool, which is
-	// the machine-readable half of L11.1's "bools are values" row (ADR 0257).
-	boolEcho := ""
-	if finalExpr && !ev.IsNone(v) && ev.IsBoolExpr(lastExpr) {
-		boolEcho = ev.BoolText(v)
-	}
-	snippet := src != ""
-	isNone := ev.IsNone(v)
 	if jsonOut {
-		// The backend is part of the result, not an inference from the flag list:
-		// an agent that asked for AOT must be able to *see* it got AOT (Gap M.2).
-		if !finalExpr || isNone {
-			fmt.Printf("{\"result\": null, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.TypeOf(v), backend, gcJSON(gc, gcStats))
-		} else if boolEcho != "" {
-			fmt.Printf("{\"result\": %q, \"type\": \"bool\", \"backend\": %q, \"exit\": 0%s}\n", boolEcho, backend, gcJSON(gc, gcStats))
-		} else {
-			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.Repr(v), ev.TypeOf(v), backend, gcJSON(gc, gcStats))
-		}
-	} else if snippet && finalExpr && !isNone {
-		if boolEcho != "" {
-			fmt.Println(boolEcho)
-		} else {
-			fmt.Println(ev.Repr(v))
-		}
+		fmt.Println("{" + strings.Join(members, ", ") + "}")
+		return exitCode
 	}
-	if gcStats && !jsonOut {
-		// The report describes the tool, so it never pollutes the program's stdout.
-		fmt.Fprintln(os.Stderr, gc.String())
+	fmt.Print(res.Output)
+	if snippet && res.Result != nil && res.Result.Repr != "" {
+		// The REPL courtesy, on stdout: an interactive caller typed an expression and is owed its
+		// value, the way CPython's prompt writes repr(value). It is a tool statement made *for* the
+		// reader, which is why it goes where the reader is looking and nowhere in --json's output
+		// member (that stays the program's own bytes). A value that was the void prints nothing —
+		// neither the old REPL nor CPython's announces a None nobody asked for. A *program* is never
+		// echoed even when the module reported a value for its last expression: `gustyc prog.gy` and
+		// `./prog` owe the same bytes, and that is what the flag `snippet` remembers (ADR 0204).
+		fmt.Println(res.Result.Repr)
 	}
-	return exitOK
+	// The collector's line is not printed twice. The compiled program reports its own counters on
+	// fd 2 (rt_gc_report), and that line is forwarded above with the rest of the tool channel; the
+	// CLI's job is to add the *data* form under --json, not to render the same numbers a second time
+	// in its own words (ADR 0181: one report per run, on the tool channel).
+	return exitCode
+}
+
+// gcObject is the JSON text of a collector self-report, used for the `gc` member.
+func gcObject(st lang.GCStats) string {
+	b, err := json.Marshal(st)
+	if err != nil {
+		return "null"
+	}
+	return string(b)
 }
 
 // reportLine picks the collector self-report out of a program's stderr, so --json can
@@ -746,6 +796,15 @@ func emitAST(src string, jsonOut bool) int {
 //
 //	{"ok": false, "phase": "compile", "error": "...", "exit": N}
 func reportCompileErr(err error, jsonOut bool) int {
+	// A front-end rejection reaching this entry point still reports its phase as `parse`, with spans.
+	// `--eval` and `--file` compile through one call, so a typo and an unlowerable construct both arrive
+	// here, and until now both were labelled `phase: "compile"` with a bare sentence — an agent reading
+	// the payload could not tell "my source does not parse" from "the compiler declined my program",
+	// which is the exact distinction the phase field exists to carry (docs/operations.md § JSON output).
+	var pes *lang.ParseErrors
+	if errors.As(err, &pes) || strings.HasPrefix(err.Error(), "parse error") || strings.Contains(err.Error(), "unexpected token") {
+		return reportParseErr(err, jsonOut)
+	}
 	if jsonOut {
 		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
 		return exitCompileError
@@ -783,6 +842,17 @@ func reportParseErr(err error, jsonOut bool) int {
 		}
 		list := []pos{}
 		first := err.Error()
+		if !isForest {
+			// A wrapped front-end message — `jit: parse error at 1:1: unexpected token` — still has a
+			// position in it, and the payload is where an agent reads that position from. Pull it out
+			// rather than hand back a payload with an empty `errors` list and let everyone grep stderr.
+			if m := parseAtRE.FindStringSubmatch(first); m != nil {
+				line, _ := strconv.Atoi(m[1])
+				col, _ := strconv.Atoi(m[2])
+				list = append(list, pos{Line: line, Col: col, Msg: strings.TrimSpace(m[3])})
+				first = fmt.Sprintf("%d:%d: %s", line, col, strings.TrimSpace(m[3]))
+			}
+		}
 		if isForest {
 			for _, pe := range pes.Errors {
 				list = append(list, pos{Line: pe.Span.Line, Col: pe.Span.Col, Msg: pe.Msg})
@@ -810,6 +880,11 @@ func reportParseErr(err error, jsonOut bool) int {
 	return exitCompileError
 }
 
+// parseAtRE reads the position back out of a front-end sentence — `parse error at 1:7: unexpected
+// token` — for the cases where the error reached the CLI already wrapped, so the structured payload
+// still carries a line and a column instead of only prose.
+var parseAtRE = regexp.MustCompile(`parse error at ([0-9]+):([0-9]+): (.*)$`)
+
 func usage(fs *flag.FlagSet) {
 	fmt.Printf(`gustyc — gusty language CLI/REPL
 Usage: gustyc [flags] [<src>]
@@ -827,7 +902,7 @@ Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier ve
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
 Debug info: gustyc --debug-info <src> [--json]          # the compiled line table: functions, IR-line to source-line rows (L8.5)
             gustyc --build out src.gy --debug           # !dbg records + .debug_line, read back with llvm-dwarfdump and reported
-Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on both backends
+Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on the compiled backend
             gustyc --bench-dir integration/programs        # benchmark the parity programs too
             gustyc --bench-suite --bench-baseline-update benchmarks/baseline.json   # record a baseline
             gustyc --bench-suite --bench-baseline benchmarks/baseline.json          # gate (exit 5 = slower than baseline)
@@ -849,9 +924,9 @@ func listLang() {
 	fmt.Printf(`gusty language features (%s)
 statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, match, try/except/finally, raise, class, import
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda, comprehension (list [x for x in it if c] / set {x for x in it if c} / dict {k: v for k in it if c})
-operators: every operator is a question about the operand's KIND, binary or unary. An operator with no rule for the pair raises CPython's own TypeError at run time — exit 3, catchable by except TypeError: — and never answers with a number. That includes unary -: -"hi", -None, -[1], -{"a":1}, -{1}, -C() each raise bad operand type for unary -: '<kind>' naming the operand's real kind (both backends; ADR 0266, docs/language.md § Unary minus), and abs(): abs("hi"), abs(None), abs([1]), abs({"a":1}), abs({1}), abs(C()) raise bad operand type for abs(): '<kind>' through the same door, so the two operators can never name the same operand differently (both backends; ADR 0271, docs/language.md § abs)
+operators: every operator is a question about the operand's KIND, binary or unary. An operator with no rule for the pair raises CPython's own TypeError at run time — exit 3, catchable by except TypeError: — and never answers with a number. That includes unary -: -"hi", -None, -[1], -{"a":1}, -{1}, -C() each raise bad operand type for unary -: '<kind>' naming the operand's real kind (the compiled backend; ADR 0266, docs/language.md § Unary minus), and abs(): abs("hi"), abs(None), abs([1]), abs({"a":1}), abs({1}), abs(C()) raise bad operand type for abs(): '<kind>' through the same door, so the two operators can never name the same operand differently (the compiled backend; ADR 0271, docs/language.md § abs)
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
-patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (both backends; ADR 0235)
+patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (the compiled backend; ADR 0235)
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 effects: async def calls are deferred until awaited; the checker proves the discipline and --effects prints each function's signature (await, yield, raise / returns / falls-through) — see gustyc --effects
 values: %s
@@ -1050,8 +1125,9 @@ func runEffects(src string, files []string, jsonOut bool) int {
 	return exitOK
 }
 
-// benchMode runs a source program through both the AST interpreter and the
-// AOT JIT, reports wall-clock timings, and prints a human or JSON report.
+// benchMode runs a source program through the one execution backend the language has —
+// the LLVM AOT artifact, run in-process — reports wall-clock timings, and prints a human
+// or JSON report (ADR 0302: the interpreter leg and the speedup ratio it produced are gone).
 func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 	src, err := srcOrFile(src, file)
 	if err != nil {
@@ -1076,11 +1152,10 @@ func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 	} else {
 		fmt.Printf("benchmark: %d runs, AOT opt=%d\n", res.Runs, res.OptLevel)
 		for _, p := range res.Profile {
-			fmt.Printf("  interpreter profile: %-6s %8.3f ms\n", p.Phase, p.Ms)
+			fmt.Printf("  pipeline: %-8s %8.3f ms\n", p.Phase, p.Ms)
 		}
-		fmt.Printf("  interpreter: total %8.3f ms  mean %8.3f ms  best %8.3f ms\n", res.Interpreter.TotalMs, res.Interpreter.MeanMs, res.Interpreter.BestMs)
-		fmt.Printf("  aot:         total %8.3f ms  mean %8.3f ms  best %8.3f ms\n", res.AOT.TotalMs, res.AOT.MeanMs, res.AOT.BestMs)
-		fmt.Printf("  speedup (interp best / aot best): %.2fx\n", res.Speedup)
+		fmt.Printf("  run:   total %8.3f ms  mean %8.3f ms  best %8.3f ms\n", res.AOT.TotalMs, res.AOT.MeanMs, res.AOT.BestMs)
+		fmt.Printf("  build: total %8.3f ms  (codegen + llc + cc, once)\n", res.Build.TotalMs)
 	}
 	return exitOK
 }
@@ -1095,11 +1170,20 @@ type benchSuiteReport struct {
 }
 
 // benchSuiteMode measures a corpus (built-in, or every *.gy in --bench-dir) on
-// both backends, optionally gates it against a baseline, and reports.
+// the compiled backend, optionally gates it against a baseline, and reports.
 //
 // Exit codes: 0 when clean, 5 (exitBenchRegression) when the gate fires, 1 on a
 // tooling error (bad baseline path, unreadable directory).
 func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, opt int, tolerance, minMs float64, gate string, jsonOut bool) int {
+	// A gate name is an argument, and an unknown argument is a usage error (exit 4), not a silent
+	// no-op: ADR 0302 retired the engine whose gate this was, and a script still passing the retired
+	// name must find out at the flag rather than discovering later that its gate watched nothing
+	// (the same rule `--interp` follows, and the reason lang.CompareBenchSuite's permissive default
+	// is not enough on its own).
+	if gate != "" && gate != lang.BenchGateAOT {
+		fmt.Fprintf(os.Stderr, "gustyc: --bench-gate %q is not a gate: %q is the only measurement the regression gate watches, since ADR 0302 retired the engine the other gates compared\n", gate, lang.BenchGateAOT)
+		return exitUsage
+	}
 	cases := []lang.BenchCase{}
 	if useCorpus {
 		cases = append(cases, lang.BenchCorpus()...)
@@ -1156,15 +1240,15 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 	}
 
 	fmt.Printf("benchmark suite: %d cases, %d runs, AOT opt=%d\n", suite.Totals.Cases, suite.Runs, suite.OptLevel)
-	fmt.Printf("  %-22s %10s %10s %8s\n", "case", "interp ms", "aot ms", "speedup")
+	fmt.Printf("  %-22s %10s %10s\n", "case", "run ms", "build ms")
 	for _, c := range suite.Cases {
 		if c.Error != "" {
-			fmt.Printf("  %-22s %10s %10s %8s   %s\n", c.Name, "-", "-", "-", c.Error)
+			fmt.Printf("  %-22s %10s %10s   %s\n", c.Name, "-", "-", c.Error)
 			continue
 		}
-		fmt.Printf("  %-22s %10.3f %10.3f %7.2fx\n", c.Name, c.Interpreter.BestMs, c.AOT.BestMs, c.Speedup)
+		fmt.Printf("  %-22s %10.3f %10.3f\n", c.Name, c.AOT.BestMs, c.Build.BestMs)
 	}
-	fmt.Printf("  %-22s %10.3f %10.3f %7.2fx  (geomean)\n", "TOTAL", suite.Totals.InterpreterMs, suite.Totals.AOTMs, suite.Totals.GeomeanSpeedup)
+	fmt.Printf("  %-22s %10.3f %10.3f\n", "TOTAL", suite.Totals.AOTMs, suite.Totals.BuildMs)
 	if baselinePath != "" {
 		fmt.Printf("  gate: %s leg=%s (tolerance %.2fx, noise floor %.2f ms)\n", baselinePath, gate, tolerance, minMs)
 		for _, r := range regressions {

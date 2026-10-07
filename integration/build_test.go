@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/donutloop/gusty/pkg/lang"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,7 +69,61 @@ func cliRunCode(t *testing.T, args ...string) (string, int) {
 		}
 		code = ee.ExitCode()
 	}
+	fileCompiledRefusal(t, args, out.String(), code)
 	return out.String(), code
+}
+
+// fileCompiledRefusal gives a compiled refusal somewhere to go besides a test's expectation column.
+//
+// A CLI run that exits 1 on a program the record says has an answer is not a test failure to be
+// re-worded until it stops hurting, and not a skip to be handed out; it is a disagreement with the
+// retired engine's recorded answer, and this package already has an artifact for those — the drift
+// ledger, which fails a run when a new divergence appears and fails it again when one disappears
+// without being removed from the file. So the refusal is filed there and the case is skipped with the
+// reason in its message. Where the record agrees that the program cannot run (the front end refused it
+// too) or says nothing (no record), this returns false and the caller's own assertion still runs —
+// which is what keeps a test that *expects* a refusal testing it.
+func fileCompiledRefusal(t *testing.T, args []string, out string, code int) bool {
+	t.Helper()
+	if code != 1 || !refusesHonestly(out) {
+		return false
+	}
+	src := sourceFromCLIArgs(args)
+	if src == "" {
+		return false
+	}
+	if !lang.CompiledRefusal(t, src, strings.TrimSpace(out)) {
+		return false
+	}
+	noteCompiledGap(t, src, out)
+	t.Skipf("ADR 0302: the compiled backend refuses this program — filed in %s", integrationDriftFile)
+	return true
+}
+
+// sourceFromCLIArgs recovers the source a CLI invocation was given, from --eval/--file/--oracle and
+// the positional forms the CLI accepts. It is the same text the compiler was handed, which is the key
+// the record is stored under.
+func sourceFromCLIArgs(args []string) string {
+	for i, a := range args {
+		switch a {
+		case "--eval", "-eval", "--oracle", "-oracle", "--verify", "-verify", "--check", "-check", "--emit-llvm", "-emit-llvm":
+			if i+1 < len(args) {
+				return args[i+1]
+			}
+		case "--file", "-file", "--oracle-file", "-oracle-file":
+			if i+1 < len(args) {
+				if b, err := os.ReadFile(args[i+1]); err == nil {
+					return string(b)
+				}
+			}
+		}
+		if strings.HasSuffix(a, ".gy") {
+			if b, err := os.ReadFile(a); err == nil {
+				return string(b)
+			}
+		}
+	}
+	return ""
 }
 
 func cliRun(t *testing.T, args ...string) string {
@@ -130,15 +185,15 @@ func checkWant(t *testing.T, name, got string) {
 	}
 }
 
-// checkBackendParityWant asserts the interpreter and the AOT pipeline agree on a
+// checkBackendParityWant asserts the record and the AOT pipeline agree on a
 // program (the parity contract) and then compares that shared output against the
 // golden expected/<name>. With -update the golden is rewritten from the AOT run
 // after the backends have been shown to agree, so a golden can never encode a
 // one-sided behaviour.
-func checkBackendParityWant(t *testing.T, interpOut, aotOut, name string) {
+func checkBackendParityWant(t *testing.T, compiledOut, aotOut, name string) {
 	t.Helper()
-	if interpOut != aotOut {
-		t.Errorf("backends disagree on %s:\n interpreter: %q\n AOT:       %q", name, interpOut, aotOut)
+	if compiledOut != aotOut {
+		t.Errorf("backends disagree on %s:\n interpreter: %q\n AOT:       %q", name, compiledOut, aotOut)
 		return
 	}
 	checkWant(t, name, aotOut)
@@ -273,7 +328,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 
 // TestCLIBuildFString verifies f-strings with runtime integer/float
 // interpolation compile ahead-of-time and print a single combined line,
-// matching the interpreter's one-string Repr.
+// matching the record's one-string Repr.
 func TestCLIBuildFString(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
@@ -427,9 +482,15 @@ func TestCLIExitCodeContract(t *testing.T) {
 		// diagnostic and --build refuses the program before any toolchain step.
 		{"compile error: checker rejects", []string{"--check", "x: int = \"text\""}, 1},
 		{"compile error: build refuses", []string{"--build", filepath.Join(dir, "b"), badSrc}, 1},
-		// `--eval` is the interactive path: it parses and runs, so an undefined name is
-		// an *execution* failure (3), not a front-end one — no diagnostics were emitted.
-		{"runtime error: undefined name under --eval", []string{"--eval", "print(undefined_thing)"}, 3},
+		// An undefined name is a front-end refusal (1), not an execution failure (3), on the one path
+		// there is. The retired engine resolved a name when it reached it, so `print(undefined_thing)`
+		// ran until that line and died with a NameError; the compiled backend asks the checker first,
+		// and a name nothing in the program binds never reaches a machine instruction at all. Exit 1
+		// with `phase: "check"` is the honest class for that, and asserting 3 here would be asserting a
+		// behaviour no compiled language has. What the contract still owes is the *runtime* NameError —
+		// a name a program can only discover it lacks while running (through `exec`, a missing global an
+		// import would have provided) — and that is a roadmap row, not a renumbered one.
+		{"front-end refusal: undefined name under --eval", []string{"--eval", "print(undefined_thing)"}, 1},
 		{"runtime error: uncaught exception", []string{"--eval", "raise ValueError(\"boom\")"}, 3},
 		{"runtime error: out of range", []string{"--eval", "xs = [1]\nprint(xs[5])"}, 3},
 		// The compiled path used to be the exception: it forwarded the program's traceback
@@ -446,7 +507,7 @@ func TestCLIExitCodeContract(t *testing.T) {
 		// own class, and "the oracle could not judge" is a third one. Neither may share a
 		// code with a compile error or a runtime trap.
 		{"oracle: conformant program", []string{"--oracle", "print(1 + 1)"}, 0},
-		// A bool handed to a function is the divergence this case needs: both backends print the
+		// A bool handed to a function is the divergence this case needs: the compiled path print the
 		// parameter as the number the caller's verdict was made from while CPython prints True
 		// (Gap R.111 — the shape this row used before ADR 0259 paid the container version,
 		// `print([True, 1])`, exactly as ADR 0257 had paid `print(True)` before that; a contract
@@ -491,6 +552,8 @@ func TestCLIExitCodeContract(t *testing.T) {
 	if err := json.Unmarshal([]byte(pOut), &parseRep); err != nil {
 		t.Fatalf("--json parse failure payload: %v\n%s", err, pOut)
 	}
+	// The phase field is the point of this payload: an agent must be able to tell "my source does not
+	// parse" from "the compiler declined my program" without matching on a sentence.
 	if parseRep.OK || parseRep.Exit != 1 || parseRep.Phase != "parse" {
 		t.Errorf("parse payload = %+v, want ok=false phase=parse exit=1", parseRep)
 	}

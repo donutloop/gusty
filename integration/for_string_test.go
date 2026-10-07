@@ -17,9 +17,7 @@ func TestStringIterationAgreesOnEveryPath(t *testing.T) {
 	src := readProgramSrc("for_string_chars")
 	want := "a\nb\nc\nx\ny\n1\na\n2\n< h >\n< i >\nab\ncd\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

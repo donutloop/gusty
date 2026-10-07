@@ -18,16 +18,17 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 
 | Flag | Meaning |
 |------|---------|
-| `--file <path>` | run a source file (with the interpreter unless `--aot`/`--jit` is given; the payload says which) |
-| `--eval <src>` | compile-and-run source from argv |
-| `--aot` | run through the compiled LLVM backend (alias of `--jit`); **`--file` alone is the interpreter's**, so a measurement of the compiled leg that does not say `--aot` measured the other engine |
-| `--interp` | run through the AST interpreter explicitly; conflicts with `--aot`/`--jit` (usage error, exit 4) |
-| `--show-backend` | print `gustyc: backend <interpreter\|aot>` on stderr (stdout stays the program's) |
+| `--file <path>` | compile and run a source file — the only thing `--file` has ever done since ADR 0302 |
+| `--eval <src>` | compile and run source from argv (same backend, in-process; the REPL is this path with a prompt) |
+| `--aot` | accepted and ignored: the compiled LLVM backend is the only backend. Kept so no existing script breaks — a flag that silently selects nothing is honest here, a flag that *disappears* is not |
+| `--jit` | accepted and ignored, as `--aot` |
+| `--interp` | **retired** (ADR 0302): a usage error naming the retirement and pointing at `--aot`, not a silent no-op — a script that believes it chose the interpreter must find out at the flag, not from a wrong answer |
+| `--show-backend` | print `gustyc: backend aot` on stderr, so a transcript records which engine answered even though there is only one (stdout stays the program's) |
 | `--gc-stats` | report what the garbage collector did while the program ran (`collections`, `roots`, `skipped`, `marked`, `freed`, `live`, and for the compiled backend `top`), on stderr for either backend; with `--json` the same numbers arrive as a `gc` member of the payload (L7.2, ADR 0181) |
 | `--emit-llvm` | print the emitted LLVM IR, from a **source string** (`--emit-llvm "$(cat prog.gy)"`); a path is parsed as source and answers a parse error |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
-| `--oracle <src>` | run `<src>` through **three** engines — AST interpreter, compiled backend, CPython — and report whether gusty behaves like Python (`--json` for the leg-by-leg report; exit 6 divergence, 7 no verdict) (L11.9, ADR 0186) |
+| `--oracle <src>` | run `<src>` through **two legs** — the compiled backend and CPython — and report whether gusty behaves like Python (`--json` for the leg-by-leg report; exit 6 divergence, 7 no verdict) (L11.9, ADR 0186; the interpreter leg retired with ADR 0302, and the verdict is now `oracle: match` with no `parity` member, because parity was an engine-vs-engine claim and there is one engine) |
 | `--oracle-file <path>` | same, reading the program from a file |
 | `--verify-llvm <src>` | compile `<src>` and report LLVM's module-verifier verdict for the emitted module (L8.2) |
 | `--verify-llvm-file <path>` | same, reading the program from a file |
@@ -102,7 +103,7 @@ places" — if two positions are wrong, you are told twice.
 ADR 0205). `def print`, `def range`, `def len` are legal, and the program's definition wins from its
 `def` onwards. A module-level call to that name *above* the definition is refused —
 `"range" is a built-in here, but this module defines it below, at line 5: … move the definition above
-every use, or rename it` — because that is the one place the interpreter (execution order) and the
+every use, or rename it` — because that is the one place the record (execution order) and the
 compiled backend (definitions visible module-wide) would run different programs from one file. Calls
 inside function bodies and methods named after built-ins are unaffected. For a code generator: emit
 your `def`s before the code that calls them, or rename.
@@ -112,10 +113,10 @@ ADR 0209). Which runtime helper definitions a module carries is derived from wha
 *references*, so `llc` should never be the one to notice a missing `@rt_*` helper — an LLVM rejection is
 classified as a compiler bug by the exit-code contract, and shapes that used to trigger one are either
 lowered or refused. Related: iterating a string computed at run time is refused with a message naming
-the interpreter as the backend that runs it, and pointing at the shapes that do work (string literals,
+the record as the backend that runs it, and pointing at the shapes that do work (string literals,
 constant indexing) rather than compiling to a loop that silently runs zero times (Gap R.16).
 
-**`for x in <integer>` is a repeat count** (Gap R.14, ADR 0207): it binds `0 … n-1` in both backends,
+**`for x in <integer>` is a repeat count** (Gap R.14, ADR 0207): it binds `0 … n-1` in the compiled backend,
 `n` may be any integer expression, and `n <= 0` runs the body zero times. CPython rejects the construct,
 so `programs/for_int_count.gy` carries an oracle-excluded ledger row. For a code generator the useful
 fact is that it needs no built-in: a module that has claimed the name `range` for itself (ADR 0205) can
@@ -148,7 +149,7 @@ under `Analyze`, not in the program.
 
 **A built-in name is shadowable, and the program's definition wins** (Gap R.6, ADR 0199).
 `def str`, `def float`, `def len`, `def abs` are legal, and after them `str(1)` calls the program's
-function on both backends. Agents should not warn themselves out of this: it is not a lint, it is
+function on the compiled backend. Agents should not warn themselves out of this: it is not a lint, it is
 the language (CPython behaves the same way). What changed is that codegen no longer reads a call
 through the built-in's *meaning* — its float shape, its constant fold, its `%s` print — for a name
 the program owns; the fold still applies when nothing shadows the name, so an ordinary program pays
@@ -260,7 +261,7 @@ is treated as source text. A name ending in `.gy` that does **not** exist is a u
 runtime `undefined name prog` — a shell mistype should not be reported as a bug in the user's
 code.
 
-**Runtime failures (both backends).** An exception that escapes the program is reported on
+**Runtime failures (the compiled backend).** An exception that escapes the program is reported on
 **stderr** and exits non-zero — never exit 0 with silence, which is how a trapped program
 previously looked successful to a script:
 
@@ -271,14 +272,14 @@ IndexError: index out of range
 ```
 
 The frame line names the file, the line of the raise, and the enclosing function
-(`<module>` at top level), and both backends agree on it: the interpreter prints one frame
+(`<module>` at top level), and the compiled backend agrees on it: the record prints one frame
 per stack level (so a raise inside a called function shows the call site too), while the
 compiled report shows the raise site's own frame — the call-stack frames need the line
 tables of L8.5 (roadmap Gap K.8). The last line is identical on both. stdout stays clean, so
 `prog 2>/dev/null | ...` sees only program output. With `--json` the eval path emits
 `{"error": ..., "traceback": ..., "exit": 3}` on stdout. Runtime errors are typed
 (`IndexError` / `KeyError` / `TypeError` / …), so `except IndexError:` catches them on
-both backends — see `docs/language.md` § Exceptions.
+the compiled backend — see `docs/language.md` § Exceptions.
 
 
 ## Debug symbols / source maps (AOT)
@@ -527,14 +528,14 @@ is Gap R.131, not a new finding.
 
 The other half of `round`, the digit count, is the case where *not* refusing is the contract: a
 digit count that is not an integer (`print(round(2.345, 1.5))`) is a program CPython stops on, so
-both engines raise its `TypeError` — exit 3, catchable by `except TypeError` on each — and neither
+both legs raise its `TypeError` — exit 3, catchable by `except TypeError` on each — and neither
 returns exit 1, which belongs to programs the reference rejects. `--oracle` scores such a program
 `not_applicable`: with the reference raising, there is no stdout opinion to match.
 
 The third pair of the same family is `floor` / `ceil` / `sqrt` (ADR 0264, roadmap Gap R.51), and it moved
 four programs from a wrong answer to a classified one. `sqrt(-1)`, `floor("a")`, `ceil(None)`,
 `floor([1])`, `floor(float("nan"))` and `ceil(float("inf"))` are all programs the reference runs and stops
-on, so both engines **raise** — exit 3, with CPython's own sentence (`math domain error`,
+on, so both legs **raise** — exit 3, with CPython's own sentence (`math domain error`,
 `must be real number, not str`, `cannot convert float NaN to integer`,
 `cannot convert float infinity to integer`), each catchable by its class (`except ValueError` /
 `except TypeError` / `except OverflowError`, verified on both legs). None of them is exit 1, and the arity
@@ -568,7 +569,9 @@ handle); the answer **handed to a function** is parity surface since
 `(payload, tag)` pair and the answer's kind comes back in the word the callee stores beside its own `return`,
 `Gap R.139`, ADR 0273); what stays filed beside them is the same name read back where the position asks for one
 static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`), a pair-shaped value handed to a
-position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value`), and the tuple
+position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value` — the list element
+`[n]` left that family when the container builders learned to ask the tag, ADR 0306, and is parity surface in
+`pair_container_test.go`), and the tuple
 unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
 and the interpreted leg's answer against the compiled leg's exit 1. The same shape one statement earlier — the
 assignment that changes a variable's state from int to float — is parity surface since
@@ -605,7 +608,7 @@ the reference's text-`%` (`Gap R.165`, `"%.2f" % 3.5` prints `0.0`) — each
 pinned with its exit class in `integration/float_state_test.go` and `integration/float_argument_test.go`.
 Three of that list are paid surface now: the forwarded parameter (`Gap R.161`, ADR 0277), the flooring
 operators (`Gap R.162`, ADR 0278) and combining a floored answer with more arithmetic (`Gap R.166`, ADR 0279) —
-`print(floorit(5.0))` is `2.0` and `print(modop(7.5, 2))` is `1.5` on both engines, `floorit(5)` still `2`, and
+`print(floorit(5.0))` is `2.0` and `print(modop(7.5, 2))` is `1.5` on both legs, `floorit(5)` still `2`, and
 `def identity(v): return (v // 2) * 2 + (v % 2)` answers `7.5` for `identity(7.5)`; and so is the state bound to
 a name inside a forwarding frame (`Gap R.164`, ADR 0280) — `def outer(x): y = twice(x); return y` answers
 `5.0`, `return (v // 2) + other(v)` answers `4.5`, and a name the pair road bound is rooted for as long as the
@@ -616,10 +619,11 @@ beside the call. the pair door asks
 by the tag the argument arrived with, so one `def f(v): return v // 0` says "integer division or modulo by
 zero" for `f(5)` and "float floor division by zero" for `f(5.0)` (`%` has its own pair: "integer modulo by
 zero" and "float modulo"); all four exit non-zero, are catchable by `except ZeroDivisionError:`, and are the
-wording the `--json` report's `message` member carries unchanged from the reference. The same door is the reason a program must
-say which engine it wants: `--file` alone runs the interpreter, so the compiled leg of any of these shapes is
-`--aot --file <path>`, and `--json`'s `backend` member (or `--show-backend`) is how a measurement proves which
-engine produced it. The negation of a text was worse and is now paid:
+wording the `--json` report's `message` member carries unchanged from the reference. There is no longer a
+choice of engine to record: `--file`, `--eval` and the REPL all compile, and `--json`'s `backend` member (or
+`--show-backend`) says `aot` so a transcript still carries which engine produced a number — worth keeping for
+exactly the reason this paragraph used to exist, and as the field an agent pins its expectations against. The
+negation of a text was worse and is now paid:
 `print(-"hi")` used to answer `-281474976710658` interpreted and `0` compiled at exit 0, and both engines now
 raise the reference's `TypeError: bad operand type for unary -: 'str'` at **exit 3**, catchable by
 `except TypeError:` on each leg, for a text, `None`, a container literal, an instance (which names its own
@@ -635,8 +639,11 @@ three-engine program is `programs/abs_names_its_kind.gy`). What the same sweep f
 filed with its own ID: a tuple's operand-type sentence says `'list'` on the interpreted leg (`Gap R.141`,
 waiting on L11.3), a builtin or an imported module used as a *value* is exit 2 compiled and `NameError`
 interpreted (`Gap R.150`), and a `lambda` in a numeric position reaches `sub i32 0, lambda_0` — also exit 2
-(`Gap R.151`). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
-`gustyc --file <path> -aot` — a bare `--file` is the interpreter's default, and `-aot` written after the
+(`Gap R.151`). Before ADR 0302 each of these had a second number, one per engine, and reproducing one meant
+forcing the leg with `--interp`/`--aot`; there is one number now and `gustyc --file <path>` produces it. Where
+a shape's history matters — an answer the record gave and the compiler refuses or gets wrong — the two
+answers live side by side in the ledgers (`testdata/interpreter-golden-drift.json`,
+`integration/testdata/cpython-debt.json`) rather than in a flag.
 path is parsed as that flag's value rather than as the compiled leg.
 
 ## Emitted IR
@@ -645,57 +652,85 @@ Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op
 statement, integer arithmetic, comparisons, and `print` (via `printf`) are all
 lowered to opaque-pointer IR.
 
-## Lambda (both interpreter and AOT codegen)
+## Lambda (compiled backend)
 
-`lambda params: expr` is an anonymous single-expression function, lowered to
-a closure exactly like `def`:
+`lambda params: expr` is an anonymous single-expression function:
 - inline call: `(lambda x: int: x + 1)(5)` -> 6
 - bound form: `f = lambda x: int: x * 2` then `f(3)` -> 6
-- the AOT codegen emits an anonymous FuncDef (`lambda_N`) at module level and
-  a call to it; the interpreter allocs a closure capturing the environment.
-- interpreter-only: `Attr` string/list/dict methods, classes, generators.
+- codegen emits an anonymous FuncDef (`lambda_N`) at module level and a call to it. The generated name stays
+  where it belongs: an arity diagnostic says `<lambda>`, the name the reference uses and the only one the
+  programmer recognises — `too many arguments for lambda_0` blames a name nobody wrote (ADR 0302).
+- a lambda is a *call site*, not a value: passing one to a higher-order function needs a function value, and
+  that is the `L11.1`/function-as-value debt, refused by name.
 
-## Dict methods (both paths, constant receivers)
+## Dict methods (constant receivers)
 
 `{1: 2, 3: 4}.keys()` and `.values()` on constant dict literals fold to
 lists in the AOT codegen (`len`/`sum` work); `.items()` now ships in both paths on constant dict literals
-(`len({1: 2, 3: 4}.items())` -> 2); non-constant receivers stay
-interpreter-only.
+(`len({1: 2, 3: 4}.items())` -> 2); a receiver whose contents the compiler cannot see is refused by naming
+the missing runtime container door (`Gap I.2`) — the ADR 0301 method table answers `keys`/`values`/`items` on a
+variable only once the container has a run-time shape to ask about.
 
-## Interpreter-only language surface
+## One backend, and what it does not lower
 
-Classes (with **inheritance** via `class Child(Base):` and `super()`, see
-`docs/language.md`), **modules/imports** (`import mod` loads `mod.gy` and
-binds `mod` as a namespace with `mod.name` / `mod.fn(args)` access),
-`try`/`except`, generators (`yield`), lists, `len`, **closures**
-(nested `def`s capturing the enclosing scope, e.g. `m = add(1); m(2)`),
-**decorators** (`@dec def f` -> `f = dec(f)` at def time), and **gradual
-runtime type checking** (annotations on variables, parameters, and returns
-are enforced with a `type mismatch` error; `any` accepts anything) are
-implemented in the interpreter used by `--eval` and the REPL; they are not
-yet lowered by the AOT LLVM backend. They are fully represented in the JSON
-AST dump (`--emit-ast`) with no schema change.
+There used to be a section here called "Interpreter-only language surface", listing the constructs the LLVM
+path could not build and telling the reader to use `--eval`, where the AST interpreter answered them. That
+escape hatch is gone (ADR 0302), so the list became the language's real capability boundary and is stated as
+one:
+
+| Construct | State on the compiled backend | Owner |
+|---|---|---|
+| classes, inheritance, `super()`, methods, dunder methods | works | — |
+| decorators (`@dec def f`) | works — `f = dec(f)` at def time, and the decorated body is the one that runs | ADR 0301's method/table work |
+| closures over a captured scope, at module level | works | — |
+| a **nested** `def` capturing the enclosing scope (`m = make_counter(10); m(2)`) | **refused**: the returned function is a value, and calling a value whose kind is only known at run time needs the tagged word | `L11.1`, function-as-value |
+| higher-order calls (`apply(f, x)`, `sorted(xs, key=f)`, lambdas as arguments) | **refused**, by name | `L11.1` |
+| gradual runtime type checking (`def adopt(a: Animal)` rejecting a `Rock`) | enforced — by the shared front end, at check time, on every path (`--eval`, `--file`, `--verify`, `--check`) | `L6.6` |
+| iteration/comprehension over a *run-time* container or text | literal containers fold; a computed one is refused naming its missing door | `Gap I.2`, `L11.1` |
+| `sorted`/`len`/indexing of a container built at run time | partially: the tagged read answers what it was taught, `sorted` over a non-literal is refused | `L11.1`, `Gap I.2` |
+
+Refused means: exit class **1**, a sentence naming the missing door, what the reference does there, and a
+roadmap row (ADR 0166's rule). It never means exit 2, and the count of refusals taken during a test run is
+printed at the end of the suite so a green build cannot quietly be a build of refusals.
+
+The historical note that section carried is still true and still belongs here: nested `def`s capturing the
+enclosing scope, and the dynamic dispatch the record did by asking the value, were implemented there and
+never lowered here — the retired engine's answers for those programs are in
+`pkg/lang/testdata/interpreter-golden.json`, and where the compiler disagrees with one it is a ledger row, not
+a passing test.
 
 **Variance rules are static (L6.6).** The invariant/covariant/contravariant
 rules run in the semantic checker (`--check`, `--verify`, the LSP), not in the
-backends. The interpreter additionally enforces *nominal class annotations* at
-runtime (`a: Animal` rejects a `Rock`, accepts `Dog`/`Puppy`) and treats the
-read-only protocols structurally (`Sequence[T]` accepts any container, a tuple
-annotation accepts the runtime list representation); the AOT backend treats
-annotations as static-only, as it does for the rest of the annotation surface.
+backends. Nominal class annotations are enforced there too (`a: Animal` rejects a `Rock`, accepts
+`Dog`/`Puppy`), and the read-only protocols are checked structurally (`Sequence[T]` accepts any container, a
+tuple annotation accepts the runtime list representation); the rest of the annotation surface stays
+static-only.
+`docs/language.md`), **modules/imports** (`import mod` loads `mod.gy` and
+binds `mod` as a namespace with `mod.name` / `mod.fn(args)` access),
+`try`/`except`, generators (`yield`), lists, `len`, **closures**
+They are fully represented in the JSON AST dump (`--emit-ast`) with no schema change.
 
 ## CLI / REPL
 
 `gustyc` (in `cmd/gustyc`) provides:
 
-- `--eval <src>` / `--file <path>`: run the program. stdout is **only** what the program
-  printed, in both backends: the echo of the last value is keyed on *where the source came from*,
-  not on what the last statement looks like (ADR 0204).
-  - **A file** (`--file`, the default interpreted run, `--interp`) echoes nothing at all, so
-    a program ending in `f(5)` prints exactly what it printed — identical to `--aot` and to
-    `python prog.py`. Nothing is ever appended to piped stdout.
-  - **A snippet** (`--eval`) keeps the prompt courtesy: a final bare expression echoes, so
-    `--eval "x = 1 + 2\nx"` prints `3`, while `--eval "print(7)"` prints just `7`.
+- `--eval <src>` / `--file <path>`: run the program. Both go through the compiled backend (ADR 0302),
+  and stdout is **only** what the program printed: the echo of the last value is keyed on *where the
+  source came from*, not on what the last statement looks like (ADR 0204), and it is written to **fd 2**
+  (`gusty: result <kind> <repr>`) so the tool channel and the program's output never share a stream.
+  - **A file** (`--file`) echoes nothing at all, so a program ending in `f(5)` prints exactly what it
+    printed — byte-identical to `python prog.py`. Nothing is ever appended to piped stdout.
+  - **A snippet** (`--eval`, and each REPL turn) keeps the prompt courtesy: a final bare expression
+    echoes through the same `str` the program's own `print` uses, so `--eval "x = 1 + 2\nx"` echoes `3`
+    and `--eval "s = 'cba'\ns"` echoes `cba` (not `'cba'`), while `--eval "print(7)"` prints just `7`.
+  - **A call is not echoed unless it is a pure builtin** (`str`, `len`, `abs`, `min`, `round`, `sorted`,
+    …, and only while the program has not shadowed the name). Rendering a final expression means lowering
+    it, and lowering the user's own call a second time runs its effects twice — `show(3)` after
+    `def show(v): print(v)` would print `3` twice. A quiet prompt is the honest failure, and the gap is
+    `roadmap L13.1`; `TestREPLCallResultEchoIsFiledNotFixed` pins the silence so it cannot be mistaken
+    for `None`.
+  - **A void snippet echoes no visible value** (a program whose final expression is a `print` call has
+    nothing to show), and `--json` says so as `"result": null, "type": "None"`.
   - **`--json` reports `result` either way.** For a file it is the evaluated value of the last
     statement — metadata about the evaluation, *not* program output; do not concatenate it onto
     what the program printed.
@@ -746,23 +781,21 @@ no `range` (full text) to force a clean re-parse.
 
 ## The CPython oracle leg (L11.9, ADR 0186)
 
-Parity — the interpreter and the compiled backend printing the same bytes — is a necessary
-contract, and it is not a sufficient one: two backends that share a bug agree. `print(True)`
-printed `1` on both sides of a green build for a hundred ADRs (ADR 0257 pays the print rule, ADR 0259
-the container tag — `print([True, 1])` is `[True, 1]` on all three legs now), and so did
-`len("café") == 5`,
-`"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]` (L11.4 closed the last of those,
-ADR 0210). The third leg closes that
-hole: **a program is conformant when both backends agree *and* what they print is what
-CPython prints for the same source.**
+Parity between two gusty engines used to be the necessary contract, and it was never a sufficient one:
+two backends that share a bug agree. `print(True)` printed `1` on both sides of a green build for a
+hundred ADRs (ADR 0257 pays the print rule, ADR 0259 the container tag — `print([True, 1])` is
+`[True, 1]` on both legs now), and so did `len("café") == 5`, `"abc"[1] == 98`, and a trap where Python
+answers `3` for `xs[-1]` (L11.4 closed the last of those, ADR 0210). The CPython leg is what closes that
+hole, and since ADR 0302 it is the *only* external witness a run has: **a program is conformant when what
+the compiled backend prints is what CPython prints for the same source**, with the retired engine's
+record (`pkg/lang/testdata/interpreter-golden.json`) as the second, weaker witness — an answer about the
+language rather than a definition of it (roadmap Gap R.190 states what that trade costs).
 
 ### From the command line
 
 ```console
 $ gustyc --oracle 'print(1 + 1)'
-oracle: match (parity yes)
-  interpreter ok       matches CPython
-      | 2
+oracle: match
   aot         ok       matches CPython
       | 2
   python      ok       the oracle
@@ -770,9 +803,7 @@ oracle: match (parity yes)
   rules: set-order
 
 $ gustyc --oracle 'print([True, 1])'; echo $?
-oracle: match (parity yes)
-  interpreter ok       matches CPython
-      | [True, 1]
+oracle: match
   aot         ok       matches CPython
       | [True, 1]
   python      ok       the oracle
@@ -781,7 +812,7 @@ oracle: match (parity yes)
 0
 ```
 
-A slot that carries a bool tag is answered by the object, which is why both backends and the oracle now
+A slot that carries a bool tag is answered by the object, which is why the compiled leg and the oracle now
 print the same line (ADR 0259). What the tag still cannot reach is a *boundary*: the same verdict passed
 to a function is a fresh binding the caller's expression does not travel with, and that program is what
 the debt class is for today.
@@ -835,7 +866,7 @@ it is to eliminate it, either by removing the discrepancy or by running CI's too
 ### The oracle is a versioned toolchain, and the pin is enforced
 
 The oracle is pinned the way LLVM is: **CPython >= 3.12** (`lang.OracleMinPython`, recorded in the
-matrix as `toolchain.min_python`, alongside `toolchain.python` = the banner of the interpreter that
+matrix as `toolchain.min_python`, alongside `toolchain.python` = the banner of the record that
 actually ran and `toolchain.llvm`). The pin is a requirement, not a preference — the corpus contains
 rows whose expected answer can only come from a CPython that can *parse* the construct under test.
 `programs/typealias.gy` opens with `type Count = int`, which is PEP 695 syntax: on Ubuntu 22.04's
@@ -853,7 +884,7 @@ has to read like one, so:
 - `lang.OracleVersion` parses a version banner, and an **unidentifiable** banner counts as unknown,
   never as too old — a machine whose oracle cannot be read must not be told it is unsupported.
 - A python leg that fails with a `SyntaxError` gets an extra note naming the pin and the remedy
-  (`lang.OracleTooOldHint`), because "line 1 SyntaxError" on a program the interpreter accepts is
+  (`lang.OracleTooOldHint`), because "line 1 SyntaxError" on a program the record accepts is
   almost always the toolchain.
 
 Override the oracle with `GUSTY_PYTHON=/path/to/python3.12` when the default `python3` is too old.
@@ -894,7 +925,7 @@ fails until the divergence is written down with:
 
 `ConformanceCase.OracleCheck` compares the claim with the observation and returns *drift*, and
 drift fails the build **in both directions**: a row that got worse, and a row that got better
-(`oracle debt is paid: both backends now print CPython's answer — update the registry`). A
+(`oracle debt is paid: the compiled backend now print CPython's answer — update the registry`). A
 ledger that cannot be falsified is decoration.
 
 Two comparisons would otherwise be meaningless and are normalised by one named rule, on by
@@ -928,12 +959,102 @@ every row must describe a registered case, every exception must carry a reason a
 debt rows must pin both legs, and a stubbed pin must produce drift (the harness is tested
 against its own ability to fail).
 
+## The suite's own interface: the record and the ledgers (ADR 0302)
+
+Deleting an engine deletes the tests that asked it questions, unless the answers were written down first.
+They were, and the artifacts that hold them are part of the toolchain's interface — an agent can read them,
+and a developer can regenerate them, but nobody can use them to make a red suite green.
+
+| Artifact | What it holds | Who checks it |
+|---|---|---|
+| `pkg/lang/testdata/interpreter-golden.json` | 5623 sources with the answer the retired engine gave: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
+| `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
+
+### The witness vocabulary, and the guard that keeps it honest (ADR 0302, ADR 0308)
+
+There is one backend, so a claim is never "engine vs engine" — it is made against one of exactly two
+**witness legs**, and every comment, failure message, tracker cell and help text says which:
+
+| Phrase | The claim | Witness |
+|---|---|---|
+| **the record leg** | the compiled answer equals the retired engine's recorded answer for that source | `testdata/interpreter-golden.json` |
+| **the reference leg** | the compiled answer equals CPython's | `gustyc --oracle`, the conformance matrix |
+| **both legs** | both of the above | — |
+
+`pkg/lang/witness_claim_test.go` makes that binding rather than stylistic. It scans the tests
+(`pkg/lang`, `integration`), the CLI (`cmd/gustyc`) and the documents an agent reads instead of the source
+(`roadmap.md`, `README.md`, `AGENTS.md`, `docs/operations.md`, `docs/language.md`,
+`docs/shared-lowering-spec.md`, `docs/benchmark.md`, `docs/abi.md`, `docs/agentic/ast-ir-schema.md`).
+
+A line fails when it matches an entry of `pkg/lang/testdata/witness-banned-phrases.txt` — the present-tense
+claims that somebody ran the engine that was retired (engine-vs-engine phrases, "…the interpreter prints…",
+and the deleted entry points `EvalExpr`, `EvalProgram`, `InterpreterRun`, `pkg/lang/jit.go`) — unless that
+same line carries a marker from `testdata/witness-history-markers.txt` (`was`, `used to`, `before`, `retir`,
+`measured 20`, …). A measurement taken while two engines ran stays in the corpus exactly as written: it is
+evidence about those two engines, and the only record this project holds of the bugs two implementations
+find by disagreeing. What may not survive is a **present-tense** claim that somebody ran the deleted engine.
+
+Two more checks ride along, both aimed at the interface rather than the prose: a `gustyc` flag
+description may mention the interpreter only to say it is retired (`--bench`, `--bench-suite`,
+`--bench-gate` and `--oracle` all used to sell an interpreter leg), and `pkg/lang/jit.go` must stay
+deleted. The two lists are data files, so a cycle tightens the rule by editing a ledger, and the guard
+skips its own file by name — a mass restatement that rewrote the rules it enforces is one way this kind
+of check dies, and the file it dies in is not allowed to be one of its own inputs.
+
+Two facts in that machinery matter to an agent reading the JSON, because both are answers it would otherwise
+have to guess at.
+
+- **A snippet's announced value, and where its type comes from.** `--json --eval` reports `result` and `type`
+  when the module can report a final expression, and `type` is asked of the value's **tag, at run time** — the
+  same table a `TypeError` message reads — so `xs = [True, 1]` / `xs[0]` reports
+  `{"result": "True", "type": "bool"}` and `xs[1]` reports `{"result": "1", "type": "int"}` (ADR 0303). A
+  snippet whose value the module cannot render reports neither member: silence, never a guess, and never the
+  word `object` standing in for a kind the compiler could not see.
+- **The suite publishes how soft its landings were.** The run prints `compiled refusals this run: N`. An honest
+  refusal is a filed gap, not a pass — a green suite whose `N` has grown has lost coverage. Read `N` as a
+  coverage number, not a warning count.
+
+Rules these files are built to obey, and the reason each exists:
+
+- **A refusal can stand in for an answer only if it is honest.** `refusesHonestly` accepts an exit-1 message
+  only when it names the missing door, says what the reference does there, and cites a roadmap row or ADR.
+  The three-word refusals this suite used to accept (`unsupported call "f"`, `str on non-integer`,
+  `unsupported list method index`, `list index out of range`) are not honest, and each was rewritten as part
+  of this cycle.
+- **Every refusal taken during a run is counted and printed** — `compiled refusals this run: 56 (filed gaps,
+  not answers)`. That number rising while the suite stays green *is* the suite going soft, and this is the
+  line that catches it.
+- **A skipped case still carries the disagreement in its message**, and the ledger row holds both answers,
+  so the file is a work list rather than a list of excuses.
+- **A partial run cannot pay a debt.** `-run` subsets do not reach most rows, so "row not exercised" is only
+  asserted on a full-package run (`isPartialRun`, keyed on the `test.run` flag).
+
+Recording knobs, for the cycle that measures new surface — none of them is a way to pass:
+
+| Environment | Effect |
+|---|---|
+| `GUSTY_GOLDEN_UPDATE=1` | rewrites a package's drift ledger from what the run measured; new rows still need their roadmap row, and the run is only trustworthy in full |
+| `GUSTY_GOLDEN_MISSING=<path>` | writes the JSON list of sources the run asked about that the record does not hold — the input to the recorder, and the reason missing entries surface all at once instead of one per run |
+| `GUSTY_DEBT_UPDATE=1` | rewrites `integration/testdata/cpython-debt.json` from measured reference-vs-compiled disagreements; a row with an empty `roadmap` field fails the next run |
+| `GUSTY_GAP_LEDGER=<path>` | dumps every refusal the run took, with its sentence, for filing as roadmap rows |
+
+The record was produced from the interpreter's own build (a `git worktree` at the pre-retirement commit, with
+`EvalExpr`/`EvalProgram` instrumented), so its entries are what users saw rather than what the old engine's
+internals could be made to say — which mattered enough to force three corrections: a compound-statement
+snippet (`if x: ...`) has no value *to* echo, so the record holds the void the prompt displayed and not the
+AST value the recorder was handed; a void has no visible repr, so its `repr` is empty and the CLI reports
+`null`; and the type name is read from the recorded repr when the recorder's stored spelling was plain-wrong
+(`print(10 ** 6 // 7)` is an `int`, not a `float`). Those corrections are data in the entries' `note` field,
+not comments, so a future re-recording cannot silently undo them.
+
 ## JSON output for agents
 
 `gustyc --json` emits machine-readable JSON on stdout:
 
-- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "type": "int", "backend": "interpreter", "exit": 0}`
-- `--json --eval "1 == 1"` → `{"result": "True", "type": "bool", "backend": "interpreter", "exit": 0}`,
+- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "type": "int", "backend": "aot", "exit": 0}`
+- `--json --eval "1 == 1"` → `{"result": "True", "type": "bool", "backend": "aot", "exit": 0}`,
   and plain `--eval '1 == 1'` echoes `True` (ADR 0257): the type is `bool` for an expression that
   answers a question — a bool literal, a comparison, membership or identity test, `not`, `all`/`any`,
   an `and`/`or` of two verdicts, a ternary with verdict arms, a call whose every `return` is one, or a
@@ -952,7 +1073,7 @@ against its own ability to fail).
   What the report cannot say is a winner the compiler could not see — a candidate that is a name it has not
   folded prints and reports the number (roadmap Gap R.124), and so does a ternary whose test it cannot read
   (Gap R.125).
-- `--json --eval "repr(\"hi\")"` → `{"result": "'hi'", "type": "str", "backend": "interpreter", "exit": 0}`,
+- `--json --eval "repr(\"hi\")"` → `{"result": "'hi'", "type": "str", "backend": "aot", "exit": 0}`,
   and `--json --eval "str([1, 2])"` → `{"result": "[1, 2]", "type": "str", …}`. `str()` and `repr()` are
   one pair over one renderer per backend — `print`, `str()` and a container element all ask the same
   table, so the two halves cannot disagree about a form and the machine path reports the same text the
@@ -962,18 +1083,18 @@ against its own ability to fail).
   the JSON, the missing half named — and never answered with the decimal form of the handle, which is
   what `str([1, 2])` used to be: `0`, exit 0, on both backends.
 - the same table answers a **function's** answer: `def g(): return str(42)` / `print(g())` is
-  `{"result": "42", "type": "str", …}` on both backends, where the compiled leg reported `0` of type
+  `{"result": "42", "type": "str", …}` on the compiled backend, where the compiled leg reported `0` of type
   `int` at exit 0 — the callee interned the rendering correctly and the caller printed its `@str_tab`
   index with `%d`, because the program-wide "which functions return text" predicate did not count a
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
-- **a ternary with text arms prints the text**: `print("y" if 1 else "n")` exits 0 with `y` on both engines
+- **a ternary with text arms prints the text**: `print("y" if 1 else "n")` exits 0 with `y`
   (`Gap R.173` / ADR 0290, paying `Gap R.127`'s text half). The compiled leg printed the arm's **`@str_tab`
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
-- **a container has the methods the reference's containers have**: `--interp --file` on
+- **a container has the methods the reference's containers have**: `--file` on
   `xs.extend([2,3])`, `xs.insert(0,9)`, `xs.index(2)`, `xs.remove(x)`, `xs.clear()`, `d.update(o)`,
   `d.pop(k)`, `d.setdefault(k, v)` and `d.clear()` exits 0 with the reference's answer (`Gap R.188` /
   `Gap R.63` / ADR 0301). All eight answered `no such list method` / `no such dict method` on **both**
@@ -984,8 +1105,8 @@ against its own ability to fail).
   list would print `[1, 2]` for what the reference renders `(1, 2)`. Raises carry the reference's own
   sentences (`ValueError: 5 is not in list`, `KeyError: 'z'`). The compiled leg still refuses these over
   a *variable* at exit 1 — owed to `L12.11`.
-- **an in-place container mutation answers the void**: `--interp --file` on `print(xs.append(2))` exits 0
-  with `None`, and so does `--aot` (`Gap R.187` / ADR 0300). Before this the interpreter answered the
+- **an in-place container mutation answers the void**: `--file` on `print(xs.append(2))` exits 0
+  with `None` (`Gap R.187` / ADR 0300). Before this the retired interpreter answered the
   container — `[1, 2]`, `{1, 2}`, `set()` — at **exit 0**, `sum([1,2,3].append(4))` answered **10** where
   the reference raises `TypeError: 'NoneType' object is not iterable`, and the compiled leg emitted
   `printf(i8* @.fmt1, i32 )` — a call with a **missing operand**, which `llc` rejects, spending **exit 2**,
@@ -993,7 +1114,7 @@ against its own ability to fail).
   throws away was, which is why it survived: a program writes `xs.append(2)`, not `print(xs.append(2))`.
   `pop`/`popitem` still answer WITH what they removed (`while xs: x = xs.pop()` depends on it), and a user
   method named `append` keeps its own answer — the table keys on the call's shape, not the spelling.
-- **an f-string's format spec formats**: `--interp --eval 'print(f"{3.5:.2f}")'` exits 0 with `3.50`, and
+- **an f-string's format spec formats**: `--eval 'print(f"{3.5:.2f}")'` exits 0 with `3.50`, and
   `f"{7:05d}"` with `00007`, `f"{255:x}"` with `ff`, `f"{3.5:>6}"` with the padding (`Gap R.186` /
   ADR 0299). Before this the spec was cut off at parse time and never stored, so **both** engines printed
   the plain number at **exit 0** — eleven shapes, engines in perfect agreement, which is exactly why
@@ -1004,20 +1125,21 @@ against its own ability to fail).
   cannot read at compile time, and any field that is a container, exits 1 naming the spec — owed to
   `L12.8` with `L11.1`. `f"{[1,2]}"` previously emitted `printf(..., i32 @.lst1)` and died in `llc`,
   which is exit 2, the forbidden class; it refuses now.
-- **a text iterates one character at a time on the interpreter**: `--interp --eval
-  'print([c for c in "abc"])'` exits 0 with `['a', 'b', 'c']` and `print(max("abc"))` with `c` (`Gap
-  R.185` / ADR 0298). Before this the interpreter answered `[]` and `abc` — a WRONG answer at exit 0, no
+- **a text iterates one character at a time** (the road the retired interpreter took, and the one the
+  compiled backend owes): `--eval 'print([c for c in "abc"])'` is the question, and the record's answer is
+  `['a', 'b', 'c']`, `print(max("abc"))`'s is `c` (`Gap R.185` / ADR 0298). Before this the interpreter
+  itself had answered `[]` and `abc` — a WRONG answer at exit 0, no
   refusal, no trap: an empty list is indistinguishable from an empty iterable, so a program iterated it and
   never entered. `for c in "abc"` had always been correct beside it, which is the whole defect: three roads
   asked "iterate this text" and two of them read the container store, where a text keeps its characters
-  elsewhere. The compiled leg still refuses these at exit 1 naming what it cannot lower — owed to `L11.1`,
-  and deliberately NOT matched by making the interpreter refuse too.
+  elsewhere. The compiled backend still refuses these at exit 1 naming what it cannot lower — owed to `L11.1` and
+  `Gap I.2`; the record keeps the engine's answer so the gap stays measured rather than argued.
 - **a text answers truth like any other value and a string method prints its text**: `--aot --eval
   'print(not "x")'` exits 0 with `False` and `'print("ab".zfill(5))'` with `000ab` (`Gap R.183` /
   `Gap R.184` / ADR 0297). Before this the compiled leg said `True` for `not "x"` while `if "x":` beside it
   answered correctly (the `not` road compared the INTERN SLOT against zero), and nine text-returning methods
   printed the intern INDEX — `0` — because the print road listed three of the fourteen the fold implements,
-  in a list that existed twice. `"-42".zfill(5)` gave `00-42` on BOTH engines, so parity could not see it.
+  in a list that existed twice. `"-42".zfill(5)` gave `00-42` on both legs, so parity could not see it.
 - **a dict view prints as a view**: `./build/pyre --aot --eval 'print({"a": 1}.keys())'` exits 0 with
   `dict_keys(['a'])`, matching the interpreter and the reference (`Gap R.182` / ADR 0296). Before this the
   compiled leg printed the heap HANDLE (`0`), and `print({1: 2}.values())` emitted
@@ -1028,7 +1150,7 @@ against its own ability to fail).
   'print(len({1, 2, 2, 3}))'` exits 0 with `3` and `print({1: "a"}.get(1))` with `a` (`Gap R.181` /
   `Gap R.180` / ADR 0295). Before this the static set global reserved a slot per SOURCE element — `len({1, 1, 1})`
   answered `3`, so a set that counted duplicates was a list wearing braces — and `get` returned the WORD its
-  slot holds, printing an interned text's index (`0`), the void (`0`) and a verdict (`1`). The interpreter
+  slot holds, printing an interned text's index (`0`), the void (`0`) and a verdict (`1`). the record
   printed `1` for `{1: True}.get(9, True)` too, so even the two-backend matrix agreed on that one; only
   CPython on the same file said `True`. `len({1, 2})` answers `2` either way, which is exactly why a corpus
   of correct-looking programs never finds this and a sweep that repeats an element does.
@@ -1036,7 +1158,7 @@ against its own ability to fail).
   exits 0 with `[2, 3]`, and `print(["a", "b"][1:])` exits 0 with `['b']` (`Gap R.179` / ADR 0294). Before
   this the same source handed llc `call i32 @rt_slice(i32 @.lst1, …)` — a global address where a heap handle
   belongs, **exit 2** — and the two shapes that did compile printed `1`: printf's `%d` on the handle, and, for
-  texts, the interned INDEX, because `rt_slice` copied element payloads and never their tags. The interpreter
+  texts, the interned INDEX, because `rt_slice` copied element payloads and never their tags. the record
   answered every one of them correctly throughout, so the parity matrix saw nothing and only the oracle leg
   could.
 - **a power answers the kind the reference answers with**: `print(2 ** -1)` exits 0 with `0.5` and
@@ -1044,7 +1166,7 @@ against its own ability to fail).
   `0` for a negative int exponent (under a comment claiming Python does that) and the compiled leg pushed
   every power through `fptosi` + `%d` — `print(2.0 ** 10)` said `1024` where the reference says `1024.0`,
   `print(4 ** 0.5)` said `1`. `**` was simply absent from the operator list that tells `print` what kind an
-  expression answers with, and both engines agreed on the truncation, so only the oracle leg could see it.
+  expression answers with, and both legs agreed on the truncation, so only the oracle leg could see it.
   `0 ** -1` exits **3** with the reference's own `ZeroDivisionError` (catchable, literal or bound base);
   `(-8) ** (1/3)` and `2 ** 100` exit **1** naming what is missing — a complex value, an unbounded integer —
   rather than printing the `nan` / wrapped `0` the machine would hand back.
@@ -1057,8 +1179,8 @@ against its own ability to fail).
   `except TypeError:`) or at **1** where CPython answers and no runtime sequence helper exists. The
   interpreter answers the answered half (`[0, 0, 0]`, `[1, 2, 3]`, `True`); the compiled half waits for
   L11.1's tagged value word. A container as a **call argument** is unaffected — `half([1.5])` = `0.75`.
-- **a missing dict key answers `None`**: `print({"a": 1}.get("z"))` exits 0 with `None` on both engines
-  (`Gap R.174` / ADR 0291). The interpreter returned the bare word `0` — so `print(v == 0)` also answered
+- **a missing dict key answers `None`**: `print({"a": 1}.get("z"))` exits 0 with `None` on both legs
+  (`Gap R.174` / ADR 0291). the record returned the bare word `0` — so `print(v == 0)` also answered
   `True` where the reference answers `False` — and the compiled leg refused the program with
   `get: key not found and no default` although its own fold already knew the key was absent. A container
   method over a **name** exits **1**, and the refusal now says "the program bound `d` to a container" rather
@@ -1070,20 +1192,20 @@ against its own ability to fail).
   tests had pinned `1`/`0` as the expected output and moved with the fix. A **parameter** as the receiver
   exits **1** on the compiled leg naming the method.
 - **comparison chains answer like the reference**: `a < b < c` is one construct asking two questions with
-  the middle operand read once, so `print(1 > 2 < 3)` exits 0 with `False` on both engines (`L12.1` /
+  the middle operand read once, so `print(1 > 2 < 3)` exits 0 with `False` on both legs (`L12.1` /
   `Gap R.53` / ADR 0288). Four of the six probe lines printed the opposite verdict at exit 0 before this,
-  both engines agreeing with each other and not with Python — the class a harness reads as success, since
+  both legs agreeing with each other and not with Python — the class a harness reads as success, since
   there is no refusal, no crash and no odd digit to notice. A chain whose middle operand is a container
   exits **1** on the compiled leg naming the missing representation.
 - **a builtin called with no argument never crashes the compiler**: `int()`, `float()`, `bool()` and
-  `str()` answer the reference's `0`/`0.0`/`False`/empty text on both engines, and `ord()`, `chr()`, `abs()`
+  `str()` answer the reference's `0`/`0.0`/`False`/empty text on both legs, and `ord()`, `chr()`, `abs()`
   and `repr()` raise the reference's own `TypeError` sentence at exit 3 (`Gap R.131` / ADR 0287). Before
   this all eight reached `Args[0]` first and died with a Go stack trace at **exit 2** — the code the contract
   reserves for a compiler bug — so a harness could not tell its own bad program from a broken toolchain. An
   integration table walks 21 spellings asserting exit 2 is unreachable; `--json` is unchanged.
 - **a rendering the body bound to a name is not counted** on the compiled path: `def f(v): s = str(v);
   return s` printed `0` for `f(3)` at exit 0 (and `2` for `"x" + str(v)` where the reference prints `x3`)
-  while the reference and the interpreter printed the text (`Gap R.170` / ADR 0286). Exit 0 covers that
+  while the reference and the record printed the text (`Gap R.170` / ADR 0286). Exit 0 covers that
   shape now; where the renderer cannot name its operand the compiled leg exits **1** naming what is missing,
   and the `str()` digits road is gated on what the operand can be *seen* to be — it writes the digits of the
   word it is handed, which is a number for an int and a fabrication for a container handle.
@@ -1094,7 +1216,7 @@ against its own ability to fail).
   need a tagged return word exit **1** and name the value they are stuck on and where it came from
   (`a parameter the call site handed a double`), so a harness can tell "rewrite this" from "the compiler
   cannot carry it yet" without reading IR.
-- a **wrong-arity call stops the program on both engines**, and never answers a number: `--interp` printed
+- a **wrong-arity call stops the program**, and never answers a number: the retired engine printed
   `2` at exit 0 for `g = lambda x: x * 2` / `print(g(1, 2))` and `0` for `print(g())` — values computed from
   arguments that were never passed — while the reference raises and `--aot` already refused. Exit 0 now means
   the same thing on both paths (`Gap R.168` / ADR 0284), and the message carries the callee, the accepted
@@ -1116,10 +1238,13 @@ against its own ability to fail).
   having printed `0.0`. The three states an agent can branch on are therefore: exit 0 prints what
   CPython prints, exit 1 names a missing feature (and quotes what it should have been), exit 3 is a
   program that raised (roadmap L11.8, ADR 0166's exit-code contract, `Gap R.165` / ADR 0282).
-- every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
-  about the run, not something to infer from the flag list — `--file` without
-  `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output
-  runs (the compiled backend) report `{"output": "42\n", "backend": "aot", "exit": 0}`.
+- every execution result carries `"backend"`, and since ADR 0302 there is exactly one value for it:
+  `"aot"`. It stays in the payload because it is a fact about the run rather than something to infer from
+  a flag list — a consumer that pinned `"backend": "interpreter"` gets a mismatch it can detect instead of
+  a silently reinterpreted result (roadmap Gap M.2). A run reports
+  `{"output": "42\n", "backend": "aot", "exit": 0}`. The retired flag family behaves accordingly:
+  `--aot`/`--jit` are accepted and ignored, and `--interp` is a **usage error (exit 4)** naming the
+  retirement, because a script that believes it picked an engine must learn at the flag.
   For a program that trapped, `"exit"` is the very number the process exits with and the
   target's own diagnostics come along: `{"output": "", "backend": "aot", "exit": 3,
   "stderr": "Traceback (most recent call last):\n…IndexError: index out of range\n"}`. That
@@ -1159,11 +1284,11 @@ against its own ability to fail).
 
 | Flag | Meaning |
 |------|---------|
-| `--bench-suite` | measure the built-in corpus on both backends |
+| `--bench-suite` | measure the built-in corpus on the compiled backend |
 | `--bench-dir <dir>` | measure every `*.gy` in a directory (the parity programs become benchmark cases) |
 | `--bench-baseline <path>` | gate the run against a saved baseline; exit 5 on a regression |
 | `--bench-baseline-update <path>` | write the measured suite as a baseline artifact |
-| `--bench-gate aot\|interpreter\|both` | which leg the gate watches (default `aot`) |
+| `--bench-gate aot` | which measurement the gate watches. `aot` is the only gate: the others compared the run to the engine ADR 0302 retired, and any other name is a usage error (exit 4) rather than a gate that silently watches nothing |
 | `--bench-tolerance <f>` | slowdown multiplier that trips the gate (default 1.5) |
 | `--bench-min-ms <f>` | noise floor in ms; sub-floor baselines are never gated (default 0.25) |
 | `--bench-runs <n>` / `--bench-opt <n>` | runs per backend (best-of-N wins) / AOT opt level |
@@ -1178,22 +1303,22 @@ Match these messages rather than scraping diagnostics prose:
 
 | Message substring | Meaning | Workaround |
 |---|---|---|
-| `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the interpreter (`--eval`, `--file`), or keep container elements numeric |
+| `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the record (`--eval`, `--file`), or keep container elements numeric |
 | `unsupported call "` | a call the AOT backend cannot lower, e.g. calling through a `Callable` parameter (`def apply(f, x): return f(x)`) | interpreter path, or dispatch on a class with methods |
-| `concatenating a runtime string is not supported in the AOT backend yet` | building a new string (`s + "!"` where a side is not a compile-time constant) needs a buffer allocation the compiled runtime does not have; passing the string itself is fine (ADR 0174) | run it on the interpreter, or concatenate the constant parts and pass the result |
-| `operator "<op>" on a string is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the interpreter raises `TypeError` (ADR 0174) | check the value before the operation, or run it on the interpreter |
-| `string method <name> on non-constant string` | a method that would build a new string (`upper`, `strip`, …) needs an allocator; `len`, `==` and container use of a string parameter are supported | run it on the interpreter, or compare/measure instead |
+| `concatenating a runtime string is not supported in the AOT backend yet` | building a new string (`s + "!"` where a side is not a compile-time constant) needs a buffer allocation the compiled runtime does not have; passing the string itself is fine (ADR 0174) | run it on the record, or concatenate the constant parts and pass the result |
+| `operator "<op>" on a string is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the record raises `TypeError` (ADR 0174) | check the value before the operation, or run it on the record |
+| `string method <name> on non-constant string` | a method that would build a new string (`upper`, `strip`, …) needs an allocator; `len`, `==` and container use of a string parameter are supported | run it on the record, or compare/measure instead |
 | `cannot hold a float yet` | a float in a container slot: an element is one `i32` word and a compiled float is a `double` (roadmap L11.6, ADR 0226) | interpreter, or keep the float in a variable |
 | `cannot hold another container yet` | a container inside a container: an element that is a handle is not marked by the collector, so its tag would be a guess (roadmap L11.1 (5), ADR 0188) | interpreter, or build the inner container separately and index it |
 | `cannot prove one kind for` | an element the compiler cannot label — typically a call that returns text on one path and a number on another. `print` asks at print time; a slot is labelled once, and the wrong label prints `(null)` (ADR 0232) | interpreter, or give the function one return kind (the tagged value word, L11.1 (5), retires this) |
 | `needs a needle whose kind the compiler can prove` | `x in c` where `c`'s slots describe themselves and `x`'s kind is not provable (ADR 0232) | interpreter, or compare a literal/tagged variable |
-| `has no number the compiled backend can lift` | a numeric use of a slot whose kind only the object knows, where the operator cannot settle the result's kind — `xs[0] + 1`, `xs[0] ** 2`, `xs[0] / ys[0]` (roadmap L11.1, Gap R.82, Gap R.101). `/` alone answers, because true division is a float whatever arrives (ADR 0253) | bind the slot to a variable first and print/compare it, or run the interpreter; `xs[0] / k` already answers |
-| `is answered with a double by the tagged numeric door, and this context stores an i32 word` | the answer is a `double` and the sink is an `i32` store: a call argument, `str()`'s argument, a container slot written by key (roadmap Gap R.98, ADR 0253) | bind it to a variable that starts life a float (`half = xs[0] / 2`), then pass/print the variable, or run the interpreter |
-| `returns "x", which its own body binds to a float` | a function whose `return` is the bare name of a parameter its body rebound to a float, in a signature the `double` convention cannot carry — a parameter that is a container handle or interned text, which the body also reads (roadmap L11.6, Gap R.3c, ADR 0254). Emitted anyway it is `sitofp i32 @.lst1 to double`, which `llc` rejects | `return x + 0.0`, or bind the answer to a new name (`y = x + 0.0; return y`); the interpreter answers all of these |
+| `has no number the compiled backend can lift` | a numeric use of a slot whose kind only the object knows, where the operator cannot settle the result's kind — `xs[0] + 1`, `xs[0] ** 2`, `xs[0] / ys[0]` (roadmap L11.1, Gap R.82, Gap R.101). `/` alone answers, because true division is a float whatever arrives (ADR 0253) | bind the slot to a variable first and print/compare it, or run the record; `xs[0] / k` already answers |
+| `is answered with a double by the tagged numeric door, and this context stores an i32 word` | the answer is a `double` and the sink is an `i32` store: a call argument, `str()`'s argument, a container slot written by key (roadmap Gap R.98, ADR 0253) | bind it to a variable that starts life a float (`half = xs[0] / 2`), then pass/print the variable, or run the record |
+| `returns "x", which its own body binds to a float` | a function whose `return` is the bare name of a parameter its body rebound to a float, in a signature the `double` convention cannot carry — a parameter that is a container handle or interned text, which the body also reads (roadmap L11.6, Gap R.3c, ADR 0254). Emitted anyway it is `sitofp i32 @.lst1 to double`, which `llc` rejects | `return x + 0.0`, or bind the answer to a new name (`y = x + 0.0; return y`); the record answers all of these |
 | `returns a ternary arm of "x", which its own body binds to a float` | `return x if cond else 0.0` of such a parameter: the answer's word is the arm's and there is no number-typed `select` to choose two doubles with (roadmap Gap R.102, ADR 0254) | take the branch with `if`/`else` and `return` the number on each arm, or add it to `0.0` on the arm |
-| `winner's own kind needs the tagged value word` | `min` / `max` over runtime candidates whose static kinds mix `int` and `double`: the comparison is decidable, but the winner's kind is not, and forcing the double domain answers `min(2.5, 1)` as `1.0` (roadmap Gap R.109, ADR 0256) | keep candidates literal, use the interpreter, or wait for L11.1's tagged value word |
-| `takes values side by side or one container, not a container among values` | a `min` / `max` argument is a container literal beside another candidate; comparing containers by their handle words would answer with heap addresses (roadmap Gap R.107, ADR 0256) | flatten the candidates, or use the interpreter's element-wise ordering |
-| `chooses between two values whose kinds this pass cannot state in one word` | `a and b` / `a or b` hand back the **operand** the test chose (ADR 0269), and the position that holds the answer keeps one `i32` word while the two operands do not agree on what lives in it — a text among numbers, a float beside an int, a container among either | `print` it (the print door selects the payload *and* its tag and asks the module's tag-reading printer), take the branch with `if`/`else` and bind the operand on each arm, or run the interpreter; the row the missing tag belongs to is L11.1 with Gap R.146 beside it |
+| `winner's own kind needs the tagged value word` | `min` / `max` over runtime candidates whose static kinds mix `int` and `double`: the comparison is decidable, but the winner's kind is not, and forcing the double domain answers `min(2.5, 1)` as `1.0` (roadmap Gap R.109, ADR 0256) | keep candidates literal, use the record, or wait for L11.1's tagged value word |
+| `takes values side by side or one container, not a container among values` | a `min` / `max` argument is a container literal beside another candidate; comparing containers by their handle words would answer with heap addresses (roadmap Gap R.107, ADR 0256) | flatten the candidates, or use the record's element-wise ordering |
+| `chooses between two values whose kinds this pass cannot state in one word` | `a and b` / `a or b` hand back the **operand** the test chose (ADR 0269), and the position that holds the answer keeps one `i32` word while the two operands do not agree on what lives in it — a text among numbers, a float beside an int, a container among either | `print` it (the print door selects the payload *and* its tag and asks the module's tag-reading printer), take the branch with `if`/`else` and bind the operand on each arm, or run the record; the row the missing tag belongs to is L11.1 with Gap R.146 beside it |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the
@@ -1245,7 +1370,7 @@ operands the pass cannot state is refused by naming both operands and the missin
 never answered with the `0`/`1` that stood here while the whole expression was an `and i1` plus a `zext`.
 
 `//` floor division lowers to `sdiv`, also mirroring
-the interpreter. Literal operands are constant-folded.
+the record. Literal operands are constant-folded.
 
 ## Builtins: sum / min / max / abs (AOT codegen)
 
@@ -1259,7 +1384,7 @@ constant-folded for literal arguments.
 wins keeps its own kind: `min(1.0, 2)` prints `1.0`, while `min(2.5, 1)` prints `1`. Text candidates go
 through `rt_str_order`, and a source-visible text/`None`/container collision emits CPython's catchable
 `TypeError`, naming `<` for `min` and `>` for `max`. A runtime int/double mix or a runtime container is a
-named refusal pending L11.1's tagged value word; the interpreter and `--eval` answer them today.
+named refusal pending L11.1's tagged value word; the record and `--eval` answer them today.
 
 ## for-over-list (AOT codegen)
 
@@ -1283,12 +1408,12 @@ variable indirection), matching the list-literal limitation. Interpreter
 indexes dicts/sets at runtime.
 
 **A repeated key is one entry on both paths** (ADR 0260, closing roadmap Gaps R.118 and R.120). The
-compiled fold has always deduplicated the keys it unrolls, and the interpreter now puts each entry
+compiled fold has always deduplicated the keys it unrolls, and the record now puts each entry
 through the dict's own key lookup (`Evaluator.dictPut`) instead of appending it, so
 `print({"a": 1, "a": 2})` is `{'a': 2}`, `{1: 2 for x in [1, 2]}` prints with a `len` of `1`, and the
 `1`/`True`/`1.0` spellings collapse to one entry because key equality asks the numbers (ADR 0259).
 Nothing in the JSON schemas changed — no new kind appeared — but this is where an agent can see it: the
-compiled fold's key dedup and the interpreter's `dictPut` are the same rule, and
+compiled fold's key dedup and the record's `dictPut` are the same rule, and
 `integration/programs/dict_key_rule.gy` is the parity row that keeps them that way. What the compiled
 path still declines in words (exit 1, never a wrong answer) is a dict comprehension whose key it must
 spell itself as text — `comprehension key must be constant`, roadmap Gap R.123 — and a display
@@ -1297,7 +1422,7 @@ unpacking (`{**d, "a": 2}`), which the parser rejects (Gap R.121, with Gap R.58)
 A container variable is a heap object, and since ADR 0232 its slots are
 `(payload, tag)` pairs: `d = {"a": 1, "b": "x", "c": None}` and `s = {1, "a",
 None}` build, print, index, iterate, grow (`d[k] = v`, `s.add`) and compare
-compiled, identically to the interpreter and to CPython. Two runtime entry
+compiled, identically to the record and to CPython. Two runtime entry
 points carry the whole surface for agents reading emitted IR: the tagged
 writers (`rt_dict_put_tagged`, `rt_set_add_tagged`, `rt_tag_elem`) and the
 tagged readers (`rt_dict_find`, `rt_dict_get_tagged`, `rt_dict_value_tag`,
@@ -1372,7 +1497,7 @@ folds to a single concatenated constant (e.g. `"a" + "b"` -> `@.strN` with
 `print(len("ab" + "cd"))` -> `4`. The semantic analyzer types `str + str` as
 `str` (no arithmetic warning).
 
-## Interpreter memory model
+## Boxed heap handles and the immediate-integer rule
 
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never
 collide with raw small integer literals stored in lists/dicts/vars. This keeps
@@ -1380,16 +1505,16 @@ collide with raw small integer literals stored in lists/dicts/vars. This keeps
 
 ## Collector: precise roots and safe points (L7.2, ADR 0181)
 
-Both backends trace an *enumerated* root set and never guess at machine words.
+The compiled backend trace an *enumerated* root set and never guess at machine words.
 
-The interpreter's roots are: the current environment, **every active call frame's
+the record's roots are: the current environment, **every active call frame's
 locals** (pushed on call, popped on return, so a dead frame retains nothing), the
 root groups that constructs declare (a `for` loop's iterable, a loop's last value),
 and the permanent roots (`None`, the generator accumulator, the `super()` receiver,
 class objects). Two rules make collection sound in a tree-walking interpreter:
 
 - **Watermark.** Everything allocated after the last safe point is unconditionally
-  live, because the interpreter may be holding it in a register.
+  live, because the record may be holding it in a register.
 - **Safe point.** The watermark advances only at a statement boundary with no
   expression evaluation in flight, reached from a construct that declared its root
   groups — or from a call that *is* the statement (`work()`, `total = helper(x)`),
@@ -1449,7 +1574,7 @@ to scrape it. `lang.ParseGCStatsLine` and `GCStats.String` are one documented sh
 both ways, tested for round-tripping.
 
 `GUSTY_GC_STRESS=1` forces a collection at every statement boundary: the conformance
-corpus is run that way in `integration/gc_stress_test.go`, so a root the interpreter
+corpus is run that way in `integration/gc_stress_test.go`, so a root the record
 forgot fails a test instead of appearing as a heisenbug.
 
 `GUSTY_KEEP_LLVM=1` keeps the JIT's scratch directory instead of deleting it and prints
@@ -1482,7 +1607,7 @@ values: int=0 float=1 bool=2 None=3 str=4 list=5 dict=6 set=7 tuple=8 class=9 in
 heap kinds (compiled runtime object headers): list dict set instance (0 = not heap-allocated)
 ```
 
-- **The tags** are `pkg/lang/value.go`'s `ValueTag` list. The interpreter's heap objects
+- **The tags** are `pkg/lang/value.go`'s `ValueTag` list. the record's heap objects
   (`obj.kind` → `obj.tag()`), the compiled runtime's tagged `%obj` values, and the
   extern-fn ABI's tag words all read it; `--abi` prints the tag words and
   `TestABITagsAgreeWithCanonicalTags` proves they are the same numbers.
@@ -1499,11 +1624,11 @@ heap kinds (compiled runtime object headers): list dict set instance (0 = not he
   `TestValueTagTableIsPinned` fails if anyone renumbers them.
 
 `print(True)` prints `True`, and `--json` reports `"type": "bool"` for it — the verdict is named by
-the expression that produced it, which both backends ask of one shared AST predicate rather than of
+the expression that produced it, which the compiled backend ask of one shared AST predicate rather than of
 the storage that holds it (ADR 0257). Where the expression is gone — a slot in a container — the slot
 carries the answer itself: an element whose value is a verdict is tagged `bool`, so `print([True, 1])`
 is `[True, 1]`, `print({"k": True})` is `{'k': True}`, `print({True, 1})` is `{True}` and the ordering
-trap names `'bool'`, on both backends (ADR 0259, closing Gap R.112). What neither rule reaches is a
+trap names `'bool'`, on the compiled backend (ADR 0259, closing Gap R.112). What neither rule reaches is a
 value crossing a binding the caller's expression does not travel with: **a bool passed to a function
 prints `1`** (Gap R.111), because the parameter is a fresh slot and the tag would have to ride with the
 argument.
@@ -1583,7 +1708,7 @@ on every path is accepted (definitely assigned); a name that only some paths bin
 flagged at the use with `possibly unbound: "x" is not definitely assigned on all paths` — a warning,
 because the name does exist on the other paths and only this one may not have assigned it (ADR 0217).
 The warning is a hint, not the enforcement: the same read at runtime raises `UnboundLocalError` in a
-function and `NameError` at module level, on both backends, and exits 3 (ADR 0228). Reading a name the
+function and `NameError` at module level, on the compiled backend, and exits 3 (ADR 0228). Reading a name the
 body binds only *below* the read is in the same class — `possibly unbound: "v" is read before any path
 assigns it` — and is likewise a runtime trap, not a compile error, because whether it raises depends on
 the call (ADR 0228 closed Gaps R.36 and R.39 here; the old behaviour printed the frame's stale contents,
@@ -1662,9 +1787,9 @@ bests, an interpreter phase profile, and a speedup ratio. Use `--bench-file
 <path>` to benchmark a file, and `--json` for the machine-readable
 `BenchResult`. See `docs/benchmark.md`.
 
-## Property / fuzz testing (both backends)
+## Property / fuzz testing (the compiled backend)
 
-gusty validates the interpreter and the LLVM AOT backend against **generated**
+gusty validates the record and the LLVM AOT backend against **generated**
 whole-program inputs, not just a fixed corpus.
 
 - `pkg/lang/proptest.go` — `PropGrammar` + `DefaultPropGrammar()`: a seeded
@@ -1678,15 +1803,18 @@ whole-program inputs, not just a fixed corpus.
   (if/for/function) read only their own locals (loop var / params) plus
   literals — no undefined references, no forward bindings.
 - `pkg/lang/proptest_test.go` — unit properties: corpus reproducibility,
-  parse-cleanliness, interpreter validity (no undefined names / runtime
-  errors), interpreter determinism (run-twice byte-identical stdout).
-- `integration/proptest_test.go` — cross-backend parity harness: each
-  generated source runs through `lang.InterpreterRun` and the
-  `Compile` → `llc` → `cc` → run pipeline; stdout is diffed. Interpreter
-  failures fail the build; AOT drift is logged (seed+index) so the suite
-  stays green while drift is tracked.
-- `FuzzPropInterpreter` — a Go-native fuzz target seeded from the
-  deterministic corpus; asserts the interpreter never panics on arbitrary
+  parse-cleanliness, corpus validity (no undefined names / runtime
+  errors on the record leg), and determinism (run-twice byte-identical stdout).
+- `integration/proptest_test.go` — the generated-corpus harness, rebuilt for
+  one backend (ADR 0302): each generated source goes through
+  `Compile` → `llc` → `cc` → run, and the properties it can still assert are
+  that the compiler does not panic, that the same source builds to the same
+  answer every time, and that an accepted program terminates. There is no
+  second engine to diff stdout against, and a generated program has no
+  recorded answer — inventing one from the compiler's own output would be a
+  self-comparison, so the harness does not do it.
+- `FuzzPropCompiled` — a Go-native fuzz target seeded from the
+  deterministic corpus; asserts the compiler never panics on arbitrary
   input.
 
 Run them with the normal pipeline:

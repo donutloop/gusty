@@ -78,7 +78,7 @@ func TestUnsupportedStringUsesStayDiagnostics(t *testing.T) {
 		if !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: message should contain %q, got: %v", tc.name, tc.want, err)
 		}
-		if !strings.Contains(err.Error(), "interpreter") {
+		if !strings.Contains(err.Error(), "CPython") {
 			t.Errorf("%s: message should name the backend that works, got: %v", tc.name, err)
 		}
 	}

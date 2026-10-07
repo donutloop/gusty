@@ -1,18 +1,20 @@
 // The oracle leg of the conformance matrix (roadmap L11.9, ADR 0186).
 //
-// Parity — "the interpreter and the compiled backend print the same thing" — is
-// a necessary but *weak* contract: two backends can agree on a wrong answer and
-// the build stays green. Every divergence collected in the roadmap's Phase 11
-// table (print(True) == "1", len("café") == 5, xs[-1] trapping, print(math.PI)
-// == 3) was of exactly that shape: invisible to a harness that only compares the
-// two implementations to each other.
+// Comparing a compiler with itself is a *weak* contract: two implementations of one idea
+// can agree on a wrong answer and the build stays green. Every divergence collected in the
+// roadmap's Phase 11 table (print(True) == "1", len("café") == 5, xs[-1] trapping,
+// print(math.PI) == 3) was of exactly that shape: invisible to a harness that only compared
+// the two implementations to each other.
 //
-// This file makes CPython the third leg. A case is not "conformant" because the
-// backends agree; it is conformant when both backends agree *and* what they
-// print is what CPython prints for the same source. The classification is a pure
-// function of the three observed legs, so it can be asserted by the integration
-// harness, reported by `gustyc --oracle`, and diffed as JSON by an agent without
-// anyone scraping prose.
+// This file makes CPython the reference. A case is conformant when what the compiled program
+// prints is what CPython prints for the same source. The classification is a pure function of
+// the observed legs, so it can be asserted by the integration harness, reported by
+// `gustyc --oracle`, and diffed as JSON by an agent without anyone scraping prose.
+//
+// There used to be a third engine in front of this comparison — the AST interpreter — and the
+// harness used to assert its agreement with the compiled artifact as a contract in its own
+// right. ADR 0302 retired that engine; what remains is the contract that was always carrying
+// the weight.
 package lang
 
 import (
@@ -30,7 +32,7 @@ import (
 // matrix (`oracle` / `oracle_declared`) and of `--oracle` JSON output, so it is
 // stable: an agent branches on these strings, not on prose.
 const (
-	// OracleMatch: both backends printed exactly what CPython printed.
+	// OracleMatch: the compiled backend printed exactly what CPython printed.
 	OracleMatch = "match"
 	// OracleDebt: the program is a valid CPython program and at least one backend
 	// answers differently (a wrong value, a refusal, a crash). Every debt row is
@@ -60,7 +62,7 @@ const (
 // DefaultOracleRules are applied to every leg before comparison.
 func DefaultOracleRules() []string { return []string{RuleSetOrder} }
 
-// PythonBinary is the interpreter used for the oracle leg. It is overridable
+// PythonBinary is the record used for the oracle leg. It is overridable
 // (`GUSTY_PYTHON`) because the pinned oracle is a *named* toolchain, recorded in
 // docs/operations.md, not an accident of whoever's PATH came first.
 func PythonBinary() string {
@@ -218,14 +220,21 @@ type OracleLeg struct {
 	Matches bool   `json:"matches_python"`
 }
 
-// OracleReport is the three-leg verdict for one program: the interpreter leg, the
-// compiled leg, the CPython leg, plus the classification derived from them.
+// OracleReport is the two-leg verdict for one program: the compiled leg, the CPython
+// leg, plus the classification derived from them.
+//
+// It used to be a three-leg verdict. The third engine was the AST interpreter, and its
+// only verdict-bearing contribution was to agree or disagree with the compiled leg about
+// a wrong answer — the weakness ADR 0186 named and the CPython leg was added to fix.
+// ADR 0302 removed that engine, so the report now says plainly what it always decided:
+// whether gusty's compiled artifact behaves like Python.
 type OracleReport struct {
-	Legs   []OracleLeg `json:"legs"`
-	Parity bool        `json:"parity"`
-	Status string      `json:"oracle"`
-	Notes  []string    `json:"notes,omitempty"`
-	Rules  []string    `json:"rules,omitempty"`
+	Legs []OracleLeg `json:"legs"`
+	// Parity was dropped rather than repurposed: with one engine the compiled leg has
+	// nothing to be at parity with except the reference, and that question is Status.
+	Status string   `json:"oracle"`
+	Notes  []string `json:"notes,omitempty"`
+	Rules  []string `json:"rules,omitempty"`
 }
 
 // Leg returns a leg by backend name ("" when absent).
@@ -238,28 +247,25 @@ func (r OracleReport) Leg(backend string) (OracleLeg, bool) {
 	return OracleLeg{}, false
 }
 
-// BuildOracleReport classifies three observed legs. It is the single
+// BuildOracleReport classifies the two observed legs. It is the single
 // implementation of "does this program behave like Python?" shared by the
 // integration harness and the CLI, so the two can never disagree about a verdict.
 //
 // A leg that did not complete counts as *not* matching (with a note), because
 // "the compiled backend refused" is a divergence from an oracle that answered —
 // that is the L11.8 rule: a refusal is a debt, not a pass.
-func BuildOracleReport(interpOK bool, interpOut, interpErr string,
+func BuildOracleReport(
 	aotOK bool, aotOut, aotErr string,
 	rules []string, pythonOK bool, pythonOut, pythonErr string) OracleReport {
 	all := append(DefaultOracleRules(), rules...)
 	pyNorm := OracleNormalize(pythonOut, all)
-	interpMatch := interpOK && OracleNormalize(interpOut, all) == pyNorm
 	aotMatch := aotOK && OracleNormalize(aotOut, all) == pyNorm
 	r := OracleReport{
 		Legs: []OracleLeg{
-			{Backend: "interpreter", OK: interpOK, Stdout: interpOut, Error: interpErr, Matches: interpMatch},
 			{Backend: "aot", OK: aotOK, Stdout: aotOut, Error: aotErr, Matches: aotMatch},
 			{Backend: "python", OK: pythonOK, Stdout: pythonOut, Error: firstLine(pythonErr)},
 		},
-		Parity: interpOK && aotOK && interpOut == aotOut,
-		Rules:  all,
+		Rules: all,
 	}
 	switch {
 	case !pythonOK:
@@ -268,18 +274,13 @@ func BuildOracleReport(interpOK bool, interpOut, interpErr string,
 		if hint := OracleTooOldHint(pythonErr); hint != "" {
 			r.Notes = append(r.Notes, hint)
 		}
-	case interpMatch && aotMatch:
+	case aotMatch:
 		r.Status = OracleMatch
 	default:
 		r.Status = OracleDebt
-		if !interpOK {
-			r.Notes = append(r.Notes, "interpreter leg failed: "+firstLine(interpErr))
-		} else if !interpMatch {
-			r.Notes = append(r.Notes, "interpreter stdout differs from CPython")
-		}
 		if !aotOK {
 			r.Notes = append(r.Notes, "compiled leg failed: "+firstLine(aotErr))
-		} else if !aotMatch {
+		} else {
 			r.Notes = append(r.Notes, "compiled stdout differs from CPython")
 		}
 	}

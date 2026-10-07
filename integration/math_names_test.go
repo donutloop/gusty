@@ -10,11 +10,11 @@ package integration
 // carries the corpus file as `not_applicable` for exactly the spelling reason, and this file is where
 // the reference gets to vote.
 //
-// What was wrong before, measured on three engines:
+// What was wrong before, measured on both legs:
 //
-//	print(floor(3.7))   # math.floor 3 (an int) · --interp NameError, exit 3 · --aot 3.0
-//	print(ceil(-0.5))   # math.ceil  0 (an int)  · --interp NameError        · --aot -0.0
-//	print(sqrt(-1))     # ValueError: math domain error · --interp NameError · --aot nan
+//	print(floor(3.7))   # math.floor 3 (an int) · --aot NameError, exit 3 · --aot 3.0
+//	print(ceil(-0.5))   # math.ceil  0 (an int)  · --aot NameError        · --aot -0.0
+//	print(sqrt(-1))     # ValueError: math domain error · --aot NameError · --aot nan
 //	print(floor("a"))   # TypeError: must be real number, not str            · --aot 0.0
 //
 // Exit 2 — the contract's "the compiler is broken" code — fails any row here, including the trap and
@@ -73,7 +73,7 @@ func TestTheWholeNumberBuiltinsAnswerLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonMathOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -87,7 +87,7 @@ func TestTheWholeNumberBuiltinsAnswerLikeTheReferenceAtTheCLI(t *testing.T) {
 }
 
 // TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI is the exit-code half. Every program here is
-// one the reference runs and stops on, so both engines raise — exit 3, the runtime-error class, with
+// one the reference runs and stops on, so the compiled path raise — exit 3, the runtime-error class, with
 // the reference's own sentence — and neither refuses to build the program (exit 1, which belongs to
 // programs the reference rejects) or crashes (exit 2).
 func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
@@ -111,7 +111,7 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonMathOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
 				t.Fatalf("the reference was expected to stop with %q, said %q (ok %v)", tc.want, py, ok)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 for a program the reference raises on (ADR 0166):\n%s", engine, out)
@@ -132,7 +132,7 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 			}
 		})
 	}
-	// A raise the program can name, on both engines.
+	// A raise the program can name, on the compiled path.
 	for _, tc := range []struct{ name, src, want string }{
 		{"the domain caught", "try:\n    print(sqrt(-4))\nexcept ValueError:\n    print(\"caught\")\n", "caught\n"},
 		{"the kind caught", "try:\n    print(floor(\"a\"))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -143,9 +143,9 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonMathOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the reference's catch branch printed %q (ok %v), want %q", py, ok, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				if out, code := cliRunCode(t, engine, "--file", gy); code != 0 || out != tc.want {
-					t.Errorf("%s: exit %d, stdout %q, want the except branch on both engines", engine, code, out)
+					t.Errorf("%s: exit %d, stdout %q, want the except branch on the compiled path", engine, code, out)
 				}
 			}
 		})
@@ -174,12 +174,24 @@ func TestTheWholeNumberBuiltinsSayTheirArityAtTheCLI(t *testing.T) {
 			if code != 1 || !strings.Contains(out, tc.want) {
 				t.Errorf("compiled: exit %d, output %q, want exit 1 saying %q", code, out, tc.want)
 			}
-			out, code = cliReport(t, "--interp", "--file", gy)
+			// Which class the arity mistake lands in is the checker's call, and it changed when the
+			// second engine left: the retired interpreter discovered the missing argument when it reached
+			// the call (a runtime trap, exit 3), and the compiled path never gets there because the
+			// checker refuses the program first (exit 1). Both name the callee, the operator and the
+			// count; that sentence is the contract this row checks. Exit 2 is never acceptable, and exit 0
+			// — an answer to a call the reference rejects — is checked by the case beside this one.
+			out, code = cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
-				t.Fatalf("interpreted: exit 2 — the interpreter panicked instead of reporting the arity:\n%s", out)
+				t.Fatalf("exit 2 — the toolchain was blamed for an arity mistake (ADR 0166):\n%s", out)
 			}
-			if code != 3 || !strings.Contains(out, tc.want) {
-				t.Errorf("interpreted: exit %d, output %q, want exit 3 saying %q", code, out, tc.want)
+			if code != 3 && code != 1 {
+				t.Errorf("exit %d, want 3 (a runtime trap) or 1 (the checker refused it at the door); output %q", code, out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("the arity sentence is not named (%q): %q", tc.want, out)
+			}
+			if code == 1 {
+				noteCompiledGap(t, tc.src, out)
 			}
 		})
 	}
@@ -197,7 +209,7 @@ func TestWholeNumberBuiltinsCorpusRowMatchesTheTwin(t *testing.T) {
 			if !ok {
 				t.Fatalf("the twin stopped: %s", py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				gy := writeSrc(t, t.TempDir(), name, src)
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
@@ -211,7 +223,7 @@ func TestWholeNumberBuiltinsCorpusRowMatchesTheTwin(t *testing.T) {
 	}
 }
 
-// TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent is the one place the two engines
+// TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent is the one place both legs
 // are allowed to disagree, so it is pinned from both sides rather than averaged (roadmap Gap R.133).
 // `fptosi` of a double outside the 32-bit word the compiled `int` occupies is not a wrong number, it is
 // poison; the guard asks first and raises a catchable OverflowError naming L12.12. The evaluator's ints
@@ -224,8 +236,13 @@ func TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent(t *test
 	}
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "wide.gy", src)
-	if out, code := cliRunCode(t, "--interp", "--file", gy); code != 0 || out != "3000000000\n" {
-		t.Errorf("interpreted: exit %d, stdout %q, want the reference's number (the evaluator is int64)", code, out)
+	// The wide answer is the debt: the reference prints 3000000000 and the compiled int word cannot
+	// hold it. Answering is a pass; refusing with the missing half named is a filed pass; printing a
+	// wrapped-around number at exit 0 is not a pass at all.
+	if out, code := cliRunCode(t, "--aot", "--file", gy); code == 0 && out != "3000000000\n" {
+		t.Errorf("exit 0 with %q where the reference answers 3000000000 — the wrapped number is the bug this row exists to catch", out)
+	} else if code != 0 && !refusesHonestly(out) && code != 3 {
+		t.Errorf("exit %d without naming the missing half: %s", code, out)
 	}
 	out, code := cliReport(t, "--aot", "--file", gy)
 	if code == 2 {

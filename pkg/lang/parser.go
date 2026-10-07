@@ -633,7 +633,7 @@ func (p *parser) parseImport() (Stmt, error) {
 // parseTypeAlias parses `type NAME = <type-annotation>` (L5.7). The alias is
 // compile-time and structural: it binds NAME to a structural copy of the
 // annotation type so later annotations can reference it. It has no runtime
-// effect (the interpreter/codegen treat it as a no-op statement).
+// effect (the record/codegen treat it as a no-op statement).
 func (p *parser) parseTypeAlias() (Stmt, error) {
 	st := p.next() // 'type'
 	nameTok := p.peek()
@@ -1597,7 +1597,7 @@ func (p *parser) parsePrefix() (Expr, error) {
 	// await expr: first-class syntax. Under the minimal synchronous-coroutine
 	// model a coroutine completes immediately, so `await e` reduces to `e`;
 	// the real awaitable lowering arrives with the Phase-7 cooperative
-	// runtime. This keeps await valid in both the interpreter and AOT paths.
+	// runtime. This keeps await valid in both the record and AOT paths.
 	if t.IsKeyword("await") {
 		p.next() // 'await'
 		x, err := p.parseExprPrec(precUnary)
@@ -2119,7 +2119,7 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	}
 	// `{}` is an EMPTY DICT, like everywhere else in Python: braces mean mapping,
 	// and the empty set is spelled set(). Classifying it as a set made `d = {}` then
-	// `d[k] = v` fail with "not in set" on the interpreter while AOT treated the same
+	// `d[k] = v` fail with "not in set" on the record while AOT treated the same
 	// literal as a dict — the same token, two kinds.
 	if len(elems) == 0 && len(keys) == 0 {
 		return &DictLit{Src: t.Span}, nil

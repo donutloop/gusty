@@ -40,22 +40,11 @@ func edBuild(t *testing.T, name, src string) (int, string, string) {
 	return code, stdout.String(), stderr.String()
 }
 
-func edInterp(t *testing.T, src string) (string, error) {
+// edRecord answers one dispatch case the way the suite answers a behavioural question now: the
+// compiled program runs, and the retired engine's recorded answer judges it (ADR 0302).
+func edRun(t *testing.T, src string) (string, error) {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("read pipe: %v", err)
-	}
-	return buf.String(), evalErr
+	return runGoldenStdout(t, src)
 }
 
 var edCases = []struct {
@@ -100,12 +89,14 @@ func TestExceptArmsDispatchInOrderWhenCompiled(t *testing.T) {
 	}
 }
 
-// The interpreter is the reference here, not a suspect: these are the same expectations, and
-// pinning both sides is what stops one backend drifting while the other "agrees with itself".
-func TestExceptArmsDispatchInOrderInTheInterpreter(t *testing.T) {
+// The record is the reference here, not a suspect: these are the same expectations, checked against
+// the answer the retired engine recorded for each program. Pinning both sides is what stops the
+// compiler from agreeing with itself — and with one backend, CPython's leg in the conformance matrix
+// is what stops the record and the compiler from agreeing on the wrong answer.
+func TestExceptArmsDispatchInOrderAgainstTheRecord(t *testing.T) {
 	for _, tc := range edCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := edInterp(t, tc.src)
+			got, err := edRun(t, tc.src)
 			if err != nil {
 				t.Fatalf("interpreter: %v (out %q)", err, got)
 			}
@@ -147,7 +138,7 @@ func TestRaisingInsideAHandlerEscapesTheSameTry(t *testing.T) {
 	if !strings.Contains(stderr, "ValueError") {
 		t.Errorf("the report should name ValueError, got %q", stderr)
 	}
-	if _, err := edInterp(t, src); err == nil || !strings.Contains(err.Error()+"", "from the handler") {
+	if _, err := edRun(t, src); err == nil || !strings.Contains(err.Error()+"", "from the handler") {
 		t.Fatalf("interpreter: want the ValueError to propagate, got %v", err)
 	}
 }

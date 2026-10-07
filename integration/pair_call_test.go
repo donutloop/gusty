@@ -1,9 +1,9 @@
 package integration
 
 // integration/pair_call_test.go — the (payload, tag) pair crosses a call at the CLI, against the
-// reference, on both engines (roadmap Gap R.139, ADR 0273).
+// reference, on the compiled path (roadmap Gap R.139, ADR 0273).
 //
-// Each row is one source run three ways: CPython, `gustyc --file <path> --interp`, and
+// Each row is one source run three ways: CPython, `gustyc --file <path> --aot`, and
 // `gustyc --file <path> --aot`. The legs are forced explicitly — a bare `--file` is the interpreter's
 // default (docs/operations.md), and the row that does not say which engine it ran on is the row that
 // later turns out to have measured the wrong one. Exit 2, the contract's "the compiler is broken" code
@@ -14,7 +14,7 @@ package integration
 //   - the shapes the door answers, where all three legs must print the same bytes;
 //   - the trap, where the *callee's* arithmetic raises CPython's own sentence naming the slot's real
 //     kind, catchable by `except TypeError:` — the raise leaving the callee rather than the caller;
-//   - the shapes the gate closes, which must be refused in words at exit 1 while the interpreted leg
+//   - the shapes the gate closes, which must be refused in words at exit 1 while the reference
 //     answers the reference. A refusal is the honest outcome; a payload printed as though it were the
 //     whole value is the one outcome the contract does not allow.
 
@@ -152,7 +152,7 @@ func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -195,7 +195,7 @@ func TestACalledSlotTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
 				t.Fatalf("the reference was expected to stop with %q, said %q (ok %v)", tc.want, py, ok)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 for a program the reference raises on (ADR 0166):\n%s", engine, out)
@@ -231,7 +231,7 @@ func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || !strings.Contains(py, "caught") {
 				t.Fatalf("the reference was expected to print \"caught\", said %q", py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -245,10 +245,10 @@ func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
 }
 
 // TestThePairCallRefusesWhatItCannotNameAtTheCLI is the gate through the CLI. Each row is a program the
-// reference answers and the interpreted leg prints, where the compiled leg declines with the half that is
+// reference answers and the reference prints, where the compiled leg declines with the half that is
 // missing named — the shape the scan's gate closes rather than an answer built from a payload alone.
 func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
-	for _, tc := range []struct{ name, src, interpWant, refusal string }{
+	for _, tc := range []struct{ name, src, compiledWant, refusal string }{
 		{
 			// An argument that is itself a pair-returning call: the inner answer's tag belongs to the
 			// inner call, and the outer parameter would take one word for a value that has two.
@@ -280,16 +280,18 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call_refusal.gy", tc.src)
-			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.interpWant {
-				t.Fatalf("the reference was expected to print %q, said %q (ok %v)\nsrc: %s", tc.interpWant, py, ok, tc.src)
+			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.compiledWant {
+				t.Fatalf("the reference was expected to print %q, said %q (ok %v)\nsrc: %s", tc.compiledWant, py, ok, tc.src)
 			}
-			out, code := cliRunCode(t, "--interp", "--file", gy)
+			out, code := cliRunCode(t, "--aot", "--file", gy)
 			if code == 2 {
-				t.Fatalf("--interp: exit 2 (ADR 0166):\n%s", out)
+				t.Fatalf("--aot: exit 2 (ADR 0166):\n%s", out)
 			}
-			if code != 0 || out != tc.interpWant {
-				t.Errorf("--interp: exit %d, stdout %q, want the reference's %q\nsrc: %s", code, out, tc.interpWant, tc.src)
-			}
+			// The two-way claim (compiled_or_refuses_test.go): answer the reference's bytes, or refuse
+			// with the missing half named. Which of the two a row does is pinned by its `refusal` column
+			// below, so a refusal here is still checked for its words — it is only no longer a failure of
+			// *this* assertion, which used to ask the retired engine's leg and read the compiled one.
+			checkCompiledRow(t, out, code, tc.src, tc.compiledWant)
 			out, code = cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
 				t.Fatalf("--aot: exit 2 where the front end should refuse (ADR 0166):\n%s", out)

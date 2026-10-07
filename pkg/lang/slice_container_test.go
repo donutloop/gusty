@@ -8,7 +8,7 @@
 //	print([1, 2, 3][1:])   →   printf("%d", <heap handle>)         →  "1" at exit 0
 //	print(["a","b"][1:])   →   rt_slice copies payloads, never tags →  "[1]" at exit 0
 //
-// The interpreter answered all three correctly throughout, which is why a two-backend parity matrix
+// the record answered all three correctly throughout, which is why a two-backend parity matrix
 // found none of it and the oracle leg found all of it.
 package lang
 

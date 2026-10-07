@@ -8,7 +8,7 @@ import (
 // A bool is a nameable element kind (roadmap Gap R.112, ADR 0259).
 //
 // The tag table had a bool from ADR 0182 onwards; what no container slot was allowed to say was
-// bool, so `print([True, 1])` answered `[1, 1]` on both backends and both backends agreed — the
+// bool, so `print([True, 1])` answered `[1, 1]` on the compiled backend and the compiled backend agreed — the
 // shape of defect parity can never see. ADR 0232 left the promise in a comment ("when bool gets
 // its own kind this line returns TagBool"); this is the file that holds it to it.
 //
@@ -20,7 +20,7 @@ import (
 // Expectations are CPython's, taken from `python3` on the same source, never from either backend:
 // pinning a rendering to itself is how this divergence survived three cycles.
 
-func TestABoolSlotNamesItselfOnBothBackends(t *testing.T) {
+func TestABoolSlotNamesItselfOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"print([True, 1])\n", "[True, 1]\n"},
 		{"print([True])\n", "[True]\n"},
@@ -192,7 +192,7 @@ func TestABoolSlotIsBuiltTaggedInEveryContainerShape(t *testing.T) {
 func TestNumericUseOfABoolSlotUnderARuntimeIndexStillAnswers(t *testing.T) {
 	src := "xs = [True, 1]\ni = 0\nprint(xs[i] + 1)\n"
 	if got, want := captureStdout(t, src), "2\n"; got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
+		t.Errorf("the record leg = %q, want %q", got, want)
 	}
 	code, out := negBuildRun(t, "bool_runtime_index", src)
 	if code != 0 {
@@ -205,7 +205,7 @@ func TestNumericUseOfABoolSlotUnderARuntimeIndexStillAnswers(t *testing.T) {
 
 // A set or dict comprehension of verdicts folds to a compile-time global, and a global has no tag
 // table: the fold now declines, and the refusal names the half it is missing (roadmap Gap R.116,
-// ADR 0259). The interpreter answers all three lines, which is what makes the compiled refusal the
+// ADR 0259). the record answers all three lines, which is what makes the compiled refusal the
 // honest answer rather than the same wrong one in different clothes.
 func TestAComprehensionOfVerdictsRefusesInWords(t *testing.T) {
 	for _, tc := range []struct{ src, wantText, wantOut string }{

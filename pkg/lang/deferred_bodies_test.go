@@ -6,7 +6,7 @@ import (
 
 // Unit coverage for roadmap Gap R.23 (ADR 0222): a `finally` is a deferred body and runs on
 // every exit from its `try`, and an `except` arm catches exceptions, not control transfers.
-// Both halves were wrong in the interpreter and both are asserted here from the Python answer,
+// Both halves were wrong in the record and both are asserted here from the Python answer,
 // written out below rather than observed from an emission.
 
 func deferredRun(t *testing.T, src string) string {
@@ -74,8 +74,8 @@ func TestDeferredBodyRunsAfterTheArms(t *testing.T) {
 func TestRaiseInFinallyReplacesThePendingException(t *testing.T) {
 	// The class is what this asserts: the arm took the ZeroDivisionError, the deferred body then
 	// raised ValueError, and the ValueError is what the program dies of. (What the run printed is
-	// asserted end-to-end on both backends in integration/deferred_bodies_test.go; the
-	// interpreter's own capture helper refuses to return stdout for a trapping program.)
+	// asserted end-to-end on the compiled backend in integration/deferred_bodies_test.go; the
+	// record's own capture helper refuses to return stdout for a trapping program.)
 	ee := trapRun(t, "try:\n    x = 1 / 0\nexcept ZeroDivisionError:\n    print(\"caught zero\")\nfinally:\n    raise ValueError(\"boom\")\n")
 	if ee.ExnType != "ValueError" {
 		t.Fatalf("the deferred body's raise did not replace the pending ZeroDivisionError: got %q", ee.ExnType)
@@ -83,7 +83,7 @@ func TestRaiseInFinallyReplacesThePendingException(t *testing.T) {
 }
 
 // TestArmsDoNotCatchTransfers is the other half of the same statement: a `return`, `break` or
-// `continue` is a transfer, and Python's arms never see one. The interpreter moved transfers with
+// `continue` is a transfer, and Python's arms never see one. the record moved transfers with
 // the same Go-error mechanism it uses for raises, so a bare `except:` used to catch a `return`.
 func TestArmsDoNotCatchTransfers(t *testing.T) {
 	ret := "def f() -> int:\n    try:\n        return 1\n    except:\n        print(\"caught a return\")\n    return 3\n\nprint(f())\n"

@@ -11,14 +11,14 @@ package lang
 //	print(sqrt(-1))     # ValueError: math domain error · --interp NameError · --aot nan
 //	print(floor("a"))   # TypeError: must be real number, not str            · --aot 0.0
 //
-// The interpreter had no such builtins at all — it trapped `NameError` for names the checker
+// the record had no such builtins at all — it trapped `NameError` for names the checker
 // predeclares, which is a program the toolchain accepts and then refuses to run. The compiled
 // backend lowered all three on the float road and answered a float where Python answers a whole
 // number, silently turned a text argument into `0.0`, and answered `nan` for the domain error,
 // which is a value where the reference has a raise. `sqrt(-1)` was also a *compile-time refusal*
 // when the constant was visible, i.e. exit 1 for a program CPython runs.
 //
-// What the two backends share now is one rule per name, and the same four questions asked in the
+// What the compiled backend share now is one rule per name, and the same four questions asked in the
 // same order: arity, the argument's kind, the domain, and the word the answer travels in.
 //
 //	                         floor(x)          ceil(x)         sqrt(x)
@@ -34,7 +34,7 @@ package lang
 // that answers `3.0` prints a number the program does not have — the same defect family as ADR
 // 0236's `round`, which also answered the wrong kind before it answered the right rule.
 //
-// Beyond the int word's reach the two engines disagree, and the disagreement is a filed row rather
+// Beyond the int word's reach both legs disagree, and the disagreement is a filed row rather
 // than a silence: `floor(2147483648.0)` is 2147483648 in the evaluator (whose ints are int64) and
 // an `OverflowError` on the compiled side naming L12.12, whose bounded-`int` decision this is
 // (roadmap Gap R.133 — the compiled leg refuses to answer a wrong number, which `fptosi` of an
@@ -152,25 +152,6 @@ func (g *irGen) raiseMathRaise(b *strings.Builder, cond, class, msg string, sp S
 	g.branchRaise(b, cond, class, msg, sp, tag)
 }
 
-// realOf is the evaluator's half of the argument check: the number the question is about, or the
-// TypeError CPython raises when what arrived is not one. An int or a verdict is a real number
-// (ADR 0257's verdict is the number it is made of), a float is itself, and everything else — a
-// text, None, a container — is the reference's sentence with the kind that turned up.
-func (e *Evaluator) realOf(v int64) (float64, error) {
-	if o, ok := e.heap[v]; ok {
-		switch o.kind {
-		case "float":
-			return o.fval, nil
-		case "bool":
-			// A verdict is the number it is made of (ADR 0257): `math.floor(True)` is 1.
-			return float64(o.bval), nil
-		}
-		return 0, exnError("TypeError", realNumberMessage(bareTypeName(e.valueTypeName(v))))
-	}
-	// An unboxed int handle is the int itself, the same reading `round` and `abs` use.
-	return float64(v), nil
-}
-
 // floorAnswer / ceilAnswer are the whole-number answers, in the int64 the evaluator carries and as
 // the errors CPython raises for the two values no whole number holds.
 func floorAnswer(f float64) (int64, error) {
@@ -183,16 +164,16 @@ func ceilAnswer(f float64) (int64, error) {
 
 func wholeAnswer(f float64, toward func(float64) float64) (int64, error) {
 	if math.IsNaN(f) {
-		return 0, exnError("ValueError", "cannot convert float NaN to integer")
+		return 0, trapError("ValueError", "cannot convert float NaN to integer")
 	}
 	if math.IsInf(f, 0) {
-		return 0, exnError("OverflowError", "cannot convert float infinity to integer")
+		return 0, trapError("OverflowError", "cannot convert float infinity to integer")
 	}
 	w := toward(f)
 	if w >= 9223372036854775808.0 || w < -9223372036854775808.0 {
 		// Beyond even the evaluator's int64 word. L12.12 owns the choice of what an int is;
 		// until it is made, this is said rather than wrapped (Gap R.64's silent class).
-		return 0, exnError("OverflowError", "the whole number is beyond the int word this backend holds (roadmap L12.12)")
+		return 0, trapError("OverflowError", "the whole number is beyond the int word this backend holds (roadmap L12.12)")
 	}
 	return int64(w), nil
 }
@@ -205,7 +186,7 @@ func sqrtAnswer(f float64) (float64, error) {
 		return math.NaN(), nil // math.sqrt(nan) is nan, and the reference hands it back
 	}
 	if f < 0 {
-		return 0, exnError("ValueError", "math domain error")
+		return 0, trapError("ValueError", "math domain error")
 	}
 	return math.Sqrt(f), nil
 }

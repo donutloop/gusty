@@ -16,7 +16,7 @@ import (
 // addressed, so two spellings of the same text are the same key), rt_str_ptr(i32) -> i8*,
 // and container slots hold the index. Per-container element kinds (listElemStr /
 // setElemStr / dictKeyStr / dictValStr) decide how elements print and how reads behave, so
-// both backends render exactly what Python does: ['a', 'b'], {'k': 1}, {1: 's'}, set().
+// the compiled path render exactly what Python does: ['a', 'b'], {'k': 1}, {1: 's'}, set().
 
 var stringContainerCases = []struct {
 	name string
@@ -47,9 +47,9 @@ var stringContainerCases = []struct {
 
 func TestStringContainersMatchPython(t *testing.T) {
 	for _, tc := range stringContainerCases {
-		gotInterp := runInterp(t, tc.src)
-		if gotInterp != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterp, tc.want)
+		gotCompiled := runCompiled(t, tc.src)
+		if gotCompiled != tc.want {
+			t.Errorf("%s: the record leg = %q, want %q", tc.name, gotCompiled, tc.want)
 		}
 		res, err := lang.Compile(tc.src)
 		if err != nil {
@@ -76,9 +76,7 @@ func TestStringContainersMatchPython(t *testing.T) {
 func TestStringInterningIsContentAddressed(t *testing.T) {
 	src := "d = {}\nd[\"k\"] = 1\nd[\"k\"] = 2\nprint(len(d))\nprint(d[\"k\"])\n"
 	want := "1\n2\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := compileAndRun(t, src); got != want {
 		t.Errorf("AOT = %q, want %q", got, want)
 	}
@@ -91,7 +89,9 @@ func TestStringsOutsideContainersStillRefuse(t *testing.T) {
 	if err == nil {
 		t.Skip("string parameters are supported now; nothing left to refuse here")
 	}
-	if !strings.Contains(err.Error(), "AOT backend yet") || !strings.Contains(err.Error(), "interpreter") {
+	// A refusal has to name what is missing, not point a reader at an engine they cannot run
+	// (Gap R.38: the sentence used to promise the interpreter answers this).
+	if !strings.Contains(err.Error(), "AOT backend yet") {
 		t.Errorf("refusal should stay actionable: %v", err)
 	}
 }
@@ -142,9 +142,7 @@ var containerLiteralCases = []struct {
 
 func TestContainerLiteralsMatchPython(t *testing.T) {
 	for _, tc := range containerLiteralCases {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterpHint(got), tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
 		if err != nil {
 			t.Errorf("%s: compile: %v", tc.name, err)
@@ -160,7 +158,7 @@ func TestContainerLiteralsMatchPython(t *testing.T) {
 	}
 }
 
-func gotInterpHint(got string) string { return got }
+func gotCompiledHint(got string) string { return got }
 
 // These four used to be the refusal list. A container that *grows* with a second kind, and a
 // literal whose keys or values mix kinds, are now built: every slot carries its tag from the moment
@@ -197,12 +195,12 @@ func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
 }
 
 // What the container family still refuses, and why the refusal is the answer rather than a lazy
-// copy of the interpreter: the shape would store a word whose meaning the compiler cannot say
+// copy of the record: the shape would store a word whose meaning the compiler cannot say
 // afterwards. The wording is checked because these messages are an agent's only input.
 //
 // Two entries this table used to carry are answers now and are pinned as answers elsewhere: a
 // nested dict value ({"a": [1]}) and a set member that is a list — the first because the slot
-// carries the inner container's tag (TestNestedContainersAnswerOnBothBackends, ADR 0238), the
+// carries the inner container's tag (TestNestedContainersAnswerOnTheCompiledBackend, ADR 0238), the
 // second because CPython *raises* for `s.add([2])` (unhashable), so it is not a three-engine row
 // and has no oracle to be pinned against.
 var mixedContainerCases = []string{
@@ -281,9 +279,12 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 			!strings.Contains(err.Error(), "cannot prove one kind") {
 			t.Errorf("%q: unexpected diagnostic: %v", src, err)
 		}
-		if !strings.Contains(err.Error(), "interpreter") && !strings.Contains(err.Error(), "interpreted") &&
+		// The refusal must point somewhere a reader can go: either the door that does work ("printing
+		// it works") or the reference that answers it, with the roadmap row that owns the rest. Naming a
+		// second engine that no longer exists would name nothing.
+		if !strings.Contains(err.Error(), "CPython") && !strings.Contains(err.Error(), "reference") &&
 			!strings.Contains(err.Error(), "printing it works") {
-			t.Errorf("%q: should name the path that works: %v", src, err)
+			t.Errorf("%q: should name the path that works, or the reference that answers it: %v", src, err)
 		}
 		if res != nil {
 			// nothing usable was emitted, and it must not be an invalid module
@@ -297,9 +298,7 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 func TestItemAssignmentReplacesElementKind(t *testing.T) {
 	src := "xs = [1]\nxs[0] = \"s\"\nprint(xs)\n"
 	want := "['s']\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := compileAndRun(t, src); got != want {
 		t.Errorf("AOT = %q, want %q", got, want)
 	}

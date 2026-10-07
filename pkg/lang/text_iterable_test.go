@@ -1,6 +1,6 @@
 // A text used as an iterable (roadmap Gap R.185, owner L11.1 / L11.5; ADR 0298, ADR 0166's exit codes).
 //
-// Two silently-wrong answers on the interpreter, at exit 0, where the compiled leg at least refused:
+// Two silently-wrong answers on the record, at exit 0, where the compiled leg at least refused:
 //
 //	[c for c in "abc"]      CPython ['a','b','c']   --interp []      the characters live in sval, not elems
 //	max("abc") / min("abc") CPython c / a           --interp abc     a text fell to the bare-scalar arm

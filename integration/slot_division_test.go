@@ -8,12 +8,12 @@ import (
 // slot_division_test.go — the true division of a slot **no literal describes**, at the CLI and against
 // CPython (roadmap L11.1's open clause Gap R.96; ADR 0253).
 //
-// The sibling unit file pins the same claim through Compile/EvalExpr; this one runs the shipped binary
+// The sibling unit file pins the same claim against the record; this one runs the shipped binary
 // on both legs and the oracle on the same source. The measured defect:
 //
 //	xs = []
 //	xs.append(3)
-//	print(xs[0] / 4)   # CPython 0.75 · --interp 0.75 · --aot printed 0.0, exit 0
+//	print(xs[0] / 4)   # CPython 0.75 · --aot 0.75 · --aot printed 0.0, exit 0
 //
 // `0.0` was ADR 0249's empty-operand `fdiv` substituted into silence — the one answer worse than a
 // refusal, because the program looks like it worked. `/` earns its place as the arithmetic operator the
@@ -21,7 +21,7 @@ import (
 // advance commitment, the result's kind, is settled, and the tag then says whether to unbox, to
 // convert, or to raise CPython's sentence with the slot's real kind in it.
 //
-// The rows are split the way the claim is: what answers must answer identically on three engines; what
+// The rows are split the way the claim is: what answers must answer identically on both legs; what
 // traps must be *raised* by both legs with the same class and sentence and must never be a refusal; and
 // what is still refused must be refused at the front end with exit 1 and the missing half named — never
 // exit 2, the contract's class for a compiler that broke its own module (ADR 0166).
@@ -89,7 +89,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -143,7 +143,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			if pyCode == 0 || !strings.Contains(py, want) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
@@ -189,7 +189,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "slot_division_catch.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 || out != tc.want {
 					t.Fatalf("%s printed %q exit %d, want %q (%s)", engine, out, code, tc.want, cliRun(t, engine, path))
@@ -254,7 +254,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 // *PHI node entries do not match predecessors* — because the element's own zero guard (ADR 0253) made the
 // block that branches back to the loop header something other than the block the induction `phi` named.
 // The increment now lives in a merge block of its own, so the entry list and the predecessors agree and
-// the program prints `[3.0]` on three engines.
+// the program prints `[3.0]` on both legs.
 func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the_shape_the_gap_was_named_for", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n", "[3.0]\n"},
@@ -273,7 +273,7 @@ func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -306,7 +306,7 @@ func TestTrueDivisionOfAComprehensionLoopVariableTrapsLikeCPython(t *testing.T) 
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)

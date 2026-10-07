@@ -244,8 +244,8 @@ func TestGCStatsMarshalKeysAreStable(t *testing.T) {
 	}
 }
 
-// TestGCStatsLineRoundTrip pins the one documented shape shared by the two backends:
-// the interpreter renders GCStats with String, the compiled runtime prints the same
+// TestGCStatsLineRoundTrip pins the one documented shape shared by the compiled backend:
+// the record renders GCStats with String, the compiled runtime prints the same
 // fields with rt_gc_report's printf format, and ParseGCStatsLine reads either back.
 // The CLI turns the compiled program's line into JSON this way, so the two halves must
 // agree byte-for-byte on the field names.
@@ -262,7 +262,7 @@ func TestGCStatsLineRoundTrip(t *testing.T) {
 			t.Fatalf("round trip changed the stats:\n in:  %+v\nout: %+v\nline: %s", st, got, st.String())
 		}
 	}
-	// The interpreter's line must not grow a top= field: existing assertions and user
+	// The record's line must not grow a top= field: existing assertions and user
 	// scripts read it.
 	if strings.Contains(GCStats{Backend: "interpreter"}.String(), "top=") {
 		t.Errorf("interpreter report gained a top= field: %s", GCStats{Backend: "interpreter"}.String())

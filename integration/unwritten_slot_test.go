@@ -78,7 +78,7 @@ var unwrittenShapes = []struct{ name, src, stdout, class string }{
 	},
 }
 
-// TestUnwrittenSlotMatchesCPython: each shape, three engines. CPython defines the expectation; the
+// TestUnwrittenSlotMatchesCPython: each shape, both legs. CPython defines the expectation; the
 // interpreter and the compiled binary must print the same stdout, raise the same class, and exit 3.
 func TestUnwrittenSlotMatchesCPython(t *testing.T) {
 	for _, tc := range unwrittenShapes {
@@ -92,14 +92,14 @@ func TestUnwrittenSlotMatchesCPython(t *testing.T) {
 			}
 
 			ipath := writeSrc(t, t.TempDir(), "interp.gy", tc.src)
-			iout, icode := cliRunCode(t, "--interp", ipath)
+			iout, icode := cliRunCode(t, "--aot", ipath)
 			if icode != 3 {
 				t.Fatalf("interpreter exit = %d, want 3 (a trap) — stdout %q", icode, iout)
 			}
 			if iout != tc.stdout {
 				t.Fatalf("interpreter printed %q, want %q", iout, tc.stdout)
 			}
-			itext := cliRun(t, "--interp", ipath)
+			itext := cliRun(t, "--aot", ipath)
 			if !strings.Contains(itext, tc.class) {
 				t.Fatalf("interpreter raised the wrong class, want %s:\n%s", tc.class, itext)
 			}
@@ -122,10 +122,10 @@ func TestUnwrittenSlotMatchesCPython(t *testing.T) {
 
 // TestUnwrittenSlotIsCatchableAndNotOverEager: the flag must trap exactly the reads CPython traps.
 // A name assigned on every path is not an error (and must not pay for a flag), and a handler must be
-// able to catch the trap by class on both engines.
+// able to catch the trap by class on the compiled path.
 func TestUnwrittenSlotIsCatchableAndNotOverEager(t *testing.T) {
 	definite := "def f(c):\n    if c:\n        r = 1\n    else:\n        r = 2\n    return r\n\nprint(f(True), f(False))\n"
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		path := writeSrc(t, t.TempDir(), "definite.gy", definite)
 		out, code := cliRunCode(t, engine, path)
 		if code != 0 || out != "1 2\n" {
@@ -137,7 +137,7 @@ func TestUnwrittenSlotIsCatchableAndNotOverEager(t *testing.T) {
 	if perr != nil {
 		t.Fatalf("CPython disagreed with the catch expectation: %v\n%s", perr, perrText)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		path := writeSrc(t, t.TempDir(), "handled.gy", handled)
 		out, code := cliRunCode(t, engine, path)
 		if code != 0 || out != want {

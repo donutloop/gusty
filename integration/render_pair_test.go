@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"github.com/donutloop/gusty/pkg/lang"
 	"strings"
 	"testing"
 )
@@ -8,8 +9,8 @@ import (
 // integration/render_pair_test.go — roadmap L11.2, ADR 0258 (closes Gap L.2).
 //
 // str() and repr() are one pair: one renderer per backend, asked two questions. The pkg/lang table
-// drives the forms through both engines; this file drives them through the CLI, which is what an
-// agent consumes — the human legs (--interp / --aot), the machine legs (--json, --oracle), and the
+// drives the forms through the compiled path; this file drives them through the CLI, which is what an
+// agent consumes — the human legs (--aot / --aot), the machine legs (--json, --oracle), and the
 // exit codes each of them answers with.
 //
 // The expectations are CPython's answers, taken from python3 (the --oracle leg checks the same
@@ -49,7 +50,7 @@ func TestCLIPairWritesWhatCPythonWrites(t *testing.T) {
 	for _, tc := range pairForms {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "pair.gy", tc.src)
-			if out := cliRun(t, "--interp", "--file", path); out != tc.want {
+			if out := cliRun(t, "--aot", "--file", path); out != tc.want {
 				t.Errorf("interpreter leg wrote %q, want CPython's %q\nsource: %s", out, tc.want, tc.src)
 			}
 			out, code := cliRunCode(t, "--aot", "--file", path)
@@ -76,7 +77,7 @@ func TestCLIPairWritesWhatCPythonWrites(t *testing.T) {
 func TestDoubleIntoThePairIsRendered(t *testing.T) {
 	const src = "xs = []\nxs.append(6)\nprint(str(xs[0] / 2))\n"
 	path := writeSrc(t, t.TempDir(), "pair_double.gy", src)
-	if out := cliRun(t, "--interp", "--file", path); out != "3.0\n" {
+	if out := cliRun(t, "--aot", "--file", path); out != "3.0\n" {
 		t.Errorf("interpreter wrote %q, want 3.0", out)
 	}
 	out, code := cliRunCode(t, "--aot", "--file", path)
@@ -113,8 +114,8 @@ func TestJSONReportsThePair(t *testing.T) {
 		if !strings.Contains(out, `"type": "`+tc.typ+`"`) {
 			t.Errorf("--json --eval %s did not report type %q: %s", tc.expr, tc.typ, out)
 		}
-		if !strings.Contains(out, `"backend": "interpreter"`) {
-			t.Errorf("--json --eval %s did not name the backend: %s", tc.expr, out)
+		if !strings.Contains(out, `"backend": "`+lang.BackendName+`"`) {
+			t.Errorf("--json --eval %s did not name the backend it ran on: %s", tc.expr, out)
 		}
 	}
 }

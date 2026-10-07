@@ -7,11 +7,11 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// The oracle ledger is data, and data rots. These tests keep it honest: every row
-// must describe a case that exists, every exception must be explained and owned, and
-// the third leg must actually be running (a harness that compared both backends to a
-// stub would look exactly like this one until someone asked it a question the stub
-// could not answer). Roadmap L11.9, ADR 0186.
+// The oracle ledger is data, and data rots. These tests keep it honest: every row must describe a case
+// that exists, every exception must be explained and owned, and the reference leg must actually be
+// running — a harness comparing the compiler to a stub looks exactly like a harness comparing it to
+// CPython until someone asks a question the stub cannot answer. Roadmap L11.9, ADR 0186; ADR 0302 took
+// out the second backend and left CPython as the only opinion that is not the compiler's own.
 
 func TestOracleLedgerOnlyDescribesRegisteredCases(t *testing.T) {
 	registered := map[string]bool{}
@@ -52,19 +52,17 @@ func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
 			if !strings.Contains(c.Ref, "L") && !strings.Contains(c.Ref, "Gap") {
 				t.Errorf("%s: ref %q should name a roadmap item (L…) or a Gap", c.ID, c.Ref)
 			}
-			sawInterp, sawAOT := false, false
+			sawAOT := false
 			for _, p := range c.Pins {
 				switch p.Backend {
-				case "interpreter":
-					sawInterp = true
 				case "aot":
 					sawAOT = true
 				default:
-					t.Errorf("%s: pin for unknown backend %q", c.ID, p.Backend)
+					t.Errorf("%s: pin for unknown backend %q — with one backend there is one leg to pin, and CPython is the other side of the comparison, not a leg", c.ID, p.Backend)
 				}
 			}
-			if !sawInterp || !sawAOT {
-				t.Errorf("%s: a debt row must pin both legs (interpreter=%v aot=%v)", c.ID, sawInterp, sawAOT)
+			if !sawAOT {
+				t.Errorf("%s: a debt row must pin what the compiled program prints, or \"wrong\" has no definition", c.ID)
 			}
 		default:
 			t.Errorf("%s: unknown declared oracle state %q", c.ID, c.Oracle)
@@ -90,17 +88,17 @@ func TestOracleThirdLegIsNotAStub(t *testing.T) {
 	if !strings.Contains(row.PythonOut, "True") {
 		t.Errorf("CPython should render a bool parameter as True, got %q", row.PythonOut)
 	}
-	if !strings.Contains(row.InterpOut, "1") || strings.Contains(row.InterpOut, "True") {
-		t.Errorf("the interpreter is expected to print the stored number here (that is the debt); got %q", row.InterpOut)
+	if !strings.Contains(row.AOTOut, "1") || strings.Contains(row.AOTOut, "True") {
+		t.Errorf("the compiled program is expected to print the stored number here (that is the debt); got %q", row.AOTOut)
 	}
-	if row.PythonOut == row.InterpOut || row.PythonOut == row.AOTOut {
-		t.Errorf("the oracle leg returned a backend's answer — it is not an independent opinion")
+	if row.PythonOut == row.AOTOut {
+		t.Errorf("the reference leg returned the compiler's answer — it is not an independent opinion")
 	}
 	if row.Oracle != lang.OracleDebt {
 		t.Errorf("status = %q, want %q", row.Oracle, lang.OracleDebt)
 	}
-	if row.InterpMatchesPython || row.AOTMatchesPython {
-		t.Errorf("neither backend may claim a match here: interp=%q aot=%q python=%q", row.InterpOut, row.AOTOut, row.PythonOut)
+	if row.AOTMatchesPython {
+		t.Errorf("the compiled program may not claim a match here: aot=%q python=%q", row.AOTOut, row.PythonOut)
 	}
 }
 
@@ -115,12 +113,12 @@ func TestOracleHarnessCanFail(t *testing.T) {
 	}
 
 	// Same program, same legs, one wrong pin: drift must appear.
-	c.Pins = []lang.OraclePin{{Backend: "interpreter", Stdout: "<< 21 >>\ngot 42\nafter\n"}, {Backend: "aot", Stdout: "got << 21 >>\n42\nafter\n"}}
+	c.Pins = []lang.OraclePin{{Backend: "aot", Stdout: "<< 21 >>\ngot 42\nafter\n"}}
 	bad := runLegs(t, c)
 	if len(bad.OracleDrift) == 0 {
 		t.Fatalf("a wrong pin produced no drift — the pin is not being checked")
 	}
-	if !strings.Contains(strings.Join(bad.OracleDrift, " | "), "pin says the interpreter leg prints") {
+	if !strings.Contains(strings.Join(bad.OracleDrift, " | "), "pin says the aot leg prints") {
 		t.Errorf("drift should name the leg and both answers: %v", bad.OracleDrift)
 	}
 

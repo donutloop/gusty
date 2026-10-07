@@ -1,11 +1,11 @@
 package lang
 
-// pkg/lang/abs_kind_test.go — `abs` asks what kind its operand is, on both backends, in the same door the
+// pkg/lang/abs_kind_test.go — `abs` asks what kind its operand is, on the compiled backend, in the same door the
 // unary minus asks it (roadmap Gap R.140, ADR 0271).
 //
 // The reference stops on the absolute value of anything without a sign: `TypeError: bad operand type for
 // abs(): 'str'`, `'NoneType'`, `'list'`, `'dict'`, `'set'`, `'C'`. Every one of them was answered here by a
-// *number at exit 0*: the interpreter handed the operand straight to its int evaluator, so a text reached
+// *number at exit 0*: the record handed the operand straight to its int evaluator, so a text reached
 // `abs` holding the interned index it is stored as and `print(abs("hi"))` printed `hi` — the index rendered
 // back through the print door — while the compiled backend wrote `sub i32 0, @.str1` and printed `0`. Two
 // of the shapes went one step further and had `llc` reject the module: `abs([1])` and `abs({1})` each spent
@@ -19,7 +19,7 @@ package lang
 //
 // Four claims, each a different way to be wrong: the parity rows (a sign is a real operation on the kinds
 // that have one, so the raise must not be bought by breaking `abs(-3)`, `abs(-3.5)` or `abs(True)`); the
-// traps, whose class and message are compared exactly on both engines; the catchability of each raise; and
+// traps, whose class and message are compared exactly on both legs; the catchability of each raise; and
 // the IR shape — the sentence is written per kind reached, in the emitted store-and-branch form, and never
 // as a front-end refusal for a program the reference traps on.
 //
@@ -30,8 +30,8 @@ import (
 	"testing"
 )
 
-// TestAbsOfANumberStillAnswersOnBothBackends is the family that must keep answering.
-func TestAbsOfANumberStillAnswersOnBothBackends(t *testing.T) {
+// TestAbsOfANumberStillAnswersOnTheCompiledBackend is the family that must keep answering.
+func TestAbsOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"a negative literal", "print(abs(-3))\n", "3\n"},
 		{"a positive literal", "print(abs(4))\n", "4\n"},
@@ -71,10 +71,10 @@ func TestAbsOfANumberStillAnswersOnBothBackends(t *testing.T) {
 	}
 }
 
-// TestAbsOfANonNumberRaisesTheReferenceSentenceOnBothBackends is the row itself: the class is what a handler
-// matches and the message is what a user searches for, so both are compared exactly, on both engines —
+// TestAbsOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend is the row itself: the class is what a handler
+// matches and the message is what a user searches for, so both are compared exactly, on both legs —
 // including the interpreted one, whose half of the defect the compiled path had been pinning alone.
-func TestAbsOfANonNumberRaisesTheReferenceSentenceOnBothBackends(t *testing.T) {
+func TestAbsOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text literal — the row's own shape",
@@ -189,11 +189,11 @@ func TestAbsOfANonNumberRaisesTheReferenceSentenceOnBothBackends(t *testing.T) {
 	}
 }
 
-// TestTheAbsTrapIsCatchableOnBothBackends: the raise leaves through the emitted store-and-branch, so the arm
+// TestTheAbsTrapIsCatchableOnTheCompiledBackend: the raise leaves through the emitted store-and-branch, so the arm
 // the program wrote runs — the compiled half is the one that decides, because a raise a helper performed
 // for itself would be unreachable to the program (ADR 0228, and the reason a raise is chosen over a
 // refusal in ADR 0266's argument).
-func TestTheAbsTrapIsCatchableOnBothBackends(t *testing.T) {
+func TestTheAbsTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"a text literal", "try:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")\n", "caught\nafter\n"},
 		{"None", "try:\n    print(abs(None))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},

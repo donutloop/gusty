@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,16 +12,14 @@ import (
 
 // L11.4 (ADR 0210) is the subscript rule: a negative index counts from the end for
 // anything positional, and stays a key for anything keyed. The corpus programs run on all
-// three engines here, because the whole point of closing this gap is that the two backends
+// both legs here, because the whole point of closing this gap is that the compiled backend
 // and the reference implementation now answer the same question the same way.
 
 func TestNegativeSubscriptsAgreeOnEveryPath(t *testing.T) {
 	src := readProgram(t, "negative_index.gy")
 	want := "3\n1\n2\n30\n2\nminus\nzero\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -81,29 +78,20 @@ func TestNegativeIndexProgramsCarryNoOracleDebt(t *testing.T) {
 	}
 }
 
-// negInterpErr runs the evaluator with no front-end gate and returns only the error, so a
-// trap can be inspected rather than printed.
-func negInterpErr(t *testing.T, src string) error {
+// negRecordedTrap runs a program the compiled backend is expected to trap on and returns the report it
+// wrote, so the trap can be inspected rather than merely printed. The recorded answer from the retired
+// engine is consulted first: an out-of-range index has to stay an error, and a compiled run that stops
+// saying so is a divergence, not a pass.
+func negRecordedTrap(t *testing.T, src string) error {
 	t.Helper()
-	prog, err := lang.Parse(src)
-	if err != nil {
+	if _, err := lang.Parse(src); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	old := os.Stdout
-	_, r, perr := os.Pipe()
-	if perr != nil {
-		t.Fatalf("pipe: %v", perr)
-	}
-	os.Stdout = r
-	ev := lang.NewEvaluator()
-	_, evalErr := ev.EvalProgram(prog)
-	os.Stdout = old
-	r.Close()
-	return evalErr
+	return lang.RecordedRunError(t, src)
 }
 
-// An index past either end is still an error, and the compiled binary has to say so the
-// way the interpreter and CPython do — normalisation must not have swallowed the check.
+// An index past either end is still an error, and the compiled binary has to say so the way CPython
+// and the recorded answer do — normalisation must not have swallowed the check.
 func TestNegativeIndexOutOfRangeIsSaidEverywhere(t *testing.T) {
 	src := "xs = [1, 2, 3]\nprint(xs[-4])\n"
 	_, pyErr, perr := lang.PythonRun(src)
@@ -124,7 +112,7 @@ func TestNegativeIndexOutOfRangeIsSaidEverywhere(t *testing.T) {
 	if !strings.Contains(compiled, "IndexError") {
 		t.Fatalf("compiled run did not say IndexError: %q (%v)", compiled, cerr)
 	}
-	if ierr := negInterpErr(t, src); ierr == nil || !strings.Contains(ierr.Error(), "index out of range") {
-		t.Fatalf("interpreter accepted xs[-4]: %v", ierr)
+	if terr := negRecordedTrap(t, src); terr == nil || !strings.Contains(terr.Error(), "index out of range") {
+		t.Fatalf("the compiled run accepted xs[-4]: %v", terr)
 	}
 }

@@ -9,7 +9,7 @@ import (
 //
 // CPython's `and` and `or` are the two operators that are not operators: they test the left operand and
 // hand back whichever operand the test chose, unconverted. `print(2 and 3)` is `3`, `print(0 or 5)` is `5`,
-// `print("" or "d")` is the text `d`, and `print([1] and [2])` is `[2]`. Both backends printed `1` for all
+// `print("" or "d")` is the text `d`, and `print([1] and [2])` is `[2]`. The compiled backend printed `1` for all
 // four — exit 0, digits wrong, no diagnostic, on an operator every Python program uses — because the
 // lowering composed two predicates and zero-extended the verdict, and every truthiness table since asked
 // whether the *test* passed rather than what the expression *is*.
@@ -346,7 +346,7 @@ func (g *irGen) numericTruthOf(b *strings.Builder, kind, reg string) string {
 // true, and the truth of a chosen operand is the composition of the operands' truths — so the condition
 // never needs the word the answer would travel in, and no pair, tag or agreement is asked of the operands.
 // It is also the door that used to evaluate the operand a condition never reaches: `if x and boom():` called
-// `boom` with x bound to 0, and `if y or boom():` called it with y true, on both engines (Gap R.149).
+// `boom` with x bound to 0, and `if y or boom():` called it with y true, on both legs (Gap R.149).
 func (g *irGen) logicCondition(b *strings.Builder, n *BinOp) (string, error) {
 	var scratch strings.Builder
 	l, err := g.truthyValue(&scratch, n.L)
@@ -678,24 +678,6 @@ func (g *irGen) logicFormOf(b *strings.Builder, e Expr, bud *logicBudget) (logic
 // and the missing word, because a refusal that says `unsupported expression` teaches nobody what to change.
 func logicWordErr(n *BinOp) error {
 	return fmt.Errorf("`%s %s %s` chooses between two values whose kinds this pass cannot state in one word: the answer is one operand or the other, and which one is a run-time fact. Printing the verdict the operator is not would be the wrong answer this backend refuses to ship (ADR 0166), and choosing the value needs the value word that carries its own tag — roadmap L11.1's tagged value word, Gap R.147. Write both operands in the same shape, test with `if`/`else` and bind the value there, or print it (the print door renders a chosen operand by its kind)", exprSurface(n.L), n.Op, exprSurface(n.R))
-}
-
-// logicChosen boxes the operand an `and`/`or` hands back when the source wrote that operand as a verdict.
-// A verdict is the 1/0 the comparison produced, and the question 「is this a bool?» is asked of the
-// expression — but the expression that has to answer is the operand the test *chose*, which for a run-time
-// test is not knowable by the print door's conservative rule (ADR 0257, Gap R.125). Here the program has
-// just run the test, so the answer is available: the operand that won is asked, and a verdict enters
-// through the same box a container slot gives it (ADR 0259), which every numeric question still unboxes.
-// `x = True` / `print(x or 2)` is `True` and `print(1 or True)` stays `1` — the pair ADR 0261 refuses to
-// break, and the pair the compiled backend renders from the tag it selects (roadmap Gap R.147, ADR 0269).
-func (e *Evaluator) logicChosen(chosen Expr, v int64) int64 {
-	if e.isHandle(v) {
-		return v
-	}
-	if IsBoolExpr(chosen, e.boolEnv()) {
-		return e.allocBool(v)
-	}
-	return v
 }
 
 // logicFoldConst answers the fold paths: what operand an `and`/`or` of two values the source wrote hands

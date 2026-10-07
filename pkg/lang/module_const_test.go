@@ -4,7 +4,7 @@ package lang
 // backends (roadmap L11.6, the typed stdlib constants; the ledger's `probe_math_const`).
 //
 // `import math` / `print(math.PI)` is the most ordinary program the standard library offers. The compiled
-// backend printed `3` — the double poured into the integer word — while the interpreter, which evaluates the
+// backend printed `3` — the double poured into the integer word — while the record, which evaluates the
 // module and reads the value back, printed `3.141592653589793`, and a program that spelled the same double by
 // hand (`pi = 3.141592653589793`) has always been right on both. The kind was in the source; only half the
 // questions were allowed to read it. `value()` resolved `mod.NAME` through the fold `resolveImports` built,
@@ -12,7 +12,7 @@ package lang
 // `*Attr` it could not read and took the integer road.
 //
 // Four claims, each a different way to be wrong:
-//   - the answers, on both engines, for the family of positions a constant can sit in (print, arithmetic,
+//   - the answers, on both legs, for the family of positions a constant can sit in (print, arithmetic,
 //     true division, the negation, a binding then a comparison, `str`, an f-string, a container element,
 //     `round`);
 //   - the fold asked *as a function* — the one read in `module_const.go` must resolve, must decline for a
@@ -54,8 +54,8 @@ func withStdlib(t *testing.T) {
 	t.Cleanup(func() { SetStdlibDir("") })
 }
 
-// TestADataImportConstantKeepsItsTypeOnBothBackends is the parity family.
-func TestADataImportConstantKeepsItsTypeOnBothBackends(t *testing.T) {
+// TestADataImportConstantKeepsItsTypeOnTheCompiledBackend is the parity family.
+func TestADataImportConstantKeepsItsTypeOnTheCompiledBackend(t *testing.T) {
 	withStdlib(t)
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row the census recorded", "import consts\nprint(consts.PI)\n", "3.141592653589793\n"},
@@ -95,7 +95,7 @@ func TestADataImportConstantKeepsItsTypeOnBothBackends(t *testing.T) {
 }
 
 // TestTheSignlessDoorNamesAModuleConstant is ADR 0271's door serving a raise instead of a print: a text the
-// module declared is a text for `-x` and for `abs(x)`, on both engines. Before the shared read the compiled
+// module declared is a text for `-x` and for `abs(x)`, on both legs. Before the shared read the compiled
 // leg answered `abs(consts.NAME)` with the number `0` — the interned index subtracted from zero — where the
 // reference stops with `bad operand type for abs(): 'str'`.
 func TestTheSignlessDoorNamesAModuleConstant(t *testing.T) {

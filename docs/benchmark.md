@@ -61,9 +61,9 @@ speedup ratio (`interp best / aot best`; `> 1` means AOT is faster).
 
 ## Tests
 
-- `pkg/lang/bench_test.go` — unit coverage: both backends, runs clamping,
+- `pkg/lang/bench_test.go` — unit coverage: the compiled backend, runs clamping,
   compile-error rejection, runtime-error tolerance.
-- `integration/bench_test.go` — end-to-end: both backends report, and AOT
+- `integration/bench_test.go` — end-to-end: the compiled backend reports, and AOT
   beats the interpreter on a hot numeric loop (`Speedup > 1`).
 
 ## Benchmark suite + regression gate (L10.4)

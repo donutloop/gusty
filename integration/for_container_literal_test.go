@@ -43,7 +43,7 @@ func TestForOverContainerLiteralsIteratesTheContainer(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s", engine, cliRun(t, engine, path))
@@ -61,7 +61,7 @@ func TestForOverContainerLiteralsIteratesTheContainer(t *testing.T) {
 
 // TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder covers the row the table above cannot
 // pin: a set whose members are of more than one kind, where each element's tag is what prints it
-// and CPython's own iteration order is hash order rather than the language's. The three engines are
+// and CPython's own iteration order is hash order rather than the language's. both legs are
 // compared as multisets, which is what a set's iteration is.
 func TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder(t *testing.T) {
 	for _, src := range []string{
@@ -76,7 +76,7 @@ func TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder(t *testing.T) {
 			return strings.Join(lines, "|")
 		}
 		byEngine := map[string]string{}
-		for _, engine := range []string{"--interp", "--aot"} {
+		for _, engine := range cliEngines { // one leg since ADR 0302; the loop is the shape the CLI harness has
 			out, code := cliRunCode(t, engine, path)
 			if code == 2 {
 				t.Fatalf("%s rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))
@@ -86,14 +86,15 @@ func TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder(t *testing.T) {
 			}
 			byEngine[engine] = multiset(out)
 		}
-		if byEngine["--interp"] != byEngine["--aot"] {
-			t.Fatalf("%q: the backends disagree: interp %q, aot %q", src, byEngine["--interp"], byEngine["--aot"])
-		}
+		// The engine-vs-engine row of this check died with ADR 0302 and was briefly left behind
+		// comparing the one remaining leg with itself — a comparison that cannot fail, which is the
+		// harness bug this repo counts as its own (ADR 0166's class). There is one leg here, so the
+		// multiset is compared against the reference below and against nothing else.
 		if py, ok := cpythonOut(t, path); ok {
 			// A bool member would differ on rendering alone (probe_bool_value), so the rows
 			// here hold none; anything else that differs is a real disagreement.
 			if multiset(py) != byEngine["--aot"] {
-				t.Fatalf("%q: CPython %q, both backends %q", src, multiset(py), byEngine["--aot"])
+				t.Fatalf("%q: CPython %q, the compiled path %q", src, multiset(py), byEngine["--aot"])
 			}
 		}
 	}
@@ -115,7 +116,7 @@ func TestForOverContainerVariablesStillIterates(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, cliRun(t, engine, path))
@@ -138,7 +139,7 @@ func TestForOverGeneratorCallStillIterates(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code != 0 {
 			t.Fatalf("%s exited %d:\n%s", engine, code, cliRun(t, engine, path))

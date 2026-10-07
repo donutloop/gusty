@@ -234,7 +234,7 @@ func TestFloatValuesInDictsAndSetsAnswer(t *testing.T) {
 	}
 }
 
-// A missing key raises the KeyError the interpreter raises — decided by the (payload, tag) pair,
+// A missing key raises the KeyError the record raises — decided by the (payload, tag) pair,
 // which is the whole reason the check exists.
 func TestMixedDictMissingKeyRaises(t *testing.T) {
 	ir := compileOrFatal(t, "d = {0: \"zero\", \"k\": 2}\nprint(d[\"0\"])\n")

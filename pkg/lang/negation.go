@@ -4,7 +4,7 @@ package lang
 //
 // The reference stops on a negation of anything that has no sign. `-"hi"`, `-None`, `-[1, 2]`, `-C()` each
 // answer `TypeError: bad operand type for unary -: '<kind>'`, and every one of them was answered here by a
-// *number at exit 0*: the interpreter handed the interned index of the text to its int evaluator (which is
+// *number at exit 0*: the record handed the interned index of the text to its int evaluator (which is
 // why the digits looked like an address, -281474976710658 = -(2^48 + 2)), and the compiled backend emitted
 // `sub i32 0, @.str1` and printed 0. `-[1, 2]` went one step further and had `llc` reject the module — exit
 // 2, the contract's "the compiler is broken" code, spent on a program the reference merely stops on.
@@ -15,7 +15,7 @@ package lang
 // tag door never reached, where the kind is written in the source and the compiler only has to read it.
 //
 // One sentence, one owner: the wording comes from `unsupportedNumberOp("neg", …)`, the table ADR 0265
-// established, so the interpreter, the emitted raise, the printer and the tests can never disagree about
+// established, so the record, the emitted raise, the printer and the tests can never disagree about
 // what `-x` says when x holds a text.
 //
 // Both halves raise rather than refuse. That is the load-bearing choice: a front-end refusal (exit 1) would
@@ -55,68 +55,6 @@ func (g *irGen) signlessOperandKind(e Expr) (string, bool) { return g.negationOp
 
 // absOperandKind is the door `abs` asks.
 func (g *irGen) absOperandKind(e Expr) (string, bool) { return g.signlessOperandKind(e) }
-
-// absolute is the interpreter's `abs`, and it asks the unary minus's question of its operand: a float box and
-// a bool box answer with their payloads, an unboxed int is its own number, and every other object the heap
-// can hand back stops the program with the reference's sentence — `bad operand type for abs(): 'str'`, named
-// by the same `operandKind` the negation, the binary operators and `len` already read (roadmap Gap R.140,
-// ADR 0271). Until this door the interpreter negated the handle: `abs("hi")` returned the interned index, so
-// `print(abs("hi"))` printed `hi` at exit 0 while CPython stops.
-func (e *Evaluator) absolute(v int64) (int64, error) {
-	if fv, ok := e.floatOf(v); ok {
-		if fv < 0 {
-			return e.allocFloat(-fv), nil
-		}
-		return v, nil
-	}
-	if bv, ok := e.boolOf(v); ok {
-		// abs(True) is 1: a verdict is a number to this language, and the payload answers, exactly as it
-		// does for `True + 1` (ADR 0259).
-		if bv < 0 {
-			return -bv, nil
-		}
-		return bv, nil
-	}
-	if o, ok := e.heap[v]; ok && o != nil && e.isHandle(v) {
-		switch o.kind {
-		case "float", "bool":
-		default:
-			class, msg := unsupportedNumberOp("abs", e.operandKind(v), "")
-			return 0, exnError(class, msg)
-		}
-	}
-	if v < 0 {
-		return -v, nil
-	}
-	return v, nil
-}
-
-// negate is the interpreter's unary minus. A float box and a bool box answer with their payloads, an
-// unboxed int is its own number, and every other object the heap can hand back stops the program with the
-// reference's sentence — named by the same `operandKind` the binary operators and `len` already read, so one
-// tag vocabulary names a value everywhere (roadmap Gap R.137, ADR 0266).
-func (e *Evaluator) negate(v int64) (int64, error) {
-	if fv, ok := e.floatOf(v); ok {
-		return e.allocFloat(-fv), nil
-	}
-	if bv, ok := e.boolOf(v); ok {
-		// -True is -1: a bool is a number to this language, and the payload answers, exactly as it does
-		// for `True + 1` (ADR 0259). The sign is what a negation makes; the *word* is still an int.
-		return -bv, nil
-	}
-	if o, ok := e.heap[v]; ok && o != nil && e.isHandle(v) {
-		switch o.kind {
-		case "float", "bool":
-		default:
-			// A text, None, a container, an instance, a function: the operand has no number in it, and
-			// negating the handle it happens to be stored as is the silent wrong answer this file exists
-			// to stop.
-			class, msg := unsupportedNumberOp("neg", e.operandKind(v), "")
-			return 0, exnError(class, msg)
-		}
-	}
-	return -v, nil
-}
 
 // negationOperandKind names the kind CPython would put inside the quotes of its `bad operand type for
 // unary -` sentence — for the half the compiler can answer without asking the run time. A literal has a
@@ -245,9 +183,9 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 // is broken" code on a program the reference answers or stops on in one line (roadmap Gap R.150,
 // Gap R.151, ADR 0283).
 //
-// The question is asked of the *declaration*, not of any value: the interpreter's `operandKind` names
+// The question is asked of the *declaration*, not of any value: the record's `operandKind` names
 // the same two words (`function` for a closure/method/function heap object, `module` for the module it
-// binds), so `-f`, `abs(f)`, `abs(math)` and their siblings quote one word on both engines.
+// binds), so `-f`, `abs(f)`, `abs(math)` and their siblings quote one word on both legs.
 func (g *irGen) nameIsAValueWithNoSign(name string) (string, bool) {
 	if name == "" || g == nil {
 		return "", false

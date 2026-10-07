@@ -1,0 +1,48 @@
+# probe_fstring_field_asks_the_tag.gy — an interpolated field asks the tag.
+#
+# print(n), str(n), repr(n) and the REPL prompt all ask the module's ONE tag-reading printer for a value whose
+# kind the run time decides (ADR 0303), and a container element does too (ADR 0306). This program pins the
+# position that stopped being a refusal most recently: an f-string field. The print road builds ONE printf
+# format string, and every arm of its field chain asked the field for a single word — so a name the pair road
+# bound had nowhere to put its tag and the field refused, while a lift would have printed a text field's
+# interned index or a float field's box handle, at exit 0 (roadmap L11.1, Gap R.146's rendering positions;
+# ADR 0307, ADR 0303's one door, ADR 0265's per-kind arithmetic door).
+#
+# The kinds below are chosen so a missing tag cannot hide: the text lines would print `0` and the float line
+# a heap handle if the field ever read the payload alone. The `!r` lines are the conversion the road used to
+# throw away — `f"{x!r}"` printed NOTHING at exit 0 for any field that was not a literal, and
+# `print(f"{'a'!r}")` spent the contract's forbidden exit 2 (Gap R.192).
+xs = []
+xs.append(7)
+n = xs[0]
+print(f"{n}")
+print(f"[{n}]")
+print(f"{n}-{n}")
+print(f"{n - 1}")
+words = []
+words.append("a")
+w = words[0]
+print(f"{w}")
+print(f"x{w}y")
+halves = []
+halves.append(2.5)
+h = halves[0]
+print(f"{h}")
+nothing = []
+nothing.append(None)
+z = nothing[0]
+print(f"{z}")
+flags = []
+flags.append(True)
+f0 = flags[0]
+print(f"{f0}")
+nested = []
+nested.append([1, 2])
+c = nested[0]
+print(f"{c}")
+print(f"{w!r}")
+name = "hi"
+print(f"{name!r}")
+print(f"[{name!r}]")
+print(f"{name!s}")
+print(f"{'a'!r}")

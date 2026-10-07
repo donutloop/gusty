@@ -32,7 +32,7 @@ import (
 // rather than emitted wrong, and the answer is the `(payload, tag)` pair the tagged value word
 // (L11.1) carries.
 //
-// Both engines below, CPython in the sibling integration file.
+// Both legs below, CPython in the sibling integration file.
 
 func TestAParameterReboundToAFloatIsReturnedAsAFloat(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -185,9 +185,9 @@ func TestAReboundParameterIsRefusedWhereTheWordCannotCarryIt(t *testing.T) {
 					t.Errorf("%s reached the toolchain instead of refusing: %v", tc.name, err)
 				}
 			}
-			// The interpreter answers all three, so the refusal is the compiled backend's own limit.
+			// The record answers all three, so the refusal is the compiled backend's own limit.
 			if out := captureStdout(t, tc.src); out == "" {
-				t.Errorf("%s: the interpreter printed nothing either", tc.name)
+				t.Errorf("%s: the record leg printed nothing either", tc.name)
 			}
 		})
 	}

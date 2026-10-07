@@ -9,11 +9,11 @@
 //	v = f(2)
 //	print(v)
 //
-// The interpreter printed `<coro>` (a coroutine handle printed as a value), the
+// the record printed `<coro>` (a coroutine handle printed as a value), the
 // compiled backend printed `2` (it ran the body eagerly at the call), and CPython
 // printed a coroutine repr plus a RuntimeWarning. Two backends that disagree with
 // each other is exactly what the parity matrix is built to catch — and it caught
-// nothing, because both backends "worked". The checker is the fix: a program whose
+// nothing, because the compiled path "worked". The checker is the fix: a program whose
 // await/return discipline is broken is refused, on every path, before any backend
 // gets to invent an answer.
 package integration
@@ -139,18 +139,15 @@ func TestCheckAcceptsLegalAsync(t *testing.T) {
 	}
 }
 
-// The headline claim: the refused program is refused by *both* backends, so there
-// is no longer a program with two answers. Before L7.6 the interpreter printed
-// "<coro>" here and the compiled backend printed "2".
-func TestUnawaitedCoroutineRefusedByBothBackends(t *testing.T) {
+// The headline claim: a dropped coroutine is refused, so there is no program with two answers. Before
+// L7.6 the AST interpreter printed "<coro>" here and the compiled backend printed "2" — the kind of
+// disagreement a second engine manufactures. With one backend the question is asked once, and the
+// checker answers it before anyone runs anything.
+func TestUnawaitedCoroutineIsRefused(t *testing.T) {
 	src := "async def f(x):\n    return x + 1\nv = f(2)\nprint(v)\n"
 
-	// The interpreter leg (lang.InterpreterRun, the same entry the conformance
-	// matrix uses) runs the checker before it runs the program.
-	if out, err := lang.InterpreterRun(src); err == nil {
-		t.Errorf("interpreter ran a program with a dropped coroutine and printed %q", out)
-	}
-	// And so does the compiled path the CLI takes (--aot -> JIT -> refuse).
+	// The path the CLI takes (--file -> analyse -> refuse) must refuse it, exit non-zero, and never
+	// reach an answer.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "prog.gy")
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
@@ -169,21 +166,22 @@ func TestUnawaitedCoroutineRefusedByBothBackends(t *testing.T) {
 	if res.OK {
 		t.Errorf("check accepted it: %v", res.Diagnostics)
 	}
-	// CPython, the third leg, agrees that this program is broken — it just does
-	// so at runtime with a RuntimeWarning instead of at compile time with a code.
+	// Running it is refused too, not merely discouraged: the program cannot print "2".
+	if _, err := lang.JIT(src, 0); err == nil {
+		t.Errorf("the compiled backend ran a program with a dropped coroutine")
+	}
+	// CPython, the reference the ledger is kept against, agrees that this program is broken — it just
+	// does so at runtime with a RuntimeWarning instead of at compile time with a code.
 	if _, stderr, err := lang.PythonRun(src); err == nil && !strings.Contains(stderr, "never awaited") {
 		t.Logf("python stderr (informational): %q", stderr)
 	}
 }
 
-// And the legal deferred call runs the same way everywhere — the deferral itself
-// is language surface, not an accident.
-func TestDeferredAwaitParity(t *testing.T) {
+// And the legal deferred call runs the way the record says it does.
+func TestDeferredAwaitRunsAsRecorded(t *testing.T) {
 	src := "async def f(x):\n    return x + 1\nasync def g(x):\n    return x * 2\na = f(2)\nb = g(3)\nprint(await a)\nprint(await b)\n"
 	want := "3\n6\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	res, err := lang.JIT(src, 0)
 	if err != nil {
 		t.Fatalf("JIT: %v", err)
@@ -193,8 +191,8 @@ func TestDeferredAwaitParity(t *testing.T) {
 	}
 }
 
-// The conformance row: the legal-async program prints the pinned output on both
-// backends and is silent under every effect rule.
+// The conformance row: the legal-async program prints the pinned output and is silent under every
+// effect rule.
 func TestAsyncEffectsConformanceRow(t *testing.T) {
 	src := readProgramSrc("async_effects")
 	res, err := lang.CheckSource(src)
@@ -205,9 +203,7 @@ func TestAsyncEffectsConformanceRow(t *testing.T) {
 		t.Fatalf("the legal-async corpus program reported diagnostics: %v", res.Diagnostics)
 	}
 	want := "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got, err := safeAOTRun(t, src); err != nil {
 		t.Fatalf("aot: %v", err)
 	} else if got != want {

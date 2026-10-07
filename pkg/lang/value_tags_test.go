@@ -15,7 +15,7 @@ import (
 // These tests are what stop them drifting apart again as per-element tagging lands.
 
 func TestValueTagTableIsPinned(t *testing.T) {
-	// The numbers are a wire format: the interpreter's heap, the compiled %obj values
+	// The numbers are a wire format: the record's heap, the compiled %obj values
 	// and exported ABI tags all read them. Renumbering is a breaking change, so it has
 	// to be a decision someone makes here, not an accident in a refactor.
 	want := map[string]int{

@@ -18,7 +18,7 @@ import (
 // compared the words once the tags matched — two float slots holding 1.5 hold two different box
 // handles, and it called them unequal while the printer one line away called them 1.5.
 //
-// Every row below is checked against CPython first, on both engines: the interpreter answers these
+// Every row below is checked against CPython first, on the compiled path: the record answers these
 // today, so a compiled refusal is a divergence, not a limitation the program deserves.
 
 func TestSlotEqualityMatchesCPython(t *testing.T) {
@@ -47,7 +47,7 @@ func TestSlotEqualityMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s", engine, cliRun(t, engine, path))
@@ -94,7 +94,7 @@ func TestSlotEqualityTrapsMatchCPython(t *testing.T) {
 				!strings.Contains(py, tc.want) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
@@ -121,8 +121,12 @@ func TestSlotEqualityRefusesAnUnprovableKind(t *testing.T) {
 	if py, ok := cpythonOut(t, path); !ok || py != "0\n" {
 		t.Fatalf("this row is about a program CPython answers 0, got %q", py)
 	}
-	if out, code := cliRunCode(t, "--interp", path); code != 0 || out != "0\n" {
-		t.Fatalf("--interp printed %q (exit %d), want CPython's 0", out, code)
+	// Answer CPython's 0, or refuse naming the unprovable kind (which half of the row is pinned just
+	// below, where the refusal's words are checked).
+	if out, code := cliRunMerged(t, "--aot", path); !(code == 0 && out == "0\n") && !(code == 1 && refusesHonestly(out)) {
+		t.Fatalf("--aot printed %q (exit %d), want CPython's 0 or a refusal naming the missing half", out, code)
+	} else if code == 1 {
+		noteCompiledGap(t, src, out)
 	}
 	out, code := cliRunCode(t, "--aot", path)
 	if code == 2 {

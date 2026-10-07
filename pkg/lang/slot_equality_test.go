@@ -18,7 +18,7 @@ import (
 // the two bare words is how `xs[0] == f()` came out true because f returned the text whose interned
 // index happens to be the number in the slot (ADR 0232's collision, at a new site).
 
-func TestSlotEqualityAnswersInBothEngines(t *testing.T) {
+func TestSlotEqualityAnswersOnBothLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string

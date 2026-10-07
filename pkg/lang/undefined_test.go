@@ -52,14 +52,14 @@ func TestUndefinedNameBuildIsADiagnosticNotAnInvalidModule(t *testing.T) {
 	if !strings.Contains(err.Error(), "undefined name") || !strings.Contains(err.Error(), "undefined_thing") {
 		t.Errorf("diagnostic should name the identifier, got %q", err.Error())
 	}
-	// and the interpreter says the same thing, so the two backends agree on the error
+	// and the record says the same thing, so the compiled backend agrees on the error
 	if _, evalErr := evalCapture(t, "print(undefined_thing)\n"); evalErr == nil {
 		t.Errorf("the interpreter should also reject the undefined name")
 	}
 }
 
 // TestBuiltinsArePredeclaredInTheChecker: `sum`, `enumerate`, `zip`, `round`, … work in
-// both backends, so the checker must not call them undefined. This is the drift that
+// the compiled backend, so the checker must not call them undefined. This is the drift that
 // predeclared.go exists to prevent.
 func TestBuiltinsArePredeclaredInTheChecker(t *testing.T) {
 	for _, nm := range predeclaredCallables() {

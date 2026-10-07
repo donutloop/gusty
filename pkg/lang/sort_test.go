@@ -148,62 +148,10 @@ func TestSortRejectsKeyAndReverseArgs(t *testing.T) {
 	}
 }
 
-// TestSortElemsIsStableAndRefusesAcrossKinds covers the interpreter's comparator, which the AOT
-// version mirrors: equal elements keep their order (sorted(key=) will be built on that), and a
-// str/int mix is a TypeError rather than an invented order.
-func TestSortElemsIsStableAndRefusesAcrossKinds(t *testing.T) {
-	e := NewEvaluator()
-	// Distinct keys, so stability is about the *pair* order, not the values.
-	pairs := []int64{2, 1, 2, 1}
-	if err := e.sortElems(pairs); err != nil {
-		t.Fatal(err)
-	}
-	for i, want := range []int64{1, 1, 2, 2} {
-		if pairs[i] != want {
-			t.Fatalf("sortElems = %v", pairs)
-		}
-	}
-	// A string handle next to an int handle is Python's TypeError.
-	strHandle, err := e.eval(&StrLit{Value: "a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mixed := []int64{3, strHandle}
-	err2 := e.sortElems(mixed)
-	if err2 == nil {
-		t.Fatal("comparing a str with an int must raise, not order by handle")
-	}
-	if !strings.Contains(err2.Error(), "'<' not supported between instances") {
-		t.Fatalf("wrong error: %v", err2)
-	}
-	// Two strings sort by text, not by the order they were interned.
-	bh, _ := e.eval(&StrLit{Value: "b"})
-	ah, _ := e.eval(&StrLit{Value: "a"})
-	strs := []int64{bh, ah}
-	if err := e.sortElems(strs); err != nil {
-		t.Fatal(err)
-	}
-	if strs[0] != ah || strs[1] != bh {
-		t.Fatal("strings must sort by text, not by interned index")
-	}
-	// Numbers and floats mix as Python's < does.
-	fh, ferr := e.eval(&FloatLit{Value: 1.5})
-	if ferr != nil {
-		t.Fatal(ferr)
-	}
-	nums := []int64{2, fh, 1}
-	if err := e.sortElems(nums); err != nil {
-		t.Fatal(err)
-	}
-	if nums[0] != 1 || nums[2] != 2 {
-		t.Fatalf("float/int mix did not order numerically: %v", nums)
-	}
-}
-
-// TestSortingBehaviourInterpreted is the behavioural half in the interpreter: the method mutates
+// TestSortingBehaviourOnTheCompiledBackend is the behavioural half in the record: the method mutates
 // and the builtin does not, which is the property a program can see. (print(xs.sort()) rendering
 // as None is the bool/None repr debt pinned by probe_bool_value, so these check the list.)
-func TestSortingBehaviourInterpreted(t *testing.T) {
+func TestSortingBehaviourOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [3, 1, 2]\nxs.sort()\nprint(xs)\n", "[1, 2, 3]\n"},
 		{"xs = [1, 2, 3]\nxs.reverse()\nprint(xs)\n", "[3, 2, 1]\n"},

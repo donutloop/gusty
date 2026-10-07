@@ -183,8 +183,9 @@ func TestCLIJIT(t *testing.T) {
 // to see that it got AOT rather than inferring it from the flag list).
 func TestCLIJITJSON(t *testing.T) {
 	got := cli(t, "--jit", "--json", "--eval", "print(2 + 3)\n")
-	if got != `{"output": "5\n", "backend": "aot", "exit": 0}`+"\n" {
-		t.Fatalf("jit json output = %q", got)
+	const want = `{"output": "5\n", "backend": "aot", "exit": 0, "result": null, "type": "None"}` + "\n"
+	if got != want {
+		t.Fatalf("jit json output = %q, want %q", got, want)
 	}
 }
 
@@ -349,7 +350,7 @@ func TestCLIBuildFailureStatesItsReason(t *testing.T) {
 	if !strings.Contains(out, "warning at") {
 		t.Errorf("the source warning should still be shown:\n%s", out)
 	}
-	if !strings.Contains(out, "gustyc:") || !strings.Contains(out, "unsupported call") {
+	if !strings.Contains(out, "gustyc:") || !strings.Contains(out, "is not a function") {
 		t.Errorf("the failure reason must be printed alongside diagnostics, got:\n%s", out)
 	}
 	// The stage name appears once: GenerateIR's message already says "codegen:", so
@@ -399,21 +400,21 @@ func TestCLIBenchSuiteJSON(t *testing.T) {
 		Runs          int    `json:"runs"`
 		OptLevel      int    `json:"opt_level"`
 		Cases         []struct {
-			Name        string `json:"name"`
-			Interpreter struct {
+			Name  string `json:"name"`
+			Build struct {
 				BestMs float64 `json:"best_ms"`
-			} `json:"interpreter"`
+			} `json:"build"`
 			AOT struct {
 				BestMs float64 `json:"best_ms"`
 			} `json:"aot"`
-			Speedup float64 `json:"speedup"`
-			Error   string  `json:"error"`
+			Error string `json:"error"`
 		} `json:"cases"`
 		Totals struct {
-			Cases          int     `json:"cases"`
-			Ran            int     `json:"ran"`
-			Failed         int     `json:"failed"`
-			GeomeanSpeedup float64 `json:"geomean_speedup"`
+			Cases   int     `json:"cases"`
+			Ran     int     `json:"ran"`
+			Failed  int     `json:"failed"`
+			AOTMs   float64 `json:"aot_total_ms"`
+			BuildMs float64 `json:"build_total_ms"`
 		} `json:"totals"`
 		Regressions []any `json:"regressions"`
 		NewCases    []any `json:"new_cases"`
@@ -422,7 +423,7 @@ func TestCLIBenchSuiteJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("suite is not valid JSON: %v\n%s", err, out)
 	}
-	if rep.SchemaVersion != "1.0" || rep.Runs != 1 || rep.OptLevel != 1 {
+	if rep.SchemaVersion != lang.BenchSchemaVersion || rep.Runs != 1 || rep.OptLevel != 1 {
 		t.Errorf("suite header wrong: %+v", rep)
 	}
 	if rep.Totals.Cases == 0 || rep.Totals.Ran != rep.Totals.Cases {
@@ -432,7 +433,7 @@ func TestCLIBenchSuiteJSON(t *testing.T) {
 		if c.Error != "" {
 			t.Errorf("corpus case %q failed: %s", c.Name, c.Error)
 		}
-		if c.AOT.BestMs <= 0 || c.Interpreter.BestMs <= 0 {
+		if c.AOT.BestMs <= 0 || c.Build.BestMs <= 0 {
 			t.Errorf("case %q reported no timings: %+v", c.Name, c)
 		}
 	}
@@ -486,7 +487,7 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 			cases[i].AOTMs = 0.02
 		}
 	}
-	bad, err := json.Marshal(map[string]any{"schema_version": "1.0", "cases": cases})
+	bad, err := json.Marshal(map[string]any{"schema_version": lang.BenchSchemaVersion, "cases": cases})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,10 +539,19 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 	// measurement: best-of-N wall clock still swings ~2x for sub-millisecond
 	// cases, so a self-vs-self comparison would make the test about scheduler
 	// noise instead of about the gate.
-	for i := range cases {
-		cases[i].AOTMs = measured.Cases[i].AOT.BestMs * 2
+	// Rebuilt from this run's measurements BY NAME, not by index: `cases` was filtered when the
+	// doctored baseline was built (a case that measured no AOT time was left out), so indexing it
+	// against measured.Cases lines two different lists up and leaves the doctored row in place —
+	// which the gate then correctly reports as a 200x regression on the case we doctored. Names are
+	// the identity the baseline file uses, so names are what the repair keys on.
+	generousCases := make([]bc, 0, len(measured.Cases))
+	for _, c := range measured.Cases {
+		if c.AOT.BestMs <= 0 {
+			continue
+		}
+		generousCases = append(generousCases, bc{Name: c.Name, AOTMs: c.AOT.BestMs * 2})
 	}
-	generous, err := json.Marshal(map[string]any{"schema_version": "1.0", "cases": cases})
+	generous, err := json.Marshal(map[string]any{"schema_version": lang.BenchSchemaVersion, "cases": generousCases})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +586,7 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 	if err := json.Unmarshal(raw, &written); err != nil {
 		t.Fatalf("baseline JSON malformed: %v\n%s", err, raw)
 	}
-	if written.SchemaVersion != "1.0" || len(written.Cases) == 0 || written.Runs != 1 {
+	if written.SchemaVersion != lang.BenchSchemaVersion || len(written.Cases) == 0 || written.Runs != 1 {
 		t.Errorf("baseline artifact wrong: %+v", written)
 	}
 	for _, c := range written.Cases {
@@ -818,8 +828,8 @@ func TestCLIReportsWhichBackendRan(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (%s)", code, got)
 	}
-	if !strings.Contains(got, `"backend": "interpreter"`) {
-		t.Errorf("`--file` must report the interpreter as its backend: %s", got)
+	if !strings.Contains(got, `"backend": "`+lang.BackendName+`"`) {
+		t.Errorf("`--file` must name the backend that ran it: %s", got)
 	}
 
 	got, code = cliCombined(t, "--json", "--aot", "--eval", "print(6 * 7)")
@@ -868,40 +878,75 @@ func TestCLIShowBackendGoesToStderr(t *testing.T) {
 	if stdout.String() != "2\n" {
 		t.Errorf("program output changed: %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "backend interpreter") {
+	if !strings.Contains(stderr.String(), "backend "+lang.BackendName) {
 		t.Errorf("--show-backend must announce the backend on stderr, got %q", stderr.String())
 	}
 }
 
-// Contradictory backend requests are a usage error, not a coin flip.
-func TestCLIAotAndInterpContradict(t *testing.T) {
+// ADR 0302 retired the second backend, and the CLI has to say so rather than either honouring a
+// flag that names nothing or crashing on it: `--interp` is a usage error (exit 4) that names the
+// retirement and points at the document that explains it. The flags that named the surviving backend
+// stay accepted — an agent's existing command line should keep working, and naming the engine that is
+// the only one is not an error worth a non-zero exit.
+// TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone is the same rule one layer down: `--bench-gate`
+// still accepted the gate names that belonged to the retired engine, and an unknown gate name made
+// lang.CompareBenchSuite watch nothing — a green gate that gated nothing is the failure ADR 0166
+// counts as ours, and a script left saying --bench-gate=interpreter must hear about it at the flag.
+func TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone(t *testing.T) {
+	for _, gate := range []string{"interpreter", "both", "interp"} {
+		got, code := cliCombined(t, "--bench-suite", "--bench-gate", gate, "--bench-runs", "1")
+		if code != 4 {
+			t.Errorf("--bench-gate %s: exit = %d, want 4 (usage) — output %q", gate, code, got)
+		}
+		if !strings.Contains(got, "not a gate") || !strings.Contains(got, "0302") {
+			t.Errorf("--bench-gate %s: the error must name the missing gate and the retirement, got %q", gate, got)
+		}
+	}
+	// The surviving gate keeps working, including the empty default.
+	if _, code := cliCombined(t, "--bench-suite", "--bench-gate", "aot", "--bench-runs", "1"); code != 0 {
+		t.Errorf("--bench-gate aot: exit = %d, want 0", code)
+	}
+}
+
+func TestCLIRetiredInterpFlagIsAUsageError(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("print(1)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, pair := range [][]string{{"--aot", "--interp"}, {"--jit", "--interp"}} {
-		args := append([]string{}, pair...)
-		got, code := cliCombined(t, append(args, "--file", src)...)
+	for _, pair := range [][]string{{"--interp"}, {"--aot", "--interp"}, {"--jit", "--interp"}} {
+		args := append(append([]string{}, pair...), "--file", src)
+		got, code := cliCombined(t, args...)
 		if code != 4 {
 			t.Errorf("%v --file: exit = %d, want 4 (usage) — output %q", pair, code, got)
 		}
-		if !strings.Contains(got, "backend") {
-			t.Errorf("%v: the error should name the contradiction, got %q", pair, got)
+		if !strings.Contains(got, "retired") || !strings.Contains(got, "0302") {
+			t.Errorf("%v: the error should say the backend was retired and by what, got %q", pair, got)
+		}
+	}
+	for _, kept := range []string{"--aot", "--jit"} {
+		out, code := cliCombined(t, kept, "--file", src)
+		if code != 0 || !strings.HasSuffix(strings.TrimSpace(out), "1") {
+			t.Errorf("%s --file: exit = %d out %q, want the program's answer", kept, code, out)
 		}
 	}
 }
 
-// --interp is an explicit statement of the default, and must still work.
-func TestCLIExplicitInterpBackendRuns(t *testing.T) {
+// The retired flag is refused for a program the surviving backend answers without difficulty: the
+// usage error is about the flag, not about the program. Keeping the two claims in one case is what
+// stops a future "just ignore unknown flags" convenience from turning the retirement into silence.
+func TestCLIRetiredFlagDoesNotCostAWorkingProgram(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("xs = []\nxs.append(3)\nprint(xs[0])\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, code := cliCombined(t, "--interp", "--file", src)
+	got, code := cliCombined(t, "--file", src)
 	if code != 0 || !strings.HasSuffix(strings.TrimSpace(got), "3") {
-		t.Fatalf("--interp run failed: exit=%d out=%q", code, got)
+		t.Fatalf("--file run failed: exit=%d out=%q", code, got)
+	}
+	if got, code = cliCombined(t, "--interp", "--file", src); code != 4 {
+		t.Errorf("--interp on a program the backend answers should still be a usage error, got exit %d %q", code, got)
 	}
 }
 
@@ -916,7 +961,7 @@ func TestCLIGCStats(t *testing.T) {
 	if !strings.Contains(got, "79800\n") {
 		t.Fatalf("program output missing under --gc-stats: %q", got)
 	}
-	if !strings.Contains(got, "gc: backend=interpreter collections=") || !strings.Contains(got, "total_freed=") {
+	if !strings.Contains(got, "gc: backend="+lang.BackendName+" collections=") || !strings.Contains(got, "total_freed=") {
 		t.Fatalf("--gc-stats did not report the collector: %q", got)
 	}
 	// The report must not be part of the program's stdout: with stderr dropped,
@@ -930,8 +975,13 @@ func TestCLIGCStats(t *testing.T) {
 	if stdout.String() != "79800\n" {
 		t.Fatalf("--gc-stats leaked the report into stdout: %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "gc: backend=interpreter") {
+	if !strings.Contains(stderr.String(), "gc: backend="+lang.BackendName) {
 		t.Fatalf("collector report belongs on stderr, got %q", stderr.String())
+	}
+	// Once, on the tool channel, in the compiled runtime's own words. The CLI used to render the
+	// record's counters beside the program's, so one run announced two collections (ADR 0181).
+	if n := strings.Count(stderr.String(), "gc: backend="+lang.BackendName); n != 1 {
+		t.Errorf("the collector reported %d times for one run, want once: %q", n, stderr.String())
 	}
 	// Machine path: the same numbers as a JSON member.
 	jsonOut := strings.TrimSpace(cli(t, "--eval", prog, "--gc-stats", "--json"))
@@ -954,7 +1004,7 @@ func TestCLIGCStats(t *testing.T) {
 	if payload.GC == nil {
 		t.Fatalf("--gc-stats --json has no gc member: %s", jsonOut)
 	}
-	if payload.GC.Backend != "interpreter" || payload.GC.Collections == 0 {
+	if payload.GC.Backend != lang.BackendName || payload.GC.Collections == 0 {
 		t.Fatalf("gc member does not describe a real collection: %+v", payload.GC)
 	}
 	// Without the flag the payload keeps its old shape: no gc member.

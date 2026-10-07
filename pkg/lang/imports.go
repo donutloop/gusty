@@ -15,7 +15,7 @@ type ImportInfo struct {
 }
 
 // resolveImports loads each top-level `import mod` from `mod.gy` (relative to
-// the working directory, mirroring the interpreter), parses + analyzes it, and
+// the working directory, mirroring the record), parses + analyzes it, and
 // constant-folds its top-level global assignments. The main program's
 // `mod.var` references are resolved to the folded constants by the codegen.
 //

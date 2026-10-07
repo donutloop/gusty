@@ -8,7 +8,7 @@ import (
 // min_max_values_test.go — `min(a, b, ...)` and `max(a, b, ...)` choose a value, and the value's
 // kind is the answer's kind (roadmap L11.6 / Gap R.73 / Gap R.104; ADR 0256).
 //
-// The family had three answers written by three unrelated rules. The interpreter refused every
+// The family had three answers written by three unrelated rules. the record refused every
 // side-by-side spelling with `min/max expects 1 argument`. The compiled backend reached only for
 // its float domain, where every candidate is promoted to a double and an int winner therefore came
 // back `1.0`; int-only candidates refused outright. The oracle instead keeps the candidate it chose
@@ -24,7 +24,7 @@ import (
 
 func TestMinMaxTakeValuesSideBySideAndKeepTheWinnersKind(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		// ---- the row Gap R.104 was named for, now on both engines.
+		// ---- the row Gap R.104 was named for, now on both legs.
 		{
 			"the row the gap carried",
 			"print(min(1.0, 2), max(1, 2.5))\n", "1.0 2.5\n",
@@ -217,7 +217,7 @@ func TestMinMaxRaiseWhenCandidatesHaveNoOrder(t *testing.T) {
 			"TypeError", "'>' not supported between instances of 'str' and 'int'",
 		},
 		// A verdict candidate is a bool in the sentence, not an int: the fold settles the comparison
-		// as a number (True is 1) and names the kind the candidate has, which is what the interpreter's
+		// as a number (True is 1) and names the kind the candidate has, which is what the record's
 		// compareOrder and ADR 0259's element tag both say for the same operand (roadmap Gap R.117).
 		{
 			"a verdict candidate beside a text incumbent says 'bool'",
@@ -291,7 +291,7 @@ func TestMinMaxTrapsAreCatchable(t *testing.T) {
 	}
 }
 
-// TestMinMaxArityAndEmptyRaiseTheirOwnClasses covers the interpreter path. The compiled path cannot
+// TestMinMaxArityAndEmptyRaiseTheirOwnClasses covers the record path. The compiled path cannot
 // reach a runtime error for these literals and refuses at the front end; Gap R.37 owns turning that
 // class of constant trap into an emitted raise.
 func TestMinMaxArityAndEmptyRaiseTheirOwnClasses(t *testing.T) {
@@ -446,7 +446,7 @@ func TestMinMaxShapesStillFiledNotFixed(t *testing.T) {
 }
 
 // TestBoolCandidatesPrintWhatTheChosenCandidateIs is the row that used to pin the wrong answer: this
-// family's one member both backends answered identically and the oracle did not. A verdict is a value
+// family's one member the compiled backend answered identically and the oracle did not. A verdict is a value
 // (ADR 0257) and a container slot may say so (ADR 0259); what was missing was the *chosen* candidate's
 // kind crossing out of the fold, which is roadmap Gap R.117 and ADR 0261. The tie rows are the point:
 // `max(True, 1)` keeps the verdict because the comparison is strict and the first candidate stays, and

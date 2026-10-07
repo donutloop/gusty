@@ -2,7 +2,7 @@ package lang
 
 // `d.get(key)` with the key absent hands back NONE (Gap R.174, ADR 0291).
 //
-// Both engines had a hole in the one place a dict lookup answers "not there":
+// Both legs had a hole in the one place a dict lookup answers "not there":
 //
 //	print(d.get("z"))            CPython None · interpreter 0 · compiled refused
 //	print({"a": 1}.get("z"))     CPython None · interpreter 0 · compiled refused ("key not found")
@@ -58,7 +58,7 @@ func TestDictGetWithNoDefaultAnswersNone(t *testing.T) {
 
 // TestDictGetOnANameIsNotAnsweredByTheFold pins the honest half. The compiled backend folds a container
 // method only over a literal written at the call; a name's slots belong to the runtime, and answering
-// through a word would be the wrong-number class ADR 0166 counts as our bug. The interpreter answers
+// through a word would be the wrong-number class ADR 0166 counts as our bug. the record answers
 // every row, which is what makes the compiled leg's answer a refusal rather than a crash.
 func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
 	for _, src := range []string{
@@ -69,7 +69,7 @@ func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			want := captureStdout(t, src) // the interpreter answers the reference on every row
+			want := captureStdout(t, src) // the record holds the reference answer on every row
 			res, err := Compile(src)
 			if err == nil {
 				if out := runIR(t, res.IR); out != want {

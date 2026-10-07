@@ -35,18 +35,11 @@ func TestStrFoldAgreesBetweenTheTwoFolders(t *testing.T) {
 		if !ok || got != c.want {
 			t.Errorf("stringConst(%s) = (%q, %v), want (%q, true)", c.src, got, ok, c.want)
 		}
-		// The interpreter's str(), which is the text this must agree with.
-		prog1, err := parseProgram(c.src)
-		if err != nil {
-			t.Fatalf("parse %q: %v", c.src, err)
-		}
-		ev := NewEvaluator()
-		v, err := ev.EvalProgram(prog1)
-		if err != nil {
-			t.Fatalf("EvalProgram %q: %v", c.src, err)
-		}
-		if text := strings.Trim(ev.Repr(v), `"`); text != c.want {
-			t.Errorf("interpreter %s = %q, want %q", c.src, text, c.want)
+		// The text the str/repr pair produces for the same expression, checked against what the
+		// retired engine recorded for it — the fold may not agree with itself and disagree with the
+		// language (ADR 0258).
+		if text := goldenRepr(t, c.src); text != c.want {
+			t.Errorf("compiled str(%s) = %q, want %q", c.src, text, c.want)
 		}
 		// The codegen's string-value folder, through a module that uses it. The
 		// invariant is not *how* the text is printed (a folded constant prints with

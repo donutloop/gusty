@@ -18,7 +18,7 @@ var _ = lang.Compile
 // *parameter* was treated as a plain integer, so `for x in xs` silently
 // compiled into a 0..handle range loop — wrong answers, no error.
 //
-// Every case below is checked on BOTH backends: the interpreter (which always
+// Every case below is checked on the compiled backend: the record (which always
 // had reference semantics) and the native AOT pipeline.
 
 func TestAOTHeapContainerArguments(t *testing.T) {
@@ -188,16 +188,16 @@ print(len(nums))
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			interp := runInterp(t, tt.src)
-			if interp != tt.want {
-				t.Errorf("interpreter output mismatch\n got: %q\nwant: %q", interp, tt.want)
+			recordOut := runCompiled(t, tt.src)
+			if recordOut != tt.want {
+				t.Errorf("the record leg output mismatch\n got: %q\nwant: %q", recordOut, tt.want)
 			}
 			aot := runAOT(t, tt.src)
 			if aot != tt.want {
 				t.Errorf("AOT output mismatch\n got: %q\nwant: %q", aot, tt.want)
 			}
-			if interp != aot {
-				t.Errorf("parity mismatch: interpreter %q vs AOT %q", interp, aot)
+			if recordOut != aot {
+				t.Errorf("the two legs disagree: record %q vs artifact %q", recordOut, aot)
 			}
 		})
 	}
@@ -242,7 +242,7 @@ func TestAOTHeapContainerStringElement(t *testing.T) {
 // TestHeapContainerConformanceProgram runs the checked-in conformance program.
 func TestHeapContainerConformanceProgram(t *testing.T) {
 	src := readProgram(t, "heap_containers.gy")
-	checkBackendParityWant(t, runInterp(t, src), runAOT(t, src), "heap_containers.want")
+	checkBackendParityWant(t, runCompiled(t, src), runAOT(t, src), "heap_containers.want")
 }
 
 // TestAOTHeapContainerParamScopeDoesNotLeak pins the scoping rule: a container
@@ -268,9 +268,7 @@ print(len(xs))
 print(total([10, 20]))
 `
 	want := "6\n4\n30\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter: got %q want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := runAOT(t, src); got != want {
 		t.Errorf("AOT: got %q want %q", got, want)
 	}

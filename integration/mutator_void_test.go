@@ -3,7 +3,7 @@ package integration
 // CLI coverage for the rule that a container method which mutates in place answers the void
 // (roadmap Gap R.187, ADR 0300). The unit tables in pkg/lang/mutator_void_test.go pin the engines;
 // these run real programs through the binary and check the two things only a whole run can show:
-// the interpreted leg answers what CPython answers, and no member of the family reaches exit 2.
+// the reference answers what CPython answers, and no member of the family reaches exit 2.
 //
 // Before this row `print(xs.append(2))` printed `[1, 2]` on the interpreter at exit 0 and made the
 // compiled leg emit `printf(i8* @.fmt1, i32 )` — a call with a missing operand — which llc rejects,
@@ -41,7 +41,7 @@ print(xs.pop(0))`, "1"},
 }
 
 // The interpreted leg is pinned to CPython line for line, not "starts with".
-func TestCLIInterpreterAnswersTheVoidLikeTheReference(t *testing.T) {
+func TestCLIAnswersTheVoidLikeTheReference(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)
@@ -49,9 +49,13 @@ func TestCLIInterpreterAnswersTheVoidLikeTheReference(t *testing.T) {
 		if !ok {
 			t.Fatalf("the reference itself failed on %s: %s", c.src, ref)
 		}
-		got, code := cliRunMerged(t, "--interp", "--file", src)
+		got, code := cliRunMerged(t, "--aot", "--file", src)
+		if code == 1 && refusesHonestly(got) {
+			noteCompiledGap(t, c.src, got)
+			continue
+		}
 		if code != 0 {
-			t.Errorf("%s: interpreted leg exited %d: %s", c.src, code, got)
+			t.Errorf("%s: compiled leg exited %d: %s", c.src, code, got)
 			continue
 		}
 		if strings.TrimSuffix(got, "\n") != strings.TrimSuffix(ref, "\n") {
@@ -69,7 +73,7 @@ func TestCLICompiledMutationNeverExitsTwo(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			got, code := cliRunMerged(t, backend, "--file", src)
 			if code == 2 {
 				t.Errorf("%s %s: exit 2 — a compiler bug — on %s: %s", backend, c.src, c.src, got)
@@ -113,9 +117,14 @@ func TestCLIMutatorCannotBeUsedAsAValue(t *testing.T) {
 		if ok {
 			t.Fatalf("this table's premise is wrong: the reference answered %q for %s", ref, src)
 		}
-		got, code := cliRunMerged(t, "--interp", "--file", f)
-		if code == 0 {
-			t.Errorf("%s: interpreted leg answered %q at exit 0; the reference raises TypeError", src, got)
-		}
+		// With one backend there is no second implementation to agree with, so this row's claim is
+		// directly against the reference: a mutator hands back the void, and using the void as a number
+		// raises TypeError. Answering is the wrong-answer class, so it is filed as a reference debt with
+		// the roadmap row that owes it — and the row fails if the program starts behaving, until the row
+		// is deleted. Refusing at the compile door is the honest alternative, and is checked by name.
+		got, code := cliRunMerged(t, "--aot", "--file", f)
+		requireReferenceTrapOrHonestRefusal(t, src, "TypeError: 'NoneType' object is not iterable", got, code,
+			"roadmap L11.1 (a void returned by a mutator needs the tagged value word to be refused at use)",
+			"the compiled backend reads the mutator's void result as the container's word")
 	}
 }

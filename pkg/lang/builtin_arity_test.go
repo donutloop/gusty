@@ -107,14 +107,14 @@ func TestBuiltinWithoutAnArgumentNeverPanics(t *testing.T) {
 	for _, src := range srcs {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			// The interpreter must not panic. A panic escapes as a Go runtime error; a trap is an answer.
+			// The compiled run must not panic. A panic escapes as a Go runtime error; a trap is an answer.
 			func() {
 				defer func() {
 					if p := recover(); p != nil {
 						t.Fatalf("interpreter panicked on %q: %v (ADR 0166 exit 2)", src, p)
 					}
 				}()
-				_, _, _ = EvalExpr(src)
+				_, _, _ = evalGolden(t, src)
 			}()
 			// The compiler must not panic either. Refusing is allowed; dying is not.
 			func() {
@@ -189,10 +189,10 @@ func TestBoolOfAContainerRefusesRatherThanComparingAHandle(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			// The interpreter answers the reference, which is the half that can be answered today.
+			// The record answers the reference, which is the half that can be answered today.
 			want := captureStdout(t, src)
 			if want == "" {
-				t.Fatalf("the interpreter printed nothing for %q", src)
+				t.Fatalf("the record leg printed nothing for %q", src)
 			}
 			res, err := Compile(src)
 			if err == nil {

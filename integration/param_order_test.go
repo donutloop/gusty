@@ -17,9 +17,7 @@ func TestDefaultedParameterInAnyPositionAgreesOnEveryPath(t *testing.T) {
 	src := readProgramSrc("param_default_order")
 	want := "6\n16\n6\n123\n923\n129\n9\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -35,10 +33,10 @@ func TestDefaultedParameterInAnyPositionAgreesOnEveryPath(t *testing.T) {
 	}
 }
 
-// TestBothBackendsBindTheSameParameters is the same claim stated where it matters most: a call that
-// fills a mid-signature default by keyword has to bind identically in the interpreter and in
+// TestTheCompiledBackendBindsTheSameParameters is the same claim stated where it matters most: a call that
+// fills a mid-signature default by keyword has to bind identically in the record and in
 // machine code, or one of them is quietly wrong.
-func TestBothBackendsBindTheSameParameters(t *testing.T) {
+func TestTheCompiledBackendBindsTheSameParameters(t *testing.T) {
 	src := `def offset(base, step=10, bonus):
     return base + step + bonus
 
@@ -48,9 +46,7 @@ print(offset(1, bonus=5))
 print(offset(base=1, step=2, bonus=3))
 `
 	want := "6\n16\n6\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 90*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

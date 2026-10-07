@@ -42,7 +42,7 @@ func TestARenderingBoundToANameAtTheCLI(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("row is stale: python3 prints %q, row pins %q", want, r.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "bound_render", r.src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {

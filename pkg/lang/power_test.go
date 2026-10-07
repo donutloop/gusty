@@ -13,13 +13,13 @@ package lang
 //
 // Before this file the compiled leg answered EVERY `**` through `fptosi` + `%d`, because `**` was missing
 // from the operator list that tells `print` what kind an expression answers with: `print(4 ** 0.5)` said
-// `1` where the reference says `2.0`. The interpreter had the other half: `if r < 0 { return 0, nil }`,
+// `1` where the reference says `2.0`. the record had the other half: `if r < 0 { return 0, nil }`,
 // under the comment "negative exponents yield 0 for an integer result, mirroring Python's int ** int" —
-// an operation Python does not have. Both backends agreed on the wrong answers, so parity was blind and
+// an operation Python does not have. The compiled backend agreed on the wrong answers, so parity was blind and
 // only the oracle leg could see them.
 //
 // The word each backend holds matters too: the compiled `int` is an i32 (Gap R.133, owner L12.12) while
-// the interpreter's is 64-bit, so `2 ** 31` refuses compiled and answers interpreted. Neither wraps.
+// the record's is 64-bit, so `2 ** 31` refuses compiled and answers interpreted. Neither wraps.
 
 import (
 	"os"
@@ -43,7 +43,7 @@ func powerRef(t *testing.T, src string) string {
 	return strings.TrimRight(string(out), "\n")
 }
 
-// TestPowerAnswerKindMatchesTheReference is the table. Every row is run through BOTH engines and against a
+// TestPowerAnswerKindMatchesTheReference is the table. Every row is run through both legs and against a
 // live reference, and the reference is the only authority on the expected string.
 func TestPowerAnswerKindMatchesTheReference(t *testing.T) {
 	rows := []struct{ name, src string }{
@@ -55,7 +55,7 @@ func TestPowerAnswerKindMatchesTheReference(t *testing.T) {
 		{"ten to the minus one", "print(10 ** -1)\n"},
 		{"fractional exponent", "print(4 ** 0.5)\n"},
 		// NOT in this table: `print(2 ** 1.5)`. The compiled leg and the reference agree on
-		// 2.8284271247461903 and the interpreter answers 2.82842712474619 — ONE ULP apart, because Go's
+		// 2.8284271247461903 and the record answers 2.82842712474619 — ONE ULP apart, because Go's
 		// math.Pow and the host libm the compiled leg reaches through llvm.pow.f64 disagree. That is
 		// Gap R.178 (owner L11.6, one float power path), pinned by TestPowerLastDigitGapIsFiled rather
 		// than folded in here, where a green row would hide it.
@@ -107,7 +107,7 @@ func TestPowerZeroDivisionIsTheReferencesTrap(t *testing.T) {
 			if got := ex.ExnType + ": " + ex.ExnMsg; got != want {
 				t.Errorf("interpreter raised %q, want the reference's %q", got, want)
 			}
-			// Catchable on the compiled leg too — a raise that only the interpreter can raise is half a raise.
+			// Catchable on the compiled leg too — a raise that only the record can raise is half a raise.
 			// compiledOutOrRefusal reports (output, refused) — a catchable raise must RUN, so the
 			// second value has to be false here, not true. The program is written through a file
 			// because the raise's own lines are indented under `try:`.
@@ -123,9 +123,9 @@ func TestPowerZeroDivisionIsTheReferencesTrap(t *testing.T) {
 }
 
 // TestPowerPastTheWordRefusesRatherThanWraps is why the row was filed alongside Gap R.133 rather than
-// quietly fixed: both backends printed `0` for `2 ** 100` at exit 0. The reference has arbitrary-precision
+// quietly fixed: the compiled backend printed `0` for `2 ** 100` at exit 0. The reference has arbitrary-precision
 // integers; a bounded int is this language's defensible design, a SILENTLY WRAPPING one is not, and the
-// wrap is invisible to parity because both backends wrap alike.
+// wrap is invisible to parity because the compiled backend wrap alike.
 func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 	// Each pair is (source, the exact wrong number the backend used to print).
 	for _, r := range []struct{ name, src, wrapped string }{
@@ -154,7 +154,7 @@ func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 			}
 		})
 	}
-	// The interpreter holds a 64-bit word, so it refuses far later and must still refuse.
+	// the record's engine held a 64-bit word, so it refused far later and must still refuse.
 	for _, src := range []string{"print(2 ** 100)\n", "print(2 ** 63)\n"} {
 		src := src
 		t.Run("interpreter "+strings.TrimSpace(src), func(t *testing.T) {
@@ -167,7 +167,7 @@ func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 }
 
 // TestPowerComplexIsRefusedNotNan: a negative base to a fractional power is a COMPLEX number in the
-// reference, `llvm.pow.f64` answers NaN, and both backends printed `nan` at exit 0. No float rendering of
+// reference, `llvm.pow.f64` answers NaN, and the compiled backend printed `nan` at exit 0. No float rendering of
 // NaN is the right answer for a value the language does not have.
 func TestPowerComplexIsRefusedNotNan(t *testing.T) {
 	for _, r := range []struct{ name, src string }{
@@ -176,7 +176,7 @@ func TestPowerComplexIsRefusedNotNan(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
-			// The interpreter REFUSES with an EvalError, so `captureStdout` cannot be used here — it
+			// The record REFUSES with a TrapError, so `captureStdout` cannot be used here — it
 			// fails the test on a program that traps, which is the shape being pinned.
 			// The test looks for a printed NaN, not for the WORD "nan", which the refusal's own
 			// message contains: only an ANSWER of nan is the bug, and the refusal naming it is the fix.
@@ -283,10 +283,10 @@ func wrapInZeroDivisionTry(src string) string {
 }
 
 // TestPowerLastDigitGapIsFiled pins the one-ULP disagreement as a KNOWN gap rather than letting it pass
-// silently. `print(2 ** 1.5)`: the reference and the compiled leg say 2.8284271247461903; the interpreter
+// silently. `print(2 ** 1.5)`: the reference and the compiled leg say 2.8284271247461903; the record
 // says 2.82842712474619. Go's math.Pow ends ...3bcc where glibc — which is what llvm.pow.f64 calls, and
 // what CPython calls — ends ...3bcd. The point of this test is that it FAILS the day someone fixes one
-// side without the other, and that a fix which quietly makes the interpreter agree is recorded here.
+// side without the other, and that a fix which quietly makes the record agree is recorded here.
 func TestPowerLastDigitGapIsFiled(t *testing.T) {
 	const src = "print(2 ** 1.5)\n"
 	want := powerRef(t, "print(2 ** 1.5)")

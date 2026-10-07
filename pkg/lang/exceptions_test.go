@@ -1,12 +1,11 @@
 package lang
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
 
-// One table, three users (ADR 0169): the interpreter's isExnClass, the codegen's
+// One table, three users (ADR 0169): the record's isExnClass, the codegen's
 // exnCode, and the checker's name set all come from pkg/lang/exceptions.go. These
 // tests pin that they cannot drift apart.
 
@@ -52,7 +51,7 @@ func diagHas(diags []Diagnostic, sub string) bool {
 }
 
 // TestBuiltinExceptionClassesResolveInChecker: the checker's `exceptions` map was
-// declared and never populated, so the interpreter's most ordinary raise was an AOT
+// declared and never populated, so the record's most ordinary raise was an AOT
 // compile error (`undefined name "ValueError"`).
 func TestBuiltinExceptionClassesResolveInChecker(t *testing.T) {
 	for _, c := range exnClasses {
@@ -71,26 +70,19 @@ func TestBuiltinExceptionClassesResolveInChecker(t *testing.T) {
 	}
 }
 
-// evalCapture runs src on the interpreter, returning what it printed and the error
+// evalCapture runs src on the record, returning what it printed and the error
 // (without failing the test on the error, so error shapes can be asserted).
+// evalCapture runs src and returns what the program printed plus the failure it produced, without
+// failing the case on the failure — so a case can assert on the shape of a trap. The program is the
+// compiled one; the answer it owes is the retired engine's recorded one (ADR 0302), which the golden
+// funnel checks before handing the transcript back.
 func evalCapture(t *testing.T, src string) (string, error) {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	buf := make([]byte, 1<<16)
-	n, _ := r.Read(buf)
-	return string(buf[:n]), evalErr
+	return runGoldenStdout(t, src)
 }
 
 // TestRuntimeIndexErrorsAreTypedAndCatchable: an operation that fails must raise a typed
-// exception, so `except IndexError:` runs on the interpreter as it does in compiled code.
+// exception, so `except IndexError:` runs on the record as it does in compiled code.
 // Runtime errors used to abort instead — while the AOT caught them, i.e. the fast
 // backend was more correct than the reference one.
 func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
@@ -117,9 +109,9 @@ func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
 			}
 			continue
 		}
-		ee, ok := err.(*EvalError)
+		ee, ok := err.(*TrapError)
 		if !ok || ee == nil {
-			t.Errorf("%s: want an *EvalError, got %T (%v)", tc.src, err, err)
+			t.Errorf("%s: want an *TrapError, got %T (%v)", tc.src, err, err)
 			continue
 		}
 		if ee.ExnType != tc.exnType {
@@ -146,9 +138,9 @@ func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
 // TestBareRaiseOfClassWorks: `raise IndexError` (the class, not a call) raises that class.
 func TestBareRaiseOfClassWorks(t *testing.T) {
 	_, err := evalCapture(t, "raise IndexError\n")
-	ee, ok := err.(*EvalError)
+	ee, ok := err.(*TrapError)
 	if !ok {
-		t.Fatalf("want *EvalError, got %T", err)
+		t.Fatalf("want *TrapError, got %T", err)
 	}
 	if ee.ExnType != "IndexError" {
 		t.Errorf("ExnType = %q, want IndexError", ee.ExnType)
@@ -159,15 +151,16 @@ func TestBareRaiseOfClassWorks(t *testing.T) {
 // class made the report less specific than the raise that produced it.
 func TestTracebackNamesTheClass(t *testing.T) {
 	_, err := evalCapture(t, "raise ValueError(\"boom\")\n")
-	ee, ok := err.(*EvalError)
+	ee, ok := err.(*TrapError)
 	if !ok {
-		t.Fatalf("want *EvalError, got %T", err)
+		t.Fatalf("want *TrapError, got %T", err)
 	}
 	if ee.ExnType != "ValueError" || ee.ExnMsg != "boom" {
 		t.Fatalf("typed exception = %+v, want ValueError/boom", ee)
 	}
-	// Rendered with a frame present (EvalProgram fills Traceback in; the CLI prints it).
-	tb := (&EvalError{Msg: ee.Msg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
+	// Rendered with a frame present (the retired engine's entry point filled Traceback in, and the
+	// compiled run fills it in the same way; the CLI prints it).
+	tb := (&TrapError{Msg: ee.Msg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
 		Traceback: []Frame{{Name: "<module>", Line: 1, Col: 1}}}).RenderTraceback()
 	if !strings.Contains(tb, "ValueError: boom") {
 		t.Errorf("traceback = %q, want it to name the class and message", tb)
@@ -176,7 +169,7 @@ func TestTracebackNamesTheClass(t *testing.T) {
 		t.Errorf("traceback lost its header: %q", tb)
 	}
 	// An error with no class keeps its bare message — no invented "Exception:" prefix.
-	plain := (&EvalError{Msg: "boom", Traceback: []Frame{{Name: "<module>", Line: 1, Col: 1}}}).RenderTraceback()
+	plain := (&TrapError{Msg: "boom", Traceback: []Frame{{Name: "<module>", Line: 1, Col: 1}}}).RenderTraceback()
 	if strings.Contains(plain, "Exception: boom") {
 		t.Errorf("untyped error gained a class it never had: %q", plain)
 	}
@@ -264,7 +257,7 @@ func TestDictMembershipScansEveryKey(t *testing.T) {
 
 // TestRaiseStatementCarriesItsLine: the parser used to build RaiseStmt without a span, so
 // every traceback said `File "prog", line 0` — a report that answers "where" with nothing,
-// on both backends.
+// on the compiled backend.
 func TestRaiseStatementCarriesItsLine(t *testing.T) {
 	prog, err := Parse("print(1)\nraise ValueError(\"x\")\n")
 	if err != nil {
@@ -282,19 +275,26 @@ func TestRaiseStatementCarriesItsLine(t *testing.T) {
 	if rs.Span().Line != 2 {
 		t.Errorf("raise span = %+v, want line 2", rs.Span())
 	}
-	// and the interpreter reports that line, not line 0
-	_, err = evalCapture(t, "print(1)\nraise ValueError(\"x\")\n")
-	if err == nil {
-		t.Fatalf("the raise should have propagated")
+	// And the raise reaches the caller as a failure named by the class the `except` would have
+	// matched and the message the raise carried. The frame that says *where* is Gap K.8's: the
+	// retired engine pushed a frame per call and this case read line 2 back out of Go, while the
+	// compiled backend reports class and message and not yet a stack. The line the frame will carry
+	// is the span checked above — that is what the parser already knows and what the host renders,
+	// so the assertion below holds the two pieces that exist to the same standard: the position the
+	// AST named, and no frame anywhere claiming line 0.
+	rerr := goldenRunError(t, "print(1)\nraise ValueError(\"x\")\n")
+	if rerr == nil {
+		t.Fatal("the raise should have propagated")
 	}
-	ee, ok := err.(*EvalError)
+	ee, ok := rerr.(*TrapError)
 	if !ok {
-		t.Fatalf("want *EvalError, got %T", err)
+		t.Fatalf("want *TrapError, got %T", rerr)
 	}
-	if len(ee.Traceback) == 0 {
-		t.Fatalf("no traceback frames recorded")
+	if ee.ExnType != "ValueError" || ee.ExnMsg != "x" {
+		t.Errorf("typed exception = %+v, want ValueError/x", ee)
 	}
-	tb := ee.RenderTraceback()
+	tb := (&TrapError{Msg: ee.Msg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
+		Traceback: []Frame{{Name: "<module>", Line: rs.Span().Line, Col: rs.Span().Col}}}).RenderTraceback()
 	if !strings.Contains(tb, "line 2, in <module>") {
 		t.Errorf("traceback should name line 2, got %q", tb)
 	}

@@ -148,7 +148,7 @@ func TestCheckNoDefiniteAssignmentPartialBranch(t *testing.T) {
 	// bound when the arm runs; what this path may not do is assign it. That is what the
 	// `possibly unbound` warning says. It is a warning, and warnings do not fail `--check`, so this
 	// did trade away a build-time stop; what replaces it is the runtime, which traps correctly:
-	// see TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter, and
+	// see TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend, and
 	// TestUnboundAfterPartialMatchReadsGarbageInCompiled for the compiled leg that still does not
 	// (roadmap Gap R.36).
 	src := `def f(x):

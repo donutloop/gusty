@@ -3,15 +3,17 @@ package integration
 import (
 	"strings"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// min_max_values_test.go — `min` and `max` at the CLI, on both legs, against CPython
+// min_max_values_test.go — `min` and `max` at the CLI, on the compiled path, against CPython
 // (roadmap Gap R.104 / Gap R.73; ADR 0256).
 //
-// The sibling unit file pins the same claim through Compile/EvalExpr; this one runs the shipped binary.
+// The sibling unit file pins the same claim against the record; this one runs the shipped binary.
 // The measured defects, all four from one CLI sweep:
 //
-//	print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --interp refused the two arguments (Gap R.104)
+//	print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --aot refused the two arguments (Gap R.104)
 //	print(min(2.5, 1), max(1, 2.5))   # CPython 1 2.5   · --aot printed 1.0 — the int promoted to double
 //	print(min(1, 5), max(1, 5))       # CPython 1 5     · --aot "min expects one argument" (Gap R.73)
 //	print(min("b", "a"))              # CPython a       · --aot compared the interned indices (Gap R.84 again)
@@ -24,7 +26,7 @@ import (
 // Rows are split the way the claim is: answers that must match the oracle on all three legs; traps that
 // must be *raised* with the operator and the two kinds, in the order the fold met them; what is still
 // refused, refused at the front end with the missing half named — never exit 2, the compiler's own class
-// (ADR 0166); and the gusty-only scalar form pinned with the two engines against each other.
+// (ADR 0166); and the gusty-only scalar form pinned with both legs against each other.
 
 func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -49,7 +51,7 @@ func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -91,7 +93,7 @@ func TestMinMaxAtTheCLIRaiseWhatTheyCannotCompare(t *testing.T) {
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
@@ -130,7 +132,7 @@ func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "min_max_catch.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 || out != tc.want {
 					t.Fatalf("%s printed %q exit %d, want %q (%s)", engine, out, code, tc.want, cliRun(t, engine, path))
@@ -142,7 +144,7 @@ func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
 
 // TestMinMaxScalarCandidatesAreAGustyExtension pins the one place this builtin is deliberately wider than
 // CPython: **one candidate that is not a container** is a one-element collection, so `min(7)` is `7`. The
-// oracle rejects the shape, so the row is the two engines against each other — the convention ADR 0246
+// oracle rejects the shape, so the row is both legs against each other — the convention ADR 0246
 // set for the set-subscript extension — and both must agree.
 func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -152,7 +154,7 @@ func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "min_max_scalar.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 || out != tc.want {
 					t.Fatalf("%s printed %q exit %d, want %q (%s)", engine, out, code, tc.want, cliRun(t, engine, path))
@@ -162,23 +164,29 @@ func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
 	}
 }
 
-// TestMinMaxDivergencesPinnedWithEachEngine records the shapes this feature does *not* make agree, with
-// each engine's real answer in the row rather than a sentence about it. A text that reaches `print`
-// through a user function is printed as its interned index (Gap R.38 — the callee's return type is the
-// missing half, not `min`), and a bool candidate is an `int` candidate until L11.2 gives bool its own tag
-// (Gap R.35). Both rows are ordinary programs: exit 2 still fails them, and each is the roadmap's row, not
-// a new one.
-func TestMinMaxDivergencesPinnedWithEachEngine(t *testing.T) {
+// TestMinMaxDivergencesPinned records the shapes this feature does *not* answer the way the language
+// owes, with both answers in the row rather than a sentence about one of them: `owed` is what CPython
+// prints, `got` is what the compiled program prints today. A text that reaches `print` through a user
+// function is printed as its interned index (Gap R.38 — the callee's return type is the missing half,
+// not `min`). The row is ordinary: exit 2 still fails it, and the gap is the roadmap's row, not a new
+// one.
+//
+// `got` is asserted, not merely recorded. That is deliberate and it is the uncomfortable half: a table
+// that only pinned `owed` would go green the day the compiler regressed, and a table that stopped
+// asserting `got` would let a paid-off debt sit here unclaimed. When the compiler starts printing
+// `owed`, this case fails and the row has to be deleted — which is the point of writing the wrong
+// answer down.
+func TestMinMaxDivergencesPinned(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		src         string
-		interp, aot string
-		gap         string
+		name      string
+		src       string
+		owed, got string
+		gap       string
 	}{
 		{
-			name:   "a text through a user call prints its interned index",
-			src:    "def lo(a, b):\n    return min(a, b)\n\nprint(lo(\"b\", \"a\"))\n",
-			interp: "a\n", aot: "1\n",
+			name: "a text through a user call prints its interned index",
+			src:  "def lo(a, b):\n    return min(a, b)\n\nprint(lo(\"b\", \"a\"))\n",
+			owed: "a\n", got: "1\n",
 			gap: "Gap R.38",
 		},
 		// The row that used to sit here — “a bool candidate is an int candidate“, pinning `0 1` on both
@@ -189,8 +197,10 @@ func TestMinMaxDivergencesPinnedWithEachEngine(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "min_max_divergence.gy", tc.src)
-			want := map[string]string{"--interp": tc.interp, "--aot": tc.aot}
-			for _, engine := range []string{"--interp", "--aot"} {
+			if tc.owed == tc.got {
+				t.Fatalf("the row for %s pins the same answer twice; either the debt is paid (delete the row) or it is not (name the answer the compiler still gets wrong)", tc.gap)
+			}
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s reached the compiler's own exit 2 on %s (ADR 0166):\n%s", engine, tc.gap, cliRun(t, engine, path))
@@ -198,73 +208,85 @@ func TestMinMaxDivergencesPinnedWithEachEngine(t *testing.T) {
 				if code != 0 {
 					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
 				}
-				if out != want[engine] {
-					t.Fatalf("%s printed %q, want the answer pinned for %s: %q", engine, out, tc.gap, want[engine])
+				if out != tc.got {
+					if out == tc.owed {
+						t.Fatalf("%s now prints the answer %s owes (%q). The debt is paid: delete this row, and move the program to the parity table above.", engine, tc.gap, tc.owed)
+					}
+					t.Fatalf("%s printed %q, want the answer pinned for %s: %q", engine, out, tc.gap, tc.got)
 				}
+			}
+			// The `owed` half is CPython's, checked rather than remembered: a row whose reference answer
+			// has gone stale is a row that will be "fixed" in the wrong direction.
+			if pyOut, pyErr, perr := lang.PythonRun(tc.src); perr == nil {
+				if pyOut != tc.owed {
+					t.Errorf("the reference answer for %s is no longer %q: %q (%s)", tc.gap, tc.owed, pyOut, pyErr)
+				}
+			} else {
+				t.Logf("no reference for %s: %v", tc.gap, perr)
 			}
 		})
 	}
 }
 
 // TestMinMaxShapesStillRefuseHonestlyAtTheCLI is this cycle's honesty table: the **compiled** half refuses
-// where the interpreter answers, and says which half is missing. A container the program built is a heap
+// where the record answers, and says which half is missing. A container the program built is a heap
 // address the compiler cannot read, so its elements stay unknown; candidates whose kinds straddle `int`
 // and `double` only at run time need the *winner's* kind to travel, which is L11.1's tagged value word
 // (Gap R.109); and a container **among** the candidates is a value the compiled fold has no ordering for.
 // The zero-candidate and empty-container forms stay Gap R.37's. Every leg runs: exit 2 is the compiler's
-// own class and fails the row (ADR 0166), and the interpreter's answer is pinned so the divergence cannot
+// own class and fails the row (ADR 0166), and the record's answer is pinned so the divergence cannot
 // be silently "fixed" by moving the row into the parity table.
 func TestMinMaxShapesStillRefuseHonestlyAtTheCLI(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		src         string
-		why         string
-		interpWhy   string // what the interpreter says instead, when it answers
-		interRaises bool   // when the interpreter raises rather than answers
+		name      string
+		src       string
+		why       string
+		owed      string // what the reference answers where the compiled path refuses
+		refRaises bool   // when the reference raises rather than answers
 	}{
 		{
-			name:      "a container the program built",
-			src:       "xs = [3, 1, 2]\nprint(min(xs))\n",
+			name: "a container the program built",
+			src:  "xs = [3, 1, 2]\nprint(min(xs))\n",
+			why:  "min requires an inline list/set/dict literal",
+			owed: "1\n",
+		},
+		{
+			name: "text candidates in a variable",
+			src:  "xs = [\"b\", \"a\"]\nprint(min(xs))\n",
+			why:  "min requires an inline list/set/dict literal",
+			owed: "a\n",
+		},
+		{
+			name: "a text candidate on its own",
+			src:  "print(min(\"a\"))\n",
+			why:  "min requires an inline list/set/dict literal",
+			owed: "a\n",
+		},
+		{
+			name: "a None candidate on its own",
+			src:  "print(min(None))\n",
+			why:  "min requires an inline list/set/dict literal",
+			owed: "None\n",
+		},
+		{
+			name: "float and int candidates the compiler cannot see",
+			src:  "a = 2.5\nb = 1\nprint(min(a, b))\n",
+			why:  "min of these arguments mixes a double and an int whose winner is not known until run time",
+			owed: "1\n",
+		},
+		{
+			name:      "no candidate at all",
+			src:       "print(min())\n",
+			why:       "min/max expect at least one argument",
+			owed:      "min expected at least 1 argument, got 0",
+			refRaises: true,
+		},
+		{
+			name:      "an empty container",
+			src:       "print(min([]))\n",
 			why:       "min requires an inline list/set/dict literal",
-			interpWhy: "1\n",
-		},
-		{
-			name:      "text candidates in a variable",
-			src:       "xs = [\"b\", \"a\"]\nprint(min(xs))\n",
-			why:       "min requires an inline list/set/dict literal",
-			interpWhy: "a\n",
-		},
-		{
-			name:      "a text candidate on its own",
-			src:       "print(min(\"a\"))\n",
-			why:       "min requires an inline list/set/dict literal",
-			interpWhy: "a\n",
-		},
-		{
-			name:      "a None candidate on its own",
-			src:       "print(min(None))\n",
-			why:       "min requires an inline list/set/dict literal",
-			interpWhy: "None\n",
-		},
-		{
-			name:      "float and int candidates the compiler cannot see",
-			src:       "a = 2.5\nb = 1\nprint(min(a, b))\n",
-			why:       "min of these arguments mixes a double and an int whose winner is not known until run time",
-			interpWhy: "1\n",
-		},
-		{
-			name:        "no candidate at all",
-			src:         "print(min())\n",
-			why:         "min/max expect at least one argument",
-			interpWhy:   "min expected at least 1 argument, got 0",
-			interRaises: true,
-		},
-		{
-			name:        "an empty container",
-			src:         "print(min([]))\n",
-			why:         "min requires an inline list/set/dict literal",
-			interpWhy:   "min() iterable argument is empty",
-			interRaises: true,
+			owed:      "min() iterable argument is empty",
+			refRaises: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -282,18 +304,22 @@ func TestMinMaxShapesStillRefuseHonestlyAtTheCLI(t *testing.T) {
 				t.Fatalf("--aot did not name the missing half %q:\n%s", tc.why, combined)
 			}
 
-			iOut, iCode := cliRunCode(t, "--interp", path)
-			if iCode == 2 {
-				t.Fatalf("--interp reached exit 2 (ADR 0166):\n%s", cliRun(t, "--interp", path))
+			// The reference's half of the row, checked live rather than remembered: the compiled path
+			// refuses these shapes, and what it refuses has to be a shape that means something.
+			pyOut, pyErr, perr := lang.PythonRun(tc.src)
+			if perr != nil {
+				t.Logf("no reference for this shape: %v", perr)
+				return
 			}
-			iCombined := cliRun(t, "--interp", path)
 			switch {
-			case tc.interRaises:
-				if iCode == 0 || !strings.Contains(iCombined, tc.interpWhy) || !strings.Contains(iCombined, "Traceback") {
-					t.Fatalf("--interp should raise %q on %s, got exit %d %q", tc.interpWhy, tc.src, iCode, iCombined)
+			case tc.refRaises:
+				if !strings.Contains(pyErr, tc.owed) {
+					t.Fatalf("the reference should raise %q on %s, got %q (%s)", tc.owed, tc.src, pyErr, pyOut)
 				}
-			case iCode != 0 || !strings.Contains(iOut, tc.interpWhy):
-				t.Fatalf("--interp's half of this row is %q, got exit %d %q", tc.interpWhy, iCode, iCombined)
+			default:
+				if !strings.Contains(pyOut, tc.owed) {
+					t.Fatalf("the reference's half of this row is %q, got %q (%s)", tc.owed, pyOut, pyErr)
+				}
 			}
 		})
 	}

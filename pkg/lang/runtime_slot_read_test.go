@@ -17,7 +17,7 @@ import (
 //	xs.append([7, 8])
 //	print(xs[0][0])          # 7 — refused: "index cannot reach into xs's slots"
 //
-// The refusal was honest and the program was still unanswered: CPython prints 7, the interpreter
+// The refusal was honest and the program was still unanswered: CPython prints 7, the record
 // prints 7, and the compiled leg exited 1 on the shape the roadmap names as its own remaining clause.
 // The door this file pins asks the object instead of the notebook: the tag written beside the outer
 // slot says which kind of object the payload names, and the tag written beside the inner slot says
@@ -26,10 +26,11 @@ import (
 // sentence CPython raises, per kind — because a payload read as a handle is a wrong answer wearing
 // another object's bits.
 //
-// Every row below is checked on both engines: `Compile` + `lli` for the compiled leg, `EvalExpr` for
-// the interpreter, and — in the sibling integration file — against CPython itself.
+// Every row below is checked on both legs: the compiled backend judged against the retired
+// engine's record (`evalGolden`/`runGoldenStdout`, ADR 0302), and — in the sibling integration file —
+// against CPython itself.
 
-func TestRunTimeBuiltNestedSlotReadsAnswerInBothEngines(t *testing.T) {
+func TestRunTimeBuiltNestedSlotReadsAnswerOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the shape that started the cycle: a list built by append, read one level down.
 		{"first slot of an appended list", "xs = []\nxs.append([7, 8])\nprint(xs[0][0])\n", "7\n"},
@@ -95,7 +96,7 @@ func TestRunTimeBuiltNestedSlotReadsAnswerInBothEngines(t *testing.T) {
 }
 
 // TestRunTimeBuiltNestedSlotReadsTrapLikeCPython pins the failures. A slot that holds a number, None
-// or a set has nothing below it, and a position can be out of range; CPython raises, the interpreter
+// or a set has nothing below it, and a position can be out of range; CPython raises, the record
 // raises, and the compiled arm the tag dispatches to raises the same sentence — it may not refuse
 // these, because refusing is what the row below (the numeric use) still legitimately does.
 func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
@@ -108,7 +109,7 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			"TypeError", "'NoneType' object is not subscriptable"},
 		{
 			// A set slot is asked as a member, so a subscript that names no member is the set's own
-			// failure — the KeyError the interpreter has always raised for this documented gusty
+			// failure — the KeyError the record has always raised for this documented gusty
 			// extension (docs/language.md § Dicts & sets), now raised by the compiled arm too so one
 			// question has one answer at every depth (ADR 0251).
 			"set slot names no member", "xs = []\nxs.append({5, 6, 7})\nprint(xs[0][9])\n",
@@ -148,13 +149,12 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			if !strings.Contains(out, "Traceback (most recent call last):") {
 				t.Errorf("the compiled program printed no traceback:\n%s", out)
 			}
+			// A KeyError carries the key's repr, in the compiled program as in the reference — the
+			// raise site renders a literal key into the message the way the reference words it
+			// (roadmap Gap R.189, paid by the compiled leg in ADR 0302's cycle). A key the compiler
+			// cannot see as a literal keeps the generic sentence, and L11.1's tagged word is what would
+			// name those too; a row here asserting the old prose would be asserting a regression.
 			compiledWant := tc.message
-			if tc.class == "KeyError" && strings.HasPrefix(tc.message, "'") {
-				// Only a KeyError whose message is a QUOTED key is the asymmetry: the compiled leg
-				// cannot render a key at run time. A KeyError with its own sentence ("not in set",
-				// "popitem(): dictionary is empty") is a constant both legs already agree on.
-				compiledWant = "key not found"
-			}
 			if !strings.Contains(out, compiledWant) {
 				t.Errorf("compiled message missing %q:\n%s", compiledWant, out)
 			}
@@ -190,7 +190,7 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 		},
 		{
 			// A set *variable* is read by the untagged path, which this backend declines as an unsupported
-			// subscript — while the interpreter answers the documented membership question (`sa[0]` asks
+			// subscript — while the record answers the documented membership question (`sa[0]` asks
 			// the set for the member 0 and raises KeyError: not in set). Two backends, two answers to one
 			// shape: the compiled leg owes either the extension or a runtime trap, and a refusal is
 			// neither (Gap R.37's rule, this shape newly measured as Gap R.94).

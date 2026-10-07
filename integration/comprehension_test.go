@@ -9,7 +9,7 @@ import (
 
 // TestComprehensionCallsMatchCPythonOnAllThreeLegs is the integration half of the runtime
 // comprehension feature (roadmap L11.7, ADR 0192). The AOT path folded constant elements and
-// stopped, so [f(x) for x in range(5)] refused while the interpreter ran it — a two-backends,
+// stopped, so [f(x) for x in range(5)] refused while the record ran it — a two-backends,
 // one-language situation the corpus had never exercised, because every comprehension in it had a
 // constant element. Expectations are CPython's, transcribed from running the same source.
 func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
@@ -26,9 +26,7 @@ func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
 		{"materialised_iterable", "xs = [1, 2, 3]\nxs.append(9)\nprint([x * 2 for x in xs])\n", "[2, 4, 6, 18]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != tc.want {
-				t.Errorf("interpreter\n got %q\nwant %q", got, tc.want)
-			}
+			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -48,7 +46,7 @@ func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
 // the literal `{1, 2}` and the comprehension `{x for x in [1, 2]}` — now go through ADR 0163's
 // binding rule, and the `if` filter belongs to the comprehension instead of being swallowed by a
 // ternary that demanded an `else`. Set members are listed ascending so CPython's hash-ordered
-// rendering and the insertion order both backends keep say the same line.
+// rendering and the insertion order the compiled path keep say the same line.
 func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want string
@@ -65,9 +63,7 @@ func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
 		{"printed_directly", "print({k: k * 2 for k in [3]})\n", "{3: 6}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != tc.want {
-				t.Errorf("interpreter\n got %q\nwant %q", got, tc.want)
-			}
+			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("compile: %v", err)

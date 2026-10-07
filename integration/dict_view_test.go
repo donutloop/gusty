@@ -23,7 +23,7 @@ func TestCLIDictViewNeverSpendsExit2(t *testing.T) {
 		`print({1: 2, 3: 4}.values())`,
 		`print({1: "a", 2: "b"}.keys())`,
 	} {
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliViewOut(t, backend, src)
 			if code == 2 {
 				t.Fatalf("%s %q spent the contract's exit 2 (compiler bug):\n%s", backend, src, out)
@@ -58,7 +58,7 @@ func TestCLIDictViewPrintsWhatTheReferencePrints(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliViewOut(t, backend, src)
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d where the reference exits 0:\n%s", backend, src, code, out)

@@ -14,7 +14,7 @@ package lang
 // Two answers, split by what the REFERENCE does rather than by what this backend lacks:
 //
 //   - where CPython raises (`[1] - [2]`, `{1: 2} * 2`, `[1] + {}`, `[] < {}`) the compiled leg raises
-//     CPython's own sentence, so `except TypeError:` runs on both engines (ADR 0215);
+//     CPython's own sentence, so `except TypeError:` runs on both legs (ADR 0215);
 //   - where CPython ANSWERS (`[0] * 3`, `[1, 2] + [3]`, `[1] < [2]`) it declines in words — there is no
 //     runtime list-repeat or concatenate helper, and a fabricated number is ADR 0166's bug.
 //
@@ -147,7 +147,7 @@ func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("the row is stale against the reference: it prints %q, row pins %q", want, r.want)
 			}
-			// The raise arrives as an EvalError, not as stdout: `captureStdout` fails the test on a
+			// The raise arrives as an TrapError, not as stdout: `captureStdout` fails the test on a
 			// program that traps, which is exactly the shape this table pins.
 			ex := trapRun(t, r.src)
 			if ex == nil {

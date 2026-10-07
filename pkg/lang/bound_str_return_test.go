@@ -84,7 +84,7 @@ func TestTheRenderingRefusalIsNotAWrongNumber(t *testing.T) {
 			if err == nil && res != nil {
 				// Answering is allowed, but not with a digit the reference does not print; the
 				// table above is where answers are pinned, so a compile here must run cleanly.
-				if _, _, rerr := EvalExpr(r.src); rerr != nil {
+				if _, _, rerr := evalGolden(t, r.src); rerr != nil {
 					t.Fatalf("compiled cleanly but the program failed to run: %v", rerr)
 				}
 				return
@@ -172,7 +172,7 @@ func isPlainIntegerLine(s string) bool {
 }
 
 // compiledOut lowers src and runs the module under lli, failing the test if the compiler refused or the
-// program exited non-zero. The interpreter helper is captureStdout (jit_test.go); this is its compiled
+// program exited non-zero. the record helper is captureStdout (jit_test.go); this is its compiled
 // twin, named for the question it asks.
 func compiledOut(t *testing.T, src string) string {
 	t.Helper()

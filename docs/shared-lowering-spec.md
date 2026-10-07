@@ -1,44 +1,58 @@
-# Shared Lowering Spec
+# Lowering Spec
 
-This document is the **shared lowering contract** between the two gusty
-backends:
+This document is the lowering contract for the **one** gusty backend:
 
-- the **AST interpreter** (`lang.EvalExpr`, `pkg/lang/jit.go`), and
-- the **LLVM AOT compiler** (`lang.Compile`, `pkg/lang/codegen.go`).
+- the **LLVM AOT compiler** (`lang.Compile`, `pkg/lang/codegen.go` + `pkg/lang/closure.go`), run
+  in-process by the LLVM JIT (`pkg/lang/jit_llvm.go`) or linked and run by `cc`.
 
-Both backends consume the same parsed AST and lower it independently. Because
-they are two separate implementations of the same semantics, they can **drift**:
-a construct can be correct in one backend and wrong, silently ignored, or
-unsupported in the other. The conformance matrix (see
-`integration/conformance_test.go` and `integration/conformance-matrix.json`)
-is the mechanical check that catches that drift.
+The AST interpreter that used to be the second half of this contract (`lang.EvalExpr`,
+`pkg/lang/jit.go`) is **retired** — deleted by ADR 0302, with `--interp` a usage error and no
+`EvalExpr` to call. What the second implementation used to prove is now proved by the two
+**witness legs**, and the wording of every claim below names them:
+
+| Witness | The claim | Where it lives |
+|---|---|---|
+| **the record leg** | the compiled answer equals the answer the retired engine recorded for that source | `pkg/lang/testdata/interpreter-golden.json`, read by `pkg/lang/golden.go` |
+| **the reference leg** | the compiled answer equals CPython's | `gustyc --oracle`, `integration/conformance-matrix.json` |
+
+The two implementations could **drift**; a single implementation can only **disagree with a
+witness**, which is a weaker and different thing. The conformance matrix (see
+`integration/conformance_test.go` and `integration/conformance-matrix.json`) and the two drift
+ledgers (`pkg/lang` and `integration` each hold an `interpreter-golden-drift.json`; CPython
+disagreements are in `integration/testdata/cpython-debt.json`) are the mechanical checks for that.
 
 ## The contract
 
-For every **shared-surface** whole-program case, evaluating the source with the
-interpreter must produce **byte-identical stdout** to compiling the source with
-the AOT compiler, writing the IR, running `llc` and `cc`, and executing the
-resulting native binary.
+For every whole-program case, compiling the source, writing the IR, running `llc` and `cc` and
+executing the resulting native binary must print **what CPython prints** for the same source; and
+where a program has a recorded answer, the compiled run must agree with it or the disagreement must
+be a row in a ledger, never a silent pass.
 
 ```
-EvalExpr(src).stdout  ==  AOT(src).stdout
+artifact(src).stdout  ==  CPython(src).stdout        # the reference leg
+artifact(src).stdout  ==  record(src).stdout         # the record leg, or a ledger row
 ```
 
-The matrix asserts this equality for every case in `integration/conformance_cases.go`
-and records the observed outputs so a failure is visible, not silently accepted.
+The matrix asserts the reference leg for every case in `integration/conformance_cases.go` and
+records the observed outputs so a failure is visible, not silently accepted. `pkg/lang/golden.go`
+asserts the record leg for the unit cases, and **a missing record fails the case** — so a record
+cannot be deleted to make coverage disappear. There is no engine-vs-engine equality left to assert,
+and nothing that compares an artifact with itself: a check whose operands are the same expression is
+not a check (ADR 0308 deleted three such leftovers).
 
 ## Value model
 
-Both backends share a small dynamic value model. A value is one of:
+The compiled backend implements one small dynamic value model; the middle column is the retired
+engine's, kept because the record leg is stated in its terms.
 
-| kind      | interpreter            | AOT (codegen)              |
-|-----------|------------------------|----------------------------|
-| int       | `int64`                | `i32` (signed)             |
-| float     | `float64`              | `double`                   |
-| bool      | `0`/`1`                | `i1`/`i32 0|1`             |
-| none      | `None`                 | sentinel `0`               |
-| string    | `*str` (heap)          | `%str` global + i8*        |
-| list/dict/set | heap object handle | `%obj`-tagged runtime heap |
+| kind      | retired engine (record leg) | the compiled backend (codegen) |
+|-----------|-----------------------------|--------------------------------|
+| int       | `int64`                     | `i32` (signed)                 |
+| float     | `float64`                   | `double`                       |
+| bool      | `0`/`1`                     | `i1`/`i32 0|1`                 |
+| none      | `None`                      | sentinel `0`                   |
+| string    | `*str` (heap)               | `%str` global + i8*            |
+| list/dict/set | heap object handle      | `%obj`-tagged runtime heap     |
 
 Numeric promotion follows Python-style gradual rules: mixing `int` and `float`
 in a binary op promotes to `float` (`sitofp`), and `int(f)`/`float(i)` are the
@@ -48,31 +62,33 @@ literals, `@llvm.pow.f64` for runtime values).
 
 ## Evaluation semantics
 
-Both backends evaluate a statement sequence in order and write `print` output
-to stdout with the same formatting. The `print` builtin is the observable
-contract point: each argument is rendered with the same `Repr` formatting on
-both backends, and each argument is followed by a newline.
+A program is a statement sequence evaluated in order, and `print` writes to stdout. The `print`
+builtin is the observable contract point: each argument is rendered by the module's one tag-reading
+printer (`rt_str_of_value` → `rt_print_mixed_value`, ADR 0303), and each argument is followed by a
+newline.
 
-| construct        | interpreter                                | AOT                                      |
-|------------------|--------------------------------------------|------------------------------------------|
-| `if`/`elif`/`else` | branch on truthiness                       | `br` on `icmp`                           |
-| `while` + `else`   | run `else` iff loop exits normally         | same control flow                        |
-| `for x in range(n)`| eager `range` list, step/neg handled       | `rt_range`/unroll                        |
-| `break`/`continue` | exit/skip the innermost loop               | `br` to exit/continue blocks             |
-| `def` + call       | closure over env                           | function `alloca` + env closure          |
-| default/keyword args | bound at call                            | same                                    |
-| generators/`yield`  | interpreter only (see divergence)         | not yet lowered (see divergence)        |
+| construct        | the compiled backend                                                       |
+|------------------|----------------------------------------------------------------------------|
+| `if`/`elif`/`else` | `br` on `icmp`                                                            |
+| `while` + `else`   | the `else` runs iff the loop exits normally                                |
+| `for x in range(n)`| `rt_range`/unroll, step and negative handled                               |
+| `break`/`continue` | `br` to exit/continue blocks                                               |
+| `def` + call       | function `alloca` + env closure (nested closures: an open gap, see below)  |
+| default/keyword args | bound at call                                                            |
+| generators/`yield`  | lowered for the shapes the roadmap lists as answered; the rest refuse     |
 
-## Divergence (documented, non-shared surface)
+## What this backend does not answer (and who owns it)
 
-The matrix marks every case `shared: true` today — every registered whole-program
-case passes parity. Constructs that are **not** yet shared surface are recorded
-as backend-specific and **excluded** from the matrix rather than silently
-asserted:
+There is no "shared surface" left to divide the corpus by: one backend answers a program or it does
+not. A construct the compiler cannot lower is **a gap with a roadmap row**, never a silent zero and
+never a fallback to an engine that no longer exists — the refusal has to name the missing door, say
+what the reference does there, and cite the row (ADR 0166, and the suite's `refusesHonestly` rule in
+`docs/operations.md` §"The suite's own interface").
 
-- generators / `yield` / `yield from` — interpreter-only today.
-- arbitrary (non-identity) decorators — interpreter-only today.
-- multi-file build semantics (`import`/duplicate detection) — AOT build layer.
+The standing examples live in `docs/operations.md` §"One backend, and what it does not lower"
+(nested closures, higher-order calls, run-time iteration and `sorted` over a computed container,
+`dict(<container>)` copies); the older entries above — generators, non-identity decorators — have
+since been lowered, which is why they are named by their roadmap rows rather than here.
 
 ## Machine-readable matrix
 
@@ -95,7 +111,8 @@ When adding a language construct:
 
 1. Add a whole-program case (single-file or merged) to
    `integration/conformance_cases.go` covering it — as a *parity* case, not a probe.
-2. Implement it on **both** backends so `EvalExpr` and `Compile` agree.
+2. Implement it in the one backend (`Compile`), judged on both legs — the record and the
+   reference. There is no second engine to make agree, and no `EvalExpr` to call.
 3. Run `go test ./integration/ -run TestConformanceMatrix` — parity must stay green **and**
    the new row must come out `oracle: match`. If it does not, either fix it or write a ledger
    row (reason + roadmap ref + a pin per leg, taken from `go run ./tools/oracleprobe <name>`,
@@ -110,7 +127,7 @@ When adding a language construct:
 
 ## async / await (L5.6, minimal synchronous-coroutine model)
 
-Both backends accept `async def`, `async for`, `async with`, and `await expr` as
+The compiled backend accepts `async def`, `async for`, `async with`, and `await expr` as
 first-class syntax. `async`/`await` are lexed keywords; `async` sets the `Async`
 flag on `FuncDef`/`ForStmt`/`WithStmt`.
 

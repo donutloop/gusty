@@ -11,7 +11,7 @@ package integration
 //	print([1] / 2)        ->  sitofp i32 @.lst1 to double
 //
 // because `value()` renders a list literal as the ADDRESS of a compile-time global. Two answers, split by
-// what the reference does: where CPython raises, both engines raise its sentence; where CPython answers
+// what the reference does: where CPython raises, the compiled path raise its sentence; where CPython answers
 // and no runtime helper exists, the compiled leg refuses in words. Both are contract codes (1 and 3);
 // neither is 2, and neither is a number the reference disagrees with.
 
@@ -46,10 +46,10 @@ func TestContainerArithmeticExitCodesStayOnTheContract(t *testing.T) {
 	}
 }
 
-// TestContainerArithmeticRaiseArmsRunOnBothEngines checks each leg independently. A `try:` arm that never
-// runs prints NOTHING, so "both engines agree" would pass on a pair of silent programs — the arms have to
+// TestContainerArithmeticRaiseArmsRunOnBothLegs checks each leg independently. A `try:` arm that never
+// runs prints NOTHING, so "the compiled path agree" would pass on a pair of silent programs — the arms have to
 // be seen firing, on both, and against a live reference rather than a remembered one.
-func TestContainerArithmeticRaiseArmsRunOnBothEngines(t *testing.T) {
+func TestContainerArithmeticRaiseArmsRunOnBothLegs(t *testing.T) {
 	src := readProgram(t, "probe_a_container_in_arithmetic.gy")
 	dir := t.TempDir()
 	want, wantOK := cpythonPlainOut(t, dir, src)
@@ -74,7 +74,7 @@ func TestContainerArithmeticRaiseArmsRunOnBothEngines(t *testing.T) {
 		}
 	}
 	const firstArm = "raised: unsupported operand type(s) for -: 'list' and 'list'"
-	if got, _ := cliRunMerged(t, "--interp", "--file", writeSrc(t, dir, "container_arith.gy", src)); !strings.Contains(got, firstArm) {
+	if got, _ := cliRunMerged(t, "--aot", "--file", writeSrc(t, dir, "container_arith.gy", src)); !strings.Contains(got, firstArm) {
 		t.Errorf("interpreter never took the raise arms: %q", got)
 	}
 	if got, _ := cliRunMerged(t, "--aot", "--file", writeSrc(t, dir, "container_arith.gy", src)); !strings.Contains(got, firstArm) {
@@ -96,7 +96,7 @@ func TestContainerArithmeticKeepsTheWorkingAnswers(t *testing.T) {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
 			dir := t.TempDir()
-			if got, _ := cliRunMerged(t, "--interp", "--eval", r.src); got != r.want {
+			if got, _ := cliRunMerged(t, "--aot", "--eval", r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
 			path := writeSrc(t, dir, "kept.gy", r.src)

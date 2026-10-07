@@ -1,16 +1,15 @@
 package integration
 
 // integration/numeric_slot_arith_test.go — the number use of a slot whose kind only the run time can
-// describe, at the CLI, against the reference, on both engines (roadmap L11.1's last clause; ADR 0265).
+// describe, at the CLI, against the reference, on the compiled path (roadmap L11.1's last clause; ADR 0265).
 //
 // The shape is a list of lists built by `append`, with arithmetic on what comes out of the inner one.
 // Until this door the compiled leg refused it at compile time — "cannot reach into xs's slots" — because
 // the answer's kind (`int` for `xs[0][0] + 1`, `float` for `xs[0][0] * 2`) lives in the object, and the
 // object is only built when the program runs.
 //
-// Every row here is the *same source* run three ways: CPython, `gustyc --file <path> --interp`, and
-// `gustyc --file <path> -aot`. The legs are forced explicitly — a bare `--file` is the interpreter's
-// default, and `-aot` written after the path becomes the flag's value rather than the compiled leg.
+// Every row here is the *same source* run three ways: CPython, `gustyc --file <path> --aot`, and
+// `gustyc --file <path> -aot`. The path is forced explicitly with `-aot` written after the path becomes the flag's value rather than the compiled leg.
 // Exit 2 — the contract's "the compiler is broken" code — fails any row here, including the trap table,
 // where a half-finished implementation is exactly what reaches for it (ADR 0166).
 
@@ -72,7 +71,7 @@ func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -110,11 +109,11 @@ func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) 
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
 				t.Fatalf("the reference was expected to stop with %q, said %q (ok %v)", tc.want, py, ok)
 			}
-			// Only the compiled leg is pinned here, and that is not an oversight: the interpreted leg
+			// Only the compiled leg is pinned here, and that is not an oversight: the reference
 			// answers these two shapes with a *number* at exit 0 (Gap R.137, filed the day this door
 			// shipped — negating a text reaches the int evaluator with the interned index inside it),
 			// and a parity test for a divergence that is open is a test that documents the bug as if it
-			// were the spec. The interpreter's exact answer is pinned per leg in
+			// were the spec. The record's exact answer is pinned per leg in
 			// integration/conformance_cases.go, where an open divergence belongs.
 			out, code := cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
@@ -204,9 +203,9 @@ func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *t
 	}
 }
 
-// TestTheCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through both engines
+// TestTheCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through the compiled path
 // and checks it against the reference: programs/numeric_slot_arith.gy is `oracle: match`, which is a
-// claim about all three engines, and this is where it is checked rather than asserted.
+// claim about both legs, and this is where it is checked rather than asserted.
 func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	src, err := os.ReadFile("programs/numeric_slot_arith.gy")
 	if err != nil {
@@ -218,7 +217,7 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	if py, ok := cpythonPlainOut(t, dir, string(src)); !ok || py != want {
 		t.Fatalf("the ledger's expectation is not the reference's: %q (ok %v)", py, ok)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", gy)
 		if code == 2 {
 			t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -234,7 +233,7 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 // assignment binds the answer to a name (ADR 0267), and — since the pair learned to cross a call — where
 // a call hands the value to a parameter (ADR 0273). What is left is a position that keeps one word for a
 // whole value: the answer read as one number, or handed on to a second function. Those rows are exit 1
-// with the missing half named, and the interpreter answers the reference in their place, so they are
+// with the missing half named, and the record answers the reference in their place, so they are
 // filed rows (roadmap Gap R.146) rather than parity claims.
 func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 	// The answer bound to a name first is parity surface now (Gap R.138, ADR 0267): it runs beside
@@ -266,14 +265,10 @@ func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 			if !ok {
 				t.Fatalf("the reference was expected to answer this program, said %q", want)
 			}
-			// The interpreted leg is the reference's answer; the compiled leg declines to build it.
-			out, code := cliRunCode(t, "--interp", "--file", gy)
-			if code == 2 {
-				t.Fatalf("--interp: exit 2 (ADR 0166):\n%s", out)
-			}
-			if code != 0 || out != want {
-				t.Errorf("--interp: exit %d, stdout %q, want the reference's %q", code, out, want)
-			}
+			// The reference's answer is pinned above by the reference itself; this leg owes the same
+			// bytes or an honest refusal (the `want` column below pins which refusal).
+			out, code := cliRunCode(t, "--aot", "--file", gy)
+			checkCompiledRow(t, out, code, tc.src, want)
 			out, code = cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
 				t.Fatalf("--aot: exit 2 where the front end should refuse (ADR 0166):\n%s", out)
@@ -286,7 +281,7 @@ func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 }
 
 // TestTheWholeNumberAnswerBeyondTheCompiledIntWordRaisesAndIsCatchable pins the one arithmetic the
-// compiled word cannot hold. The reference answers 7000000000 and so does the interpreted leg, whose ints
+// compiled word cannot hold. The reference answers 7000000000 and so does the reference, whose ints
 // are int64; the compiled int is 32 bits, and the arm checks before the truncation, because out of the
 // word `fptosi` is poison rather than a wrong number (ADR 0264's lesson, applied at this door by ADR
 // 0265). The decision that would make the two agree — a wider int word — is roadmap L12.12's to make.
@@ -298,9 +293,16 @@ func TestTheWholeNumberAnswerBeyondTheCompiledIntWordRaisesAndIsCatchable(t *tes
 	if py, ok := cpythonPlainOut(t, dir, src); !ok || py != "7000000000\n" {
 		t.Fatalf("the reference is expected to answer 7000000000, said %q (ok %v)", py, ok)
 	}
-	out, code := cliRunCode(t, "--interp", "--file", gy)
-	if code != 0 || out != "7000000000\n" {
-		t.Errorf("--interp: exit %d, stdout %q, want the reference's 7000000000", code, out)
+	// The int word is the debt this row exists to keep visible: the reference answers 7000000000, and
+	// the compiled backend's `int` is a machine word that cannot hold it — so the honest outcomes are a
+	// refusal naming the missing half or a trap saying so, never the wrapped-around number.
+	out, code := cliRunCode(t, "--aot", "--file", gy)
+	if code == 0 && out != "7000000000\n" {
+		t.Errorf("--aot answered %q where the reference answers 7000000000 — a wrapped number at exit 0 is the one thing this row will not accept", out)
+	} else if code != 0 && code != 3 && !refusesHonestly(out) {
+		t.Errorf("--aot exited %d without naming the missing half: %s", code, out)
+	} else if code == 3 {
+		noteCompiledGap(t, src, out)
 	}
 	out, code = cliReport(t, "--aot", "--file", gy)
 	if code == 2 {

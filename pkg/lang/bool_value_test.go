@@ -6,19 +6,19 @@ import (
 
 // A bool is a value: `print(True)` writes True, `str(True)` writes True, an f-string
 // writes True. The answer comes from one shared question — is this expression a bool? —
-// asked of the AST with the bindings that are in scope, which is why the interpreter and
+// asked of the AST with the bindings that are in scope, which is why the record and
 // the compiled backend cannot disagree about it (roadmap L11.1 step 2, ADR 0257).
 //
 // The two shapes that still print the number a bool is stored as — a bool handed to a
 // function, a bool inside a container — are pinned as they answer today and filed as
 // roadmap Gaps R.111 and R.112.
 
-func boolInterp(t *testing.T, src string) string {
+func boolRun(t *testing.T, src string) string {
 	t.Helper()
 	return captureStdout(t, src)
 }
 
-func TestBoolWritesItsNameInBothBackends(t *testing.T) {
+func TestBoolWritesItsNameOnTheCompiledBackend(t *testing.T) {
 	tests := []struct{ src, want string }{
 		{"print(True)\n", "True\n"},
 		{"print(False)\n", "False\n"},
@@ -52,7 +52,7 @@ func TestBoolWritesItsNameInBothBackends(t *testing.T) {
 		{`ok = 1 == 1` + "\n" + `print(f"flag: {ok}")` + "\n", "flag: True\n"},
 	}
 	for _, tc := range tests {
-		if got := boolInterp(t, tc.src); got != tc.want {
+		if got := boolRun(t, tc.src); got != tc.want {
 			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
 		}
 		if code, out := negBuildRun(t, "bool_value", tc.src); code == 0 && out != tc.want {
@@ -73,7 +73,7 @@ func TestBoolTruthinessIsUnchanged(t *testing.T) {
 		{"flag = False\nfor i in [1]:\n    flag = i == 1\n    print(flag)\n", "True\n"},
 	}
 	for _, tc := range tests {
-		if got := boolInterp(t, tc.src); got != tc.want {
+		if got := boolRun(t, tc.src); got != tc.want {
 			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
 		}
 		if code, out := negBuildRun(t, "bool_truth", tc.src); code == 0 && out != tc.want {
@@ -112,7 +112,7 @@ func TestBoolQuestionIsAskedOfTheAST(t *testing.T) {
 // program's own __lt__ ran and returned an int, and CPython prints that int.
 func TestDunderComparisonIsNotAVerdict(t *testing.T) {
 	src := "class A:\n    def __init__(self, x):\n        self.x = x\n\n    def __lt__(self, other):\n        if self.x < other:\n            return 1\n        return 0\n\na = A(3)\nprint(a < 4)\n"
-	if got, want := boolInterp(t, src), "1\n"; got != want {
+	if got, want := boolRun(t, src), "1\n"; got != want {
 		t.Errorf("interpreter dunder comparison = %q, want %q", got, want)
 	}
 	if code, out := negBuildRun(t, "bool_dunder", src); code == 0 && out != "1\n" {
@@ -128,7 +128,7 @@ func TestDunderComparisonIsNotAVerdict(t *testing.T) {
 // on every engine (Gap R.112, ADR 0259).
 func TestBoolThroughACallIsStillANumber(t *testing.T) {
 	call := "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
-	if got, want := boolInterp(t, call), "1\n1\n"; got != want {
+	if got, want := boolRun(t, call), "1\n1\n"; got != want {
 		t.Errorf("bool through a call = %q, want %q (Gap R.111)", got, want)
 	}
 	if code, out := negBuildRun(t, "bool_call", call); code == 0 && out != "1\n1\n" {

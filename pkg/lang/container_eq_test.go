@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// container_eq_test.go — containers compare by value, on both backends.
+// container_eq_test.go — containers compare by value, on the compiled backend.
 //
-// `xs == ys` for two equal lists answered False in the interpreter and in the compiled binary,
+// `xs == ys` for two equal lists answered False in the record and in the compiled binary,
 // because an element of the value model is an i32 and the comparison compared them: two handles,
 // two slots, therefore unequal. Meanwhile a literal operand made the module invalid — `icmp eq
 // i32 @.lst1, 1` — so `if [1] == 1:` could not be compiled at all. Python compares containers by
@@ -48,7 +48,7 @@ func TestContainersCompareByValueCompiled(t *testing.T) {
 	}
 }
 
-// The same table through the interpreter: the two backends share an expectation, and it is
+// The same table through the record: the compiled backend share an expectation, and it is
 // CPython's (integration/container_equality_test.go checks the third leg).
 func TestContainersCompareByValueInterpreted(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{

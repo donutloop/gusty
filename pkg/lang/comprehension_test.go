@@ -7,7 +7,7 @@ import (
 
 // Comprehensions whose element is a call (roadmap L11.7, ADR 0192). The AOT path folded constant
 // elements and stopped, so the most ordinary list-building idiom in Python — [f(x) for x in
-// range(5)] — refused with "comprehension element must be constant" while the interpreter ran it
+// range(5)] — refused with "comprehension element must be constant" while the record ran it
 // happily. Three properties below: the loop variable is a real slot the element can call through;
 // the constant fold keeps priority where it still applies; and a consumer that would fold an empty
 // element set refuses instead of answering 0.
@@ -156,9 +156,9 @@ func TestRuntimeComprehensionRequestsTheHeapRuntime(t *testing.T) {
 	}
 }
 
-// TestComprehensionBehaviourInterpreted is the interpreter side of the same table, so the two
+// TestComprehensionBehaviourOnTheCompiledBackend is the record side of the same table, so the two
 // backends cannot drift on what a comprehension means.
-func TestComprehensionBehaviourInterpreted(t *testing.T) {
+func TestComprehensionBehaviourOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"def sq(n):\n    return n * n\n\nprint([sq(x) for x in range(4)])\n", "[0, 1, 4, 9]\n"},
 		{"print([abs(x) for x in [-1, 2, -3]])\n", "[1, 2, 3]\n"},

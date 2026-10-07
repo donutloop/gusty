@@ -8,7 +8,7 @@ package lang
 // one i32 with no kind beside it, and refused the slot it cannot see into — exit 1 on a program the
 // reference runs. This file pins four things, each a different way to be wrong:
 //
-//   - the bindings answer, on both engines, for every operator the door serves (`+`, `-`, `*`, the
+//   - the bindings answer, on both legs, for every operator the door serves (`+`, `-`, `*`, the
 //     negation) and for a slot the literal never described;
 //   - the module shape: the name's value slot and its companion tag slot are both written, and a
 //     program that never asks the question does not carry the door;
@@ -28,9 +28,9 @@ import (
 
 const builtList = "xs = []\nxs.append([7, 8])\n"
 
-// TestABoundArithmeticAnswerPrintsLikeTheReferenceOnBothBackends is the row itself: the expression
+// TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend is the row itself: the expression
 // ADR 0265 answers in a print argument is the same expression this statement binds to a name.
-func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnBothBackends(t *testing.T) {
+func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", builtList + "n = xs[0][0] * 2\nprint(n)\n", "14\n"},
 		{"addition", builtList + "n = xs[0][0] + 1\nprint(n)\n", "8\n"},
@@ -187,6 +187,8 @@ func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
 		{"an operand of a sum", builtList + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two of them", builtList + "n = xs[0][0] * 2\nm = n + n\nprint(m)\n", "28\n"},
 		{"negated", builtList + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n", "14\n"},
+		{"handed to abs with the sign already gone", builtList + "n = xs[0][0] * -2\nprint(abs(n))\n", "14\n"},
 		{"asked for its truth", builtList + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
 		{"a zero answers false", builtList + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
 		{"a while head", builtList + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
@@ -254,12 +256,11 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 // takes a whole *value* — a builtin's argument, a container's element — has nowhere to put a tag, and says
 // so in words rather than reading the payload alone (roadmap Gap R.146, the same missing word Gap R.139
 // names on the calling side). The `and` row that used to be here answers since ADR 0269 and moved up to the
-// parity table; a row that stops refusing has to move, not disappear.
+// parity table; a row that stops refusing has to move, not disappear. The list-element row moved to
+// TestAPairBoundNameEntersAContainerByWayOfItsTag once the builders learned to ask for the tag (ADR 0306).
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
 		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
-		{"an element of a list", builtList + "n = xs[0][0] * 2\nprint([n])\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

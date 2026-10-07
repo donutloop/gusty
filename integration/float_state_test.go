@@ -35,7 +35,7 @@ import (
 // the plain load it had — the `fibonacci` and `function_calls` benchmarks emit no box at
 // all.
 //
-// The probe prints on all three engines. The refusals below are the door's honest half:
+// The probe prints on both legs. The refusals below are the door's honest half:
 // each names the position that keeps one word, and none of them is a wrong number.
 
 const floatStateProbe = "probe_int_state_becomes_float"
@@ -64,7 +64,7 @@ func TestIntStateBecomesFloatMatchesCPython(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != floatStateWant {
 		t.Fatalf("the expectation is not CPython's: got\n%s\nwant\n%s", py, floatStateWant)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code == 2 {
 			t.Fatalf("the %s leg rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))
@@ -111,7 +111,7 @@ func TestAFloatRebindingDoesNotReachIntoItsNeighbour(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("the %s leg exited %d: %s", engine, code, cliRun(t, engine, path))
@@ -161,7 +161,7 @@ func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("the %s leg rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))
@@ -177,35 +177,26 @@ func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
 	}
 }
 
-// TestAFloatStateVariableStillRefusesHonestlyInAOneWordPosition is this door's honest half.
-// Each shape asks the float-state variable for a single word, and each is refused — the
-// failure mode that had to stay impossible is the payload answering in place of the value,
-// which is what printed a float box's handle as an int (Gap R.132, ADR 0273's record).
-// Every refusal is exit 1 with a name in the message: a wrong number with the exit code of
-// success is the outcome these rows exist to prevent.
-func TestAFloatStateVariableStillRefusesHonestlyInAOneWordPosition(t *testing.T) {
+// TestAFloatStateVariableEntersAListByWayOfItsTagAtTheCLI is this door's other half, and it
+// changed sides when the container builders learned to ask (ADR 0306): an element is no longer a
+// position that keeps one word, so the shape is no longer refused. What the row still rules out is
+// the payload answering in place of the value — a float box's handle printed as an int where the
+// reference prints a double (Gap R.132, ADR 0273's record) — which is why it compares against the
+// reference instead of a pinned refusal sentence. The int-to-float rebinding that made the shape
+// interesting (`x = 8` then `x = 2.5`) is in the program, not in the expectation.
+func TestAFloatStateVariableEntersAListByWayOfItsTagAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the float-state variable the container element door is asked about",
 			"x = 8\nx = 2.5\nprint([x, 1])\n",
-			"this position keeps one word",
+			"[2.5, 1]\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			path := writeSrc(t, t.TempDir(), "float_state_refuse.gy", tc.src)
-			out, code := cliRunCode(t, "--aot", path)
-			if code == 2 {
-				t.Fatalf("the compiled leg rejected the compiler's own module (ADR 0166):\n%s", cliRun(t, "--aot", path))
-			}
-			if code != 1 {
-				t.Fatalf("exit %d, want 1 (a front-end refusal): %s", code, out)
-			}
-			// The refusal is written to stderr, where a person and a script both read it: the assertion
-			// below takes the combined output, and the exit class above is what a script branches on.
-			combined := cliRun(t, "--aot", path)
-			if !strings.Contains(combined, tc.want) {
-				t.Errorf("refusal does not name the missing half (%q):\n%s", tc.want, combined)
-			}
+			// The answer is what the reference prints. What the box's payload would have answered —
+			// an integer handle where the reference prints a double — is the failure this row exists
+			// to catch, and it is only recognisable against that answer.
+			compiledAnswersExitZero(t, tc.src, tc.want)
 		})
 	}
 }

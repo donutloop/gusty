@@ -121,7 +121,7 @@ a wrong number rather than a refusal (roadmap L11.6, Gap R.164, ADR 0280)
 
 ## Tests
 
-* `pkg/lang/floor_pair_test.go` — `TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends`
+* `pkg/lang/floor_pair_test.go` — `TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend`
   gains the call-answer arm rows (`a call answer as an arm`, `two call answers as the two arms,
   either order`, `an identity assembled from two call answers`), and
   `TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses` gains the two rows this cycle left

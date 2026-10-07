@@ -1,9 +1,9 @@
 package lang
 
-// pkg/lang/negation_kind_test.go — the unary minus asks what kind its operand is, on both backends
+// pkg/lang/negation_kind_test.go — the unary minus asks what kind its operand is, on the compiled backend
 // (roadmap Gaps R.89 and R.137, ADR 0266).
 //
-// The defect had two halves and they failed differently. The interpreter handed the operand straight to
+// The defect had two halves and they failed differently. the record handed the operand straight to
 // its int evaluator, so a text reached `-` holding the interned index it is stored as and `print(-"hi")`
 // answered -281474976710658 — the negation of 2^48+2 — at exit 0. The compiled backend wrote
 // `sub i32 0, <storage>` for the same expression: 0 for a text or a dict, and for a *list literal* an
@@ -11,9 +11,9 @@ package lang
 //
 // Four things are pinned here, and each is a different way to be wrong:
 //
-//   - the parity rows — a negation whose operand does have a sign still answers, on both engines, so the
+//   - the parity rows — a negation whose operand does have a sign still answers, on both legs, so the
 //     raise cannot be bought by breaking `-7`, `-1.5`, `-True` or a slot read;
-//   - the traps — every shape the reference stops on raises its sentence, on both engines: the
+//   - the traps — every shape the reference stops on raises its sentence, on both legs: the
 //     interpreter asks the *value*, the module asks the *expression*;
 //   - the raise is a program-visible one (`except TypeError:` reaches it), not a runtime abort;
 //   - the IR shape — no global sitting in an i32 arithmetic instruction, and the sentence appears once
@@ -29,7 +29,7 @@ import (
 
 // negationParity is the family that must keep answering: a sign is a real operation on the kinds that
 // have one, and the raise below is worthless if it bought silence by breaking these.
-func TestNegationOfANumberStillAnswersOnBothBackends(t *testing.T) {
+func TestNegationOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int literal", "print(-7)\n", "-7\n"},
 		{"a float literal", "print(-1.5)\n", "-1.5\n"},
@@ -65,11 +65,11 @@ func TestNegationOfANumberStillAnswersOnBothBackends(t *testing.T) {
 	}
 }
 
-// TestNegationOfANonNumberRaisesTheReferenceSentenceOnBothBackends is the row itself. The class is what a
-// handler matches; the message is what a user searches for, so both are compared exactly, on both engines
+// TestNegationOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend is the row itself. The class is what a
+// handler matches; the message is what a user searches for, so both are compared exactly, on both legs
 // — including the interpreted one, whose half of Gap R.89 the compiled path had been pinning alone
 // (`aotOnly` in tagged_numeric_test.go).
-func TestNegationOfANonNumberRaisesTheReferenceSentenceOnBothBackends(t *testing.T) {
+func TestNegationOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text literal",
@@ -140,7 +140,7 @@ func TestNegationOfANonNumberRaisesTheReferenceSentenceOnBothBackends(t *testing
 		},
 		{
 			// A float-family container read through a computed index: ADR 0265's door owned this arm and
-			// the interpreter's half of it was Gap R.89's `aotOnly` pin.
+			// the record's half of it was Gap R.89's `aotOnly` pin.
 			"a mixed-kind slot read through a computed index",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",
 			"TypeError", "bad operand type for unary -: 'str'",
@@ -184,8 +184,8 @@ func TestNegationOfANonNumberRaisesTheReferenceSentenceOnBothBackends(t *testing
 }
 
 // TestTheNegationOfATupleNamesWhatTheReferenceNames pins the one kind this file cannot settle on both
-// engines. A tuple literal is built as a *list* object by the interpreter, so its operand-type sentence
-// names the representation the interpreter used, where the reference — and this backend's compiled leg —
+// engines. A tuple literal is built as a *list* object by the record, so its operand-type sentence
+// names the representation the record used, where the reference — and this backend's compiled leg —
 // name `'tuple'`. The compiled half is compared to the reference; the interpreted half is pinned as it is
 // today, because a test that asserted the reference's word here would fail and a test that asserted
 // nothing would pass either way (roadmap Gap R.141, waiting on L11.3's tuple object).
@@ -209,10 +209,10 @@ func TestTheNegationOfATupleNamesWhatTheReferenceNames(t *testing.T) {
 	}
 }
 
-// TestTheNegationTrapIsCatchableOnBothBackends: the raise leaves through the emitted store-and-branch, so
+// TestTheNegationTrapIsCatchableOnTheCompiledBackend: the raise leaves through the emitted store-and-branch, so
 // the arm the program wrote runs — the compiled half is the one that decides, because a raise a helper
 // performed for itself would be unreachable to the program (ADR 0228).
-func TestTheNegationTrapIsCatchableOnBothBackends(t *testing.T) {
+func TestTheNegationTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"a text literal", "try:\n    print(-\"hi\")\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")\n", "caught\nafter\n"},
 		{"None", "try:\n    print(-None)\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},

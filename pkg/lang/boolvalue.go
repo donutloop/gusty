@@ -4,7 +4,7 @@ package lang
 //
 // A bool has always been a value to the *language*: `if x == 1:`, `not x` and
 // `while flag` all read one. What it has never been is a value to the *printer*.
-// Both backends store a bool as the number the comparison produced — the AST
+// The compiled backend store a bool as the number the comparison produced — the AST
 // interpreter as an `int64` 1/0, the compiled backend as an `i32` 0/1 — and neither
 // representation carries a kind, so `print(True)` asked "what number is this?" and
 // answered `1` where CPython answers `True`:
@@ -22,7 +22,7 @@ package lang
 // and the tag exists so the runtime does not have to guess). What a bool needs in order
 // to be a printed value is the answer to "is this expression a bool?" — a question both
 // backends already hold in the AST and neither asks. So this file asks it once, in one
-// place, and both backends print from the answer, exactly as ADR 0172 prints None and
+// place, and the compiled backend prints from the answer, exactly as ADR 0172 prints None and
 // ADR 0224 prints interned text: the front end reads the program, the runtime renders.
 //
 // The question is static and deliberately conservative. An expression is a bool when its
@@ -50,7 +50,7 @@ var boolCompareOps = map[string]bool{
 
 // boolReturningBuiltins are the builtins whose answer is a verdict rather than a value.
 // They are listed rather than inferred because their bodies are Go, not an AST — and the
-// list is only what both backends actually have: `all`/`any` answer whether every/any
+// list is only what the compiled backend actually have: `all`/`any` answer whether every/any
 // element is truthy, which is a verdict in Python and so renders True/False, while
 // `isinstance` and `bool` are not implemented on either path and belong to the rows that
 // owe them rather than to a table that would promise an answer they cannot give.
@@ -91,7 +91,7 @@ type BoolEnv struct {
 	// literal (a constant-folded name, an element the literal wrote). The min/max verdict
 	// question asks it so that the candidate the *module* selects and the candidate the
 	// renderer names are read from one rule; nil means “no fold to agree with“, and the
-	// question then answers from literals alone — which is what the interpreter needs,
+	// question then answers from literals alone — which is what the record needs,
 	// because its winner is chosen by real comparison at run time (roadmap Gap R.117).
 	NumericCandidate func(Expr) (val float64, isFloat bool, ok bool)
 }
@@ -101,7 +101,7 @@ type BoolEnv struct {
 // result is a bool, a ternary whose branches both are, a name last assigned one of
 // those, or a call to a function that can only return one.
 //
-// It is exported because both backends and the CLI's --json report ask the same question
+// It is exported because the compiled backend and the CLI's --json report ask the same question
 // and must never disagree: a REPL echoing `True` beside a compiled binary echoing `1` is
 // exactly the two-engine split this language has been closing all the way down L11.1.
 func IsBoolExpr(e Expr, env BoolEnv) bool {
@@ -379,7 +379,7 @@ func dictFoldSlotOf(dl *DictLit, key Expr) (Expr, bool) {
 // stringBoolMethods are the text methods whose answer is a verdict rather than a value. They are a
 // separate table from boolReturningBuiltins because their callee is not a NAME at all — `s.startswith(p)`
 // parses as Call{Fn: Attr{Obj: s, Name: startswith}} — and the question below is asked of the ATTRIBUTE,
-// which every one of those eight answers with yes-or-no in both backends. The list is only what both
+// which every one of those eight answers with yes-or-no in the compiled backend. The list is only what both
 // paths actually implement: `isnumeric` and friends belong to the rows that owe them (ADR 0257's rule
 // that a table never promises an answer the backends cannot give).
 var stringBoolMethods = map[string]bool{
@@ -395,7 +395,7 @@ var stringBoolMethods = map[string]bool{
 
 func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 	// A method call is a verdict when the METHOD's own name says so. `s.startswith(p)` is a question
-	// about s, and both backends already answer it with the 0/1 a comparison answers with — only the
+	// about s, and the compiled backend already answer it with the 0/1 a comparison answers with — only the
 	// print road never learned, so `print("abc".startswith("ab"))` printed `1` where Python prints
 	// True (roadmap L11.1 step 2, ADR 0257's rule; measured as Gap R.172, ADR 0289).
 	if attr, isAttr := c.Fn.(*Attr); isAttr {

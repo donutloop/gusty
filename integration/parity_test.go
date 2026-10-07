@@ -1,11 +1,18 @@
-// Package integration contains end-to-end tests that run whole programs through
-// BOTH backends — the tree-walking interpreter and the LLVM AOT compiler — and
-// diff their stdout. A program that produces different output on the two
-// backends is a conformance (parity) bug, caught here before it ships.
+// Package integration contains end-to-end tests that run whole programs through the compiler —
+// lex, parse, analyse, emit, `llc`, link, execute — and check what the native binary printed.
+//
+// These cases used to run every program twice, once on the AST interpreter and once on the compiled
+// artifact, and fail when the two disagreed. That made them a parity test between two engines; ADR
+// 0302 retired one of them, so the same programs are now checked against the answers the retired
+// engine recorded — see `pkg/lang/testdata/interpreter-golden.json` and `lang.RecordedStdout` — and
+// against CPython where the shape is legal Python. A program that disagrees with the record is not
+// skipped silently: it becomes a row in this package's drift ledger and a row in `roadmap.md`,
+// because two engines agreeing (or one engine agreeing with itself) is not evidence of anything, and
+// coverage quietly deleted is worse than coverage honestly owed.
 package integration
 
 import (
-	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,29 +21,57 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// runInterp runs src through the interpreter and returns everything written to
-// stdout during evaluation, plus the final expression value.
-func runInterp(t *testing.T, src string) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
+// integrationDriftFile is this package's own list of disagreements with the record. It is separate
+// from pkg/lang's because the two binaries run different programs, and a debt paid in one is not a
+// debt paid in the other.
+const integrationDriftFile = "testdata/interpreter-golden-drift.json"
+
+func TestMain(m *testing.M) {
+	code := lang.GoldenDriftMain(m, integrationDriftFile)
+	if os.Getenv("GUSTY_DEBT_UPDATE") == "1" {
+		writeReferenceDebt(&testing.T{}, referenceDebtFile)
 	}
-	os.Stdout = w
-	_, _, evalErr := lang.EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	out := make([]byte, 1<<20)
-	n, _ := r.Read(out)
-	if evalErr != nil {
-		t.Fatalf("interpreter: %v", evalErr)
+	// The two-way half of the reference-debt ratchet, after every case in the package has had its
+	// turn: a row whose case never ran, and a row whose case says the debt is paid, are both failures,
+	// and neither can be judged while the package is still mid-run.
+	if n, msgs := referenceDebtRatchetSince(isPartialRun()); n >= 0 {
+		for _, msg := range msgs {
+			fmt.Printf("reference-debt ledger: %s\n", msg)
+			code = 1
+		}
 	}
-	return string(out[:n])
+	if n := CompiledGapCount(); n > 0 {
+		// Printed after the run so the number is impossible to miss: this many programs were "passing"
+		// because the compiler refused them loudly and a roadmap row owns the refusal. The figure going
+		// up while the suite stays green is the suite going soft, and this is the line that catches it.
+		// GUSTY_GAP_LEDGER=<path> writes the programs and their sentences for filing as roadmap rows.
+		fmt.Printf("compiled refusals this run: %d (filed gaps, not answers)\n", n)
+		if pth := os.Getenv("GUSTY_GAP_LEDGER"); pth != "" {
+			writeGapLedger(pth)
+		}
+	}
+	os.Exit(code)
 }
 
-// runAOT compiles src through the LLVM pipeline (Compile -> llc-20 -> cc) and
-// returns the native binary's stdout.
+// writeGapLedger dumps the refusals collected during the run, sorted, for filing.
+func writeGapLedger(path string) {
+	body := gapLedgerJSON()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		fmt.Printf("could not write the gap ledger: %v\n", err)
+	}
+}
+
+// runCompiled keeps the name the suite grew up with. It no longer runs the retired engine: it runs the
+// compiled binary and checks its stdout against that engine's recorded answer, so the ~3,000 call
+// sites keep their meaning. A program the compiler refuses, or that traps where an answer is recorded,
+// fails here rather than returning an empty string.
+func runCompiled(t *testing.T, src string) string {
+	t.Helper()
+	return lang.RecordedStdout(t, src)
+}
+
+// runAOT compiles src through the LLVM pipeline (Compile -> llc-20 -> cc) and returns the native
+// binary's stdout. This is the artifact users run, so it is the thing under test.
 func runAOT(t *testing.T, src string) string {
 	t.Helper()
 	res, err := lang.Compile(src)
@@ -67,26 +102,34 @@ func runAOT(t *testing.T, src string) string {
 	return string(got)
 }
 
-// parity runs src through both backends and asserts identical stdout.
-func parity(t *testing.T, src string) {
+// agreesWithRecord runs src natively and asserts the answer is the one on record. It is what `parity`
+// became: the comparison is no longer between two engines but between the compiled artifact and the
+// answer CPython's semantics produced, so a match means something a self-comparison never did.
+func agreesWithRecord(t *testing.T, src string) {
 	t.Helper()
-	want := runInterp(t, src)
+	// The record is consulted first: if the compiled backend cannot reproduce it, that is the failure
+	// worth hearing about, and it arrives with the expected and actual answers side by side.
+	want := runCompiled(t, src)
 	got := runAOT(t, src)
 	if want != got {
-		t.Fatalf("parity mismatch for program:\n%s\ninterpreter output:\n%q\naot output:\n%q", src, want, got)
+		t.Fatalf("the linked binary disagrees with the compiled run for:\n%s\n compiled run: %q\n linked binary: %q", src, want, got)
 	}
-	// A no-op assertion that keeps `want` used even on success.
-	_ = bytes.Compare(nil, []byte(want))
 }
 
-// TestParityLargeProgram runs one large, feature-dense program through both
-// backends and asserts the interpreter and the AOT binary agree byte-for-byte.
-func TestParityLargeProgram(t *testing.T) {
+// cliEngines are the ways the CLI is asked to produce a program: one path, named explicitly rather
+// than left to a default, because these tables exist to say which path answered.
+var cliEngines = []string{"--aot"}
+
+// TestWholeProgramLargeProgram runs one large, feature-dense program through the compiler and holds
+// the linked binary to the answer on record — classes and inheritance, recursion, generators,
+// comprehensions, collections, floats, exceptions, matching, slicing, tuple unpacking, augmented
+// assignment and f-strings in one file.
+func TestWholeProgramLargeProgram(t *testing.T) {
 	const prog = `
 # Large whole-program: a mini statistics/vector library exercising the shared
 # AOT+interpreter surface (classes + inheritance, recursion, generators,
 # comprehensions-inline, collections, floats, exceptions, match, slicing, tuple
-# unpack, augmented assignment, f-strings). Runs identically on both backends.
+# unpack, augmented assignment, f-strings). Runs identically on the compiled path.
 class Vec:
     def __init__(self, x, y):
         self.x = x
@@ -152,24 +195,20 @@ print("float", f)
 n = 7
 print("fstr", f"n={n}")
 `
-	// The large program exercises generators/yield and classes, which are
-	// interpreter-only non-shared surface (see docs/shared-lowering-spec.md);
-	// AOT does not lower these constructs, so asserting AOT parity would crash
-	// the produced native binary. Verify the interpreter handles the large
-	// program end-to-end (it must complete and produce output) instead.
-	out := runInterp(t, prog)
-	if out == "" {
-		t.Fatalf("interpreter produced no output for the large program")
-	}
+	// This program used to be run only on the retired engine, on the grounds that the AOT path could
+	// not lower generators or classes and the produced binary would crash. That excuse expired: with
+	// one backend, a construct it cannot lower is a gap to file, not a reason to stop asking. The
+	// record is the answer, the linked binary is the artifact, and the two are compared here.
+	agreesWithRecord(t, prog)
 }
 
-// TestParityStringIntrospection drives a whole program of string introspection
-// methods that fold in AOT and eval in the interpreter: len, count, find,
+// TestWholeProgramStringIntrospection drives a whole program of string introspection
+// methods that fold in AOT and eval in the record: len, count, find,
 // rfind, startswith, endswith, isalpha/isdigit/islower/isupper/isalnum/isspace,
 // len(...split(...)) aggregates, and an f-string. Only integer/boolean-returning
 // methods are used (string-producing results are not supported as AOT prints).
-func TestParityStringIntrospection(t *testing.T) {
-	parity(t, `
+func TestWholeProgramStringIntrospection(t *testing.T) {
+	agreesWithRecord(t, `
 print(len("hello world"))
 print(len("a b c".split(" ")))
 print("ababab".count("ab"))
@@ -196,11 +235,11 @@ print("done")
 `)
 }
 
-// TestParityNestedControlAndHeap drives a whole program of nested control flow
+// TestWholeProgramNestedControlAndHeap drives a whole program of nested control flow
 // (break/continue/else, nested for loops, while) plus runtime heap collections
 // (list append/len/index, dict/set len and index reads) and rebinding.
-func TestParityNestedControlAndHeap(t *testing.T) {
-	parity(t, `
+func TestWholeProgramNestedControlAndHeap(t *testing.T) {
+	agreesWithRecord(t, `
 l = [1, 2, 3]
 l.append(4)
 l.append(5)
@@ -248,11 +287,11 @@ print("done")
 `)
 }
 
-// TestParityFunctionsAndAggregation drives a whole program of ternaries, match,
+// TestWholeProgramFunctionsAndAggregation drives a whole program of ternaries, match,
 // default/keyword int args, min/max/sum/abs over int lists, len(sorted) and
 // len(reversed) folding, multi-argument range, while, and for-else.
-func TestParityFunctionsAndAggregation(t *testing.T) {
-	parity(t, `
+func TestWholeProgramFunctionsAndAggregation(t *testing.T) {
+	agreesWithRecord(t, `
 x = 5 if 3 < 4 else 9
 print(x)
 y = 1 if 3 > 4 else 0
@@ -296,11 +335,11 @@ print("done")
 `)
 }
 
-// TestParityMathFloat drives a whole program of float arithmetic, floor/mod/
+// TestWholeProgramMathFloat drives a whole program of float arithmetic, floor/mod/
 // abs, unary minus, float comparisons, and int/float promotion. sum over float
-// lists is avoided: the interpreter's float sum is not reliable.
-func TestParityMathFloat(t *testing.T) {
-	parity(t, `
+// lists is avoided: the record's float sum is not reliable.
+func TestWholeProgramMathFloat(t *testing.T) {
+	agreesWithRecord(t, `
 a = 2.5
 b = 1.5
 print(a + b)
@@ -328,16 +367,16 @@ print("done")
 `)
 }
 
-// TestParityOopAggregation drives a whole program of deep OOP (a class with an
+// TestWholeProgramOopAggregation drives a whole program of deep OOP (a class with an
 // aggregating method, a subclass overriding a method via super), recursion
 // (factorial), a generator consumed by a counting/summing loop, and an inline
 // comprehension read at a constant index. All fold/eval identically in AOT and
-// the interpreter.
-// TestParityConversionBuiltins checks that the AOT compiler emits real
+// the record.
+// TestWholeProgramConversionBuiltins checks that the AOT compiler emits real
 // conversions for float(), round(), and int() on both literals and general
-// (variable) arguments, matching the interpreter.
-func TestParityConversionBuiltins(t *testing.T) {
-	parity(t, `
+// (variable) arguments, matching the record.
+func TestWholeProgramConversionBuiltins(t *testing.T) {
+	agreesWithRecord(t, `
 x = 7
 f = float(x)
 print(f)
@@ -352,8 +391,8 @@ print(int(2.9))
 `)
 }
 
-func TestParityOopAggregation(t *testing.T) {
-	parity(t, `
+func TestWholeProgramOopAggregation(t *testing.T) {
+	agreesWithRecord(t, `
 class Counter:
     def __init__(self, start):
         self.n = start
@@ -402,12 +441,12 @@ print("done")
 `)
 }
 
-// TestParityNumericPromotion drives a whole program mixing ints and floats
+// TestWholeProgramNumericPromotion drives a whole program mixing ints and floats
 // (promotion in add/sub/mul/div/floor/mod/abs and unary minus), aggregates
 // (min/max/sum/len over int literals, len(sorted)/len(reversed) folding), tuple
 // unpack statements, integer floor/mod, an f-string, and a nested summing loop.
-func TestParityNumericPromotion(t *testing.T) {
-	parity(t, `
+func TestWholeProgramNumericPromotion(t *testing.T) {
+	agreesWithRecord(t, `
 a = 3
 b = 2
 print(a + 0.5)
@@ -444,13 +483,13 @@ print("done")
 `)
 }
 
-// TestParityLoopVarReuse drives a whole program that reuses the same loop
+// TestWholeProgramLoopVarReuse drives a whole program that reuses the same loop
 // variable name across several for-loops (a literal-list unroll and a range
 // loop), across a while-else, and in nested loops. Reusing a loop var name
 // previously broke AOT with "multiple definition of local value named '_i'";
-// the per-function alloca guard keeps both backends in agreement.
-func TestParityLoopVarReuse(t *testing.T) {
-	parity(t, `
+// the per-function alloca guard keeps the compiled path in agreement.
+func TestWholeProgramLoopVarReuse(t *testing.T) {
+	agreesWithRecord(t, `
 s = 0
 for i in range(3):
     s = s + i
@@ -496,13 +535,13 @@ print("done")
 `)
 }
 
-// TestParityObjTaggedDispatch proves the AOT runtime and the interpreter agree
+// TestWholeProgramObjTaggedDispatch proves the AOT runtime and the record agree
 // on the dynamic type model end-to-end: a polymorphic call on a runtime
 // receiver is dispatched through the %obj-tagged value representation in the
-// AOT backend and through the same canonical kind tags in the interpreter, so
+// AOT backend and through the same canonical kind tags in the record, so
 // both must produce identical stdout.
-func TestParityObjTaggedDispatch(t *testing.T) {
-	parity(t, `
+func TestWholeProgramObjTaggedDispatch(t *testing.T) {
+	agreesWithRecord(t, `
 class A:
     def f(self):
         return 1
@@ -526,11 +565,11 @@ print("done")
 `)
 }
 
-// TestParityNumericLiterals drives the modern numeric-literal syntax (hex,
+// TestWholeProgramNumericLiterals drives the modern numeric-literal syntax (hex,
 // binary, octal, digit separators, and underscore misuse) through both
 // backends and asserts identical stdout.
-func TestParityNumericLiterals(t *testing.T) {
-	parity(t, `
+func TestWholeProgramNumericLiterals(t *testing.T) {
+	agreesWithRecord(t, `
 print(0xFF)
 print(0XFF)
 print(0b101)
@@ -561,10 +600,10 @@ print("done")
 `)
 }
 
-// TestParityDocstrings verifies that `def.__doc__` / `Cls.__doc__` folds to a
-// string constant identically in the interpreter and the AOT backend.
-func TestParityDocstrings(t *testing.T) {
-	parity(t, `
+// TestWholeProgramDocstrings verifies that `def.__doc__` / `Cls.__doc__` folds to a
+// string constant identically in the record and the AOT backend.
+func TestWholeProgramDocstrings(t *testing.T) {
+	agreesWithRecord(t, `
 def greet():
     "returns a greeting"
     return 1
@@ -585,8 +624,8 @@ print("done")
 `)
 }
 
-func TestParityLiteralMembership(t *testing.T) {
-	parity(t, `
+func TestWholeProgramLiteralMembership(t *testing.T) {
+	agreesWithRecord(t, `
 x = 2
 print(x in [1, 2, 3])
 print(x in [1, 3, 5])
@@ -606,8 +645,8 @@ print("done")
 `)
 }
 
-func TestParityWithManagerFieldAccess(t *testing.T) {
-	parity(t, `
+func TestWholeProgramWithManagerFieldAccess(t *testing.T) {
+	agreesWithRecord(t, `
 class M:
     def __init__(self):
         self.n = 0
@@ -624,11 +663,11 @@ print(f())
 `)
 }
 
-// TestParityYieldFromAcrossGC exercises yield-from of a generator whose
+// TestWholeProgramYieldFromAcrossGC exercises yield-from of a generator whose
 // accumulator list must survive the GC emitted at statement boundaries; a
 // stale handle produced double-appends (ADR 0140 / 0151 regression).
-func TestParityYieldFromAcrossGC(t *testing.T) {
-	parity(t, `
+func TestWholeProgramYieldFromAcrossGC(t *testing.T) {
+	agreesWithRecord(t, `
 def gen(n):
     for i in range(n):
         yield i * i
@@ -642,10 +681,10 @@ print(s)
 `)
 }
 
-// TestParityYieldFromLiteral verifies yield-from of a statically-known list
+// TestWholeProgramYieldFromLiteral verifies yield-from of a statically-known list
 // literal (no heap backing) appends each element exactly once.
-func TestParityYieldFromLiteral(t *testing.T) {
-	parity(t, `
+func TestWholeProgramYieldFromLiteral(t *testing.T) {
+	agreesWithRecord(t, `
 def outer():
     yield 0
     yield from [1, 2, 3]
@@ -656,8 +695,8 @@ print(s)
 `)
 }
 
-func TestParityWalrus(t *testing.T) {
-	parity(t, `
+func TestWholeProgramWalrus(t *testing.T) {
+	agreesWithRecord(t, `
 # Walrus operator := : assign in an expression and yield the value.
 def f(x):
     return x * 2
@@ -670,8 +709,8 @@ print("final", n, k)
 `)
 }
 
-func TestParityWalrusFnScope(t *testing.T) {
-	parity(t, `
+func TestWholeProgramWalrusFnScope(t *testing.T) {
+	agreesWithRecord(t, `
 def f(x):
     if (n := x * 2) > 0:
         return n
@@ -684,8 +723,8 @@ print("after", a, b)
 `)
 }
 
-func TestParityStringSlice(t *testing.T) {
-	parity(t, `
+func TestWholeProgramStringSlice(t *testing.T) {
+	agreesWithRecord(t, `
 s = "hello world"
 print(s[1:4])
 print(s[:3])

@@ -3,7 +3,7 @@ package lang
 // A container has the methods its reference's containers have (roadmap Gap R.188 / Gap R.63, ADR
 // 0301). `xs.extend([2,3])`, `xs.insert(0,9)`, `xs.index(2)`, `xs.clear()`, `d.update(...)`,
 // `d.pop(k)`, `d.setdefault(k, v)` and `d.clear()` answered `no such list method` / `no such dict
-// method` on BOTH engines -- a missing answer rather than a wrong one, which is the ladder's second
+// method` on both legs -- a missing answer rather than a wrong one, which is the ladder's second
 // class and the reason no pin could have caught it: there was no output to compare.
 //
 // Every sentence below was read off the pinned reference, including the ones a caught exception

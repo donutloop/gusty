@@ -117,7 +117,7 @@ which is the check that a widened gate has not rerouted anything that already an
 
 ## Tests
 
-* `pkg/lang/floor_pair_test.go` — `TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends`
+* `pkg/lang/floor_pair_test.go` — `TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend`
   (interpreter and compiled from the same source, twelve rows) and
   `TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses` (the four positions that still decline, each
   pinned by the sentence it must say).

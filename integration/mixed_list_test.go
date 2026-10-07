@@ -11,7 +11,7 @@ import (
 // expectation column is CPython's own output, checked against both of our backends (ADR 0184).
 // Before @heap_tags, every row here failed to compile on the AOT path with "a compiled list
 // holds either strings or numbers, not both".
-func TestMixedListsMatchCPythonOnBothBackends(t *testing.T) {
+func TestMixedListsMatchCPythonOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -24,9 +24,7 @@ func TestMixedListsMatchCPythonOnBothBackends(t *testing.T) {
 		{"def greet():\n    return \"yo\"\n\nxs = [1, greet()]\nprint(xs)\n", "[1, 'yo']\n"},
 		{"xs = [\"a\"]\nxs2 = [1, \"a\", None]\nprint(xs, xs2, len(xs2))\n", "['a'] [1, 'a', None] 3\n"},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)
@@ -69,9 +67,7 @@ func TestLoopOverMixedListMatchesCPython(t *testing.T) {
 		{"xs = [1, \"a\", None]\nfor x in xs:\n    print(x, \"tag\", sep=\":\")\n", "1:tag\na:tag\nNone:tag\n"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x)\nx = 5\nprint(x)\n", "1\na\n5\n"},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)
@@ -106,9 +102,7 @@ func TestMixedElementAccessMatchesCPython(t *testing.T) {
 		// stale 'a'.
 		{"xs = [1, \"a\", None]\ny = xs[1]\nprint(y)\ny = 5\nprint(y)\n", "a\n5\n"},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)
@@ -139,9 +133,7 @@ func TestMixedElementAccessSurvivesCollection(t *testing.T) {
 			"w\na\n['w', 'a', None]\n",
 		},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)

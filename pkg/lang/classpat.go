@@ -16,13 +16,14 @@ package lang
 // its capture names to instance attributes and, per the documented rule, a missing attribute fails
 // the pattern. The compiled instance model stores attributes in a fixed slot array and had no notion
 // of "never written": `case Point(a, b):` read slots nothing had written and matched, answering
-// `pt 0 0` where the interpreter answered `no`. The answer is an instance-presence bitmap in the
+// `pt 0 0` where the record answered `no`. The answer is an instance-presence bitmap in the
 // runtime, and a bitmap must be cleared when a heap slot is reused — so codegen needs the whole
 // universe of attribute names *before* it emits, which is what `attrs` is for.
 //
-// Both are AST questions, so they are answered here and read by the evaluator's matcher (jit.go) and
-// the generator's matcher (codegen.go). One question, one table — the rule ADR 0161 set for constant
-// folding and ADR 0211 set for error classes.
+// Both are AST questions, so they are answered here and read by the checker and by the
+// generator's matcher (codegen.go). One question, one table — the rule ADR 0161 set for constant
+// folding and ADR 0211 set for error classes. (The AST interpreter that used to be the third reader
+// was retired by ADR 0302; its record is still produced from these same tables.)
 
 // classPatternInfo is the answer to those two questions for one program.
 type classPatternInfo struct {

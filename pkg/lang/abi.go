@@ -12,7 +12,7 @@ import (
 const ABIVersion = 1
 
 // Stable tag words for the tagged-value ABI (%gusty_value = {i32, i32}).
-// These mirror the interpreter tag table and MUST NOT be renumbered across
+// These mirror the record tag table and MUST NOT be renumbered across
 // releases: the ABI struct layout is keyed to them (see docs/abi.md).
 const (
 	ABITagInt      = 0

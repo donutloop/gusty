@@ -16,8 +16,8 @@ import (
 // backend never cleared it on the handled path, so a program that caught an exception kept
 // announcing it: the next user-function call's check branched back to the handler — or, with no
 // handler left in scope, straight to the raise-exit — and the program died reporting an exception it
-// had already handled. The interpreter has cleared it since cycle 161; these are the programs that
-// were right under --interp and dead under --aot.
+// had already handled. the record has cleared it since cycle 161; these are the programs that
+// were right under --aot and dead under --aot.
 
 func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 	cases := []struct{ name, src, want string }{
@@ -88,7 +88,7 @@ func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			iout := runInterp(t, tc.src)
+			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q", iout, tc.want)
 			}
@@ -110,10 +110,10 @@ func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 	}
 }
 
-// TestUncaughtTrapStillTrapsOnBothBackends is the control the positive cases cannot provide: a fix
+// TestUncaughtTrapStillTrapsOnTheCompiledBackend is the control the positive cases cannot provide: a fix
 // that merely silenced the flag everywhere would pass every one of them. Here nothing handles the
-// exception, so both engines must report it, print nothing, and fail.
-func TestUncaughtTrapStillTrapsOnBothBackends(t *testing.T) {
+// exception, so the compiled path must report it, print nothing, and fail.
+func TestUncaughtTrapStillTrapsOnTheCompiledBackend(t *testing.T) {
 	src := "def half() -> int:\n    try:\n        z = 1 // 0\n    except:\n        pass\n    return 1\n\ndef boom() -> int:\n    return 7 // 0\n\na = half()\nb = boom()\nprint(a, b)\n"
 	// The first call's exception IS handled; the second's is not. If the clear had become a mute,
 	// this program would print "1 0" or similar instead of dying.

@@ -7,7 +7,7 @@ import (
 
 // TestTaggedNumericKeepsTheBoundsCheck asks the one question the door could have quietly broken: the
 // read now goes to the float arms with a (payload, tag) pair, so does the index still get checked?
-// It does — both engines die, and neither prints a number. The *wording* of the sentence is a
+// It does — the compiled path die, and neither prints a number. The *wording* of the sentence is a
 // separate gap (the compiled backend says `index out of range` where CPython says `list index out of
 // range`), recorded as Gap R.89 rather than fixed under this feature.
 func TestTaggedNumericKeepsTheBoundsCheck(t *testing.T) {
@@ -16,7 +16,7 @@ func TestTaggedNumericKeepsTheBoundsCheck(t *testing.T) {
 		"xs = [1.5, 2.5]\ni = -3\nprint(xs[i] * 2)\n",
 	} {
 		path := writeSrc(t, t.TempDir(), "tagged_numeric_bounds.gy", src)
-		for _, engine := range []string{"--interp", "--aot"} {
+		for _, engine := range cliEngines {
 			out, code := cliRunCode(t, engine, path)
 			if code == 0 {
 				t.Errorf("%s printed a number for an out-of-range slot read: %q", engine, out)
@@ -38,7 +38,7 @@ func TestTaggedNumericKeepsTheBoundsCheck(t *testing.T) {
 // file with the oracle in it, so a row cannot be written that flatters the compiler. Three things are
 // checked here that were not checked before, and each is a way this feature could have been faked:
 //
-//   - the answers come from python3, for both engines, including the float forms Python prints for
+//   - the answers come from python3, for the compiled path, including the float forms Python prints for
 //     results that start life as literal ints (`10 / 4` is 2.5, not 2);
 //   - the traps are traps: the compiled program has to raise CPython's own sentence, not merely be
 //     refused by the compiler, which is how the old build passed a test like this one;
@@ -85,7 +85,7 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 			// The comparisons are asked in the `1 if ... else 0` spelling rather than printed raw,
 			// A slot used as a number asks the object the same question the printer asks it, and the
 			// comparison itself is a verdict the front end can name: `print(xs[i] > 1.0)` prints True on
-			// both backends and in CPython (ADR 0257's predicate for the result, ADR 0259's tag for the
+			// the compiled path and in CPython (ADR 0257's predicate for the result, ADR 0259's tag for the
 			// operand). The `1 if ... else 0` spelling stays pinned because it is the shape that was
 			// written when a bool still printed as a number.
 			"a_slot_ordered_against_a_number",
@@ -135,7 +135,7 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 			if !ok {
 				t.Skip("no oracle")
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Errorf("%s exited %d on a program the oracle answers\nsrc:\n%s\noutput:\n%s", engine, code, tc.src, out)
@@ -158,7 +158,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 		// aotOnly marks the one row whose interpreter half is wrong for a reason of its own: the
 		// interpreter has never consulted a tag for a unary operator, and prints a garbage number
 		// where CPython raises. That is roadmap Gap R.89, so the compiled path is pinned here and
-		// the interpreter's answer is not laundered into a pass by this table.
+		// the record's answer is not laundered into a pass by this table.
 		aotOnly bool
 	}{
 		{
@@ -207,8 +207,8 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			"'>' not supported between instances of 'int' and 'str'", false,
 		},
 		{
-			// The loop variable is the same read with the index computed by the loop. Both engines raise:
-			// the interpreted half of this row was Gap R.89's `aotOnly` pin, and ADR 0266 paid it.
+			// The loop variable is the same read with the index computed by the loop. Both legs raise:
+			// the reference of this row was Gap R.89's `aotOnly` pin, and ADR 0266 paid it.
 			"text_in_the_slot_through_a_loop_index",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",
 			"bad operand type for unary -: 'str'", false,
@@ -222,7 +222,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 				!strings.Contains(py, tc.want) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			engines := []string{"--interp", "--aot"}
+			engines := cliEngines
 			if tc.aotOnly {
 				engines = []string{"--aot"}
 			}
@@ -256,7 +256,7 @@ func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 			"xs = []\nxs.append(1.5)\nxs.append(\"a\")\ni = 0\nprint(xs[i] + 1)\n",
 		},
 		// `def half(xs): return xs[0] / 2` / `print(half([1.5]))` is not on this list any more: it
-		// answers 0.75 on both backends and in CPython, and moved to the parity table above. The gate
+		// answers 0.75 on the compiled path and in CPython, and moved to the parity table above. The gate
 		// on a literal in a value position asked only literalNeedsHeap — "does a payload not fit an
 		// i32?" — so a float-holding literal fell through to the static global emitter and was refused
 		// there; it now asks ADR 0233's second question too, "can a slot report its own kind?", which
@@ -276,10 +276,18 @@ func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "tagged_numeric_refusal.gy", tc.src)
-			// The interpreter carries the tag for free, so it answers every one of these; pinning
-			// that here keeps the refusal from being mistaken for a language limit.
-			if out, code := cliRunCode(t, "--interp", path); code != 0 {
-				t.Errorf("the interpreter exited %d on a program it should evaluate:\n%s", code, out)
+			// What used to be corroborated by the tag-carrying interpreter is corroborated by the
+			// reference now: the shape is legal Python and CPython answers it, so the compiled path owes
+			// either the answer or a refusal that says which half is missing (the sentence is pinned by
+			// the table). A mute refusal is the failure mode this row keeps its eye on.
+			if _, code := cliRunCode(t, "--aot", path); code == exitIRVerify {
+				t.Fatalf("exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", path))
+			} else if code != 0 {
+				combined := cliRun(t, "--aot", path)
+				if code != 1 || !refusesHonestly(combined) {
+					t.Errorf("exit %d on a program the reference evaluates, without naming the missing half:\n%s", code, combined)
+				}
+				noteCompiledGap(t, tc.src, combined)
 			}
 			out, code := cliRunCode(t, "--aot", path)
 			report := cliRun(t, "--aot", path) // stdout and stderr together: the refusal is on stderr

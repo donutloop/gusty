@@ -42,7 +42,7 @@ func TestTextLeftPercentRefusesRatherThanAnsweringANumber(t *testing.T) {
 			res, err := Compile(tc.src)
 			if err == nil {
 				_, out := runIRAllowingTrap(t, res.IR)
-				t.Fatalf("a text-left %% compiled; the reference formats this and the interpreter refuses it, so answering is a wrong number (Gap R.165) — printed %q\nsrc: %s", out, tc.src)
+				t.Fatalf("a text-left %% compiled; the reference formats this and the record refuses it, so answering is a wrong number (Gap R.165) — printed %q\nsrc: %s", out, tc.src)
 			}
 			if !strings.Contains(err.Error(), "codegen:") {
 				t.Errorf("the refusal must be a front-end diagnostic, got %v", err)
@@ -52,7 +52,7 @@ func TestTextLeftPercentRefusesRatherThanAnsweringANumber(t *testing.T) {
 }
 
 // TestRemainderStillAnswersIsTheOtherHalfOfGapR165 pins what the guard must not do: `%` is the
-// remainder for numbers, on both engines, with both divide-by-zero sentences intact (ADR 0278's
+// remainder for numbers, on both legs, with both divide-by-zero sentences intact (ADR 0278's
 // four). A guard that banned the operator would pass the table above and fail this one.
 func TestRemainderStillAnswersIsTheOtherHalfOfGapR165(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{

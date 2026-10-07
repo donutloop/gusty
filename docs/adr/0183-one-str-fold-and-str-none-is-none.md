@@ -37,7 +37,7 @@ the constant-in-value-position shape ADR 0167 and ADR 0168 kept hitting: valid t
    builtin's lowering fold `str(x)` to the same text for every `x` they can see: int literal
    → decimal, `FloatLit` → `pyFloatRepr`, `NoneLit` → `"None"`, `StrLit` → the string itself.
    `TestStrFoldAgreesBetweenTheTwoFolders` pins the pair of folders against the interpreter's
-   own `str()`, and `TestStrFormsMatchCPythonOnBothBackends` pins interpreter, compiled
+   own `str()`, and `TestStrFormsMatchCPythonOnTheCompiledBackend` pins interpreter, compiled
    output and CPython on the same rows. Verified load-bearing: folding `str(None)` back to
    `"0"` fails both.
 2. **A folded string prints as a global; it must never be stored as one.** Printing goes

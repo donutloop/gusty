@@ -1,7 +1,7 @@
 package lang
 
 // pkg/lang/rebind_status_test.go — the records a name carries are retired by the binding that replaces
-// the value, on both backends (roadmap Gap R.145, ADR 0270).
+// the value, on the compiled backend (roadmap Gap R.145, ADR 0270).
 //
 // ADR 0172 states the rule — the variable's *latest* assignment decides how print, truthiness and
 // equality lower, and any other assignment clears the status — and it has been applied one status at a
@@ -9,7 +9,7 @@ package lang
 // singleton is deleted at the store. The interned-text pair (`strVals`, `internedVars`) had no door, so
 // the record of a text binding survived the binding that replaced it and the compiled leg kept rendering
 // the value the statement had overwritten: `x = "text"` then `x = [1, 2]` printed `text`, and
-// `x = "text"` then `x = 5` printed `text` — both at exit 0, with the interpreter and CPython printing
+// `x = "text"` then `x = 5` printed `text` — both at exit 0, with the record and CPython printing
 // `[1, 2]` and `5` beside them.
 //
 // Two things are pinned: the answers, and the *gate*. A test that only runs programs cannot tell a
@@ -21,7 +21,7 @@ import (
 )
 
 // TestAReboundNameAnswersWhatTheLatestBindingGaveIt is the parity half: whatever the name is bound to
-// *last* is what every question about it answers with, on both engines.
+// *last* is what every question about it answers with, on both legs.
 func TestAReboundNameAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"a list after a text", "x = \"text\"\nx = [1, 2]\nprint(x)\n", "[1, 2]\n"},

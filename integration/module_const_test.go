@@ -1,7 +1,7 @@
 package integration
 
 // integration/module_const_test.go — a data import's constant keeps its type through the shipped CLI, on
-// both engines, against the reference (roadmap L11.6's typed stdlib constants; the ledger's
+// the compiled path, against the reference (roadmap L11.6's typed stdlib constants; the ledger's
 // `probe_math_const`, ADR 0272).
 //
 // The Phase 11 census table recorded the row in one line: `import math; print(math.PI)` — CPython
@@ -50,7 +50,7 @@ NAME = "red"
 N = 7
 `
 
-func TestADataImportConstantAnswersLikeTheReferenceOnBothEngines(t *testing.T) {
+func TestADataImportConstantAnswersLikeTheReferenceOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the census row", "import consts\nprint(consts.PI)\n", "3.141592653589793\n"},
 		{"the second constant", "import consts\nprint(consts.E)\n", "2.718281828459045\n"},
@@ -69,7 +69,7 @@ func TestADataImportConstantAnswersLikeTheReferenceOnBothEngines(t *testing.T) {
 			if !ok || py != tc.want {
 				t.Fatalf("the reference said %q, want %q\nsrc: %s", py, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--stdlib", dir, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -102,7 +102,7 @@ func TestAModuleConstantTrapsTheWayTheReferenceDoes(t *testing.T) {
 			if ok || !strings.Contains(py, sentence) {
 				t.Fatalf("the reference did not trap with %q (ok %v): %q\nsrc: %s", sentence, ok, py, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--stdlib", dir, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -127,7 +127,7 @@ func TestTheStdlibProbeProgramAnswersOnBothLegs(t *testing.T) {
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "probe_math_const.gy", src)
 	want := "3.141592653589793\n2.718281828459045\n"
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliReport(t, engine, "--file", gy)
 		if code != 0 || out != want {
 			t.Errorf("%s: exit %d, stdout %q, want %q", engine, code, out, want)

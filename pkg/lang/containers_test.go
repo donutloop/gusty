@@ -38,7 +38,7 @@ func TestListPopMatchesPython(t *testing.T) {
 			continue
 		}
 		if got != tc.want {
-			t.Errorf("%s\n  interpreter = %q, want %q (Python's answer)", tc.src, got, tc.want)
+			t.Errorf("%s\n  compiled = %q, want %q (the reference's answer)", tc.src, got, tc.want)
 		}
 	}
 }
@@ -55,9 +55,9 @@ func TestListPopErrorsAreTypedAndCatchable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		_, err := evalOnly(t, tc.src)
-		ee, ok := err.(*EvalError)
+		ee, ok := err.(*TrapError)
 		if !ok {
-			t.Errorf("%s: want *EvalError, got %T (%v)", tc.src, err, err)
+			t.Errorf("%s: want *TrapError, got %T (%v)", tc.src, err, err)
 			continue
 		}
 		if ee.ExnType != tc.exnType {
@@ -98,16 +98,16 @@ func TestContainerConstructorsMatchPython(t *testing.T) {
 			continue
 		}
 		if got != tc.want {
-			t.Errorf("%s\n  interpreter = %q, want %q (Python's answer)", tc.src, got, tc.want)
+			t.Errorf("%s\n  compiled = %q, want %q (the reference's answer)", tc.src, got, tc.want)
 		}
 	}
 }
 
 func TestSetRemoveRaisesKeyErrorLikePython(t *testing.T) {
 	_, err := evalOnly(t, "s = {1, 2}\ns.remove(9)\n")
-	ee, ok := err.(*EvalError)
+	ee, ok := err.(*TrapError)
 	if !ok {
-		t.Fatalf("want *EvalError, got %T", err)
+		t.Fatalf("want *TrapError, got %T", err)
 	}
 	if ee.ExnType != "KeyError" {
 		t.Errorf("ExnType = %q, want KeyError (discard is silent, remove is not)", ee.ExnType)
@@ -190,7 +190,7 @@ func TestContainerCopyIsADiagnosticNotMiscompile(t *testing.T) {
 			t.Fatalf("%s: AOT should refuse the copy form", src)
 		}
 		if !strings.Contains(err.Error(), "copies are not supported in the AOT backend yet") ||
-			!strings.Contains(err.Error(), "the interpreter supports them") {
+			!strings.Contains(err.Error(), "CPython answers them") {
 			t.Errorf("%s: diagnostic should name the construct and the working backend, got %q", src, err.Error())
 		}
 	}

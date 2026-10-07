@@ -1,0 +1,55 @@
+# probe_the_signless_call_answers_for_a_pair_bound_name.gy — abs asks the tag.
+#
+# print(n) asks the module's one tag-reading printer (ADR 0303), a container element does too (ADR 0306), an
+# f-string field does (ADR 0307), and `n - 1` / `-n` / `n // 2` / `n % 3` ask the tag through the arithmetic
+# door (ADR 0304) which the double domain joined (ADR 0305). This program pins the position that stopped
+# being a refusal most recently: abs, the signless CALL. Its numeric road reads one word, and a name the pair
+# road bound has two — so `abs(n)` refused, while routing it through the lift would have taken the magnitude
+# of a text slot's @str_tab index or a float slot's box handle and printed a number at the exit code of
+# success (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0309, ADR 0265's
+# per-operator arithmetic door).
+#
+# abs is the arithmetic door's own op: the operand's kind comes from the tag and the ANSWER's kind follows it,
+# which is why the lines below mix 7, 1 and 2.5 — an int or bool in, an int out; a float in, a float out. The
+# magnitude exists only for a number, so a text slot leaves through CPython's raise, and the signless call's
+# sentence is its own, not the unary minus's (ADR 0271): `abs` of a text slot is
+# `TypeError: bad operand type for abs(): 'str'`, in a program that never wrote a minus. That leg is pinned in
+# pkg/lang/pair_abs_test.go and integration/pair_abs_test.go rather than here, because appending a text to any
+# container in a program makes an UNRELATED container's nested slot read refuse — the measured defect filed as
+# Gap R.191 — and this file's job is the signless call, not that row.
+xs = []
+xs.append(7)
+n = xs[0]
+print(abs(n))
+y = abs(n)
+print(y)
+neg = []
+neg.append(-8)
+print(abs(neg[0]))
+half = []
+half.append(-2.5)
+print(abs(half[0]))
+pos = []
+pos.append(2.5)
+print(abs(pos[0]))
+flag = []
+flag.append(True)
+print(abs(flag[0]))
+zero = []
+zero.append(0)
+print(abs(zero[0]))
+nested = []
+nested.append([7, 8])
+m = nested[0][0] * 2
+print(abs(m))
+sign = []
+sign.append([7, 8])
+k = sign[0][0] * -2
+print(abs(k))
+table = {}
+table["k"] = -9
+print(abs(table["k"]))
+bl = []
+bl.append(-5)
+for v in bl:
+    print(abs(v))

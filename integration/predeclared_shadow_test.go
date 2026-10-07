@@ -12,60 +12,47 @@ import (
 )
 
 // A module may claim a built-in name (ADR 0199) but only from its definition onwards: above that
-// line the interpreter reaches the built-in, and the compiled backend — which emits every function
-// before the module body — resolves the call to the program's own definition. One source file, two
-// answers (roadmap Gap R.12, ADR 0205). The checker now refuses the program, and these tests keep the
-// refusal honest in both directions: it must fire on a real divergence, and it must not fire on the
-// ordered shape that both engines already agree on.
-
-// rawEvalOutput runs the evaluator directly, with no front-end gate: this test has to see what each
-// engine does with the source, not what the compiler allows it to do with.
-func rawEvalOutput(t *testing.T, src string) string {
-	t.Helper()
-	prog, err := lang.Parse(src)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	ev := lang.NewEvaluator()
-	_, evalErr := ev.EvalProgram(prog)
-	os.Stdout = old
-	w.Close()
-	buf := make([]byte, 1<<20)
-	n, _ := r.Read(buf)
-	if evalErr != nil {
-		t.Fatalf("interpreter: %v", evalErr)
-	}
-	return string(buf[:n])
-}
+// line a call reaches the built-in, and the compiled backend — which emits every function before the
+// module body — resolves the call to the program's own definition. One source file, two possible
+// answers (roadmap Gap R.12, ADR 0205). The checker refuses the program, and these tests keep the
+// refusal honest in both directions: it must fire where the meaning really is undetermined, and it
+// must not fire on the ordered shape that has one answer.
+//
+// The guard used to read "and the two engines really do disagree", which is the cleanest possible
+// justification a refusal can have: the same source produced two answers. With one backend the second
+// opinion is CPython's, and the question stays the same — is there a defensible single answer here, or
+// does the meaning depend on an ordering the language never fixed? If the compiled program and CPython
+// ever print the same thing, the refusal is masking a program that means something, and it should be
+// deleted rather than left to rot.
 
 const r12Ambiguous = "for i in range(2):\n    print(i * 100)\n\n\ndef range(x):\n    return x * 3\n\n\nprint(range(4))\n"
 
-// TestBackendsGenuinelyDifferOnTheRefusedProgram is the justification for the refusal, measured
-// rather than asserted: run the same source through each engine directly — around the CLI gate — and
-// require that they still disagree. If this test ever goes green by agreeing, the refusal has become
-// unnecessary and should be deleted rather than left to rot.
-func TestBackendsGenuinelyDifferOnTheRefusedProgram(t *testing.T) {
-	interpreted := rawEvalOutput(t, r12Ambiguous)
+// TestTheRefusedProgramReallyIsAmbiguous is the justification for the refusal, measured rather than
+// asserted. The compiled build path — what the refusal protects callers from — iterates the program's
+// own `range(2)`, which returns the single value 6, so the loop body runs six times; CPython, reading
+// the same text top to bottom, reaches the built-in and runs it twice. Two answers to one program is
+// the situation the checker refuses rather than chooses between, and this is the case that keeps the
+// refusal honest: if the two ever agree, the rule has outlived its reason.
+func TestTheRefusedProgramReallyIsAmbiguous(t *testing.T) {
 	compiled, err := runAOTWithTimeout(t, r12Ambiguous, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
 	}
-	if interpreted == compiled {
-		t.Errorf("the refusal of %q is no longer justified: both backends print %q", r12Ambiguous, interpreted)
+	pyOut, pyErr, perr := lang.PythonRun(r12Ambiguous)
+	if perr != nil {
+		t.Skipf("no usable oracle to compare against: %v\n%s", perr, pyErr)
 	}
-	// And the disagreement is the one the gap describes: the interpreter used the built-in range
-	// (two iterations), the compiled program iterated the program's `range(2)` = 6 as a count.
-	if got := strings.Count(interpreted, "\n"); got != 3 {
-		t.Errorf("interpreted output changed shape: %q", interpreted)
+	if pyOut == compiled {
+		t.Errorf("the refusal of %q is no longer justified: the compiled program and CPython both print %q", r12Ambiguous, compiled)
 	}
-	if strings.Count(compiled, "\n") <= strings.Count(interpreted, "\n") {
-		t.Errorf("expected the compiled run to iterate more times than the interpreted one:\n interp  %q\n compiled %q", interpreted, compiled)
+	// And the disagreement is the one the gap describes, in shape as well as in value: three lines out
+	// of CPython (two iterations plus the closing print), more out of the compiled program, which read
+	// `range(2)` as the program's own definition and iterated its result as a count.
+	if got := strings.Count(pyOut, "\n"); got != 3 {
+		t.Errorf("the reference answer changed shape — this test is pointed at the wrong program: %q", pyOut)
+	}
+	if strings.Count(compiled, "\n") <= strings.Count(pyOut, "\n") {
+		t.Errorf("expected the compiled run to iterate more times than CPython:\n python   %q\n compiled %q", pyOut, compiled)
 	}
 }
 
@@ -90,12 +77,13 @@ func TestTheRefusalIsReachableFromTheCLI(t *testing.T) {
 	}
 
 	if out, err := exec.Command(bin, "--aot", path).CombinedOutput(); err == nil {
-		t.Fatalf("--aot built a program whose two backends disagree:\n%s", out)
+		t.Fatalf("--aot built a program whose answer depends on the order its definitions happen to be emitted in:\n%s", out)
 	}
 }
 
 // TestOrderedDefinitionRunsOnEveryPath is the over-refusal guard: the same vocabulary, in the order
-// both engines agree on, must compile and run identically.
+// the language does fix, must compile, run, and mean the same thing on every path it is asked — the
+// compiled run, the linked binary, and CPython.
 func TestOrderedDefinitionRunsOnEveryPath(t *testing.T) {
 	src := `def range(x):
     return x * 3
@@ -109,9 +97,7 @@ print(range(4))
 print(scale(5))
 `
 	want := "12\n15\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	compiled, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -140,9 +126,7 @@ for i in range(2):
     print(i * 10)
 `
 	want := "0\n10\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	prog, err := lang.Parse(src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)

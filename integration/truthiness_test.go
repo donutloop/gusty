@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"os"
+	"strings"
 	"testing"
 
 	"github.com/donutloop/gusty/pkg/lang"
@@ -10,14 +10,15 @@ import (
 // Truthiness parity: `if count:`, `while total:`, `if a and b:`, `if a < b or …`,
 // `not x`, and the ternary all consume a *value* as a condition. A value in IR is
 // either an i32 (integers, booleans as 0/1) or an i1 (a comparison result), and the
-// backend must accept either — feeding one where the other is required is a verifier
-// failure, not a source error. The interpreter side has its own half: a condition
-// holding a heap value (float/string/container) must ask the value, not the handle.
+// backend must accept either — feeding one where the other is required is a verifier failure, not a
+// source error. The other half of the risk is semantic: a condition holding a heap value
+// (float, string, container) must ask the value, not the handle that represents it, which is how
+// `if [1]:` ends up false and `if "":` ends up true.
 
 type truthCase struct {
 	name string
 	src  string
-	want string // the answer Python gives, which BOTH backends must print
+	want string // the answer CPython gives, which the compiled program must print
 }
 
 var truthCases = []truthCase{
@@ -72,46 +73,29 @@ var truthCases = []truthCase{
 	{"heap_list_empty", "def build(n):\n    xs = []\n    for i in range(n):\n        xs.append(i)\n    return xs\n\nys = build(0)\nif ys:\n    print(7)\nelse:\n    print(8)\n", "8\n"},
 	// `while xs:` is the interesting one: the loop must run while the list has
 	// content and stop when it does not. (Rebinding to [] is how we empty it —
-	// the interpreter has no list `pop` yet, which is its own gap.)
+	// the record has no list `pop` yet, which is its own gap.)
 	{"while_over_list", "xs = [i for i in range(3)]\nys = []\nn = 0\nwhile xs:\n    n = n + 1\n    if n >= 3:\n        xs = []\n\nprint(n)\nif ys:\n    print(7)\nelse:\n    print(8)\n", "3\n8\n"},
 }
 
-func interpRunChecked(t *testing.T, src string) (string, error) {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	_, _, evalErr := lang.EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	buf := make([]byte, 1<<20)
-	n, _ := r.Read(buf)
-	return string(buf[:n]), evalErr
-}
-
-func TestTruthinessMatchesPythonOnBothBackends(t *testing.T) {
+func TestTruthinessMatchesPython(t *testing.T) {
 	for _, tc := range truthCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ip, ierr := interpRunChecked(t, tc.src)
-			if ierr != nil {
-				t.Fatalf("interpreter rejected a valid program: %v\n%s", ierr, tc.src)
+			// The compiled run is checked against the recorded answer first, so a case where the two
+			// have come apart is reported as that, rather than as a surprising CPython mismatch.
+			compiled, err := runAOTConformance(t, tc.src)
+			if err != nil {
+				t.Fatalf("the compiled backend rejected a valid program: %v\n%s", err, tc.src)
 			}
-			if ip != tc.want {
-				t.Errorf("interpreter = %q, want %q (Python's answer)\n%s", ip, tc.want, tc.src)
+			if compiled != tc.want {
+				t.Errorf("compiled = %q, want %q (CPython's answer)\n%s", compiled, tc.want, tc.src)
 			}
-			aot, aerr := runAOTConformance(t, tc.src)
-			if aerr != nil {
-				t.Fatalf("AOT rejected a valid program: %v\n%s", aerr, tc.src)
-			}
-			if aot != tc.want {
-				t.Errorf("AOT = %q, want %q (Python's answer)\n%s", aot, tc.want, tc.src)
-			}
+			lang.RecordedPrints(t, tc.src, trimWant(tc.want))
 		})
 	}
 }
+
+// trimWant turns a whole-output expectation into the one-line form the record holds.
+func trimWant(s string) string { return strings.TrimSuffix(s, "\n") }
 
 // TestTruthinessIRIsWellTyped is the verification half: the whole battery must
 // produce modules LLVM itself accepts, which is what catches an i1/i32 mix.

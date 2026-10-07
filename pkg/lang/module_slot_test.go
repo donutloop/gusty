@@ -142,7 +142,7 @@ func TestModuleContainersAndFloatsStillRefuse(t *testing.T) {
 }
 
 // TestClosureBodyIsNotDroppedIntoAZeroReturn is the swallow that caused the worst line in the table:
-// a nested def reading a module name compiled to an empty body and printed 0 while the interpreter and
+// a nested def reading a module name compiled to an empty body and printed 0 while the record and
 // CPython printed 9. If a closure body cannot be lowered the compile must fail; it must not ship a
 // function that returns 0.
 func TestClosureBodyIsNotDroppedIntoAZeroReturn(t *testing.T) {

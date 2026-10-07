@@ -82,7 +82,7 @@ func firstLines(ir string, n int) string {
 }
 
 // TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes is Gap R.151's own table: the negation and
-// `abs` roads raise CPython's sentence with CPython's word, on both engines, rather than reaching the
+// `abs` roads raise CPython's sentence with CPython's word, on both legs, rather than reaching the
 // arithmetic the door exists to guard.
 func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 	head := "def f(x):\n    return x * 2\n\n"
@@ -111,7 +111,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 				t.Errorf("the compiled program printed no traceback:\n%s", out)
 			}
 			if !strings.Contains(out, tc.message) {
-				t.Errorf("compiled message missing %q (one word for both engines):\n%s", tc.message, out)
+				t.Errorf("compiled message missing %q (one word where the value needs two):\n%s", tc.message, out)
 			}
 			if strings.Contains(out, "codegen:") {
 				t.Errorf("the compiled backend refused what the reference traps on:\n%s", out)
@@ -123,7 +123,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 	}
 }
 
-// TestADeclaredNameReadIsNotANameErrorOnTheInterpreter is the interpreter half: a program that just
+// TestADeclaredNameReadIsNotANameErrorOnTheInterpreter is the record half: a program that just
 // declared `f` does not get `NameError: name 'f' is not defined` for reading it. That wrong *class* is
 // the catchability defect ADR 0211 and ADR 0228 count as a misclassing — `except TypeError:` matched
 // neither arm, because NameError matched neither either.
@@ -168,13 +168,13 @@ func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
 			// Arity is answered by the checker in this language (`verify: function "f" accepts 1
 			// argument, got more`), not by a run-time trap, so the contract to hold is that *some*
 			// stage refuses — the failure mode this row guards is silence: `2` and `0` at exit 0.
-			_, _, err := EvalExpr(tc.src)
+			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program ran to completion; the arity question was dropped and this is the shape that printed `2` and `0` at exit 0 (Gap R.168)\nsrc: %s", tc.src)
 			}
 			msg := err.Error()
 			// Two stages may answer this, and they use different words: the checker says
-			// `function "f" expects 1 argument, got 0`, the interpreter's own call road says
+			// `function "f" expects 1 argument, got 0`, the record's own call road says
 			// `missing argument x`. Either is a refusal; the failure this row guards is neither — a
 			// program that runs and prints a number (Gap R.168's measured `2` and `0`).
 			if !strings.Contains(msg, tc.wantSub) {

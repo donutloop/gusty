@@ -13,7 +13,7 @@ import (
 //	def addf(x):
 //	    x = x + 1.5
 //	    return x
-//	print(addf(1.0))   # CPython 2.5 · --interp 2.5 · --aot answered 1, exit 0
+//	print(addf(1.0))   # CPython 2.5 · --aot 2.5 · --aot answered 1, exit 0
 //
 // The argument type and the return type were decided twice, from two different pieces of evidence —
 // the call sites for the arguments, the *shape of the return expression* for the answer — and a body
@@ -77,7 +77,7 @@ func TestAFunctionReturningAReboundFloatAnswersLikeCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -145,10 +145,13 @@ func TestAReboundFloatReturnIsRefusedWhereItCannotBeCarried(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "float_return_refuse.gy", tc.src)
-			// The interpreter answers all three — this is the compiled backend's own limit, and the
-			// refusal says so rather than answering the argument.
-			if out, code := cliRunCode(t, "--interp", path); code != 0 || out == "" {
-				t.Fatalf("the interpreter leg failed (%d): %s", code, cliRun(t, "--interp", path))
+			// The reference answers all of these — that is what makes the compiled refusal a limit of
+			// this backend rather than a law of the language, and it is the reference that is asked here.
+			// (Asking the compiled path this question was a conversion slip: it read "the reference
+			// failed" while running `--aot`, so the row checked the wrong leg and agreed with itself.)
+			dir := t.TempDir()
+			if _, ok := cpythonPlainOut(t, dir, tc.src); !ok {
+				t.Fatalf("the reference failed to answer this program: src: %s", tc.src)
 			}
 			_, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -180,7 +183,7 @@ func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
 		if !ok {
 			t.Skip("no CPython to act as the oracle")
 		}
-		for _, engine := range []string{"--interp", "--aot"} {
+		for _, engine := range cliEngines {
 			out, code := cliRunCode(t, engine, path)
 			if code != 0 || out != py {
 				t.Fatalf("%s printed %q (exit %d), want the oracle's %q\n%s", engine, out, code, py, cliRun(t, engine, path))
@@ -190,8 +193,8 @@ func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
 }
 
 // TestATernaryAnswersItsArmsWordAtTheCLI is the same rule at the interface a person and an agent use:
-// three engines, one answer per line, and the exit code that says which happened. Every row here is
-// CPython's answer on both backends; the sibling refusal test below holds the one shape the compiled
+// both legs, one answer per line, and the exit code that says which happened. Every row here is
+// CPython's answer on the compiled path; the sibling refusal test below holds the one shape the compiled
 // backend may not answer. Roadmap L11.6, Gap R.102; ADR 0262.
 func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -227,7 +230,7 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -249,11 +252,11 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 // code this repository calls a compiler bug.
 
 // TestATernaryWithDisagreeingArmsRefusesAtTheCLI pins the compiled backend's honest answer for the shape
-// it cannot take: exit 1, the missing word named, and the interpreter answering CPython on the same
+// it cannot take: exit 1, the missing word named, and the record answering CPython on the same
 // source. Exit 2 in any row here fails the file, and a row that printed a truncated number would fail it
 // too — that is the answer this rule removed.
 func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
-	for _, tc := range []struct{ name, src, want, interp string }{
+	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"one_arm_a_double_at_the_top_level",
 			"c = 1\nprint(1 if c > 0 else 2.5)\n",
@@ -279,8 +282,8 @@ func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "ternary_refuse.gy", tc.src)
-			if py, ok := cpythonOut(t, path); ok && py != tc.interp {
-				t.Fatalf("the interpreter's expectation is not CPython's: got %q want %q", py, tc.interp)
+			if py, ok := cpythonOut(t, path); ok && py != tc.recordWant {
+				t.Fatalf("the record's expectation is not CPython's: got %q want %q", py, tc.recordWant)
 			}
 			_, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -298,10 +301,11 @@ func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
 					t.Fatalf("the refusal is a toolchain rejection: %s", combined)
 				}
 			}
-			jitOut, code := cliRunCode(t, "--interp", path)
-			if code != 0 || jitOut != tc.interp {
-				t.Fatalf("the interpreter printed %q (exit %d), want CPython's %q", jitOut, code, tc.interp)
-			}
+			// The two-way claim: the compiled path prints the reference's answer, or it refuses at the
+			// compile door naming the half it is missing (the row above already pinned which of the two
+			// this shape does, and what the refusal has to say).
+			jitOut, code := cliRunCode(t, "--aot", path)
+			checkCompiledRow(t, jitOut, code, tc.src, tc.recordWant)
 		})
 	}
 }

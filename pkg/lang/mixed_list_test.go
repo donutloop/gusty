@@ -25,7 +25,7 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		{`None`, int32(TagNone), true, "the None singleton"},
 		// The tag table has had a bool since ADR 0182; what it never had was a container slot
 		// allowed to say it. ADR 0232 promised this line would flip and ADR 0259 kept the promise:
-		// the payload stays the 0/1 both backends store, and the tag is what lets the printer,
+		// the payload stays the 0/1 the compiled backend stores, and the tag is what lets the printer,
 		// the str()/repr() pair and the comparisons read the verdict back as a verdict (Gap R.112).
 		{`True`, int32(TagBool), true, "a bool: the payload is the number it behaves like, the tag is the name"},
 		{`1.5`, int32(TagFloat), true, "a float's slot is the handle of a float box, which the mixed printer renders and rt_payload_eq compares by value (ADR 0233)"},
@@ -138,9 +138,13 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// the trap table of tagged_numeric_test.go (roadmap L11.1, Gap R.88).
 		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
-		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
+		// The loop variable ordered against a number used to be on this table beside the `+ 1` row
+		// above it. It is not a refusal any more: an ordering over a pair-bound loop variable walks the
+		// same tag-selected arms a slot read walks, so the number element compares and the text element
+		// raises CPython's own sentence — which is what CPython does, so the row now lives in the trap
+		// table of pair_number_float_test.go (roadmap L11.1, Gap R.148, ADR 0304).
 		// An element the tag table has no entry for at all. A bool is not in this set: it is
-		// tagged TagInt, which is what both backends store today (the rendering difference is the
+		// tagged TagInt, which is what the compiled backend stores today (the rendering difference is the
 		// pinned Gap R.112 debt, not this table), so appending one is answered, not refused.
 		{"xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
 

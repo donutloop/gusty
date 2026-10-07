@@ -5,11 +5,11 @@ package lang
 // `a < b < c` asks TWO questions — `a < b` and `b < c` — and reads the middle operand ONCE. This grammar
 // used to parse it left-associatively as `(a < b) < c`, which compares an int against a boolean, and this
 // front end ANSWERS that question rather than refusing it. The result was a family of exit-0 wrong
-// numbers on both engines:
+// numbers on both legs:
 //
-//	print(1 > 2 < 3)   CPython False · both backends True
-//	print(1 < 2 > 1)   CPython True  · both backends False
-//	x = 50 / print(1 < x < 10)   CPython False · both backends True
+//	print(1 > 2 < 3)   CPython False · recorded True
+//	print(1 < 2 > 1)   CPython True  · recorded False
+//	x = 50 / print(1 < x < 10)   CPython False · recorded True
 //
 // `print(1 < 2 < 3)` printed True throughout — the accidental pass, and the reason a chain test has to
 // contain a failing chain (roadmap L12.1's own note about which test would not have caught it).
@@ -208,7 +208,7 @@ func TestChainWithTwoWordOperatorsStillParses(t *testing.T) {
 }
 
 // TestChainWithAContainerOperandRefusesOnTheCompiledLeg pins the honest half. The reference chains over
-// containers and the interpreter matches it, but the compiled leg cannot: a container literal's compiled
+// containers and the record matches it, but the compiled leg cannot: a container literal's compiled
 // value is the address of a compile-time global, while the slot a chain gives a repeated operand is an
 // `i32` alloca, so the store would read `store i32 @.lst1, i32* %_chain1` — the shape llc rejects, which
 // ADR 0234 already classed as a compiler bug for an ordinary program. A refusal is owed until L11.1's
@@ -221,7 +221,7 @@ func TestChainWithAContainerOperandRefusesOnTheCompiledLeg(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			want := captureStdout(t, src) // the interpreter answers the reference here
+			want := captureStdout(t, src) // the record holds the reference answer here
 			res, err := Compile(src)
 			if err == nil {
 				out := runIR(t, res.IR)
