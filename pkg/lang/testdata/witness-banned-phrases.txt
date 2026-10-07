@@ -12,6 +12,14 @@
 # the two apart.
 #
 # engine-vs-engine claims
+#
+# The bare noun phrases are here too, not only the run-verbs: "both backends" as a noun asserts that
+# two backends exist as plainly as "both backends print" does, and the reader who has to go looking
+# for the second one is the same reader either way. A measurement taken while two engines ran keeps
+# its place with a history marker rather than by loosening the list.
+three engines
+both engines
+both backends
 on both engines
 on all three engines
 on three engines

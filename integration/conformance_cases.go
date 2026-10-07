@@ -109,12 +109,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"probe_a_number_bound_from_a_parameter",
 		// A rendering the body bound to a NAME is the same string return as `return str(v)`: `s = str(v)` /
 		// `return s`, `repr` through a name, and `"x" + str(v)` all printed the interned index (`0`, `0`, `2`)
-		// at exit 0 where the reference and the interpreter print `3`, `3`, `x3` (roadmap Gap R.170, ADR 0286).
+		// at exit 0 where the reference and the record leg print `3`, `3`, `x3` (roadmap Gap R.170, ADR 0286).
 		"probe_a_rendering_bound_to_a_name",
 		// Comparison chains: `1 > 2 < 3` is Python's construct — `1 > 2` AND `2 < 3`, the middle operand
 		// read once — and this grammar parsed it as `(1 > 2) < 3`, comparing an int against a boolean,
 		// which this front end answers rather than refusing. Four of these six lines printed the wrong
-		// verdict at exit 0 on BOTH engines, agreeing with each other and disagreeing with the reference
+		// verdict at exit 0 on both witness legs, agreeing with each other and disagreeing with the reference
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		"probe_comparison_chains",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
@@ -186,15 +186,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"abs_names_its_kind",
 		// The same arithmetic one statement earlier — bound to a name before it is printed. The pair
 		// the print door already took now travels through the binding, so `n = xs[0][0] * 2` and
-		// `print(n)` answer 14 on all three engines (roadmap Gap R.138, ADR 0267).
+		// `print(n)` answer 14 on both witness legs (roadmap Gap R.138, ADR 0267).
 		"probe_arith_result_bound_to_a_name",
 		// …and the same name read back as a number: an operand, an ordering, a `while` head, a condition,
-		// `str`, an f-string field, the target of `+=`. Fifteen lines, three engines, the same bytes
+		// `str`, an f-string field, the target of `+=`. Fifteen lines, both legs, the same bytes
 		// (roadmap Gap R.143, ADR 0268).
 		"probe_pair_bound_name_as_a_number",
 		// The same slot read handed to a function: the argument arrives as the (payload, tag) pair and the
 		// answer's kind comes back in the word the callee stored beside its own return, so
-		// `print(twice(xs[0][0]))` is `14` on all three engines (roadmap Gap R.139, ADR 0273).
+		// `print(twice(xs[0][0]))` is `14` on both witness legs (roadmap Gap R.139, ADR 0273).
 		"probe_slot_read_handed_to_a_function",
 		// An int that meets `/=`, and an int handed a double by a later assignment, leave the variable
 		// holding a float: the double goes into a float box and the name is bound to the (payload, tag)
@@ -256,10 +256,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// compiled binary print the same nine lines.
 		"zero_division",
 		// Gap R.36 + R.39 (ADR 0228): a local written on one path only is unbound on the other. All
-		// three engines print `1` and then raise UnboundLocalError; the compiled leg used to print 0
+		// the record and the reference print `1` and then raise UnboundLocalError; the compiled leg used to print 0
 		// for the second call and exit 0, and the interpreter used to call it the wrong class.
 		// The compiled `try` dispatches every arm in order and hands an unmatched
-		// exception outward (Gap R.20, ADR 0213); five shapes, three engines.
+		// exception outward (Gap R.20, ADR 0213); five shapes, both legs.
 		"except_arm_order",
 		"compound_scoping", // Gap R.24 — a compound statement binds in the enclosing scope (ADR 0217)
 		// Gap R.29 (ADR 0221): `==` across int and float in both operand orders, and
@@ -329,7 +329,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"container_methods",
 		"none_values",
 		// A bool is a value: `print(True)` writes True, `print(1 == 1)` writes True, and
-		// --json reports its type as bool. Both backends print CPython's answer on every
+		// --json reports its type as bool. Both witness legs print CPython's answer on every
 		// line, which is what moved this program out of the probe list (roadmap L11.1
 		// step 2, ADR 0257); the shapes that still print the number a bool is stored as
 		// are probes of their own below.
@@ -343,11 +343,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// literal emitter wrote a float's bits into a static i32 initializer (Gap R.40, ADR 0221).
 		"probe_float_list_equal",
 		"probe_float_container_equality",
-		// The shape itself, three engines on one source: a float element, a float key read back,
+		// The shape itself, both legs on one source: a float element, a float key read back,
 		// a float appended to an integer list, a float written into a mixed list, and the tags
 		// that let an unrolled loop print the element it was built from (ADR 0238).
 		"float_container_elements",
-		// The same shape one level down, three engines on one source: a list of lists prints,
+		// The same shape one level down, both legs on one source: a list of lists prints,
 		// compares by content, answers `in`, grows with an inner container, and loops over inner
 		// containers — the tag routing the print and the comparison at run time (ADR 0238).
 		"nested_data",
@@ -362,8 +362,8 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// branches on. It is here rather than in conformanceProbes because the compiled path now print
 		// CPython's answer on every line (roadmap L11.1, ADR 0251).
 		"probe_nested_list",
-		// The rendering pair, three engines on one source: every value form written twice, once by
-		// str() and once by repr(), from the one renderer print uses. Both backends print CPython's
+		// The rendering pair, both legs on one source: every value form written twice, once by
+		// str() and once by repr(), from the one renderer print uses. Both witness legs print CPython's
 		// answer on every line, which is what moved this program out of the probe list; the forms
 		// the compiled backend cannot name are refusals it makes the same way on both halves
 		// (roadmap L11.2, ADR 0258, closing Gap L.2).
@@ -385,13 +385,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// use, not by a lift that would hand a text slot's interned index to a magnitude (roadmap L11.1,
 		// Gap R.146; ADR 0309, ADR 0265's per-operator door, ADR 0271's raise wording).
 		"probe_the_signless_call_answers_for_a_pair_bound_name",
-		// A bool stored in a container, three engines on one source: the slot carries a bool tag, so
+		// A bool stored in a container, both legs on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],
 		// d[True]) on every leg (roadmap Gap R.112, ADR 0259; the program left the debt ledger with
 		// that row, which is the promotion rule of ADR 0186).
 		"probe_bool_in_a_container",
-		// The operator that chooses an operand, three engines on one source: `max([True, 1])` is the
+		// The operator that chooses an operand, both legs on one source: `max([True, 1])` is the
 		// verdict and `max([1, True])` is the number, because the strict comparison keeps the first
 		// candidate and the chosen candidate decides what prints — str(), a container slot, an f-string
 		// and the arithmetic all follow the same answer (roadmap Gap R.117, ADR 0261; the program left
@@ -406,10 +406,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// compiled backend about an ordinary dictionary.
 		"dict_key_rule",
 		// The dict comprehension that started the row: `{1: 2 for x in [1, 2]}` is one entry and a
-		// length of 1 on all three engines now, where the interpreter used to print `{1: 2, 1: 2}`
+		// length of 1 on both legs now, where the retired engine printed `{1: 2, 1: 2}`
 		// and count the pair (roadmap Gap R.118, ADR 0260 — promoted out of the debt ledger).
 		"probe_dict_comprehension_duplicate_key",
-		// The ordering of those same slots, three engines on one source: `<`, `<=`, `>`, `>=` of a slot
+		// The ordering of those same slots, both legs on one source: `<`, `<=`, `>`, `>=` of a slot
 		// whose kind only the object can report, answered as two numbers, two texts, or the `TypeError`
 		// CPython raises naming the kind the slot really holds — with the arms nobody can reach not
 		// emitted, and the cross-kind pairs caught rather than printed as a verdict (Gap R.93, ADR 0252).
@@ -497,7 +497,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		// emitted a printf with a MISSING operand, which llc rejects: exit 2, the forbidden class.
 		// Gap R.187, ADR 0300, owner L12.11.
 		"probe_an_in_place_mutation_answers_none",
-		// An f-string's format spec and conversion. The interpreter answers every field the way the
+		// An f-string's format spec and conversion. The record leg answers every field the way the
 		// reference does; the compiled leg answers the constant ones and refuses a field it cannot
 		// read at compile time. Before this the spec was cut off at parse time and the compiled path
 		// printed the plain value at exit 0 -- parity could not see it because the engines agreed.
@@ -585,7 +585,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		// A dict comprehension that writes the same key twice is a paid debt: it puts the entry, so
 		// `len` counts one — the program lives in conformanceStandalone now (Gap R.118, ADR 0260).
 		// An ordering a program cannot ask for — a container slot against a text — inside a ternary:
-		// CPython and the interpreter raise TypeError, the compiled backend folds the condition and
+		// CPython and the record leg raise TypeError, the compiled backend folds the condition and
 		// prints the true branch. The int spelling predates this cycle; the bool spelling is what
 		// found it (roadmap Gap R.119).
 		"probe_slot_order_in_a_ternary",
@@ -596,7 +596,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		"sequence_ops",
 		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
 		"probe_percent_format",   // Gap R.31 — no `%` string formatting; both legs refuse
-		"probe_global_statement", // Gap R.48 — no `global` statement; all three engines differ
+		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
 		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
@@ -912,7 +912,7 @@ var oracleLedger = map[string]oracleDecl{
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_percent_format": {oracle: lang.OracleDebt,
-		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
+		reason: "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
 		ref:    "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
@@ -967,7 +967,7 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.2 (the tagged value word makes every container a runtime object)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "compile-time constant"}}},
 	"programs/probe_async_eager": {oracle: lang.OracleNA,
-		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
+		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,

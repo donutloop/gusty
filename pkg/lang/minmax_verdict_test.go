@@ -86,7 +86,7 @@ func TestAFoldStillPrintsWhatTheWinnerActuallyIs(t *testing.T) {
 		{"print(max([\"a\", \"b\"]))\n", "b\n"},
 		{"print(min([0, 1]))\n", "0\n"},
 		{"print(max([3]))\n", "3\n"},
-		{"print(max(3))\n", "3\n"}, // gusty's declared scalar extension, both backends
+		{"print(max(3))\n", "3\n"}, // gusty's declared scalar extension, answered by the compiled backend
 	} {
 		name := strings.ReplaceAll(strings.Split(tc.src, "\n")[0], " ", "_")
 		if got := captureStdout(t, tc.src); got != tc.want {

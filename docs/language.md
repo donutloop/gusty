@@ -3186,7 +3186,7 @@ built-in is never reported as "undefined", and a name that is *not* bound is a f
 error with a span rather than an invalid LLVM module:
 
     print(undefined_thing)
-    → error at 1:7: undefined name "undefined_thing"        (exit 1, both backends)
+    → error at 1:7: undefined name "undefined_thing"        (exit 1, the compiled backend)
 
 If a built-in exists in the language but cannot be lowered yet, codegen refuses with an
 actionable message naming the backend that does support it (ADR 0166), e.g.

@@ -17,6 +17,8 @@ package integration
 import (
 	"strings"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 const absCLISlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
@@ -109,5 +111,31 @@ func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 			}
 			noteCompiledGap(t, tc.src, out)
 		})
+	}
+}
+
+// TestTheSignlessCallProbeIsOnRecord asks the whole probe program through the record, which is the one
+// way a registered conformance program's answer becomes something the suite can check: the GC corpus,
+// every `--aot` comparison and the drift ledger all read their expectations from the record, and ADR
+// 0302 made a missing entry a failure rather than a skip. A source first asked after the engine was
+// retired is recorded from the reference and cross-checked by the matrix (`meta.added_after_0302`) —
+// the bytes below are CPython's, and the row's `oracle: match` plus the ledger are what keep that from
+// being a self-certifying recording (ADR 0309).
+func TestTheSignlessCallProbeIsOnRecord(t *testing.T) {
+	src := readProgram(t, "probe_the_signless_call_answers_for_a_pair_bound_name.gy")
+	want := "7\n7\n8\n2.5\n2.5\n1\n0\n14\n14\n9\n5\n"
+	if !lang.HasGoldenAnswer(src) {
+		t.Fatal("the probe the matrix registers has no record — every corpus case that reads expectations " +
+			"from the record fails on it, starting with TestGCCorpusCollectsAndAgrees")
+	}
+	if got := runCompiled(t, src); got != want {
+		t.Fatalf("the record does not hold the reference's bytes:\n got %q\nwant %q", got, want)
+	}
+	res, err := lang.JIT(src, 0)
+	if err != nil {
+		t.Fatalf("the compiled backend refused a program the reference prints: %v", err)
+	}
+	if res.Output != want {
+		t.Fatalf("the compiled leg prints other bytes than the record's:\n got %q\nwant %q", res.Output, want)
 	}
 }

@@ -111,7 +111,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 				t.Errorf("the compiled program printed no traceback:\n%s", out)
 			}
 			if !strings.Contains(out, tc.message) {
-				t.Errorf("compiled message missing %q (one word for both engines):\n%s", tc.message, out)
+				t.Errorf("compiled message missing %q (one word where the value needs two):\n%s", tc.message, out)
 			}
 			if strings.Contains(out, "codegen:") {
 				t.Errorf("the compiled backend refused what the reference traps on:\n%s", out)

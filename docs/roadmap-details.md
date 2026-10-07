@@ -6494,7 +6494,7 @@ of a call's *argument*, never of the call, which is what makes the recursion ter
 f-string used as a VALUE — `TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord` is that half's ledger,
 and the row's Status stays ⏳ `OPEN` because of it. Witnesses: `pkg/lang/pair_abs_test.go`,
 `integration/pair_abs_test.go`, `programs/probe_the_signless_call_answers_for_a_pair_bound_name.gy` (`match`),
-+18 record entries (5623 → 5641, verified 0 dropped / 0 changed against the committed map).
++19 record entries (5623 → 5642, verified 0 dropped / 0 changed against the committed map — 18 snippets plus the probe program itself, which the corpus needs on record to be checkable at all).
 
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
@@ -8287,6 +8287,38 @@ being done.
 
 **Measurement.** HEAD-baseline build (`git worktree` at `6a40431`): 14 assertions fail on the new tables;
 green here. Matrix now 167 rows / 128 pass / 39 skipped / 33 debt / 0 fail / 0 drift.
+
+### Gap R.193 — the witness guard read the wrong files, and a noun is a claim too (CLOSED by ADR 0308's amendment, owner `docs`/`test`)
+
+ADR 0308's guard scanned the tests, the CLI and the agent-read documents, and exempted production comments
+because they are design history. The first cycle that wrote new files inside the swept corpus — ADR 0309 —
+found both halves of that boundary were wrong in opposite directions.
+
+`integration/conformance_cases.go` is production code by extension and a **public statement** by function:
+each registered program carries a comment saying what it asserts today, and each debt row carries a
+`reason:` string that `conformance-matrix.json` ships verbatim to whatever agent is reading the matrix. Those
+strings said `three engines on one source` (twelve times) and described the retired engine in the present
+tense (`the interpreter raises the operand TypeError`, `the interpreter prints at the await`). The registry is
+now one of the guard's surfaces; `pkg/lang/codegen.go`'s narrative is not, and that exemption is deliberate —
+a thousand history-marked lines bought nothing but noise, and the markers already licence them.
+
+The other half was the list itself. It had been built run-oriented on purpose — "both backends **print**",
+"the interpreter **answers**" — on the theory that naming the retired engine as the source of a recorded
+answer is honest and only *running* it is false. But `both backends`, `both engines` and `three engines` as
+bare noun phrases assert that two backends exist just as flatly as any verb form, and they passed as prose.
+Banning the three phrases surfaced ~14 survivors across the tracker, the docs and the registry, all of them
+restated rather than marked: `three engines on one source` → `both legs on one source`; `Both backends do it
+identically — precisely why parity could never see it` → `Both legs recorded it identically — precisely why
+leg-vs-leg parity could never see it`; Gap R.90's `both engines say IndexError: index out of range` → `both
+witness legs said …`; `print(1 > 2 < 3)   CPython False · both backends True` → `… · recorded True`; L7.6's
+checker `shared by both backends` → `shared by the checker and the codegen`. Where a line really is a
+measurement taken while two engines ran, it keeps its history marker; the list was not loosened to make the
+count go to zero, because a guard whose count is negotiable is the same stale comment with a nicer error.
+
+The row also carries a smaller lesson, learned the hard way in the same sweep: a parked cycle cannot know
+what `docs/adr/` looks like when it finally lands. ADR 0309's own test files were written citing "ADR 0308"
+for the feature, and by landing time 0308 belonged to a different decision. `ls docs/adr | tail` belongs at
+the *front* of landing a parked item.
 
 ### Gap R.190 — one backend means one witness (owner: `docs`, ADR 0302)
 

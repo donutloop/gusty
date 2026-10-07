@@ -8703,3 +8703,46 @@ put a guard where the deleting ended.
   `min(n, 3)`, a dict entry, a set member, a builtin-folded static array and an f-string-as-value are still
   refused, and the row's Status stays ⏳ `OPEN` with the refusal table as its evidence. The honest measure of
   one of these cycles is the refusal test file as much as the answer test file.
+
+## Gap R.193 — the witness guard was reading the wrong files (ADR 0308 amended)
+
+- **An exemption written for one kind of file is a claim about every file it covers.** ADR 0308 exempted
+  "production comments" as design history, and that was right for `pkg/lang/codegen.go` and wrong for
+  `integration/conformance_cases.go`, which is production code whose every comment states what a *registered
+  program asserts today* and whose `reason:` strings ship verbatim inside `conformance-matrix.json` to an
+  agent. The registry said "three engines on one source" twelve times. Ask of each exempted file: does a
+  reader take this as a description of the past, or as a statement of what the tool does?
+- **Banning the verb and letting the noun through bans nothing.** "both backends print" was illegal while
+  "both backends" wandered free as prose; the bare noun phrase asserts the same two engines to the same
+  reader. The three bare phrases are now on the list, and the survivors got restated to legs rather than
+  marked — the count goes to zero by editing the language, not by loosening the list.
+- **A scanner written to check the guard must itself check every pattern.** My ad-hoc pre-scan `break`s after
+  the first matching phrase, so a long roadmap row that matched one history-marked phrase looked clean while a
+  second, unmarked phrase on the same line waited. One line, many phrases — the Go guard does that correctly
+  and caught the survivor my script missed (roadmap's Gap R.90 cell, "the one table both backends read their
+  messages from").
+
+## Registering a conformance program is a promise to three harnesses, not one (ADR 0309's own miss)
+
+- **A new asserted program owes the record, the matrix and the GC corpus at once.** ADR 0309's probe was
+  registered in `conformanceStandalone()` and the matrix row went green (`oracle: match`), so the cycle called
+  itself verified — but `TestGCCorpusCollectsAndAgrees` walks the *asserted* cases and fails any whose source
+  has no entry in `testdata/interpreter-golden.json` (ADR 0302 made a missing record a failure, not a skip).
+  The commit shipped with that failure in the same package, because the verification command run was
+  `-run TestConformanceMatrix` and not `go test ./integration/`. The lesson is about the *shape* of the check:
+  a targeted `-run` on a package whose cases are inter-dependent through shared artifacts (the record, the
+  matrix, the two ledgers) proves less than it looks like it proves — a new registered artifact must be
+  followed through every harness that reads the artifact family, and the package-level run is the cheap way to
+  do that.
+- **`meta.added_after_0302` is the honesty clause of a post-retirement record.** A source that was never alive
+  while the engine ran cannot have an answer "from the interpreter". It gets recorded from the reference, and
+  what keeps that from being self-certifying is that the matrix row compares the compiled leg to CPython
+  independently and the drift ledger fails on any new disagreement — so the entry is witness to two
+  comparisons rather than one. The `meta` block now says so, because the alternative is an agent reading the
+  record as an oracle that no longer exists.
+- **Editing a machine-readable artifact's prose is an interface change.** While filling that entry the record's
+  own `meta.fields` still described its columns as `Evaluator.Repr of the snippet's final value` and
+  `Evaluator.TypeOf` — API that ADR 0302 deleted. An agent that reads a schema pointing at a deleted type is
+  not guided, it is misdirected; the descriptions now say what the record *holds*, and the two historical
+  fields (`meta.source`, `meta.record_corrections`) keep their pre-retirement wording, because they report what
+  was done, not what is true.

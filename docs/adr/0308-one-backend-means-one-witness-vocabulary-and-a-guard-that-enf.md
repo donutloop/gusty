@@ -115,3 +115,29 @@ which does not exist is worse than no comment: it stops anyone from looking.
 - **Rename the golden artifacts** (`interpreter-golden.json` → `record.json`). Rejected: the file names
   what its contents are — the retired engine's answers — and the drift ledgers, docs and 300 ADR
   references name it. A rename would make the record *less* self-describing, not more.
+
+## Amendment (measured landing ADR 0309 — the guard was reading the wrong files, Gap R.193)
+
+Two holes showed up the first time a later cycle wrote new files inside the swept corpus.
+
+**The conformance case registry is an interface, not a narrative.** The guard's file list covered the
+tests, the CLI and the agent-read documents, and exempted *production comments* on the theory that they
+are design history. `integration/conformance_cases.go` is not design history: its comments state what each
+registered program asserts **today**, and its `reason:` strings are copied verbatim into
+`conformance-matrix.json`, which is the machine payload an agent reads to decide what the backend does. It
+said "three engines on one source" twelve times and its debt `reason:` strings still described the retired
+engine in the present tense. It is now one of the guard's surfaces. (The exemption for real production
+comments stands — `pkg/lang/codegen.go`'s narrative is where the measurements of the last 300 ADRs live, and
+the history markers would licence essentially all of it, so scanning it would buy noise at the price of a
+thousand marked lines.)
+
+**A banned *verb* does not ban the *noun*.** The list was run-oriented on purpose ("both backends print",
+"the interpreter answers"), which let the bare noun phrases — `both backends`, `both engines`, `three
+engines` — through as harmless prose. They are not harmless: a sentence whose only claim is that two
+backends exist sends the same reader looking for the same missing engine. The three bare phrases are now on
+the list, and the ~14 survivors were restated to legs — `three engines on one source` → `both legs on one
+source`, `Both backends do it identically — precisely why parity could never see it` → `Both legs recorded it
+identically — precisely why leg-vs-leg parity could never see it`, `both engines say IndexError: …` → `both
+witness legs said …`, the comparison-chain table's `both backends True` → `recorded True`. Where a line is a
+measurement taken while two engines ran, it keeps a history marker; the list was not loosened to make the
+count go to zero.

@@ -96,9 +96,10 @@ func repoRoot(t *testing.T) string {
 }
 
 // witnessSurfaces are the files the guard reads: the tests that make behavioural claims, the CLI that
-// makes interface claims, and the documents an agent reads instead of the source. Production comments
-// are deliberately not scanned — they are the design narrative, written while both engines ran, and
-// the history markers would licence almost all of them.
+// makes interface claims, the conformance case registry that makes the matrix's claims, and the
+// documents an agent reads instead of the source. Production comments are deliberately not scanned —
+// they are the design narrative, written while both engines ran, and the history markers would
+// licence almost all of them.
 func witnessSurfaces(t *testing.T) []string {
 	t.Helper()
 	root := repoRoot(t)
@@ -121,6 +122,11 @@ func witnessSurfaces(t *testing.T) []string {
 	scan("pkg/lang", "_test.go")
 	scan("integration", "_test.go")
 	scan("cmd/gustyc", ".go")
+	// The conformance case registry is a claim surface, not a design narrative: its comments say what
+	// each registered program asserts TODAY, and its `reason:` strings are copied verbatim into
+	// `conformance-matrix.json`, which is machine payload an agent reads (ADR 0186's promotion rule
+	// turns one of these strings into the ledger's wording).
+	files = append(files, filepath.Join(root, "integration", "conformance_cases.go"))
 	// The agent-facing documents: an agent reads these instead of the source, so a claim in one of
 	// them is an interface claim. `docs/roadmap-details.md` is deliberately NOT here — it is the
 	// measurement narrative, and the history it preserves is the point of it.

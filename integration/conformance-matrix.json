@@ -3769,7 +3769,7 @@
         "source": "# String interpolation with the `%` operator (roadmap Gap R.31, ADR 0215).\n#\n# CPython formats these three lines. Pyre has no `%` formatting yet, so the interpreter refuses\n# with the operand TypeError the operand gate introduced (a catchable trap, not a substitute\n# answer), and the compiled backend refuses to lower the line at all -- which is why this program\n# is a debt row with the compiled leg recorded missing rather than a parity case.\n\ntry:\n    print(\"%s\" % 2)\nexcept TypeError:\n    print(\"str % int: TypeError\")\n\ntry:\n    print(\"%d-%d\" % (1, 2))\nexcept TypeError:\n    print(\"str % tuple: TypeError\")\n\ntry:\n    print(\"hi %s\" % \"you\")\nexcept TypeError:\n    print(\"str % str: TypeError\")\n\n# Ordinary remainder still works, and is here so the probe distinguishes \"no formatting\" from\n# \"no percent at all\".\nprint(7 % 2, -7 % 2)\n",
         "asserted": false,
         "oracle": "debt",
-        "reason": "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
+        "reason": "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
         "ref": "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
         "pins": [
           {
@@ -3787,7 +3787,7 @@
       "conformant": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
+      "oracle_reason": "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
       "oracle_ref": "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
       "oracle_rules": [
         "set-order"
@@ -4148,7 +4148,7 @@
         "source": "async def work(x):\n    print(\"effect\", x)\n    return x * 2\n\nasync def run():\n    pending = work(1)\n    print(\"between\")\n    return await pending\n\nprint(await run())\n",
         "asserted": false,
         "oracle": "not_applicable",
-        "reason": "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
+        "reason": "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
         "ref": "roadmap L7.6a (deferred coroutines in codegen)",
         "pins": [
           {
@@ -4166,7 +4166,7 @@
       "conformant": false,
       "oracle": "not_applicable",
       "oracle_declared": "not_applicable",
-      "oracle_reason": "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
+      "oracle_reason": "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
       "oracle_ref": "roadmap L7.6a (deferred coroutines in codegen)",
       "oracle_rules": [
         "set-order"

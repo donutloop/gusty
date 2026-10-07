@@ -127,7 +127,7 @@ When adding a language construct:
 
 ## async / await (L5.6, minimal synchronous-coroutine model)
 
-Both backends accept `async def`, `async for`, `async with`, and `await expr` as
+The compiled backend accepts `async def`, `async for`, `async with`, and `await expr` as
 first-class syntax. `async`/`await` are lexed keywords; `async` sets the `Async`
 flag on `FuncDef`/`ForStmt`/`WithStmt`.
 

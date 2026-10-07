@@ -41397,17 +41397,26 @@
    "repr": "None",
    "stdout": "7\n",
    "type": "None"
+  },
+  "# probe_the_signless_call_answers_for_a_pair_bound_name.gy \u2014 abs asks the tag.\n#\n# print(n) asks the module's one tag-reading printer (ADR 0303), a container element does too (ADR 0306), an\n# f-string field does (ADR 0307), and `n - 1` / `-n` / `n // 2` / `n % 3` ask the tag through the arithmetic\n# door (ADR 0304) which the double domain joined (ADR 0305). This program pins the position that stopped\n# being a refusal most recently: abs, the signless CALL. Its numeric road reads one word, and a name the pair\n# road bound has two \u2014 so `abs(n)` refused, while routing it through the lift would have taken the magnitude\n# of a text slot's @str_tab index or a float slot's box handle and printed a number at the exit code of\n# success (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0309, ADR 0265's\n# per-operator arithmetic door).\n#\n# abs is the arithmetic door's own op: the operand's kind comes from the tag and the ANSWER's kind follows it,\n# which is why the lines below mix 7, 1 and 2.5 \u2014 an int or bool in, an int out; a float in, a float out. The\n# magnitude exists only for a number, so a text slot leaves through CPython's raise, and the signless call's\n# sentence is its own, not the unary minus's (ADR 0271): `abs` of a text slot is\n# `TypeError: bad operand type for abs(): 'str'`, in a program that never wrote a minus. That leg is pinned in\n# pkg/lang/pair_abs_test.go and integration/pair_abs_test.go rather than here, because appending a text to any\n# container in a program makes an UNRELATED container's nested slot read refuse \u2014 the measured defect filed as\n# Gap R.191 \u2014 and this file's job is the signless call, not that row.\nxs = []\nxs.append(7)\nn = xs[0]\nprint(abs(n))\ny = abs(n)\nprint(y)\nneg = []\nneg.append(-8)\nprint(abs(neg[0]))\nhalf = []\nhalf.append(-2.5)\nprint(abs(half[0]))\npos = []\npos.append(2.5)\nprint(abs(pos[0]))\nflag = []\nflag.append(True)\nprint(abs(flag[0]))\nzero = []\nzero.append(0)\nprint(abs(zero[0]))\nnested = []\nnested.append([7, 8])\nm = nested[0][0] * 2\nprint(abs(m))\nsign = []\nsign.append([7, 8])\nk = sign[0][0] * -2\nprint(abs(k))\ntable = {}\ntable[\"k\"] = -9\nprint(abs(table[\"k\"]))\nbl = []\nbl.append(-5)\nfor v in bl:\n    print(abs(v))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "7\n7\n8\n2.5\n2.5\n1\n0\n14\n14\n9\n5\n",
+   "type": "None"
   }
  },
  "meta": {
   "adr": "0302",
+  "added_after_0302": "a source first asked after ADR 0302 retired the engine is recorded from the reference (CPython), with the compiled leg cross-checked by the conformance matrix and the drift ledger — a new entry is never self-certifying",
   "fields": {
-   "err": "the error the interpreter returned (a trap, or a program it refused)",
+   "err": "the trap or front-end refusal the record holds for this program, as the retired engine reported it",
    "exnType/exnMsg": "the exception class and message, when the failure was a trap",
-   "int": "the same value as the interpreter's integer word",
-   "repr": "Evaluator.Repr of the snippet's final value — what the REPL echoed",
+   "int": "the same value as the retired engine's integer word",
+   "repr": "the recorded final value of the snippet — what the REPL would have echoed",
    "stdout": "everything the program wrote to stdout",
-   "type": "Evaluator.TypeOf of that value — the dynamic type name the value had"
+   "type": "the dynamic type name the recorded value had"
   },
   "record_corrections": {
    "authority": "the shipped --eval/REPL behaviour and CPython's REPL, both of which echo nothing for a compound statement",

@@ -7,9 +7,9 @@ package lang
 // front end ANSWERS that question rather than refusing it. The result was a family of exit-0 wrong
 // numbers on both legs:
 //
-//	print(1 > 2 < 3)   CPython False · both backends True
-//	print(1 < 2 > 1)   CPython True  · both backends False
-//	x = 50 / print(1 < x < 10)   CPython False · both backends True
+//	print(1 > 2 < 3)   CPython False · recorded True
+//	print(1 < 2 > 1)   CPython True  · recorded False
+//	x = 50 / print(1 < x < 10)   CPython False · recorded True
 //
 // `print(1 < 2 < 3)` printed True throughout — the accidental pass, and the reason a chain test has to
 // contain a failing chain (roadmap L12.1's own note about which test would not have caught it).
