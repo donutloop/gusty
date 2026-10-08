@@ -43,7 +43,6 @@ package lang
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -1100,7 +1099,7 @@ func DwarfLineTable(path string) (*DWARFReport, error) {
 		return rep, nil
 	}
 	rep.Tool = tool
-	out, err := exec.Command(tool, "--debug-line", path).CombinedOutput()
+	out, err := runToolStage(ToolBudget, "llvm-dwarfdump", tool, "--debug-line", path)
 	rep.Ran = true
 	if err != nil {
 		rep.Note = strings.TrimSpace(string(out))

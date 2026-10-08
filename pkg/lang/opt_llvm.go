@@ -15,9 +15,9 @@ package lang
 // the build never fails if the `opt` tool is missing.
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -81,15 +81,22 @@ func runLLVMopt(ir string, level int) (string, *Optimization) {
 	}
 	rep.Pipeline = pipeline
 
-	out, err := exec.Command(optCmd, pipeline, "-S", inPath, "-o", outPath).CombinedOutput()
+	out, err := runToolStage(ToolBudget, "opt", optCmd, pipeline, "-S", inPath, "-o", outPath)
 	if err != nil {
 		// Never fail the build because opt is unavailable — but say so. When the tool
 		// exists and still rejects our module, that is a compiler bug worth reading about.
 		rep.Err = fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(out)))
 		rep.Fallback = "textual"
-		if !strings.Contains(rep.Err, "executable file not found") && !strings.Contains(rep.Err, "no such file") {
+		var timeout *ToolTimeoutError
+		switch {
+		case errors.As(err, &timeout):
+			// A tool that ran out of patience is neither a rejection nor an absent tool, and the two
+			// notes below would each send the reader somewhere wrong: one opens a compiler bug against a
+			// loaded machine, the other says the tool is missing when it is sitting right there.
+			rep.Note = fmt.Sprintf("the LLVM optimizer was killed after %s without answering; the textual pass ran instead, so this module is NOT LLVM-optimized", timeout.Budget)
+		case !strings.Contains(rep.Err, "executable file not found") && !strings.Contains(rep.Err, "no such file"):
 			rep.Note = "the LLVM optimizer rejected the emitted module; the textual pass ran instead"
-		} else {
+		default:
 			rep.Note = "the LLVM optimizer is not installed; the textual pass ran instead, so this module is NOT LLVM-optimized"
 		}
 		return ir, rep

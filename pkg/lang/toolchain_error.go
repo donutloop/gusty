@@ -40,5 +40,18 @@ func toolchainFailure(stage, tool string, err error, output []byte) error {
 	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
 		return fmt.Errorf("jit: %s (%s) could not be run: %w", stage, tool, err)
 	}
+	// A tool that ran out of its budget never had a chance to say no, so it must not be filed as a
+	// rejection: that would hand the reader a compiler-bug accusation (exit 2) for what is a machine
+	// fault (exit 8), and the module was neither accepted nor refused (tool_budget.go, ADR 0312).
+	var timeout *ToolTimeoutError
+	if errors.As(err, &timeout) {
+		if timeout.Stage == "" {
+			timeout.Stage = stage
+		}
+		if timeout.Tool == "" {
+			timeout.Tool = tool
+		}
+		return fmt.Errorf("jit: %w", timeout)
+	}
 	return &ToolchainRejectionError{Tool: tool, Stage: stage, Err: err, Output: string(output)}
 }

@@ -3,7 +3,6 @@ package lang
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -167,9 +166,9 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
 
-	if outLL, err := exec.Command(llcCmd, llcCmdline...).CombinedOutput(); err != nil {
+	if outLL, err := runToolStage(ToolBudget, "llc", llcCmd, llcCmdline...); err != nil {
 		return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep},
-			fmt.Errorf("build: llc: %v\n%s", err, outLL)
+			fmt.Errorf("build: llc: %w\n%s", err, outLL)
 	}
 
 	ccCmdline := []string{objPath, "-o", out, "-lm"}
@@ -186,9 +185,9 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		// object, because llc wrote it out of the module's !dbg records.
 		ccCmdline = append(ccCmdline, "-g")
 	}
-	if outCC, err := exec.Command(ccCmd, ccCmdline...).CombinedOutput(); err != nil {
+	if outCC, err := runToolStage(ToolBudget, "cc", ccCmd, ccCmdline...); err != nil {
 		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}, Debug: dbgInfo, Optimization: optRep},
-			fmt.Errorf("build: cc: %v\n%s", err, outCC)
+			fmt.Errorf("build: cc: %w\n%s", err, outCC)
 	}
 
 	// Read the line table out of the artifact rather than asserting it. llc is what

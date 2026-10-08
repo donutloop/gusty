@@ -83,6 +83,13 @@ const exitOracleDivergence = 6
 // would let "we never checked" read as "it matches".
 const exitOracleNoVerdict = 7
 
+// exitToolchainTimeout is returned when an external toolchain call — llc, cc, opt, the
+// llvm-as/lli the harness runs, or the CPython oracle — ran out of its budget and was killed
+// (pkg/lang/tool_budget.go). Neither 1 nor 2 describes it: the program did nothing wrong, and the
+// compiler is not accused of emitting a bad module either — the tool stopped answering. A caller that
+// sees 8 looks at the machine, or raises GUSTY_TOOL_TIMEOUT, instead of at its own source.
+const exitToolchainTimeout = 8
+
 const exitNotCanonical = 1
 
 func main() {
@@ -257,6 +264,11 @@ func run() int {
 				}
 			}
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+			if isToolchainTimeout(err) {
+				// A killed `llc` is not a build that failed for a reason in the source, and it is not
+				// the compiler's fault either — the stage stopped answering (exit 8).
+				return exitToolchainTimeout
+			}
 			return buildExitCode(res)
 		}
 		if *jsonOut {
@@ -445,6 +457,11 @@ func toolFailurePayload(err error, exitCode int) string {
 	msg := err.Error()
 	phase := "compile"
 	switch {
+	case isToolchainTimeout(err):
+		// Checked first, because the sentence a killed `llc` arrives in usually contains the stage that
+		// was running ("jit: codegen: llc …"); the phase an agent needs here is "toolchain", and reading
+		// it as "codegen" would send the reader looking for a bug in the compiler (exit 8, ADR 0312).
+		phase = "toolchain"
 	case strings.Contains(msg, "parse error at") || strings.Contains(msg, "unexpected token"):
 		phase = "parse"
 	case strings.Contains(msg, "error(s) in source") || strings.Contains(msg, "error at "):
@@ -508,11 +525,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 		// in a plain error and reported as "your program does not compile", while --build reported
 		// the same llc rejection as the compiler-bug class. One event, one code, whichever flag
 		// produced it (ADR 0211).
-		exitCode := exitCompileError
-		var rejection *lang.ToolchainRejectionError
-		if errors.As(err, &rejection) {
-			exitCode = exitIRVerify
-		}
+		exitCode := toolchainExit(err)
 		if jsonOut {
 			fmt.Println(toolFailurePayload(err, exitCode))
 		} else {
@@ -812,6 +825,31 @@ func reportCompileErr(err error, jsonOut bool) int {
 	return reportParseErr(err, jsonOut)
 }
 
+// isToolchainTimeout says whether a failure is the external toolchain running out of its budget
+// (pkg/lang/tool_budget.go). The type is the authority — the classification contract (ADR 0211) is
+// errors.As, never message matching.
+func isToolchainTimeout(err error) bool {
+	var t *lang.ToolTimeoutError
+	return errors.As(err, &t)
+}
+
+// toolchainExit classifies a failure from a stage that handed work to the external toolchain.
+// Rejection and silence are different findings: `llc` saying no to the module codegen produced is a
+// compiler bug (2), while `llc` never answering at all is a machine fault (8), and a caller that got
+// 2 for a hung runner would go looking for a compiler bug that is not there. Everything else — parse,
+// analysis, a codegen refusal — is the ordinary compile error (1).
+func toolchainExit(err error) int {
+	var timeout *lang.ToolTimeoutError
+	if errors.As(err, &timeout) {
+		return exitToolchainTimeout
+	}
+	var rejection *lang.ToolchainRejectionError
+	if errors.As(err, &rejection) {
+		return exitIRVerify
+	}
+	return exitCompileError
+}
+
 // buildExitCode classifies a failed build for the exit status. A module that LLVM itself
 // rejected is a compiler bug, not a source error: exit 2 separates "gusty produced bad IR"
 // from "your program is wrong" (docs/operations.md § Exit codes). Everything else — parse,
@@ -822,6 +860,17 @@ func buildExitCode(res *lang.BuildResult) int {
 		return exitIRVerify
 	}
 	return exitCompileError
+}
+
+// verifyExitCode is the same three-way split for the `--verify-llvm` stage, whose failure arrives as an
+// error rather than a BuildResult. Today anything LLVM rejects is a compiler bug (2); a tool that never
+// answered is not a bug, it is a machine, and it says so with 8.
+func verifyExitCode(verr error) int {
+	var timeout *lang.ToolTimeoutError
+	if errors.As(verr, &timeout) {
+		return exitToolchainTimeout
+	}
+	return exitIRVerify
 }
 
 // reportParseErr reports a front-end rejection. A program that does not parse is a
@@ -1304,8 +1353,9 @@ func verifyLLVMMode(src, file string, optLevel int, jsonOut bool) int {
 	}
 	if verr != nil {
 		// LLVM rejected the module *we* produced. Distinct from a compile error so a
-		// caller can report "compiler bug" instead of "your program is wrong".
-		return exitIRVerify
+		// caller can report "compiler bug" instead of "your program is wrong" — and distinct
+		// again from a verifier that never answered, which is neither (exitToolchainTimeout).
+		return verifyExitCode(verr)
 	}
 	return exitOK
 }

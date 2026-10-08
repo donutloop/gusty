@@ -15,7 +15,6 @@ package lang
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -145,11 +144,11 @@ func benchBuild(ir string) (benchArtifact, error) {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: write IR: %w", err)
 	}
-	if out, err := exec.Command(llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath).CombinedOutput(); err != nil {
+	if out, err := runToolStage(ToolBudget, "llc", llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: llc: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(ccCmd, "-shared", "-fPIC", objPath, "-o", soPath).CombinedOutput(); err != nil {
+	if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath); err != nil {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: cc: %v\n%s", err, out)
 	}

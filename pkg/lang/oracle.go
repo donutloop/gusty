@@ -20,7 +20,6 @@ package lang
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -175,12 +174,19 @@ func PythonRun(src string) (stdout, stderr string, err error) {
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		return "", "", fmt.Errorf("oracle write: %w", err)
 	}
-	cmd := exec.Command(PythonBinary(), "-B", path)
-	cmd.Env = append(os.Environ(), "PYTHONHASHSEED=0")
+	c := toolCommand(OracleBudget, "oracle", PythonBinary(), "-B", path)
+	defer c.finish()
+	c.Cmd.Env = append(os.Environ(), "PYTHONHASHSEED=0")
 	var out, errb strings.Builder
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	runErr := cmd.Run()
+	c.Cmd.Stdout = &out
+	c.Cmd.Stderr = &errb
+	runErr := c.Cmd.Run()
+	if runErr != nil {
+		// The reference leg is waiting on a program, so this is the one toolchain call where "it never
+		// finished" is a live answer. It has to be an error and not a trap: a row whose oracle was killed
+		// at its budget reads `oracle gave up`, never `the reference answered nothing`.
+		runErr = c.failure(runErr)
+	}
 	return out.String(), scrubOracleRunDir(errb.String(), dir), runErr
 }
 

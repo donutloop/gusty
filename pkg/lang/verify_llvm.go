@@ -14,12 +14,25 @@ package lang
 // reported as "ok" — an unverified module is a known-unknown, not a pass).
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// timeoutVerdict separates "the verifier gave up" from "the verifier said no", which are two
+// different answers to the same question and have been reported as one. The first is an environment
+// fault with a number attached; the second is a compiler bug. A Verification whose tool never
+// answered must not read like a rejection, and must never read like a pass.
+func timeoutVerdict(err error) (string, bool) {
+	var t *ToolTimeoutError
+	if !errors.As(err, &t) {
+		return "", false
+	}
+	return fmt.Sprintf("%s was killed after %s without answering; the module was not verified", t.Tool, t.Budget), true
+}
 
 // IRVerification is the machine-readable verdict of LLVM's module verifier over
 // one generated module.
@@ -84,10 +97,18 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 		args = append(args, irPath)
 		ver.Tool = tool
 		ver.Pipeline = pipelines
-		out, err := exec.Command(tool, args...).CombinedOutput()
+		out, err := runToolStage(ToolBudget, "verify", tool, args...)
 		if err == nil {
 			ver.OK = true
 			return ver, nil
+		}
+		if note, timed := timeoutVerdict(err); timed {
+			// The verifier never answered, so the module is not verified and the verdict says so in the
+			// same words a rejection would not: `ok` stays false, `skipped` stays false, and the note
+			// names the budget rather than accusing codegen of a bad module.
+			ver.Note = note
+			ver.Errors = []string{err.Error()}
+			return ver, fmt.Errorf("verify: %s gave up without answering: %w", tool, err)
 		}
 		// A missing opt (raced away, not executable) falls through to llc.
 		if !toolUsableOutput(string(out)) {
@@ -104,10 +125,15 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 	if tool := availableTool(llcCmd); tool != "" {
 		ver.Tool = tool
 		ver.Pipeline = []string{"filetype=null"}
-		out, err := exec.Command(tool, "-filetype=null", "-relocation-model=pic", irPath).CombinedOutput()
+		out, err := runToolStage(ToolBudget, "verify", tool, "-filetype=null", "-relocation-model=pic", irPath)
 		if err == nil {
 			ver.OK = true
 			return ver, nil
+		}
+		if note, timed := timeoutVerdict(err); timed {
+			ver.Note = note
+			ver.Errors = []string{err.Error()}
+			return ver, fmt.Errorf("verify: %s gave up without answering: %w", tool, err)
 		}
 		ver.Errors = verifierLines(string(out))
 		if len(ver.Errors) == 0 {
@@ -132,10 +158,15 @@ func (ver *IRVerification) verifyWithLLC(dir, ir string, err error, out string) 
 	}
 	ver.Tool = tool
 	ver.Pipeline = []string{"filetype=null"}
-	out2, err2 := exec.Command(tool, "-filetype=null", "-relocation-model=pic", filepath.Join(dir, "prog.ll")).CombinedOutput()
+	out2, err2 := runToolStage(ToolBudget, "verify", tool, "-filetype=null", "-relocation-model=pic", filepath.Join(dir, "prog.ll"))
 	if err2 == nil {
 		ver.OK = true
 		return ver, nil
+	}
+	if note, timed := timeoutVerdict(err2); timed {
+		ver.Note = note
+		ver.Errors = []string{err2.Error()}
+		return ver, fmt.Errorf("verify: %s gave up without answering: %w", tool, err2)
 	}
 	ver.Errors = verifierLines(string(out2))
 	if len(ver.Errors) == 0 {

@@ -51,7 +51,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -211,14 +210,14 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 		return nil, fmt.Errorf("jit: write IR: %w", err)
 	}
 
-	llc := exec.Command(llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath)
-	if out, err := llc.CombinedOutput(); err != nil {
+	// Both toolchain calls carry a budget (tool_budget.go): a stuck `llc` is the one failure this
+	// pipeline could not report, because waiting on it forever is not an error anyone can read.
+	if out, err := runToolStage(ToolBudget, "llc", llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
 		return nil, toolchainFailure("llc", llcCmd, err, out)
 	}
 	res.Commands = append(res.Commands, llcCmd+" -relocation-model=pic -filetype=obj "+irPath+" -o "+objPath)
 
-	cc := exec.Command(ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm")
-	if out, err := cc.CombinedOutput(); err != nil {
+	if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm"); err != nil {
 		return nil, toolchainFailure("cc", ccCmd, err, out)
 	}
 	res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")

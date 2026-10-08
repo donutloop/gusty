@@ -65,6 +65,9 @@ func TestExitCodesAreDistinctAndDocumented(t *testing.T) {
 		// code with "the program is broken".
 		exitOracleDivergence: "exitOracleDivergence",
 		exitOracleNoVerdict:  "exitOracleNoVerdict",
+		// The toolchain that never answered (ADR 0312): neither the program's fault nor the
+		// compiler's, and it must not borrow either of their codes.
+		exitToolchainTimeout: "exitToolchainTimeout",
 	} {
 		if prev, dup := seen[code]; dup {
 			t.Errorf("exit codes collide: %s and %s are both %d", prev, name, code)
