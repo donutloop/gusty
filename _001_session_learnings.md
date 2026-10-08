@@ -1,4 +1,46 @@
 # Session Learnings
+## Round 22 — A count in a document is a claim about a file (roadmap Gap R.204; ADR 0319)
+
+**Feature (tooling/harness)**: the artifact table in `docs/operations.md` and the record-leg sentence in
+`AGENTS.md` claimed the record holds **5623 sources**; `pkg/lang/testdata/interpreter-golden.json` holds
+**5948**. Found by accident while adding 35 sources to it for ADR 0318 — the recorder printed the true count and
+the docs printed a number three cycles out of date.
+
+- **The class is ADR 0317's, with the cache removed.** There a guard existed and did not read the file; here no
+  guard existed, so the stale claim had no author. Same asymmetry, same survivability: the number is plausible,
+  so nothing about it looks wrong, and review cannot see it.
+- **Only the rotted one was wrong, and that is not a reason to check only it.** 338 / 21 / 7 were right — the
+  three ledgers change only when a human registers a row, so a human usually touches prose beside them. The
+  record grows as a side effect of closing a feature. The guard covers all four because the three correct
+  numbers are correct by luck.
+- **Count twice, and make the decodings agree.** The map decode the suite reads with, plus a token-stream walk
+  that keeps duplicates: a JSON object with one key spelled twice decodes cleanly, keeps the last of the pair,
+  and reports a count no case can reach — in a file a recorder appends to, which is how a repeated key arrives.
+- **Basenames lie.** Both drift ledgers are `interpreter-golden-drift.json`; a locator matching the basename
+  finds `pkg/lang`'s and would certify `integration`'s from a file it never opened. Full paths, or nothing.
+- **Duplication across the two suites is the point.** `pkg/lang` and `integration` each read the table and the
+  four files, because a guard that lives only in the suite the agent did not run is a guard that did not run —
+  ADR 0313's shard lesson and ADR 0317's cache lesson said it twice already.
+- **Watch it fail, twice.** In memory (`TestTheCountGuardCanFail` bumps each row's count after requiring the row
+  to be a unique slice of the document) and for real (table to 5947, `AGENTS.md` to 5900). The failure messages
+  name the file, the artifact, both numbers and the cell — a guard nobody has watched fail is a comment with a
+  `Test` prefix.
+- **The same test pointed at the tracker found eight wrong numbers in a table captioned "measured, not
+  remembered"** — `roadmap.md`'s Snapshot. Two kinds of stale: rotted (`306 records, highest 0314` against 311
+  to `0319`; the record's 5913 against 5948; `101 of 117 queue rows` against 119) and *caused by doing the work*
+  (promoting the fold probe out of conformance debt flips a matrix row from divergent to parity-asserted, so
+  `135 + 39` and `120 match · 33 debt` went one off because Gap R.197 closed). Nothing in that cycle's checklist
+  could have caught the second kind; that is the argument for computing a summary rather than writing one. And
+  one row was prose wearing a number's clothes: the tracker still sold `go test -tags=llvm20 ./...`, the cached
+  command ADR 0317 retired — an agent copies a command out of the tracker, so the tracker is an interface.
+- **Read a table by its labels, one cell wide.** Rows are matched by name and only the value cell is parsed, so a
+  renamed row fails loudly and the "Measured by" column can hold paths and commit hashes without smuggling digits
+  into a comparison.
+- **Decorative counts were deleted, not guarded.** Three sentences written earlier today quoted the record's
+  size for effect ("2300-line reformatting of 5913 entries"); where a number is doing rhetoric it should say the
+  thing without a number, and where it is doing interface the table owns it. The journal (`_001_session_learnings.md`)
+  keeps its dated counts — "the record was 5913 when this was measured" cannot rot.
+
 ## Round 21 — The fold orders containers: `@rt_pair_order`, three statuses, one helper (roadmap Gap R.197; ADR 0318)
 
 **Feature (L11.1's last fold clause)**: `min`/`max` over containers the program *built* answer what CPython answers
@@ -25,8 +67,9 @@ raises (the two arms Gap R.197 filed measuring ADR 0316).
   gate opens for a container the compiler can *name*, not for one it can only *see*.
 - **Both legs, and the reference first.** `tools/recmerge` asks CPython what each source answers and refuses to
   write the record when the compiled leg disagrees, so an entry is the reference's answer rather than a copy of
-  the thing under test; it inserts new entries into the record's own text, because re-marshalling 5913 entries
-  produced a 2300-line diff that hid the 35 real additions.
+  the thing under test; it inserts new entries into the record's own text, because re-marshalling the whole record
+  (5,913 entries as it then stood) produced a 2300-line diff that hid the 35 real additions — and the count in
+  that sentence is exactly the kind of claim Round 22 filed as Gap R.204, which is why this journal keeps it dated.
 - **Measuring discipline that paid for itself.** A HEAD-baseline binary beside the new one (`gustyc-head`) turned
   three claims into evidence: `min(la, o)` over a built `la` answered `0` → raises; `min(sa, 3)` over a built set
   answered `1` → raises; two built lists raised `'list' and 'list'` → print `[1, 2]`. Two of my own tables had

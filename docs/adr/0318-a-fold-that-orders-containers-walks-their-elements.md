@@ -133,7 +133,9 @@ An agent planning around `min`/`max` needs three different answers, and gets thr
   forbidden (ADR 0166).
 
 The record grew by 35 entries and the diff to the record is 191 lines: the recorder inserts new entries rather than
-rewriting the file, because a record whose 5900 entries are re-sorted by a tool is a record nobody can review.
+rewriting the file, because a record whose every entry is re-sorted by a tool is a record nobody can review.
+Its size is the artifact table's (docs/operations.md) and `pkg/lang/golden_artifact_counts_test.go` recomputes
+that number from the file, so this sentence does not carry a count that would rot (roadmap Gap R.204).
 
 ## Consequences
 

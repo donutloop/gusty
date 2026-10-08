@@ -9245,3 +9245,87 @@ that only exists in a CLI table is a row that can silently stop testing anything
 `integration/pair_container_order_test.go`. The rows assert the reference's answer first, so the row cannot drift,
 and the compiled exit code second, so a "fix" that turns the crash into a plausible number fails the table instead
 of passing it.
+
+### Gap R.204 — the record's size was a number someone remembered: the artifact table said 5623 sources while the file held 5948 (CLOSED by ADR 0319, owner `tooling`)
+
+**Measured while closing Gap R.197.** Adding 35 sources to `pkg/lang/testdata/interpreter-golden.json` with
+`tools/recmerge` printed `checked 35, added 35, entries 5948`, and the same sentence in three places said the
+record holds **5623** sources: the artifact table in `docs/operations.md`, the record-leg paragraph in
+`AGENTS.md` (the loop's own contract, which an agent reads before it decides what the suite may certify), and
+the summary line of the recorder's own paragraph. The three numbers were written by three different cycles,
+each copying the figure that was true the day it was written, and no test ever opened the file to check any of
+them.
+
+**Why it is a defect and not a typo.** These are not decorative numbers. `AGENTS.md`'s "5623 sources" is the
+sentence an agent uses to judge how much of the language the record leg can witness, and `docs/operations.md`'s
+table is the machine-facing description of the artifacts — the same table whose "a missing entry fails the case"
+clause is what makes the record load-bearing. A coverage claim that is 325 entries short of the truth is a
+claim about a file nobody opened, which is ADR 0317's class exactly: there the guard did not run because
+`go test`'s cache key omitted the file; here the guard did not exist, so the cache was not even needed. The
+asymmetry is the same too — the number is plausible, so review cannot see it.
+
+**What was checked before writing the row.** All four counts in the table were recomputed by hand against the
+files: the record at **5948** entries, `pkg/lang`'s drift ledger at **338** rows, `integration`'s at **21**, the
+CPython debt ledger at **7**. Three of the four were correct; only the record's had rotted, because the record is
+the only one of the four that grows without a human editing a sentence about it. That is also why the guard
+covers all four rather than the one that broke: the three correct numbers are correct by luck, and the next
+cycle that appends a divergence row will not be asked to edit a doc cell unless something asks it.
+
+**The fix, and the shape of it.** `pkg/lang/golden_artifact_counts_test.go` recomputes the four artifact counts
+and the two documented record counts on every run that is not served from the test cache, and
+`integration/docs_artifact_counts_test.go` asks the same questions from the CLI suite's directory. The
+duplication is deliberate: a guard that lives only in the package the agent did not run is a guard that did not
+run (ADR 0313's shard lesson and ADR 0317's cache lesson, both saying the verifier has to be in the gate that
+gets gated). The row locator keys on the **full artifact path**, not the basename — `pkg/lang/testdata/
+interpreter-golden-drift.json` and `integration/testdata/interpreter-golden-drift.json` share a basename, and a
+guard that finds the first of the two would certify the second by a file it never read.
+
+**Counting is not just `len`.** The record is counted twice, from two decodings that must agree: the map decode
+the suite reads it with, and a token-stream walk of the `entries` object that keeps duplicates. A JSON document
+with one source spelled twice decodes cleanly and silently keeps the last of the pair, so the record would
+report a number of entries the loader cannot reach. The same file is the one `tools/recmerge` appends to, and an
+append is exactly how a repeated key arrives.
+
+**Verified against its own ability to fail.** `TestTheCountGuardCanFail` doctors each of the four table rows in
+memory (bumps the count by one, requires the row to be a unique slice of the document first) and requires the
+guard to report the disagreement — and the guard was run red for real by editing `docs/operations.md` to 5947
+and `AGENTS.md` to 5900 and reading the two failures, which name the file, the artifact, both numbers, and the
+cell to edit. A guard nobody has watched fail is a comment with a `Test` prefix.
+
+**Counts that stay in prose are counts that rot.** Three sentences in this cycle's own artifacts carried a
+literal record size for rhetorical effect (`a 2300-line reformatting of 5913 entries`, `a record whose 5900
+entries are re-sorted`, `re-marshalling 5913 entries`). All three were rewritten to say the same thing without a
+number, because none of them is a claim anyone can check later; where a count matters it is the table's, and the
+table is computed. `_001_session_learnings.md` keeps its dated figures — it is a journal, and "the record was
+5913 when this was measured" is a fact that does not change.
+
+**The same test pointed at the tracker.** Having written the artifact-count guard, the natural question was what
+else in the tree claims a number about a file without opening it. `roadmap.md`'s Snapshot table — the one a
+reader consults first, and the one captioned **"(measured, not remembered)"** — failed eight of its own
+assertions on the first run of `pkg/lang/roadmap_snapshot_test.go`:
+
+| Row | It said | The artifact says | How it got that way |
+|---|---|---|---|
+| `ADRs` | 306 records, highest `0314` | 311 records, highest `0319` | rotted: five ADRs landed since the count was taken |
+| `Retired-engine record` | 5913 sources | 5948 | rotted: this cycle's 35 additions |
+| `Rows owed` | 101 of 117 queue rows | 101 of 119 | rotted: three rows added when Gap R.197 closed |
+| `Matrix rows` | 174 → 135 asserted + 39 divergent | 174 → 136 + 38 | **moved by this cycle's own work** — promoting `probe_a_fold_orders_two_built_containers.gy` out of debt flips a row from divergent to conformant |
+| `Oracle verdicts` | 120 `match` · 33 `debt` · 21 n/a | 121 · 32 · 21 | the same promotion, seen from the other column |
+| `Test suite` | `go test -tags=llvm20 ./...` | the gate is `-count=1` | the tracker never absorbed ADR 0317 |
+
+The middle two are the important ones. Nobody forgot to update them: closing Gap R.197 *caused* them to become
+wrong, in the honest course of doing the work, and no step in that cycle's checklist — roadmap row, details, ADR,
+both legs, docs — could have caught it. A summary table that changes value as a side effect of unrelated merges
+is exactly the thing a test has to own. The last row is the same defect wearing prose: an agent that copies the
+test command out of the tracker gets the cached gate ADR 0317 removed, which is how a documented rule becomes a
+rule half the contributors have read.
+
+**How the guard reads a table without becoming the table.** Rows are matched by their label cell ("Matrix rows"),
+not by position, and only the value cell is read — so renaming a row fails as `no "Matrix rows" row` rather than
+silently passing, and the "Measured by" column can hold filenames, commit hashes and timeouts without smuggling
+digits into a comparison. Each row declares how many integers its cell should contain and what they must equal,
+computed from the artifact at run time; a row whose wording drifts to a different number of digits fails with
+both lists printed, and the message says to fix the guard's reading, not the roadmap's claim. The queue count is
+the one row whose artifact is the tracker itself: it counts the Open queue's rows (and the non-`DONE` ones) from
+the table, which is also what makes "the open queue is the only list of owed work" a checkable statement rather
+than an aspiration.

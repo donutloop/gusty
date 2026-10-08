@@ -992,7 +992,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 5623 sources with the answer the retired engine gave: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record |
+| `pkg/lang/testdata/interpreter-golden.json` | 5948 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1015,11 +1015,12 @@ entry's — and then runs the compiled leg: it refuses to write an entry when th
 stdout, on a trap's exit class, or on a trap message the reference produced, and reports each refusal as
 `refused (compiled leg diverges)`. An entry is therefore the reference's answer with the backend's agreement
 stamped on it, never the backend's answer wearing the reference's coat. New entries are inserted into the
-record's own text rather than re-marshalled through the whole map, so a 35-source addition is a 191-line diff
-rather than a 2300-line reformatting of 5913 entries; what a duplicated key would cost (`map[string]any` keeps
-the last of two and counts the file as clean) is caught by
-`pkg/lang/golden_test.go`'s duplicate-counting and struct-versus-raw parse guards, and the recorder's own
-refusals are tested in `tools/recmerge/main_test.go`, where the two legs are arguments.
+record's own text rather than re-marshalled through the whole map, so an addition of a few dozen sources stays a
+diff of a few dozen entries rather than a reformatting of the whole record. What a duplicated key would cost
+(`map[string]any` keeps the last of two and counts the file as clean, which would also over-report the count in
+the table above) is caught by `pkg/lang/golden_artifact_counts_test.go`'s token-stream duplicate guard and its
+"counted the way the suite reads it" check, and the recorder's own refusals are tested in
+`tools/recmerge/main_test.go`, where the two legs are arguments.
 
 ### Running the suite: budgets and shards (ADR 0312, ADR 0313)
 

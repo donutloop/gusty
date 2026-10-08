@@ -18,7 +18,8 @@ A feature therefore ships **once**, in that backend, and is judged on **two witn
 things a compiled answer can be measured against now that no second engine exists:
 
 - the **record leg** — `pkg/lang/testdata/interpreter-golden.json`, the answer the retired interpreter
-  gave for 5623 sources (value repr, type name, stdout, trap class and message, front-end refusal),
+  gave for 5948 sources (value repr, type name, stdout, trap class and message, front-end refusal; the
+  count is the file's own, recomputed by `pkg/lang/golden_artifact_counts_test.go` — roadmap Gap R.204),
   read by `pkg/lang/golden.go` (`evalGolden`, `runGoldenStdout`, `goldenRepr`). A *missing* record
   fails the case, so coverage cannot be deleted by deleting a record. An answer that diverges from the
   record skips, registers a divergence, and is held against `testdata/interpreter-golden-drift.json`

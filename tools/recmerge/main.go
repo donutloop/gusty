@@ -5,9 +5,10 @@
 // The record is not a scratch pad: an entry is the answer the reference gives, cross-checked against the
 // compiled backend, and an entry whose compiled leg disagrees is refused here rather than filed as debt. The
 // file's own formatting is preserved by keeping the untouched entries as raw JSON and inserting the new ones —
-// the record is a reviewed artifact, and a recorder that re-sorts all 5900 of its entries turns a two-entry
-// addition into a 2300-line diff a reviewer cannot read (the same reason the ADRs insist a fix change only what
-// it decides; ADR 0309's rule, asked of the record's own bytes).
+// the record is a reviewed artifact, and a recorder that re-sorts every entry of the record turns a two-entry
+// addition into a thousands-of-lines diff a reviewer cannot read (the same reason the ADRs insist a fix change
+// only what it decides; ADR 0309's rule, asked of the record's own bytes). The record's size is the artifact
+// table's (docs/operations.md) and a test recomputes it from the file, so this comment carries no count to rot.
 //
 //	usage: go run -tags=llvm20 ./tools/recmerge -sources sources.json [-check]
 //
