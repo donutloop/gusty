@@ -16,7 +16,6 @@ package integration
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -25,15 +24,10 @@ import (
 // because this shape is ordinary Python.
 func cpythonPlainOut(t *testing.T, dir, src string) (string, bool) {
 	t.Helper()
-	py := os.Getenv("GUSTY_PYTHON")
-	if py == "" {
-		py = "python3"
-	}
-	if _, err := exec.LookPath(py); err != nil {
-		t.Skipf("no %s to act as the oracle (set GUSTY_PYTHON)", py)
-	}
 	path := writeSrc(t, dir, "plain_twin.py", src)
-	cmd := exec.Command(py, path)
+	// oracleCommand, not a private exec.Command: the reference leg is only evidence if the same
+	// source gets the same answer twice (see oracle_spawn_test.go).
+	cmd := oracleCommand(t, path)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

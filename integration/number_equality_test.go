@@ -3,7 +3,6 @@ package integration
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -82,7 +81,7 @@ func TestNumericEqualityMatchesCPythonOnBothLegs(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	// The expectation must agree with CPython before it is allowed to judge anybody.
-	pyOut, err := exec.Command("python3", path).CombinedOutput()
+	pyOut, err := oracleCommand(t, path).CombinedOutput()
 	if err != nil {
 		t.Skipf("no usable CPython for the oracle leg: %v", err)
 	}

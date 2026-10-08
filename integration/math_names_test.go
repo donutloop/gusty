@@ -22,8 +22,6 @@ package integration
 
 import (
 	"bytes"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -33,15 +31,8 @@ import (
 // raised, and the text is then its diagnosis.
 func cpythonMathOut(t *testing.T, dir, src string) (string, bool) {
 	t.Helper()
-	py := os.Getenv("GUSTY_PYTHON")
-	if py == "" {
-		py = "python3"
-	}
-	if _, err := exec.LookPath(py); err != nil {
-		t.Skipf("no %s to act as the oracle (set GUSTY_PYTHON)", py)
-	}
 	path := writeSrc(t, dir, "math_twin.py", "from math import floor, ceil, sqrt\n"+src)
-	cmd := exec.Command(py, path)
+	cmd := oracleCommand(t, path)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

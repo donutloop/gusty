@@ -23,7 +23,6 @@ package lang
 // with a message naming the slot they could not read.
 
 import (
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -33,17 +32,9 @@ import (
 // pins was written down from a real `python3`, which is also what makes a stale row fail loudly.
 func referenceOut(t *testing.T, src string) string {
 	t.Helper()
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("no python3 to cross-check")
-	}
-	cmd := exec.Command("python3", "-c", src)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// A raise: hand back the last line, which is the sentence the program would print.
-		lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-		return strings.TrimSpace(lines[len(lines)-1])
-	}
-	return string(out)
+	// pythonTwin, not a private exec.Command: the pinned interpreter and the pinned hash seed are what
+	// make this a leg rather than a coin flip (python_twin_test.go).
+	return pythonTwinLine(t, src)
 }
 
 // TestContainerInArithmeticNeverExitsTwo is the contract. Every row must end at exit 1 (a refusal in

@@ -37,15 +37,11 @@ func cliPercent283(t *testing.T, args ...string) (string, int) {
 
 func cpython283(t *testing.T, dir, src string) (string, int) {
 	t.Helper()
-	py := os.Getenv("GUSTY_PYTHON")
-	if py == "" {
-		py = "python3"
-	}
 	path := filepath.Join(dir, "oracle283.gy")
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatalf("write oracle: %v", err)
 	}
-	cmd := exec.Command(py, path)
+	cmd := oracleCommand(t, path)
 	var out strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &out

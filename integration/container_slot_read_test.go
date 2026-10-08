@@ -2,7 +2,6 @@ package integration
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -189,14 +188,9 @@ func TestContainerSlotReadTrapsMatchCPython(t *testing.T) {
 // cpythonOut is for programs that succeed, and the rows above are about ones that do not.
 func oracleTrap(t *testing.T, path string) (string, int) {
 	t.Helper()
-	py := os.Getenv("GUSTY_PYTHON")
-	if py == "" {
-		py = "python3"
-	}
-	if _, err := exec.LookPath(py); err != nil {
-		t.Skipf("no %s to act as the oracle (set GUSTY_PYTHON)", py)
-	}
-	out, err := exec.Command(py, path).CombinedOutput()
+	cmd := oracleCommand(t, path)
+	py := oracleBinaryName()
+	out, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
 		var ee *exec.ExitError

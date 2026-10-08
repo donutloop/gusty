@@ -23,7 +23,6 @@ package lang
 
 import (
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -31,16 +30,9 @@ import (
 // powerRef answers from a live CPython, so a stale row fails loudly rather than pinning a remembered value.
 func powerRef(t *testing.T, src string) string {
 	t.Helper()
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("no python3 to cross-check")
-	}
-	cmd := exec.Command("python3", "-c", src)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-		return strings.TrimSpace(lines[len(lines)-1])
-	}
-	return strings.TrimRight(string(out), "\n")
+	// pythonTwin, not a private exec.Command: the pinned interpreter and the pinned hash seed are what
+	// make this a leg rather than a coin flip (python_twin_test.go).
+	return strings.TrimRight(pythonTwinLine(t, src), "\n")
 }
 
 // TestPowerAnswerKindMatchesTheReference is the table. Every row is run through both legs and against a

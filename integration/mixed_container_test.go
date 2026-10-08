@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -13,17 +11,10 @@ import (
 // same one docs/operations.md names; a machine without it skips the case rather than passing it.
 func cpythonOut(t *testing.T, path string) (string, bool) {
 	t.Helper()
-	py := os.Getenv("GUSTY_PYTHON")
-	if py == "" {
-		py = "python3"
-	}
-	if _, err := exec.LookPath(py); err != nil {
-		t.Skipf("no %s to act as the oracle (set GUSTY_PYTHON)", py)
-	}
-	cmd := exec.Command(py, path)
+	cmd := oracleCommand(t, path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("%s %s failed: %v\n%s", py, path, err, out)
+		t.Fatalf("%s %s failed: %v\n%s", oracleBinaryName(), path, err, out)
 	}
 	return string(out), true
 }

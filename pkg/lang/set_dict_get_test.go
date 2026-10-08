@@ -14,7 +14,6 @@ package lang
 
 import (
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -133,8 +132,8 @@ func TestDictGetKindIsAskedOfTheFoldOwnLookup(t *testing.T) {
 // The verdict half lives in the shared pure predicate, so the record and the compiler answer the
 // same question and a REPL cannot echo True beside a binary echoing 1.
 func TestDictGetVerdictGoesThroughTheSharedPredicate(t *testing.T) {
-	src, err := exec.Command("python3", "-c", "print({1: True}.get(1))").Output()
-	if err == nil && strings.TrimSpace(string(src)) != "True" {
+	out, err := pythonTwin(t, "print({1: True}.get(1))")
+	if err == nil && strings.TrimSpace(out) != "True" {
 		t.Skip("the reference on this host disagrees")
 	}
 	env := BoolEnv{}
