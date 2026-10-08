@@ -1,4 +1,36 @@
 # Session Learnings
+## Round 23 — A citation that resolves to nothing is a claim with no witness (roadmap Gap R.205; ADR 0320)
+
+**Feature (tooling/harness)**: `roadmap.md`'s Gap R.189 row rests its 🟨 `PARTIAL` on two test files —
+`pkg/lang/key_error_message_test.go`, `integration/key_error_names_the_key_test.go` — and **neither exists**: ADR
+0301 named them, a later refactor folded the cases into `container_methods_test.go`, and the Evidence cell kept
+pointing at a tree that no longer had them. Cited now: `pkg/lang/container_methods_test.go::TestKeyErrorNamesTheKey`
+and `integration/container_methods_test.go::TestCLIKeyErrorNamesTheKeyOnTheLegThatCan`, with
+`pkg/lang/roadmap_evidence_test.go` requiring every backticked path in the tracker to exist and every
+`path::TestName` to find `func TestName`.
+
+- **A test that does not exist cannot fail.** That is why this class survives: the renamed cases were running
+  under their new names in every green suite, so the behaviour was covered and only the *index* of what is proven
+  had rotted. `go test -run MissingName` is a green no-op — the same hole ADR 0317 closed for documents, in the
+  test-discovery direction.
+- **Measure the exemption, do not pick one.** The obvious exemption was "the line carries a history marker", reusing
+  `witness-history-markers.txt`. Measured: it caught **0 of 3** dead citations — a 300-word row almost always
+  contains `was`, `before`, `recorded` or `the record`, so a marker word elsewhere licensed the broken pointer
+  every time. The exemption that works is data: a path is excused only when it is a recorded deletion in
+  `testdata/witness-banned-phrases.txt` (`pkg/lang/jit.go` and the retired entry points), where the claim is about
+  the deletion and the witness guard already owns it.
+- **The guard ate its own tail once.** My table case cited `pkg/lang/jit.go` to prove the exemption works, and the
+  *witness* guard failed my file for naming a deleted engine on a line without a history marker. Right behaviour
+  on both sides: the witness guard does not care who writes the line, and the fix was to phrase the synthetic row
+  as history rather than to exempt a file from a rule meant for every file.
+- **Scope is a claim too.** `docs/roadmap-details.md` and `docs/adr/*` are excluded deliberately: they name
+  deleted files in order to explain deletions, and an accepted ADR edited to match today's filenames stops being
+  evidence of anything. `.gy` citations and the `(planned)` spelling stay with `integration/docs_citations_test.go`
+  rather than being reinvented here.
+- **The tax this imposes is the point**: a refactor that moves a case between files now edits the Evidence cells
+  that cited it, in the same commit, where a reviewer sees it. The guard's failure text says exactly that, so the
+  rule is where the violation is reported rather than only in a doc.
+
 ## Round 22 — A count in a document is a claim about a file (roadmap Gap R.204; ADR 0319)
 
 **Feature (tooling/harness)**: the artifact table in `docs/operations.md` and the record-leg sentence in

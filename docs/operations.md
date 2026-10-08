@@ -1139,6 +1139,20 @@ deleted. The two lists are data files, so a cycle tightens the rule by editing a
 skips its own file by name — a mass restatement that rewrote the rules it enforces is one way this kind
 of check dies, and the file it dies in is not allowed to be one of its own inputs.
 
+A third check reads the tracker rather than the code (roadmap Gap R.204, ADR 0319, and Gap R.205, ADR 0320):
+`pkg/lang/golden_artifact_counts_test.go`, `pkg/lang/roadmap_snapshot_test.go` and
+`pkg/lang/roadmap_evidence_test.go` recompute every number `docs/operations.md`'s artifact table,
+`AGENTS.md`'s record-leg sentence and `roadmap.md`'s Snapshot table quote — the record's entry count, the
+three ledger counts, the ADR count, the conformance-program and matrix counts, the oracle verdicts and the
+queue's owed/total rows — and require every backticked path in `roadmap.md` to exist, with each
+`path::TestName` resolving to a real `func TestName` in the file it names. A number in a document, and a
+citation in an Evidence cell, are claims about files; `go test`'s cache key contains neither, and a test that
+does not exist cannot fail, so the claims are checked by opening the files. The exemption for a cited-but-absent
+path is the witness ledger `testdata/witness-banned-phrases.txt` (a recorded deletion may be named to say it
+stayed deleted), never a history word elsewhere on the row. `integration/docs_artifact_counts_test.go` repeats
+the count checks from the CLI suite's directory, because a guard only in the suite the agent ran is the guard
+that ran.
+
 Two facts in that machinery matter to an agent reading the JSON, because both are answers it would otherwise
 have to guess at.
 

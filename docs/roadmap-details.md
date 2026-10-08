@@ -9329,3 +9329,60 @@ both lists printed, and the message says to fix the guard's reading, not the roa
 the one row whose artifact is the tracker itself: it counts the Open queue's rows (and the non-`DONE` ones) from
 the table, which is also what makes "the open queue is the only list of owed work" a checkable statement rather
 than an aspiration.
+
+### Gap R.205 — an Evidence cell cited two test files that are not in the tree, and a `DONE` row nobody could falsify (CLOSED by ADR 0320, owner `tooling`)
+
+**Measured immediately after Gap R.204.** Having written a guard over the tracker's counts, the obvious next
+question was what else the tracker asserts that nothing reads. `roadmap.md`'s Evidence cells are the answer:
+they are the reason a `Status` cell means anything, and the tracker's own column contract says the Status cell is
+the authority *because* the evidence behind it can be gone and looked at. `Gap R.189` — the `KeyError` row, 🟨
+`PARTIAL` — cited
+
+```
+pkg/lang/key_error_message_test.go            (no such file)
+integration/key_error_names_the_key_test.go   (no such file)
+```
+
+Neither exists. ADR 0301's cycle wrote those names; a later refactor folded the cases into
+`container_methods_test.go` as `TestKeyErrorNamesTheKey` and `TestCLIKeyErrorNamesTheKeyOnTheLegThatCan`; the
+code kept being tested, the cell kept citing a tree that no longer had those files, and the row stayed 🟨.
+
+**Why no mechanism caught it.** A test that does not exist cannot fail. `go test -run TestKeyErrorNamesTheKey`
+is a green no-op when the name matches nothing, and the full-suite runs that certified this cycle green were
+running the *renamed* cases under their new names — the behaviour was covered, only the citation was dead. The
+tracker is read by agents as an index of what is proven; a dead citation converts "proven" into "asserted", and
+the failure is invisible precisely because the suite is honest.
+
+**The guard, and why its exemption is a data file.** `pkg/lang/roadmap_evidence_test.go` walks every line of
+`roadmap.md` and requires each backticked repository path to exist, and each `path::TestName` to find
+`func TestName` inside the file it names. Files under `pkg/`, `integration/`, `cmd/`, `tools/`, `docs/` are
+matched; a citation may be exempted only if the path is a **known-deleted artifact** — read from
+`testdata/witness-banned-phrases.txt`, the ledger the witness guard already keeps, which contains `pkg/lang/jit.go`,
+`EvalExpr`, `EvalProgram`, `InterpreterRun`. That ledger is the right exemption because it is *data about
+deletions*: a line may cite a deleted file in order to say it stayed deleted, and Gap R.190's row does exactly
+that. A renamed test file is a different thing: not a deletion anyone recorded, and a rename is not history that
+deserves a licence. The tempting alternative — exempt any line carrying a history marker from
+`witness-history-markers.txt` — was measured and rejected: it licences *almost every long row*, because a
+300-word row almost always contains `was`, `before`, `recorded`, or `the record`. Measured: with the marker
+exemption, **0 of the 3 dead citations** were caught; with the deletion ledger, all 3.
+
+**The other half of the fix is a rule for refactors.** The guard makes a dead citation loud the next time the
+suite runs; the reason it was born is that refactors move cases between files as a matter of course. The row's
+failure text says the rule: *when a refactor moves a case into another file, the refactor edits the cell that
+cited it.* That sentence exists so the next cycle has something to obey rather than rediscover.
+
+**Verified against its own ability to fail, twice.** `TestTheCitationGuardCanFail` is four table cases over a
+fabricated row: a file that is not there, a `::TestName` the file does not hold, a retired artifact that must be
+exempt, and a real file + real case that must resolve — each failure required to name the row it came from. And
+the whole guard was run red for real by restoring the two dead citations and reading the report:
+
+```
+Gap R.189: `pkg/lang/key_error_message_test.go` — no such file
+Gap R.189: `integration/key_error_names_the_key_test.go` — no such file
+```
+
+**What is deliberately not policed.** `docs/roadmap-details.md` and `docs/adr/*` keep their dead paths. Those
+files are the measurement narrative and the decision record: they name `pkg/lang/jit.go` in order to explain a
+deletion, and an accepted ADR is a historical document — rewriting it to chase a rename destroys the very thing
+it is kept for. `integration/docs_citations_test.go` already polices `.gy` citations in the agent-read documents,
+and `(planned)` remains the one spelling that may cite a file that does not exist yet.
