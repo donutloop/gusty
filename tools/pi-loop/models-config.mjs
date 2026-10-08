@@ -336,7 +336,10 @@ usage: node tools/pi-loop/pi-loop.mjs [cwd] [options]
   --describe               print the resolved configuration as JSON and exit
   --help                   this help
 
-env: PI_SDK_PATH, PI_AGENT_DIR, PI_SETUP_DIR, PI_MODELS_CONFIG, PI_PROVIDER, PI_MODEL,
+env: PI_LOOP_SDK_PATH / PI_SDK_PATH — override SDK discovery; otherwise the pi SDK is
+     auto-discovered from the pi managed install (~/.pi/agent/install/releases/<v>/),
+     the pi binary on PATH, a node dependency, or a global npm prefix, in that
+     order. PI_AGENT_DIR, PI_SETUP_DIR, PI_MODELS_CONFIG, PI_PROVIDER, PI_MODEL,
      PI_THINKING_LEVEL, PI_CONTEXT_WINDOW, PI_MAX_TOKENS, PI_SKIP_MODEL_CHECK,
      PI_MODEL_CHECK_TIMEOUT_MS, PI_LOOP_DELAY_SECONDS
      — each also accepts the PI_LOOP_<NAME> spelling, which always wins. Inside a

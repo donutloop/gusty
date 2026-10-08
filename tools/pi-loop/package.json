@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "bin": { "pi-loop": "pi-loop.mjs" },
-  "files": ["pi-loop.mjs", "models-config.mjs", "README.md"],
+  "files": ["pi-loop.mjs", "models-config.mjs", "sdk-discovery.mjs", "README.md"],
   "scripts": {
     "test": "node --test ./*.test.mjs"
   }

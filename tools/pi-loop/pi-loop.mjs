@@ -38,7 +38,11 @@
  *                    [--models-config=PATH] [--provider=ID] [--model=ID]
  *                    [--dry-run] [--describe] [--help]
  * Env:
- *   PI_SDK_PATH      absolute path to the pi SDK dist/index.js
+ *   PI_LOOP_SDK_PATH / PI_SDK_PATH  absolute path to the pi SDK dist/index.js
+ *                    (unset is normal: the SDK is auto-discovered from the pi
+ *                    managed install ~/.pi/agent/install/releases/<v>/, from the
+ *                    `pi` binary on PATH, from a node dependency, or from a
+ *                    global npm prefix — in that order; see sdk-discovery.mjs)
  *   PI_AGENT_DIR     agent directory (default: cwd)
  *   PI_MODELS_CONFIG path to the models config (or --models-config=)
  *   PI_SETUP_DIR     directory to discover the config in (default: <cwd>/setup)
@@ -58,7 +62,7 @@ import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ConfigError,
   HELP,
@@ -73,17 +77,9 @@ import {
   selectModel,
   writeAgentModelsJson,
 } from "./models-config.mjs";
+import { resolveSdkPath } from "./sdk-discovery.mjs";
 
 const require = createRequire(import.meta.url);
-const DEFAULT_SDK = "/home/donutloop/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
-const sdkPath = process.env.PI_LOOP_SDK_PATH || process.env.PI_SDK_PATH || DEFAULT_SDK;
-const { createAgentSession, ModelRuntime } = require(sdkPath);
-
-// The pi SDK persists every session entry to a JSONL log file under
-// <agentDir>/sessions/. We keep that file persistence AND mirror the exact
-// same output to the console, so operators see everything the session sees.
-const SDK_DIR = path.dirname(sdkPath);
-const { SessionManager, getDefaultSessionDir } = require(path.join(SDK_DIR, "core/session-manager.js"));
 
 // ---- human-readable console UI -------------------------------------------------
 // The session log is still written to <agentDir>/sessions/*.jsonl exactly as the
@@ -282,6 +278,53 @@ if (args.includes("--help") || args.includes("-h")) {
   process.exit(0);
 }
 const wantDescribe = args.includes("--describe") || args.includes("--json");
+// ---- the pi SDK ------------------------------------------------------------
+// Where the SDK lives is not knowledge pi-loop may hard-code: pi ships as a
+// managed install (~/.pi/agent/install/releases/<v>/node_modules/…) that `pi
+// update` rewrites, as a global npm package, or as a plain node dependency.
+// sdk-discovery.mjs tries those in a documented order and, on a miss, prints
+// every candidate it tried instead of a bare MODULE_NOT_FOUND stack.
+let SDK;
+try {
+  SDK = resolveSdkPath({ cwd: path.resolve(cwd), scriptDir: path.dirname(fileURLToPath(import.meta.url)) });
+} catch (e) {
+  die(e instanceof ConfigError ? e.message : `pi SDK discovery failed: ${e?.stack || e}`);
+}
+const sdkPath = SDK.path;
+const SDK_DIR = path.dirname(sdkPath);
+
+// dist/index.js is ESM; require(ESM) works on the Node versions pi supports, but
+// an SDK that ever grows top-level await would make it throw — fall back to a
+// dynamic import rather than dying on a working install.
+const sdkModule = await (async () => {
+  try {
+    return require(sdkPath);
+  } catch (e) {
+    if (e?.code === "ERR_REQUIRE_ESM" || e?.code === "ERR_REQUIRE_ASYNC_MODULE") {
+      return import(pathToFileURL(sdkPath).href);
+    }
+    throw e;
+  }
+})();
+const { createAgentSession, ModelRuntime } = sdkModule;
+
+// The pi SDK persists every session entry to a JSONL log file under
+// <agentDir>/sessions/. We keep that file persistence AND mirror the exact
+// same output to the console, so operators see everything the session sees.
+// SessionManager is re-exported from the SDK entry point; the direct require of
+// core/session-manager.js is only a fallback for SDK builds that predate it.
+const sessionModule = (() => {
+  try {
+    return require(path.join(SDK_DIR, "core", "session-manager.js"));
+  } catch {
+    return null;
+  }
+})();
+const SessionManager = sdkModule.SessionManager ?? sessionModule?.SessionManager;
+const getDefaultSessionDir = sdkModule.getDefaultSessionDir ?? sessionModule?.getDefaultSessionDir;
+if (typeof SessionManager?.create !== "function" || typeof getDefaultSessionDir !== "function") {
+  die(`the pi SDK at ${sdkPath} does not export SessionManager/getDefaultSessionDir; update pi or set PI_LOOP_SDK_PATH.`);
+}
 // Machine path: with --describe, stdout carries ONLY the JSON document; every
 // human banner goes to stderr so scripts can pipe stdout straight into jq.
 const printOut = console.log.bind(console);
@@ -391,6 +434,7 @@ if (wantDescribe) {
     ok: true,
     tool: "pi-loop",
     version: TOOL_VERSION,
+    sdk: { path: sdkPath, source: SDK.source, packageDir: SDK.packageDir, version: SDK.version },
     cwd: path.resolve(cwd),
     agentDir: path.resolve(agentDir),
     modelsConfig: path.resolve(CONFIG.path),

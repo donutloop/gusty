@@ -131,7 +131,7 @@ Env (each also accepted as `PI_LOOP_<NAME>`, which wins; `--flag` beats both):
 
 | var | default |
 |-----|---------|
-| `PI_SDK_PATH` | global npm pi SDK `dist/index.js` |
+| `PI_LOOP_SDK_PATH` / `PI_SDK_PATH` | auto-discovered — see "Finding the pi SDK" |
 | `PI_AGENT_DIR` | the project dir (the `cwd` passed to the SDK) |
 | `PI_SETUP_DIR` | `<cwd>/setup`, then `tools/../setup` |
 | `PI_MODELS_CONFIG` | auto-discovered `setup/pi*.json` |
@@ -140,19 +140,45 @@ Env (each also accepted as `PI_LOOP_<NAME>`, which wins; `--flag` beats both):
 | `PI_CONTEXT_WINDOW` / `PI_MAX_TOKENS` | from config, else endpoint `max_model_len` / half the window |
 | `PI_SKIP_MODEL_CHECK=1` | skip the `<baseUrl>/models` pre-flight |
 | `PI_MODEL_CHECK_TIMEOUT_MS` | `5000` |
+| `PI_LOOP_NPM_GLOBAL_ROOT` | extra global `node_modules` root searched last |
+| `PI_LOOP_INSTALL_ROOT` | extra managed-install root searched before `~/.pi/agent/install` |
 | `PI_LOOP_DELAY_SECONDS` | `60` between rounds |
+
+## Finding the pi SDK
+
+pi-loop links against `@earendil-works/pi-coding-agent`, so it needs that
+package's `dist/index.js` on disk. Nothing hard-codes it (`sdk-discovery.mjs`);
+the first hit wins:
+
+1. `$PI_LOOP_SDK_PATH`, then `$PI_SDK_PATH` — absolute path to `dist/index.js`.
+2. A real node dependency of the tool dir or of the driven project.
+3. The pi **managed install**: `$PI_MANAGED_INSTALL_ROOT` (exported by the `pi`
+   launcher), `$PI_LOOP_INSTALL_ROOT`, then `~/.pi/agent/install` —
+   `install/current-version` picks the release, every `install/releases/*` is a
+   fallback ordered newest-first.
+4. The `pi` binary on `PATH` — its realpath gives either the SDK package dir
+   (global-style install) or the managed `install/` it launches (managed).
+5. Global npm prefixes (`$NPM_CONFIG_PREFIX`/`$PREFIX`, `~/.npm-global`,
+   `~/.bun/install/global`, `/usr/local`, `/usr`, `/opt/homebrew`).
+
+This matters because the managed installer (what `pi update` uses) rewrites
+`~/.pi/agent/install/releases/<version>/` and drops the old global package — a
+fixed path breaks at that moment. On a complete miss pi-loop prints every
+candidate it tried, with the source of each, and exits `1`.
 
 ## Machine path
 
 - `--describe` prints a JSON document (stdout only — human banners go to
-  stderr) describing exactly what a run would use: resolved config path,
+  stderr) describing exactly what a run would use: the resolved SDK
+  (`sdk.path` / `sdk.source` / `sdk.version`), resolved config path,
   provider, model, `baseUrl`, `api`, limits, `compat`, thinking level, the
   available model ids, inherited settings that were ignored, and the endpoint
   probe result. Exit `0` on success, `1` with a `pi-loop: fatal …` message on
-  stderr when the config, model id, or endpoint is unusable.
+  stderr when the SDK, the config, the model id, or the endpoint is unusable.
 
   ```sh
   node tools/pi-loop/pi-loop.mjs . --describe | jq -r .model
+  node tools/pi-loop/pi-loop.mjs . --describe | jq .sdk   # which SDK a run would link
   ```
 - `--help` prints the flag/env reference.
 - `tools/pi-loop/package.json` exposes the `pi-loop` bin; run with `node`
@@ -167,6 +193,10 @@ node --test tools/pi-loop/*.test.mjs      # or: npm test --prefix tools/pi-loop
 `models-config.test.mjs` covers the config layer (discovery order, provider/model
 selection and typo messages, limit precedence, the `models.json` merge including
 the legacy-key trap, the inline-model fallback, the endpoint probe incl. timeout).
+`sdk-discovery.test.mjs` covers SDK discovery (explicit env beats every layout,
+node dependency beats the managed install, `current-version` then newest release,
+`pi` on PATH through the package dir and through the launcher, global-prefix
+fallback, and the miss report).
 For the full chain (config → `models.json` → SDK session → local endpoint) run:
 
 ```sh
@@ -175,7 +205,8 @@ node tools/pi-loop/pi-loop.mjs . --dry-run     # expects "PI_LOOP_OK" from the m
 
 ## Requirements
 
-- The pi SDK installed (globally or under `PI_SDK_PATH`).
+- pi installed — a managed install (`~/.pi/agent/install/releases/<v>/`), a
+  global npm package, or a path given by `PI_LOOP_SDK_PATH`.
 - The local model server up on the `baseUrl` in the chosen `setup/` config
   (see `setup/boot_agent.sh`); `--describe` tells you whether it is reachable.
 
