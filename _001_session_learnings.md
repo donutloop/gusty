@@ -8848,3 +8848,81 @@ put a guard where the deleting ended.
   pushed (`remote rejected … (Internal Server Error)` on both `main` and a topic branch, retried over several
   minutes). Keep working, keep the commit local, and keep retrying the push each cycle rather than treating a
   dead remote as a reason to stop the loop.
+
+## A CI timeout was not the failure it reported (ADR 0312 budgets, ADR 0313 shards, ADR 0314 oracle pin)
+
+A failing workflow arrived as one line: `panic: test timed out after 10m0s / running tests:
+TestTextPredicatesPrintAVerdict/not_verdict_false`, with a goroutine parked in
+`os/exec.(*Cmd).CombinedOutput` under `runIR`. The named case is `print(not "1".isdigit())`, which answers in
+70 ms. **`go test`'s alarm names the test that was *running*, never the suite that was slow** — the whole
+package needed 10m06s pinned to four CPUs (against `go test`'s 10m00s default) and CI's runner has four
+cores, so the suite was two-thirds through when the
+timer went off and the accused case was scenery. Reading the frame above the exec (`runIR`, and the call
+count behind it) was the only way in; reading the test name would have produced a fix to a test that had no
+bug. Measuring first was also cheap and decisive: `Compile` is 1 ms, `llc` 58 ms, `cc` 13 ms, `lli` 57 ms,
+`python3` ~40 ms — so the suite is a subprocess suite, and `user 8m31s / real 10m06s` on four pinned cores
+said the machine's
+asking to be used.
+
+- **An unbudgeted subprocess does not fail slowly, it stops being able to fail.** Eleven `exec.Command` sites
+  had no deadline, so "hung" was not a possible outcome to report — it was only ever a stuck process. Now
+  every tool is started by `pkg/lang/tool_budget.go`, and the two knobs an operator needs (`GUSTY_TOOL_TIMEOUT`,
+  `GUSTY_ORACLE_TIMEOUT`) are read at call time so a test can move one. The user's program is deliberately
+  excluded: `--file` waiting on the program it was asked to run is a correct wait, and `while True:` is a
+  program, not a bug.
+- **A tool that stops answering and a tool that says no are different events, and the exit code is where
+  that distinction is readable.** A killed `llc` had been about to arrive as `compile error: jit: codegen: llc
+  …` — exit 2, the code the contract reserves for "the module is bad", i.e. an accusation against the
+  compiler for a loaded machine. `*lang.ToolTimeoutError` is its own class: exit 8, `--json`
+  `phase: "toolchain"`, found by `errors.As`. `toolchainFailure` asks for a timeout *before* building a
+  rejection, and the CLI checks timeouts before rejections, because the killed tool's own sentence names the
+  stage that was running and string checks would blame that stage.
+- **Two `os/exec` traps, both found by running the tests rather than by reading:** asking a channel whether
+  a context expired loses a race with `Wait` (the CI's exact call came back as bare `context deadline
+  exceeded`, no tool, no stage — read `ctx.Err()`), and `Cancel` is not called for a context already expired
+  at `Start`, so the kill hook cannot be the timeout signal. Killing only `cc` leaves `as`/`ld` holding the
+  pipe open and `Wait` blocks forever with the budget spent: setuid is not enough, **kill the process group**
+  (`Setpgid` + `kill(-pid)`, `WaitDelay` as the backstop), and the same helper distinguishes *missing* from
+  *stalled* — the advice for a missing `llc-20` is "install LLVM 20", never "raise the budget".
+- **`t.Parallel()` was not available, for three reasons that are properties of the system:** `captureFD` dup2s
+  the process's fd 1/2 around a loaded program (two programs in one process print into each other), 46 sites
+  need process-wide state (`os.Chdir`, `t.Setenv`) and Go runs a parallel test *beside* the serial ones rather
+  than after them, and the compiler's program-wide scan tables are plain maps. The process was already the
+  unit of isolation, so it became the unit of parallelism: `tools/testshards` deals one package's cases across
+  N `go test` processes. **10m06s → 3m30s on four pinned cores**, with the CPU total flat across the two
+  (8m31s → 9m00s), which is the proof that the win was idle cores rather than less work; eight shards on the
+  same four cores bought nothing, so the floor is toolchain CPU ÷ cores, not shard count.
+- **A harness claim is only a claim if a test can fail it.** The shard runner's four properties are tested
+  (`-list` is the authority; the partition is reproducible; `-run` is anchored, because `TestFoo` matching
+  `TestFooBar` covers a case twice and another never; only `Test*` is admitted, because a `Benchmark` in a
+  `-run` runs nothing and looks green), plus the two nobody can assert from a log — that every case ran exactly
+  *once*, judged from a file the cases themselves write rather than from the harness's own plan, and that the
+  shards genuinely *overlapped*, measured as a ratio so a slow machine cannot fake it and a loaded machine
+  cannot flake it. The first run of my own test-name parser invented 200 cases out of `go`'s banner text; the
+  real list was 1244.
+- **Rejected with numbers, not vibes: caching.** Hashing the IR to skip duplicate compiles looked free until
+  measured — 972 distinct modules of 1177, 1760 distinct sources of 1818, so ~8% of the wall for cache keys and
+  invalidation in a suite whose entire value is that it does not cache answers. Same reasoning killed trimming
+  the grid cases.
+- **The flake this exposed was in the witness, not the language.** Red on an unchanged tree:
+  `the_a_text_slot_added_to_a_set`, reference `{'a', 1}` vs compiled `{1, 'a'}` — green when run alone. CPython
+  randomises text hashing per process, gusty's sets are insertion-ordered, and `python3 -c "s={1}; s.add('a');
+  print(s)"` gave the first answer 3 times in 20. `PythonRun` pinned `PYTHONHASHSEED=0` for exactly this reason
+  (the matrix is a committed artifact); nine *other* reference-leg spawns had built their own command and
+  inherited the environment. **A leg is only evidence if it is a function of the source** — the pin belongs in
+  the helper that starts the process, because a call site that must remember it is a call site that forgets it.
+  The tempting wrong fix was a `cpython-debt` row, which would have permanently pinned a bug the compiler does
+  not have.
+- **Re-running the suite is not a verdict when the suite writes ledgers.** The ratchet is a two-way diff of
+  rows against *the cases that ran in this process*, so a subset reports every other row as "vanished":
+  one shard → `340 recorded, 0 seen, 340 disappeared`, and `TestMain` fails — correctly, since a run that saw
+  nothing must not promote paid debt. The artifact-writing modes (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`)
+  therefore stay single-process by rule; `make test` is that path, and the golden file itself is byte-for-byte
+  unchanged under shards because it is written by the missing-record run, not by a shard.
+- **Process notes.** `go build -o bin/gustyc ./cmd/gustyc` was a *no-LLVM* binary, so a `--verify` probe through
+  it silently reported `skipped:` — build with `-tags=llvm20` before measuring anything that shells out. The
+  workflow's LLVM install step is guarded by a `command -v` check that must list **every** tool the suite uses
+  (`go.yml`'s list was missing `lli-20` and `llvm-as-20`, which the JIT legs need). And the `r.OK` field of a
+  shard report was never assigned: the JSON said "passed: false" about passing shards, which is the kind of bug
+  a machine consumer reads as a green run only because it reads the exit code — both fields are now set, and a
+  test asserts they agree.

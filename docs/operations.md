@@ -485,6 +485,7 @@ asserts each row.
 | 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
 | 6 | **divergence from CPython** — the program compiled, ran, and printed something other than what CPython prints for the same source (a wrong value, or a leg that refused it) | `--oracle`, `--oracle-file` |
 | 7 | **no verdict** — the CPython leg could not run the source (gusty-only surface such as `await` at module scope, a positional set subscript, or a stdlib attribute Python has no name for), so nothing was checked | `--oracle`, `--oracle-file` |
+| 8 | **the toolchain never answered** — an external call (`llc`, `cc`, `opt`, `llvm-as`, `llvm-dwarfdump`) ran out of its budget and was killed (ADR 0312). Neither the program's fault (1) nor the compiler's (2): the module was never accepted or refused, the tool stopped. Reached through `errors.As(err, *lang.ToolTimeoutError)`, and the `--json` payload says `"phase": "toolchain"`. A tool that is *not installed* is not a timeout either — that stays class 1, because the advice is "install LLVM 20", not "raise `GUSTY_TOOL_TIMEOUT`" | `--eval`, `--file`, `--aot`/`--jit`, `--build`, `--verify-llvm`. The oracle leg is the exception: a killed `python3` is a **no-verdict (7)** whose note names the budget, because "the reference gave up" and "the reference said no" are different findings and only one of them indicts the compiler |
 
 Two distinctions this table exists to make:
 
@@ -494,6 +495,11 @@ Two distinctions this table exists to make:
 - **1 vs 2** — a source error and a compiler bug must never look alike. Codegen refuses what
   it cannot lower (1, with an actionable message); only LLVM's own verifier saying *no* to
   what we produced is 2.
+- **1 vs 2 vs 8** — three different suspects, and the caller has to know which one to go and look at.
+  Code 1 is *your program*, code 2 is *our compiler* (LLVM said no to a module we emitted), code 8 is
+  *the machine you are standing on*: a tool that was killed for not answering. Before ADR 0312 the last
+  of these had no code, so a hung `llc` on a loaded runner arrived as "compile error" and sent the reader
+  to look for a bug in their own source.
 - **1/3 vs 6** — "my program is malformed", "my program crashed", and "my program ran fine and
   gusty answered differently from Python" are three different events. Code 6 is a statement
   about the *toolchain's* correctness, not the caller's: the program was accepted, executed,
@@ -851,6 +857,17 @@ The oracle interpreter is `python3` unless `GUSTY_PYTHON` names another, and it 
 in the artifact itself (`toolchain.python`, alongside `toolchain.llvm`), because "matches
 Python" is a claim about a named toolchain, not an abstraction.
 
+The seed is not an optimisation and it is not optional at the call sites outside `lang.PythonRun`
+either. A set holding a text is ordered by that text's hash, and CPython randomises string hashing per
+process; measured, `python3 -c "s={1}; s.add('a'); print(s)"` printed `{'a', 1}` 3 times in 20 runs with
+the seed unpinned and never with it pinned — while gusty prints insertion order, always. So a CLI-level
+case that lets the seed vary is comparing the compiler against a different reference answer on each run,
+and the case that fails is whichever set-shaped row the randomiser happens to disagree with that day.
+Every reference-leg spawn in the tree therefore goes through one helper — `lang.PythonRun` in the
+harness, `oracleCommand` in `integration`, `pythonTwin` in `pkg/lang` — and
+`TestTheReferenceLegsSetOrderIsPinned` asks the reference the same question twenty times and fails if it
+ever gets two answers.
+
 ### The three pinned toolchains
 
 Building and testing this repository depends on three external tools, and each is pinned,
@@ -975,6 +992,80 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
+
+### Running the suite: budgets and shards (ADR 0312, ADR 0313)
+
+Almost every case in this suite ends inside a subprocess, because that is what the two witness legs are:
+the record leg compiles through `llc-20` and `cc` and runs the result in-process, the compiled leg runs the
+module under `lli-20`, and the reference leg asks `python3`. Measured per case: `llc` 58 ms, `cc` 13 ms,
+`lli` 57 ms, `llvm-as` 10 ms, the Go side of the case 1 ms. The toolchain is the suite, so the suite is
+only as fast as the number of cores it is allowed to use.
+
+| Command | What it does |
+|---|---|
+| `make test` | `go test ./...` — the plain serial run. **The only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file |
+| `make testshards` | `go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...` — the same cases in one process per core (what CI runs, split into two steps with a stated `-timeout 12m` each) |
+| `make showshards` | prints the partition as JSON without running anything: which case is in which shard |
+| `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error}` per row, plus the run's `ok` and `elapsed` |
+| `-shards N` / `-timeout D` | how many processes per package (default `GOMAXPROCS`), and each shard's `go test -timeout` — one shard's budget, stated rather than implicit |
+
+A package that holds no test files is **reported and skipped** (`testshards: …/echoprobe has no tests to
+shard`), because `./...` matches the tools and the command alongside the packages; a `go test -list` that
+*fails* is a hard error at exit 2, because "zero cases, all green" for a package that does not compile is
+the one thing this harness must never print.
+
+Four claims the harness makes, each pinned by `tools/testshards/main_test.go`:
+
+- **Coverage.** The partition is `sort` + round-robin over what `go test -list` reports — `-list` is the
+  authority on which cases exist, so nothing can be dropped by a pattern. Every name lands in exactly one
+  shard, and `-run` is anchored (`^(A|B)$`) because an unanchored `TestFoo` also matches `TestFooBar`,
+  which covers one case twice and another not at all. Only `Test*` names are admitted: a `Benchmark` in a
+  shard's `-run` runs nothing and looks green.
+- **Overlap, measured.** The sum of shard durations must exceed twice the wall clock, or the run failed —
+  that is the difference between a parallel harness and a serial one that prints nicely.
+- **A red shard turns the run red**, and the other shards still run; output is prefixed `[lang shard 3/4]`
+  so an interleaved CI log still attributes each line.
+- **The drift ratchet survives sharding** because it was built for subsets: `checkDriftAgainst` judges a
+  ledger row only if some case in this process asked about it (`askedAbout`). A row is still noticed — in
+  whichever shard owns it — and a shard that dies fails the job.
+
+Why the cases are not simply `t.Parallel()`: the in-process runner dup2s fd 1 and fd 2 around the program
+it loads (`captureFD`), so two programs in one process would print into each other's pipes; 46 sites in
+four case files use `os.Chdir`/`t.Setenv`, which are process-wide; and Go runs a parallel test *beside*
+the serial ones, not after them, so marking the offenders non-parallel does not protect their neighbours.
+The process is already the unit of isolation the compiler has (its program-wide scan tables are plain
+maps), so it is the unit of parallelism too.
+
+Measured on this tree, both runs pinned to four CPUs so they describe the CI runner — the same command
+line the workflow used to run, and the same one it runs now:
+
+| run | wall | user | what it means |
+|---|---|---|---|
+| `go test -tags=llvm20 ./pkg/lang/` | **10 m 06 s** | 8m31s | the failure reproduced: `go test`'s default is **10 m 00 s** |
+| `go run ./tools/testshards -tags llvm20 -shards 4 ./pkg/lang/` | **3 m 30 s** | 9m00s | the same 1248 cases, four processes |
+
+The two `user` figures are the point: the work did not get cheaper (it got slightly more expensive, four
+builds' worth of Go startup), only the wall clock did. Shards are balanced by **count**, not cost — no
+cost is known before a case runs — and the four shards measured 2m13 / 2m15 / 2m48 / 3m28, so the run is
+bounded by its heaviest shard; `-json` reports each duration, so a cost-ordered deal can be built from
+what the harness already emits. Full-tree, all shards on 20 cores: `./pkg/... ./cmd/... ./tools/...` in
+63 s and `./integration/...` in 60 s.
+
+Every toolchain call carries a **budget**, and an expired budget is a class of its own (`ToolTimeoutError`,
+exit **8**, `phase: "toolchain"` in `--json`) — a tool that was killed never said no, so it is not the
+compiler's exit 2 and not the program's exit 1:
+
+| Setting | Default | Applies to |
+|---|---|---|
+| `GUSTY_TOOL_TIMEOUT` | `5m` | `llc`, `cc`, `opt`, `llvm-as`, `llvm-dwarfdump` — the build-stage tools |
+| `GUSTY_ORACLE_TIMEOUT` | `2m` | one CPython reference run |
+
+A value that does not parse is reported on stderr and the pinned default is kept, because an operator who
+set the variable and is still waiting has to learn it never took effect. A *missing* tool is never a
+timeout (that would advise raising a budget instead of installing LLVM 20), and **no budget applies to a
+user's program**: `--eval`, `--file` and the REPL execute in-process and `while True:` is a program, not a
+bug. `kill` reaches the tool's whole process group, because `cc` is a driver and a stranded `as` holding
+the output file is the same hang one layer down.
 
 ### The witness vocabulary, and the guard that keeps it honest (ADR 0302, ADR 0308)
 

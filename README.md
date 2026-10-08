@@ -1462,6 +1462,17 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
 - **Integration suite** — `integration/` drives the full pipeline
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
+- **The suite runs sharded** — `make testshards` (and CI) runs the cases in **one process per core**
+  through `tools/testshards`. The reason is arithmetic rather than taste: nearly every case ends inside a
+  subprocess — `llc-20` lowering the module (58 ms), `cc` linking it (13 ms), `lli-20` running it (57 ms),
+  `python3` answering the reference leg — against 1 ms of Go, so a serial suite is a single-core suite and
+  `pkg/lang` did not fit a four-core runner in `go test`'s ten minutes (it died with a timeout panic naming
+  the 70 ms case that happened to be running, not the slow suite). The split comes from `go test -list`,
+  every case runs exactly once, and each case asserts what it always asserted; `-list` prints the partition
+  and `-json` reports what ran, how long and what failed. `make test` remains the plain serial command, and
+  is the one for the artifact-writing modes (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`), which write
+  per-run ledgers. ADR 0313; ADR 0312 gives every toolchain call a budget (`GUSTY_TOOL_TIMEOUT`,
+  `GUSTY_ORACLE_TIMEOUT`) so a tool that stops answering fails as **exit 8** instead of hanging the run.
 - **Conformance matrix** — `integration/conformance_cases.go` +
   `conformance-matrix.json`: **170 rows over two legs** — the LLVM AOT
   binary and **CPython** — 131 asserting parity and 39 recorded without it (the probe and merged
@@ -1523,8 +1534,9 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
 
 ```sh
 go build -tags=llvm20 ./...
-go test -tags=llvm20 ./pkg/...        # unit tests
-go test -tags=llvm20 ./integration/... # end-to-end pipeline
+go test -tags=llvm20 ./pkg/...        # unit tests, serial — the form for the ledger-writing modes
+make testshards                       # the same cases, one test process per core (what CI runs)
+go run ./tools/testshards -tags llvm20 -json ./pkg/...   # the same, as data
 ```
 
 - **C linker** — `cc` / `gcc` to link the emitted native object into a binary.

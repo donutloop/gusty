@@ -8791,3 +8791,162 @@ wrongly" and that is no longer true, so the row says what it prints instead.
 
 **Paid rows moved, not deleted.** `print(f"{n - 1}")` was a refusal row in `pkg/lang/pair_number_float_test.go`
 and `integration/pair_number_float_test.go`; both moved to this cycle's answer tables.
+
+### Gap R.194 — a toolchain call with no budget cannot fail, only stall (CLOSED by ADR 0312, owner `tooling`)
+
+The CI log is the row. `go test -tags=llvm20 ./pkg/...` died at ten minutes with
+
+```
+panic: test timed out after 10m0s
+running tests:
+    TestTextPredicatesPrintAVerdict (7s)
+    TestTextPredicatesPrintAVerdict/not_verdict_false (0s)
+…
+os/exec.(*Cmd).CombinedOutput(…)
+github.com/donutloop/gusty/pkg/lang.runIR(…)    gc_function_ir_test.go:77
+```
+
+and both halves of that report are misleading. `not_verdict_false` is `print(not "1".isdigit())`, which
+answers in 70 ms; it is in the message because `go test`'s alarm names the test that was *running*, and the
+suite was simply not finished. The frame that describes what the process was waiting for — an `lli-20` three
+goroutines down — is never named, because nothing in the tree had ever been asked how long a tool is allowed
+to take.
+
+Eleven calls, no budgets: `llc` (JIT, build, bench), `cc` (three sites), `opt`, `llvm-as`,
+`llvm-dwarfdump`, `python3` (two). The failure mode of an unbudgeted subprocess is not "it fails slowly", it
+is that the notion of failing stops applying — the call is still running, and the process waiting on it has
+no clock of its own.
+
+The interesting part of the fix is not the deadline, it is the **class**. `llc` returning 1 after reading the
+module and `llc` being killed for not finishing are different statements about the world: the first indicts
+the compiler (the module is bad — exit 2, the code the contract reserves for exactly that accusation), the
+second indicts the machine. Filing both as `ToolchainRejectionError` would turn every loaded runner into a
+queue of compiler-bug reports, so a killed tool is `*ToolTimeoutError`, exit **8**, with the payload's
+`phase` reading `"toolchain"`. `toolchainFailure` asks for a timeout before it builds a rejection, and the
+CLI checks timeouts before rejections, because the sentence a killed `llc` arrives in normally names the
+stage that was running (`jit: codegen: llc …`) and the string-level checks would otherwise read it as
+codegen's fault.
+
+Three details earned their place by breaking first:
+
+* **Ask the context, not a signal derived from it.** The first version closed a channel from a goroutine
+  watching `ctx.Done()`. `Wait` can return the ctx error before that goroutine is scheduled, so the CI's own
+  call came back as bare `context deadline exceeded` — no tool, no stage, no number — which is the message
+  this file exists to replace. `timedOut()` reads `ctx.Err()` now.
+* **Ask the deadline, not the kill hook.** `os/exec` does not call `Cancel` when the context is already
+  expired at `Start`, so a budget that expires before the child is scheduled (every 1 ns budget, and the CLI
+  test uses one) classified as nothing. The kill and the timeout are separate questions.
+* **Kill the group.** `cc` is a driver that forks `as`/`ld`; kill only the driver and the survivor keeps the
+  write end of stdout open, so `Wait` blocks on a pipe whose writer outlived its parent — the hang returns
+  with the deadline already spent. `Setpgid` + `kill(-pid)`, plus `WaitDelay` as the last resort for the
+  pipes. The Windows fallback keeps the budget and the class and gives up only the group signal, which is the
+  portable half of the design.
+
+The one thing deliberately left unbudgeted is the user's program. `dlopenRun` executes it in this process,
+`--eval`/`--file`/the REPL wait on it, and `while True:` is a program rather than a bug: a budget there is
+the CLI killing a long-running program to make the CLI feel responsive. The oracle leg is the middle case —
+it waits on *someone else's* interpreter answering *our* question — so it gets 2 minutes, and a row whose
+oracle was killed reports "the oracle gave up" as a no-verdict rather than pretending the reference answered
+nothing.
+
+### Gap R.195 — the suite is subprocess-bound, so a serial run is a single-core run (CLOSED by ADR 0313, owner `tooling`)
+
+Same CI log, other half: the alarm fired at ten minutes with the package two-thirds through, so even with
+every call budgeted the suite did not fit. The measurement before touching anything:
+
+| what a case waits for | process | per call |
+|---|---|---|
+| record leg — lower the module | `llc-20` | 58 ms |
+| | `cc -shared` | 13 ms |
+| | `dlopen` + call `main` | < 1 ms |
+| compiled leg — assemble, execute | `llvm-as-20`, `lli-20` | 10 ms, 57 ms |
+| reference leg | `python3` | ~40 ms |
+| everything the compiler itself does | — | **1 ms** |
+
+Counts from one instrumented run: 1818 record-leg programs (`captureStdout`), 1177 compiled-leg programs
+(`runIR`), 1244 top-level tests over 2187 subtests. That is ~6000 subprocesses to answer ~3000 questions,
+and `go test` runs a package's cases one at a time. Pinned to four CPUs — the CI runner — the package took
+**10m06s of wall for 8m31s of CPU**, which reproduces the failure exactly: `go test`'s default is
+**10m00s**. On the 20-core development machine the same run was 5m48s with `user 4m42s`, and that gap is
+the diagnosis in one line — two thirds of the wall was idle cores while one process waited on one `llc`.
+
+`t.Parallel()` is the lever the framework offers, and it does not reach this suite. `captureFD` dup2s fd 1
+and fd 2 around the loaded program, so two programs in one process print into each other's pipes — that is
+`RunSource`'s own comment ("it is not safe for concurrent use"), written years ago and never contradicted.
+Forty-six sites in four files need a process-wide state of their own (`os.Chdir` for the
+import-from-cwd cases, `t.Setenv` for the oracle override), and Go runs a parallel test *beside* the serial
+ones rather than in a phase after them — so leaving those cases unmarked does not protect the cases that run
+next to them; a `chdir` in one is a changed working directory for all. And the compiler's program-wide scan
+tables (`pairClosedOut`, `bodyBindingCache`, the `kindOfIntValue` codegen installs) are plain maps: safe only
+because nothing compiles two programs at once. Those are not bugs to fix tonight, they are facts about the
+system, and the honest conclusion is that the **process** is the unit of isolation here — so it should be the
+unit of parallelism too.
+
+`tools/testshards` is that conclusion in ~350 lines. Each shard is a real `go test` over a real subset, so
+nothing about a case's assertions changed; what changed is how many such processes exist. Three properties
+make splitting safe rather than lucky, and all three are tested rather than argued: the partition comes from
+`go test -list` (the authority on which cases exist) sorted and dealt round-robin so it is reproducible and
+balanced; `-run` is anchored, because `TestFoo` matching `TestFooBar` covers one case twice and another not
+at all — a hole no failure reports; and only `Test*` names are admitted, because a `Benchmark` in a shard's
+`-run` runs nothing and looks green. The overlap claim is measured as a ratio (sum of shard durations > 2×
+wall clock) rather than an absolute deadline, so a slow machine slows both sides together and the assertion
+does not become a flake — which is the same reasoning as Gap R.196.
+
+Measured with both runs `taskset -c 0-3`, so they describe the runner and not the dev box: **10m06s serial
+→ 3m30s with four shards**, and the CPU total barely moved (8m31s → 9m00s) — the win is the idle cores, not
+less work. Eight shards on the same four cores bought nothing: the floor is total toolchain CPU ÷ cores.
+Rejected with numbers attached: memoising compiled artifacts by IR hash — 972 distinct modules out of 1177
+and 1760 distinct sources out of 1818, so 3–17% duplicate, ~8% of the wall for cache keys and invalidation
+in a suite whose entire value is that it does not cache answers. Also rejected: trimming the grid cases (they
+are what notices a wrong answer in a position nobody exercises — speed bought by deleting coverage is
+blindness with a better clock), and a shell loop over `-run` patterns in the workflow (the same mechanism
+with no coverage guarantee, no JSON, and the partition living in a YAML string nobody can test).
+
+Two consequences worth stating. The drift ratchet survives sharding because it was already built for
+subsets — `checkDriftAgainst` judges a ledger row only if some case in this process asked about it — so a row
+is still noticed, in whichever shard owns it, and a shard that dies fails the job. And the artifact-writing
+modes (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`) stay single-process by rule: they write per-run ledgers,
+and four shards would each write their own subset over the file. `make test` remains that path.
+
+### Gap R.196 — the CLI-level reference leg did not pin the oracle's hash seed (CLOSED by ADR 0314, owner `test`)
+
+The first full green-after-sharding run of `./integration/...` was red on an unchanged tree:
+
+```
+--- FAIL: TestCLIAgentPairBoundNameMutatesAContainerAgreesWithCPython/the_a_text_slot_added_to_a_set#02
+    xs = [] / xs.append("a") / n = xs[0] / s2 = {1} / s2.add(n) / print(s2)
+    reference: stdout "{'a', 1}\n"
+    compiled:  stdout "{1, 'a'}\n"
+```
+
+…which passed when the same test was run by itself, and passed on the next full run too. The compiler had not
+changed; the reference had. `s2` holds a text and a number, CPython orders a set by the hashes of its members,
+and string hashing is randomised per process unless `PYTHONHASHSEED` says otherwise:
+
+```
+$ for i in $(seq 20); do python3 -c "s={1}; s.add('a'); print(s)"; done | sort | uniq -c
+     17 {1, 'a'}
+      3 {'a', 1}
+```
+
+`lang.PythonRun` — the conformance matrix's oracle call — has pinned the seed from the beginning, for exactly
+the reason this row now documents: the matrix artifact is committed, and a set whose order changes between two
+regenerations is a diff that means nothing. What was never generalised is the *rule*. Nine reference-leg
+spawns across `integration` (seven helpers) and `pkg/lang` (two) built their own `exec.Command(py, …)` and
+inherited the environment, so any case whose reference answer prints a set containing a text was a coin flip
+on where the hash landed — and gusty prints insertion order, always, so the leg that wobbles is the one that
+is supposed to be the evidence.
+
+The fix is a pin, not a debt row, and the distinction matters: a disagreement with a non-deterministic leg is
+not evidence of anything, so filing `{'a', 1}` as `cpython-debt` would have recorded a bug the compiler does
+not have. Every reference-leg spawn now goes through one of three helpers — `lang.PythonRun`,
+`integration.oracleCommand`, `lang.pythonTwin` — each of which sets both the interpreter (`GUSTY_PYTHON`, the
+pinned oracle of ADR 0193) and `PYTHONHASHSEED=0`, and the guard asks the reference the same twenty questions
+and fails on two different answers. Twenty is chosen from the measured flip rate: three in twenty is ~0.9997
+probability that a run without the pin catches it, and the guard's own passing is therefore not luck.
+
+The general shape, for the next one: **a leg is only evidence if it is a function of the source.** Where a
+leg reads process state the harness does not pin — environment, locale, cwd, the host's Python — the same
+source gets two answers and the suite reports a compiler regression that does not exist. The pin belongs in
+the helper that starts the process, because a call site that has to remember it is a call site that will
+forget it.
