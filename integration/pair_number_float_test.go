@@ -192,19 +192,18 @@ func TestCompiledDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
 }
 
 // TestTheDoubleDomainStillRefusesTheOneWordPositions keeps the remaining half of Gap R.146/R.148 visible: a
-// `float()` argument, a `sum` element and a `min` argument each still keep one word for the value, and refuse
-// in words that name the origin — never a loop the program does not contain (Gap R.38). An `abs` operand and an
-// f-string field were on this table and both answer now (ADR 0306, ADR 0307).
+// `float()` argument and an `abs` operand each still keep one word for the value, and refuse in words that
+// name the origin — never a loop the program does not contain (Gap R.38). An f-string field was on this table
+// and answers now (ADR 0306, ADR 0307), and so did the `sum` element and the `min` argument until the fold
+// door opened (ADR 0316) — those two are pinned as answers in `pair_fold_test.go`, because a row that stops
+// refusing moves, it does not disappear.
 func TestTheDoubleDomainStillRefusesTheOneWordPositions(t *testing.T) {
 	dir := t.TempDir()
 	for _, src := range []string{
 		numFloatSlotCLI + "print(float(n))\n",
-		numFloatSlotCLI + "print(sum([n]))\n",
-		// `print([n])` answers since ADR 0306 — the heap builder writes the element's payload and its
-		// tag — and is pinned in pair_container_test.go against the reference instead.
-		numFloatSlotCLI + "print(min(n, 3))\n",
-		// `print(f"{n - 1}")` answers since ADR 0307 — an f-string field asks the module's ONE
-		// tag-reading printer — and is pinned against the reference in pair_fstring_test.go.
+		// `print(sum([n]))` and `print(min(n, 3))` left this table with ADR 0316; `print([n])` answers
+		// since ADR 0306 and `print(f"{n - 1}")` since ADR 0307, each pinned in its own file against the
+		// reference.
 	} {
 		path := writeSrc(t, dir, "pairfloat_refuse.gy", src)
 		got, code := cliRunMerged(t, "--file", path)

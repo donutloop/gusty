@@ -125,21 +125,10 @@ func TestAPairBoundNameBoundIntoAListKeepsItsTagOnTheObject(t *testing.T) {
 	}
 }
 
-// TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord is this cycle's honest half, narrowed
-// by ADR 0310: the dict entry and the set member went through the same door the list element did (their
-// builders take the tag as an `i32`, and a register is an `i32`), so the shapes below are all that is left
-// of the original table. A literal a builtin folds into a static array has no tag storage at all, and the
-// mutation roads (`append`, `add`, `d[k] = v`) are the entry question asked by a statement rather than an
-// expression. Each row stays until the pair reaches it; the failure mode that has to remain impossible is a
-// dict whose text key prints its interned index at exit 0.
-func TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord(t *testing.T) {
-	for _, tc := range []struct{ name, src string }{
-		{"sum over a literal", intSlot + "print(sum([n]))\n"},
-		{"min over a literal", intSlot + "print(min([n, 3]))\n"},
-		{"max over a literal", intSlot + "print(max([n, 3]))\n"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			CompiledRefusal(t, tc.src, "roadmap L11.1")
-		})
-	}
-}
+// TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord lived here. Its last three rows —
+// `sum([n])`, `min([n, 3])`, `max([n, 3])` — are answers since ADR 0316 and are pinned as answers in
+// `pair_fold_test.go`; the container positions that still refuse (a fold over a set literal, a container
+// literal as a fold operand, a value that is not a pair written into a slot) are pinned in
+// `pair_dict_set_test.go` and `pair_mutation_test.go`. A row that stops refusing moves, it does not
+// disappear — and a dict whose text key prints its interned index at exit 0 stays the failure mode that has
+// to remain impossible.

@@ -1,0 +1,30 @@
+# probe_a_fold_orders_two_built_containers.gy — the fold asked to order two containers (roadmap
+# L11.1's remaining clause, Gap R.197; ADR 0316's filed half, Gap R.97's ordering door).
+#
+# min() and max() over numbers, texts and the same object twice answer what the reference prints (see
+# programs/probe_the_fold_builtins_answer_the_pair.gy). Two DIFFERENT containers are the residue: the
+# reference orders lists lexicographically and sets by the subset operator, and this backend has no
+# element-wise ordering for either — the same missing word Gap R.97 files for `<`. The fold door therefore
+# raises CPython's own sentence rather than comparing two heap handles, which is a wrong answer wearing the
+# reference's exit class: it is filed per leg below instead of being described as a refusal.
+#
+# The identity arm is the one container question the door can answer without walking any elements: when both
+# sides are the very same object the comparison is reflexively false and the incumbent is kept, which is what
+# the reference answers for a list and for a set.
+
+xs = []
+xs.append([1, 2])
+xs.append([3])
+ss = []
+ss.append({1})
+ss.append({2})
+a = xs[0]
+b = xs[1]
+p = ss[0]
+q = ss[1]
+print(min(a, a))
+print(max(a, a))
+print(min(p, p))
+print(min(a, b))
+print(max(a, b))
+print(min(p, q))

@@ -238,19 +238,27 @@ func TestThePairBoundDictAndSetProbeIsOnRecord(t *testing.T) {
 }
 
 // TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin is the honest half at the CLI. Three
-// classes keep their refusal: a literal a builtin folds into a static array, a pair handed across a call
-// into a body whose parameter is not a pair, and a value that is not a pair at all (`d["k"] = xs[0] / 2`),
-// which the ordinary road is asked about first and refuses in words. The MUTATION roads themselves —
-// `xs.append(n)`, `s.add(n)`, `xs[i] = v`, `d[k] = v` — are paid by ADR 0311 and compared with the reference
-// in `pair_mutation_test.go`.
+// classes keep their refusal: a pair handed across a call into a body whose parameter is not a pair, a value
+// that is not a pair at all (`d["k"] = xs[0] / 2`), which the ordinary road is asked about first and refuses
+// in words, and a fold the door declines to label — a set literal, whose element set and order the source
+// does not fix, or a container literal as an operand (Gap R.198). The three rows that used to open this
+// table — `sum([n])`, `min([n, 3])`, `max([n, 3])` — answer since ADR 0316 and live in
+// `pair_fold_test.go`; the MUTATION roads themselves — `xs.append(n)`, `s.add(n)`, `xs[i] = v`,
+// `d[k] = v` — are paid by ADR 0311 and compared with the reference in `pair_mutation_test.go`.
 // Each refusal names the value's origin, the missing half and the roadmap row; exit 2 stays forbidden.
 func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 	dir := t.TempDir()
-	for _, tc := range []struct{ name, src string }{
-		{"a sum over a folded literal", pairDictCLISlot + "print(sum([n]))\n"},
-		{"a min over a folded literal", pairDictCLISlot + "print(min([n, 3]))\n"},
-		{"a max over a folded literal", pairDictCLISlot + "print(max([n, 3]))\n"},
-		{"a pair handed through a parameter into a dict", pairDictCLISlot + "def build(k):\n    return {\"k\": k}\nprint(build(n))\n"},
+	for _, tc := range []struct {
+		name, src string
+		must      []string
+	}{
+		{"a pair handed through a parameter into a dict", pairDictCLISlot + "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", nil},
+		{"a fold over a set literal", pairDictCLISlot + "print(min({n, 3}))\n", nil},
+		// A container literal is an operand the fold door will not label; the sentence is the ordinary sum
+		// road's own, and it names what the element IS because there the kind is a fact the compiler can see
+		// (Gap R.198, ADR 0316).
+		{"a container literal as a fold operand", pairDictCLISlot + "print(sum([n, [1]]))\n",
+			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, dir, "pairdict_refuse.gy", tc.src)
@@ -261,7 +269,11 @@ func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testi
 			if code != 1 {
 				t.Fatalf("exit %d, want 1 (a program this backend declines to build):\n%s", code, out)
 			}
-			for _, want := range []string{"(payload, tag) pair", "one word", "roadmap L11.1"} {
+			wants := tc.must
+			if wants == nil {
+				wants = []string{"(payload, tag) pair", "one word", "roadmap L11.1"}
+			}
+			for _, want := range wants {
 				if !strings.Contains(out, want) {
 					t.Errorf("the refusal does not name the missing half (%q):\n%s", want, out)
 				}

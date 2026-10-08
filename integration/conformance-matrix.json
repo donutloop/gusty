@@ -2730,6 +2730,46 @@
     },
     {
       "case": {
+        "id": "programs/probe_the_fold_builtins_answer_the_pair",
+        "name": "probe_the_fold_builtins_answer_the_pair.gy",
+        "source": "# probe_the_fold_builtins_answer_the_pair.gy — `min`, `max` and `sum` over a value whose kind the\n# run time chose (roadmap L11.1, Gap R.146's \"`min(n, 3)`\" and \"a literal `sum`/`min`/`max` folds into a\n# static array\"; ADR 0316).\n#\n# A fold hands back one of the values it was given, so the answer's KIND is the winner's kind: `min(2.5, 3)`\n# is the float and `max(2.5, 3)` is the integer, and a fold lowered by lifting both sides and returning one\n# word prints the loser's shape as often as the winner's. The door is handed two (payload, tag) pairs and\n# writes back the winning pair, so whichever arm the run time takes the payload travels with the tag that says\n# what it means; `sum` is `+` seeded with the integer 0, which is why a text element earns\n# \"unsupported operand type(s) for +: 'int' and 'str'\" with 'int' named first.\n#\n# Two kinds are ordered — numbers in the one word that holds both families, texts by CONTENT (rt_str_order,\n# not the intern table's arrival order). CPython keeps the incumbent on a tie, so `max(True, 1)` is True; the\n# fold runs left to right and the raise names the candidate first and the incumbent second, which is the order\n# the failing comparison had.\n#\n# The traps are RAISED, not refused: a fold of two values with no ordering leaves through the program's own\n# `except TypeError:`, where a compile-time refusal would be a compiler opinion instead of a language answer\n# (ADR 0166, ADR 0228).\n\nxs = []\nxs.append(7)\nxs.append(2.5)\nxs.append(\"a\")\nxs.append(None)\nxs.append(True)\nn = xs[0]\nf = xs[1]\ns = xs[2]\nz = xs[3]\nb = xs[4]\n# the varargs spelling: the winner's own kind, printed by the module's one tag-reading printer\nprint(min(n, 3))\nprint(max(n, 3))\nprint(min(3, n))\nprint(min(f, 3))\nprint(max(f, 3))\nprint(max(f, 2.5))\nprint(min(b, 3))\nprint(max(b, 1))\nprint(min(n, 3, 1))\n# the container-literal fold, and sum as a left fold over +\nprint(sum([n]))\nprint(sum([n, 1]))\nprint(sum([f, 1]))\nprint(sum([b, 1]))\nprint(min([n, 3]))\nprint(max([n, 2.5]))\nprint(min([s, \"b\"]))\n# the answer bound to a name, and read back by every position that asks the tag\nm = min(f, 3)\nprint(m)\nprint(str(m))\nprint(repr(m))\nprint(f\"{m}\")\nw = max(n, 3)\nprint([w])\nprint(len([w, 1]))\nprint(7 in [w])\n# two texts order by content, and the tie keeps the incumbent\nprint(min(s, \"b\"))\nprint(max(s, s))\n# a value with no ordering raises the reference's sentence, and the program's arm runs\ntry:\n    print(min(n, \"a\"))\nexcept TypeError:\n    print(\"caught-the-ordering\")\ntry:\n    print(max(z, 1))\nexcept TypeError:\n    print(\"caught-the-none-ordering\")\ntry:\n    print(sum([n, \"a\"]))\nexcept TypeError:\n    print(\"caught-the-sum-of-text\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "3\n7\n3\n2.5\n3\n2.5\nTrue\nTrue\n1\n7\n8\n3.5\n2\n3\n7\na\n2.5\n2.5\n2.5\n2.5\n[7]\n2\nTrue\na\na\ncaught-the-ordering\ncaught-the-none-ordering\ncaught-the-sum-of-text\n",
+      "python_ok": true,
+      "python_stdout": "3\n7\n3\n2.5\n3\n2.5\nTrue\nTrue\n1\n7\n8\n3.5\n2\n3\n7\na\n2.5\n2.5\n2.5\n2.5\n[7]\n2\nTrue\na\na\ncaught-the-ordering\ncaught-the-none-ordering\ncaught-the-sum-of-text\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_pair_bound_name_takes_a_value",
+        "name": "probe_pair_bound_name_takes_a_value.gy",
+        "source": "# probe_pair_bound_name_takes_a_value.gy — what is LEFT of the one-word positions, and the one that\n# closed (roadmap Gap R.146; ADR 0267 bound the pair, ADR 0269 paid `and`, ADR 0306 the list element,\n# ADR 0316 the fold).\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload, and the positions that ask\n# for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What this program used to\n# pin was the positions that take a whole *value*: a builtin's argument kept one word for its operand, the\n# second word had nowhere to be stored, and the compiled leg declined rather than print the payload alone.\n#\n# All three lines answer now, and the program is parity surface:\n#\n#   - `abs(n)` — the signless call, which is the arithmetic door's own op (Gap R.140, ADR 0271);\n#   - `min(n, 3)` — a fold hands back one of the values it was given, so the door writes the winner's\n#     payload beside the winner's tag (Gap R.146's fold clause, ADR 0316);\n#   - `n and 3` — an operator that chooses an operand asks the pair directly (Gap R.147, ADR 0269).\n#\n# A container element is a pair position too since ADR 0306 (`[n]` prints [14], in\n# programs/probe_pair_bound_name_enters_a_container.gy). The positions still refusing are pinned where they\n# live: `min(n, 3) + 1` and `abs(min(n, 3))` in pair_binding_test.go's refusal table, a fold over a set\n# literal and a container literal operand in pair_dict_set_test.go's (Gap R.198).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint(n and 3)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "14\n3\n3\n",
+      "python_ok": true,
+      "python_stdout": "14\n3\n3\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/gc_precise",
         "name": "gc_precise.gy",
         "source": "# Precise stack roots (L7.2, ADR 0181).\n#\n# Every value below is held somewhere the collector has to know about: a call\n# frame's locals that survive a nested allocation storm, a loop variable the loop\n# itself keeps, and thousands of short-lived containers that must be reclaimed\n# while the program is still running. A missing root shows up as a wrong number;\n# an imprecise collector shows up as a heap full of garbage that is still live.\n\ndef churn(n):\n    total = 0\n    i = 0\n    while i \u003c n:\n        junk = [i, i, i]\n        total = total + junk[2]\n        i = i + 1\n    return total\n\n# walk binds a list, recurses, then allocates a storm before reading it back:\n# only frame roots keep `keep` alive across the nested collection.\ndef walk(depth):\n    keep = [depth, depth * 2, depth * 3]\n    filler = 0\n    if depth \u003e 0:\n        filler = walk(depth - 1)\n    churn(200)\n    return keep[0] + keep[1] + keep[2] + filler\n\n# A statement-position call whose own loop reclaims as it goes: `xs` is bound\n# before the loop and read hundreds of allocations later.\ndef total_up_to(n):\n    xs = [10, 20, 30]\n    acc = 0\n    i = 0\n    while i \u003c n:\n        scratch = [i, i]\n        acc = acc + xs[0] + xs[2] + scratch[0]\n        i = i + 1\n    return acc\n\ngrand = 0\nfor k in range(5):\n    scratch = [k, k + 1]\n    grand = grand + walk(k) + scratch[0]\nprint(grand)\nprint(total_up_to(300))\nprint(churn(1200))\n",
@@ -3256,41 +3296,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_pair_bound_name_takes_a_value",
-        "name": "probe_pair_bound_name_takes_a_value.gy",
-        "source": "# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the\n# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What is\n# left is the positions that take a whole *value*: a builtin's argument keeps one word for its operand, and\n# the second word — the tag — has no place to be stored, so the compiled leg declines rather than print the\n# payload alone. CPython answers both lines (roadmap Gap R.146, the same missing word Gap R.139 names on the\n# calling side).\n#\n# Two lines left this program as the shape they were filed with changed sides. An operator that chooses an\n# operand can ask the pair directly, so `n and 3` prints CPython's `3` (Gap R.147, ADR 0269); and a container\n# element is no longer a one-word position — `[n]` prints `[14]`, the heap builder writing the element's tag\n# beside its payload — so that line lives in programs/probe_pair_bound_name_enters_a_container.gy (Gap R.146's\n# element half, ADR 0306). A dict entry, a set member and a literal `sum`/`min`/`max` folds into a static\n# array still owe the same missing word.\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint(n and 3)\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
-        "ref": "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "holds the answer of arithmetic over a slot",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)",
-      "python_ok": true,
-      "python_stdout": "14\n3\n3\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
-      "oracle_ref": "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_pair_from_a_tuple_unpack",
         "name": "probe_pair_from_a_tuple_unpack.gy",
         "source": "# probe_pair_from_a_tuple_unpack.gy — the pair road stops at the plain assignment. CPython and the\n# interpreted leg print 8 for `a`; the compiled leg spends exit 1 on the unpacking, because the tuple\n# target binds its names through the ordinary road, which refuses the slot it cannot see into\n# (roadmap Gap R.144, measured landing ADR 0267).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n",
@@ -3322,6 +3327,42 @@
       ],
       "oracle_notes": [
         "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_a_fold_orders_two_built_containers",
+        "name": "probe_a_fold_orders_two_built_containers.gy",
+        "source": "# probe_a_fold_orders_two_built_containers.gy — the fold asked to order two containers (roadmap\n# L11.1's remaining clause, Gap R.197; ADR 0316's filed half, Gap R.97's ordering door).\n#\n# min() and max() over numbers, texts and the same object twice answer what the reference prints (see\n# programs/probe_the_fold_builtins_answer_the_pair.gy). Two DIFFERENT containers are the residue: the\n# reference orders lists lexicographically and sets by the subset operator, and this backend has no\n# element-wise ordering for either — the same missing word Gap R.97 files for `\u003c`. The fold door therefore\n# raises CPython's own sentence rather than comparing two heap handles, which is a wrong answer wearing the\n# reference's exit class: it is filed per leg below instead of being described as a refusal.\n#\n# The identity arm is the one container question the door can answer without walking any elements: when both\n# sides are the very same object the comparison is reflexively false and the incumbent is kept, which is what\n# the reference answers for a list and for a set.\n\nxs = []\nxs.append([1, 2])\nxs.append([3])\nss = []\nss.append({1})\nss.append({2})\na = xs[0]\nb = xs[1]\np = ss[0]\nq = ss[1]\nprint(min(a, a))\nprint(max(a, a))\nprint(min(p, p))\nprint(min(a, b))\nprint(max(a, b))\nprint(min(p, q))\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '\u003c' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
+        "ref": "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `\u003c`; docs/adr/0316",
+        "pins": [
+          {
+            "backend": "aot",
+            "stdout": "[1, 2]\n[1, 2]\n{1}\n",
+            "error": "exit status 3",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "[1, 2]\n[1, 2]\n{1}\n",
+      "aot_error": "exit status 3",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '\u003c' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
+      "oracle_ref": "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `\u003c`; docs/adr/0316",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: exit status 3"
       ]
     },
     {
@@ -3513,7 +3554,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/143/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/146/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3526,7 +3567,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/143/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/146/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4216,11 +4257,11 @@
       ]
     }
   ],
-  "rows": 172,
+  "rows": 174,
   "skipped": 39,
-  "pass": 133,
+  "pass": 135,
   "fail": 0,
-  "oracle_match": 118,
+  "oracle_match": 120,
   "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

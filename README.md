@@ -244,11 +244,14 @@ program whose answer is `-5`. A name answers with what its latest binding gave i
 *number* now asks the pair: `n + 1`, `-n`, `n > 13`, `if n:`, a `while` head, `f"{n}"`, `str(n)`, `n += 1`
 (ADR 0268) — a name the arithmetic door bound is provably a whole number or a float, so the position lifts it
 into the one word that holds both families rather than guessing. What still refuses is a position that keeps
-**one word** for a whole value — a builtin's argument, a literal a builtin folds into a static array, the
-a literal a builtin folds into a static array, a pair handed across a call (`Gap R.146`) — while the list
+**one word** for a whole value — a builtin's argument the fold door does not reach, a pair handed across a
+call (`Gap R.146`) — while the list
 element (ADR 0306), the f-string field (ADR 0307), the signless call (ADR 0309), the **dict entry and set
-member** (ADR 0310) and the **mutation roads** — `xs.append(n)`, `s.add(n)`, `xs[i] = n`, `d[k] = n` (ADR 0311)
-— all take the pair now, and so does the float road (`n / 4` is `1.75`, ADR 0305). An `and`'s operand is not one of those
+member** (ADR 0310), the **mutation roads** — `xs.append(n)`, `s.add(n)`, `xs[i] = n`, `d[k] = n` (ADR 0311) —
+and **a fold's argument** (with `n` the `14` above, `print(min(n, 3))` is `3`, `print(max([n, 2.5]))` is `14`,
+`print(sum([n, 1]))` is `15`, and `m = min(n, 3)` / `print(m)` prints the winner by the winner's own kind,
+because the fold is handed two (payload, tag) pairs and writes back the winning pair — ADR 0316)
+all take the pair now, and so does the float road (`n / 4` is `1.75`, ADR 0305). An `and`'s operand is not one of those
 positions any more: the operator that chooses an operand can ask the pair directly, so `print(n and 3)` prints
 CPython's `3` and `print(n or 3)` its `14`, on all three legs (`Gap R.147`, ADR 0269).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while

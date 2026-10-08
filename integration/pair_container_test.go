@@ -79,16 +79,24 @@ func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
 }
 
 // TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord is the honest half at the CLI,
-// narrowed by ADR 0310: the dict entry and the set member went through the same door the list element did
-// (their builders take the tag as an `i32`, and a register is an `i32`), so what is left of the original table
-// is the literal a builtin folds into a static array — an array with no tag storage at all. Each refusal has
-// to say so in the words that name the missing capability rather than in three words a person cannot act on.
+// narrowed by ADR 0310, ADR 0311 and ADR 0316: the dict entry, the set member, the four mutation statements
+// and the three builtin folds (`sum([n])`, `min([n, 3])`, `max([n, 3])`) all went through a door that takes
+// the payload AND the tag, so what is left of the original table is the fold the door declines on purpose —
+// a set literal, whose element set and order are the objects' fact and not the source's, a container literal
+// as an operand, and a fold answer used where one word is kept. Each refusal has to say so in the words that
+// name the missing capability rather than in three words a person cannot act on.
 func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *testing.T) {
 	dir := t.TempDir()
-	for _, tc := range []struct{ name, src string }{
-		{"sum over a literal", pairContainerBuilt + "print(sum([n]))\n"},
-		{"min over a literal", pairContainerBuilt + "print(min([n, 3]))\n"},
-		{"max over a literal", pairContainerBuilt + "print(max([n, 3]))\n"},
+	for _, tc := range []struct {
+		name, src string
+		must      []string
+	}{
+		{"a fold over a set literal", pairContainerBuilt + "print(min({n, 3}))\n", nil},
+		{"a fold answer as an arithmetic operand", pairContainerBuilt + "print(min(n, 3) + 1)\n", nil},
+		{"a fold answer as an abs operand", pairContainerBuilt + "print(abs(min(n, 3)))\n", nil},
+		{"a bound fold answer as an arithmetic operand", pairContainerBuilt + "m = min(n, 3)\nprint(m + 1)\n", nil},
+		{"a container literal as a fold operand", pairContainerBuilt + "print(sum([n, [1]]))\n",
+			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, dir, "paircont_refuse.gy", tc.src)
@@ -99,7 +107,11 @@ func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *te
 			if code != 1 {
 				t.Fatalf("exit %d, want 1 (a program this backend declines to build):\n%s", code, out)
 			}
-			for _, want := range []string{"(payload, tag) pair", "one word", "roadmap L11.1"} {
+			wants := tc.must
+			if wants == nil {
+				wants = []string{"(payload, tag) pair", "one word", "roadmap L11.1"}
+			}
+			for _, want := range wants {
 				if !strings.Contains(out, want) {
 					t.Errorf("refusal does not name the missing half (%q):\n%s", want, out)
 				}

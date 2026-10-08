@@ -227,15 +227,15 @@ func TestCLIAgentPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatCPythonRaises(t
 // TestCLIAgentTheMutationRoadsStillRefuseWhatTheyCannotCarry keeps the honest half at the CLI. A value that
 // is not a pair — the double a true division answered — is still asked about by the ordinary road first, and
 // that question is what keeps `d["k"] = xs[0] / 2` an honest refusal instead of a payload in an i32 slot; a
-// literal a builtin folds into a static array, and a pair handed across a call, keep their own sentences.
+// pair handed across a call keeps its own sentence. The two fold rows that used to open this table —
+// `print(sum([n]))` and `print(min([n, 3]))` — answer since ADR 0316 and live in
+// `integration/pair_fold_test.go`: a row that stops refusing moves, it does not disappear.
 func TestCLIAgentTheMutationRoadsStillRefuseWhatTheyCannotCarry(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a double written into a dict slot", pairMutationSlot + "d2 = {}\nd2[\"k\"] = xs[0] / 2\nprint(d2)\n", "stores an i32 word"},
 		{"a double written into a list slot", pairMutationSlot + "ys = [0]\nys[0] = xs[0] / 2\nprint(ys)\n", "stores an i32 word"},
 		{"a pair handed through a parameter into a dict", pairMutationSlot + "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", "roadmap L11.1"},
-		{"a sum over a folded literal", pairMutationSlot + "print(sum([n]))\n", "one word"},
-		{"a min over a folded literal", pairMutationSlot + "print(min([n, 3]))\n", "one word"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, dir, "pairmut_refuse.gy", tc.src)

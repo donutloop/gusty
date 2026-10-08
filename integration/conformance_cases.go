@@ -444,6 +444,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// incomparable kind raises the operator's own TypeError. Three engines, one source
 		// (roadmap L11.6, Gaps R.73 and R.104, ADR 0256).
 		"min_max_values",
+		// `min`, `max` and `sum` over a value whose kind the run time chose: the fold hands back one of the
+		// values it was given, so the ANSWER'S KIND is the winner's kind and the pair has to travel out of the
+		// call with it — `min(2.5, 3)` is the float `2.5`, `max(2.5, 3)` is the integer `3`, `max(True, 1)` is
+		// `True`, `sum([n, 1])` is the left fold over `+` that CPython's message names 'int' first for, and a
+		// fold of two values with no ordering raises the reference's own sentence, catchably, from the fold
+		// door rather than from the compiler (roadmap L11.1, Gap R.146's fold clause, ADR 0316). Promoted the
+		// day its sibling probe `probe_pair_bound_name_takes_a_value` stopped being a debt: the `min(n, 3)`
+		// line in that program is the line this door paid.
+		"probe_the_fold_builtins_answer_the_pair",
+		"probe_pair_bound_name_takes_a_value",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -552,11 +562,18 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_whole_number_slot_beyond_the_int_word",
 		// The arithmetic the print position answers, one statement earlier, and the number positions that
 		// read the bound name back, are parity surface: both programs live in conformanceStandalone
-		// (roadmap Gaps R.138 and R.143, ADRs 0267 and 0268). What stays filed beside them is the same
-		// value handed to a position that keeps one word for it, and the unpacking that has not taken the
-		// pair (Gaps R.146, R.144); the same value handed to a function is parity surface since ADR 0273.
-		"probe_pair_bound_name_takes_a_value",
+		// (roadmap Gaps R.138 and R.143, ADRs 0267 and 0268). What stays filed beside them is the unpacking
+		// that has not taken the pair (Gap R.144); the same value handed to a function is parity surface since
+		// ADR 0273, and the value handed to a FOLD is parity surface since ADR 0316 — the program that pinned
+		// it, programs/probe_pair_bound_name_takes_a_value.gy, was promoted with that line.
 		"probe_pair_from_a_tuple_unpack",
+		// The fold asked to order two DIFFERENT containers: the reference orders a list lexicographically and a
+		// set by the subset operator, and this backend has no element-wise ordering for either, so the fold door
+		// raises CPython's own sentence where the reference answers a value — a wrong answer wearing the
+		// reference's exit class, filed per leg rather than described as a refusal (roadmap Gap R.197, filed
+		// measuring ADR 0316; Gap R.97 owns the `<` half). The identity arm — both sides the very same object —
+		// is the one container question the door can answer, and it answers.
+		"probe_a_fold_orders_two_built_containers",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
 		// the compiled path stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
@@ -703,10 +720,17 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against the compiled path",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
-	"programs/probe_pair_bound_name_takes_a_value": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
-		ref:    "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
+	"programs/probe_a_fold_orders_two_built_containers": {oracle: lang.OracleDebt,
+		reason: "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '<' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
+		ref:    "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `<`; docs/adr/0316",
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "[1, 2]\n[1, 2]\n{1}\n", Missing: true, Err: "exit status 3"}}},
+	// programs/probe_pair_bound_name_takes_a_value.gy was this row's `min(n, 3)` line: a builtin's argument
+	// kept one word for the value and had nowhere to put the tag the binding carried. A fold is not such a
+	// position any more — min/max hand back the winner with its own kind and sum is the `+` fold — so the
+	// program runs and matches on both legs and lives in conformanceStandalone (roadmap Gap R.146,
+	// ADR 0316). The list element it used to pin is parity surface since ADR 0306, in
+	// programs/probe_pair_bound_name_enters_a_container.gy; the `and` row since ADR 0269.
+	//
 	// `and`/`or` choose an operand (Gap R.147, ADR 0269). The print door can render the choice because the
 	// module has one printer that takes a value *and* its kind; the positions that keep one word for a value
 	// — `len`'s argument, a binding, a container element, an arithmetic operand — refuse instead of reading

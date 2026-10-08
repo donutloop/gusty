@@ -9032,3 +9032,56 @@ the run", either the run is one process, or the inputs have to be values that ca
 to be a function of them. The telling smell is a guard written for one convenience (here, honest `-run`
 subsets) being read as a general property (here, shard legality) — the two are not the same, and only the
 second needed to be proven.
+
+### Gap R.197 — a fold asked to order a container the program built reads a number that is not the container's value (OPEN, filed measuring ADR 0316, owner `codegen`)
+
+The fold door was measured, not guessed, and the measuring found the road beside it. Three arms, three
+shapes of wrong:
+
+| program | reference | compiled |
+| --- | --- | --- |
+| `la = []` / `la.append(True)` / `la.append(3)` / `o = 3` / `print(min(la, o))` | `TypeError: '<' not supported between instances of 'int' and 'list'` | **`2`, exit 0** — the element count |
+| `sa = set()` / `sa.add(b)` (bool slot) / `print(min(sa, 3))` | `TypeError: '<' not supported between instances of 'int' and 'set'` | **`1`, exit 0** |
+| `a`/`b` two built lists, `p`/`q` two built sets / `print(min(a, b))`, `print(max(a, b))`, `print(min(p, q))` | `[1, 2]`, `[3]`, `{1}` | `TypeError: '<' not supported between instances of 'list' and 'list'`, exit 3 |
+| `print(min(a, a))`, `print(max(a, a))`, `print(min(p, p))` | `[1, 2]`, `[1, 2]`, `{1}` | ✅ same |
+
+The identity arms are the informative row: a container compared with *itself* is reflexively not-less-than,
+the incumbent is kept, and the answer is right. What is missing is the comparison between two — the
+element-wise ordering Gap R.97 files for `<`, arriving in the fold's seat. A list's ordering is
+lexicographic; a set's is the subset operator, which is a *partial* order and raises between two non-subsets,
+so "sort the elements" is not even the whole answer for the container kinds this backend has.
+
+The two exit-0 answers are the serious ones. `min(la, o)` answering `2` is the container's *length* standing
+in for its contents — the same reading that makes `if xs:` true for an empty list would make `min(xs, 3)`
+choose a number that is not in the program. The door refuses an argument it cannot label precisely so it never
+produces that class of answer; the road that does produce it is the pre-existing fold-over-a-built-container
+path, which this cycle left untouched and pinned instead.
+
+Filed as `probe_a_fold_orders_two_built_containers.gy` with an `oracle: debt` row carrying the reference's
+`[1, 2]`/`[3]`/`{1}` beside the compiled `[1, 2]`/`[1, 2]`/`{1}` plus the exit-3 raise. A raise where the
+reference answers a value is not an honest refusal — it is a wrong answer wearing the reference's exit class —
+and the ledger row is what keeps it from being described as one.
+
+### Gap R.198 — the fold door's four untaggable shapes stay refusals in words (OPEN, filed measuring ADR 0316, owner `codegen`)
+
+A door that answers 23 previously-refused programs has to say what it still will not do, in sentences an
+agent can act on. Four shapes remain, each pinned in `pkg/lang` and at the CLI:
+
+* **a fold over a set literal** — `print(min({n, 3}))`, `print(sum({n, 3}))`. CPython dedups by value and
+  iterates in hash order, so the incumbent and the step count are not written in the line: a source-order fold
+  answers `sum({n, 3})` as `6` where the reference answers `3`, at exit 0. This is the one outcome the row may
+  not ship, so the shape is refused. (ADR 0314 pinned the oracle's hash seed precisely so this comparison is
+  meaningful — the refusal is measured against a deterministic reference, not against a coin flip.)
+* **a container written among the folded values** — `print(sum([n, [1]]))`. The operand lowering will not
+  label it, and the sentence that comes back is the ordinary `sum` road's own: *sum adds numbers, and a list
+  literal is a container: there is no numeric answer to give (Python raises TypeError for this program)*. It
+  names what the element **is**, not the tag it lacks — because on that road the element's kind *is* a fact
+  the compiler can see.
+* **a keyword or `key=` argument** — `sum(xs, start=1)`, `min(a, b, key=f)`: L11.7's call surface, not this
+  door.
+* **a shadowed `min`/`max`/`sum`** — the program's own function is asked first and the door stands down.
+
+Each is asserted to name the value's origin, the missing half and the roadmap row, and never to spend exit 2,
+which the exit-code contract reserves for a compiler that is actually broken (ADR 0166). The general rule this
+row exists to keep: a refusal is a *diagnostic*, and a diagnostic that does not name what to do next is how a
+"not yet" quietly becomes a "no".

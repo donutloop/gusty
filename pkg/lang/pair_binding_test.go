@@ -257,10 +257,16 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 // so in words rather than reading the payload alone (roadmap Gap R.146, the same missing word Gap R.139
 // names on the calling side). The `and` row that used to be here answers since ADR 0269 and moved up to the
 // parity table; a row that stops refusing has to move, not disappear. The list-element row moved to
-// TestAPairBoundNameEntersAContainerByWayOfItsTag once the builders learned to ask for the tag (ADR 0306).
+// TestAPairBoundNameEntersAContainerByWayOfItsTag once the builders learned to ask for the tag (ADR 0306),
+// and the `min(n, 3)` row moved to `pair_fold_test.go` once the fold learned to hand back the winner with
+// its own kind (ADR 0316) — which is why this table is now empty of fold rows and keeps only the shapes the
+// fold door declines on purpose.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
+		// The fold answer used where ONE word is kept. Widening these is the same one-word misread ADR 0309
+		// refused for `abs(n) + 1`, and the door is asked of a fold's ARGUMENT, never of the fold.
+		{"a fold answer as an arithmetic operand", builtList + "n = xs[0][0] * 2\nprint(min(n, 3) + 1)\n"},
+		{"a fold answer as an abs operand", builtList + "n = xs[0][0] * 2\nprint(abs(min(n, 3)))\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -269,10 +275,14 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 				t.Fatalf("%q compiled; this position takes a value, not a pair (roadmap Gap R.146)", tc.src)
 			}
 			msg := err.Error()
-			for _, want := range []string{"holds the answer of arithmetic over a slot", "roadmap L11.1"} {
+			for _, want := range []string{"(payload, tag) pair", "one word", "roadmap L11.1"} {
 				if !strings.Contains(msg, want) {
 					t.Errorf("refused without naming the shape: %q does not mention %q", msg, want)
 				}
+			}
+			// Gap R.38: the sentence names where the value came from, and this program has no loop in it.
+			if strings.Contains(msg, "loop over a mixed list") {
+				t.Errorf("the refusal blames a loop for a program that has none: %v", err)
 			}
 			if strings.Contains(msg, "LLVM ERROR") || strings.Contains(msg, "verifier") {
 				t.Fatalf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)

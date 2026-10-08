@@ -289,17 +289,20 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 }
 
 // TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI files what this cycle did not open, with
-// the refusal's own sentence written into the row and the reference's answer checked live. Two shapes are owed and are named here rather than answered
-// wrongly: a position that takes a whole *value* — a builtin's argument, a container's element, an `and`'s
-// operand — has nowhere to put the tag (that is the same missing word Gap R.139 names on the calling
-// side). The float domain is no longer on this table: Gap R.148's shapes are answered by the tag-selected
-// arms (ADR 0304), and they sit in the answer table above. A tuple unpacking is the other family and is
-// Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road once stored a double
-// into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must stay a
-// refusal — not a broken module — until the pair reaches it.
+// the refusal's own sentence written into the row and the reference's answer checked live. Two shapes are
+// owed and are named here rather than answered wrongly: the answer of a fold used where the position keeps
+// ONE word for it — an arithmetic operand, an `abs` operand — because widening those is the same one-word
+// misread ADR 0309 refused for `abs(n) + 1`, and the fold door is asked of a fold's ARGUMENT, never of the
+// fold itself. The `min(n, 3)` row that used to open this table answers since ADR 0316 and lives in
+// `pair_fold_test.go`. The float domain is no longer on this table: Gap R.148's shapes are answered by the
+// tag-selected arms (ADR 0304), and they sit in the answer table above. A tuple unpacking is the other family
+// and is Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road once stored a
+// double into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must
+// stay a refusal — not a broken module — until the pair reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
+		{"a fold answer as an arithmetic operand", built + "n = xs[0][0] * 2\nprint(min(n, 3) + 1)\n", "one word"},
+		{"a fold answer as an abs operand", built + "n = xs[0][0] * 2\nprint(abs(min(n, 3)))\n", "one word"},
 		// `n / 4` and `n > d` were on this table, and both are answered now: a pair-bound name reaches the
 		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool
 		// arm converts, every other kind raises CPython's own sentence), so the two shapes Gap R.148 was

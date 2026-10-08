@@ -229,7 +229,10 @@ func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T
 		{"addition", builtIntSlot + "print(n + 1)\n"},
 		{"repetition", builtIntSlot + "print(n * 2)\n"},
 		{"modulo", builtIntSlot + "print(n % 3)\n"},
-		{"a min argument", builtIntSlot + "print(min(n, 3))\n"},
+		// `print(min(n, 3))` was on this table. It answers now, because a fold is not a position that
+		// keeps one word any more: `min` hands back one of the values it was given, and the door writes
+		// the winner's payload beside the winner's tag (`pairfold.go`, ADR 0316). The row lives in
+		// `pair_fold_test.go`; a row that stops refusing moves, it does not disappear.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := Compile(tc.src)

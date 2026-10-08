@@ -8994,3 +8994,81 @@ know which package it is) and calls the rules once per ledger. A green run print
 * `evidence.Asked` marshals as `[]`, never `null`: a machine consumer should not have to distinguish them.
 * The evidence file names carry the package path (`…-pkg-lang-005.golden-evidence.json`), because the shard
   index alone collides across the four sharded packages.
+
+## ADR 0316 — the fold builtins answer the pair (Gap R.146's fold clause, L11.1; Gaps R.197, R.198 filed)
+
+### The door is small; the measuring was the work
+
+`print(min(n, 3))` over `n = xs[0]` was exit 1, and the row looked like "hand the fold two pairs, let the run
+time pick". It is that — `@rt_pair_fold` writes the winner's payload beside the winner's tag, `sum` is `+`
+seeded with the integer `0` through `@rt_num_arith` so the cross-kind sentence stays the operator's own
+(ADR 0265), and the raise is emitted at the step site so `except TypeError:` reaches it (ADR 0228). What took
+the time was not the door. It was finding out, by running things, what every neighbouring sentence in this
+repo is allowed to say.
+
+### Three claims I wrote down before measuring them, and what the run said
+
+* I wrote that `print(type(m))` works. **It does not parse** — `type` is not a call the parser takes. The doc
+  block went back to a form both legs print.
+* I wrote that `min(t, 3)` over a *text* slot raises `TypeError`. The compiled leg **refuses to build it**; the
+  runtime `TypeError` belongs to `min(n, "b")` over an int slot. A refusal and a raise are different exit codes
+  and different sentences; docs/language.md may not blur them.
+* I wrote `46` inverted pins, `176` conformance rows, `341` divergences. The measurements are **23** pins
+  (counted out of the diff, per file), **174** rows / 135 asserted (the matrix's own numbers), **338**
+  divergences over 2765 sources asked at 20 shards. Every number in a doc now comes from the artifact that
+  holds it, not from a sum in my head.
+
+The lesson is not "check your arithmetic". It is that a claim written from memory of what the code *should* do
+is the same class of defect as code that answers from a tag it did not read.
+
+### A container is where the fold was wrong, and it was wrong before this cycle
+
+Measuring the new door found the old road beside it reading a number that is not the container's value:
+`min(la, o)` over a built `la` answers **`2`** — the element count — at exit 0 where CPython raises
+`TypeError: '<' not supported between instances of 'int' and 'list'`; `min(sa, 3)` over a built set answers `1`
+where the reference raises; and two *different* containers raise the reference's own `<` sentence at exit 3
+where it answers `[1, 2]`, `[3]`, `{1}`. The identity arms (`min(a, a)`) answer correctly, which is the clue:
+the comparison is fine, the **element-wise ordering does not exist** — Gap R.97's missing word, in the fold's
+seat. Filed as **Gap R.197** with the reference's answers in the debt row, and as **Gap R.198** the four
+shapes the door refuses (set literal, container among the values, `key=`, a shadowed builtin).
+
+Rejected along the way, each for a reason worth keeping: comparing two heap handles (a plausible number at
+exit 0 — the exact class of wrong this row exists to stop); folding a set literal in source order (`sum({n, 3})`
+= `6` vs the reference's `3`); letting the fold's answer register as a container-bound name so `min(n, 3) + 1`
+would work (every truncation this compiler has been patched for started by letting one more door read one word
+of a pair); and calling the exit-3 raise "an honest refusal" (the reference *answers* those lines — a raise
+there is a wrong answer wearing the reference's exit class).
+
+### A probe's comment is part of its record key
+
+`integration/programs/*.gy` sources are keyed into `pkg/lang/testdata/interpreter-golden.json` **verbatim,
+comments included**. Re-numbering an `ADR 0315` to `ADR 0316` in a probe's header comment therefore orphaned
+its record and the probe started failing the record leg with *no recorded expectation* — a missing-record
+failure that looks like a codegen regression and is a comment edit. Renaming the two record keys fixed it. Two
+rules follow: edit a probe's header with the record file open, and expect the record key to move with it.
+
+### A `-run` filter that matches nothing is a green light for nothing
+
+`go test ./pkg/lang -run TestPairFold` reported `ok … [no tests to run]` and I nearly took it as a pass: the
+fold tests are `TestAFold…`, `TestTheFoldDoor…`, `TestWhatTheFoldDoor…`. The habit that catches it is
+`grep -n '^func Test' <file>` before filtering on a name you have not run by its real name — and the commit
+gate stays the whole suite, not a filter.
+
+### The conformance arithmetic when a debt gets paid
+
+Registering `probe_pair_bound_name_takes_a_value` as an asserted program did **not** add a row: it was already
+a row, as debt. Rows went 172 → 174 (two genuinely new programs) while the oracle's debt count stayed at 33 —
+one debt promoted to match, one new debt filed. Reading only `rows` or only `debt` would have "proved" the
+promotion never happened. The diff that settles it is per-row: added / removed / changed, keyed by `case.id`.
+
+### Small things worth writing down
+
+* 23 "this must be refused" pins inverted into printed answers across eleven files, and the suite named every
+  one of them. That is the design working: a refusal test that never fails is not testing a refusal.
+* A gate test's `mustNotHave` list has to be scoped to the code the program generated: `@rt_print_value` is
+  legitimate in a runtime block another program's road uses, so the assertion belongs to the *program's* `main`
+  (`mainMustNotHave`), not to the module.
+* Same for `store double`: the runtime's float-box writer legitimately stores a double, so the ADR 0305 check
+  runs line-by-line over the pair slot the program's own binding writes.
+* A fold's empty case cannot be reached through a pair argument (a literal always has elements), so the empty
+  trap is documented as defensive and the row that reaches it is Gap R.197 — not shipped as if it were covered.

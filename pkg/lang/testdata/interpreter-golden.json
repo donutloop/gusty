@@ -42433,6 +42433,354 @@
   "# probe_a_pair_bound_name_mutates_a_container.gy — a pair-bound name written by a STATEMENT\n# (roadmap L11.1, Gap R.146's mutation roads; ADR 0311, ADR 0310's dict entry and set member, ADR 0306's\n# list element, ADR 0187's rule that a payload is never written without its tag).\n#\n# `xs.append(n)`, `s.add(n)`, `xs[i] = v` and `d[k] = v` ask the literal builders' question from the other\n# side of the semicolon: they change a container the program already built. Each already had a tagged door —\n# rt_append_tagged, rt_set_add_tagged, rt_dict_put_tagged, rt_put_elem with rt_tag_elem — because a\n# heterogeneous literal needed one (ADR 0232), and each was being fed by heapElemKind, which asks an element\n# for its spelling and so has nothing to say about a name whose kind lives in `_n_tag`. A register is an i32,\n# the pair's tag is a register the objects wrote, and no runtime helper changed.\n#\n# A value that is NOT a pair is still asked what it is by the ordinary road first. That question is what keeps\n# `d[\"k\"] = xs[0] / 2` an honest refusal rather than a double's payload stored in an i32 slot: a row that stops\n# refusing without answering has not been paid, it has been lost.\n#\n# A member and a key also ask the question no element asks — can this value be hashed — and only the tag can\n# answer it. A container-valued member raises TypeError: unhashable type: 'list', and the program's own arm\n# runs, where reading the payload alone would have put a heap handle in a bucket and printed a plausible\n# container at the exit code of success (Gap R.81, ADR 0228).\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the list: grown by append, and one element written by subscript\nys = []\nys.append(n)\nys.append(s)\nys.append(1)\nprint(ys)\nprint(len(ys))\nprint(7 in ys)\nfor v in ys:\n    print(v)\nys[0] = f\nprint(ys)\nprint(str(ys))\n# the set: grown by add, deduplicated by (payload, tag) and looped over\nst = set()\nst.add(n)\nst.add(s)\nst.add(n)\nprint(len(st))\nprint(7 in st)\nprint(\"a\" in st)\nprint(len(st))\n# the dict: filled by setitem on both sides of the entry, and read back every way it can be\nd = {}\nd[\"k\"] = n\nd[\"t\"] = s\nd[f] = \"float-key\"\nd[z] = b\nprint(d)\nprint(d[\"k\"])\nprint(d[\"t\"])\nprint(d[2.5])\nprint(len(d))\nprint(\"k\" in d)\nfor k in d:\n    print(k, d[k])\n# the answer of arithmetic over a slot is a pair too, and append takes it with its tag\nhalf = []\nhalf.append(xs[0] / 2)\nprint(half)\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    bad = set()\n    bad.add(c)\nexcept TypeError:\n    print(\"caught-the-unhashable-member\")\ntry:\n    worse = {}\n    worse[c] = 1\nexcept TypeError:\n    print(\"caught-the-unhashable-key\")\n": {
    "hasStdout": true,
    "stdout": "[7, 'a', 1]\n3\nTrue\n7\na\n1\n[2.5, 'a', 1]\n[2.5, 'a', 1]\n2\nTrue\nTrue\n2\n{'k': 7, 't': 'a', 2.5: 'float-key', None: True}\n7\na\nfloat-key\n4\nTrue\nk 7\nt a\n2.5 float-key\nNone True\n[3.5]\ncaught-the-unhashable-member\ncaught-the-unhashable-key\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(max(n, \"b\"))\n": {
+   "hasStdout": true,
+   "stdout": "b\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(max(n, 2.5))\n": {
+   "err": "TypeError: '>' not supported between instances of 'float' and 'str'",
+   "exnMsg": "'>' not supported between instances of 'float' and 'str'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(max(n, n))\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(min([n, \"b\"]))\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(min(n, \"b\"))\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(min(n, 3))\n": {
+   "err": "TypeError: '<' not supported between instances of 'int' and 'str'",
+   "exnMsg": "'<' not supported between instances of 'int' and 'str'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(-7)\nn = xs[0]\nprint(max(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(-7)\nn = xs[0]\nprint(min(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "-7\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nm = max(n, 1)\nprint(m)\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nm = max(n, 1)\nprint(repr(m))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nm = min(n, 3)\nprint(f\"{m}\")\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nm = sum([n, 1])\nprint(m)\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(max([n, 2.5]))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(max(n, \"a\"))\n": {
+   "err": "TypeError: '>' not supported between instances of 'str' and 'float'",
+   "exnMsg": "'>' not supported between instances of 'str' and 'float'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(max(n, 1))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(max(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(max(n, 3.5))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(min([n, 3]))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(min(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(min(n, None))\n": {
+   "err": "TypeError: '<' not supported between instances of 'NoneType' and 'float'",
+   "exnMsg": "'<' not supported between instances of 'NoneType' and 'float'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(min(n, n))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(sum([n, \"a\"]))\n": {
+   "err": "TypeError: unsupported operand type(s) for +: 'float' and 'str'",
+   "exnMsg": "unsupported operand type(s) for +: 'float' and 'str'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(sum([n, 1]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(sum([n]))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(3)\nxs.append(\"a\")\nprint(min(xs[0], xs[1]))\n": {
+   "err": "TypeError: '<' not supported between instances of 'str' and 'int'",
+   "exnMsg": "'<' not supported between instances of 'str' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint(3 in [m])\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint([m])\n": {
+   "hasStdout": true,
+   "stdout": "[3]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint(len([m, 1]))\n": {
+   "hasStdout": true,
+   "stdout": "2\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint(m)\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint(max(m, 5))\n": {
+   "hasStdout": true,
+   "stdout": "5\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = min(n, 3)\nprint(str(m))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nm = sum([n, 1])\nprint(m)\n": {
+   "hasStdout": true,
+   "stdout": "8\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nok = 0\ntry:\n    ok = max(n, 3)\nexcept TypeError:\n    ok = 1\nprint(ok)\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max(3, n))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max([n, 3]))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max(n, \"a\"))\n": {
+   "err": "TypeError: '>' not supported between instances of 'str' and 'int'",
+   "exnMsg": "'>' not supported between instances of 'str' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max(n, 2.5))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(max(n, None))\n": {
+   "err": "TypeError: '>' not supported between instances of 'NoneType' and 'int'",
+   "exnMsg": "'>' not supported between instances of 'NoneType' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(3, n))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min([n, 3]))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, \"a\"))\n": {
+   "err": "TypeError: '<' not supported between instances of 'str' and 'int'",
+   "exnMsg": "'<' not supported between instances of 'str' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, 2.5))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, 3, 1))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, None))\n": {
+   "err": "TypeError: '<' not supported between instances of 'NoneType' and 'int'",
+   "exnMsg": "'<' not supported between instances of 'NoneType' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, True))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, n))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([1, n]))\n": {
+   "hasStdout": true,
+   "stdout": "8\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([n, \"a\"]))\n": {
+   "err": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+   "exnMsg": "unsupported operand type(s) for +: 'int' and 'str'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([n, 1]))\n": {
+   "hasStdout": true,
+   "stdout": "8\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([n, None]))\n": {
+   "err": "TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'",
+   "exnMsg": "unsupported operand type(s) for +: 'int' and 'NoneType'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([n, n]))\n": {
+   "hasStdout": true,
+   "stdout": "14\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(sum([n]))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ntry:\n    print(min(n, \"a\"))\nexcept TypeError:\n    print(\"caught-the-ordering\")\n": {
+   "hasStdout": true,
+   "stdout": "caught-the-ordering\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ntry:\n    print(sum([n, \"a\"]))\nexcept TypeError:\n    print(\"caught-the-sum-of-text\")\n": {
+   "hasStdout": true,
+   "stdout": "caught-the-sum-of-text\n"
+  },
+  "xs = []\nxs.append(7)\nxs.append([1])\nn = xs[0]\nm = xs[1]\nprint(sum([n, m]))\n": {
+   "err": "TypeError: unsupported operand type(s) for +: 'int' and 'list'",
+   "exnMsg": "unsupported operand type(s) for +: 'int' and 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint(max(n, 3))\n": {
+   "err": "TypeError: '>' not supported between instances of 'int' and 'NoneType'",
+   "exnMsg": "'>' not supported between instances of 'int' and 'NoneType'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint(min(n, None))\n": {
+   "err": "TypeError: '<' not supported between instances of 'NoneType' and 'NoneType'",
+   "exnMsg": "'<' not supported between instances of 'NoneType' and 'NoneType'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ntry:\n    print(max(n, 1))\nexcept TypeError:\n    print(\"caught-the-none-ordering\")\n": {
+   "hasStdout": true,
+   "stdout": "caught-the-none-ordering\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(max(n, 1))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(max(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "3\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(max(n, None))\n": {
+   "err": "TypeError: '>' not supported between instances of 'NoneType' and 'bool'",
+   "exnMsg": "'>' not supported between instances of 'NoneType' and 'bool'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(min(n, \"a\"))\n": {
+   "err": "TypeError: '<' not supported between instances of 'str' and 'bool'",
+   "exnMsg": "'<' not supported between instances of 'str' and 'bool'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(min(n, 3))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(sum([n, 1]))\n": {
+   "hasStdout": true,
+   "stdout": "2\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(sum([n]))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint(min(n, 3))\n": {
+   "err": "TypeError: '<' not supported between instances of 'int' and 'list'",
+   "exnMsg": "'<' not supported between instances of 'int' and 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append({\"k\": 1})\nn = xs[0]\nprint(max(n, 3))\n": {
+   "err": "TypeError: '>' not supported between instances of 'int' and 'dict'",
+   "exnMsg": "'>' not supported between instances of 'int' and 'dict'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append({1})\nn = xs[0]\nprint(min(n, \"a\"))\n": {
+   "err": "TypeError: '<' not supported between instances of 'str' and 'set'",
+   "exnMsg": "'<' not supported between instances of 'str' and 'set'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "# probe_the_fold_builtins_answer_the_pair.gy — `min`, `max` and `sum` over a value whose kind the\n# run time chose (roadmap L11.1, Gap R.146's \"`min(n, 3)`\" and \"a literal `sum`/`min`/`max` folds into a\n# static array\"; ADR 0316).\n#\n# A fold hands back one of the values it was given, so the answer's KIND is the winner's kind: `min(2.5, 3)`\n# is the float and `max(2.5, 3)` is the integer, and a fold lowered by lifting both sides and returning one\n# word prints the loser's shape as often as the winner's. The door is handed two (payload, tag) pairs and\n# writes back the winning pair, so whichever arm the run time takes the payload travels with the tag that says\n# what it means; `sum` is `+` seeded with the integer 0, which is why a text element earns\n# \"unsupported operand type(s) for +: 'int' and 'str'\" with 'int' named first.\n#\n# Two kinds are ordered — numbers in the one word that holds both families, texts by CONTENT (rt_str_order,\n# not the intern table's arrival order). CPython keeps the incumbent on a tie, so `max(True, 1)` is True; the\n# fold runs left to right and the raise names the candidate first and the incumbent second, which is the order\n# the failing comparison had.\n#\n# The traps are RAISED, not refused: a fold of two values with no ordering leaves through the program's own\n# `except TypeError:`, where a compile-time refusal would be a compiler opinion instead of a language answer\n# (ADR 0166, ADR 0228).\n\nxs = []\nxs.append(7)\nxs.append(2.5)\nxs.append(\"a\")\nxs.append(None)\nxs.append(True)\nn = xs[0]\nf = xs[1]\ns = xs[2]\nz = xs[3]\nb = xs[4]\n# the varargs spelling: the winner's own kind, printed by the module's one tag-reading printer\nprint(min(n, 3))\nprint(max(n, 3))\nprint(min(3, n))\nprint(min(f, 3))\nprint(max(f, 3))\nprint(max(f, 2.5))\nprint(min(b, 3))\nprint(max(b, 1))\nprint(min(n, 3, 1))\n# the container-literal fold, and sum as a left fold over +\nprint(sum([n]))\nprint(sum([n, 1]))\nprint(sum([f, 1]))\nprint(sum([b, 1]))\nprint(min([n, 3]))\nprint(max([n, 2.5]))\nprint(min([s, \"b\"]))\n# the answer bound to a name, and read back by every position that asks the tag\nm = min(f, 3)\nprint(m)\nprint(str(m))\nprint(repr(m))\nprint(f\"{m}\")\nw = max(n, 3)\nprint([w])\nprint(len([w, 1]))\nprint(7 in [w])\n# two texts order by content, and the tie keeps the incumbent\nprint(min(s, \"b\"))\nprint(max(s, s))\n# a value with no ordering raises the reference's sentence, and the program's arm runs\ntry:\n    print(min(n, \"a\"))\nexcept TypeError:\n    print(\"caught-the-ordering\")\ntry:\n    print(max(z, 1))\nexcept TypeError:\n    print(\"caught-the-none-ordering\")\ntry:\n    print(sum([n, \"a\"]))\nexcept TypeError:\n    print(\"caught-the-sum-of-text\")\n": {
+   "hasStdout": true,
+   "stdout": "3\n7\n3\n2.5\n3\n2.5\nTrue\nTrue\n1\n7\n8\n3.5\n2\n3\n7\na\n2.5\n2.5\n2.5\n2.5\n[7]\n2\nTrue\na\na\ncaught-the-ordering\ncaught-the-none-ordering\ncaught-the-sum-of-text\n"
+  },
+  "# probe_pair_bound_name_takes_a_value.gy — what is LEFT of the one-word positions, and the one that\n# closed (roadmap Gap R.146; ADR 0267 bound the pair, ADR 0269 paid `and`, ADR 0306 the list element,\n# ADR 0316 the fold).\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload, and the positions that ask\n# for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What this program used to\n# pin was the positions that take a whole *value*: a builtin's argument kept one word for its operand, the\n# second word had nowhere to be stored, and the compiled leg declined rather than print the payload alone.\n#\n# All three lines answer now, and the program is parity surface:\n#\n#   - `abs(n)` — the signless call, which is the arithmetic door's own op (Gap R.140, ADR 0271);\n#   - `min(n, 3)` — a fold hands back one of the values it was given, so the door writes the winner's\n#     payload beside the winner's tag (Gap R.146's fold clause, ADR 0316);\n#   - `n and 3` — an operator that chooses an operand asks the pair directly (Gap R.147, ADR 0269).\n#\n# A container element is a pair position too since ADR 0306 (`[n]` prints [14], in\n# programs/probe_pair_bound_name_enters_a_container.gy). The positions still refusing are pinned where they\n# live: `min(n, 3) + 1` and `abs(min(n, 3))` in pair_binding_test.go's refusal table, a fold over a set\n# literal and a container literal operand in pair_dict_set_test.go's (Gap R.198).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint(n and 3)\n": {
+   "hasStdout": true,
+   "stdout": "14\n3\n3\n"
   }
  },
  "meta": {

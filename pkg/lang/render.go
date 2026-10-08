@@ -67,6 +67,17 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 		quote = 1
 	}
 
+	// The answer of a fold the run time chose is a pair before it is a number: `min` and `max` hand back
+	// one of the values they were given, so which form this renders is the winner's fact and not the
+	// source's. It is asked of the same door print and the binder ask, which is the only reason
+	// `str(min(n, 3))`, `print(min(n, 3))` and `f"{min(n, 3)}"` can be relied on to agree (ADR 0303's
+	// one printer, ADR 0316; roadmap L11.1, Gap R.146).
+	if p, t, okFold, ferr := g.foldPairOf(b, e); ferr != nil {
+		return "", true, ferr
+	} else if okFold {
+		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
+	}
+
 	// A name the arithmetic door bound is a number whose family the objects chose, and it is asked
 	// first — ahead of the container question, whose probe lowers the name as a number and would
 	// refuse before this arm could speak. It is rendered by the printer every other form goes

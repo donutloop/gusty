@@ -189,7 +189,10 @@ func TestTheOneWordPositionsStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 		// `print(abs(n))` was on this table and answers since ADR 0309: the signless call takes the
 		// operand's kind from the tag. `print([n])` was on this table too and is answered since ADR 0306: a container element is no
 		// longer a position that keeps one word. It lives in pair_container_test.go's answer table.
-		pairNumberBuiltInt + "print(min(n, 3))\n",
+		// `print(min(n, 3))` was on this table a third time, and it answers since ADR 0316 — a fold hands back
+		// one of the values it was given, and the door writes the winner's payload beside the winner's tag. It
+		// lives in pair_fold_test.go, together with the fold shapes this table still refuses (an answer used as
+		// an arithmetic or `abs` operand, in pair_binding_test.go's table beside this one).
 	} {
 		path := writeSrc(t, dir, "pairnum_refuse.gy", src)
 		got, code := cliRunMerged(t, "--file", path)

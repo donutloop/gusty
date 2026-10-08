@@ -3352,6 +3352,105 @@ fin:
   store i32 %tg, i32* %outt
   ret i32 0
 }
+
+`
+
+// pairFoldRuntimeIR is the fold door's own block (roadmap L11.1, Gap R.146; ADR 0316): the two operator
+// symbols a fold spells in its TypeError, the sentence, and the two helpers. It is emitted for a module
+// that folds a value whose kind the run time chose and for no other — ADR 0309 asked the same question of
+// the signless call ("carry the sentence per kind reached, carry none of it when nothing reaches it"), and
+// a sum, which orders nothing, answers without ever naming an ordering. It rides with the arithmetic block,
+// because rt_pair_fold asks that block's rt_lift_num and rt_kind_name and writes into its rt.num.msg
+// buffer: a referenced internal function that was never emitted is the module llc rejects (ADR 0173).
+const pairFoldRuntimeIR = `@rt.o.lt = private constant [2 x i8] c"<\00"
+@rt.o.gt = private constant [2 x i8] c">\00"
+; The sentence a fold raises when the two values it was asked to order have no ordering: CPython writes
+; the OPERATOR the fold used and the two kinds in the order the comparison had them — the candidate first,
+; the incumbent second — which is why one format serves min and max and why the caller passes the pairs in
+; fold order rather than in source order (roadmap L11.1, Gap R.146; ADR 0271's "a trap says what the program
+; wrote" rule, applied to a call whose comparison the program never wrote out).
+@rt.fold.fmt = private constant [65 x i8] c"TypeError: '%s' not supported between instances of '%s' and '%s'\00"
+
+; rt_pair_fold is the fold door: min() and max() choose one of their arguments and hand it back, so the
+; answer's kind is the WINNER's kind — min(2.5, 3) is the float and max(2.5, 3) is the integer, which
+; is why a fold cannot be lowered by comparing lifted doubles and returning one word. The door is handed
+; two (payload, tag) pairs and writes back the winning PAIR: whichever arm the run time takes, the payload
+; travels with the tag that says what it means. Two kinds are ordered here — the numbers, in the one word
+; that holds both families, and the texts, by content through rt_str_order rather than by the intern
+; table's arrival order (ADR 0248's rule, one door later). Anything else has no ordering, and the door
+; says so with CPython's own sentence rather than answering with a word that means something else
+; (roadmap L11.1, Gap R.146; ADR 0250/0252's per-kind raise, applied to a call).
+;
+; op 0 is min, op 1 is max. %a is the CANDIDATE and %b the incumbent, which is the order the reference
+; puts the two kinds in its TypeError, and the reason the fold runs left to right with the first argument
+; as the starting incumbent: CPython keeps the incumbent on a tie, so max(True, 1) is True.
+define internal i32 @rt_pair_fold(i32 %op, i32 %ap, i32 %at, i32 %bp, i32 %bt, i32* %outp, i32* %outt, i8** %outmsg) {
+entry:
+  %ismin = icmp eq i32 %op, 0
+  %an = icmp ult i32 %at, 3
+  %bn = icmp ult i32 %bt, 3
+  %bothnum = and i1 %an, %bn
+  br i1 %bothnum, label %num, label %notnum
+num:
+  %af = call double @rt_lift_num(i32 %ap, i32 %at)
+  %bf = call double @rt_lift_num(i32 %bp, i32 %bt)
+  %nlt = fcmp olt double %af, %bf
+  %ngt = fcmp ogt double %af, %bf
+  %ntake = select i1 %ismin, i1 %nlt, i1 %ngt
+  br label %win
+notnum:
+  %atxt = icmp eq i32 %at, 4
+  %btxt = icmp eq i32 %bt, 4
+  %bothtext = and i1 %atxt, %btxt
+  br i1 %bothtext, label %order, label %same
+same:
+  ; The one container question that needs no walk over any elements: when both sides are the VERY SAME
+  ; object the comparison is reflexively false and the incumbent is kept, which is what the reference
+  ; answers for a list and for a set (x < x and x > x are both False, the subset operator included).
+  ; NoneType and dict are deliberately not in this arm: they have no ordering at all, and CPython raises
+  ; its sentence even when the two sides are one object, so they fall through to it.
+  %samep = icmp eq i32 %ap, %bp
+  %samet = icmp eq i32 %at, %bt
+  %sameo = and i1 %samep, %samet
+  %islist = icmp eq i32 %at, 5
+  %isset = icmp eq i32 %at, 7
+  %iscard = or i1 %islist, %isset
+  %ident = and i1 %sameo, %iscard
+  br i1 %ident, label %win, label %bad
+order:
+  %o = call i32 @rt_str_order(i32 %ap, i32 %bp)
+  %olt = icmp slt i32 %o, 0
+  %ogt = icmp sgt i32 %o, 0
+  %otake = select i1 %ismin, i1 %olt, i1 %ogt
+  br label %win
+win:
+  %take = phi i1 [ %ntake, %num ], [ %otake, %order ], [ false, %same ]
+  %wp = select i1 %take, i32 %ap, i32 %bp
+  %wt = select i1 %take, i32 %at, i32 %bt
+  store i32 %wp, i32* %outp
+  store i32 %wt, i32* %outt
+  ret i32 0
+bad:
+  call void @rt_fold_bad(i32 %op, i32 %at, i32 %bt)
+  %fm = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
+  store i8* %fm, i8** %outmsg
+  ret i32 1
+}
+
+; rt_fold_bad writes the one sentence a fold cannot make: it is CPython's, character for character,
+; because the fold is what a program wrote and the kinds are what the objects hold. The operator symbol
+; comes from which CALL asked — min asks '<', max asks '>' — the same rule that keeps abs's sentence
+; distinct from the unary minus's (ADR 0271).
+define internal void @rt_fold_bad(i32 %op, i32 %lt, i32 %rt) {
+entry:
+  %ismin = icmp eq i32 %op, 0
+  %sym = select i1 %ismin, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.lt, i32 0, i32 0), i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.gt, i32 0, i32 0)
+  %ln = call i8* @rt_kind_name(i32 %lt)
+  %rn = call i8* @rt_kind_name(i32 %rt)
+  %buf = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
+  %w = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([65 x i8], [65 x i8]* @rt.fold.fmt, i32 0, i32 0), i8* %sym, i8* %ln, i8* %rn)
+  ret void
+}
 `
 
 // gcRootCap is the capacity of the compiled backend's root stack (ADR 0181). One
@@ -3895,6 +3994,20 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		}
 		g.globals.WriteString(numArithRuntimeIR)
 	}
+	// The fold door (roadmap L11.1, Gap R.146; ADR 0316) is its own block for the reason the two above
+	// are: `sum`, which orders nothing, and every ordinary program answer without carrying an ordering
+	// sentence. It rides with the arithmetic door, whose `rt_lift_num`, `rt_kind_name` and `rt.num.msg`
+	// it asks — a referenced internal function that was never emitted is the module llc rejects
+	// (ADR 0173, ADR 0192).
+	if g.foldUsed || runtimeBlockReferenced(pairFoldRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		if !g.arithUsed && !runtimeBlockReferenced(numArithRuntimeIR, bodyText) {
+			g.globals.WriteString(numArithRuntimeIR)
+		}
+		g.globals.WriteString(pairFoldRuntimeIR)
+	}
 	// The REPL echo's writer (roadmap L13.1, ADR 0302) rides with the heap block for the same
 	// reason the arithmetic door does: it renders through `rt_str_ptr`/`rt_str_len`, which live
 	// there, and a referenced internal function that was never emitted is the module `llc`
@@ -4309,6 +4422,10 @@ type irGen struct {
 	// arithUsed records that this module does arithmetic on a slot whose kind only the run time can
 	// describe, which is what pulls in the tagged arithmetic door (roadmap L11.1, ADR 0265).
 	arithUsed bool
+	// foldUsed records that this module folds a value whose kind the run time chose — a `min`, `max` or
+	// `sum` over a pair — which is what pulls in the fold door (roadmap L11.1, Gap R.146; ADR 0316). A
+	// module that never asks the door carries no ordering sentence it never reaches.
+	foldUsed bool
 	// numChains is the gate on the `+` and `*` half of that door: the literal kind tree of what a program
 	// can store into each container's slots, level by level. `+` and `*` are answered by the reference
 	// with a joined text or a repeated list when a slot holds one, and this backend can build neither
@@ -13480,6 +13597,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			} else if printed {
 				continue
 			}
+			// print(min(n, 3)), print(sum([n, 1])): the answer of a fold whose winner the run time chose.
+			// The fold returns one of the values it was handed, so the answer's kind is the winner's own
+			// kind and the ordinary road — which compares lifted doubles and returns one word — cannot
+			// carry it (roadmap L11.1, Gap R.146; ADR 0316).
+			if printed, perr := g.pairFoldPrint(b, a); perr != nil {
+				return "", perr
+			} else if printed {
+				continue
+			}
 			if g.arithWouldRefuse(a) {
 				if val, tg, okPair, perr := g.taggedArithPair(b, a); perr != nil {
 					return "", perr
@@ -17257,6 +17383,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
 				return aerr
+			} else if handled {
+				return nil
+			}
+			// `m = min(n, 3)` — the answer of a fold the run time decided, bound to a name. The print
+			// position already asks this door; a binding that only kept the payload would leave a float
+			// winner printing as its box handle and an int winner printing as whatever a text slot's
+			// interned index happens to be (roadmap L11.1, Gap R.146; ADR 0267's rule, ADR 0316).
+			if handled, ferr := g.bindFoldPair(b, nm.Value, n.Value); ferr != nil {
+				return ferr
 			} else if handled {
 				return nil
 			}

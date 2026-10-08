@@ -313,24 +313,32 @@ func TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad(t *testing.T) {
 }
 
 // TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord is this cycle's honest half, and it is the
-// measure of where the door stops. Three classes remain:
+// measure of where the door stops. Two classes remain:
 //
-//   - a literal a builtin FOLDS into a static array (`sum([n])`, `min([n, 3])`) — the fold has no tag storage
-//     at all, and teaching it means teaching the lookup that reads the array back;
 //   - a pair handed through a parameter, which is a different boundary (Gap R.154's family) — the callee's
-//     parameter is not a pair, so the entry inside the body has no tag to carry.
+//     parameter is not a pair, so the entry inside the body has no tag to carry;
+//   - a fold whose operand the door will not label, or whose element set the source does not fix: a set
+//     literal (CPython folds it in hash order, deduped), or a container literal as an operand. Both stay
+//     refusals in words rather than becoming a number nobody asked for (Gap R.198, ADR 0316).
 //
-// The MUTATION roads that used to be here — `xs.append(n)`, `s.add(n)`, `xs[i] = v`, `d[k] = v` — are paid
-// by ADR 0311 and live in `pair_mutation_test.go`, together with the value they still cannot carry
-// (`d["k"] = xs[0] / 2`, which the ordinary road is asked about first and refuses in words).
+// The three fold rows that used to open this table — `sum([n])`, `min([n, 3])`, `max([n, 3])` — are paid by
+// ADR 0316 and live in `pair_fold_test.go`; the MUTATION roads that used to be here are paid by ADR 0311 and
+// live in `pair_mutation_test.go`, together with the value they still cannot carry (`d["k"] = xs[0] / 2`,
+// which the ordinary road is asked about first and refuses in words).
 // Each keeps the sentence that names the value's origin, the missing half and the roadmap row; exit 2 stays
 // forbidden, because a refusal this backend emits is a diagnostic and not a compiler bug (ADR 0166).
 func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T) {
-	for _, tc := range []struct{ name, pre, body string }{
-		{"a sum over a folded literal", pairDictIntSlot, "print(sum([n]))\n"},
-		{"a min over a folded literal", pairDictIntSlot, "print(min([n, 3]))\n"},
-		{"a max over a folded literal", pairDictIntSlot, "print(max([n, 3]))\n"},
-		{"a pair handed through a parameter into a dict", pairDictIntSlot, "def build(k):\n    return {\"k\": k}\nprint(build(n))\n"},
+	for _, tc := range []struct {
+		name, pre, body string
+		must            []string
+	}{
+		{"a pair handed through a parameter into a dict", pairDictIntSlot, "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", nil},
+		{"a fold over a set literal", pairDictIntSlot, "print(min({n, 3}))\n", nil},
+		// A container literal is an operand this door will not label. The sentence the ordinary sum road
+		// writes is its own, and it names what the element IS rather than the missing tag, because there the
+		// element's kind is a fact the compiler can see (Gap R.198).
+		{"a container literal as a fold operand", pairDictIntSlot, "print(sum([n, [1]]))\n",
+			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := tc.pre + tc.body
@@ -338,7 +346,11 @@ func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T
 			if err == nil {
 				t.Fatalf("answered %q where the door still does not reach: the position keeps one word for its operand", res.Output)
 			}
-			for _, want := range []string{"(payload, tag) pair", "one word", "roadmap L11.1"} {
+			wants := tc.must
+			if wants == nil {
+				wants = []string{"(payload, tag) pair", "one word", "roadmap L11.1"}
+			}
+			for _, want := range wants {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("the refusal does not name the missing half (%q): %v", want, err)
 				}

@@ -1,18 +1,23 @@
-# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.
+# probe_pair_bound_name_takes_a_value.gy — what is LEFT of the one-word positions, and the one that
+# closed (roadmap Gap R.146; ADR 0267 bound the pair, ADR 0269 paid `and`, ADR 0306 the list element,
+# ADR 0316 the fold).
 #
-# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the
-# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What is
-# left is the positions that take a whole *value*: a builtin's argument keeps one word for its operand, and
-# the second word — the tag — has no place to be stored, so the compiled leg declines rather than print the
-# payload alone. CPython answers both lines (roadmap Gap R.146, the same missing word Gap R.139 names on the
-# calling side).
+# A name the arithmetic door bound carries its kind in the tag beside its payload, and the positions that ask
+# for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What this program used to
+# pin was the positions that take a whole *value*: a builtin's argument kept one word for its operand, the
+# second word had nowhere to be stored, and the compiled leg declined rather than print the payload alone.
 #
-# Two lines left this program as the shape they were filed with changed sides. An operator that chooses an
-# operand can ask the pair directly, so `n and 3` prints CPython's `3` (Gap R.147, ADR 0269); and a container
-# element is no longer a one-word position — `[n]` prints `[14]`, the heap builder writing the element's tag
-# beside its payload — so that line lives in programs/probe_pair_bound_name_enters_a_container.gy (Gap R.146's
-# element half, ADR 0306). A dict entry, a set member and a literal `sum`/`min`/`max` folds into a static
-# array still owe the same missing word.
+# All three lines answer now, and the program is parity surface:
+#
+#   - `abs(n)` — the signless call, which is the arithmetic door's own op (Gap R.140, ADR 0271);
+#   - `min(n, 3)` — a fold hands back one of the values it was given, so the door writes the winner's
+#     payload beside the winner's tag (Gap R.146's fold clause, ADR 0316);
+#   - `n and 3` — an operator that chooses an operand asks the pair directly (Gap R.147, ADR 0269).
+#
+# A container element is a pair position too since ADR 0306 (`[n]` prints [14], in
+# programs/probe_pair_bound_name_enters_a_container.gy). The positions still refusing are pinned where they
+# live: `min(n, 3) + 1` and `abs(min(n, 3))` in pair_binding_test.go's refusal table, a fold over a set
+# literal and a container literal operand in pair_dict_set_test.go's (Gap R.198).
 xs = []
 xs.append([7, 8])
 n = xs[0][0] * 2

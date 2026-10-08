@@ -1037,7 +1037,7 @@ func (g *irGen) nameIsPairElem(x Expr) bool {
 		return false
 	}
 	switch g.taggedOrigin[nm.Value] {
-	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
+	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop, taggedOriginFold:
 		return true
 	}
 	return false
@@ -1828,6 +1828,12 @@ const (
 	// kinds. Recorded rather than inferred: "comes from a loop" is true only when a loop bound it, and the
 	// door that knows whether a loop ran is the door that should say so.
 	taggedOriginLoop = "the element a loop stepped over a container that mixes kinds"
+	// taggedOriginFold is the pair a `min`/`max`/`sum` answer leaves behind. A fold hands back one of the
+	// values it was given, so the answer's kind is the WINNER's kind and only the run time knows which arm
+	// won; the two words the name holds came out of the fold door, not out of a slot, a loop or a call site,
+	// and a refusal that blamed any of those three would be Gap R.38's defect again (roadmap L11.1,
+	// Gap R.146; ADR 0316).
+	taggedOriginFold = "the answer of a fold the built-in chose"
 )
 
 // taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
@@ -1849,6 +1855,8 @@ func (g *irGen) taggedVarErr(name string) error {
 		return fmt.Errorf("%s holds %s, which travels as a (payload, tag) pair: the object the slot was read out of says which kind it is, print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginSlot, name)
 	case taggedOriginLoop:
 		return fmt.Errorf("%s is %s, so it travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — using it as a number needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginLoop, name)
+	case taggedOriginFold:
+		return fmt.Errorf("%s holds %s, which travels as a (payload, tag) pair: a fold hands back one of the values it was given, so the answer's kind is the winner's own kind and only the run time knows which arm won, print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)", name, taggedOriginFold, name)
 	case taggedOriginFloat:
 		return fmt.Errorf("%s holds %s: the variable was bound to a number and rebound to a double, so its value travels as a (payload, tag) pair whose payload is a float box, print(%s) asks the tag, and this position keeps one word for its operand (roadmap L11.6, Gap R.155)", name, taggedOriginFloat, name)
 	}
@@ -5268,6 +5276,14 @@ func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok
 	if nm, isName := e.(*Name); isName && (g.numericPairVar(nm.Value) || (g.taggedVars != nil && g.taggedVars[nm.Value])) {
 		payload, tag = g.numericPairRegs(b, nm.Value)
 		return payload, tag, true, nil
+	}
+	// The answer of a fold the run time decided: `f"{min(n, 3)}"` prints the WINNER, whose kind is the
+	// winner's own, and the field must ask the same door print and str() ask or the three renderings of one
+	// value disagree (roadmap L11.1, Gap R.146; ADR 0303's one printer, ADR 0316).
+	if p, t, okFold, ferr := g.foldPairOf(b, e); ferr != nil {
+		return "", "", false, ferr
+	} else if okFold {
+		return p, t, true, nil
 	}
 	if g.taggedVars == nil {
 		return "", "", false, nil

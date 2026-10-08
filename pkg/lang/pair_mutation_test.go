@@ -308,15 +308,15 @@ func TestAMutatedContainerTakesItsWordsFromTheTaggedDoors(t *testing.T) {
 
 // TestWhatTheMutationRoadsStillRefuseIsStillRefusedInWords is this cycle's honest half, and the row it most
 // nearly lost. `d["k"] = xs[0] / 2` and `xs[0] = xs[0] / 2` used to refuse because the ordinary value road was
-// asked first; the pair road must not answer for a value it is not. A pair handed through a parameter, and a
-// literal a builtin folds into a static array, are the same field of Gap R.146 and keep their sentences;
-// exit 2 stays forbidden, because a refusal this backend emits is a diagnostic (ADR 0166).
+// asked first; the pair road must not answer for a value it is not. A pair handed through a parameter is the
+// same field of Gap R.146 and keeps its sentence; the `sum([n])` row that used to sit here answers since
+// ADR 0316 and lives in `pair_fold_test.go`. Exit 2 stays forbidden, because a refusal this backend emits is
+// a diagnostic (ADR 0166).
 func TestWhatTheMutationRoadsStillRefuseIsStillRefusedInWords(t *testing.T) {
 	for _, tc := range []struct{ name, pre, body, wantPhrase string }{
 		{"a double written into a dict slot", pairDictIntSlot, "d2 = {}\nd2[\"k\"] = xs[0] / 2\nprint(d2)\n", "stores an i32 word"},
 		{"a double written into a list slot", pairDictIntSlot, "ys = [0]\nys[0] = xs[0] / 2\nprint(ys)\n", "stores an i32 word"},
 		{"a pair handed through a parameter into a dict", pairDictIntSlot, "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", "roadmap L11.1"},
-		{"a sum over a folded literal", pairDictIntSlot, "print(sum([n]))\n", "one word"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := tc.pre + tc.body

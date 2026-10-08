@@ -1,0 +1,75 @@
+# probe_the_fold_builtins_answer_the_pair.gy — `min`, `max` and `sum` over a value whose kind the
+# run time chose (roadmap L11.1, Gap R.146's "`min(n, 3)`" and "a literal `sum`/`min`/`max` folds into a
+# static array"; ADR 0316).
+#
+# A fold hands back one of the values it was given, so the answer's KIND is the winner's kind: `min(2.5, 3)`
+# is the float and `max(2.5, 3)` is the integer, and a fold lowered by lifting both sides and returning one
+# word prints the loser's shape as often as the winner's. The door is handed two (payload, tag) pairs and
+# writes back the winning pair, so whichever arm the run time takes the payload travels with the tag that says
+# what it means; `sum` is `+` seeded with the integer 0, which is why a text element earns
+# "unsupported operand type(s) for +: 'int' and 'str'" with 'int' named first.
+#
+# Two kinds are ordered — numbers in the one word that holds both families, texts by CONTENT (rt_str_order,
+# not the intern table's arrival order). CPython keeps the incumbent on a tie, so `max(True, 1)` is True; the
+# fold runs left to right and the raise names the candidate first and the incumbent second, which is the order
+# the failing comparison had.
+#
+# The traps are RAISED, not refused: a fold of two values with no ordering leaves through the program's own
+# `except TypeError:`, where a compile-time refusal would be a compiler opinion instead of a language answer
+# (ADR 0166, ADR 0228).
+
+xs = []
+xs.append(7)
+xs.append(2.5)
+xs.append("a")
+xs.append(None)
+xs.append(True)
+n = xs[0]
+f = xs[1]
+s = xs[2]
+z = xs[3]
+b = xs[4]
+# the varargs spelling: the winner's own kind, printed by the module's one tag-reading printer
+print(min(n, 3))
+print(max(n, 3))
+print(min(3, n))
+print(min(f, 3))
+print(max(f, 3))
+print(max(f, 2.5))
+print(min(b, 3))
+print(max(b, 1))
+print(min(n, 3, 1))
+# the container-literal fold, and sum as a left fold over +
+print(sum([n]))
+print(sum([n, 1]))
+print(sum([f, 1]))
+print(sum([b, 1]))
+print(min([n, 3]))
+print(max([n, 2.5]))
+print(min([s, "b"]))
+# the answer bound to a name, and read back by every position that asks the tag
+m = min(f, 3)
+print(m)
+print(str(m))
+print(repr(m))
+print(f"{m}")
+w = max(n, 3)
+print([w])
+print(len([w, 1]))
+print(7 in [w])
+# two texts order by content, and the tie keeps the incumbent
+print(min(s, "b"))
+print(max(s, s))
+# a value with no ordering raises the reference's sentence, and the program's arm runs
+try:
+    print(min(n, "a"))
+except TypeError:
+    print("caught-the-ordering")
+try:
+    print(max(z, 1))
+except TypeError:
+    print("caught-the-none-ordering")
+try:
+    print(sum([n, "a"]))
+except TypeError:
+    print("caught-the-sum-of-text")

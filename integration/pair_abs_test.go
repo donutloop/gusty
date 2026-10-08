@@ -49,6 +49,11 @@ func TestCLIAbsAgreesWithCPython(t *testing.T) {
 		{"a caught raise runs the program's arm", "xs = []\nxs.append(\"a\")\nn = xs[0]\ntry:\n    print(abs(n))\nexcept TypeError:\n    print(\"caught\")\n"},
 		{"abs of a literal", "print(abs(-8))\n"},
 		{"abs of a plain variable", "x = -7\nprint(abs(x))\n"},
+		// The two rows that used to sit in the refusal table below: the double door still cannot read a pair
+		// (the six rows that stayed there), but a signless call *inside* a fold's argument can be lifted, and
+		// so these two programs answer now.
+		{"a min argument", absCLISlot + "print(min(abs(n), 3))\n"},
+		{"a sum element", absCLISlot + "print(sum([abs(n)]))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, dir, "pairabs.gy", tc.src)
@@ -90,8 +95,6 @@ func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 		{"an abs operand of a modulo", absCLISlot + "print(abs(n) % 3)\n"},
 		{"an abs operand of a true quotient", absCLISlot + "print(round(abs(n) / 2))\n"},
 		{"abs of a negation", absCLISlot + "print(abs(-n))\n"},
-		{"a min argument", absCLISlot + "print(min(abs(n), 3))\n"},
-		{"a sum element", absCLISlot + "print(sum([abs(n)]))\n"},
 		{"two abs answers added", absCLISlot + "m = xs[0]\nprint(abs(n) + abs(m))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

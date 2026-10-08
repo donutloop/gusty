@@ -581,7 +581,11 @@ position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes
 that already take `(payload, tag)` — `rt_dict_put_tagged` and `rt_set_add_tagged` — and are parity surface in
 `pair_dict_set_test.go`, `dict_set_test.go` and
 `programs/probe_pair_bound_dict_entry_and_set_member.gy`, ADR 0310; what is left inside that family is a
-literal a builtin folds into a static array, the mutation roads and a pair handed across a call), and the tuple
+pair handed across a call and the four shapes the fold door will not
+label (`Gap R.198`): the mutation roads are parity surface since ADR 0311 (`pair_mutation_test.go`) and a
+builtin's fold of a pair since ADR 0316 — `print(min(n, 3))` is `3`, `print(sum([n, 1]))` is `15`, and the
+answer bound to a name prints by the winner's own kind (`pair_fold_test.go`,
+`programs/probe_the_fold_builtins_answer_the_pair.gy`) — and the tuple
 unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
 and the interpreted leg's answer against the compiled leg's exit 1. The same shape one statement earlier — the
 assignment that changes a variable's state from int to float — is parity surface since

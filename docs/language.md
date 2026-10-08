@@ -2215,10 +2215,70 @@ print(abs(txt[0]))       # TypeError: bad operand type for abs(): 'str'  — the
 
 What is **not** answered stays a refusal that names the missing half, and the boundary is deliberate: the
 positions that keep one word for a whole value — `abs(n) + 1`, `abs(n) * 2`, `round(abs(n) / 2)`,
-`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a builtin-folded literal from the row before
-— still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
+`abs(-n)`, and `abs(n) + abs(m)` — still refuse at exit 1. Taking one word out of a pair is not a partial
+answer, it is a different
 value: a float slot's payload is a box handle and a text slot's is an interned index, and a magnitude of
 either is a plausible number at the exit code of success.
+
+## The fold builtins over a pair — `sum`, `min`, `max`
+
+The three folds take a sequence and answer one value out of it, so they are the builtins that most often get
+handed the shape this row exists for: an element read out of a container the program built. `min(n, 3)` asks
+for the smaller of a slot and a literal; `sum([n])` adds a slot into a literal list. The argument position is
+where the pair is read (roadmap L11.1, Gap R.146's fold clause; ADR 0316):
+
+```python
+xs = []
+xs.append(4)
+n = xs[0]
+print(min(n, 3))          # 3      — the slot's 4 lost to the literal's 3
+print(max(n, 3))          # 4
+ys = []
+ys.append(True)
+b = ys[0]
+print(min(b, 3))          # True   — the verdict wins, and prints as the verdict it is
+print(sum([n, 1]))        # 5      — a fold over a literal list, one element of which is a pair
+m = min(n, 3)
+print(m)                  # 3      — the answer is itself pair-bound, so it prints right
+print(min(n, "b"))        # TypeError: '<' not supported between instances of 'str' and 'int'
+```
+
+Three things make that work, and each is why something nearby still refuses:
+
+* The **argument** the fold receives is a `(payload, tag)` pair, and the tag comes from the element path the
+  name was bound from — not from the expression the argument *looks* like. Asking the print helper or the pair
+  accessors about the argument instead of the fold's answer is what used to make `min(n, 3)` answer the
+  container's length (`min([n], 3)` → `1`) and `print(min(n, 3))` print `3` whatever the slot held.
+* The **comparison is a runtime call, not an IR instruction**. `<` inside a fold has to be able to raise: the
+  answer of `min(n, "b")` is a `TypeError` naming both classes — the same sentence CPython writes, and the
+  same one `max` writes. `sum` of an empty literal answers `0`; `min`/`max` over an empty container are
+  refused in words for now, and the comparison helpers return a sentinel, never a `-1` that could be mistaken
+  for a winner.
+* The **answer** is pair-bound and print-correct, and it is *not* container-bound: `print(m)` answers, and
+  `m + 1` refuses in words. That boundary is deliberate — reading one word of the answer back into an
+  arithmetic door is the truncation ADR 0309 and Gap R.161 measure — and `min(n, 3) + 1`, `abs(min(n, 3))`,
+  `m + 1` and `m > 1` stay refusals that name the origin, the missing half and the row.
+
+What the door will not label stays a refusal in words, and the list of those shapes is the measure of where
+it stops:
+
+* a slot whose kind is **text, None, a list, a set or a dict** — `min(t, 3)` over a text slot is refused, not
+  answered, because the comparison would have to decide before the tag says what the slot holds;
+* a **set literal** — its element set and order are the objects' hash fact and not the source's, and folding
+  the written order would answer `sum({n, 3})` as `6` where the reference answers `3`;
+* a **container written among the folded values** (`sum([n, [1]])`) — refused by the operand lowering in the
+  ordinary `sum` road's own sentence, `sum adds numbers, and a list literal is a container`, which names what
+  the element is rather than the tag it lacks;
+* a **keyword argument or `key=`** (`sum(xs, start=1)`, `min(a, b, key=f)`) and a **shadowed** `min`, `max` or
+  `sum` — the program's own function is asked first, and the call surface is roadmap L11.7's row.
+
+A **name bound to a built container** is not this door at all: `min(xs)` keeps the ordinary fold road, and
+measuring this row found that road reading a number out of the container where the reference raises —
+`min(la, o)` over a built `la` answers `2` (the element count) where CPython raises `TypeError: '<' not
+supported between instances of 'int' and 'list'`, and two *different* containers raise the reference's own
+sentence where it answers a value. That is filed with the reference's answer beside it, not described as a
+refusal (roadmap Gap R.197, with Gap R.97's element-wise ordering; the identity arm — both sides the very same
+object — is the one container question the road answers, and it answers).
 
 ## FFI / C interop (`extern fn`)
 
