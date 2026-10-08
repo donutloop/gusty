@@ -8926,3 +8926,71 @@ asking to be used.
   shard report was never assigned: the JSON said "passed: false" about passing shards, which is the kind of bug
   a machine consumer reads as a green run only because it reads the exit code — both fields are now set, and a
   test asserts they agree.
+
+
+## ADR 0315 — the drift ledger is adjudicated over the whole run, not over one shard (Gap R.199)
+
+### The failure arrived as a green suite
+
+`make testshards` was green for three cycles. The first new test file in `pkg/lang` — 47 cases for the fold
+door — moved the round-robin partition, and `TestEvalImportModuleConst` failed with:
+
+```
+PAID debt still on the ledger: "import constlib\nconstlib.base + 1" (the program answered where the record
+says it traps) now agrees with the record. Remove the row from testdata/interpreter-golden-drift.json.
+```
+
+Nothing about that program changed, and `go test ./pkg/lang` — serial — passed it. The row is not paid; what
+changed was *which process ran which case*. A clean `HEAD` worktree at `-shards=11` and `-shards=20` passed,
+which is the honest proof that the new cases caused it and that the defect predates them: the partition, not
+the fold, is the bug.
+
+### The root cause was a legality argument that proved less than it claimed
+
+ADR 0313 justified sharding with "the drift adjudicator already judges only the sources a run actually asked
+about, so a shard may be a subset". True of a subset, false of a shard. `checkDriftAgainst` read two
+process-global sets — `divergenceSet` (what diverged) and `askedAbout` (what was put a question to) — and each
+`TestMain` judged its own process. Serially the process *is* the run; sharded it is a shard, while a ledger
+row is a claim about the run. One source, two witnesses, two shards: the shard that merely ran it says PAID
+(failing the build and telling the reader to delete a row still owed), the shard holding the divergence says
+owed. The mirror case — a NEW divergence whose *asking* is split so no shard both asks and diverges — reports
+nothing at all. Neither is detectable from inside a shard, because a shard's evidence is a subset by
+construction.
+
+The `askedAbout` guard was written for `-run` subsets, and it kept passing there. A fixture package with two
+test cases — `tools/testshards`'s own golden fixture — has exactly one witness per source, so the tool's
+tests could not see the defect either. **A test that cannot express the failure mode is not a test of it**:
+the new runner tests are written so the merged-evidence case must *not* report the row while the per-shard
+reading must still report it, which is what stops the check passing by being deleted.
+
+### The fix is a type, not a flag
+
+`lang.GoldenEvidence{Ledger, Divergences, Asked}` turns the adjudication into a function of its inputs;
+`GoldenEvidenceFromLedger` collects it, `MergeGoldenEvidence` unions it (a divergence any shard saw is the
+run's; a source any shard asked counts as asked), and `CheckDriftAgainst(evidence, ledger)` — the rules from
+the package that owns them, one implementation for serial and sharded — says the run's sentence. `GUSTY_GOLDEN_REPORT`
+makes a shard write its evidence and hand the judgement over; `tools/testshards` groups the files by the
+**absolute** ledger path each shard recorded (there are two ledgers over one record, and the shard does not
+know which package it is) and calls the rules once per ledger. A green run prints the numbers it merged:
+`… adjudicated over 20 shard(s) — 338 divergence(s) over 2765 source(s) asked, all on the ledger`.
+
+### Rejected, and why
+
+* *Drop the PAID direction under sharding* — green CI at the cost of half a ratchet, and the ledger stops
+  shrinking; the same trade Gap R.190's guard refused.
+* *`-shards 1` in CI* — correct, and 10m06s against a 10m00s default timeout: a fix that spends the budget is
+  not a fix.
+* *Pre-compute the whole run's asked set* — needs a test-name-to-source index that cannot exist: one table
+  case asks 60 sources, and the corpus case asks 2900.
+* *A shared append-only ledger file* — concurrent writers, and one crashed shard poisons it.
+
+### Small things worth writing down
+
+* `GUSTY_GOLDEN_UPDATE`/`GUSTY_GOLDEN_MISSING` stay deliberately outside the handover: they are per-run
+  artifacts and must land on one process. The runner detects them and leaves adjudication in the shard, so a
+  sharded re-record cannot have N writers overwrite the ledger one file at a time.
+* A shard that *failed* skips the drift verdict. It already reddens the run, and a verdict computed from
+  partial evidence invents a second failure for someone to chase.
+* `evidence.Asked` marshals as `[]`, never `null`: a machine consumer should not have to distinguish them.
+* The evidence file names carry the package path (`…-pkg-lang-005.golden-evidence.json`), because the shard
+  index alone collides across the four sharded packages.

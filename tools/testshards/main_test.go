@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 // The harness has one job: every case runs, exactly once, and several of them run at the same time.
@@ -362,5 +364,146 @@ func TestSecond(t *testing.T) {}
 	}
 	if total != 2 {
 		t.Errorf("the package with cases should account for both of them across the shards, got %+v", sum.Results)
+	}
+}
+
+// --- the merged drift adjudication (roadmap Gap R.199, ADR 0315) --------------------------------
+//
+// A ledger row is a claim about a RUN, and a sharded run is N processes. These four rows are the four
+// ways that goes wrong, each pinned against a real ledger file in a temp dir so the adjudication under
+// test is the one TestMain would have run, not a mock of it.
+
+func writeEvidenceFixture(t *testing.T, dir, name string, e lang.GoldenEvidence) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	body, err := json.MarshalIndent(e, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal evidence: %v", err)
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0o644); err != nil {
+		t.Fatalf("write evidence: %v", err)
+	}
+	return path
+}
+
+// ledgerFixture writes a drift ledger and returns its path: the file's shape is the committed one
+// (testdata/interpreter-golden-drift.json), because the point is to read it the way the suite does.
+func ledgerFixture(t *testing.T, dir string, rows []lang.Divergence) string {
+	t.Helper()
+	path := filepath.Join(dir, "interpreter-golden-drift.json")
+	body, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal ledger: %v", err)
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0o644); err != nil {
+		t.Fatalf("write ledger: %v", err)
+	}
+	return path
+}
+
+const shardSource = "print(min(n, 3))"
+
+func TestMergedEvidenceJudgesTheRunAndNotTheShard(t *testing.T) {
+	dir := t.TempDir()
+	ledger := ledgerFixture(t, dir, []lang.Divergence{{
+		Source: shardSource, Reason: "the compiled backend cannot build a program the engine ran",
+		Expected: `stdout "3\n"`, Actual: "roadmap L11.1",
+	}})
+	// The two witnesses of one source land in different shards: one saw it diverge, the other only ran it.
+	// Judged per process — which is what this runner used to do — the second shard reports the row PAID and
+	// the run fails over a partition that merely moved.
+	shard1 := writeEvidenceFixture(t, dir, "s1.json", lang.GoldenEvidence{
+		Ledger: ledger, Asked: []string{shardSource},
+		Divergences: []lang.Divergence{{
+			Source: shardSource, Reason: "the compiled backend cannot build a program the engine ran",
+			Expected: `stdout "3\n"`, Actual: "roadmap L11.1",
+		}},
+	})
+	shard2 := writeEvidenceFixture(t, dir, "s2.json", lang.GoldenEvidence{
+		Ledger: ledger, Asked: []string{shardSource},
+	})
+	problems := adjudicate(summary{OK: true, Results: []resultFor{
+		{Pkg: "pkg/lang", Index: 0, Of: 2, OK: true, Evidence: shard1},
+		{Pkg: "pkg/lang", Index: 1, Of: 2, OK: true, Evidence: shard2},
+	}})
+	if len(problems) != 0 {
+		t.Fatalf("the merged run is owed nothing, and the shard that only ran the source would have filed it paid:\n%s", strings.Join(problems, "\n"))
+	}
+	// The same evidence, judged by the second shard alone, is the false failure this closes.
+	if alone := adjudicate(summary{OK: true, Results: []resultFor{
+		{Pkg: "pkg/lang", Index: 1, Of: 2, OK: true, Evidence: shard2},
+	}}); len(alone) == 0 {
+		t.Errorf("one shard's evidence on its own should read PAID — that is the defect Gap R.199 files")
+	} else if !strings.Contains(alone[0], "PAID debt") {
+		t.Errorf("the per-shard reading should say PAID, it said: %s", alone[0])
+	}
+}
+
+func TestPaidDebtIsStillCaughtAcrossShards(t *testing.T) {
+	dir := t.TempDir()
+	ledger := ledgerFixture(t, dir, []lang.Divergence{{
+		Source: shardSource, Reason: "the compiled backend cannot build a program the engine ran",
+		Expected: `stdout "3\n"`,
+	}})
+	// Every shard asked the source and NO shard saw it diverge: the debt is paid, and the ratchet that
+	// says "shrink the list" has to fire for the run as a whole. Merging must not buy a free pass.
+	e1 := writeEvidenceFixture(t, dir, "s1.json", lang.GoldenEvidence{Ledger: ledger, Asked: []string{shardSource}})
+	e2 := writeEvidenceFixture(t, dir, "s2.json", lang.GoldenEvidence{Ledger: ledger, Asked: []string{shardSource}})
+	problems := adjudicate(summary{OK: true, Results: []resultFor{
+		{Pkg: "pkg/lang", Index: 0, Of: 2, OK: true, Evidence: e1},
+		{Pkg: "pkg/lang", Index: 1, Of: 2, OK: true, Evidence: e2},
+	}})
+	if len(problems) != 1 || !strings.Contains(problems[0], "PAID debt still on the ledger") {
+		t.Fatalf("a row no shard saw diverge is paid off and must fail the run, got %q", problems)
+	}
+}
+
+func TestANewDivergenceSeenByOneShardFailsTheRun(t *testing.T) {
+	dir := t.TempDir()
+	ledger := ledgerFixture(t, dir, nil)
+	// Debt arriving unannounced in ONE shard is still debt for the run; a per-shard check finds it too, so
+	// this row is about not LOSING it while the other half moved to the runner.
+	e1 := writeEvidenceFixture(t, dir, "s1.json", lang.GoldenEvidence{
+		Ledger: ledger, Asked: []string{shardSource},
+		Divergences: []lang.Divergence{{Source: shardSource, Reason: "stdout differs from the record", Expected: "3\n", Actual: "2\n"}},
+	})
+	e2 := writeEvidenceFixture(t, dir, "s2.json", lang.GoldenEvidence{Ledger: ledger, Asked: []string{"print(1)"}})
+	problems := adjudicate(summary{OK: true, Results: []resultFor{
+		{Pkg: "pkg/lang", Index: 0, Of: 2, OK: true, Evidence: e1},
+		{Pkg: "pkg/lang", Index: 1, Of: 2, OK: true, Evidence: e2},
+	}})
+	if len(problems) != 1 || !strings.Contains(problems[0], "NEW divergence") {
+		t.Fatalf("new debt reported by one shard has to redden the run, got %q", problems)
+	}
+}
+
+func TestAFailedShardAdjudicatesNothing(t *testing.T) {
+	dir := t.TempDir()
+	ledger := ledgerFixture(t, dir, []lang.Divergence{{Source: shardSource, Reason: "r", Expected: "x"}})
+	// A shard that died mid-run left partial evidence at best; the shard's own failure is the message, and
+	// a second one invented from a truncated file sends someone chasing the wrong thing.
+	e1 := writeEvidenceFixture(t, dir, "s1.json", lang.GoldenEvidence{Ledger: ledger, Asked: []string{shardSource}})
+	problems := adjudicate(summary{Results: []resultFor{
+		{Pkg: "pkg/lang", Index: 0, Of: 2, OK: true, Evidence: e1},
+		{Pkg: "pkg/lang", Index: 1, Of: 2, OK: false, Err: "test timed out"},
+	}})
+	if len(problems) != 0 {
+		t.Fatalf("a run that already failed must not also be told its ledger is paid off: %q", problems)
+	}
+}
+
+// TestEvidenceNamesDoNotCollideAcrossPackages pins the naming the merge depends on: four packages are sharded
+// at once, each with its own shard indices, so a name keyed on the index alone would have shard 1 of one
+// package overwrite the evidence of shard 1 of another — and the merger would silently judge a ledger on half
+// of one run's evidence.
+func TestEvidenceNamesDoNotCollideAcrossPackages(t *testing.T) {
+	if got := evidenceName("github.com/x/y/pkg/lang", 3); got != "github-com-x-y-pkg-lang-003.golden-evidence.json" {
+		t.Errorf("evidenceName = %q", got)
+	}
+	if evidenceName("pkg/a", 1) == evidenceName("pkg/b", 1) {
+		t.Error("two packages' shard 1 collided on one evidence file")
+	}
+	if evidenceName("pkg/a", 1) == evidenceName("pkg/a", 2) {
+		t.Error("two shards of one package collided on one evidence file")
 	}
 }

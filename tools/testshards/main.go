@@ -19,15 +19,24 @@
 // are each shard's alone, and N shards use N cores.
 //
 // What makes splitting legal is determinism: a case's answer depends on its source and the pinned
-// toolchain, never on which cases ran before it, and the drift adjudicator already judges only the
-// sources a run actually asked about (checkDriftAgainst, pkg/lang/golden.go), so a shard may be a
-// subset. The partition is sort + round-robin over the names `go test -list` reports: the same tree
-// always yields the same shards, and every name lands in exactly one shard, because `-list` is the
-// authority on what exists.
+// toolchain, never on which cases ran before it, so a shard may be a subset. The partition is sort +
+// round-robin over the names `go test -list` reports: the same tree always yields the same shards, and every
+// name lands in exactly one shard, because `-list` is the authority on what exists.
+//
+// One thing in the suite is NOT case-local, and finding it cost a cycle: the golden drift ledger
+// (pkg/lang/golden.go, ADR 0302) is adjudicated from process-global state — the divergences this process
+// reported and the sources it put a question to. A ledger row is a claim about a RUN, and a sharded run is N
+// processes, so a source whose two witnesses land in different shards is judged by a fraction of the run's
+// evidence: the shard that merely ran it reported the row PAID and failed the build, while the shard holding
+// the divergence reported it owed. The partition moves whenever a case is added, so this is not a corner case
+// — it is what happens the first time the suite grows. Each shard now writes its evidence to a file and this
+// runner merges them and adjudicates each ledger ONCE, in pkg/lang, so the rules stay a single
+// implementation (roadmap Gap R.199, ADR 0315; the tests are in main_test.go beside this file).
 //
 // The artifact-writing modes (GUSTY_GOLDEN_UPDATE rewriting the drift ledger, GUSTY_GOLDEN_MISSING
 // collecting sources the record does not cover) are per-run ledgers and belong on ONE process — N shards
-// would each write their own subset over the file. Use plain `go test` for those, or -shards 1.
+// would each write their own subset over the file. Use plain `go test` for those, or -shards 1; when either
+// is set this runner leaves adjudication inside the shards, exactly as before.
 //
 // Usage:
 //
@@ -49,6 +58,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 func main() {
@@ -120,7 +131,31 @@ func main() {
 		}
 	}
 
-	sum := runPlan(*tags, *shards, *timeout, *verbose, *jsonOut, plan)
+	// The ledger-writing modes are per-run artifacts and belong on ONE process (the makefile says so, and
+	// ADR 0313's header says why). With either set, the shards keep their own adjudication and this runner
+	// does not hand it over — a sharded `GUSTY_GOLDEN_UPDATE=1` would otherwise N times over the file.
+	reportDir := ""
+	if os.Getenv("GUSTY_GOLDEN_UPDATE") == "" && os.Getenv("GUSTY_GOLDEN_MISSING") == "" {
+		d, err := os.MkdirTemp("", "gusty-shard-evidence")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "testshards: cannot make the evidence directory: %v\n", err)
+			os.Exit(1)
+		}
+		defer os.RemoveAll(d)
+		reportDir = d
+	}
+
+	sum := runPlan(*tags, *shards, *timeout, *verbose, *jsonOut, reportDir, plan)
+	// The drift adjudication runs ONCE for the whole run, over the evidence every shard left behind. It is
+	// per-process state by construction (`askedAbout`, `divergenceSet` in pkg/lang/golden.go), so a shard
+	// that judges a ledger row at all judges it by a fraction of the run's evidence — which reads a row whose
+	// cases are split across shards as paid off, and can keep a new divergence out of the only file that
+	// would have caught it. The split moves whenever a test file is added, so this is not a corner case: it
+	// is what happens the first time the suite grows a case (roadmap Gap R.199, ADR 0315).
+	for _, line := range adjudicate(sum) {
+		fmt.Fprintln(os.Stderr, line)
+		sum.OK = false
+	}
 	if !*jsonOut {
 		for _, r := range sum.Results {
 			fmt.Printf("%s shard %d/%d: %d test(s), %s — %s\n", r.Pkg, r.Index+1, r.Of, r.Tests, r.Duration, verdict(r))
@@ -157,6 +192,9 @@ type resultFor struct {
 	OK       bool   `json:"ok"`
 	Duration string `json:"duration"`
 	Err      string `json:"error,omitempty"`
+	// Evidence is the file this shard wrote its golden drift evidence to, empty when the run is in a
+	// ledger-writing mode that keeps adjudication in the shard (roadmap Gap R.199, ADR 0315).
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // summary is the run: the plan it executed and what each shard said. `-json` prints exactly this.
@@ -169,7 +207,7 @@ type summary struct {
 	Results []resultFor `json:"results"`
 }
 
-func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, plan []planFor) summary {
+func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, reportDir string, plan []planFor) summary {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -181,7 +219,7 @@ func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, pla
 			wg.Add(1)
 			go func(p planFor, sh shardFor, n int) {
 				defer wg.Done()
-				r := runShard(tags, timeout, verbose, jsonOut, p.Pkg, sh, n)
+				r := runShard(tags, timeout, verbose, jsonOut, reportDir, p.Pkg, sh, n)
 				mu.Lock()
 				rows = append(rows, r)
 				mu.Unlock()
@@ -205,7 +243,7 @@ func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, pla
 // runShard is one `go test -run '^(A|B|…)$'` for one package, with its output attributed to the shard
 // that produced it. A run that dies at its timeout has to leave a log saying which shard was still
 // talking when it stopped — that attribution is the piece the CI panic could not provide.
-func runShard(tags, timeout string, verbose, quiet bool, pkg string, sh shardFor, n int) resultFor {
+func runShard(tags, timeout string, verbose, quiet bool, reportDir, pkg string, sh shardFor, n int) resultFor {
 	args := []string{"test", "-count=1", "-timeout", timeout}
 	if tags != "" {
 		args = append(args, "-tags", tags)
@@ -214,11 +252,16 @@ func runShard(tags, timeout string, verbose, quiet bool, pkg string, sh shardFor
 		args = append(args, "-v")
 	}
 	args = append(args, "-run", runRegex(sh.Names), pkg)
+	var report string
 	cmd := exec.Command("go", args...)
 	cmd.Env = os.Environ()
+	if reportDir != "" {
+		cmd.Env = append(cmd.Env, "GUSTY_GOLDEN_REPORT="+filepath.Join(reportDir, evidenceName(pkg, sh.Index)))
+		report = filepath.Join(reportDir, evidenceName(pkg, sh.Index))
+	}
 	t0 := time.Now()
 	out, err := cmd.CombinedOutput()
-	r := resultFor{Pkg: pkg, Index: sh.Index, Of: n, Tests: sh.Tests, Duration: time.Since(t0).Round(time.Millisecond).String()}
+	r := resultFor{Pkg: pkg, Index: sh.Index, Of: n, Tests: sh.Tests, Duration: time.Since(t0).Round(time.Millisecond).String(), Evidence: report}
 	if err != nil {
 		r.Err = strings.TrimSpace(string(out))
 	} else {
@@ -240,6 +283,70 @@ func labelled(out []byte, prefix string) []byte {
 		b.WriteByte('\n')
 	}
 	return []byte(b.String())
+}
+
+// evidenceName is the file one shard writes its golden evidence to. The package path is folded into the
+// name so two packages' shards cannot collide on an index, and the index is zero-padded so a directory
+// listing reads in shard order.
+func evidenceName(pkg string, index int) string {
+	safe := strings.NewReplacer("/", "-", "\\", "-", ".", "-", ":", "-").Replace(pkg)
+	return fmt.Sprintf("%s-%03d.golden-evidence.json", safe, index)
+}
+
+// adjudicate merges the shards' golden evidence per ledger and applies the drift ratchet ONCE for the
+// whole run, in the package that owns the rules (lang.CheckDriftAgainst) rather than in a copy of them
+// here.
+//
+// Why this belongs to the runner and not to the shards: `askedAbout` and `divergenceSet` are process-local
+// (pkg/lang/golden.go), and the round-robin partition moves whenever a test is added or renamed. A ledger
+// row whose two witnesses land in different shards is then judged by one shard's evidence, which reads a
+// still-owed row as "never asked" (new debt hides) and a row whose cases merely split as "paid off" (the
+// run fails over nothing). Union first: a divergence any shard saw is the run's, and a source any shard
+// asked counts as asked (roadmap Gap R.199, ADR 0315).
+//
+// A shard that failed reddens the run anyway, and its evidence may be truncated mid-run, so adjudication
+// is skipped when anything failed — the shard's own failure is the message, and a second one assembled from
+// partial evidence would send someone chasing the wrong thing.
+func adjudicate(sum summary) []string {
+	byShard := map[string][]lang.GoldenEvidence{}
+	for _, r := range sum.Results {
+		if !r.OK {
+			return nil
+		}
+		if r.Evidence == "" {
+			continue
+		}
+		raw, err := os.ReadFile(r.Evidence)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// A package with no ledger writes nothing; its shard still adjudicated its own way.
+				continue
+			}
+			return []string{fmt.Sprintf("testshards: cannot read %s shard %d/%d golden evidence: %v", r.Pkg, r.Index+1, r.Of, err)}
+		}
+		var e lang.GoldenEvidence
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return []string{fmt.Sprintf("testshards: %s shard %d/%d golden evidence is not JSON: %v", r.Pkg, r.Index+1, r.Of, err)}
+		}
+		byShard[e.Ledger] = append(byShard[e.Ledger], e)
+	}
+	ledgers := make([]string, 0, len(byShard))
+	for l := range byShard {
+		ledgers = append(ledgers, l)
+	}
+	sort.Strings(ledgers)
+	var problems []string
+	for _, l := range ledgers {
+		sets := byShard[l]
+		merged := lang.MergeGoldenEvidence(sets)
+		if report := lang.CheckDriftAgainst(merged, l); report != "" {
+			problems = append(problems, fmt.Sprintf("testshards: %s adjudicated over %d shard(s) of merged evidence:%s", l, len(sets), report))
+			continue
+		}
+		fmt.Printf("testshards: %s adjudicated over %d shard(s) — %d divergence(s) over %d source(s) asked, all on the ledger\n",
+			l, len(sets), len(merged.Divergences), len(merged.Asked))
+	}
+	return problems
 }
 
 // runRegex turns test names into the anchored alternation `-run` wants. Names are Go identifiers, so

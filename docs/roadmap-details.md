@@ -8950,3 +8950,85 @@ leg reads process state the harness does not pin — environment, locale, cwd, t
 source gets two answers and the suite reports a compiler regression that does not exist. The pin belongs in
 the helper that starts the process, because a call site that has to remember it is a call site that will
 forget it.
+
+### Gap R.199 — the drift ledger was adjudicated per process, so a sharded run judged a row by a fraction of the run's evidence (CLOSED by ADR 0315, owner `tooling`)
+
+ADR 0313's legality argument for sharding had a sentence in it that was true of a subset and false of a
+shard:
+
+> the drift adjudicator already judges only the sources a run actually asked about (`checkDriftAgainst`), so
+> a shard may be a subset
+
+What it reads as, and what the code did, is *this process* judges only the sources **this process** asked
+about. Serially the two are the same statement. With one process per core they are not, and the fold door
+(ADR 0316) is what found it: adding `pkg/lang/pair_fold_test.go` moved the round-robin partition, and one
+shard came home with
+
+```
+=== interpreter golden drift (ADR 0302) ===
+PAID debt still on the ledger: "import constlib\nconstlib.base + 1" (the program answered where the record
+says it traps) now agrees with the record. Remove the row from testdata/interpreter-golden-drift.json —
+run with GUSTY_GOLDEN_UPDATE=1 to rewrite it.
+0 divergence(s) reported by this run, 338 on the ledger.
+```
+
+(`0 divergence(s) reported by this run` is the sentence that gives it away: the shard that failed had seen
+nothing diverge, which is what a shard that merely *ran* the source looks like.)
+
+The row is not paid. Nothing about `import constlib` has changed since it was filed. Two cases ask about that
+one source: the corpus case that reproduces the retired engine's `cannot import module constlib` (which is
+where the divergence is *seen*), and `TestEvalImportModuleConst`, which writes a `constlib.gy` beside the
+program and asks the same source in a context where it answers. They live in the same file and were, until
+that commit, in the same shard. Split across two shards, the shard that merely ran the source concluded the
+debt was discharged and failed the build — with instructions to delete a ledger row that is still owed.
+
+That is the benign direction. Read `checkDriftAgainst` again with a shard's inputs and the worse direction is
+visible in the same four lines:
+
+```go
+got := Divergences()                                    // what THIS process saw diverge
+…
+if _, asked := askedAbout.Load(src); !asked { continue } // what THIS process asked about
+problems = append(problems, "PAID debt still on the ledger: …")
+```
+
+A row is reported only when it was asked *and* did not diverge. Ask in one shard, diverge in another, and
+each shard's answer is locally correct and globally wrong: one files paid-off debt that is not paid, the other
+holds new debt that the ledger never learns about. The `askedAbout` guard exists to make a `-run` subset
+honest — "the case did not run, so the row stays" — and a shard is a subset that believes it is a run.
+
+Nothing about this was visible from ADR 0313's own tests, which is worth recording as a lesson about testing
+a harness: the fixture package holds **two** cases, so every source in it has exactly one witness and every
+shard's reading agrees with the run's. The defect needed a suite with multiple witnesses per source, which the
+real suite has by the hundred — `TestCompiledGoldenDrift` asks ~2900 sources, and the table cases beside it
+ask many of the same ones from different directions.
+
+The fix keeps one implementation of "what does this run owe" and moves the *point* at which it is asked:
+
+* `GoldenEvidence{Ledger, Divergences, Asked}` is the value a process knows; `GoldenEvidenceFromLedger`
+  collects it, `MergeGoldenEvidence` unions it — divergences by source, asked as a set, both sorted so a
+  report is reproducible.
+* `CheckDriftAgainst(evidence, ledger)` is the whole ratchet as a function of its inputs. The process-local
+  `checkDriftAgainst(ledger)` is now `return CheckDriftAgainst(GoldenEvidenceFromLedger(ledger), ledger)` —
+  and `pkg/lang/golden_evidence_test.go` pins exactly the property that was missing, by holding an unrelated
+  divergence in the process's own set while handing in a clean evidence value and demanding a clean verdict.
+* `GUSTY_GOLDEN_REPORT=<file>` makes a shard report instead of judge, and prints one line saying it did.
+* `tools/testshards` groups the files by the absolute ledger path each shard recorded (the two test binaries
+  keep two ledgers over the one record, so grouping by package path would be a guess) and calls the package's
+  rules once per ledger. Green says so with numbers: `… adjudicated over 20 shard(s) — 338 divergence(s) over
+  2765 source(s) asked, all on the ledger`.
+* A shard that failed skips adjudication altogether. It has already reddened the run; a second failure
+  assembled from a truncated evidence file is a second thing to chase that was never wrong.
+
+Two things deliberately did not change. `GUSTY_GOLDEN_UPDATE`/`GUSTY_GOLDEN_MISSING` still write from one
+process — with either set, the runner never takes the judgement over — because per-run artifacts multiplied
+over shards is how ADR 0313's own ledger-writing mode would start racing. And the ledger file's shape is
+untouched, so `jq . testdata/interpreter-golden-drift.json` answers the same question it always did; what
+moved is who is allowed to say the answer is clean.
+
+The general shape, for the next one: **a ratchet that reads process-global state is a claim about the
+process, and sharding turns it into a claim about a subset.** When a check's inputs are "what happened during
+the run", either the run is one process, or the inputs have to be values that can be merged and the check has
+to be a function of them. The telling smell is a guard written for one convenience (here, honest `-run`
+subsets) being read as a general property (here, shard legality) — the two are not the same, and only the
+second needed to be proven.

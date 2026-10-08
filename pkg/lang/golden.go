@@ -207,11 +207,87 @@ func Divergences() []Divergence {
 	return out
 }
 
-// checkDrift holds the run's divergences against the ledger. Both directions are failures: an
-// unlisted divergence means new debt arrived unannounced, and a listed divergence that did not
-// happen means debt was paid and the ledger still charges for it.
-func checkDriftAgainst(ledger string) string {
-	got := Divergences()
+// GoldenEvidence is one process's whole contribution to the drift adjudication: the divergences it
+// reported, and the sources it put a question to.
+//
+// It exists because a ledger row is a claim about a RUN, and a sharded run (tools/testshards, ADR 0313) is
+// N processes. `askedAbout` is process-local, so a source whose witnesses are split across shards reads
+// "asked and agreed" in the shard that happens to hold the case which merely runs it, and "never asked" in
+// the shard that holds the case which diverges. Judged per process that turns a paid-off ledger row into a
+// false failure, and — the worse direction — it can hide new debt. Merge the evidence, judge it once
+// (roadmap Gap R.199, ADR 0315).
+type GoldenEvidence struct {
+	// Ledger is the absolute path of the ledger this process adjudicates against, so the merger can group
+	// shards by ledger rather than guess it from a package path: the two test binaries keep two ledgers
+	// over the one record.
+	Ledger      string       `json:"ledger"`
+	Divergences []Divergence `json:"divergences"`
+	Asked       []string     `json:"asked"`
+}
+
+// GoldenEvidenceFromLedger collects what this process knows; calling it after the tests have run is the
+// contract, because it reads the same two sets TestMain would.
+func GoldenEvidenceFromLedger(ledger string) GoldenEvidence {
+	abs, err := filepath.Abs(ledger)
+	if err != nil {
+		abs = ledger
+	}
+	e := GoldenEvidence{Ledger: abs, Divergences: Divergences()}
+	asked := make([]string, 0, 32)
+	askedAbout.Range(func(k, _ any) bool {
+		if s, ok := k.(string); ok {
+			asked = append(asked, s)
+		}
+		return true
+	})
+	sort.Strings(asked)
+	e.Asked = asked
+	return e
+}
+
+// MergeGoldenEvidence unions evidence taken against the same ledger: a divergence any shard saw counts,
+// and a source any shard asked counts as asked. Both directions of the ratchet need the union — new debt
+// reported by one shard is new debt for the run, and a row is only PAID when no shard saw it diverge.
+func MergeGoldenEvidence(sets []GoldenEvidence) GoldenEvidence {
+	merged := GoldenEvidence{}
+	bySource := map[string]Divergence{}
+	asked := map[string]bool{}
+	for _, e := range sets {
+		if merged.Ledger == "" {
+			merged.Ledger = e.Ledger
+		}
+		for _, d := range e.Divergences {
+			bySource[d.Source] = d
+		}
+		for _, s := range e.Asked {
+			asked[s] = true
+		}
+	}
+	rows := make([]Divergence, 0, len(bySource))
+	for _, d := range bySource {
+		rows = append(rows, d)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Source < rows[j].Source })
+	merged.Divergences = rows
+	list := make([]string, 0, len(asked))
+	for s := range asked {
+		list = append(list, s)
+	}
+	sort.Strings(list)
+	merged.Asked = list
+	return merged
+}
+
+// CheckDriftAgainst is the adjudication, spelled as a function of its inputs so a package's TestMain and
+// the sharded runner judge a run by ONE implementation of "what does this run owe" and cannot drift apart.
+// Every divergence of the run has to be a ledger row of the same shape, and every ledger row whose source
+// was asked about has to have diverged: new debt, paid-off debt and changed shape are each a failure.
+func CheckDriftAgainst(e GoldenEvidence, ledger string) string {
+	got := e.Divergences
+	asked := make(map[string]bool, len(e.Asked))
+	for _, s := range e.Asked {
+		asked[s] = true
+	}
 	want, err := readDriftLedgerFrom(ledger)
 	if err != nil {
 		return "interpreter golden drift ledger unreadable: " + err.Error()
@@ -235,7 +311,7 @@ func checkDriftAgainst(ledger string) string {
 		if seen[src] {
 			continue
 		}
-		if _, asked := askedAbout.Load(src); !asked {
+		if !asked[src] {
 			// The case that asks about this source did not run (a -run subset, a skipped file). The
 			// row stays as it is; a full run is where paying it gets noticed.
 			continue
@@ -249,6 +325,13 @@ func checkDriftAgainst(ledger string) string {
 	sort.Strings(problems)
 	return "\n=== interpreter golden drift (ADR 0302) ===\n" + strings.Join(problems, "\n") +
 		fmt.Sprintf("\n%d divergence(s) reported by this run, %d on the ledger.\n", len(got), len(want))
+}
+
+// checkDriftAgainst is this process's own adjudication: the same rules CheckDriftAgainst applies to a
+// merged run, applied to what one process saw. A package's TestMain calls it; the sharded runner merges
+// the shards' evidence and calls the exported form instead.
+func checkDriftAgainst(ledger string) string {
+	return CheckDriftAgainst(GoldenEvidenceFromLedger(ledger), ledger)
 }
 
 func readDriftLedgerFrom(ledger string) (map[string]Divergence, error) {

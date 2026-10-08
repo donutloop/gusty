@@ -1006,7 +1006,7 @@ only as fast as the number of cores it is allowed to use.
 | `make test` | `go test ./...` — the plain serial run. **The only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file |
 | `make testshards` | `go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...` — the same cases in one process per core (what CI runs, split into two steps with a stated `-timeout 12m` each) |
 | `make showshards` | prints the partition as JSON without running anything: which case is in which shard |
-| `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error}` per row, plus the run's `ok` and `elapsed` |
+| `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error, evidence}` per row, plus the run's `ok` and `elapsed`; `evidence` is the file that shard's golden evidence went to, so the merged verdict can be cross-read against it |
 | `-shards N` / `-timeout D` | how many processes per package (default `GOMAXPROCS`), and each shard's `go test -timeout` — one shard's budget, stated rather than implicit |
 
 A package that holds no test files is **reported and skipped** (`testshards: …/echoprobe has no tests to
@@ -1025,9 +1025,21 @@ Four claims the harness makes, each pinned by `tools/testshards/main_test.go`:
   that is the difference between a parallel harness and a serial one that prints nicely.
 - **A red shard turns the run red**, and the other shards still run; output is prefixed `[lang shard 3/4]`
   so an interleaved CI log still attributes each line.
-- **The drift ratchet survives sharding** because it was built for subsets: `checkDriftAgainst` judges a
-  ledger row only if some case in this process asked about it (`askedAbout`). A row is still noticed — in
-  whichever shard owns it — and a shard that dies fails the job.
+- **The drift ratchet is adjudicated once for the run, not once per shard** (ADR 0315). The ledger's two
+  inputs — which sources diverged, which sources were asked about — are process-global state, so a shard
+  that judges a ledger row at all judges it by a subset of the evidence. Each shard writes
+  `{ledger, divergences, asked}` to a file (`GUSTY_GOLDEN_REPORT`), the runner merges them per ledger and
+  calls the package's own rules — `lang.CheckDriftAgainst` — once. A green run prints the numbers so the
+  merge is visible rather than assumed:
+
+  ```
+  testshards: /…/pkg/lang/testdata/interpreter-golden-drift.json adjudicated over 20 shard(s) —
+    338 divergence(s) over 2765 source(s) asked, all on the ledger
+  ```
+
+  A shard that fails skips the adjudication: it already reddens the run, and its evidence may be truncated.
+  With `GUSTY_GOLDEN_UPDATE` or `GUSTY_GOLDEN_MISSING` set, the runner does not take the judgement over at
+  all, so the artifact-writing modes keep their single-process semantics exactly.
 
 Why the cases are not simply `t.Parallel()`: the in-process runner dup2s fd 1 and fd 2 around the program
 it loads (`captureFD`), so two programs in one process would print into each other's pipes; 46 sites in
