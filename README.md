@@ -105,7 +105,9 @@ gusty ships an indentation-based syntax covering:
 - **Modules** — `import mod` loads `mod.gy` and binds `mod` as a namespace with
   `mod.name` / `mod.fn(args)` access.
 - **Standard library** — data-only on-disk modules folded as AOT constants:
-  - `import math` — `PI`, `E`, `TAU`, `PHI`, `SQRT2`, `LN2`, `LN10`.
+  - `import math` — `pi`, `e`, `tau` (the reference's names, and the literals the module declares) plus
+    `PI`, `E`, `TAU` (this language's own, aliased to the same literal), and `PHI`, `SQRT2`, `LN2`,
+    `LN10` (each with a lower-case spelling too) — constants the reference's module does not carry.
   - `import string` — `DIGITS`, `LOWERCASE`, `UPPERCASE`, `HEXDIGITS`,
     `WHITESPACE`, `PUNCT`.
   - `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.

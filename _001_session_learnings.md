@@ -1,4 +1,46 @@
 # Session Learnings
+
+## Round 24 — The stdlib answers the reference's name, and the tracker's own tally was short by four rows (roadmap L11.6 closed; ADR 0321; Gaps R.206, R.207, R.208 filed)
+
+**Feature (stdlib + conformance)**: `import math` / `print(math.PI)` has printed `3.141592653589793` since ADR 0272
+and the conformance ledger still records that program `not_applicable` — the reference has no `PI`, it has `pi`, so
+no CPython program asks the question our program asks. L11.6's last open clause was exactly that constant, so
+`stdlib/math.gy` now declares `pi`, `e`, `tau` as the literals with `PI = pi`, `E = e`, `TAU = tau` beside them, and
+`integration/programs/probe_math_constant_answers_the_references_spelling.gy` — twelve lines written the reference's
+way — went into `conformanceStandalone()` as an **asserted `match`** row. Both legs now run one source instead of
+comparing a hand-written twin to itself.
+
+- **"The reference cannot run this" is a measurement, not an exemption.** `not_applicable` was earned by the
+  upper-case spelling and stayed on the ledger with its reason — deleting it to improve a tally would have hidden
+  the only evidence of why the new row exists. The four constants CPython genuinely lacks (`PHI`, `SQRT2`, `LN2`,
+  `LN10`) are asserted against their values and are *not* on the record: `tools/recmerge` asks CPython first, and
+  the reference traps on `math.phi`, so writing an entry for them would have been the compiled backend testifying
+  for itself.
+- **Declare once, alias second, and make the module's text prove it.** `TestTheTwoSpellingsOfAModuleConstantAreOneDeclaration`
+  parses `stdlib/math.gy` and requires the literal on one name and the *identifier* on the other. `PI = 3.141592653589793`
+  twice passes every answer test on earth and rots the first time someone corrects a digit — the same argument ADR
+  0319 made for counts, applied to a value.
+- **Renaming the other way is a compatibility break smuggled in as a conformance fix.** Seven record entries, both
+  docs and every corpus program say `math.PI`; ADR 0302's "a missing entry fails the case" would have turned the
+  rename into a suite-wide mystery. The additive direction left every witness intact and made the new one possible.
+- **`rows` alone proved nothing again.** 174 → 175 matrix rows, 121 → 122 `match`, 185 → 186 programs: one program
+  added and one debt promoted at the same time, so only the per-row diff keyed by `case.id` says which is which.
+- **The tracker was counting a table that had been cut in half.** Computing the Snapshot's "Rows owed" for this
+  commit found `101 of 119` against a file holding 123 queue rows: a blank line had been committed inside the Open
+  queue, and the scanner stops at the first non-row line — Gap R.202, R.203, R.206 and R.207 were owed work nobody
+  counted, and the markdown they render as has no header row. The blank line is gone, `countQueueRows` now counts
+  past a split *and fails the run when it sees one*, and the negative control re-splits the file in a string (the
+  weakened counter reports 121/102, which is the lie). Found by the guard ADR 0319 shipped: its whole premise is
+  that the file, not the sentence, is the truth.
+- **The `[record]` link is a claim too — and 68 of them do not resolve** (filed Gap R.208, with this cycle's five
+  repaired). ADR 0320 polices backticked paths; a markdown fragment to an anchor that was never written is the same
+  unfalsifiable `DONE` one link type over. The row carries the reproduction rather than a fix, because 67 mechanical
+  anchor insertions plus one missing narrative do not belong in a commit about a stdlib name.
+- **What the reference has and we do not is a row, not an answer.** `math.inf`, `math.nan`, `math.floor(2.7)` exit
+  1 with a sentence naming what is missing (Gap R.207), and `string.digits` — the same naming defect in the next
+  data module, where `PUNCT`/`punctuation` differs by more than case — is Gap R.206. Both are pinned as refusals
+  first, so paying either has to edit a table deliberately rather than land as a surprise.
+
 ## Round 23 — A citation that resolves to nothing is a claim with no witness (roadmap Gap R.205; ADR 0320)
 
 **Feature (tooling/harness)**: `roadmap.md`'s Gap R.189 row rests its 🟨 `PARTIAL` on two test files —

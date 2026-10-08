@@ -1,0 +1,44 @@
+# Oracle probe (L11.6, ADR 0321) — the standard library answers the reference's NAME, not only ours.
+#
+# `print(math.PI)` has printed 3.141592653589793 on every engine since ADR 0272 gave a data module's constant
+# its type. What that row could never be measured is the NAME: the reference spells its constants `math.pi`,
+# `math.e` and `math.tau`, so the compiled answer for `math.PI` had no CPython to compare against — the ledger
+# recorded the program `not_applicable` for the spelling, and the twin in integration/module_const_test.go
+# carried the comparison by hand. A surface the reference cannot spell is a surface the reference leg cannot
+# adjudicate, and an unadjudicated surface is where a wrong answer lives comfortably.
+#
+# So `stdlib/math.gy` declares the reference's spellings as the literal and this language's upper-case names as
+# aliases of it — one number, two names, written in one place. This program is written the reference's way,
+# which means the CPython leg RUNS it and the two legs are compared rather than described. The last four lines
+# are why it is not a one-liner: a module constant is an ordinary value, and the questions L11.6 owns are
+# asked of it — the floored division, the modulo, the digit count, the container, the f-string field — each one
+# a place the folded literal used to be poured into an `i32`.
+#
+# What CPython prints for each line (python3, 3.12):
+#
+#   3.141592653589793
+#   2.718281828459045
+#   6.283185307179586
+#   6.283185307179586
+#   -3.141592653589793
+#   True
+#   3.14
+#   [3.141592653589793, 2.718281828459045]
+#   1.0
+#   1.1415926535897931
+#   2.718281828459045
+#
+import math
+
+print(math.pi)
+print(math.e)
+print(math.tau)
+print(math.pi * 2)
+print(-math.pi)
+x = math.pi
+print(x > 3.14)
+print(round(math.pi, 2))
+print([math.pi, math.e])
+print(math.pi // 2)
+print(math.pi % 2)
+print(f"{math.e}")

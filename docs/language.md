@@ -1138,10 +1138,25 @@ standard-library root (`stdlib/` at the repository root, or `$GUSTY_STDLIB_DIR` 
 `gustyc --stdlib <dir>`). The bundled stdlib ships data-only modules that both the
 interpreter and the AOT compiler fold as top-level constants:
 
-- `import math` — `PI`, `E`, `TAU`, `PHI`, `SQRT2`, `LN2`, `LN10`.
+- `import math` — `pi`, `e`, `tau` (the reference's names and the literals the module declares) and `PI`, `E`,
+  `TAU` (this language's own names, aliased to the same literal), plus `PHI`, `SQRT2`, `LN2`, `LN10` and their
+  lower-case spellings — constants the reference's `math` module does not carry.
 - `import string` — `DIGITS`, `LOWERCASE`, `UPPERCASE`, `HEXDIGITS`, `WHITESPACE`, `PUNCT`.
 - `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.
 - `import json` — `NULL` (`None`), `TRUE` (`True`), `FALSE` (`False`).
+
+**A constant the reference has, the module has under the reference's name** (roadmap L11.6, ADR 0321). `PI` is
+this language's spelling and the record holds it, but the reference spells its constant `math.pi`, and a name the
+reference cannot spell is a name the reference leg cannot adjudicate: `probe_math_const.gy` — the corpus program
+written with the upper-case names — is recorded `not_applicable` for its spelling alone, and the comparison lived
+in a hand-written twin. So `stdlib/math.gy` declares `pi = 3.141592653589793` and `PI = pi`: one literal, two
+names, and `integration/programs/probe_math_constant_answers_the_references_spelling.gy` is a program CPython
+runs. The four names the reference does not have (`PHI`, `SQRT2`, `LN2`, `LN10`) stay asserted against their
+values, and are answered under both spellings.
+
+What the module does not answer is still a refusal in words at exit 1, named by what is missing:
+`math.inf`, `math.nan` and the reference's module functions (`math.floor`, `math.sqrt`) are roadmap
+Gap R.207's row, and `string.digits` — the reference's spelling of the data module's own name — is Gap R.206's.
 
 Reads like `math.PI` resolve to the folded constant in the compiled backend. the record
 also supports importing function-bearing modules (module functions dispatch at runtime);

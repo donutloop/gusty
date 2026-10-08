@@ -1,8 +1,26 @@
 # math — mathematical constants (data-only stdlib module)
-PI = 3.141592653589793
-E = 2.718281828459045
-TAU = 6.283185307179586
+#
+# The reference's spellings come first and are the literal: `import math` / `print(math.pi)` is a program
+# CPython runs, and the conformance leg can only adjudicate a name it can also spell (roadmap L11.6, the
+# "typed stdlib constants" clause; ADR 0272 gave the value its type and ADR 0321 gives the name its twin).
+# The upper-case names are this language's own — the ones `docs/language.md` documents and the record holds —
+# and they are ALIASES of the same declaration rather than a second literal, so the two spellings of a
+# constant cannot drift: one number, two names, one place where it is written.
+pi = 3.141592653589793
+e = 2.718281828459045
+tau = 6.283185307179586
+PI = pi
+E = e
+TAU = tau
+# The four names below are this language's extension: the reference's `math` module does not carry them, so
+# there is no CPython program to compare them with and they are asserted against the values themselves
+# (integration/math_const_spelling_test.go). Their lower-case spellings exist so a reader who reaches for the
+# reference's style is not surprised.
 PHI = 1.618033988749895
 SQRT2 = 1.4142135623730951
 LN2 = 0.6931471805599453
 LN10 = 2.302585092994046
+phi = PHI
+sqrt2 = SQRT2
+ln2 = LN2
+ln10 = LN10

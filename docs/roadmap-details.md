@@ -9206,6 +9206,7 @@ table Gap R.97 and Gap R.101 name from their own seats.
 Filed in the same table as Gap R.201, its last three rows, with the reference’s sentence recorded so the compiled
 sentence cannot be quietly rewritten into an agreement that does not exist.
 
+<a id="gap-r-203"></a>
 ### Gap R.203 — a container that contains itself ends the program at the contract's own-bug code (OPEN, measured while landing ADR 0318, owner `codegen`)
 
 The one place this cycle made a shape *worse*, written down rather than left out. Measured on both binaries, with
@@ -9246,6 +9247,7 @@ that only exists in a CLI table is a row that can silently stop testing anything
 and the compiled exit code second, so a "fix" that turns the crash into a plausible number fails the table instead
 of passing it.
 
+<a id="gap-r-204"></a>
 ### Gap R.204 — the record's size was a number someone remembered: the artifact table said 5623 sources while the file held 5948 (CLOSED by ADR 0319, owner `tooling`)
 
 **Measured while closing Gap R.197.** Adding 35 sources to `pkg/lang/testdata/interpreter-golden.json` with
@@ -9330,6 +9332,7 @@ the one row whose artifact is the tracker itself: it counts the Open queue's row
 the table, which is also what makes "the open queue is the only list of owed work" a checkable statement rather
 than an aspiration.
 
+<a id="gap-r-205"></a>
 ### Gap R.205 — an Evidence cell cited two test files that are not in the tree, and a `DONE` row nobody could falsify (CLOSED by ADR 0320, owner `tooling`)
 
 **Measured immediately after Gap R.204.** Having written a guard over the tracker's counts, the obvious next
@@ -9386,3 +9389,138 @@ files are the measurement narrative and the decision record: they name `pkg/lang
 deletion, and an accepted ADR is a historical document — rewriting it to chase a rename destroys the very thing
 it is kept for. `integration/docs_citations_test.go` already polices `.gy` citations in the agent-read documents,
 and `(planned)` remains the one spelling that may cite a file that does not exist yet.
+
+### L11.6 — numeric truth in the compiled backend: the battery measured, and the clause no leg could reach (CLOSED by ADR 0321, owner L11.1)
+
+The row opened as "closes Gaps P.1 + P.2" and spent nine ADRs acquiring strikethroughs. By the time this cycle
+started every named defect in it was `DONE` — `/=` (ADR 0274), the float parameter (ADR 0276), the return word
+read off the body (ADR 0254), the `round` tie rule (ADR 0236), `round(x, ndigits)` (ADR 0263), `floor`/`ceil`
+answering an `int` (ADR 0264), the typed stdlib constant (ADR 0272) — and the row still read 🟨 `PARTIAL`, with a
+free-text cell still claiming `print(math.PI)` prints `3` compiled, stale since ADR 0272.
+
+**A row is not closed by its ledger, so the battery was run.** Twenty-one programs, one per clause the row ever
+owned, each asked of CPython and of the shipped CLI, comparing stdout bytes and exit codes together:
+
+| clause | program | CPython | compiled |
+|---|---|---|---|
+| ADR 0216 | `print(-7 // 2)` | `-4` | `-4` |
+| ADR 0216 | `print(-3.5 % 2.0)` | `0.5` | `0.5` |
+| ADR 0274 | `x = 8` / `x /= 2` | `4.0` | `4.0` |
+| ADR 0274 | `t = 0` / `t += 1.5` | `1.5` | `1.5` |
+| ADR 0276 | `dbl(0.1)` | `0.2` | `0.2` |
+| ADR 0276 | `bump(1.5)` | `2.5` | `2.5` |
+| ADR 0254 | `addf(1)` | `2.5` | `2.5` |
+| ADR 0236 | `round(2.5)`, `round(1.5)` | `2`, `2` | `2`, `2` |
+| ADR 0263 | `round(2.345, 2)`, `round(2.675, 2)` | `2.35`, `2.67` | same |
+| ADR 0272 | `import math` / `print(math.PI)` | (no `PI`) | `3.141592653589793` |
+
+Nineteen rows matched outright. The other rows are the interesting ones: `floor`/`ceil` and the `math.PI` family
+are names CPython's builtins do not have, so the reference leg answers `NameError` for the very programs the row
+is about. That is not a failure and not a pass — it is a clause with no witness.
+
+**Why "no witness" was worth a cycle rather than a footnote.** L11.6's Definition of done names
+`probe_math_const`, and that program sits in the matrix as `oracle: not_applicable` for its spelling. The twin in
+`integration/module_const_test.go` (`class consts: PI = 3.141592653589793`) compares values, which is honest and
+useless for the naming question: the twin adopts our spelling instead of testing it. A name the reference cannot
+say is a name the reference leg cannot adjudicate, and an unadjudicated surface is where a wrong answer can live
+without ever being measured — the exact class ADR 0319 and ADR 0320 were about, one level out: a claim about
+something no test opens.
+
+**The fix is one line per constant, and the direction is the decision.** `stdlib/math.gy` declares the reference's
+spellings as the literals and this language's upper-case names as aliases (`PI = pi`), rather than renaming `PI`
+away. Renaming would have voided the record entries (`import math` / `print(math.PI)` is on record), the docs and
+every corpus program that uses the documented name — a compatibility break smuggled in as a conformance fix. With
+the alias, `import math` / `print(math.pi)` *is* a CPython program, the reference leg runs it, and the promoted
+row asserts: `probe_math_constant_answers_the_references_spelling.gy` in `conformanceStandalone()`, matrix row
+`asserted: true`, `oracle: match`, twelve lines identical byte for byte, including `math.pi // 2` → `1.0`,
+`math.pi % 2` → `1.1415926535897931`, `round(math.pi, 2)` → `3.14`, a container of two constants and an f-string
+field — the positions that made this row L11.6 rather than a stdlib row.
+
+**The reference's own gaps stayed open.** `math.inf`, `math.nan` and `math.floor(2.7)` all exit 1 today with a
+sentence naming what is missing; CPython prints `inf`, `nan`, `2`. They are `Gap R.207` and the unit table pins
+the refusals, so paying the row has to move a table. `string.digits` and its five siblings are `Gap R.206`, and
+one of them (`PUNCT` vs `punctuation`) differs by more than case — which is why the row names the shape of the fix
+(`canonical literal + alias`, and the declaration-shape guard that reads the module's text) rather than just the
+desire.
+
+<a id="gap-r-206"></a>
+### Gap R.206 — the data modules answer only our spelling of the reference's names (OPEN, measured while closing L11.6, owner L12.x)
+
+`import string` / `print(string.digits)` is `0123456789` in CPython and exits **1** here:
+
+```
+gustyc: jit: codegen: unknown module attribute string.digits
+```
+
+`stdlib/string.gy` declares `DIGITS`, `LOWERCASE`, `UPPERCASE`, `HEXDIGITS`, `WHITESPACE`, `PUNCT`. Six names, six
+references to the same data, none of them spellable by the reference — and `PUNCT` is not even the reference's
+word (`punctuation`). The measurement is the one that closed L11.6's stdlib clause: a name the reference cannot
+say is a name the reference leg cannot adjudicate, and today the `string` module's whole surface is in that
+position. The row is OPEN because the fix is a decision already made (ADR 0321's `pi` literal + `PI` alias, plus
+the declaration-shape guard that reads the module's text and refuses a duplicated literal), applied to a second
+module, with a probe the reference can run: five declarations, one program, and `tools/recmerge` for the record.
+What must not happen is the `string` module acquiring lower-case names by a different mechanism (a checker alias,
+a fallback lookup) — the module is data, and the compiler should not be saying what a data file can say.
+
+<a id="gap-r-207"></a>
+### Gap R.207 — three members of the reference's `math` module are absent (OPEN, measured while closing L11.6, owner codegen)
+
+| program | CPython | compiled today |
+|---|---|---|
+| `print(math.inf)` | `inf` | exit 1 — `unknown module attribute math.inf` |
+| `print(math.nan)` | `nan` | exit 1 — the same sentence |
+| `print(math.floor(2.7))` | `2` | exit 1 — `string-method floor on a receiver that is not a text the compiler can read: math` (Gap I.2, ADR 0166) |
+
+Three refusals in words, none a wrong answer at exit 0, and none of them this cycle's answer. They stayed separate
+for a reason worth keeping: `inf` and `nan` are not literals this language's number lexer accepts (Gap R.135 owns
+the exponent half of that lexer), so a data module cannot simply declare them — the emitter's float spelling has
+to be involved, which is a codegen change and not a stdlib edit. And `math.floor` is a *call* through a module
+receiver, which is the string-method road's Gap I.2 limitation, not a constant's. Bundling either into the naming
+cycle would have put two semantics decisions and a lexer dependency inside an ADR about a name, and the row that
+pays them should be the one that says which of the three roads it took.
+
+The refusals are pinned in `pkg/lang/math_const_spelling_test.go::TestAMathNameTheModuleDoesNotDeclareIsRefusedInWords`
+— `math.PI2`, `math.pi_`, `math.inf`, `math.nan` — so the row cannot be "fixed" by a change that makes one of them
+answer something plausible; paying it means editing that table on purpose.
+
+<a id="gap-r-208"></a>
+### Gap R.208 — the tracker's `[record]` links point at anchors that are not in the file they point at (OPEN, measured while closing L11.6, owner docs)
+
+ADR 0320 made an Evidence cell's backticked paths resolve. Its neighbouring claim — the `[record](…#anchor)` link
+that is supposed to carry a row's measurement — was not covered, and it is in worse shape: `roadmap.md` holds 284
+links into `docs/roadmap-details.md`, 266 distinct fragments, and **68 of them name an `<a id="…">` that file does
+not have**. 67 sit above a heading that exists and merely never got the anchor the file's own convention requires
+for the other 233 anchors in that file — 63 short `gap-r-N` fragments that were never written, plus 5 long-form
+`gap-r186--an-f-strings-…` fragments, which are a different mistake: written as if a heading slug had been pasted
+in by hand. One — `gap-r-126` — has no section to land on at all.
+
+The consequence is not cosmetic in the way a broken link on a blog is. The `[record]` link is how a row's *why*
+reaches a reader who is deciding whether to trust a `DONE`: follow it today and you get the top of a 9,500-line
+document and a browser's find bar. For an agent the same link is the difference between reading the measurement and
+guessing from the Status cell — and the Status cell is exactly what the measurement exists to check.
+
+Reproducing the count is two commands, which is why the row carries the numbers rather than a vibes estimate:
+
+```
+grep -o 'roadmap-details\.md#[a-z0-9-]*' roadmap.md            | sort -u   # the claims
+grep -o '<a id="[^"]*"' docs/roadmap-details.md | sed 's/.*id="//;s/"//' | sort -u   # the witnesses
+```
+
+Two repairs from this cycle are already in, both found because they affected a number this file publishes:
+
+* **the five anchors this cycle's own rows needed** — `gap-r-203` … `gap-r-207`. A cycle that files a row and links
+  it must land the link; leaving it dead while writing "measured, not remembered" two tables earlier is the shape
+  this row exists to refuse.
+* **the Open queue's split table**. The queue is one markdown table, and the scanner that computes "Rows owed" stops
+  at the first line that is not a row. A blank line had been committed inside it, so the four rows filed under it
+  (Gap R.202, R.203, R.206, R.207) were owed work that the published tally did not count: the Snapshot said
+  `101 of 119` while the file held 123 rows and 104 owed them. The blank line is gone, and
+  `pkg/lang/roadmap_snapshot_test.go` now counts those rows *and* fails the run when it sees the split
+  (`TestTheQueueCounterSeesWhatASplitTableHides`, verified red by re-splitting the table in a string — the counter
+  without the look-ahead reports 121 total / 102 owed, which is the lie this guards).
+
+Rejected: fixing all 68 in this cycle (67 of them are one line each above an existing heading, but `gap-r-126`'s
+missing section is a piece of writing that has to be written, and 67 mechanical edits in a commit about a stdlib
+name would make both changes harder to review); trusting GitHub's generated heading slugs instead of the file's
+explicit `<a id>` convention (the convention already covers 233 entries and is greppable — a slug rule that has to
+be re-derived from a renderer is how the long-form fragments went wrong in the first place).

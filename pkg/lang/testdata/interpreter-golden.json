@@ -1,5 +1,69 @@
 {
  "entries": {
+"# Oracle probe (L11.6, ADR 0321) — the standard library answers the reference's NAME, not only ours.\n#\n# `print(math.PI)` has printed 3.141592653589793 on every engine since ADR 0272 gave a data module's constant\n# its type. What that row could never be measured is the NAME: the reference spells its constants `math.pi`,\n# `math.e` and `math.tau`, so the compiled answer for `math.PI` had no CPython to compare against — the ledger\n# recorded the program `not_applicable` for the spelling, and the twin in integration/module_const_test.go\n# carried the comparison by hand. A surface the reference cannot spell is a surface the reference leg cannot\n# adjudicate, and an unadjudicated surface is where a wrong answer lives comfortably.\n#\n# So `stdlib/math.gy` declares the reference's spellings as the literal and this language's upper-case names as\n# aliases of it — one number, two names, written in one place. This program is written the reference's way,\n# which means the CPython leg RUNS it and the two legs are compared rather than described. The last four lines\n# are why it is not a one-liner: a module constant is an ordinary value, and the questions L11.6 owns are\n# asked of it — the floored division, the modulo, the digit count, the container, the f-string field — each one\n# a place the folded literal used to be poured into an `i32`.\n#\n# What CPython prints for each line (python3, 3.12):\n#\n#   3.141592653589793\n#   2.718281828459045\n#   6.283185307179586\n#   6.283185307179586\n#   -3.141592653589793\n#   True\n#   3.14\n#   [3.141592653589793, 2.718281828459045]\n#   1.0\n#   1.1415926535897931\n#   2.718281828459045\n#\nimport math\n\nprint(math.pi)\nprint(math.e)\nprint(math.tau)\nprint(math.pi * 2)\nprint(-math.pi)\nx = math.pi\nprint(x \u003e 3.14)\nprint(round(math.pi, 2))\nprint([math.pi, math.e])\nprint(math.pi // 2)\nprint(math.pi % 2)\nprint(f\"{math.e}\")\n": {
+    "stdout": "3.141592653589793\n2.718281828459045\n6.283185307179586\n6.283185307179586\n-3.141592653589793\nTrue\n3.14\n[3.141592653589793, 2.718281828459045]\n1.0\n1.1415926535897931\n2.718281828459045\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(-math.e)\n": {
+    "stdout": "-2.718281828459045\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(-math.pi)\n": {
+    "stdout": "-3.141592653589793\n",
+    "hasStdout": true
+   },
+
+"import math\nprint([math.pi, math.e])\n": {
+    "stdout": "[3.141592653589793, 2.718281828459045]\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(f\"{math.e}\")\n": {
+    "stdout": "2.718281828459045\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.e)\n": {
+    "stdout": "2.718281828459045\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.pi % 2)\n": {
+    "stdout": "1.1415926535897931\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.pi * 2)\n": {
+    "stdout": "6.283185307179586\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.pi // 2)\n": {
+    "stdout": "1.0\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.pi)\n": {
+    "stdout": "3.141592653589793\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(math.tau)\n": {
+    "stdout": "6.283185307179586\n",
+    "hasStdout": true
+   },
+
+"import math\nprint(round(math.pi, 2))\n": {
+    "stdout": "3.14\n",
+    "hasStdout": true
+   },
+
+"import math\nx = math.pi\nprint(x \u003e 3.14)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "# probe_a_fold_orders_two_built_containers.gy — the fold asked to order containers (roadmap L11.1's\n# remaining clause, Gap R.197; ADR 0316 filed it measuring itself, ADR 0318 pays it).\n#\n# min() and max() over numbers and texts answer from the fold door (see\n# programs/probe_the_fold_builtins_answer_the_pair.gy). Two CONTAINERS were the residue ADR 0316 left\n# beside the door: the reference orders a list lexicographically, element by element, and a set by the\n# subset operator, and this backend had no element-wise ordering for either — it read a NUMBER out of the\n# heap object and compared that. min(la, o) over a built la answered the list's element COUNT at exit 0\n# where the reference raises, and two different containers raised the reference's own '\u003c' sentence at exit\n# 3 where it answers [1, 2], [3] and {1}. A raise where the reference answered a value, and a value where\n# it raised: the same wrong-answer class, from both ends.\n#\n# @rt_pair_order walks the elements now, asking each element pair by its tag — and asking EQUALITY first,\n# which is the order the reference's own list comparison asks, and the reason [None] against [None, 1] is a\n# comparison of two lengths rather than a comparison of two Nones (which have no ordering and would raise).\n# Three arms a fold can meet, all below: two containers of one kind order, one object asked against itself\n# is reflexively equal so the incumbent is kept, and two sets that are not each other's subset answer False\n# to '\u003c' AND to '\u003e' — no raise, the incumbent survives. A dict has no ordering against anything, a copy of\n# itself included, and a list against a number is the TypeError naming both kinds.\n\nxs = []\nxs.append([1, 2])\nxs.append([3])\nss = []\nss.append({1})\nss.append({2})\npre = []\npre.append([1, 2])\npre.append([1, 2, 3])\na = xs[0]\nb = xs[1]\np = ss[0]\nq = ss[1]\nprint(min(a, a))\nprint(max(a, a))\nprint(min(p, p))\nprint(min(a, b))\nprint(max(a, b))\nprint(min(p, q))\nprint(min(pre[0], pre[1]))\nprint(max(pre[0], pre[1]))\nsa = {1}\nsb = {1, 2}\nprint(min(sa, sb))\nprint(max(sa, sb))\nprint(min(ss[0], ss[1]))\nprint(max(ss[0], ss[1]))\nla = [1, 2]\ntry:\n    print(min(la, 3))\nexcept TypeError:\n    print(\"caught-the-list-against-a-number\")\nxb = []\nxb.append([1])\nxb.append([\"a\"])\ntry:\n    print(min(xb[0], xb[1]))\nexcept TypeError:\n    print(\"caught-the-element-that-does-not-order\")\ndz = {}\ntry:\n    print(min(dz, dz))\nexcept TypeError:\n    print(\"caught-the-dict\")\n": {
     "stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n[1, 2]\n[1, 2, 3]\n{1}\n{1, 2}\n{1}\n{1}\ncaught-the-list-against-a-number\ncaught-the-element-that-does-not-order\ncaught-the-dict\n",
     "hasStdout": true

@@ -461,6 +461,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// instead of answering the container's element count (roadmap Gap R.197, ADR 0318, the half ADR 0316
 		// filed; the walk is one helper, @rt_pair_order, that the fold asks and no road copies).
 		"probe_a_fold_orders_two_built_containers",
+		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
+		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
+		// program below is one CPython runs and the two legs are compared rather than described
+		// (roadmap L11.6's last clause; the type came from ADR 0272 and the twin comparison from ADR 0321,
+		// which is what lets `probe_math_const` — this file with the upper-case spellings, a name the
+		// reference does not have — stay an honest `not_applicable` row instead of a hand-carried pin).
+		"probe_math_constant_answers_the_references_spelling",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).

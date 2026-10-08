@@ -19,6 +19,7 @@ package lang
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -155,38 +156,88 @@ func snapshotOracleVerdicts(t *testing.T, root string) []int {
 	return []int{m.OracleMatch, m.OracleDebt, m.OracleNotApplicable}
 }
 
-func snapshotQueueRows(t *testing.T, root string) []int {
-	t.Helper()
-	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
-	header := "| Pri | ID | Item | Status |"
-	at := strings.Index(text, header)
-	if at < 0 {
-		t.Fatal(`roadmap.md has no "| Pri | ID | Item | Status |" table — the Open queue is the only list of owed work, do not rename it`)
+// queueHeaderRow is the Open queue's header. The queue is the only list of owed work (AGENTS.md), so the tally
+// is read out of this one table and nothing else.
+const queueHeaderRow = "| Pri | ID | Item | Status |"
+
+// queuePri matches the queue's own priority column: `1`, `111`, and the suffixed rows a cycle inserts beside an
+// existing priority (`111a`, `111f`, `112b`). It is what separates a queue row from a Phase-table or Gap-ledger
+// row, both of which put the ITEM ID in column 1 rather than a number.
+var queuePri = regexp.MustCompile(`^[0-9]+[a-z]?$`)
+
+// queueRowCells reports whether the line is an Open-queue data row, returning its cells.
+func queueRowCells(line string) ([]string, bool) {
+	if !strings.HasPrefix(line, "|") {
+		return nil, false
 	}
-	total, owed := 0, 0
-	started := false
-	for _, line := range strings.Split(text[at:], "\n") {
-		if !strings.HasPrefix(line, "|") {
-			if started {
-				break // the queue table has ended; the Phase tables below it are not owed work
+	cells := strings.Split(line, "|")
+	if len(cells) < 8 { // seven columns: Pri, ID, Item, Status, Blocked on, Next action, Definition of done
+		return nil, false
+	}
+	if !queuePri.MatchString(strings.TrimSpace(cells[1])) {
+		return nil, false
+	}
+	return cells, true
+}
+
+// countQueueRows is the tally behind the Snapshot's "Rows owed" cell, and it is deliberately able to fail on
+// the shape that hides work: a queue table SPLIT BY A BLANK LINE. The rows below the split still render, still
+// read as owed work to a human, and are invisible to a scanner that stops at the first non-row line — which is
+// exactly what this file did on 2026-10-08, when four filed rows (Gap R.202, R.203, R.206, R.207) sat below a
+// stray blank line and the tracker reported 119 rows where it held 123. `hidden` counts them so the caller can
+// fail the run and name the line to delete rather than quietly add them to the total.
+func countQueueRows(text string) (total, owed, hidden int, err error) {
+	at := strings.Index(text, queueHeaderRow)
+	if at < 0 {
+		return 0, 0, 0, fmt.Errorf(`roadmap.md has no %q table — the Open queue is the only list of owed work, do not rename it`, queueHeaderRow)
+	}
+	lines := strings.Split(text[at:], "\n")
+	inTable := false
+	for i := 0; i < len(lines); i++ {
+		if cells, ok := queueRowCells(lines[i]); ok {
+			inTable = true
+			total++
+			if !strings.Contains(cells[4], "DONE") {
+				owed++
 			}
 			continue
 		}
-		started = true
-		cells := strings.Split(line, "|")
-		if len(cells) < 5 || strings.HasPrefix(strings.TrimSpace(cells[1]), "---") || cells[1] == " Pri " {
+		if !inTable {
 			continue
 		}
-		if strings.TrimSpace(cells[1]) == "" {
-			continue
+		for j := i; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == "" {
+				continue // the split itself
+			}
+			cells, ok := queueRowCells(lines[j])
+			if !ok {
+				break // the Phase tables below are not owed work
+			}
+			hidden++
+			total++
+			if !strings.Contains(cells[4], "DONE") {
+				owed++
+			}
 		}
-		total++
-		if !strings.Contains(cells[4], "DONE") {
-			owed++
-		}
+		break
 	}
 	if total == 0 {
-		t.Fatal("the Open queue holds no rows")
+		return 0, 0, 0, fmt.Errorf("the Open queue holds no rows")
+	}
+	return total, owed, hidden, nil
+}
+
+func snapshotQueueRows(t *testing.T, root string) []int {
+	t.Helper()
+	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
+	total, owed, hidden, err := countQueueRows(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hidden > 0 {
+		t.Errorf("the Open queue table is SPLIT by a blank line: %d owed row(s) sit below it and render as a table "+
+			"with no header, which is how four filed rows stayed out of the tally once (they are counted here so the "+
+			"cell is honest; delete the blank line so the queue is one table)", hidden)
 	}
 	return []int{owed, total}
 }
@@ -234,6 +285,67 @@ func TestTheRoadmapSnapshotNamesTheSerialGateWithoutTheCache(t *testing.T) {
 		t.Errorf("roadmap.md's \"Test suite\" row does not name the shipped serial gate `go test -tags=llvm20 "+
 			"-count=1 ./...` (ADR 0317) — the makefile is the rule and the tracker must not sell a cached command\n\t%s",
 			strings.TrimSpace(cell))
+	}
+}
+
+// TestTheQueueCounterSeesWhatASplitTableHides is this guard's own negative control (Gap R.204's rule aimed at
+// the counter rather than at the cell). The counter stops at the first line that is not a queue row, which is
+// correct for the Phase tables below the queue and WRONG for a blank line accidentally left inside the queue:
+// the rows under it still render, still read as owed work, and used to leave the tally — four filed rows stayed
+// out of the published count that way. Splitting the real file's table in a string must move `hidden` and must
+// not move `owed`, which is the pair of facts that makes this a check rather than a comment.
+func TestTheQueueCounterSeesWhatASplitTableHides(t *testing.T) {
+	root := repoRoot(t)
+	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
+	total, owed, hidden, err := countQueueRows(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hidden != 0 {
+		t.Errorf("the shipped roadmap.md's queue is split by a blank line: %d owed row(s) render below the split "+
+			"and a plain scanner would not see them — delete the blank line", hidden)
+	}
+	if total <= owed {
+		t.Errorf("total %d, owed %d: a queue with no closed rows is not what this file holds", total, owed)
+	}
+
+	// Split it: put a blank line in front of the queue row that is second from the end.
+	lines := strings.Split(text, "\n")
+	var queueLines []int
+	for i, line := range lines {
+		if _, ok := queueRowCells(line); ok {
+			queueLines = append(queueLines, i)
+		}
+	}
+	if len(queueLines) < 3 {
+		t.Fatalf("the Open queue holds %d rows — the counter is reading the wrong table", len(queueLines))
+	}
+	at := queueLines[len(queueLines)-2]
+	doctored := append(append([]string{}, lines[:at]...),
+		append([]string{""}, lines[at:]...)...)
+	splitTotal, splitOwed, splitHidden, err := countQueueRows(strings.Join(doctored, "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if splitHidden == 0 {
+		t.Errorf("splitting the queue table by hand hid %d rows from the counter — the counter cannot see the shape "+
+			"that once took four rows out of the published tally, so it is not a guard against it", total-splitTotal)
+	}
+	if splitTotal != total || splitOwed != owed {
+		t.Errorf("a split table changed the tally (%d→%d total, %d→%d owed): the counter is supposed to count the "+
+			"rows below the split AND report them, not drop them", total, splitTotal, owed, splitOwed)
+	}
+
+	// A Phase-table row is not owed work: the Phase tables put the ITEM id in column 1, not a priority.
+	if _, ok := queueRowCells("| L11.6 | numeric truth | ⏳ `PLANNED` | both | 0216 | probes | done | a | [→](x) |"); ok {
+		t.Error("a Phase-table row counted as an Open-queue row — the tally would double-count every item")
+	}
+	if _, ok := queueRowCells("| Gap R.204 | the record's size | ✅ `DONE` | tooling | `0319` | x | y | [record](z) |"); ok {
+		t.Error("a Gap-ledger row counted as an Open-queue row")
+	}
+	if _, ok := queueRowCells("| 111f | Gap R.148 | a pair-bound name | ⏳ `OPEN` | — | x | y |"); !ok {
+		t.Error("a suffixed priority (`111f`) is not recognised as a queue row, and the rows that use it would " +
+			"leave the tally — they exist in the file today")
 	}
 }
 

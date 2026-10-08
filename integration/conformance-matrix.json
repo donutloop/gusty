@@ -2790,6 +2790,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_math_constant_answers_the_references_spelling",
+        "name": "probe_math_constant_answers_the_references_spelling.gy",
+        "source": "# Oracle probe (L11.6, ADR 0321) — the standard library answers the reference's NAME, not only ours.\n#\n# `print(math.PI)` has printed 3.141592653589793 on every engine since ADR 0272 gave a data module's constant\n# its type. What that row could never be measured is the NAME: the reference spells its constants `math.pi`,\n# `math.e` and `math.tau`, so the compiled answer for `math.PI` had no CPython to compare against — the ledger\n# recorded the program `not_applicable` for the spelling, and the twin in integration/module_const_test.go\n# carried the comparison by hand. A surface the reference cannot spell is a surface the reference leg cannot\n# adjudicate, and an unadjudicated surface is where a wrong answer lives comfortably.\n#\n# So `stdlib/math.gy` declares the reference's spellings as the literal and this language's upper-case names as\n# aliases of it — one number, two names, written in one place. This program is written the reference's way,\n# which means the CPython leg RUNS it and the two legs are compared rather than described. The last four lines\n# are why it is not a one-liner: a module constant is an ordinary value, and the questions L11.6 owns are\n# asked of it — the floored division, the modulo, the digit count, the container, the f-string field — each one\n# a place the folded literal used to be poured into an `i32`.\n#\n# What CPython prints for each line (python3, 3.12):\n#\n#   3.141592653589793\n#   2.718281828459045\n#   6.283185307179586\n#   6.283185307179586\n#   -3.141592653589793\n#   True\n#   3.14\n#   [3.141592653589793, 2.718281828459045]\n#   1.0\n#   1.1415926535897931\n#   2.718281828459045\n#\nimport math\n\nprint(math.pi)\nprint(math.e)\nprint(math.tau)\nprint(math.pi * 2)\nprint(-math.pi)\nx = math.pi\nprint(x \u003e 3.14)\nprint(round(math.pi, 2))\nprint([math.pi, math.e])\nprint(math.pi // 2)\nprint(math.pi % 2)\nprint(f\"{math.e}\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "3.141592653589793\n2.718281828459045\n6.283185307179586\n6.283185307179586\n-3.141592653589793\nTrue\n3.14\n[3.141592653589793, 2.718281828459045]\n1.0\n1.1415926535897931\n2.718281828459045\n",
+      "python_ok": true,
+      "python_stdout": "3.141592653589793\n2.718281828459045\n6.283185307179586\n6.283185307179586\n-3.141592653589793\nTrue\n3.14\n[3.141592653589793, 2.718281828459045]\n1.0\n1.1415926535897931\n2.718281828459045\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/gc_precise",
         "name": "gc_precise.gy",
         "source": "# Precise stack roots (L7.2, ADR 0181).\n#\n# Every value below is held somewhere the collector has to know about: a call\n# frame's locals that survive a nested allocation storm, a loop variable the loop\n# itself keeps, and thousands of short-lived containers that must be reclaimed\n# while the program is still running. A missing root shows up as a wrong number;\n# an imprecise collector shows up as a heap full of garbage that is still live.\n\ndef churn(n):\n    total = 0\n    i = 0\n    while i \u003c n:\n        junk = [i, i, i]\n        total = total + junk[2]\n        i = i + 1\n    return total\n\n# walk binds a list, recurses, then allocates a storm before reading it back:\n# only frame roots keep `keep` alive across the nested collection.\ndef walk(depth):\n    keep = [depth, depth * 2, depth * 3]\n    filler = 0\n    if depth \u003e 0:\n        filler = walk(depth - 1)\n    churn(200)\n    return keep[0] + keep[1] + keep[2] + filler\n\n# A statement-position call whose own loop reclaims as it goes: `xs` is bound\n# before the loop and read hundreds of allocations later.\ndef total_up_to(n):\n    xs = [10, 20, 30]\n    acc = 0\n    i = 0\n    while i \u003c n:\n        scratch = [i, i]\n        acc = acc + xs[0] + xs[2] + scratch[0]\n        i = i + 1\n    return acc\n\ngrand = 0\nfor k in range(5):\n    scratch = [k, k + 1]\n    grand = grand + walk(k) + scratch[0]\nprint(grand)\nprint(total_up_to(300))\nprint(churn(1200))\n",
@@ -3538,7 +3558,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/146/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/147/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3551,7 +3571,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/146/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/147/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4241,11 +4261,11 @@
       ]
     }
   ],
-  "rows": 174,
+  "rows": 175,
   "skipped": 38,
-  "pass": 136,
+  "pass": 137,
   "fail": 0,
-  "oracle_match": 121,
+  "oracle_match": 122,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
