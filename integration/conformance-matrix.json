@@ -2770,6 +2770,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_fold_orders_two_built_containers",
+        "name": "probe_a_fold_orders_two_built_containers.gy",
+        "source": "# probe_a_fold_orders_two_built_containers.gy — the fold asked to order containers (roadmap L11.1's\n# remaining clause, Gap R.197; ADR 0316 filed it measuring itself, ADR 0318 pays it).\n#\n# min() and max() over numbers and texts answer from the fold door (see\n# programs/probe_the_fold_builtins_answer_the_pair.gy). Two CONTAINERS were the residue ADR 0316 left\n# beside the door: the reference orders a list lexicographically, element by element, and a set by the\n# subset operator, and this backend had no element-wise ordering for either — it read a NUMBER out of the\n# heap object and compared that. min(la, o) over a built la answered the list's element COUNT at exit 0\n# where the reference raises, and two different containers raised the reference's own '\u003c' sentence at exit\n# 3 where it answers [1, 2], [3] and {1}. A raise where the reference answered a value, and a value where\n# it raised: the same wrong-answer class, from both ends.\n#\n# @rt_pair_order walks the elements now, asking each element pair by its tag — and asking EQUALITY first,\n# which is the order the reference's own list comparison asks, and the reason [None] against [None, 1] is a\n# comparison of two lengths rather than a comparison of two Nones (which have no ordering and would raise).\n# Three arms a fold can meet, all below: two containers of one kind order, one object asked against itself\n# is reflexively equal so the incumbent is kept, and two sets that are not each other's subset answer False\n# to '\u003c' AND to '\u003e' — no raise, the incumbent survives. A dict has no ordering against anything, a copy of\n# itself included, and a list against a number is the TypeError naming both kinds.\n\nxs = []\nxs.append([1, 2])\nxs.append([3])\nss = []\nss.append({1})\nss.append({2})\npre = []\npre.append([1, 2])\npre.append([1, 2, 3])\na = xs[0]\nb = xs[1]\np = ss[0]\nq = ss[1]\nprint(min(a, a))\nprint(max(a, a))\nprint(min(p, p))\nprint(min(a, b))\nprint(max(a, b))\nprint(min(p, q))\nprint(min(pre[0], pre[1]))\nprint(max(pre[0], pre[1]))\nsa = {1}\nsb = {1, 2}\nprint(min(sa, sb))\nprint(max(sa, sb))\nprint(min(ss[0], ss[1]))\nprint(max(ss[0], ss[1]))\nla = [1, 2]\ntry:\n    print(min(la, 3))\nexcept TypeError:\n    print(\"caught-the-list-against-a-number\")\nxb = []\nxb.append([1])\nxb.append([\"a\"])\ntry:\n    print(min(xb[0], xb[1]))\nexcept TypeError:\n    print(\"caught-the-element-that-does-not-order\")\ndz = {}\ntry:\n    print(min(dz, dz))\nexcept TypeError:\n    print(\"caught-the-dict\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n[1, 2]\n[1, 2, 3]\n{1}\n{1, 2}\n{1}\n{1}\ncaught-the-list-against-a-number\ncaught-the-element-that-does-not-order\ncaught-the-dict\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n[1, 2]\n[1, 2, 3]\n{1}\n{1, 2}\n{1}\n{1}\ncaught-the-list-against-a-number\ncaught-the-element-that-does-not-order\ncaught-the-dict\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/gc_precise",
         "name": "gc_precise.gy",
         "source": "# Precise stack roots (L7.2, ADR 0181).\n#\n# Every value below is held somewhere the collector has to know about: a call\n# frame's locals that survive a nested allocation storm, a loop variable the loop\n# itself keeps, and thousands of short-lived containers that must be reclaimed\n# while the program is still running. A missing root shows up as a wrong number;\n# an imprecise collector shows up as a heap full of garbage that is still live.\n\ndef churn(n):\n    total = 0\n    i = 0\n    while i \u003c n:\n        junk = [i, i, i]\n        total = total + junk[2]\n        i = i + 1\n    return total\n\n# walk binds a list, recurses, then allocates a storm before reading it back:\n# only frame roots keep `keep` alive across the nested collection.\ndef walk(depth):\n    keep = [depth, depth * 2, depth * 3]\n    filler = 0\n    if depth \u003e 0:\n        filler = walk(depth - 1)\n    churn(200)\n    return keep[0] + keep[1] + keep[2] + filler\n\n# A statement-position call whose own loop reclaims as it goes: `xs` is bound\n# before the loop and read hundreds of allocations later.\ndef total_up_to(n):\n    xs = [10, 20, 30]\n    acc = 0\n    i = 0\n    while i \u003c n:\n        scratch = [i, i]\n        acc = acc + xs[0] + xs[2] + scratch[0]\n        i = i + 1\n    return acc\n\ngrand = 0\nfor k in range(5):\n    scratch = [k, k + 1]\n    grand = grand + walk(k) + scratch[0]\nprint(grand)\nprint(total_up_to(300))\nprint(churn(1200))\n",
@@ -3327,42 +3347,6 @@
       ],
       "oracle_notes": [
         "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_a_fold_orders_two_built_containers",
-        "name": "probe_a_fold_orders_two_built_containers.gy",
-        "source": "# probe_a_fold_orders_two_built_containers.gy — the fold asked to order two containers (roadmap\n# L11.1's remaining clause, Gap R.197; ADR 0316's filed half, Gap R.97's ordering door).\n#\n# min() and max() over numbers, texts and the same object twice answer what the reference prints (see\n# programs/probe_the_fold_builtins_answer_the_pair.gy). Two DIFFERENT containers are the residue: the\n# reference orders lists lexicographically and sets by the subset operator, and this backend has no\n# element-wise ordering for either — the same missing word Gap R.97 files for `\u003c`. The fold door therefore\n# raises CPython's own sentence rather than comparing two heap handles, which is a wrong answer wearing the\n# reference's exit class: it is filed per leg below instead of being described as a refusal.\n#\n# The identity arm is the one container question the door can answer without walking any elements: when both\n# sides are the very same object the comparison is reflexively false and the incumbent is kept, which is what\n# the reference answers for a list and for a set.\n\nxs = []\nxs.append([1, 2])\nxs.append([3])\nss = []\nss.append({1})\nss.append({2})\na = xs[0]\nb = xs[1]\np = ss[0]\nq = ss[1]\nprint(min(a, a))\nprint(max(a, a))\nprint(min(p, p))\nprint(min(a, b))\nprint(max(a, b))\nprint(min(p, q))\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '\u003c' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
-        "ref": "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `\u003c`; docs/adr/0316",
-        "pins": [
-          {
-            "backend": "aot",
-            "stdout": "[1, 2]\n[1, 2]\n{1}\n",
-            "error": "exit status 3",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "[1, 2]\n[1, 2]\n{1}\n",
-      "aot_error": "exit status 3",
-      "python_ok": true,
-      "python_stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '\u003c' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
-      "oracle_ref": "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `\u003c`; docs/adr/0316",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: exit status 3"
       ]
     },
     {
@@ -4258,11 +4242,11 @@
     }
   ],
   "rows": 174,
-  "skipped": 39,
-  "pass": 135,
+  "skipped": 38,
+  "pass": 136,
   "fail": 0,
-  "oracle_match": 120,
-  "oracle_debt": 33,
+  "oracle_match": 121,
+  "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

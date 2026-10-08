@@ -1,4 +1,50 @@
 # Session Learnings
+## Round 21 — The fold orders containers: `@rt_pair_order`, three statuses, one helper (roadmap Gap R.197; ADR 0318)
+
+**Feature (L11.1's last fold clause)**: `min`/`max` over containers the program *built* answer what CPython answers
+— a list lexicographically over its elements, a set by the subset operator — instead of raising at exit 3 where the
+reference prints `[1, 2]`, and instead of answering a container's **element count** at exit 0 where the reference
+raises (the two arms Gap R.197 filed measuring ADR 0316).
+
+- **One helper, three statuses.** `@rt_pair_order(depth, a, ta, b, tb, outcmp, outlt, outrt)` returns *ordered*
+  (`-1/0/+1`), *no ordering between these kinds* (plus the two kinds to name), or *neither order and no raise*.
+  The third status is not a refinement: the reference's `<` and `>` are **both simply False** between two sets that
+  are not each other's subsets, so a two-valued door would have to get one of `min({1},{2})` and `min({2},{1})`
+  wrong, and a door that raised there would disagree with the reference answering `{1}`.
+- **Equality before ordering**, per element — the order CPython's own list comparison asks. It is the reason
+  `[None]` against `[None, 1]` compares two lengths rather than two `None`s (which have no ordering and would
+  raise). Containers skip the equality step, because the shared equality helper (`rt_payload_eq`) has no depth
+  argument and a cyclic pair reaches that hole (Gap R.203).
+- **The raise names the elements, not the operands.** `%badlt`/`%badrt` start as the operands' tags and are
+  overwritten by the door that fails, so `min(["a"], [1])` says `'int' and 'str'`. The order is the failing
+  comparison's: the reference's `min` asks the **later** argument against the earlier one, so `min(["a"], [1])`
+  names `'int'` first — I had that backwards in the first draft of the table and the measurement caught it.
+- **Gate, not door.** `foldOperandPair` asks `staticContainerKind`, which emits nothing: deciding must not put
+  instructions in a module that then refuses (ADR 0241's rule, moved from a subscript to a call). A container
+  literal **written** among the folded values stays on the ordinary road and keeps its Gap R.198 refusal — the
+  gate opens for a container the compiler can *name*, not for one it can only *see*.
+- **Both legs, and the reference first.** `tools/recmerge` asks CPython what each source answers and refuses to
+  write the record when the compiled leg disagrees, so an entry is the reference's answer rather than a copy of
+  the thing under test; it inserts new entries into the record's own text, because re-marshalling 5913 entries
+  produced a 2300-line diff that hid the 35 real additions.
+- **Measuring discipline that paid for itself.** A HEAD-baseline binary beside the new one (`gustyc-head`) turned
+  three claims into evidence: `min(la, o)` over a built `la` answered `0` → raises; `min(sa, 3)` over a built set
+  answered `1` → raises; two built lists raised `'list' and 'list'` → print `[1, 2]`. Two of my own tables had
+  predicted answers that were wrong; both were caught against `python3` before they could ship.
+- **Filed rather than smoothed over**: `Gap R.201` (`a < b` over two built containers raises `'list' and 'str'`
+  where the reference answers `True`), `Gap R.202` (`True < [1]`, `None < [1]`, `"a" < [1]` each name `'int'` for
+  an operand that is not a number), `Gap R.203` (`xs.append(xs)` then `print(min(xs, xs))` leaves the contract's
+  **exit 2** — the one shape this cycle made worse rather than better, because the walk now picks the right winner
+  and hands it to a printer that cannot render a cycle). Each row pins the reference's answer and today's compiled
+  behaviour, so neither can drift or silently "pass".
+- **A crash row cannot live in the test process.** Asserting the cyclic crash through `JIT` in `pkg/lang` killed
+  the whole test binary (exit 2 with the suite). The unit half now asserts only what the unit owns — the program
+  BUILDS and carries the ordering — and the exit codes are asserted at the CLI, one process per program.
+- **Debt promotion is a registry edit, not a comment.** `probe_a_fold_orders_two_built_containers.gy` moved from
+  the DEBT list to `conformanceStandalone`, its `oracleLedger` row (which pinned the partial stdout plus
+  `exit status 3`) was deleted, and `TestCLIAgentAFoldOfTwoBuiltContainersIsFiledNotFixed` became a parity table.
+  A pinned "how far it got before raising" cannot survive a fix that makes it print more — which is the point.
+
 ## Round 19 — Walrus operator (`:=`)
 
 **Feature (Phase 5, L5.4)**: assignment expressions `name := expr` — assigns `name` in the enclosing function/module scope and yields `expr`'s value. Implemented across lexer, parser, AST, semantic analyzer, interpreter, and LLVM codegen, with parity integration tests.

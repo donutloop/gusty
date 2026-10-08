@@ -1,5 +1,196 @@
 {
  "entries": {
+"# probe_a_fold_orders_two_built_containers.gy — the fold asked to order containers (roadmap L11.1's\n# remaining clause, Gap R.197; ADR 0316 filed it measuring itself, ADR 0318 pays it).\n#\n# min() and max() over numbers and texts answer from the fold door (see\n# programs/probe_the_fold_builtins_answer_the_pair.gy). Two CONTAINERS were the residue ADR 0316 left\n# beside the door: the reference orders a list lexicographically, element by element, and a set by the\n# subset operator, and this backend had no element-wise ordering for either — it read a NUMBER out of the\n# heap object and compared that. min(la, o) over a built la answered the list's element COUNT at exit 0\n# where the reference raises, and two different containers raised the reference's own '\u003c' sentence at exit\n# 3 where it answers [1, 2], [3] and {1}. A raise where the reference answered a value, and a value where\n# it raised: the same wrong-answer class, from both ends.\n#\n# @rt_pair_order walks the elements now, asking each element pair by its tag — and asking EQUALITY first,\n# which is the order the reference's own list comparison asks, and the reason [None] against [None, 1] is a\n# comparison of two lengths rather than a comparison of two Nones (which have no ordering and would raise).\n# Three arms a fold can meet, all below: two containers of one kind order, one object asked against itself\n# is reflexively equal so the incumbent is kept, and two sets that are not each other's subset answer False\n# to '\u003c' AND to '\u003e' — no raise, the incumbent survives. A dict has no ordering against anything, a copy of\n# itself included, and a list against a number is the TypeError naming both kinds.\n\nxs = []\nxs.append([1, 2])\nxs.append([3])\nss = []\nss.append({1})\nss.append({2})\npre = []\npre.append([1, 2])\npre.append([1, 2, 3])\na = xs[0]\nb = xs[1]\np = ss[0]\nq = ss[1]\nprint(min(a, a))\nprint(max(a, a))\nprint(min(p, p))\nprint(min(a, b))\nprint(max(a, b))\nprint(min(p, q))\nprint(min(pre[0], pre[1]))\nprint(max(pre[0], pre[1]))\nsa = {1}\nsb = {1, 2}\nprint(min(sa, sb))\nprint(max(sa, sb))\nprint(min(ss[0], ss[1]))\nprint(max(ss[0], ss[1]))\nla = [1, 2]\ntry:\n    print(min(la, 3))\nexcept TypeError:\n    print(\"caught-the-list-against-a-number\")\nxb = []\nxb.append([1])\nxb.append([\"a\"])\ntry:\n    print(min(xb[0], xb[1]))\nexcept TypeError:\n    print(\"caught-the-element-that-does-not-order\")\ndz = {}\ntry:\n    print(min(dz, dz))\nexcept TypeError:\n    print(\"caught-the-dict\")\n": {
+    "stdout": "[1, 2]\n[1, 2]\n{1}\n[1, 2]\n[3]\n{1}\n[1, 2]\n[1, 2, 3]\n{1}\n{1, 2}\n{1}\n{1}\ncaught-the-list-against-a-number\ncaught-the-element-that-does-not-order\ncaught-the-dict\n",
+    "hasStdout": true
+   },
+
+"d = {}\ne = {}\nprint(min(d, e))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'dict' and 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'dict' and 'dict'"
+   },
+
+"d = {}\nprint(min(d, d))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'dict' and 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'dict' and 'dict'"
+   },
+
+"d = {}\ntry:\n    print(min(d, d))\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"print(min(3, 1))\nprint(min(\"b\", \"a\"))\n": {
+    "stdout": "1\na\n",
+    "hasStdout": true
+   },
+
+"print(min(3, [1], [2]))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'list' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'list' and 'int'"
+   },
+
+"print(min(3, {4}))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'set' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'set' and 'int'"
+   },
+
+"print(min(3, {4}, 5))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'set' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'set' and 'int'"
+   },
+
+"print(min([1], [2], 3))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'list'"
+   },
+
+"print(min(list(), \"a\"))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'list'"
+   },
+
+"print(min(list(), 3))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'list'"
+   },
+
+"print(min(list(), list()))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(min(set(), 3))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'set'"
+   },
+
+"print(min(set(), list()))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'list' and 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'list' and 'set'"
+   },
+
+"xs = []\nxs.append([\"a\"])\nxs.append([1])\na = xs[0]\nb = xs[1]\nprint(max(a, b))\n": {
+    "err": "TypeError: '\u003e' not supported between instances of 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'int' and 'str'"
+   },
+
+"xs = []\nxs.append([\"a\"])\nxs.append([1])\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'str'"
+   },
+
+"xs = []\nxs.append([\"a\"])\nxs.append([1])\na = xs[0]\nb = xs[1]\ntry:\n    print(min(a, b))\nexcept TypeError:\n    print(\"caught\")\nprint(a)\n": {
+    "stdout": "caught\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nm = min(a, b)\nn = max(m, b)\nprint(n)\n": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nm = min(a, b)\nprint(f\"{m}\")\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nm = min(a, b)\nprint(m)\nprint(m == [1, 2])\n": {
+    "stdout": "[1, 2]\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(a == b)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(max(a, 3))\n": {
+    "err": "TypeError: '\u003e' not supported between instances of 'int' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'int' and 'list'"
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(max(a, b))\n": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(min(a, \"a\"))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'list'"
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(min(a, 3))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'list'"
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(min(a, a))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\ntry:\n    print(min(a, 3))\nexcept TypeError:\n    print(\"caught\")\nprint(\"carries-on\")\n": {
+    "stdout": "caught\ncarries-on\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\ntry:\n    print(min(a, 3))\nexcept TypeError:\n    print(\"caught\")\nprint(min(a, b))\n": {
+    "stdout": "caught\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([1])\nxs.append({1})\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'set' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'set' and 'list'"
+   },
+
+"xs = []\nxs.append([])\nxs.append([1, 2])\na = xs[0]\nb = xs[1]\nprint(max(a, b))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([])\nxs.append([1, 2])\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1, 2})\nxs.append({1, 2, 3})\na = xs[0]\nb = xs[1]\nprint(max(a, b))\n": {
+    "stdout": "{1, 2, 3}\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1, 2})\nxs.append({1, 2, 3})\na = xs[0]\nb = xs[1]\nprint(min(a, 3))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'set'"
+   },
+
+"xs = []\nxs.append({1, 2})\nxs.append({1, 2, 3})\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
   "\n# Large whole-program: a mini statistics/vector library exercising the shared\n# AOT+interpreter surface (classes + inheritance, recursion, generators,\n# comprehensions-inline, collections, floats, exceptions, match, slicing, tuple\n# unpack, augmented assignment, f-strings). Runs identically on both backends.\nclass Vec:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def mag(self):\n        return self.x + self.y\n    def scale(self, k):\n        self.x = self.x * k\n        self.y = self.y * k\n        return self.mag()\n\nclass UnitVec(Vec):\n    def __init__(self, x, y):\n        super().__init__(x, y)\n    def mag(self):\n        return self.x * self.x + self.y * self.y\n\ndef fib(n):\n    if n <= 1:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\ndef gen_squares(n):\n    for i in range(n):\n        yield i * i\n\ns = 0\nfor x in gen_squares(5):\n    s = s + x\nprint(\"squares\", s)\nprint(\"fib\", fib(10))\n\nv = Vec(3, 4)\nprint(\"mag\", v.mag())\nprint(\"scaled\", v.scale(2))\nu = UnitVec(2, 3)\nprint(\"unit\", u.mag())\n\na, b = 10, 20\na, b = b, a\nprint(\"swap\", a, b)\n\nl = [1, 2, 3, 4, 5, 6]\nprint(\"slice\", l[1:4])\nprint(\"rev\", l[::-1])\nprint(\"step\", l[::2])\nprint(\"first\", [x * x for x in range(5)][2])\n\nd = {1: 10, 2: 20, 3: 30}\nprint(\"dict\", len(d), d[2])\nst = {1, 2, 3, 3, 2}\nprint(\"set\", len(st))\n\nacc = 0\nacc += 5\nacc *= 2\nacc -= 3\nacc //= 2\nprint(\"aug\", acc)\n\nf = 2.5 + 1.0\nprint(\"float\", f)\nn = 7\nprint(\"fstr\", f\"n={n}\")\n": {
    "hasStdout": true,
    "stdout": "squares 30\nfib 55\nmag 7\nscaled 14\nunit 13\nswap 20 10\nslice [2, 3, 4]\nrev [6, 5, 4, 3, 2, 1]\nstep [1, 3, 5]\nfirst 4\ndict 3 20\nset 3\naug 3\nfloat 3.5\nfstr n=7\n"

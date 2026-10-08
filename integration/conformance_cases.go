@@ -454,6 +454,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// line in that program is the line this door paid.
 		"probe_the_fold_builtins_answer_the_pair",
 		"probe_pair_bound_name_takes_a_value",
+		// The fold asked to order containers the program BUILT, which is the residue that door left beside it:
+		// `min(a, b)` over two built lists is [1, 2] and `max` is [3], a set orders by the subset operator and
+		// the pair that is neither one's subset orders NEITHER way rather than raising, the empty list is the
+		// lesser list, and a container folded against a number raises CPython's `TypeError` naming both kinds
+		// instead of answering the container's element count (roadmap Gap R.197, ADR 0318, the half ADR 0316
+		// filed; the walk is one helper, @rt_pair_order, that the fold asks and no road copies).
+		"probe_a_fold_orders_two_built_containers",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -567,13 +574,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// ADR 0273, and the value handed to a FOLD is parity surface since ADR 0316 — the program that pinned
 		// it, programs/probe_pair_bound_name_takes_a_value.gy, was promoted with that line.
 		"probe_pair_from_a_tuple_unpack",
-		// The fold asked to order two DIFFERENT containers: the reference orders a list lexicographically and a
-		// set by the subset operator, and this backend has no element-wise ordering for either, so the fold door
-		// raises CPython's own sentence where the reference answers a value — a wrong answer wearing the
-		// reference's exit class, filed per leg rather than described as a refusal (roadmap Gap R.197, filed
-		// measuring ADR 0316; Gap R.97 owns the `<` half). The identity arm — both sides the very same object —
-		// is the one container question the door can answer, and it answers.
-		"probe_a_fold_orders_two_built_containers",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
 		// the compiled path stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
@@ -720,10 +720,16 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against the compiled path",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
-	"programs/probe_a_fold_orders_two_built_containers": {oracle: lang.OracleDebt,
-		reason: "CPython orders two containers — a list lexicographically, a set by the subset operator — and prints [1, 2], [3] and {1} for the last three lines; the compiled leg answers the identity lines ([1, 2], [1, 2], {1}, where the comparison is reflexively false and the incumbent is kept) and then raises its own TypeError: '<' not supported between instances of 'list' and 'list' at exit 3, because this backend has no element-wise ordering for containers. A raise where the reference answered a value is the wrong-answer class, so the row is a debt and not a refusal",
-		ref:    "roadmap Gap R.197 (filed measuring ADR 0316), the container-ordering half Gap R.97 already owns for `<`; docs/adr/0316",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "[1, 2]\n[1, 2]\n{1}\n", Missing: true, Err: "exit status 3"}}},
+	// programs/probe_a_fold_orders_two_built_containers.gy was this row's debt: the fold asked to order two
+	// containers the program BUILT had no element-wise ordering, so two different lists raised CPython's own
+	// `TypeError: '<' not supported between instances of 'list' and 'list'` at exit 3 where the reference
+	// answers [1, 2], and a container folded against a number answered the container's ELEMENT COUNT at exit 0
+	// where the reference raises. `@rt_pair_order` walks the elements now — a list lexicographically, element
+	// by element, a set by the subset operator, and CPython's sentence for the kinds that do not order, a dict
+	// against a copy of itself included — so the program runs and matches on both legs and lives in
+	// conformanceStandalone (roadmap Gap R.197, paid by ADR 0318, filed measuring ADR 0316). The relational
+	// operators over two built containers are a different road and still owe it: Gap R.97, measured this cycle
+	// as Gap R.201 beside this row.
 	// programs/probe_pair_bound_name_takes_a_value.gy was this row's `min(n, 3)` line: a builtin's argument
 	// kept one word for the value and had nowhere to put the tag the binding carried. A fold is not such a
 	// position any more — min/max hand back the winner with its own kind and sum is the `+` fold — so the

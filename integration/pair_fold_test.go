@@ -223,53 +223,13 @@ func TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) 
 	}
 }
 
-// TestCLIAgentAFoldOfTwoBuiltContainersIsFiledNotFixed is the debt row's live half. The conformance ledger
-// pins `programs/probe_a_fold_orders_two_built_containers.gy` with the compiled leg's partial stdout and
-// `exit status 3`; the sentence the raise writes, and the fact that the REFERENCE answers those three lines
-// at all, are asserted here. A raise where the reference answered a value is the wrong-answer class — the
-// same class Gap R.97 files for `<` — so this is a filed defect, not a refusal, and it is the residue the
-// fold door leaves (roadmap Gap R.197, filed measuring ADR 0316).
-func TestCLIAgentAFoldOfTwoBuiltContainersIsFiledNotFixed(t *testing.T) {
-	dir := t.TempDir()
-	for _, tc := range []struct{ name, src, partial, sentence, reference string }{
-		{
-			"two built lists, ordered lexicographically by the reference",
-			"xs = []\nxs.append([1, 2])\nxs.append([3])\na = xs[0]\nb = xs[1]\nprint(min(a, b))\n",
-			"", "TypeError: '<' not supported between instances of 'list' and 'list'", "[1, 2]\n",
-		},
-		{
-			"two built sets, ordered by the subset operator by the reference",
-			"xs = []\nxs.append({1})\nxs.append({2})\na = xs[0]\nb = xs[1]\nprint(max(a, b))\n",
-			"", "TypeError: '>' not supported between instances of 'set' and 'set'", "{1}\n",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := writeSrc(t, dir, "pairfold_container_order.gy", tc.src)
-			ref, ok := cpythonPlainOut(t, dir, tc.src)
-			if !ok {
-				t.Skipf("the reference declined to answer a program this row files as its own answer: %s", tc.src)
-			}
-			if strings.TrimRight(ref, "\n") != strings.TrimRight(tc.reference, "\n") {
-				t.Fatalf("the case's recorded reference answer drifted: it prints %q, the row says %q", ref, tc.reference)
-			}
-			out, code := cliRunMerged(t, "--file", path)
-			if code == 2 {
-				t.Fatalf("exit 2 — LLVM rejected the module this raise was emitted into (ADR 0166):\n%s", out)
-			}
-			if code != 3 {
-				t.Fatalf("exit %d, want the trap exit 3 — the reference ANSWERS this program, so an answer at exit 0 "+
-					"would be a wrong answer and a refusal would be a different claim (ADR 0166):\n%s", code, out)
-			}
-			if tc.partial != "" && !strings.HasPrefix(out, tc.partial) {
-				t.Errorf("the compiled leg stopped printing before the raise: got %q, want the prefix %q", out, tc.partial)
-			}
-			if !strings.Contains(out, tc.sentence) {
-				t.Errorf("the compiled raise did not say %q:\n%s", tc.sentence, out)
-			}
-			noteCompiledGap(t, tc.src, out)
-		})
-	}
-}
+// The fold asked to order two containers the program BUILT is parity surface, not a filed row: the door now
+// walks a list's elements lexicographically and a set by the subset operator instead of reading a number out
+// of the handle, and `programs/probe_a_fold_orders_two_built_containers.gy` prints what CPython prints on
+// every line. That half lives in pair_container_order_test.go (the answer table, the trap table, the
+// catchability rows and the probe's own record row); the shapes the door still declines stayed in
+// TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords above, and the relational operators over two
+// containers are Gap R.97's row, measured as Gap R.201 beside this one (roadmap Gap R.197, ADR 0318).
 
 // TestTheFoldProbeIsOnRecord is the loud version of ADR 0302's missing-record rule for the program the
 // conformance matrix registers: a deleted record fails a test instead of skipping the row (ADR 0311's

@@ -2262,8 +2262,11 @@ Three things make that work, and each is why something nearby still refuses:
 What the door will not label stays a refusal in words, and the list of those shapes is the measure of where
 it stops:
 
-* a slot whose kind is **text, None, a list, a set or a dict** — `min(t, 3)` over a text slot is refused, not
-  answered, because the comparison would have to decide before the tag says what the slot holds;
+* a slot whose kind is **text, None, a list, a set or a dict** — the comparison is answered by the tag at run
+  time, not by a guess at compile time: two numbers and two texts compare, and a pair with no ordering raises
+  CPython's sentence naming the kinds the tag says (`min(n, "a")` over a text slot raises, and since ADR 0318 so
+  does a container slot against a number). What is *refused* is the answer used where one word is kept — see the
+  `m + 1` rows above;
 * a **set literal** — its element set and order are the objects' hash fact and not the source's, and folding
   the written order would answer `sum({n, 3})` as `6` where the reference answers `3`;
 * a **container written among the folded values** (`sum([n, [1]])`) — refused by the operand lowering in the
@@ -2272,13 +2275,63 @@ it stops:
 * a **keyword argument or `key=`** (`sum(xs, start=1)`, `min(a, b, key=f)`) and a **shadowed** `min`, `max` or
   `sum` — the program's own function is asked first, and the call surface is roadmap L11.7's row.
 
-A **name bound to a built container** is not this door at all: `min(xs)` keeps the ordinary fold road, and
-measuring this row found that road reading a number out of the container where the reference raises —
-`min(la, o)` over a built `la` answers `2` (the element count) where CPython raises `TypeError: '<' not
-supported between instances of 'int' and 'list'`, and two *different* containers raise the reference's own
-sentence where it answers a value. That is filed with the reference's answer beside it, not described as a
-refusal (roadmap Gap R.197, with Gap R.97's element-wise ordering; the identity arm — both sides the very same
-object — is the one container question the road answers, and it answers).
+### Containers order element by element, and a set that is not a subset orders neither way
+
+A container as a fold operand is answered by the same door as everything else, walking the container's
+elements rather than reading anything out of the object it is stored in (roadmap Gap R.197, ADR 0318):
+
+```python
+xs = []
+xs.append([1, 2])
+xs.append([3])
+a = xs[0]
+b = xs[1]
+print(min(a, b))                     # [1, 2]  — a list compares element by element
+print(max(a, b))                     # [3]
+print(min(a, a))                     # [1, 2]  — one object is reflexively equal; the first is kept
+
+ss = []
+ss.append({1, 2})
+ss.append({1, 2, 3})
+print(min(ss[0], ss[1]))             # {1, 2}  — a set compares by the subset operator
+ta = {1}
+tb = {2}
+print(min(ta, tb))                   # {1}     — neither is the other's subset: '<' and '>' are BOTH False,
+                                     #           so the first survives, and nothing raises
+
+la = [1, 2]
+print(min(la, 3))                    # TypeError: '<' not supported between instances of 'int' and 'list'
+print(min(list(), list()))           # []
+print(min(set(), list()))            # TypeError: '<' not supported between instances of 'list' and 'set'
+d = {}
+print(min(d, d))                     # TypeError: '<' not supported between instances of 'dict' and 'dict'
+```
+
+Four rules, all of them the reference's rather than this backend's:
+
+* **A list is lexicographic.** Elements are compared in order, and when every shared element is equal the
+  **shorter list is the lesser one** — the fold of `[1]` and `[1, 2]` keeps `[1]`. Each element pair is asked for
+  **equality first** and only then for ordering, which is the order CPython's own list comparison asks; that is
+  why `[None]` against `[None, 1]` compares two lengths rather than two `None`s (which have no ordering, and
+  would raise).
+* **A set is the subset operator**, which is a partial order: two sets that are not each other's subset answer
+  False to both `<` and `>`, so `min({1}, {2})` keeps `{1}` **without raising**. A fold that raised there would
+  disagree with the reference, and a fold that answered `False` for `>` would be wrong in the other direction.
+* **A dict has no ordering against anything** — including a copy of itself. `min(d, d)` raises, because the
+  identity shortcut that answers a list and a set is deliberately not taken for a dict or a `None`.
+* **The sentence names the two kinds that failed**, in the order the failing comparison had them: a list
+  against a number says `'int'` and `'list'`, and a failure *inside* two lists names the **elements**, so
+  `min(["a"], [1])` says `'int'` and `'str'`, not `'list'` and `'list'`. Every one of these raises is catchable
+  by the program's own `except TypeError:` and leaves the program running.
+
+The walk is one runtime helper, `@rt_pair_order`, asked by the fold — which is also where the honest limit of
+this row is: the **relational operators did not change**. `a < b` over the two built lists above still raises
+(`TypeError: '<' not supported between instances of 'list' and 'str'` where the reference answers `True`), and
+`True < [1]`, `None < [1]` and `"a" < [1]` still name `'int'` for an operand that is not a number. Those are
+roadmap Gaps R.201 and R.202, measured at the same time and left open on purpose: the operators order through a
+chain of their own, and rewiring it is the pair table Gap R.97 owns. A container that contains itself is filed
+the same way (Gap R.203): the fold chooses the right winner and the printer cannot render it, so
+`print(min(xs, xs))` after `xs.append(xs)` leaves the contract's exit 2 where the reference prints `[[...]]`.
 
 ## FFI / C interop (`extern fn`)
 

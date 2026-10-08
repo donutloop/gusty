@@ -1,16 +1,22 @@
-# probe_a_fold_orders_two_built_containers.gy — the fold asked to order two containers (roadmap
-# L11.1's remaining clause, Gap R.197; ADR 0316's filed half, Gap R.97's ordering door).
+# probe_a_fold_orders_two_built_containers.gy — the fold asked to order containers (roadmap L11.1's
+# remaining clause, Gap R.197; ADR 0316 filed it measuring itself, ADR 0318 pays it).
 #
-# min() and max() over numbers, texts and the same object twice answer what the reference prints (see
-# programs/probe_the_fold_builtins_answer_the_pair.gy). Two DIFFERENT containers are the residue: the
-# reference orders lists lexicographically and sets by the subset operator, and this backend has no
-# element-wise ordering for either — the same missing word Gap R.97 files for `<`. The fold door therefore
-# raises CPython's own sentence rather than comparing two heap handles, which is a wrong answer wearing the
-# reference's exit class: it is filed per leg below instead of being described as a refusal.
+# min() and max() over numbers and texts answer from the fold door (see
+# programs/probe_the_fold_builtins_answer_the_pair.gy). Two CONTAINERS were the residue ADR 0316 left
+# beside the door: the reference orders a list lexicographically, element by element, and a set by the
+# subset operator, and this backend had no element-wise ordering for either — it read a NUMBER out of the
+# heap object and compared that. min(la, o) over a built la answered the list's element COUNT at exit 0
+# where the reference raises, and two different containers raised the reference's own '<' sentence at exit
+# 3 where it answers [1, 2], [3] and {1}. A raise where the reference answered a value, and a value where
+# it raised: the same wrong-answer class, from both ends.
 #
-# The identity arm is the one container question the door can answer without walking any elements: when both
-# sides are the very same object the comparison is reflexively false and the incumbent is kept, which is what
-# the reference answers for a list and for a set.
+# @rt_pair_order walks the elements now, asking each element pair by its tag — and asking EQUALITY first,
+# which is the order the reference's own list comparison asks, and the reason [None] against [None, 1] is a
+# comparison of two lengths rather than a comparison of two Nones (which have no ordering and would raise).
+# Three arms a fold can meet, all below: two containers of one kind order, one object asked against itself
+# is reflexively equal so the incumbent is kept, and two sets that are not each other's subset answer False
+# to '<' AND to '>' — no raise, the incumbent survives. A dict has no ordering against anything, a copy of
+# itself included, and a list against a number is the TypeError naming both kinds.
 
 xs = []
 xs.append([1, 2])
@@ -18,6 +24,9 @@ xs.append([3])
 ss = []
 ss.append({1})
 ss.append({2})
+pre = []
+pre.append([1, 2])
+pre.append([1, 2, 3])
 a = xs[0]
 b = xs[1]
 p = ss[0]
@@ -28,3 +37,28 @@ print(min(p, p))
 print(min(a, b))
 print(max(a, b))
 print(min(p, q))
+print(min(pre[0], pre[1]))
+print(max(pre[0], pre[1]))
+sa = {1}
+sb = {1, 2}
+print(min(sa, sb))
+print(max(sa, sb))
+print(min(ss[0], ss[1]))
+print(max(ss[0], ss[1]))
+la = [1, 2]
+try:
+    print(min(la, 3))
+except TypeError:
+    print("caught-the-list-against-a-number")
+xb = []
+xb.append([1])
+xb.append(["a"])
+try:
+    print(min(xb[0], xb[1]))
+except TypeError:
+    print("caught-the-element-that-does-not-order")
+dz = {}
+try:
+    print(min(dz, dz))
+except TypeError:
+    print("caught-the-dict")

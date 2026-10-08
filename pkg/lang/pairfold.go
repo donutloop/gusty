@@ -33,6 +33,7 @@ package lang
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -112,13 +113,88 @@ func (g *irGen) foldCallShape(c *Call) (door int, args []Expr, ok bool) {
 // test the arithmetic door gates itself with, applied to every element — so a program whose fold is all
 // literals, all settled variables or all float variables keeps the road and the instruction count it
 // has always had, and landing this door cannot reroute one working program.
+//
+// The second question is the container one (roadmap Gap R.197, ADR 0318). A name bound to a container the
+// program built carries no kind at all on the ordinary road: that road valued it as its heap handle and
+// compared handles, which is how `min(la, o)` over a built `la` answered `2` — the ELEMENT COUNT — at exit
+// 0 where the reference raises `TypeError: '<' not supported between instances of 'int' and 'list'`. So a
+// container the compiler can NAME is the door's business too. A container the program WROTE among the
+// folded values is not: that shape already has a refusal naming the element (Gap R.198), and a door that
+// swallowed it would answer a program the language refuses.
 func (g *irGen) foldMayNeedPair(args []Expr) bool {
 	for _, a := range args {
 		if g.operandMayNeedPair(a) {
 			return true
 		}
+		if g.foldArgCarriesAContainer(a) {
+			return true
+		}
 	}
 	return false
+}
+
+// foldArgCarriesAContainer is the container half of that gate: a name the container analysis still
+// describes, a read whose slot the tag table says holds a container, or the `set()` / `list()` / `dict()`
+// spelling of an empty one. It asks `staticContainerKind`, which emits nothing — deciding must not put
+// instructions in a module that then refuses (ADR 0241's rule, applied to a call that orders rather than
+// subscript). `emptyContainerLiteral` is in the gate because those three spellings are the only way to
+// write an empty SET at all (Gap K.3), and a fold asked to order one read its handle: `min(set(), 3)`
+// printed `0` at exit 0 where the reference raises (roadmap Gap R.197).
+func (g *irGen) foldArgCarriesAContainer(e Expr) bool {
+	switch e.(type) {
+	case *Name, *Index, *Call:
+	default:
+		return false
+	}
+	if isContainerLiteral(e) {
+		return false
+	}
+	if lit, isEmpty := emptyContainerLiteral(e); isEmpty {
+		_, known := g.staticContainerKind(lit)
+		return known
+	}
+	_, known := g.staticContainerKind(e)
+	return known
+}
+
+// foldOperandPair lowers one folded value to the (payload, tag) pair the door asks about. The arithmetic
+// road answers everything it can — a pair-bound name reads its own two registers, which is the pair the
+// slot write left there, container tag included. What it cannot answer is a container the compiler can
+// name: there is no tag register to load for that, only a handle and a kind, and the kind comes from the
+// same analysis the printers ask (roadmap Gap R.197; ADR 0233's rule that a payload without its tag is a
+// number wearing another object's bits, applied to the fold, which read a length as a value).
+func (g *irGen) foldOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok bool, err error) {
+	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
+		return g.arithOperandPair(b, e)
+	}
+	if g.foldArgCarriesAContainer(e) {
+		target := e
+		if lit, isEmpty := emptyContainerLiteral(e); isEmpty {
+			target = lit
+		}
+		if h, kind, okHandle := g.containerHandleOf(b, target); okHandle {
+			if word := containerFoldTag(kind); word != "" {
+				g.heapUsed = true
+				return h, word, true, nil
+			}
+		}
+	}
+	return g.arithOperandPair(b, e)
+}
+
+// containerFoldTag is the tag word a container the compiler named travels under. The table is the ABI's,
+// because the door the pair arrives at is the runtime's and reads the same numbers (ADR 0182's one-table
+// rule, the rule that keeps `min([1], 2)`'s raise saying 'list' rather than 5).
+func containerFoldTag(kind string) string {
+	switch kind {
+	case "list":
+		return strconv.Itoa(ABITagList)
+	case "dict":
+		return strconv.Itoa(ABITagDict)
+	case "set":
+		return strconv.Itoa(ABITagSet)
+	}
+	return ""
 }
 
 // taggedFoldPair is the door: lower every folded value to a (payload, tag) pair and chain the run-time
@@ -140,7 +216,7 @@ func (g *irGen) taggedFoldPair(b *strings.Builder, e Expr) (payload, tag string,
 	}
 	pairs := make([][2]string, 0, len(args))
 	for _, a := range args {
-		p, t, okPair, perr := g.arithOperandPair(b, a)
+		p, t, okPair, perr := g.foldOperandPair(b, a)
 		if perr != nil {
 			return "", "", false, perr
 		}

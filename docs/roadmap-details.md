@@ -9061,7 +9061,7 @@ to be a function of them. The telling smell is a guard written for one convenien
 subsets) being read as a general property (here, shard legality) — the two are not the same, and only the
 second needed to be proven.
 
-### Gap R.197 — a fold asked to order a container the program built reads a number that is not the container's value (OPEN, filed measuring ADR 0316, owner `codegen`)
+### Gap R.197 — a fold asked to order a container the program built reads a number that is not the container's value (CLOSED by ADR 0318, filed measuring ADR 0316, owner `codegen`)
 
 The fold door was measured, not guessed, and the measuring found the road beside it. Three arms, three
 shapes of wrong:
@@ -9090,6 +9090,51 @@ Filed as `probe_a_fold_orders_two_built_containers.gy` with an `oracle: debt` ro
 reference answers a value is not an honest refusal — it is a wrong answer wearing the reference's exit class —
 and the ledger row is what keeps it from being described as one.
 
+
+**Paid by ADR 0318 on 2026-10-08.** The element-wise ordering is one runtime helper, `@rt_pair_order`, and the fold
+asks it. Three statuses came out of the reference rather than out of the design — *ordered* (with −1/0/+1), *no
+ordering between these two kinds* (with the two kinds to name), and *neither order, no raise*, which is what two sets
+that are not each other’s subset are: the reference’s `<` and `>` are both simply False there, so a fold that raised
+would be wrong and a fold that answered `False` for `>` would be wrong differently. The list walk asks each element
+pair **for equality before ordering**, which is the order the reference’s own list comparison asks and the reason
+`[None]` against `[None, 1]` is a comparison of two lengths rather than a comparison of two `None`s (which have no
+ordering at all and would raise). The operand pair the fold is handed changed too: a container the compiler can name
+travels as (payload, tag) instead of going to the arithmetic door, which is the road that read a length as a value.
+
+Measured with three columns — the reference, the HEAD baseline binary, the binary this cycle built — the rows moved
+like this (the `compiled before` answers are the baseline build’s, not the filing’s prose):
+
+| program | reference | compiled before | compiled after |
+| --- | --- | --- | --- |
+| `la = []` / `la.append(True)` / `la.append(3)` / `o = 3` / `print(min(la, o))` | `TypeError: '<' … 'int' and 'list'` | **`0`, exit 0** | ✅ the raise |
+| `sa = set()` over a bool slot / `print(min(sa, 3))` | `TypeError: '<' … 'int' and 'set'` | **`1`, exit 0** | ✅ the raise |
+| `la = [1, 2]` / `print(min(la, 3))`, `sa = set()` / `print(min(sa, 3))` | `TypeError` naming both kinds | **`0`, exit 0** | ✅ the raise |
+| `min(a, b)`, `max(a, b)` over two built lists | `[1, 2]`, `[3]` | `TypeError: '<' … 'list' and 'list'`, exit 3 | ✅ `[1, 2]`, `[3]` |
+| `min(p, q)` over two built sets, neither the other’s subset | `{1}` — both `<` and `>` are simply False, so the incumbent survives | `TypeError: '<' … 'set' and 'set'`, exit 3 | ✅ `{1}` |
+| `min(a, b)` where `a` is `[]` and `b` is `[1, 2]` | `[]` | exit 3 raise | ✅ `[]` |
+| `min(xs[0], xs[1])` over `[1, 2]` and `[1, 2, 3]` | `[1, 2]` | exit 3 raise | ✅ `[1, 2]` |
+| `min(sa, sb)`, `max(sa, sb)` where `sa ⊂ sb` | `{1}`, `{1, 2}` | exit 3 raise | ✅ `{1}`, `{1, 2}` |
+| `min(set(), 3)`, `min(list(), 3)` | `TypeError` naming both kinds | `0`, exit 0 | ✅ the raise |
+| `min(["a"], [1])` — the failure INSIDE the elements | `TypeError: '<' … 'int' and 'str'`, the elements’ kinds in the order the failing comparison had them | `TypeError: '<' … 'list' and 'list'` | ✅ the elements’ sentence |
+| `min(d, d)`, `min(d, e)` | `TypeError` naming `'dict'` twice | ✅ raised | ✅ raised |
+| `min([1], [2])`, `min(list(), [1])` — a container WRITTEN among the folded values | `[1]`, `[]` | a refusal in words (Gap R.198) | a refusal in words (Gap R.198, unchanged) |
+
+`probe_a_fold_orders_two_built_containers.gy` grew from the twelve lines the debt row pinned to fifteen — the
+lexicographic arm, the subset arm over sets the program built, and three raises the program catches with its own
+`except TypeError:` — and it left the debt ledger for `conformanceStandalone`: `asserted`, `oracle: match`,
+`conformant: true`, the compiled stdout equal to CPython’s byte for byte. It also has a record in
+`pkg/lang/testdata/interpreter-golden.json`, added by `tools/recmerge`, which asks the reference what each source
+answers and refuses to write the entry if the compiled leg disagrees — so the answer is the reference’s, and a deleted
+record fails a test rather than skipping a row.
+
+Rejected, and why: comparing two heap handles (a plausible verdict at exit 0, which is the class of wrong the row
+exists to stop); folding a SET in written order and letting conformance go green (the reference’s answer depends on the
+objects’ hashes — that is Gap R.198’s refusal, not this row’s answer); ordering by length first and elements second
+(answers `[1, 2] < [3]` wrongly; the reference has no length-first rule for lists); and rewiring the relational
+operators to the same door in this cycle (that is the fix Gap R.97 owns — Gap R.201 below is what this cycle measured
+and deliberately left open).
+
+
 ### Gap R.198 — the fold door's four untaggable shapes stay refusals in words (OPEN, filed measuring ADR 0316, owner `codegen`)
 
 A door that answers 23 previously-refused programs has to say what it still will not do, in sentences an
@@ -9113,3 +9158,90 @@ Each is asserted to name the value's origin, the missing half and the roadmap ro
 which the exit-code contract reserves for a compiler that is actually broken (ADR 0166). The general rule this
 row exists to keep: a refusal is a *diagnostic*, and a diagnostic that does not name what to do next is how a
 "not yet" quietly becomes a "no".
+
+### Gap R.201 — the relational ordering of two containers the program built raises where the reference answers (OPEN, measured while landing ADR 0318, owner `codegen`)
+
+The fold got its element-wise ordering on 2026-10-08 and the relational operators did not, because they are a
+different road with a different owner. Measured with the same three columns — the reference, the HEAD baseline, this
+cycle’s build — and none of these rows moved:
+
+| program | reference | compiled (unchanged by ADR 0318) |
+| --- | --- | --- |
+| `xs.append([1, 2])` / `xs.append([3])` / `a = xs[0]` / `b = xs[1]` / `print(a < b)` | `True` | `TypeError: '<' not supported between instances of 'list' and 'str'`, exit 3 |
+| the same program with `print(a >= b)` | `False` | `TypeError: '>=' not supported between instances of 'list' and 'str'`, exit 3 |
+| `xs.append({1})` / `xs.append({1, 2})` / `print(a < b)` | `True` | `TypeError: '<' not supported between instances of 'set' and 'str'`, exit 3 |
+
+Two wrong answers stacked on each other. The first is the row’s title: a raise where the reference answered a value —
+the class this tracker calls a wrong answer even when it wears the reference’s exit class (ADR 0314’s rule for a debt
+row, read onto an operator). The second is inside the diagnostic: the sentence names `'str'` for an operand that is a
+list. That is not a typo to patch, it is the symptom of the missing table — the relational road decides the raise from
+the operands’ node kinds plus a partial tag reading, so a container on one side answers whatever the chain falls
+through to. Gap R.97 already names the artifact owed (“a chain of chains over the two sides sharing one sentence table,
+with container-against-container routed to the element-wise helper instead of raising”); ADR 0318 built the element-wise
+helper and left the chain alone, because rewiring four operators is a second fix and this cycle shipped one.
+
+Filed as `TestCLIAgentTheRelationalOrderingOfContainersIsFiledNotFixed` in `integration/pair_container_order_test.go`.
+Each row pins the reference’s answer (so the row cannot drift), the compiled sentence (so the defect cannot move
+somewhere quieter), and the exit class (so a refusal cannot quietly become the answer — a refusal there would be the
+compiler’s opinion, not the reference’s raise).
+
+### Gap R.202 — the cross-kind ordering sentence names ‘int’ for an operand that is not a number (OPEN, measured while landing ADR 0318, owner `codegen`)
+
+The same operator road, the operand that is not a container this time:
+
+| program | reference | compiled (unchanged by ADR 0318) |
+| --- | --- | --- |
+| `print(True < [1])` | `TypeError: '<' … 'bool' and 'list'` | `… 'int' and 'list'`, exit 3 |
+| `print(None < [1])` | `TypeError: '<' … 'NoneType' and 'list'` | `… 'int' and 'list'`, exit 3 |
+| `print("a" < [1])` | `TypeError: '<' … 'str' and 'list'` | `… 'int' and 'list'`, exit 3 |
+
+The class is right and the message is wrong, and ADR 0271’s rule is that a raise says what the program wrote: a reader
+who sees `'int' and 'list'` will go looking for an `int` in a program that contains none, and a program that branches
+on the *message* — which this language’s own test tables do, and which users do — branches on a fiction. The fold door
+does not have this defect: `@rt_pair_order` takes the tag and asks the table the printers ask, which is why the fold’s
+raises name `bool` where the operator road says `int` (ADR 0259 gave bool its own tag and the fold reads it; the
+operator road never followed). The fix is therefore not a new table but one table used twice — the same shared pair
+table Gap R.97 and Gap R.101 name from their own seats.
+
+Filed in the same table as Gap R.201, its last three rows, with the reference’s sentence recorded so the compiled
+sentence cannot be quietly rewritten into an agreement that does not exist.
+
+### Gap R.203 — a container that contains itself ends the program at the contract's own-bug code (OPEN, measured while landing ADR 0318, owner `codegen`)
+
+The one place this cycle made a shape *worse*, written down rather than left out. Measured on both binaries, with
+exit codes read from the process and not from a pipe:
+
+| program | reference | HEAD baseline | this cycle |
+| --- | --- | --- | --- |
+| `xs = []` / `xs.append(xs)` / `print(xs)` | `[[...]]`, exit 0 | **exit 2**, no stderr | **exit 2**, no stderr |
+| the same, `print(min(xs, xs))` | `[[...]]`, exit 0 | **`0`**, exit 0 (a wrong answer) | **exit 2**, no stderr |
+| `xs` holds `xs`, `ys` holds `ys`, `print(min(xs, ys))` | `RecursionError`, exit 1 | `TypeError` at exit 3 | `TypeError: '<' … 'list' and 'list'`, exit 3 |
+| `ys = [[1], ys]` / `print(min(ys[0], ys[1]))` | `TypeError: '<' … 'list' and 'int'`, exit 1 | `TypeError` naming `'list'` twice | ✅ the reference's sentence |
+
+Read the rows in order and the story is simple. The printer has never been able to render a cycle — the second row
+is the first row's hole, reached one statement later. Before ADR 0318 the fold never got there, because it answered
+`0` for the fold of a cycle against itself: a wrong answer, at the exit code of success, which is why it looked
+harmless. The walk ADR 0318 added picks the right winner (the identity arm — `xs` is `xs`, the comparison is
+reflexively equal, the incumbent is kept, exactly as the reference reasons) and then hands that winner to a printer
+that cannot print it. A silent wrong answer became a crash; both are defects, and the crash is the one ADR 0166
+reserves the compiler's own exit code for.
+
+The ordering's own guard is the honest part of the picture and is left as shipped: `@rt_pair_order` carries a depth
+argument and raises its `TypeError` at the 65th level. A container that contains itself therefore terminates rather
+than overflowing the stack, and the two-cycles row names what it cannot do — the reference's answer there is
+`RecursionError`, a different exception class, and the row says so rather than dressing the `TypeError` up as the
+answer.
+
+What is owed is one argument, passed three places: `@rt_pair_order` already threads `%depth` through its recursive
+arm; `rt_payload_eq`'s container arm and the mixed-value printer do not take one, which is why `[xs] == [xs]`
+terminates (the identity shortcut) while `[xs] == [ys]` and `print(xs)` do not. The DoD is not a deeper limit — the
+reference's own rule for element comparison is identity, and `[[...]] == [[...]]` is answered by the same shortcut
+this door already uses; the printer has to render the cycle the way CPython's repr does, `[…]` for a container the
+walk is already inside.
+
+Filed as `TestAFoldOfCyclicContainersIsFiledNotFixed` in `pkg/lang/pair_container_order_test.go` — in the **unit**
+process, where the crash reproduces, rather than only at the CLI, which is the ADR 0317 lesson (a compiled-crash row
+that only exists in a CLI table is a row that can silently stop testing anything) — and again through the CLI in
+`integration/pair_container_order_test.go`. The rows assert the reference's answer first, so the row cannot drift,
+and the compiled exit code second, so a "fix" that turns the crash into a plausible number fails the table instead
+of passing it.

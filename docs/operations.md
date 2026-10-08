@@ -997,6 +997,30 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
+### Adding sources to the record leg: `tools/recmerge` (ADR 0318)
+
+The record is not runnable, so a new source needs its answer written down before a case can be judged. The
+record is also the one artifact a compiler agent could forge — it has both legs' output in front of it — so the
+writing path refuses to be a copier (ADR 0318's third decision):
+
+```
+go run ./tools/recmerge -sources /tmp/foldpair.json                  # add sources, reference-leg first
+go run ./tools/recmerge -sources /tmp/foldpair.json -check           # ask the rows only, write nothing
+```
+
+`-sources` is a JSON array of program sources (a bare JSON array, or `{"sources": [...]}`); `-check` asks the
+rows without touching the file — it is how a REFUSAL row (a shape whose reference trap *is* the answer, Gap
+R.198's family) is kept honest without inventing an entry. The tool **asks CPython first** — that answer is the
+entry's — and then runs the compiled leg: it refuses to write an entry when the compiled path disagrees on
+stdout, on a trap's exit class, or on a trap message the reference produced, and reports each refusal as
+`refused (compiled leg diverges)`. An entry is therefore the reference's answer with the backend's agreement
+stamped on it, never the backend's answer wearing the reference's coat. New entries are inserted into the
+record's own text rather than re-marshalled through the whole map, so a 35-source addition is a 191-line diff
+rather than a 2300-line reformatting of 5913 entries; what a duplicated key would cost (`map[string]any` keeps
+the last of two and counts the file as clean) is caught by
+`pkg/lang/golden_test.go`'s duplicate-counting and struct-versus-raw parse guards, and the recorder's own
+refusals are tested in `tools/recmerge/main_test.go`, where the two legs are arguments.
+
 ### Running the suite: budgets and shards (ADR 0312, ADR 0313)
 
 Almost every case in this suite ends inside a subprocess, because that is what the two witness legs are:
