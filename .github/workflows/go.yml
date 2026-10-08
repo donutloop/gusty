@@ -83,11 +83,27 @@ jobs:
       - name: Build
         run: go build -tags=llvm20 ./...
 
-      - name: Unit tests
-        run: go test -tags=llvm20 ./pkg/...
+      # The suite is subprocess-bound — nearly every case ends inside llc-20, cc, lli-20 or python3 —
+      # so a serial run is a one-core run, and on this runner pkg/lang crossed go test's implicit
+      # ten-minute budget with the suite two-thirds through (ADR 0313: the panic named the case that
+      # happened to be running, not the suite that was too slow). testshards splits the cases over one
+      # process per core; the split comes from `go test -list`, so coverage is not left to a pattern
+      # nobody can test, and -json says what ran, how long, and what failed.
+      #
+      # Each shard carries its own -timeout: it is now a stated budget for one shard's cases rather
+      # than go test's implicit one for everything, and with ADR 0312's per-call budgets a stuck tool
+      # ends at the call instead of at the alarm.
+      #
+      # cmd/ and tools/ are named alongside pkg/ because they hold tests too (the CLI's exit-code and
+      # toolchain-classification cases live in cmd/gustyc, the harness's own claims in
+      # tools/testshards) — a unit step that lists only ./pkg/... leaves them unrun by any step.
+      - name: Unit tests (sharded: one test process per core)
+        run: go run ./tools/testshards -tags llvm20 -timeout 12m ./pkg/... ./cmd/... ./tools/...
 
       - name: Integration tests (execute generated code)
-        run: go test -tags=llvm20 ./integration/...
+        # The same treatment: these cases compile real programs through llc-20 + cc and run them, which
+        # is the expensive leg of the matrix, and they were measured at 376 s serially.
+        run: go run ./tools/testshards -tags llvm20 -timeout 12m ./integration/...
         env:
           LLC: llc-20
 
