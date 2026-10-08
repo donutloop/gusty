@@ -12,6 +12,10 @@
 # `make test` remains the plain serial command, and it is the one to use for the modes that write
 # per-run artifacts (GUSTY_GOLDEN_UPDATE rewriting the drift ledger, GUSTY_GOLDEN_MISSING collecting
 # sources the record does not cover): N shards would each write their own subset over the file.
+#
+# `test` runs with -count=1. Half the suite reads files outside its own package (docs/*.md, roadmap.md,
+# integration/programs/*.gy) and those are not in `go test`'s cache key, so on a warm cache a doc edit can be
+# certified by a run that never opened the file it changed — which is the opposite of what a guard is for.
 testshards:
 	go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...
 
@@ -20,7 +24,7 @@ showshards:
 	go run ./tools/testshards -tags llvm20 -list ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 test:
-	go test -tags=llvm20 ./...
+	go test -tags=llvm20 -count=1 ./...
 
 build:
 	go build -tags=llvm20 ./...

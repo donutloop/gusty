@@ -507,3 +507,47 @@ func TestEvidenceNamesDoNotCollideAcrossPackages(t *testing.T) {
 		t.Error("two shards of one package collided on one evidence file")
 	}
 }
+
+// --- the serial command the loop is told to run (docs/operations.md § Running the suite) ---------
+//
+// `make test` is the gate AGENTS.md names, and half the suite reads files that live outside the package
+// holding the test — docs/language.md, roadmap.md, integration/programs/*.gy. `go test`'s cache key is the
+// package's build inputs, not the data a test opens, so on a warm cache a doc guard can be reported green by
+// a run that never opened the file a doc edit changed. The only honest serial command is the one that skips
+// the cache; this asserts the shipped makefile says so, rather than the docs claiming it and the makefile
+// disagreeing.
+func TestTheMakefileRunsTheSerialSuiteWithoutTheCache(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "makefile"))
+	if err != nil {
+		t.Fatalf("read the makefile: %v", err)
+	}
+	var line string
+	inTest := false
+	for _, l := range strings.Split(string(body), "\n") {
+		if strings.HasPrefix(l, "test:") {
+			inTest = true
+			continue
+		}
+		if !inTest {
+			continue
+		}
+		if !strings.HasPrefix(l, "\t") {
+			break
+		}
+		if strings.Contains(l, "go test") {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		t.Fatal("the makefile's `test` target has no `go test` line to check")
+	}
+	if !strings.Contains(line, "-count=1") {
+		t.Errorf("`make test` may answer from the test cache, and a cached doc guard never read the doc: %q", line)
+	}
+	// The pinned toolchain is part of the command too: without the tag the suite skips its LLVM legs and
+	// reports a green that means nothing (the same trap ADR 0313 records for a shard built without it).
+	if !strings.Contains(line, "-tags=llvm20") {
+		t.Errorf("`make test` must build against the pinned LLVM: %q", line)
+	}
+}

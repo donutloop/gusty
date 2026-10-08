@@ -8951,6 +8951,34 @@ source gets two answers and the suite reports a compiler regression that does no
 the helper that starts the process, because a call site that has to remember it is a call site that will
 forget it.
 
+### Gap R.200 — the serial gate could answer from the test cache, and a guard that never read its file still reported `ok` (CLOSED by ADR 0317, owner `tooling`)
+
+The gate `AGENTS.md` names was `go test -tags=llvm20 ./...`. For most of this suite that is fine: an answer comes
+from `llc`, `cc`, `lli` or `python3` run *during* the test, and the cache key is the package's build inputs. It is
+not fine for the third of the suite that is **guards over files outside the package** — the doc pins over
+`docs/language.md`, `docs/operations.md`, `README.md`, `roadmap.md`, `docs/adr/*.md`, the conformance guards over
+`integration/programs/*.gy`, the record guards over `testdata/*.json`. `go test` does not put a file a test opens
+at run time into the cache key, so:
+
+```
+$ edit docs/language.md          # a sentence a doc pin asserts
+$ go test -tags=llvm20 ./pkg/lang
+ok      github.com/donutloop/gusty/pkg/lang       (cached)
+```
+
+The guard did not run, and the verdict is the thing an agent acts on. What makes this class of defect survive
+review is its asymmetry: the *first* run after an edit is honest. A reviewer who ran the suite once after saving
+saw the truth; every run after that — which is what a loop does — can be a lie until some `.go` file changes.
+
+ADR 0313's shard runner has passed `-count=1` for every shard since the day it landed, so the fix was to make the
+serial command match it, and to put the *rule* where it cannot be lost: the shipped command, not the prose. The
+guard is checked by deleting the flag and watching it go red — a config assertion that cannot fail is a comment.
+
+CI never saw this, and that is the generalisable part: CI checks out into a machine with no test cache, so a
+cache-only defect is structurally invisible to the one environment that is allowed to certify a build. The
+environments that *do* have a warm cache are the ones a human and an agent iterate in. A runner you write for
+agents inherits their filesystem; it does not inherit their honesty.
+
 ### Gap R.199 — the drift ledger was adjudicated per process, so a sharded run judged a row by a fraction of the run's evidence (CLOSED by ADR 0315, owner `tooling`)
 
 ADR 0313's legality argument for sharding had a sentence in it that was true of a subset and false of a

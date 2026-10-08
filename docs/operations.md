@@ -1007,7 +1007,7 @@ only as fast as the number of cores it is allowed to use.
 
 | Command | What it does |
 |---|---|
-| `make test` | `go test ./...` — the plain serial run. **The only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file |
+| `make test` | `go test -tags=llvm20 -count=1 ./...` — the plain serial run, and **the only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file. The `-count=1` is load-bearing, not hygiene: a third of the suite are guards over files that live outside the package holding the test (`docs/*.md`, `roadmap.md`, `integration/programs/*.gy`, `testdata/*.json`), and those are not in `go test`'s cache key — on a warm cache an edited doc can be certified by a run that never opened it (ADR 0317; `tools/testshards` asserts the makefile keeps the flag) |
 | `make testshards` | `go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...` — the same cases in one process per core (what CI runs, split into two steps with a stated `-timeout 12m` each) |
 | `make showshards` | prints the partition as JSON without running anything: which case is in which shard |
 | `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error, evidence}` per row, plus the run's `ok` and `elapsed`; `evidence` is the file that shard's golden evidence went to, so the merged verdict can be cross-read against it |

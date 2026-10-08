@@ -9072,3 +9072,14 @@ promotion never happened. The diff that settles it is per-row: added / removed /
   runs line-by-line over the pair slot the program's own binding writes.
 * A fold's empty case cannot be reached through a pair argument (a literal always has elements), so the empty
   trap is documented as defensive and the row that reaches it is Gap R.197 — not shipped as if it were covered.
+
+### The gate's own cache was lying about the docs
+
+While re-running `go test ./...` as the pre-commit gate it printed `ok github.com/donutloop/gusty/cmd/gustyc (cached)`
+and the reason for a whole new row: a third of this suite asserts things about files outside its own package — the
+doc pins over `docs/language.md` and `roadmap.md`, the conformance guards over `integration/programs/*.gy`, the
+record guards over `testdata/*.json` — and `go test`'s cache key holds build inputs, not files a test opens. Edit
+a doc, run the suite twice, and the second `ok` came from a run that never opened the file. `make test` now ships
+`-count=1`, and `tools/testshards` asserts the makefile keeps it (checked by deleting the flag and watching the
+guard go red). CI could not have caught this: a fresh checkout has no cache, so the one environment allowed to
+certify a build is the one environment where the defect cannot exist (roadmap Gap R.200, ADR 0317).
