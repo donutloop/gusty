@@ -1,5 +1,286 @@
 {
  "entries": {
+"xs = []\nxs.append([[7, 8], 5])\nxs.append([\"abc\"])\nxs.append([{5, 6}])\nd = {}\nd[\"a\"] = {\"k\": [1, 2]}\nprint(7 in xs[0][0])\nprint(9 not in xs[0][0])\nfor v in xs[0][0]:\n    print(v)\nfor v in xs[1][0]:\n    print(v)\nfor v in xs[2][0]:\n    print(v)\nfor v in d[\"a\"][\"k\"]:\n    print(v)\nys = []\nys.append([7, 8])\nprint(ys[0] in xs[0])\nprint([1, 3] in xs[0])\ntry:\n    print([1] in d[\"a\"])\nexcept TypeError:\n    print(\"the dict refused the list\")\ntry:\n    for v in xs[0][1]:\n        print(v)\nexcept TypeError:\n    print(\"the loop raised\")\ntry:\n    print([1] in xs[2][0])\nexcept TypeError:\n    print(\"the set refused the list\")\nprint(\"done\")\n": {
+    "stdout": "True\nTrue\n7\n8\na\nb\nc\n5\n6\n1\n2\nTrue\nFalse\nthe dict refused the list\nthe loop raised\nthe set refused the list\ndone\n",
+    "hasStdout": true
+   },
+"d = {}\nd[\"a\"] = 1.5\nfor v in d[\"a\"]:\n    print(v)\n": {
+    "err": "TypeError: 'float' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not iterable"
+   },
+
+"xs = []\nxs.append(5)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"loop\")\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"test\")\n": {
+    "stdout": "loop\ntest\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([\"a\", 1])\nprint(1 if xs[0][0] == 1 else 0)\nprint(1 if xs[0][0] == \"a\" else 0)\n": {
+    "stdout": "0\n1\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, \"a\", 2.5, None]])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "1\na\n2.5\nNone\n",
+    "hasStdout": true
+   },
+"xs = []\nxs.append([7, 8])\nys = []\nys.append([[7, 8]])\nprint(1 if ys[0][0] in xs[0] else 0)\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2], 3])\nys = []\nys.append([1, 2])\nprint(ys[0] in xs[0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2], 3])\nys = []\nys.append([1, 3])\nprint(ys[0] in xs[0])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[7, 8]])\nd = {}\nd[\"a\"] = {\"k\": [7, 8]}\nprint(1 if d[\"a\"][\"k\"] in xs[0] else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[[[1, 2]]]])\nfor v in xs[0][0][0][0]:\n    print(v)\nprint(1 in xs[0][0][0][0])\n": {
+    "stdout": "1\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([{\"k\": 1}])\nd = {}\nd[\"z\"] = {\"k\": 1}\nprint(d[\"z\"] in xs[0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([{1, 2}])\nys = []\nys.append({1, 2})\nprint(ys[0] in xs[0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({\"k\": 1})\nprint([1] in xs[0])\n": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"xs = []\nxs.append({\"k\": 1})\ntry:\n    print([1] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1, 2})\nprint([1] in xs[0])\n": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"xs = []\nxs.append({1, 2})\ntry:\n    print([1] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1, 2})\nys = []\nys.append({1: 1})\nprint(ys[0] in xs[0])\n": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"xs = []\nxs.append({1, 2})\nys = []\nys.append({1: 1})\ntry:\n    print(ys[0] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1, 2})\nys = []\nys.append({1})\nprint(ys[0] in xs[0])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({1: 2})\nys = []\nys.append({1})\nprint(ys[0] in xs[0])\n": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"xs = []\nxs.append({1: 2})\nys = []\nys.append({1})\ntry:\n    print(ys[0] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+"xs = []\nxs.append([\"ab\"])\nprint(1 in xs[0][0])\n": {
+    "err": "TypeError: 'in \u003cstring\u003e' requires string as left operand, not int",
+    "exnType": "TypeError",
+    "exnMsg": "'in \u003cstring\u003e' requires string as left operand, not int"
+   },
+
+"xs = []\nxs.append([\"ab\"])\ntry:\n    print(1 in xs[0][0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([\"abc\"])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "a\nb\nc\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([\"abc\"])\nprint(\"b\" in xs[0][0], \"z\" in xs[0][0])\n": {
+    "stdout": "True False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[None]])\nfor v in xs[0][0][0]:\n    print(v)\n": {
+    "err": "TypeError: 'NoneType' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not iterable"
+   },
+
+"xs = []\nxs.append([[None]])\ntry:\n    for v in xs[0][0][0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([{5, 6}])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "5\n6\n",
+    "hasStdout": true
+   },
+"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\nfor v in d[\"a\"][\"k\"]:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\nprint(1 in d[\"a\"][\"z\"])\n": {
+    "err": "KeyError: 'z'",
+    "exnType": "KeyError",
+    "exnMsg": "'z'"
+   },
+
+"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\ntry:\n    print(1 in d[\"a\"][\"z\"])\nexcept KeyError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {}\nd[\"a\"] = {\"k\": {\"j\": 1}}\nprint(\"j\" in d[\"a\"][\"k\"], \"z\" in d[\"a\"][\"k\"])\n": {
+    "stdout": "True False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[\"ab\"]])\nprint(1 in xs[0][0])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[\"ab\"]])\ntry:\n    print(1 in xs[0][0])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[\"abc\"]])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "abc\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[\"abc\"]])\nprint(\"b\" in xs[0][0], \"z\" in xs[0][0])\n": {
+    "stdout": "False False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2, 3, 4]])\nfor v in xs[0][0]:\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\nelse:\n    print(\"done\")\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2], 2.5])\nfor v in xs[0][1]:\n    print(v)\n": {
+    "err": "TypeError: 'float' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not iterable"
+   },
+
+"xs = []\nxs.append([[1, 2], 2.5])\ntry:\n    for v in xs[0][1]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2], 5])\nfor v in xs[0][1]:\n    print(v)\n": {
+    "err": "TypeError: 'int' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not iterable"
+   },
+
+"xs = []\nxs.append([[1, 2], 5])\nprint(1 in xs[0][1])\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"xs = []\nxs.append([[1, 2], 5])\ntry:\n    for v in xs[0][1]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2], 5])\ntry:\n    print(1 in xs[0][1])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2]])\ni = 0\nprint(1 in xs[i][i])\nfor v in xs[i][i]:\n    print(v)\n": {
+    "stdout": "True\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1, 2]])\nprint(9 not in xs[0][0], 1 not in xs[0][0])\n": {
+    "stdout": "True False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[1], {\"k\": 2}])\nfor v in xs[0][0]:\n    print(v)\nfor v in xs[0][1]:\n    print(v)\n": {
+    "stdout": "1\nk\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[7, 8]])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[7, 8]])\nprint(7 in xs[0][0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[7, 8]])\nprint(9 in xs[0][0])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[[1, \"a\"], 2.5, None]])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "[1, 'a']\n2.5\nNone\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[[3, 4]]])\nfor v in xs[0][0][0]:\n    print(v)\nprint(3 in xs[0][0][0])\n": {
+    "stdout": "3\n4\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[[None]]])\nfor v in xs[0][0][0]:\n    print(v)\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[[None]]])\ntry:\n    for v in xs[0][0][0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[]])\nfor v in xs[0][0]:\n    print(v)\nprint(\"end\")\n": {
+    "stdout": "end\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([[{5, 6}]])\nfor v in xs[0][0]:\n    print(v)\n": {
+    "stdout": "{5, 6}\n",
+    "hasStdout": true
+   },
 "xs = []\nxs.append([7, 8])\nxs.append({\"k\": 1})\nxs.append({5})\nxs.append(\"abc\")\nprint(7 in xs[0])\nprint(9 not in xs[0])\nprint(\"k\" in xs[1], \"z\" in xs[1])\nprint(5 in xs[2], 6 in xs[2])\nprint(\"b\" in xs[3], \"z\" in xs[3])\nfor v in xs[0]:\n    print(v)\nfor v in xs[3]:\n    print(v)\nd = {}\nd[\"a\"] = [1, 2]\nfor v in d[\"a\"]:\n    print(v)\nd[\"b\"] = {\"k\": 1, \"j\": 2}\nfor v in d[\"b\"]:\n    print(v)\nn = []\nn.append(5)\ntry:\n    print(1 in n[0])\nexcept TypeError:\n    print(\"the test raised\")\ntry:\n    for v in n[0]:\n        print(v)\nexcept TypeError:\n    print(\"the loop raised\")\nprint(\"done\")\n": {
     "stdout": "True\nTrue\nTrue False\nTrue False\nTrue False\n7\n8\na\nb\nc\n1\n2\nk\nj\nthe test raised\nthe loop raised\ndone\n",
     "hasStdout": true

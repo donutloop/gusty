@@ -476,6 +476,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// refused and the loop answered one `0` for CPython's `1` and `2` (roadmap Gap R.95, ADR 0323,
 		// ADR 0251's dispatch handed to the two callers that had never taken it).
 		"runtime_slot_haystack",
+		// The same two doors one level deeper, and the needle asked the way the haystack is asked:
+		// `7 in xs[0][0]` is True, `for v in d["a"]["k"]` prints 1 and 2, a container read out of one slot
+		// is found inside another container by *content*, and a container needle into a dict or a set slot
+		// raises `TypeError: unhashable type: 'list'` where it used to answer "not present". The read below
+		// such a slot has answered since ADR 0251; what was missing was handing the pair it computes to the
+		// two callers that pick a runtime helper (roadmap Gap R.210 and Gap R.211, ADR 0324).
+		"runtime_slot_haystack_deep",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

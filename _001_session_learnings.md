@@ -9400,3 +9400,58 @@ shape as ADR 0265's `@rt_num_arith`, whose raise also leaves through the emitted
 * `git push` still fails in this environment — `sign_and_send_pubkey: signing failed for ED25519 … from agent:
   agent refused operation` — so ADR 0322's commit and this one are local-only and the push is retried every
   cycle rather than treated as done.
+
+## A haystack is asked "what object is this", not "how deep is the chain" (L11.1, Gaps R.210 and R.211, ADR 0324)
+
+`Gap R.210` said the membership test and the loop stop one slot deep, and its own `Plan` cell said the fix was
+"dispatching a dispatch" — the arms would have to learn to walk a chain of slots. The fix turned out to be a
+three-line fall-through to a function that had always walked the chain. `print(xs[0][0])` answers since ADR 0251
+because `runtimeSlotPairDeep` reads outward tag by tag, and the pair it returns was sitting one call away from the
+two callers that pick a runtime helper. Neither the membership arm (`@rt_contains_tagged(h, t, p, ntag)`) nor the
+loop arm (`@rt_iter_len(h, t)`, `@rt_iter_elem(h, t, i)`) has a depth parameter: both ask *what object is at the
+end*, and the read had been answering that question for chains of any length all along. Lesson: when a row says
+"the mechanism would have to learn X", first `git grep` whether the mechanism already learned X for a neighbour —
+the diagnosis in a row's own prose can be exact about the shape and wrong about the missing piece.
+
+### The row you did not file is the one that ships a regression
+
+The two-deep refusals were `R.210`'s, so I went looking for them. The needle-side defects were not refusals at all
+and not in any row: ADR 0323 had read a slot-read needle's *kind* from the compiler's notebook and its *payload*
+from the slot, so `d["z"] in xs[0]` for two dicts with the same entries answered `False`, and `[1] in xs[0]` over a
+dict or a set slot answered `False` where CPython raises `TypeError: unhashable type: 'list'` — both at the exit code
+of success, one commit after the commit that made them reachable. Both had been honest refusals *before* ADR 0323
+opened the door. Lesson: the row you land is a *hint*, not a boundary; the neighbours of a newly opened door —
+here, the other side of the same comparison — are where a "fix" hides an invented answer.
+
+### A payload without its tag is an address
+
+Why `d["z"] in xs[0]` was `False` and not a refusal: the comparison compared the two slots' payloads — heap handles —
+under a tag inferred from the wrong question, and two equal dicts in two different objects have different handles.
+ADR 0187's rule ("the operation that writes a payload writes its tag beside it") is usually quoted about writes;
+the same pair is what makes a *comparison* mean something. A slot read is an operand as much as it is a value to
+print, and `taggedOperand` answers "what kind does the notebook say" — a question the notebook cannot answer about
+a slot at all, because the slot's kind is a fact about the object, written beside the payload by whoever stored it.
+
+### Key an unhashable raise by the *runtime tag*, not by the statically proven kind
+
+The temptation was a shared `hashable(tag)` helper used by both the dict and the set arms. Rejected against the
+reference: `{1} in {1, 2}` is `False` (a set needle is looked up as the frozenset it converts to), while
+`[1] in {1, 2}` raises. Keyed by the tag, once per arm, the two rows agree without a special case. This is ADR
+0311's write-side rule ("an unhashable value raises from its tag") applied to the read side — the same object, the
+same question, and a dict and a set want different answers from the same `TypeError`. The guard also enters the
+arm's own raise path (one `icmp` chain per arm) so the program's `except TypeError:` catches it, rather than
+raising inside a helper where the span and the landing-pad bookkeeping would be re-derived from two `i32`s.
+
+### Three things about the loop, not the code
+
+* A conformance program is the cheapest double-witness: `integration/programs/runtime_slot_haystack_deep.gy` is
+  seventeen lines and is run twice — AOT and CPython — and compared, so one file is the reference leg for every
+  answer in both new test tables, including all three new `TypeError` sentences.
+* Every "cost" assertion over a runtime helper has to name the *call*, not the symbol. The first cost half of this
+  change was "the static door grows no new doors" and it could never fail: the helper's *definition* is emitted in
+  the shared heap block of any module that touches a container (ADR 0323 learned this; this cycle re-learned it for
+  `call i32 @rt_contains_tagged(`).
+* The pre-commit gate caught its usual stale numbers — the record 6029 → 6084, the ADR snapshot 315/`0323` →
+  316/`0324` — and one new kind: the roadmap's row-count `129b` has to be unique in the queue table or
+  `TestTheQueueCounterSeesWhatASplitTableHides` fails. `git push` still fails (`agent refused operation`) and is
+  retried every cycle rather than treated as done.

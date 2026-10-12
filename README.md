@@ -222,7 +222,13 @@ with a text slot printing nothing at all. A list slot is walked by its elements,
 slot by its members and a text slot as characters or as a substring; a slot holding `5` raises
 `TypeError: argument of type 'int' is not iterable` to the test and `TypeError: 'int' object is not iterable` to
 the loop, because those are two sentences in the reference and not one, and both reach the program's own
-`except TypeError:` (`runtime_slot_haystack.gy` is corpus surface, identical on both legs). An **ordering** of
+`except TypeError:` (`runtime_slot_haystack.gy` is corpus surface, identical on both legs). ADR 0324 opened the
+same door one level deeper and on the other side of the comparison: `7 in xs[0][0]`, `for v in d["a"]["k"]`, and a
+chain four slots long ask the object at the *end* of the chain what it is, because the four arms never had a depth
+parameter; and a needle that is itself a slot read is read as a `(payload, tag)` pair rather than from the notebook,
+so two equal dicts in two different containers compare `True`, while a container needle into a dict or set slot
+raises `TypeError: unhashable type: 'list'` rather than quietly answering “not present” (`runtime_slot_haystack_deep.gy`).
+An **ordering** of
 those slots asks the object the same
 question (ADR 0252, closing Gap R.93): `xs = []` + `xs.append(i)` in a loop + `print(1 if xs[0] > "a" else 0)`
 used to print `1` compiled for a program CPython crashes, and now raises *'>' not supported between instances

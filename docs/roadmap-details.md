@@ -9690,7 +9690,7 @@ and the reference's must name `'C'`. When the tag is fixed the row moves to the 
 that, which is what a pin is for.
 
 <a id="gap-r-210"></a>
-### Gap R.210 — the membership test and the loop reach one slot down and no further (OPEN, found by ADR 0323)
+### Gap R.210 — the membership test and the loop reach one slot down and no further (CLOSED by ADR 0324, found by ADR 0323)
 
 `xs = []` / `xs.append([[7, 8]])` / `print(xs[0][0])` prints `7`. The same expression with `in` in front of it,
 or as a loop's iterable, exits 1 with `index cannot reach into xs's slots`.
@@ -9706,3 +9706,75 @@ Pinned by the two `…_two_slots_deep` rows in `pkg/lang/runtime_slot_read_test.
 and the two in `integration/runtime_slot_read_test.go::TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf`, which
 assert the refusal's wording, exit 1, and that no IR problem is hiding behind it. Both move to the parity tables
 when the door reaches depth two.
+
+**Closed the way the row said it would be.** `builtSlotPair` asked `containerHandleOf` for the side the slot is
+read out of and gave up when the answer was not a container variable — which is the shape `xs[0][0]` is. The
+fallback is one line: hand the whole subscript to `runtimeSlotPairDeep`, the recursive read ADR 0251 wrote, and
+give back the pair it returns. Nothing in the four arms changed, because they never asked how long the chain was
+— they asked what the object at the end of it is, and a pair is a pair at any depth. Four levels deep works for
+the same reason (`for v in xs[0][0][0][0]`), and so does a position the program computed (`xs[i][i]`).
+
+Measured after the change, the whole family: 16 parity shapes (membership, `not in`, loops over list/dict/set/text
+slots two deep, a dict chain by two keys, three and four levels, `break`/`continue`/`else`, an empty container, a
+computed position, mixed kinds binding their own tags) and 6 traps (an `int` slot and a `float` slot two deep, a
+`None` slot three deep, a number needle against a text, a missing dict key) — every one of them byte-compared with
+CPython and, for the traps, caught by the program's own handler. `runtime_slot_haystack_deep.gy` joined the corpus
+as `match`, and 55 sources went to the record (6029 → 6084 counting this cycle's other tables, 0 dropped).
+
+The pin it broke on the way: this cycle's two refusal rows — the ones ADR 0323 had filed a commit earlier for the
+same depth — turned out to *compile* once the needle was read the way the haystack is. They are parity rows now,
+and what is left refusing is a needle with no tag at all (Gap R.212).
+
+
+
+<a id="gap-r-211"></a>
+### Gap R.211 — the door reached the haystack and read the needle off a notebook (CLOSED by ADR 0324, found by ADR 0324)
+
+This row is ADR 0323's own defect, found the afternoon after it shipped by asking the door the questions the row
+had not asked. Two shapes, both answering at the exit code of success where the reference answers something else:
+
+| program | CPython | ADR 0323 | after ADR 0324 |
+| --- | --- | --- | --- |
+| `xs.append([{"k": 1}])` / `d["z"] = {"k": 1}` / `print(d["z"] in xs[0])` | `True` | **`False` at exit 0** | `True` |
+| `xs.append([1, 2])` / `ys.append([1, 2])` / `print(ys[0] in xs[0])` | `True` | refused (`…needs a single static kind`) | `True` |
+| `xs.append({"k": 1})` / `print([1] in xs[0])` | `TypeError: unhashable type: 'list'` | **`False` at exit 0** | that raise, catchable |
+| `xs.append({1, 2})` / `print([1] in xs[0])` | `TypeError: unhashable type: 'list'` | **`False` at exit 0** | that raise, catchable |
+| `xs.append({1, 2})` / `ys.append({1})` / `print(ys[0] in xs[0])` | `False` | `False` | `False` — and it must stay `False` |
+
+The first two are one bug: a needle that is itself a slot read took its kind from `g.runtimeDicts` /
+`g.listVars` — the notebook of what the *container variable* is — which describes the container the needle came
+out of, not the needle. Two dict literals with the same entries live in two objects, so a comparison keyed on the
+payload answered with two addresses, and the reference compares contents. The fix is the one the haystack already
+used: ask the object (`builtSlotPair` for a needle that is an `Index`), and let `rt_payload_eq`'s container arm
+recurse.
+
+The next two are the same family one step over: a dict is looked up by its key and a set is hashed by its member,
+and a container can be neither. Reporting "not present" loses an entire error class — the program's
+`except TypeError:` has nothing to catch — so the arm asks one question per container kind of the **needle's tag**
+and raises `unhashable type: 'list'` / `'dict'` / `'set'`. The tag, not the compiler's proven kind, for the reason
+this whole file keeps repeating: a slot's kind is a fact about the object.
+
+The last row is the reason the guard is keyed by tag rather than by a blanket "no containers". `{1} in {1, 2}` is
+`False` in the reference, not a `TypeError`: a set needle asked of a set is converted to the frozenset it hashes
+as. This language has no frozenset to find, so the answer is a well-behaved "not found" — and the row is pinned so
+the day someone adds frozensets finds out which assumption it was resting on. ADR 0311 is the precedent two commits
+up the road: an unhashable *write* raises from its tag; this is the read.
+
+<a id="gap-r-212"></a>
+### Gap R.212 — a needle whose kind cannot be proven has no arm (OPEN, found by ADR 0324)
+
+`def pick(v):` returning a number on one path and a text on another, `xs.append([7, 8])`, then
+`print(1 if pick(0) in xs[0] else 0)`: `0` in the reference, exit 1 compiled, with the mixed-list sentence naming
+what it cannot describe.
+
+This is not the depth problem (Gap R.210, closed) or the notebook problem (Gap R.211, closed). The haystack's tag
+picks the arm, and the arm compares the needle's payload against each slot **under a tag**; a call's answer has no
+tag in this backend yet, so there is no operand to compare and no arm that could be trusted. Guessing the kind
+would return whichever verdict happened to match the number in the slot, which is the class of bug this file has
+been writing against since ADR 0233. The refusal is the honest answer, and it is pinned as one: exit 1, the
+sentence checked, and no IR problem hiding behind it.
+
+The missing half is already built for a different door: ADR 0273's callee returns the pair (`@rt_call_tagged`'s
+third return road), which is what lets `print(twice(xs[0][0]))` print `14`. Hand that pair to `taggedOperand` for
+a call operand and this row moves to the parity tables; until then it is Gap R.83's unprovable operand, seen from
+the membership door instead of the equality door.

@@ -185,18 +185,25 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			"index of a non-literal variable",
 		},
 		{
-			// The haystack is a slot read *below* a slot read. The door above reaches it — `xs[0][0]` prints
-			// 7 — because ADR 0251 dispatches a read per arm; the membership test would have to dispatch a
-			// dispatch, and today it names the half it cannot see instead of guessing at it.
-			"membership two slots deep in a container the program built",
-			"xs = []\nxs.append([[7, 8]])\nprint(1 if 7 in xs[0][0] else 0)\n",
-			"index cannot reach into xs's slots",
-		},
-		{
-			// The same depth with a loop around it.
-			"iteration of a container two slots deep",
-			"xs = []\nxs.append([[7, 8]])\nfor v in xs[0][0]:\n    print(v)\n",
-			"index cannot reach into xs's slots",
+			// (Two rows used to sit here demanding the refusal "index cannot reach into xs's slots" —
+			// a membership test and a loop whose haystack was a slot read *below* a slot read. The
+			// haystack is that chain now: `builtSlotPair` hands the pair that ADR 0251's recursive read
+			// already computed to the four arms, which never asked how deep the chain was — only what
+			// the object at its end is. Both rows moved to the parity tables (Gap R.210, ADR 0324).)
+			//
+			// The **needle** at that depth reached the same door in the same commit: a needle that is a
+			// slot read is read as a (payload, tag) pair too, so `ys[0][0] in xs[0]` and
+			// `d["a"]["k"] in xs[0]` answer what the reference answers and are parity rows above
+			// (Gap R.211, ADR 0324).
+			//
+			// What is left is a needle whose kind no road can prove at all. The haystack's tag picks the
+			// arm, and the arm compares the needle's payload against each slot under a tag, so a needle
+			// that is a number on one path and a text on another has no tag to carry and the verdict
+			// would be whichever word happened to match. This is Gap R.83's shape seen from this door:
+			// the reference answers `0`, and the refusal names the missing half rather than guessing.
+			"a needle whose kind cannot be proven",
+			"def pick(v):\n    if v:\n        return v\n    return \"a\"\n\nxs = []\nxs.append([7, 8])\nprint(1 if pick(0) in xs[0] else 0)\n",
+			"more than one kind",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -304,6 +311,131 @@ func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
 		{"a literal's element still loops", "xs = [[1, 2]]\nfor v in xs[0]:\n    print(v)\n", "1\n2\n"},
 		{"a plain list still walks itself", "xs = [1, 2, 3]\nprint(2 in xs)\nfor v in xs:\n    print(v)\n", "True\n1\n2\n3\n"},
 		{"a plain dict still walks its keys", "d = {\"a\": 1}\nfor k in d:\n    print(k)\n", "a\n"},
+		// ---- the haystack one slot deeper. `print(xs[0][0])` was answered by ADR 0251's recursive read
+		// long before these two doors existed; what the same chain could not do was *be* a haystack. The
+		// fix is not a new dispatch — it is handing those two callers the pair the read already computed,
+		// which is what `builtSlotPair` now does by falling through to `runtimeSlotPairDeep` when the
+		// side it would read is itself a slot (roadmap Gap R.210, ADR 0324).
+		{
+			"membership two slots deep in a container the program built",
+			"xs = []\nxs.append([[7, 8]])\nprint(7 in xs[0][0])\n",
+			"True\n",
+		},
+		{
+			"absent membership two slots deep",
+			"xs = []\nxs.append([[7, 8]])\nprint(9 in xs[0][0])\n",
+			"False\n",
+		},
+		{
+			"iteration of a container two slots deep",
+			"xs = []\nxs.append([[7, 8]])\nfor v in xs[0][0]:\n    print(v)\n",
+			"7\n8\n",
+		},
+		{
+			"a text two slots deep steps its characters",
+			"xs = []\nxs.append([\"abc\"])\nfor v in xs[0][0]:\n    print(v)\n",
+			"a\nb\nc\n",
+		},
+		{
+			"a set two slots deep steps its members",
+			"xs = []\nxs.append([{5, 6}])\nfor v in xs[0][0]:\n    print(v)\n",
+			"5\n6\n",
+		},
+		{
+			"a dict chain reached by two keys steps its keys",
+			"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\nfor v in d[\"a\"][\"k\"]:\n    print(v)\n",
+			"1\n2\n",
+		},
+		{
+			"a dict two slots deep is tested by its keys",
+			"d = {}\nd[\"a\"] = {\"k\": {\"j\": 1}}\nprint(\"j\" in d[\"a\"][\"k\"], \"z\" in d[\"a\"][\"k\"])\n",
+			"True False\n",
+		},
+		{
+			"three slots deep, both questions", "xs = []\nxs.append([[[3, 4]]])\nfor v in xs[0][0][0]:\n    print(v)\nprint(3 in xs[0][0][0])\n", "3\n4\nTrue\n"},
+		{
+			"not in, two slots deep",
+			"xs = []\nxs.append([[1, 2]])\nprint(9 not in xs[0][0], 1 not in xs[0][0])\n",
+			"True False\n",
+		},
+		{
+			"a position the program computed reaches two slots deep",
+			"xs = []\nxs.append([[1, 2]])\ni = 0\nprint(1 in xs[i][i])\nfor v in xs[i][i]:\n    print(v)\n",
+			"True\n1\n2\n",
+		},
+		{
+			"a chain of two containers, stepped separately",
+			"xs = []\nxs.append([[1], {\"k\": 2}])\nfor v in xs[0][0]:\n    print(v)\nfor v in xs[0][1]:\n    print(v)\n",
+			"1\nk\n",
+		},
+		{
+			"mixed kinds two slots deep bind their own tags",
+			"xs = []\nxs.append([[[1, \"a\"], 2.5, None]])\nfor v in xs[0][0]:\n    print(v)\n",
+			"[1, 'a']\n2.5\nNone\n",
+		},
+		{
+			"break, continue and else two slots deep",
+			"xs = []\nxs.append([[1, 2, 3, 4]])\nfor v in xs[0][0]:\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\nelse:\n    print(\"done\")\n",
+			"1\n",
+		},
+		{
+			"an empty container two slots deep steps zero times",
+			"xs = []\nxs.append([[]])\nfor v in xs[0][0]:\n    print(v)\nprint(\"end\")\n",
+			"end\n",
+		},
+		{
+			"a substring test two slots deep",
+			"xs = []\nxs.append([\"abc\"])\nprint(\"b\" in xs[0][0], \"z\" in xs[0][0])\n",
+			"True False\n",
+		},
+		// ---- the needle asked the same question as the haystack. A value the program put in a container
+		// has its kind beside its payload and nowhere else, so a needle that is itself a slot read is read
+		// as a (payload, tag) pair rather than through the notebook of container variables (roadmap
+		// Gap R.211, ADR 0324). Two equal containers in two different objects are equal, and the answer
+		// is True — the payload alone would answer it with two addresses.
+		{
+			"a container read out of a slot as the needle",
+			"xs = []\nxs.append([[1, 2], 3])\nys = []\nys.append([1, 2])\nprint(ys[0] in xs[0])\n",
+			"True\n",
+		},
+		{
+			"an absent container read out of a slot as the needle",
+			"xs = []\nxs.append([[1, 2], 3])\nys = []\nys.append([1, 3])\nprint(ys[0] in xs[0])\n",
+			"False\n",
+		},
+		{
+			"a set read out of a slot as the needle of a list",
+			"xs = []\nxs.append([{1, 2}])\nys = []\nys.append({1, 2})\nprint(ys[0] in xs[0])\n",
+			"True\n",
+		},
+		{
+			"a dict read out of one container as the needle of another",
+			"xs = []\nxs.append([{\"k\": 1}])\nd = {}\nd[\"z\"] = {\"k\": 1}\nprint(d[\"z\"] in xs[0])\n",
+			"True\n",
+		},
+		{
+			"a set needle asked of a set is answered, not refused",
+			"xs = []\nxs.append({1, 2})\nys = []\nys.append({1})\nprint(ys[0] in xs[0])\n",
+			"False\n",
+		},
+		// ---- the needle at the same depth as the haystack, and a chain four long. Both were refusals
+		// before the needle was read the way the haystack is read (Gap R.211, ADR 0324): the pair the
+		// read returns is an operand as much as it is a value to print.
+		{
+			"a needle two slots deep, read the same way",
+			"xs = []\nxs.append([7, 8])\nys = []\nys.append([[7, 8]])\nprint(1 if ys[0][0] in xs[0] else 0)\n",
+			"0\n",
+		},
+		{
+			"a needle that is a dict slot read two levels up",
+			"xs = []\nxs.append([[7, 8]])\nd = {}\nd[\"a\"] = {\"k\": [7, 8]}\nprint(1 if d[\"a\"][\"k\"] in xs[0] else 0)\n",
+			"1\n",
+		},
+		{
+			"four slots deep, stepped and tested",
+			"xs = []\nxs.append([[[[1, 2]]]])\nfor v in xs[0][0][0][0]:\n    print(v)\nprint(1 in xs[0][0][0][0])\n",
+			"1\n2\nTrue\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := Compile(tc.src)
@@ -328,6 +460,70 @@ func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
 // payload as a heap handle and said False, and the loop stepped over nothing at all, each at exit 0.
 func TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, class, message, catch string }{
+		// ---- the same failures one slot deeper (Gap R.210): the chain is longer, the sentence is not.
+		{
+			"membership of an int slot two slots deep",
+			"xs = []\nxs.append([[1, 2], 5])\nprint(1 in xs[0][1])\n",
+			"TypeError", "argument of type 'int' is not iterable",
+			"xs = []\nxs.append([[1, 2], 5])\ntry:\n    print(1 in xs[0][1])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over an int slot two slots deep",
+			"xs = []\nxs.append([[1, 2], 5])\nfor v in xs[0][1]:\n    print(v)\n",
+			"TypeError", "'int' object is not iterable",
+			"xs = []\nxs.append([[1, 2], 5])\ntry:\n    for v in xs[0][1]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over a None slot three slots deep",
+			"xs = []\nxs.append([[None]])\nfor v in xs[0][0][0]:\n    print(v)\n",
+			"TypeError", "'NoneType' object is not iterable",
+			"xs = []\nxs.append([[None]])\ntry:\n    for v in xs[0][0][0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a number needle against a text two slots deep",
+			"xs = []\nxs.append([\"ab\"])\nprint(1 in xs[0][0])\n",
+			"TypeError", "'in <string>' requires string as left operand, not int",
+			"xs = []\nxs.append([\"ab\"])\ntry:\n    print(1 in xs[0][0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a missing dict key two slots deep",
+			"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\nprint(1 in d[\"a\"][\"z\"])\n",
+			"KeyError", "'z'",
+			"d = {}\nd[\"a\"] = {\"k\": [1, 2]}\ntry:\n    print(1 in d[\"a\"][\"z\"])\nexcept KeyError:\n    print(\"caught\")\n",
+		},
+		{
+			"a float slot two slots deep",
+			"xs = []\nxs.append([[1, 2], 2.5])\nfor v in xs[0][1]:\n    print(v)\n",
+			"TypeError", "'float' object is not iterable",
+			"xs = []\nxs.append([[1, 2], 2.5])\ntry:\n    for v in xs[0][1]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		// ---- a needle that cannot be a key or a member. A dict is looked up by its key and a set is
+		// hashed by its member, and both stop on a container with the reference's own sentence rather
+		// than reporting the absence (ADR 0311's write-side rule, read; roadmap Gap R.211, ADR 0324).
+		{
+			"a list needle asked of a dict slot",
+			"xs = []\nxs.append({\"k\": 1})\nprint([1] in xs[0])\n",
+			"TypeError", "unhashable type: 'list'",
+			"xs = []\nxs.append({\"k\": 1})\ntry:\n    print([1] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a list needle asked of a set slot",
+			"xs = []\nxs.append({1, 2})\nprint([1] in xs[0])\n",
+			"TypeError", "unhashable type: 'list'",
+			"xs = []\nxs.append({1, 2})\ntry:\n    print([1] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a dict needle asked of a set slot",
+			"xs = []\nxs.append({1, 2})\nys = []\nys.append({1: 1})\nprint(ys[0] in xs[0])\n",
+			"TypeError", "unhashable type: 'dict'",
+			"xs = []\nxs.append({1, 2})\nys = []\nys.append({1: 1})\ntry:\n    print(ys[0] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a set needle asked of a dict slot",
+			"xs = []\nxs.append({1: 2})\nys = []\nys.append({1})\nprint(ys[0] in xs[0])\n",
+			"TypeError", "unhashable type: 'set'",
+			"xs = []\nxs.append({1: 2})\nys = []\nys.append({1})\ntry:\n    print(ys[0] in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
 		{
 			"membership of an int slot",
 			"xs = []\nxs.append(5)\nprint(1 in xs[0])\n",

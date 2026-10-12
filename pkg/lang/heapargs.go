@@ -3378,10 +3378,16 @@ func (g *irGen) builtSlotPair(b *strings.Builder, ix *Index) (payload, tag strin
 		return "", "", false
 	}
 	base, baseKind, okBase := g.containerHandleOf(b, ix.Obj)
-	if !okBase {
-		return "", "", false
+	if okBase {
+		return g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
 	}
-	return g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
+	// The side the slot is read out of is not a container the notebook describes — it is itself a slot,
+	// which is the shape `xs.append([[7, 8]])` / `7 in xs[0][0]` and `d["a"] = {"k": [1, 2]}` /
+	// `for v in d["a"]["k"]` have. ADR 0251 reads such a chain one level at a time, dispatching each
+	// inner read on the tag the outer one reported, and the pair that comes back off the end is exactly
+	// what the four arms below want: they never asked how deep the chain was, only what the object at
+	// its end is (roadmap L11.1, Gap R.210).
+	return g.runtimeSlotPairDeep(b, ix)
 }
 
 // notIterableSentence is the sentence the reference writes for the two questions a value with no
@@ -3402,6 +3408,43 @@ func notIterableLoopSentence(kind string) string {
 // answers with False.
 func inStrNeedleSentence(kind string) string {
 	return "'in <string>' requires string as left operand, not " + kind
+}
+
+// unhashableSentence is what the reference says when the thing being looked up cannot be a key or a
+// member. It names the needle's kind, and it is a raise: an answer of "not in" for a program the
+// reference stops is the same lost error class ADR 0311 refused at the write site.
+func unhashableSentence(kind string) string {
+	return "unhashable type: '" + kind + "'"
+}
+
+// guardHashableNeedle emits, in the arm that is about to look a needle up in a dict or hash it into a
+// set, one test on the needle's tag per container kind that cannot be a key or a member, each leaving
+// through the program's own `except TypeError:`. It is the read half of the rule ADR 0311 enforced at
+// the write site, and it is keyed by the tag rather than by the compiler's proven kind because the
+// needle may be a slot the program filled. `everyContainer` is false for a set haystack, where the
+// reference converts a set needle to a frozenset and answers instead of raising (roadmap L11.1,
+// Gap R.95's needle half).
+func (g *irGen) guardHashableNeedle(b *strings.Builder, needleTag string, sp Span, everyContainer bool) {
+	kinds := []struct {
+		tg   int32
+		name string
+	}{{int32(TagList), "list"}, {int32(TagDict), "dict"}}
+	if everyContainer {
+		kinds = append(kinds, struct {
+			tg   int32
+			name string
+		}{int32(TagSet), "set"})
+	}
+	for _, t := range kinds {
+		bad, chk := g.newLabel("in.unhash"), g.newLabel("in.hashok")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, needleTag, t.tg)
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, bad, chk)
+		fmt.Fprintf(b, "%s:\n", bad)
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", unhashableSentence(t.name), sp)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
 }
 
 // membershipOfBuiltSlotHaystack answers `7 in xs[0]`, `"k" in d["a"]`, `1 in s[0]` where the haystack
@@ -3433,7 +3476,18 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 	if !okRead || hay == "" || hayTag == "" {
 		return "", false, nil
 	}
-	needle, needleTag, okNeedle := g.taggedOperand(b, n.L)
+	// The needle is asked the same question as the haystack when it is itself a slot: a value the
+	// program put in a container has its kind beside its payload, and nothing else. Going through
+	// `taggedOperand` alone read the *notebook*'s kind for such a needle, and the notebook describes
+	// the container the needle was read out of, not the needle — the answer came back "not present"
+	// for two containers the reference calls equal (roadmap L11.1, Gap R.95's needle half, ADR 0187).
+	needle, needleTag, okNeedle := "", "", false
+	if nix, isIdx := n.L.(*Index); isIdx {
+		needle, needleTag, okNeedle = g.builtSlotPair(b, nix)
+	}
+	if !okNeedle {
+		needle, needleTag, okNeedle = g.taggedOperand(b, n.L)
+	}
 	if !okNeedle {
 		return "", false, nil
 	}
@@ -3459,8 +3513,29 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 		c := g.newTmp()
 		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, k.tg)
 		g.markI1(c)
+		// A dict is looked up by its key and a set is hashed by its member, and a container cannot be
+		// either: the reference stops on that with `unhashable type: 'list'` rather than reporting the
+		// absence, and an answer of "not in" is a whole error class lost (ADR 0311 made an unhashable
+		// *write* raise from its tag; this is the read half of the same rule). The test is on the needle's
+		// tag rather than on the kind the compiler proved, because for a needle that is itself a slot read
+		// the tag is the only statement about what the needle is.
+		//
+		// A set haystack is the one exception the reference itself makes: `{1} in {1, 2}` is answered —
+		// `False`, not a raise — because a set needle is looked up as the frozenset it converts to, and
+		// this language has no frozenset to be found. A list or a dict needle into that same set still
+		// raises, and every unhashable needle into a dict does.
+		guard := ""
+		switch k.fn {
+		case "rt_dict_has_tagged":
+			guard = "dict"
+		case "rt_set_contains_tagged":
+			guard = "set"
+		}
 		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
 		fmt.Fprintf(b, "%s:\n", arm)
+		if guard != "" {
+			g.guardHashableNeedle(b, needleTag, sp, guard == "dict")
+		}
 		hit := g.newTmp()
 		fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s, i32 %s, i32 %s)\n", hit, k.fn, hay, needle, needleTag)
 		tail := g.newLabel("in.tail")

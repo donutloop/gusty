@@ -2783,8 +2783,32 @@ phrases them differently: `1 in xs[0]` over a number slot is `TypeError: argumen
 iterable` and `for v in xs[0]` over the same slot is `TypeError: 'int' object is not iterable`. Asking a
 text whether it contains a number is neither of those — it is
 `TypeError: 'in <string>' requires string as left operand, not int`, which names the *needle*. All three are
-raises, not refusals, so the program's `except TypeError:` reaches them (`ADR 0228`), and a haystack the
-compiler cannot reach at all still says so in words: the second slot deep is `Gap R.210`.
+raises, not refusals, so the program's `except TypeError:` reaches them (`ADR 0228`).
+
+**…and the chain, and the needle, are asked the same way** (ADR 0324, paying `Gap R.210` and `Gap R.211`). The
+haystack does not have to be one slot deep: `7 in xs[0][0]` is `True`, `for v in d["a"]["k"]` steps the list under
+two dict keys, and `for v in xs[0][0][0][0]` works for the same reason — the four arms never asked how long the
+chain was, only what the object at its end is, so the read ADR 0251 already did recursively hands them the pair at
+any depth. The **needle** is asked the same question, because a value the program put into a container has its kind
+beside its payload and nowhere else: two containers with the same entries are equal, whatever objects hold them.
+
+```gy
+xs = []
+xs.append([[7, 8], 5])
+xs.append([{"k": 1}])
+d = {}
+d["z"] = {"k": 1}
+print(7 in xs[0][0])                             # True   — used to be refused: "index cannot reach into xs's slots"
+print(d["z"] in xs[1])                           # True   — a dict found by its contents, not its address
+```
+
+Two more sentences come out of looking the needle up rather than comparing it loosely. A dict is tested by its keys
+and a set by its members, and a container can be neither: `[1] in xs[0]` over a dict or a set slot is
+`TypeError: unhashable type: 'list'`, again a raise the program's `except` reaches, not a reported absence — the read
+side of the rule `ADR 0311` enforces when an unhashable value is *written*. A set haystack keeps the one exception
+the reference itself makes: `{1} in {1, 2}` is answered `False`, not raised, because a set needle is looked up as
+the frozenset it converts to. What still refuses is a needle whose kind no road can prove — a call that returns a
+number on one path and a text on another (`Gap R.212`), which says so in words rather than guessing.
 
 **…and an ordering of such a slot asks the object the same question** (ADR 0252). `<`, `<=`, `>`, `>=`
 have three answers — two numbers compared as numbers, two texts compared by their characters, and the
