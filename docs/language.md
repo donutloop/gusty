@@ -2860,10 +2860,28 @@ print(d["k"] + 2)           # 42
 ```
 
 `+` and `*` take that road only where the program can be *shown* to keep numbers in the slots the read
-reaches: one text, or one value the compiler cannot see through, stored into any container closes those
-two operators, because CPython answers `"a" + "b"` and `[1] * 2` with a value this backend cannot build
-from a slot (`Gap R.82`) and a raise where the reference returns a number is the one answer this compiler
-does not ship. `-` and the unary `-` answer a number or raise whatever the slot holds, so they take the door
+reaches: a text, or a value the compiler cannot see through, written into the container the read walks
+closes those two operators, because CPython answers `"a" + "b"` and `[1] * 2` with a value this backend
+cannot build from a slot (`Gap R.82`) and a raise where the reference returns a number is the one answer
+this compiler does not ship. The block is about **that container**, and about everything that can denote
+it — an alias (`ys = xs`), a loop variable (`for v in xs`), a parameter beside the argument that reached it
+(`f(xs)`) — and about nothing else, so a text in a container the arithmetic never walks no longer closes
+the door for the rest of the module (`Gap R.191`, `ADR 0322`):
+
+```python
+w = []
+w.append("a text")            # a container the arithmetic never walks
+nested = []
+nested.append([7, 8])
+print(nested[0][0] * 2)      # 14   — the door is keyed by the container the store writes
+d = {}
+d["k"] = 40
+print(d["k"] + 2)            # 42
+```
+
+What still closes it is a write this pass cannot attribute to any name — `xs[0].append("a")`,
+`self.items.add(b)`, a loop variable over `rows()` — because there the question "which container?" has no
+answer to key a block by. `-` and the unary `-` answer a number or raise whatever the slot holds, so they take the door
 either way; a text under the negation raises CPython's own
 `TypeError: bad operand type for unary -: 'str'`, naming the kind the object carries, and the raise leaves
 through the same door `except TypeError:` and `except OverflowError:` reach. A whole-number answer past the

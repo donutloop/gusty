@@ -9246,3 +9246,72 @@ a doc, run the suite twice, and the second `ok` came from a run that never opene
 `-count=1`, and `tools/testshards` asserts the makefile keeps it (checked by deleting the flag and watching the
 guard go red). CI could not have caught this: a fresh checkout has no cache, so the one environment allowed to
 certify a build is the one environment where the defect cannot exist (roadmap Gap R.200, ADR 0317).
+
+## ADR 0322 — the block that closed a door for a program was keyed by the program (Gap R.191)
+
+### The coarse thing was not the conservatism, it was the sentence
+
+`numericSlotChains` decides whether `+` and `*` over a container slot the literal no longer describes may be
+lowered at all, and it refuses whenever it cannot *prove* the slots hold numbers — because CPython answers
+`xs[0] + "a"` with a joined text and `[1] * 2` with a repeated list, and this backend builds neither from a
+slot. Its blocking half was one `bool` for the module, commented "coarse on purpose", and coarse is fine while
+it only ever refuses more. What made it a defect was the message that came out of it: `w.append("a")` — a text
+in a container the arithmetic never walks — produced
+`index cannot reach into nested's slots: the name was rebound, mutated, or handed to code this pass cannot
+see`. A refusal is an interface; an agent that reads that edits `nested`, and `nested` was the one container in
+the program that had not been touched. Lesson worth keeping: **when a pass refuses on a whole-program
+property, the property has to be about the thing the message names.** "Coarse" is admissible for a verdict,
+never for an accusation.
+
+### Per-name is only safe once a name can be aliased
+
+The obvious fix — key the block by the container the store writes — fixes the reported program and quietly
+un-ships a safety net. `ys = xs` / `ys.append("word")` writes into the very container `print(xs[1] * 2)` reads,
+and with a name-keyed block that door opens and raises a `TypeError` where the reference returns `wordword`.
+The program-wide bit had been covering aliases, loop variables, parameters and unknown callees without ever
+saying so; deleting it converts all four into wrong answers at exit 0. So the block now travels a union-find
+built by the same walk: `y = xs`, `a, b = xs`, `d = xs[0]`, `for v in xs`, `[v for v in xs]`, and each call site
+linking a parameter to the argument that reaches it. **Evidence stays per-name** (an alias can only close a
+door, never open one: `ys.append([9, 10])` proves nothing about `xs`), and `blockAll` survives for the stores
+that describe no name at all — `xs[0].append("a")`, `self.items.add(b)`, a loop variable over `rows()` — which
+is the only place "which container?" genuinely has no answer.
+
+### A table of expectations can be a table of skips
+
+`TestNumericSlotChainGate` is described as "the gate asked directly, so a widening of `+` fails a decision
+row". It took the print argument and handed it to `chainDepth`, which answers only for a *bare* subscript.
+Every row in the table is written `print(xs[0][0] + 1)` — a `BinOp` — so every row fell through to
+`t.Skip("row has no print(...) argument to walk")`. The gate had no test, and the one row whose expected value
+this cycle inverted ("text anywhere in any container" → now open) had never run. Two things to copy: a decision
+table should **fail** when it cannot find the thing it is about, and the extractor that finds it belongs in the
+test file, walking `BinOp`/`UnOp`/`CondExpr`/call args, not in the pass.
+
+### The walk had blind spots that made the coarse bit look load-bearing
+
+Re-reading the pass found stores it never visited: `xs += ["a"]` (an `AugAssignStmt` on a Name — extends the
+container without ever naming it as a receiver), `xs[0][1] = "a"` (an item assignment two levels down, whose
+target the walk only recognised one level deep), and whole statement forms it skipped — `Comp`, `Generator`,
+`Slice`, `Lambda`, `AssignExpr`, `WithStmt`, `MatchStmt`, `ClassDef`, `YieldStmt`, `YieldFromStmt`. A store the
+pass does not visit cannot block anything, so the program-wide flag was protecting against a set of shapes the
+walk was simply not looking at. Widening the walk is what made narrowing the flag safe.
+
+### Differential across the corpus is the cheap "did I break anything else"
+
+`for f in integration/programs/*.gy; do diff <(gustyc_base --aot --file $f) <(gustyc --aot --file $f); done`
+over 187 programs, run before any of the suite: one file differs (the new probe), plus one already-failing
+program whose only difference is the temp directory in an `llc` error. That is a five-minute claim no assertion
+in the suite gives you this directly, and it is the claim that a widening of a gate is confined to what it
+widens.
+
+### Small things
+
+* The corpus asserts every registered program has a record entry, so a new `programs/*.gy` needs
+  `tools/recmerge` before `TestGCCorpusCollectsAndAgrees` will pass — the failure message says exactly that,
+  and reading it beat guessing.
+* Two refusals measured beside this row are not this row's: `xs[0][0] / xs[0][1]` (both sides read from the
+  object) is Gap R.101, and `for v in xs: print(v[0] + 1)` is the loop-variable family (Gaps R.91, R.95). Both
+  refuse identically on the pre-cycle binary; they are pinned in a filed-not-fixed table with the reference's
+  answer written into the row rather than folded into this cycle's answer table.
+* Adding one asserted corpus program moves four published numbers at once (programs, matrix rows, parity rows,
+  `match` verdicts) plus the record's count in three documents — and `roadmap_snapshot_test.go` /
+  `golden_artifact_counts_test.go` name every cell, which is the whole point of ADR 0319.

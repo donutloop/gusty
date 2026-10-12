@@ -557,11 +557,16 @@ anyone links: `inf.0e+00` and `nan.0e+00` are on the shared `forbiddenIR` blackl
 
 Arithmetic on a container slot whose kind only the run time can describe is answered by the compiled leg as
 well, in the print position (`print(xs[0][0] + 1)`, `print(xs[0][0] * 2)`, `print(-xs[0][0])` after
-`xs.append([7, 8])`), and it is the one place where a *program-wide* property decides whether the compiler
+`xs.append([7, 8])`), and it is the one place where a property of the *program* decides whether the compiler
 will build the module at all: `+` and `*` on such a slot are emitted only when no text and no container
-holding one can reach any container slot in the program (`ADR 0265`). A program that fails that proof keeps
-the refusal it has always had — exit 1, `index cannot reach into xs's slots`, naming the missing half —
-which means adding a string to a container can turn a working compiled arithmetic into a refusal. That is
+holding one can reach the slots that read walks (`ADR 0265`, re-keyed from the program to the container by
+`ADR 0322`). The proof is about the container the read walks and everything that can denote it — an alias,
+a loop variable, a parameter beside its argument — and a text stored in a container nobody reads no longer
+closes the door for the module (`Gap R.191`: `w.append("a")` used to refuse `print(nested[0][0] * 2)` at
+exit 1, blaming a container the program never mutated). A program that fails the proof keeps
+the refusal it has always had — exit 1, `index cannot reach into xs's slots`, naming the missing half.
+A store the pass cannot attribute to any name — a write through a subscript or an attribute, a loop
+variable over an expression it cannot name — is the residue that still blocks the whole program. That is
 deliberate and coarse (the reference *answers* `"a" + "b"` and `[1] * 2`; this backend cannot, so the door
 must not open there), and the same gate serves the binding: `n = xs[0][0] * 2` / `print(n)` prints `14`
 compiled too, through the `_n`/`_n_tag` pair the print dispatch already reads, and a program that fails the
@@ -992,7 +997,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 5961 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 5972 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |

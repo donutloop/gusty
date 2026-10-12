@@ -233,8 +233,12 @@ program's `except ZeroDivisionError:` reads that sentence. The rest of arithmeti
 `xs.append([7.5, 8])` / `print(xs[0][0] * 2)` is `15.0` compiled, where the answer's kind used to be the
 reason the module could not be written at all — the pair goes to the target, which does the sum in a `double`
 and answers a pair back, so the tag that decides `8` from `8.0` is the one the object carries. `+` and `*`
-take that road only under a program-wide proof that the slots hold numbers, because CPython *answers*
-`"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (`Gap R.82`); where the proof is
+take that road only under a proof that the slots the read walks hold numbers, and the proof is about *that*
+container — and everything that can denote it, an alias (`ys = xs`), a loop variable (`for v in xs`), a
+parameter beside the argument that reached it (`f(xs)`) — and about nothing else, because CPython *answers*
+`"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (`Gap R.82`). A text in a container the
+arithmetic never walks therefore closes nothing (`Gap R.191`, ADR 0322): `w.append("a")` beside
+`nested.append([7, 8])` prints `[14]` where it used to print a refusal that blamed `nested`. Where the proof is
 absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.139`, `R.143`, `R.144`).
 The answer is a value, so it survives being named before it is read: `n = xs[0][0] * 2` / `print(n)` is `14`
 compiled too, and the rebinding `n = [1, 2]` behind it prints `[1, 2]`, because a binding that is not a pair

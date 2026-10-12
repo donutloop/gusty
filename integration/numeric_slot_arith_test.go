@@ -166,10 +166,19 @@ func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *t
 			"concatenating a string with a value that is not a string",
 		},
 		{
-			// One text in one container closes `+` and `*` for the whole program: coarse, and coarse
-			// means refusing more, never answering wrongly (ADR 0265).
-			"text in another container closes the door",
-			"xs = []\nxs.append([7, 8])\nys = []\nys.append(\"word\")\nprint(xs[0][0] + 1)\n",
+			// The block is keyed by the container the store writes (ADR 0322, roadmap Gap R.191), so the
+			// door stays shut where a text can REACH the container the read walks — which, since a name is
+			// a spelling and not an object, includes every alias of it. The unrelated-container spelling of
+			// this row used to refuse here and now prints CPython's `8`; that half lives in
+			// integration/numeric_slot_door_scope_test.go.
+			"a text reaches the container through an alias",
+			"xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[1] * 2)\n",
+			"single static kind",
+		},
+		{
+			// The same container, the text written by its own name: the ordinary road, the ordinary refusal.
+			"a text stored in the container the read walks",
+			"xs = []\nxs.append([7, 8])\nxs.append(\"word\")\nprint(xs[0][0] + 1)\n",
 			"cannot reach into",
 		},
 		{

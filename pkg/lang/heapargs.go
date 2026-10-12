@@ -5959,8 +5959,12 @@ func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 		return g.slotArithmeticIsProven(n.If) && g.slotArithmeticIsProven(n.Else)
 	}
 	nm, depth := chainDepth(e)
-	if nm == nil || depth < 1 || g.numChains == nil || g.numChains.blocked {
+	if nm == nil || depth < 1 || g.numChains == nil {
 		return false
 	}
+	// `numeric` carries the blocking half of the gate with it: a text (or a value with no spelling)
+	// written into this container — or into any name that can denote it, per the alias closure the pass
+	// builds — closes the door for the container and for nothing else (ADR 0265, re-keyed by ADR 0322
+	// over roadmap Gap R.191).
 	return g.numChains.numeric(nm.Value, depth)
 }

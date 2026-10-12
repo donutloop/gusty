@@ -461,6 +461,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// instead of answering the container's element count (roadmap Gap R.197, ADR 0318, the half ADR 0316
 		// filed; the walk is one helper, @rt_pair_order, that the fold asks and no road copies).
 		"probe_a_fold_orders_two_built_containers",
+		// The number door is keyed by the container a store WRITES, not by the program: a text appended to
+		// one container closed `+` and `*` over a slot of every other container in the module, so this
+		// program — a text in `w`, numbers in `nested` — printed a refusal at exit 1 where the reference
+		// prints `[14]`, `8`, `5`, `15.0`, `-7`, `42`, `5`, `2` (roadmap Gap R.191, ADR 0322). The block
+		// travels with the object now: an alias, a loop variable and a parameter beside its argument each
+		// carry a store's block to every name that can denote the same container.
+		"probe_a_text_in_one_container_leaves_another_number_door_open",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

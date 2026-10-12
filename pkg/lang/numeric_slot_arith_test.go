@@ -47,8 +47,51 @@ func slotRefusal(t *testing.T, src, want string) {
 	}
 }
 
+// gateChain finds the slot read a gate row is about: the print argument is usually a sum or a product
+// with the subscript inside it, and chainDepth answers only when handed the subscript itself — asked of
+// `xs[0][0] + 1` it reports no chain at all, which is how a table of gate rows can sit in the suite
+// answering nothing. This walks the expression until it finds one.
+func gateChain(e Expr) (*Name, int) {
+	switch n := e.(type) {
+	case nil:
+		return nil, 0
+	case *Index:
+		if nm, d := chainDepth(n); nm != nil && d >= 1 {
+			return nm, d
+		}
+		if nm, d := gateChain(n.Obj); nm != nil {
+			return nm, d
+		}
+		return gateChain(n.Idx)
+	case *BinOp:
+		if nm, d := gateChain(n.L); nm != nil {
+			return nm, d
+		}
+		return gateChain(n.R)
+	case *UnOp:
+		return gateChain(n.X)
+	case *CondExpr:
+		if nm, d := gateChain(n.If); nm != nil {
+			return nm, d
+		}
+		return gateChain(n.Else)
+	case *Call:
+		for _, a := range n.Args {
+			if kw, ok := a.(*KeywordArg); ok {
+				a = kw.Value
+			}
+			if nm, d := gateChain(a); nm != nil {
+				return nm, d
+			}
+		}
+	}
+	return nil, 0
+}
+
 // TestNumericSlotChainGate asks the gate directly. Every row is a program whose answer the reference is
-// known to give; `open` says the compiler is willing to codegen the arithmetic at run time.
+// known to give; `open` says the compiler is willing to codegen the arithmetic at run time. A row whose
+// source contains no slot read fails rather than skipping: the extractor used to answer only of a bare
+// subscript, so every `print(xs[0][0] + 1)` row skipped and the table certified nothing.
 func TestNumericSlotChainGate(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -74,9 +117,53 @@ func TestNumericSlotChainGate(t *testing.T) {
 			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n", false,
 		},
 		{
-			// The same list, one text somewhere: coarse on purpose, and coarse means refusing more.
-			"text anywhere in any container",
-			"xs = []\nxs.append([7, 8])\nys = []\nys.append(\"word\")\nprint(xs[0][0] + 1)\n", false,
+			// A text in a container the read does not walk is no reason to refuse this arithmetic: the
+			// proof is about the slots `xs[0][0]` reaches, and `ys` is not one of them. The block used to
+			// be one bit for the whole program, which refused this row (roadmap Gap R.191, ADR 0322).
+			"text in an unrelated container",
+			"xs = []\nxs.append([7, 8])\nys = []\nys.append(\"word\")\nprint(xs[0][0] + 1)\n", true,
+		},
+		{
+			// The other half of the same rule: one object, two names. A store through the alias blocks
+			// the container the read walks, so the door stays shut exactly where the reference would
+			// answer `wordword` rather than raise.
+			"a text reaches the container through an alias",
+			"xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[1] * 2)\n", false,
+		},
+		{
+			// An alias that stores only numbers keeps the door open — the group carries blocks, not
+			// evidence, so a second spelling of a container cannot prove anything the first could not.
+			"an alias stores only numbers",
+			"xs = []\nxs.append([7, 8])\nys = xs\nys.append([9, 10])\nprint(xs[0][0] + 1)\n", true,
+		},
+		{
+			// A loop variable names the container's own elements; a text written through one is a text
+			// written into the container.
+			"a text reaches it through a loop variable",
+			"xs = []\nxs.append([7, 8])\nfor v in xs:\n    v.append(\"a\")\nprint(xs[0][0] + 1)\n", false,
+		},
+		{
+			// A parameter is the caller's container under the callee's name, and the call site says so.
+			"a text reaches it through a parameter",
+			"def f(p):\n    p.append(\"a\")\n\nxs = []\nxs.append([7, 8])\nf(xs)\nprint(xs[0][0] + 1)\n", false,
+		},
+		{
+			// A write two levels down has no level in the notebook to land on, so it blocks the program:
+			// `xs[0][1] = "a"` is the reference's `word` seat, and no read through `xs` may call its slots
+			// numbers afterwards. (The walk used to miss this store entirely.)
+			"a text written two levels down",
+			"xs = []\nxs.append([7, 8])\nxs[0][1] = \"a\"\nprint(xs[0][0] + 1)\n", false,
+		},
+		{
+			// A store whose receiver is itself a slot read names no container, and an unattributable write
+			// is the one case the program-wide block still answers.
+			"a text written through a receiver with no name",
+			"xs = []\nxs.append([7, 8])\nxs[0].append(\"a\")\nprint(xs[0][0] + 1)\n", false,
+		},
+		{
+			// `xs += ["a"]` extends the container without ever naming it as a receiver.
+			"a text added by augmented assignment",
+			"xs = []\nxs.append([7, 8])\nxs += [\"a\"]\nprint(xs[0][0] + 1)\n", false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,15 +175,14 @@ func TestNumericSlotChainGate(t *testing.T) {
 			var depth int
 			for _, st := range prog.Stmts {
 				if es, ok := st.(*ExprStmt); ok {
-					if call, ok := es.Expr.(*Call); ok {
-						for _, a := range call.Args {
-							nm, depth = chainDepth(a)
-						}
+					if n, d := gateChain(es.Expr); n != nil {
+						nm, depth = n, d
+						break
 					}
 				}
 			}
 			if nm == nil {
-				t.Skip("row has no print(...) argument to walk")
+				t.Fatalf("row has no slot read for the gate to judge — it would pass without asking anything: %s", tc.src)
 			}
 			c := computeNumericSlotChains(prog)
 			if got := c.numeric(nm.Value, depth); got != tc.open {

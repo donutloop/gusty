@@ -9524,3 +9524,66 @@ missing section is a piece of writing that has to be written, and 67 mechanical 
 name would make both changes harder to review); trusting GitHub's generated heading slugs instead of the file's
 explicit `<a id>` convention (the convention already covers 233 entries and is greppable — a slug rule that has to
 be re-derived from a renderer is how the long-form fragments went wrong in the first place).
+
+<a id="gap-r-191"></a>
+### Gap R.191 — a container that holds a text closed another container's number door (CLOSED by ADR 0322, owner L11.1)
+
+The row was filed as a mis-firing refusal, and that is what the measurement says it was. Three binaries, one
+program:
+
+| program | CPython | compiled before ADR 0322 | compiled after |
+|---|---|---|---|
+| `w = []` / `w.append("a")` / `nested = []` / `nested.append([7, 8])` / `d = nested[0][0] * 2` / `print([d])` | `[14]` | exit 1 — `index cannot reach into nested's slots: the name was rebound, mutated, or handed to code this pass cannot see …` | `[14]` |
+| the same without the binding line, `print(nested[0][0] * 2)` | `14` | exit 1, the same sentence | `14` |
+| `w.append("a")` / `xs.append([7.5, 8])` / `print(xs[0][0] * 2)` | `15.0` | exit 1 | `15.0` |
+| `w.append("a")` / `d = {}` / `d["k"] = 40` / `print(d["k"] + 2)` | `42` | exit 1 | `42` |
+| `w.append("a")` / `outer.append([[7, 8]])` / `print(outer[0][0][0] + 1)` | `8` | exit 1 | `8` |
+| `xs.append([7, 8])` / `ys = xs` / `ys.append("word")` / `print(xs[1] * 2)` | `wordword` | exit 1 | exit 1 — the block crossed the alias |
+
+The row's own observation was the diagnosis: drop the two `w` lines and the program answered. What was dropped
+was not a mutation of `nested` — it was the flag. `numericSlotChains`, the pass that decides whether `+` and `*`
+over a slot the literal no longer describes may be lowered at all, carried `blocked bool`: one text, or one value
+with no spelling, written into *any* container anywhere set it, and the door closed for the module. The pass is
+coarse on purpose — the reference *answers* `xs[0] + "a"` with a joined text and `[1] * 2` with a repeated list,
+neither of which this backend builds from a slot (`Gap R.82`), so a door that opened on a container holding a
+text would raise where the reference returns a value. Coarse is defensible when it only ever refuses more. What
+made this a defect rather than a hedge is that a refusal is a *sentence*: the message named `nested`, the
+container the read walks, as the thing that had been "rebound, mutated, or handed to code this pass cannot see",
+and the line responsible was two statements earlier and about a different object.
+
+**The fix is a key, not a widening.** `blocked` became a map keyed by an alias group's root; the walk builds the
+groups (`y = xs`, `a, b = xs`, `d = xs[0]`, `for v in xs`, `[v for v in xs]`, and a call site linking each
+parameter to the argument that reaches it), and a store blocks the container it writes plus everyone who can
+denote it. Evidence — the per-name kind tree `numeric` reads — stays per-name, so an alias can only ever close a
+door, never open one: `xs.append([7,8])` / `ys = xs` / `ys.append([9,10])` still proves nothing about `xs`. The
+program-wide bit survives as `blockAll` for the stores that describe no name at all (`xs[0].append("a")`,
+`self.items.add(b)`, a loop variable over `rows()`), which is the only case where "which container?" genuinely
+has no answer.
+
+**Two holes in the same walk closed while it was being re-read.** `xs += ["a"]` extends a container without ever
+naming it as a receiver, and `xs[0][1] = "a"` writes a slot two levels down for which the notebook has no level;
+neither was recorded before, so neither blocked anything. Both do now — the second blocks the program, since the
+object it writes is one the pass cannot point at. `Comp`, `Generator`, `Slice`, `Lambda`, `AssignExpr`, `WithStmt`,
+`MatchStmt`, `ClassDef`, `YieldStmt` and `YieldFromStmt` joined the walk for the same reason: a store the pass
+does not visit is a store that cannot block anything.
+
+**The table that was supposed to keep this honest had been answering nothing.** `TestNumericSlotChainGate` — the
+"gate asked directly, so a widening of `+` fails a decision row" table — took the print argument and handed it to
+`chainDepth`, which reports no chain for anything but a bare subscript. Every row is written
+`print(xs[0][0] + 1)`; every row therefore reached `t.Skip("row has no print(...) argument to walk")`. The one
+existing row whose expected value this cycle inverted — `"text anywhere in any container"` → closed — had never
+run. `gateChain` now walks `BinOp`/`UnOp`/`CondExpr`/call arguments to find the read, and a row that yields no
+chain is a failure rather than a skip (the ADR 0317 lesson, met from the inside this time: a guard over a file it
+never opened is not a guard).
+
+Witnesses: `pkg/lang/numeric_slot_door_scope_test.go` (ten answering programs on the record leg and the compiled
+run; fourteen rows asking the pass directly, including the alias, the loop variable, the parameter, the unknown
+callee and the two stores the old walk missed; `TestTheAliasGuardCanFail`, which builds the notebook with the
+union-find removed and demands the alias row change verdict; the still-refusing family with its sentences),
+`integration/numeric_slot_door_scope_test.go` (the same answering family against CPython, the still-shut family
+pinned as refusals, and `TestCLIAgentTheDoorScopeRowsThatBelongToAnotherRowAreFiledNotFixed` for the two refusals
+measured beside this one that belong to `Gap R.101` and the loop-variable rows `Gap R.91`/`R.95`), and
+`integration/programs/probe_a_text_in_one_container_leaves_another_number_door_open.gy`, promoted into the
+conformance corpus and recorded through `tools/recmerge` (the reference's answer, cross-checked against the
+compiled leg). A 187-program differential across `integration/programs/*.gy` between the pre-cycle build and this
+one differs on that file alone.
