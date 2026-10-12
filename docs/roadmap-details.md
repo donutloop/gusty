@@ -9587,3 +9587,122 @@ measured beside this one that belong to `Gap R.101` and the loop-variable rows `
 conformance corpus and recorded through `tools/recmerge` (the reference's answer, cross-checked against the
 compiled leg). A 187-program differential across `integration/programs/*.gy` between the pre-cycle build and this
 one differs on that file alone.
+<a id="gap-r-95"></a>
+### Gap R.95 — the membership test and the loop chose their helper by the kind the compiler had written down (CLOSED by ADR 0323, owner L11.1)
+
+The row was filed as two refusals. Measured again on the day it closed, one of them was not a refusal at
+all, and the thing it was instead is the reason this cycle exists.
+
+| program | CPython | compiled before ADR 0323 | compiled after |
+|---|---|---|---|
+| `xs = []` / `xs.append([7, 8])` / `print(7 in xs[0])` | `True` | exit 1, `this context needs a single static kind` | `True` |
+| `xs = []` / `xs.append([7, 8])` / `for v in xs[0]: print(v)` | `7`, `8` | exit 1, same sentence | `7`, `8` |
+| `d = {}` / `d["a"] = [1, 2]` / `for v in d["a"]: print(v)` | `1`, `2` | **`0` at exit 0** | `1`, `2` |
+| `d = {}` / `d["a"] = "abc"` / `for v in d["a"]: print(v)` | `a`, `b`, `c` | **nothing at exit 0** | `a`, `b`, `c` |
+| `xs = []` / `xs.append(5)` / `print(1 in xs[0])` | `TypeError: argument of type 'int' is not iterable` | **`False` at exit 0** | the raise, catchable |
+| `xs = []` / `xs.append(5)` / `for v in xs[0]: print(v)` | `TypeError: 'int' object is not iterable` | **`0`, `1`, `2`, `3`, `4` at exit 0** — five iterations invented from a heap slot | the raise, catchable |
+
+Measured with three binaries the same afternoon: CPython 3.12, the HEAD build, this cycle's build. The two
+refusals print the whole ADR 0249 sentence (`a compiled list holds elements of more than one kind … this
+context needs a single static kind (roadmap L11.1, Gap R.82)`) and exit 1; the table abbreviates.
+
+The refusals were admissible: a door that cannot see far enough says so. The other four were not. Each
+answered, at the exit code of success, with a word the program never computed — and each of them did it in
+exactly the shapes where the compiler *had* written a kind down. `d` is a runtime dict, so the loop asked
+`rt_dict_len` of the dict and walked the dict's own words, one entry deep, over a value that had never been a
+dict's entry at all. The membership test lowered `xs[0]` through the value path, got a payload that was an
+integer, handed it to `rt_contains` as a heap handle, and read whatever object happened to share the number 5.
+
+**The root cause was one line's worth of bookkeeping, in two copies.** Both callers select a runtime helper,
+and both selected it from `g.runtimeDicts` / `g.listVars` / `g.mixedLists` — the notebook of what the *container
+variable* is — where the haystack is a *slot*, whose kind is a fact about the object and was recorded beside
+the payload by whoever wrote it. ADR 0251 had already solved this exact problem for the read one level below
+such a slot: `slotReadUnderTag` emits one `icmp`/`br` per kind and asks `rt_get_elem`, `rt_dict_get_tagged`,
+`rt_str_char` or `rt_set_find` in the arm the tag selects, with the raise arms leaving through the program's
+own `except`. The two callers had never been given the door.
+
+**What landed is that door, handed over, not a new one.** `builtSlotPair` reads the slot the only way a slot
+can be read when nothing describes it — `rt_get_elem`/`rt_tag_of` or `rt_dict_get_tagged`/`rt_dict_value_tag`,
+which is ADR 0187's pairing rule, and it declines the shape ADR 0241's static door already serves so the two
+never compete. `membershipOfBuiltSlotHaystack` then walks the tag: `@rt_contains_tagged` for a list,
+`@rt_dict_has_tagged` for a dict (its keys, because that is what Python tests a dict by), `@rt_set_contains_tagged`
+for a set, and `@rt_str_contains` for a text — a different question in the last arm, and one the arm can only
+ask of a needle whose kind is provable, which is ADR 0232's rule kept whole: a needle the compiler cannot
+describe declines, and the old refusal stands rather than comparing an `@str_tab` index with the integer it is
+indexed by. The loop asks the object three questions through `@rt_iter_len`, `@rt_iter_elem` and `@rt_iter_tag`,
+which live in the same runtime block as the helpers they call — a list yields elements, a set members, a dict
+its keys at the stride 2 the dict's own reader walks, a text its characters, interned and tagged `str` so the
+loop variable prints as text and not as the index of it (ADR 0225, ADR 0185).
+
+**Iterability is a raise, not a refusal, and the two questions do not share a sentence.** CPython says
+`argument of type 'int' is not iterable` to a membership test and `'int' object is not iterable` to a loop.
+Those are not stylistic variants and the door keeps them apart, one arm per kind, each leaving through
+`raiseTo` so an `except TypeError:` in the source reaches it (ADR 0228) — the same discipline ADR 0271 learned
+when `abs` borrowed the unary minus's wording. A text haystack asked about a number raises the third sentence,
+`'in <string>' requires string as left operand, not int`, naming the *needle's* kind. The `@rt_iter_*` helpers
+never raise: they are reached only from an arm that already proved the kind iterable, which keeps the source
+span, the exception class and the handler stack where the compiler can see them.
+
+**Two things this cycle measured and did not fix.** A haystack *two slots* deep still refuses — reaching it is
+dispatching a dispatch, and the honest answer is the sentence that names the missing half (`Gap R.210`). And a
+slot holding an instance of a user class carries the `int` tag, so `print(xs[0])` of a slot appended with `C()`
+prints the heap handle, `len(xs[0])` names `'int'`, and the two new doors name `'int'` where the reference names
+the class (`Gap R.209`). The second is the same missing word Gap R.112 found for a verdict in a slot, and it is
+a writer's bug rather than a reader's: an arm that guessed the class would be inventing an object it cannot see.
+
+Witnesses: `pkg/lang/runtime_slot_read_test.go` grows the parity table (31 programs judged against the record and
+against the compiled run, including one container holding a list, a dict, a set and a text at once so all four
+arms run in one module, the loop surface of `break`/`continue`/`else` over a slot, and the static door's shapes
+kept so the new door cannot disturb them), the trap table (13 raises compared by class **and** message with the
+record, each then caught by the source's own handler), and the IR table (the module branches on the tag, asks one
+helper per kind, carries each raise's own sentence — and a loop the compiler *can* describe carries none of the
+three doors). `integration/runtime_slot_read_test.go` grows 22 CLI rows byte-compared with CPython — one more moved
+in from the trap table once it became catchable — with 9 traps pinned
+at exit 3 and exit 2 forbidden, the two depth-two refusals pinned at exit 1, and the filed instance row — one for
+the test and one for the loop.
+`integration/programs/runtime_slot_haystack.gy` joined the conformance corpus as `match`, and 57 sources went to
+the record through `tools/recmerge` (5972 → 6029, 0 dropped / 0 changed). One row left the compiled-vs-record
+drift ledger in the same commit: `d = [{1, 2} for x in [1]]` / `print(1 if 2 in d[0] else 0)` — a **set** slot read
+out of a comprehension-built list, recorded as "the compiled backend cannot build a program the engine ran" —
+which is the `@rt_set_contains_tagged` arm arriving from the other direction (338 → 337).
+
+<a id="gap-r-209"></a>
+### Gap R.209 — an instance written into a container slot carries the `int` tag (OPEN, found by ADR 0323)
+
+`xs = []` / `xs.append(C())` / `print(xs[0])` prints `1` — the heap handle — where the reference prints
+`<__main__.C object at 0x…>`. `len(xs[0])` raises `object of type 'int' has no len()`. Asking the slot for a
+membership test or a loop, which is what ADR 0323 added, raises `argument of type 'int' is not iterable` and
+`'int' object is not iterable` where the reference names the class.
+
+One cause, four symptoms: the tag the *writer* left beside the payload says int. Everything downstream —
+the printer, the length check, the ordering sentence, and now the two doors this cycle added — obeys the tag,
+which is the rule ADR 0182 and ADR 0187 exist to enforce, so the bug is not in any of them. `elemKindTag` is the
+one place the answer is written, and it already has the table to read: `negation.go`'s `signlessOperandKind`
+names `Token` for `-Token()` and `abs(Token())` (ADR 0271), so the class of a construction is knowable at the
+write site. ADR 0259 is the precedent for the change — a bool in a slot went from `TagInt` to `TagBool` and the
+container printer, the set dedup and the ordering sentence followed without being touched — and the printer's
+instance arm is the second half, because a tag nobody can render is only half a kind.
+
+Pinned filed-not-fixed by
+`integration/runtime_slot_read_test.go::TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop`, which
+writes both legs' answers into the row: the compiled raise must name `'int'` (the tag's answer) at exit 3, catchably,
+and the reference's must name `'C'`. When the tag is fixed the row moves to the parity table; it will fail before
+that, which is what a pin is for.
+
+<a id="gap-r-210"></a>
+### Gap R.210 — the membership test and the loop reach one slot down and no further (OPEN, found by ADR 0323)
+
+`xs = []` / `xs.append([[7, 8]])` / `print(xs[0][0])` prints `7`. The same expression with `in` in front of it,
+or as a loop's iterable, exits 1 with `index cannot reach into xs's slots`.
+
+That is not an inconsistency in the answer — both refusals name the half they are missing, and exit 1 is the
+front-end class — but it is the shape where a reader stops trusting the door: one line prints, the next refuses.
+ADR 0251 reads a two-deep slot by dispatching the inner read under the outer tag, so the machinery for the depth
+already exists; what is missing is the recursive form of `builtSlotPair`, which stops at a base whose kind it
+cannot name. The arms past it do not care about the depth — they ask a (payload, tag) pair and the object behind
+it — so the fix is the pair, not the dispatch.
+
+Pinned by the two `…_two_slots_deep` rows in `pkg/lang/runtime_slot_read_test.go::TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve`
+and the two in `integration/runtime_slot_read_test.go::TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf`, which
+assert the refusal's wording, exit 1, and that no IR problem is hiding behind it. Both move to the parity tables
+when the door reaches depth two.

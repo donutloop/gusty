@@ -1048,7 +1048,7 @@ func heapArgKind(callee string, pos int) string {
 		case "rt_set_elem", "rt_append", "rt_dict_put", "rt_set_add":
 			return "write"
 		case "rt_get_elem", "rt_list_len", "rt_dict_get", "rt_dict_len",
-			"rt_set_len", "rt_contains":
+			"rt_set_len", "rt_contains", "rt_iter_len", "rt_iter_elem", "rt_iter_tag":
 			return "read"
 		case "rt_print_list", "rt_print_dict", "rt_print_set":
 			return "print"

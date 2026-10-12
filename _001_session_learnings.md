@@ -9315,3 +9315,88 @@ widens.
 * Adding one asserted corpus program moves four published numbers at once (programs, matrix rows, parity rows,
   `match` verdicts) plus the record's count in three documents — and `roadmap_snapshot_test.go` /
   `golden_artifact_counts_test.go` name every cell, which is the whole point of ADR 0319.
+
+## ADR 0323 — the membership test and the loop chose their helper from the notebook (Gap R.95)
+
+### The row said "two refusals"; the family held four wrong answers
+
+`Gap R.95` was written as one line: `7 in xs[0]` and `for v in xs[0]` refuse on a container the program built.
+Re-measuring the *family* around those two programs — the same slots through a dict key, the same slots holding
+scalars instead of containers — turned up four shapes that were not refusals and were much worse:
+`d["a"] = [1, 2]` / `for v in d["a"]` printed a single `0` for CPython's `1`, `2`; the same with a text slot
+printed nothing at all; `1 in xs[0]` over a number slot answered `False`; and the same slot stepped over by a loop
+answered `0`, `1`, `2`, `3`, `4` — five iterations invented from a heap slot — all of them at the exit code of
+success. A row filed as a refusal is a *hint* about the shape of the defect, not its extent: the refusal is what
+the compiler notices, and the wrong answer is what it fails to notice, so the family around the reported program
+is where the actual damage lives. Lesson worth keeping: **measure the neighbours of a reported row before writing
+the "before" column of its table** — and rebuild the pre-cycle binary (here, a `git worktree` at HEAD into
+`/tmp`) rather than trusting memory for it. One of the six "before" cells in this cycle's tables came out wrong
+when it was measured instead of remembered: the loop over a number slot was written down as printing nothing and
+really printed five fabricated iterations.
+
+### One root cause, three callers, two of them never told
+
+ADR 0251 fixed exactly this bug for the *read* below a built slot by asking the tag instead of the notebook
+(`g.listVars`, `g.runtimeDicts`, `g.mixedLists` describe the container **variable**; the slot's kind is a fact
+about the object, written beside the payload by whoever stored it). The membership test and the loop had the same
+line of bookkeeping in their own code and were never given the fix, so they kept asking the notebook — which is
+how a loop over a dict *value* ended up walking the dict's own `[key, value]` words. When a door is built for
+"the shape the compiler cannot describe", grep for the other callers of the notebook it replaced: ADR 0246's
+`len`, ADR 0251's read, ADR 0252's ordering and now these two are one defect with five callers, and the fourth
+and fifth were found by the row's own wording, not by a test failure.
+
+### An IR absence assertion asserts the call, never the name
+
+The cost half of the change is "a loop the compiler *can* describe must not grow the new doors". The first version
+asserted the module does not contain `@rt_iter_len(`. It could never have failed: the three helpers live in the
+shared `heapRuntimeIR` block, which is emitted whole the moment any module asks for any heap object, so the
+*definition* is in every module that touches a list. The assertion is now on `call i32 @rt_iter_len(`. A helper
+defined in a shared runtime block is absent from no module, and the only honest absence is the absence of a call
+site.
+
+### Backticks are not markdown inside a Go raw string
+
+`heapRuntimeIR` is a backtick-delimited raw literal, so the IR comments that open a clause with `` `the tag` ``
+terminate the literal and the compiler reports `syntax error: unexpected s after top level declaration` many lines
+later, in the middle of a string. IR comments inside that block are prose with no quoting machinery available.
+
+### Two questions, two sentences — the ADR 0271 rule, re-earned
+
+`argument of type 'int' is not iterable` (membership) and `'int' object is not iterable` (a loop) differ by more
+than word order; CPython keeps them apart, and the third sentence in the family,
+`'in <string>' requires string as left operand, not int`, names the **needle** rather than the haystack. Writing
+one helper string and using it in both doors is the cheapest way to pass every new test in this cycle and to make
+the trap tables wrong, which is what `notIterableSentence` and `notIterableLoopSentence` as two functions — and
+the trap table comparing class **and** message — are there to prevent.
+
+### Raise in the module, not in the helper
+
+`@rt_iter_len` could have raised the `TypeError` itself, which would have saved four `icmp`s at the call site. It
+does not, because a raise inside an `internal` helper loses the source span and the landing-pad bookkeeping
+`raiseTo` owns, and would have to be re-derivable from nothing but two `i32`s. The helpers are reached only from
+an arm that already proved the kind iterable, so they answer a count and never a diagnostic. Same reasoning, same
+shape as ADR 0265's `@rt_num_arith`, whose raise also leaves through the emitted door.
+
+### Small things
+
+* A roadmap row's `Evidence` cell is a claim about test tables, and the count of rows in a table drifts the moment
+  someone adds a case to cover a new arm. Counting them (`python3`, brace-depth at one tab, not `grep -c name:`
+  against a table written with positional fields) beat re-reading them, and `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+  is the tripwire for the snapshot half.
+* Adding `docs/adr/0323` makes the snapshot's `ADRs` row stale in the same commit — 314 → 315, highest `0322` →
+  `0323` — and the guard prints both numbers, so the ADR has to be written *before* the pre-commit gate, not
+  beside it (ADR 0319, ADR 0320).
+* One row moved *between* tables mid-cycle: a trap that binds the exception (`except TypeError as e:`) is not
+  expressible in this language yet (`Gap R.113`), so the catchable half of that shape was rewritten as a plain
+  `except TypeError:` parity row rather than dropped. A test that cannot parse is not a witness.
+* Landing a row has to break a pin, and this one broke two: a comprehension shape that the honest-refusal table
+  had been demanding `"more than one kind"` for became a parity row (`membership_in_a_slot_of_a_built_comp`), and
+  the same program's compiled-vs-record debt row retired out of `interpreter-golden-drift.json` (338 → 337). The
+  ledger rewrite went through `GUSTY_GOLDEN_UPDATE=1` on a **serial** `go test` — the sharded runner deliberately
+  does not take the judgement over, because the ledger is per-process state (ADR 0315).
+* Two published counts and one published sentence-trio move together with the ledger: the `Ledgers` snapshot row,
+  `docs/operations.md`'s artifact table, and the green-run example line — all three are guarded or checkable, and
+  `TestTheArtifactTableCountsAreTheFilesOwn` prints the file's number when they drift (ADR 0319).
+* `git push` still fails in this environment — `sign_and_send_pubkey: signing failed for ED25519 … from agent:
+  agent refused operation` — so ADR 0322's commit and this one are local-only and the push is retried every
+  cycle rather than treated as done.

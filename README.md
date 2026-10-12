@@ -213,7 +213,17 @@ prints `2`, `xs.append("abc")` / `print(xs[2][1])` prints `b`, and a slot that h
 `TypeError: 'int' object is not subscriptable` instead of being refused at compile time. Nothing behind it
 needs a literal, and the answer is a `(payload, tag)` pair again, so a binding, an equality, a `len` and a
 further subscript all take it (`probe_nested_list.gy` is parity surface now, and a comprehension-built
-`d[1]["k"]` came with it) — roadmap L11.1, ADR 0251. An **ordering** of those slots asks the object the same
+`d[1]["k"]` came with it) — roadmap L11.1, ADR 0251. The two callers that had never been handed that door took
+it in ADR 0323 (`Gap R.95`): **`in` and `for` over a slot the program built** ask the object which question they
+are asking — `xs = []` / `xs.append([7, 8])` / `print(7 in xs[0])` printed a refusal for CPython's `True`, and
+`d = {}` / `d["a"] = [1, 2]` / `for v in d["a"]: print(v)` was worse than a refusal, printing a single `0` at the
+exit code of success because the loop walked the *dict's* words while the iterable was the value under its key,
+with a text slot printing nothing at all. A list slot is walked by its elements, a dict slot by its keys, a set
+slot by its members and a text slot as characters or as a substring; a slot holding `5` raises
+`TypeError: argument of type 'int' is not iterable` to the test and `TypeError: 'int' object is not iterable` to
+the loop, because those are two sentences in the reference and not one, and both reach the program's own
+`except TypeError:` (`runtime_slot_haystack.gy` is corpus surface, identical on both legs). An **ordering** of
+those slots asks the object the same
 question (ADR 0252, closing Gap R.93): `xs = []` + `xs.append(i)` in a loop + `print(1 if xs[0] > "a" else 0)`
 used to print `1` compiled for a program CPython crashes, and now raises *'>' not supported between instances
 of 'int' and 'str'* on both legs — as do the dict the program filled (`d["k"] = 5` / `d["k"] >= 5`) and the

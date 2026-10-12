@@ -2214,6 +2214,70 @@ entry:
   ret i32 %r
 }
 
+; rt_iter_len, rt_iter_elem and rt_iter_tag answer the loop's three questions of the object the tag
+; names: how many steps there are is asked once, before the loop, by the same door that raises for a
+; value with no iteration at all, so these three only ever see a list, a dict, a set or a text. A list
+; yields elements, a set members, a dict its KEYS at the stride 2 the dict's own reader walks, and a
+; text its characters — interned, because s[i] is a one-character string and not a byte (ADR 0225),
+; and tagged str so the loop variable prints as text rather than as the interned index (ADR 0185).
+;
+; They exist because the loop, unlike the read below the same slot (ADR 0251), chose its helper by the
+; kind the compiler had written down rather than by the kind the slot carries: a dict with one entry
+; whose value was a list walked the dict's own words and printed one 0 where the reference prints 1
+; and 2 (roadmap L11.1, Gap R.95).
+define internal i32 @rt_iter_len(i32 %h, i32 %t) {
+entry:
+  %islist = icmp eq i32 %t, 5
+  %isdict = icmp eq i32 %t, 6
+  %isset = icmp eq i32 %t, 7
+  br i1 %islist, label %lst, label %chk1
+lst:
+  %nl = call i32 @rt_list_len(i32 %h)
+  ret i32 %nl
+chk1:
+  br i1 %isdict, label %dct, label %chk2
+dct:
+  %nd = call i32 @rt_dict_len(i32 %h)
+  ret i32 %nd
+chk2:
+  br i1 %isset, label %st, label %chr
+st:
+  %ns = call i32 @rt_set_len(i32 %h)
+  ret i32 %ns
+chr:
+  %nc = call i32 @rt_str_nchars(i32 %h)
+  ret i32 %nc
+}
+
+define internal i32 @rt_iter_elem(i32 %h, i32 %t, i32 %i) {
+entry:
+  %isstr = icmp eq i32 %t, 4
+  %isdict = icmp eq i32 %t, 6
+  %dpos = mul i32 %i, 2
+  %pos = select i1 %isdict, i32 %dpos, i32 %i
+  br i1 %isstr, label %ch, label %sl
+ch:
+  %c = call i32 @rt_str_char(i32 %h, i32 %i)
+  ret i32 %c
+sl:
+  %e = call i32 @rt_get_elem(i32 %h, i32 %pos)
+  ret i32 %e
+}
+
+define internal i32 @rt_iter_tag(i32 %h, i32 %t, i32 %i) {
+entry:
+  %isstr = icmp eq i32 %t, 4
+  %isdict = icmp eq i32 %t, 6
+  %dpos = mul i32 %i, 2
+  %pos = select i1 %isdict, i32 %dpos, i32 %i
+  br i1 %isstr, label %ch, label %sl
+ch:
+  ret i32 4
+sl:
+  %tg = call i32 @rt_tag_of(i32 %h, i32 %pos)
+  ret i32 %tg
+}
+
 ; rt_set_discard_tagged removes a member by (payload, tag) and shifts the tail of BOTH arrays.
 ; Shifting the payloads while leaving the tags where they were would print every member after the
 ; removed one through the kind of its neighbour.
@@ -9555,6 +9619,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if n.Op == "in" || n.Op == "not in" {
 			if _, isRead := n.R.(*Index); isRead {
 				if res, okM, mErr := g.membershipOfReadHaystack(b, n); mErr != nil {
+					return "", mErr
+				} else if okM {
+					return res, nil
+				}
+				// The haystack is a slot the program built rather than wrote: the tag beside its payload is
+				// the only thing that says whether to walk slots, keys, members or bytes at all, so the
+				// question goes to the object. Until this line the test either refused in words or — worse,
+				// at the exit code of success — read a number's payload as a heap handle and answered False
+				// where the reference raises (roadmap L11.1, Gap R.95, ADR 0251's rule for this caller).
+				if res, okM, mErr := g.membershipOfBuiltSlotHaystack(b, n); mErr != nil {
 					return "", mErr
 				} else if okM {
 					return res, nil
@@ -18466,9 +18540,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// elements and a set its members; a dict yields its KEYS in insertion order,
 		// which the runtime stores as [key, value] pairs — so entry i's key lives at
 		// 2*i. Iterating anything else falls through to the range path.
-		iterKind := "" // "list" | "set" | "dict"
+		iterKind := "" // "list" | "set" | "dict" | "tagged"
 		mixedIter := false
 		var hVal string
+		var iterTag string
 		if name, ok := n.Iter.(*Name); ok {
 			switch {
 			case g.mixedLists[name.Value]:
@@ -18521,6 +18596,22 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			iterKind = kind
 			mixedIter = true
 			hVal = h
+		} else if ix, isRead := n.Iter.(*Index); isRead {
+			// The iterable is a slot the program *built*, so nothing says which kind of object sits there:
+			// `xs = []` / `xs.append([7, 8])` / `for v in xs[0]`, and the same shape through a dict key.
+			// Before this arm the loop chose its helper by the kind the compiler had written down for the
+			// container and walked the wrong object entirely — `d = {}` / `d["a"] = [1, 2]` printed a single
+			// `0` for CPython's `1` and `2`, and a text slot printed nothing at all, each at the exit code of
+			// success. Now the tag the writer left beside the payload chooses, per iteration, through
+			// @rt_iter_len / @rt_iter_elem / @rt_iter_tag, and a slot holding a number, a verdict or None
+			// raises the sentence the reference raises rather than being stepped over as if it were a
+			// container (roadmap L11.1, Gap R.95, ADR 0251's rule for this second caller).
+			if h, t, okPair := g.builtSlotPair(b, ix); okPair && h != "" && t != "" {
+				iterKind = "tagged"
+				mixedIter = true
+				hVal = h
+				iterTag = t
+			}
 		}
 		if iterKind != "" {
 			// A loop over a container of interned strings binds the loop variable to an
@@ -18578,6 +18669,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			case "dict":
 				lenFn = "rt_dict_len"
 				elemStride = 2 // keys only
+			case "tagged":
+				// Neither question is answered by a table: the count, the word and the kind all come from the
+				// object the slot's tag names, and the stride the dict's keys live at is the runtime helper's
+				// business because the compiler cannot say which stride it is (Gap R.95).
+				lenFn = ""
+				elemStride = 1
 			}
 			if hVal == "" {
 				// The iterable is asked for its *handle*. g.value answers a literal with its folded
@@ -18600,7 +18697,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hVal = hv
 			}
 			lenT := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s)\n", lenT, lenFn, hVal))
+			if lenFn == "" {
+				lenT = g.iterLenUnderTag(b, hVal, iterTag, n.Span())
+			} else {
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s)\n", lenT, lenFn, hVal))
+			}
 			idxVar := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = alloca i32\n", idxVar))
 			b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", idxVar))
@@ -18634,7 +18735,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				pos = scaled
 			}
 			elemT := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, pos))
+			if iterKind == "tagged" {
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_iter_elem(i32 %s, i32 %s, i32 %s)\n", elemT, hVal, iterTag, ild))
+			} else {
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, pos))
+			}
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))
 			if mixedIter {
 				// The companion tag slot is what makes the loop variable printable: its
@@ -18645,7 +18750,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.allocd[loopVar+"_tag"] = true
 				}
 				tagT := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tagT, hVal, pos))
+				if iterKind == "tagged" {
+					b.WriteString(fmt.Sprintf("  %s = call i32 @rt_iter_tag(i32 %s, i32 %s, i32 %s)\n", tagT, hVal, iterTag, ild))
+				} else {
+					b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tagT, hVal, pos))
+				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tagT, loopVar))
 				g.taggedVars[loopVar] = true
 				if g.taggedOrigin == nil {

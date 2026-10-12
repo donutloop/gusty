@@ -468,6 +468,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// travels with the object now: an alias, a loop variable and a parameter beside its argument each
 		// carry a store's block to every name that can denote the same container.
 		"probe_a_text_in_one_container_leaves_another_number_door_open",
+		// The membership test and the loop over a slot the program BUILT ask the object, not the notebook:
+		// `7 in xs[0]` is True, `"k" in d["a"]` asks a dict's keys, `for v in xs[0]` prints 7 and 8, and a
+		// slot holding a number raises the reference's own sentence — with the two wordings the two
+		// questions use, `argument of type 'int' is not iterable` for the test and `'int' object is not
+		// iterable` for the loop, both reaching the program's `except TypeError:`. Before this the test
+		// refused and the loop answered one `0` for CPython's `1` and `2` (roadmap Gap R.95, ADR 0323,
+		// ADR 0251's dispatch handed to the two callers that had never taken it).
+		"runtime_slot_haystack",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

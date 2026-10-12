@@ -3364,6 +3364,237 @@ func (g *irGen) membershipOfReadHaystack(b *strings.Builder, n *BinOp) (string, 
 	return g.asBoolI32(b, asBool), true, nil
 }
 
+// builtSlotPair reads the slot an expression denotes and hands back its (payload, tag) pair *without*
+// claiming anything about what the slot holds. It is the shape `xs[0]` and `d["a"]` take when the
+// container is one the program assembled with `append` and assignment rather than wrote as a literal:
+// no table says what the slot is, and the tag the writer left beside the payload is the only witness
+// (roadmap L11.1, ADR 0251).
+//
+// It declines for the shape ADR 0241 already serves — a slot the literal still describes — so the two
+// roads never compete: where the compiler can read the tag it names the object directly, and where it
+// cannot, every caller below asks the object instead of a table.
+func (g *irGen) builtSlotPair(b *strings.Builder, ix *Index) (payload, tag string, ok bool) {
+	if _, seen := g.staticSlotTag(ix.Obj, ix.Idx); seen {
+		return "", "", false
+	}
+	base, baseKind, okBase := g.containerHandleOf(b, ix.Obj)
+	if !okBase {
+		return "", "", false
+	}
+	return g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
+}
+
+// notIterableSentence is the sentence the reference writes for the two questions a value with no
+// iteration is asked: membership names the type (`argument of type 'int' is not iterable`) and a loop
+// names the object (`'int' object is not iterable`). They are not variations of one another, and one
+// door writing the other's wording is the mistake ADR 0271 recorded for abs and the unary minus.
+func notIterableSentence(kind string) string {
+	return "argument of type '" + kind + "' is not iterable"
+}
+
+// notIterableLoopSentence is the loop's half of that pair.
+func notIterableLoopSentence(kind string) string {
+	return "'" + kind + "' object is not iterable"
+}
+
+// inStrNeedleSentence is the reference's third membership sentence, and the only one that names the
+// needle rather than the haystack: asking a text whether it contains a number is not a question it
+// answers with False.
+func inStrNeedleSentence(kind string) string {
+	return "'in <string>' requires string as left operand, not " + kind
+}
+
+// membershipOfBuiltSlotHaystack answers `7 in xs[0]`, `"k" in d["a"]`, `1 in s[0]` where the haystack
+// is a slot the program built one element at a time — the test that today picks its helper by the kind
+// the compiler had written down, cannot see one, and refuses (roadmap L11.1, Gap R.95).
+//
+// ADR 0251 gave the *read* below such a slot exactly this shape: one branch per kind, every arm asking
+// the object a question the object can answer, and the arms that can only fail leaving through the
+// program's own `except TypeError:`. The haystack is that same read; what it asks — walk slots, walk
+// keys, walk members, or test a substring at all — is decided by the tag the writer left beside the
+// payload, so a list slot and a dict slot and a text slot answer in one program, and a number slot
+// raises the sentence the reference raises instead of being read as a handle and answering False at
+// the exit code of success.
+//
+// The needle keeps ADR 0232's rule: its kind has to be provable, because an untagged compare of an
+// @str_tab index with the integer it is indexed by is a coincidence wearing a verdict.
+func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (string, bool, error) {
+	ix, isRead := n.R.(*Index)
+	if !isRead {
+		return "", false, nil
+	}
+	needleKind, kindOk := g.elemKindTag(n.L)
+	if !kindOk {
+		// The needle's kind is not provable: the untagged compare would answer every question with
+		// whichever number happened to sit in the slot, so no arm here can be trusted.
+		return "", false, nil
+	}
+	hay, hayTag, okRead := g.builtSlotPair(b, ix)
+	if !okRead || hay == "" || hayTag == "" {
+		return "", false, nil
+	}
+	needle, needleTag, okNeedle := g.taggedOperand(b, n.L)
+	if !okNeedle {
+		return "", false, nil
+	}
+	g.heapUsed = true
+	sp := n.Span()
+
+	type verdict struct {
+		val, tail string
+	}
+	var got []verdict
+	// The arms that answer, in the order the reference walks them: a list by its elements, a dict by
+	// its keys, a set by its members, a text by its substrings.
+	walkArms := []struct {
+		tg int32
+		fn string
+	}{
+		{int32(TagList), "rt_contains_tagged"},
+		{int32(TagDict), "rt_dict_has_tagged"},
+		{int32(TagSet), "rt_set_contains_tagged"},
+	}
+	for _, k := range walkArms {
+		arm, chk := g.newLabel("in.arm"), g.newLabel("in.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, k.tg)
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		hit := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s, i32 %s, i32 %s)\n", hit, k.fn, hay, needle, needleTag)
+		tail := g.newLabel("in.tail")
+		fmt.Fprintf(b, "  br label %%%s\n", tail)
+		got = append(got, verdict{hit, tail})
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// The text arm asks a different question, and asks it only of a text needle: `"b" in s` is a
+	// substring test, and `1 in s` is the TypeError that says so. Which of the two runs is decided by
+	// the needle's tag, which the compiler proved above and passes as the literal it proved.
+	{
+		arm, chk := g.newLabel("in.arm"), g.newLabel("in.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, int32(TagStr))
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		if needleKind == int32(TagStr) {
+			hit := g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_str_contains(i32 %s, i32 %s)\n", hit, hay, needle)
+			tail := g.newLabel("in.tail")
+			fmt.Fprintf(b, "  br label %%%s\n", tail)
+			got = append(got, verdict{hit, tail})
+		} else {
+			// The haystack is text and the needle provably is not: no verdict is available, so this arm
+			// has no edge into the merge — ADR 0205's rule, the one that keeps a phi's predecessors all
+			// blocks that stored a value.
+			g.raiseTo(b, exnCode("TypeError"), "TypeError", inStrNeedleSentence(g.tagName(needleKind)), sp)
+		}
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// A number, a verdict and None have no elements, keys, members or characters. The reference stops
+	// on each with a sentence naming the kind, and the program's `except TypeError:` reaches every one
+	// of them (ADR 0228).
+	for _, t := range []struct {
+		tg   int32
+		name string
+	}{
+		{int32(TagInt), "int"},
+		{int32(TagFloat), "float"},
+		{int32(TagBool), "bool"},
+		{int32(TagNone), "NoneType"},
+	} {
+		arm, chk := g.newLabel("in.bad"), g.newLabel("in.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, t.tg)
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence(t.name), sp)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// What is left is a kind this language has no membership for — a tuple, a class, an instance, a
+	// function. It is told it does not contain things rather than walked as a container it is not,
+	// which is the word the reference itself uses for an `object`; naming a user class the class is
+	// what the tagged word would buy, and it is a row of its own.
+	g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence("object"), sp)
+
+	merge := g.newLabel("in.merge")
+	for _, v := range got {
+		fmt.Fprintf(b, "%s:\n", v.tail)
+		fmt.Fprintf(b, "  br label %%%s\n", merge)
+	}
+	fmt.Fprintf(b, "%s:\n", merge)
+	parts := make([]string, 0, len(got))
+	for i, v := range got {
+		parts = append(parts, fmt.Sprintf("[ %s, %%%s ]", v.val, got[i].tail))
+	}
+	res := g.newTmp()
+	fmt.Fprintf(b, "  %s = phi i32 %s\n", res, strings.Join(parts, ", "))
+	asBool := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", asBool, res)
+	g.markI1(asBool)
+	if n.Op == "not in" {
+		inv := g.newTmp()
+		fmt.Fprintf(b, "  %s = xor i1 %s, true\n", inv, asBool)
+		g.markI1(inv)
+		return g.asBoolI32(b, inv), true, nil
+	}
+	return g.asBoolI32(b, asBool), true, nil
+}
+
+// iterLenUnderTag answers how many steps a loop over a slot's value has, and raises what the reference
+// raises when the slot holds something with no steps at all. One icmp and one branch per kind, every
+// failing arm leaving through the handler the program opened: the count itself is the object's answer,
+// asked by @rt_iter_len, because how many entries a slot's object has is a question only it can answer
+// (roadmap L11.1, Gap R.95, ADR 0251's shape).
+func (g *irGen) iterLenUnderTag(b *strings.Builder, hay, tag string, sp Span) string {
+	g.heapUsed = true
+	for _, t := range []struct {
+		tg   int32
+		name string
+	}{
+		{int32(TagInt), "int"},
+		{int32(TagFloat), "float"},
+		{int32(TagBool), "bool"},
+		{int32(TagNone), "NoneType"},
+	} {
+		arm, chk := g.newLabel("iter.bad"), g.newLabel("iter.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, t.tg)
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableLoopSentence(t.name), sp)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// The four kinds a loop can step over; anything else is the same sentence again, wearing the word
+	// the reference uses for a value that is not one of them.
+	walkable := []int32{int32(TagStr), int32(TagList), int32(TagDict), int32(TagSet)}
+	acc := ""
+	for _, w := range walkable {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, w)
+		g.markI1(c)
+		if acc == "" {
+			acc = c
+			continue
+		}
+		or := g.newTmp()
+		fmt.Fprintf(b, "  %s = or i1 %s, %s\n", or, acc, c)
+		g.markI1(or)
+		acc = or
+	}
+	walkL, badL := g.newLabel("iter.walk"), g.newLabel("iter.badg")
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", acc, walkL, badL)
+	fmt.Fprintf(b, "%s:\n", badL)
+	g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableLoopSentence("object"), sp)
+	fmt.Fprintf(b, "%s:\n", walkL)
+	n := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_iter_len(i32 %s, i32 %s)\n", n, hay, tag)
+	return n
+}
+
 // staticSlotTag is the tag the slot at `key` of a container carries, when the compiler can walk the
 // container's own literal to it. It is the permission for treating a read as a container: the
 // builders wrote that tag with the payload (ADR 0189), so the answer is what the object itself will

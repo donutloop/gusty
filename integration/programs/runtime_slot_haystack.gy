@@ -1,0 +1,33 @@
+xs = []
+xs.append([7, 8])
+xs.append({"k": 1})
+xs.append({5})
+xs.append("abc")
+print(7 in xs[0])
+print(9 not in xs[0])
+print("k" in xs[1], "z" in xs[1])
+print(5 in xs[2], 6 in xs[2])
+print("b" in xs[3], "z" in xs[3])
+for v in xs[0]:
+    print(v)
+for v in xs[3]:
+    print(v)
+d = {}
+d["a"] = [1, 2]
+for v in d["a"]:
+    print(v)
+d["b"] = {"k": 1, "j": 2}
+for v in d["b"]:
+    print(v)
+n = []
+n.append(5)
+try:
+    print(1 in n[0])
+except TypeError:
+    print("the test raised")
+try:
+    for v in n[0]:
+        print(v)
+except TypeError:
+    print("the loop raised")
+print("done")

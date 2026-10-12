@@ -705,7 +705,8 @@ one:
 | a **nested** `def` capturing the enclosing scope (`m = make_counter(10); m(2)`) | **refused**: the returned function is a value, and calling a value whose kind is only known at run time needs the tagged word | `L11.1`, function-as-value |
 | higher-order calls (`apply(f, x)`, `sorted(xs, key=f)`, lambdas as arguments) | **refused**, by name | `L11.1` |
 | gradual runtime type checking (`def adopt(a: Animal)` rejecting a `Rock`) | enforced — by the shared front end, at check time, on every path (`--eval`, `--file`, `--verify`, `--check`) | `L6.6` |
-| iteration/comprehension over a *run-time* container or text | literal containers fold; a computed one is refused naming its missing door | `Gap I.2`, `L11.1` |
+| iteration/comprehension over a *run-time* container or text | literal containers fold; a slot of a container the program built is walked by asking the object (`for v in xs[0]`, `7 in xs[0]` — `ADR 0323`), and a computed one beyond that is refused naming its missing door | `Gap I.2`, `L11.1`, `Gap R.210` |
+| `in` and `for` over a **slot** of a container built at run time | works for one slot deep: a list slot, a dict slot (its keys), a set slot and a text slot each get their own arm, and a slot holding a number, a verdict or `None` raises the reference's own sentence; two slots deep refuses | `L11.1`, `Gap R.95` (paid), `Gap R.210` |
 | `sorted`/`len`/indexing of a container built at run time | partially: the tagged read answers what it was taught, `sorted` over a non-literal is refused | `L11.1`, `Gap I.2` |
 
 Refused means: exit class **1**, a sentence naming the missing door, what the reference does there, and a
@@ -997,8 +998,8 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 5972 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden.json` | 6029 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (337 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -1068,7 +1069,7 @@ Four claims the harness makes, each pinned by `tools/testshards/main_test.go`:
 
   ```
   testshards: /…/pkg/lang/testdata/interpreter-golden-drift.json adjudicated over 20 shard(s) —
-    338 divergence(s) over 2765 source(s) asked, all on the ledger
+    337 divergence(s) over 2868 source(s) asked, all on the ledger
   ```
 
   A shard that fails skips the adjudication: it already reddens the run, and its evidence may be truncated.

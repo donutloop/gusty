@@ -166,28 +166,14 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 }
 
 // TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve pins what the door still declines, and that
-// it declines by naming the missing half. A *read* is answered by the object, and so is an *ordering*
-// of it (ADR 0252, slot_order_object_test.go); the **number** use of the same slot is answered since
-// ADR 0265 (numeric_slot_arith_test.go). What is still owed is the membership test and the loop, which
-// need the haystack's *kind* rather than its tag. Each of these is a refusal with a name, never an
-// exit 2 and never a verdict (roadmap L11.1's remaining clauses, Gaps R.95 and R.83).
+// it declines by naming the missing half. A *read* is answered by the object, an *ordering* of it is
+// answered (ADR 0252, slot_order_object_test.go), the **number** use is answered since ADR 0265, and so
+// are the membership test and the loop — which are no longer this table's rows, having moved to
+// TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs with the rest of Gap R.95's family. What is
+// still owed is a haystack two slots deep: the read below it is answered, the test and the loop over it
+// are not, and each is a refusal with a name — never an exit 2 and never a verdict (roadmap L11.1).
 func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{
-			// The haystack is a slot read, and the needle is a pair; but which helper asks the question
-			// is chosen by the *kind* the compiler cannot state. The tag answers an equality and an
-			// ordering; a membership needs to know whether to walk slots or bytes at all.
-			"membership in a container the program built",
-			"xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n",
-			"needs a single static kind",
-		},
-		{
-			// Iteration is the same missing word with a loop around it: the loop body's variable takes its
-			// kind from the slot, which is the tagged value word again.
-			"iteration of a container the program built",
-			"xs = []\nxs.append([7, 8])\nfor v in xs[0]:\n    print(v)\n",
-			"needs a single static kind",
-		},
 		{
 			// A set *variable* is read by the untagged path, which this backend declines as an unsupported
 			// subscript — while the record answers the documented membership question (`sa[0]` asks
@@ -197,6 +183,20 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			"set variable subscripted",
 			"sa = {1, 2}\nprint(sa[0])\n",
 			"index of a non-literal variable",
+		},
+		{
+			// The haystack is a slot read *below* a slot read. The door above reaches it — `xs[0][0]` prints
+			// 7 — because ADR 0251 dispatches a read per arm; the membership test would have to dispatch a
+			// dispatch, and today it names the half it cannot see instead of guessing at it.
+			"membership two slots deep in a container the program built",
+			"xs = []\nxs.append([[7, 8]])\nprint(1 if 7 in xs[0][0] else 0)\n",
+			"index cannot reach into xs's slots",
+		},
+		{
+			// The same depth with a loop around it.
+			"iteration of a container two slots deep",
+			"xs = []\nxs.append([[7, 8]])\nfor v in xs[0][0]:\n    print(v)\n",
+			"index cannot reach into xs's slots",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -211,6 +211,303 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 				t.Errorf("%s failed as an IR problem instead of a front-end refusal: %v", tc.name, err)
 			}
 		})
+	}
+}
+
+// TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs is Gap R.95 paid: the membership test whose
+// haystack is a slot, and the loop whose iterable is one.
+//
+// Both were refusals, and the loop was worse than a refusal in the shapes whose container the compiler
+// had *already* written a kind for: `d = {}` / `d["a"] = [1, 2]` / `for v in d["a"]` stepped over the
+// dict's own words and printed a single `0` where the reference prints `1` and `2`, and the same shape
+// holding a text printed nothing at all — the exit code of success wearing an answer. Choosing the
+// helper by the tag the writer left beside the payload instead of the kind the compiler had written
+// down is the whole change, and it is ADR 0251's rule applied to the two callers that had not taken it.
+//
+// Every row is judged against the record and, in the sibling integration file, against CPython.
+func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		// ---- the two shapes the roadmap row is written with.
+		{"membership in a container the program built", "xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n", "1\n"},
+		{"absent membership in a built container", "xs = []\nxs.append([7, 8])\nprint(1 if 9 in xs[0] else 0)\n", "0\n"},
+		{"iteration of a container the program built", "xs = []\nxs.append([7, 8])\nfor v in xs[0]:\n    print(v)\n", "7\n8\n"},
+		// ---- the same question through a dict key, which is the shape that had been answering wrongly.
+		{"loop over a list under a dict key", "d = {}\nd[\"a\"] = [1, 2]\nfor v in d[\"a\"]:\n    print(v)\n", "1\n2\n"},
+		{"membership of a list under a dict key", "d = {}\nd[\"a\"] = [1, 2]\nprint(1 in d[\"a\"], 3 in d[\"a\"])\n", "True False\n"},
+		{"loop over a text under a dict key", "d = {}\nd[\"a\"] = \"abc\"\nfor v in d[\"a\"]:\n    print(v)\n", "a\nb\nc\n"},
+		{"loop over a dict under a dict key", "d = {}\nd[\"a\"] = {\"k\": 1, \"j\": 2}\nfor v in d[\"a\"]:\n    print(v)\n", "k\nj\n"},
+		// ---- the four kinds one program can put in one slot: each arm runs, none of them is chosen by
+		// the compiler, and the tag decides which question the object is asked.
+		{
+			"list, dict, set and text slots in one container",
+			"xs = []\nxs.append([7, 8])\nxs.append({\"k\": 1})\nxs.append({5})\nxs.append(\"abc\")\nprint(7 in xs[0], \"k\" in xs[1], 5 in xs[2], \"b\" in xs[3])\n",
+			"True True True True\n",
+		},
+		{
+			"the same four slots, stepped over",
+			"xs = []\nxs.append([1, 2])\nxs.append({\"k\": 9})\nxs.append({5})\nxs.append(\"ab\")\nfor v in xs[0]:\n    print(v)\nfor v in xs[1]:\n    print(v)\nfor v in xs[2]:\n    print(v)\nfor v in xs[3]:\n    print(v)\n",
+			"1\n2\nk\n5\na\nb\n",
+		},
+		// ---- a dict is tested by its keys, which is what Python says a dict is tested by, and the
+		// intern-table collision ADR 0232 named is still answered: the text "7" and the integer 7 are not
+		// the same key even when the slot's payload says they are.
+		{"a dict slot is tested by its keys", "d = {}\nd[\"a\"] = {7: \"x\"}\nprint(7 in d[\"a\"], \"7\" in d[\"a\"])\n", "True False\n"},
+		{"a set slot is tested by its members", "xs = []\nxs.append({1, 2})\nprint(1 in xs[0], 3 in xs[0])\n", "True False\n"},
+		{"a set slot does not confuse a text with its index", "xs = []\nxs.append({\"a\"})\nprint(1 in xs[0], \"a\" in xs[0])\n", "False True\n"},
+		// ---- the text arm asks a substring question of a text needle, which is a different question from
+		// the one the other three arms ask, and the answer is not "the character is in the list".
+		{"substring of a text slot", "xs = []\nxs.append(\"abc\")\nprint(\"b\" in xs[0], \"z\" in xs[0])\n", "True False\n"},
+		{"substring across two text slots", "xs = []\nxs.append(\"abc\")\nxs.append(\"xyz\")\nprint(\"bc\" in xs[0], \"bc\" in xs[1])\n", "True False\n"},
+		// ---- `not in` is the same door with the verdict turned over, not a second door.
+		{"not in a built container", "xs = []\nxs.append([1, 2])\nprint(9 not in xs[0], 1 not in xs[0])\n", "True False\n"},
+		// ---- a container slot's *value* is what the loop binds, and the tag travels with it: printing the
+		// loop variable asks the inner container's printer rather than reading its handle as a number.
+		{
+			"a loop over a slot binds containers as well as numbers",
+			"xs = []\nxs.append([[1, 2], 3])\nfor v in xs[0]:\n    print(v)\n",
+			"[1, 2]\n3\n",
+		},
+		{
+			"a loop over a slot of every kind at once",
+			"xs = []\nxs.append([1, \"a\", 2.5, None, True])\nfor v in xs[0]:\n    print(v)\n",
+			"1\na\n2.5\nNone\nTrue\n",
+		},
+		// ---- the loop keeps the loop surface: `break`, `continue`, the `else` arm, and a position the
+		// program computed rather than wrote.
+		{
+			"break and continue inside a loop over a slot",
+			"xs = []\nxs.append([1, 2, 3, 4])\nfor v in xs[0]:\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\n",
+			"1\n",
+		},
+		{
+			"the else arm runs when the loop finishes",
+			"xs = []\nxs.append([1, 2])\nfor v in xs[0]:\n    print(v)\nelse:\n    print(\"done\")\n",
+			"1\n2\ndone\n",
+		},
+		{
+			"the else arm does not run when the loop breaks",
+			"xs = []\nxs.append([1, 2])\nfor v in xs[0]:\n    break\nelse:\n    print(\"done\")\n",
+			"",
+		},
+		{"a position the program computed picks the haystack", "xs = []\nxs.append([7, 8])\ni = 0\nprint(7 in xs[i])\n", "True\n"},
+		{"a computed position steps the same loop", "xs = []\nxs.append(\"abc\")\ni = 0\nfor v in xs[i]:\n    print(v)\n", "a\nb\nc\n"},
+		{"an empty container steps zero times", "xs = []\nxs.append([])\nfor v in xs[0]:\n    print(v)\nprint(\"end\")\n", "end\n"},
+		{"an empty text steps zero times", "xs = []\nxs.append(\"\")\nfor v in xs[0]:\n    print(v)\nprint(\"end\")\n", "end\n"},
+		// ---- the needle is not always a literal: a slot, a pair-bound name and a container all arrive as
+		// the (payload, tag) pair the container's own elements are stored as.
+		{"a slot read as the needle", "xs = []\nxs.append([7, 8])\nys = []\nys.append(7)\nprint(ys[0] in xs[0])\n", "True\n"},
+		{"a pair-bound name as the needle", "xs = []\nxs.append([7, 8])\nys = []\nys.append([7, 8])\nn = ys[0][0]\nprint(n in xs[0])\n", "True\n"},
+		{"a container as the needle", "xs = []\nxs.append([[1, 2], 3])\nprint([1, 2] in xs[0], [1, 3] in xs[0])\n", "True False\n"},
+		// ---- what the static door already answered, pinned so this door cannot disturb it: the tag the
+		// literal describes still routes the question, and a plain container still walks itself.
+		{"a literal's element still answers by the static door", "xs = [[1, 2], [3, 4]]\nprint(1 in xs[0])\n", "True\n"},
+		{"a literal's element still loops", "xs = [[1, 2]]\nfor v in xs[0]:\n    print(v)\n", "1\n2\n"},
+		{"a plain list still walks itself", "xs = [1, 2, 3]\nprint(2 in xs)\nfor v in xs:\n    print(v)\n", "True\n1\n2\n3\n"},
+		{"a plain dict still walks its keys", "d = {\"a\": 1}\nfor k in d:\n    print(k)\n", "a\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
+			}
+			if out := runIR(t, res.IR); out != tc.want {
+				t.Errorf("%s: AOT ran %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("%s: the other leg printed %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+		})
+	}
+}
+
+// TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython pins the failures of the same two doors. A slot
+// holding a number, a verdict or None has no elements, keys, members or characters to walk, and CPython
+// stops on each — with a *different* sentence for each question: membership names the type
+// (`argument of type 'int' is not iterable`) and a loop names the object
+// (`'int' object is not iterable`). Before this table both shapes were answered: the test read the
+// payload as a heap handle and said False, and the loop stepped over nothing at all, each at exit 0.
+func TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython(t *testing.T) {
+	for _, tc := range []struct{ name, src, class, message, catch string }{
+		{
+			"membership of an int slot",
+			"xs = []\nxs.append(5)\nprint(1 in xs[0])\n",
+			"TypeError", "argument of type 'int' is not iterable",
+			"xs = []\nxs.append(5)\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"membership of a float slot",
+			"xs = []\nxs.append(1.5)\nprint(1 in xs[0])\n",
+			"TypeError", "argument of type 'float' is not iterable",
+			"xs = []\nxs.append(1.5)\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"membership of a verdict slot",
+			"xs = []\nxs.append(True)\nprint(1 in xs[0])\n",
+			"TypeError", "argument of type 'bool' is not iterable",
+			"xs = []\nxs.append(True)\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"membership of a None slot",
+			"xs = []\nxs.append(None)\nprint(1 in xs[0])\n",
+			"TypeError", "argument of type 'NoneType' is not iterable",
+			"xs = []\nxs.append(None)\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"membership of a number slot through a dict key",
+			"d = {}\nd[\"a\"] = 5\nprint(1 in d[\"a\"])\n",
+			"TypeError", "argument of type 'int' is not iterable",
+			"d = {}\nd[\"a\"] = 5\ntry:\n    print(1 in d[\"a\"])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a text haystack with a number needle",
+			"xs = []\nxs.append(\"abc\")\nprint(1 in xs[0])\n",
+			"TypeError", "'in <string>' requires string as left operand, not int",
+			"xs = []\nxs.append(\"abc\")\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a text haystack with a None needle",
+			"xs = []\nxs.append(\"abc\")\nprint(None in xs[0])\n",
+			"TypeError", "'in <string>' requires string as left operand, not NoneType",
+			"xs = []\nxs.append(\"abc\")\ntry:\n    print(None in xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over an int slot",
+			"xs = []\nxs.append(5)\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError", "'int' object is not iterable",
+			"xs = []\nxs.append(5)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over a float slot",
+			"xs = []\nxs.append(1.5)\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError", "'float' object is not iterable",
+			"xs = []\nxs.append(1.5)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over a verdict slot",
+			"xs = []\nxs.append(True)\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError", "'bool' object is not iterable",
+			"xs = []\nxs.append(True)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over a None slot",
+			"xs = []\nxs.append(None)\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError", "'NoneType' object is not iterable",
+			"xs = []\nxs.append(None)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		{
+			"a loop over an int slot under a dict key",
+			"d = {}\nd[\"a\"] = 5\nfor v in d[\"a\"]:\n    print(v)\n",
+			"TypeError", "'int' object is not iterable",
+			"d = {}\nd[\"a\"] = 5\ntry:\n    for v in d[\"a\"]:\n        print(v)\nexcept TypeError:\n    print(\"caught\")\n",
+		},
+		// The slot read itself keeps its own traps, and the table above pins them; what belongs here is
+		// the one that the membership test *introduces*: a key the program never stored is asked for by
+		// the read that comes before any question about its value, and the raise is the read's.
+		{
+			"a haystack key that was never stored",
+			"d = {}\nd[\"a\"] = [1, 2]\nprint(1 in d[\"z\"])\n",
+			"KeyError", "'z'",
+			"d = {}\nd[\"a\"] = [1, 2]\ntry:\n    print(1 in d[\"z\"])\nexcept KeyError:\n    print(\"caught\")\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s (%q): refused with %v; a trap the reference raises must be emitted, not refused (Gap R.37)", tc.name, tc.src, err)
+			}
+			// The record leg: the retired engine's answer to the same source is a trap of this class,
+			// which is the half of the row that says the compiled raise is the language's, not this
+			// backend's invention.
+			if ee := trapRun(t, tc.src); ee.ExnType != tc.class {
+				t.Errorf("%s: the record raised %q, want %q (msg %q)", tc.name, ee.ExnType, tc.class, ee.ExnMsg)
+			} else if !strings.Contains(ee.ExnMsg, tc.message) {
+				t.Errorf("%s: the record's message %q lacks the reference's %q", tc.name, ee.ExnMsg, tc.message)
+			}
+			out := runIRMayTrap(t, res.IR)
+			if !strings.Contains(out, "Traceback (most recent call last):") {
+				t.Errorf("%s printed no traceback:\n%s", tc.name, out)
+			}
+			if !strings.Contains(out, tc.class) {
+				t.Errorf("%s raised without naming %s:\n%s", tc.name, tc.class, out)
+			}
+			if !strings.Contains(out, tc.message) {
+				t.Errorf("%s raised %q, want the reference's %q", tc.name, out, tc.message)
+			}
+			if strings.Contains(out, "codegen:") {
+				t.Errorf("%s refused what the oracle traps on:\n%s", tc.name, out)
+			}
+			// And the raise is catchable: the program's own `except TypeError:` is the reason a trap is
+			// a typed raise and not a compiler message (ADR 0228).
+			caught, err := Compile(tc.catch)
+			if err != nil {
+				t.Fatalf("%s: the caught version refused with %v\n%s", tc.name, err, tc.catch)
+			}
+			if out := runIR(t, caught.IR); !strings.Contains(out, "caught") {
+				t.Errorf("%s: the program's except TypeError: did not reach the raise:\n%s\nsrc: %s", tc.name, out, tc.catch)
+			}
+		})
+	}
+}
+
+// TestRunTimeBuiltSlotMembershipAndLoopAsksTheObjectInTheModule is the IR half of the claim: the
+// compiled program branches on the tag the slot carries and asks a *different* helper per kind, rather
+// than choosing one helper from a table the compiler kept. It also keeps the two shapes that made this
+// a bug rather than a gap out of the module: a compile-time global in a value position (exit 2, ADR 0166)
+// and a loop that walked the outer container's words instead of the slot's object.
+func TestRunTimeBuiltSlotMembershipAndLoopAsksTheObjectInTheModule(t *testing.T) {
+	src := "xs = []\nxs.append([7, 8])\nxs.append({\"k\": 1})\nxs.append({5})\nxs.append(\"abc\")\n"
+	src += "print(7 in xs[0], \"k\" in xs[1], 5 in xs[2], \"b\" in xs[3])\n"
+	src += "for v in xs[0]:\n    print(v)\n"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	for _, want := range []string{
+		// the tag decides which question the object is asked
+		"= icmp eq i32 %t",
+		// one helper per kind, and they are the tagged ones
+		"call i32 @rt_contains_tagged(",
+		"call i32 @rt_dict_has_tagged(",
+		"call i32 @rt_set_contains_tagged(",
+		"call i32 @rt_str_contains(",
+		// the loop's three questions, all of them asked of the object
+		"call i32 @rt_iter_len(",
+		"call i32 @rt_iter_elem(",
+		"call i32 @rt_iter_tag(",
+		// the arms merge through a phi, and only the value-producing arms are predecessors
+		"= phi i32 [",
+	} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("the module does not contain %q:\n%s", want, res.IR)
+		}
+	}
+	for i, ln := range strings.Split(res.IR, "\n") {
+		if strings.Contains(ln, "i32 @.") {
+			t.Errorf("line %d keeps a global in a value position: %s", i+1, ln)
+		}
+	}
+	// The raises travel with the arms that need them: one sentence per kind the slot can report, both
+	// wordings of the iterability question, and none of them a compile-time refusal.
+	for _, want := range []string{
+		"argument of type 'int' is not iterable",
+		"argument of type 'NoneType' is not iterable",
+		"'int' object is not iterable",
+		"'in <string>' requires string as left operand, not int",
+	} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("the module lost the raise %q the reference words", want)
+		}
+	}
+	// And a loop the door has no business in stays a loop the module answers without it: an int list
+	// walked by the ordinary path does not pay for a dispatch it does not need.
+	plain, err := Compile("xs = [1, 2, 3]\nfor v in xs:\n    print(v)\n")
+	if err != nil {
+		t.Fatalf("a plain list loop refused: %v", err)
+	}
+	for _, notWant := range []string{"call i32 @rt_iter_len(", "call i32 @rt_iter_elem(", "call i32 @rt_iter_tag("} {
+		if strings.Contains(plain.IR, notWant) {
+			t.Errorf("a loop the compiler can describe carries the run-time dispatch %s:\n%s", notWant, plain.IR)
+		}
 	}
 }
 

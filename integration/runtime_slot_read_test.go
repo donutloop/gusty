@@ -75,6 +75,62 @@ func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
 		{"literal_list_still_reads", "xs = [[1, 2], [3, 4]]\nprint(xs[0][1])\n", "2\n"},
 		{"literal_dict_still_reads", "d = {\"a\": [1, 2]}\nprint(d[\"a\"][1])\n", "2\n"},
 		{"literal_three_levels", "t = [[[1]]]\nprint(t[0][0][0])\n", "1\n"},
+		// ---- Gap R.95: the membership test and the loop over the same slot. Both were refusals, and the
+		// loop was worse than a refusal wherever the compiler had already written a kind for the container:
+		// a dict whose value was a list walked the dict's own words and printed a single 0 for CPython's
+		// 1 and 2, and the same shape holding a text printed nothing. Choosing the helper by the tag the
+		// writer left beside the payload — the rule ADR 0251 gave the read — is the whole change.
+		{"membership_in_a_built_container", "xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n", "1\n"},
+		{"membership_absent_in_a_built_container", "xs = []\nxs.append([7, 8])\nprint(1 if 9 in xs[0] else 0)\n", "0\n"},
+		{"iteration_of_a_built_container", "xs = []\nxs.append([7, 8])\nfor v in xs[0]:\n    print(v)\n", "7\n8\n"},
+		{"loop_over_a_list_under_a_dict_key", "d = {}\nd[\"a\"] = [1, 2]\nfor v in d[\"a\"]:\n    print(v)\n", "1\n2\n"},
+		{"loop_over_a_text_under_a_dict_key", "d = {}\nd[\"a\"] = \"abc\"\nfor v in d[\"a\"]:\n    print(v)\n", "a\nb\nc\n"},
+		{"loop_over_a_dict_under_a_dict_key", "d = {}\nd[\"a\"] = {\"k\": 1, \"j\": 2}\nfor v in d[\"a\"]:\n    print(v)\n", "k\nj\n"},
+		{"membership_of_a_list_under_a_dict_key", "d = {}\nd[\"a\"] = [1, 2]\nprint(1 in d[\"a\"], 3 in d[\"a\"])\n", "True False\n"},
+		{
+			"four_kinds_of_slot_in_one_container",
+			"xs = []\nxs.append([7, 8])\nxs.append({\"k\": 1})\nxs.append({5})\nxs.append(\"abc\")\nprint(7 in xs[0], \"k\" in xs[1], 5 in xs[2], \"b\" in xs[3])\n",
+			"True True True True\n",
+		},
+		{
+			"the_same_four_slots_stepped_over",
+			"xs = []\nxs.append([1, 2])\nxs.append({\"k\": 9})\nxs.append({5})\nxs.append(\"ab\")\nfor v in xs[0]:\n    print(v)\nfor v in xs[1]:\n    print(v)\nfor v in xs[2]:\n    print(v)\nfor v in xs[3]:\n    print(v)\n",
+			"1\n2\nk\n5\na\nb\n",
+		},
+		{"a_dict_slot_is_tested_by_its_keys", "d = {}\nd[\"a\"] = {7: \"x\"}\nprint(7 in d[\"a\"], \"7\" in d[\"a\"])\n", "True False\n"},
+		{"a_set_slot_is_tested_by_its_members", "xs = []\nxs.append({1, 2})\nprint(1 in xs[0], 3 in xs[0])\n", "True False\n"},
+		{"a_text_slot_is_a_substring_test", "xs = []\nxs.append(\"abc\")\nprint(\"b\" in xs[0], \"z\" in xs[0])\n", "True False\n"},
+		{"not_in_a_built_container", "xs = []\nxs.append([1, 2])\nprint(9 not in xs[0], 1 not in xs[0])\n", "True False\n"},
+		{
+			"a_loop_binds_containers_as_well_as_numbers",
+			"xs = []\nxs.append([[1, 2], 3])\nfor v in xs[0]:\n    print(v)\n",
+			"[1, 2]\n3\n",
+		},
+		{
+			"a_loop_of_every_kind_of_slot",
+			"xs = []\nxs.append([1, \"a\", 2.5, None, True])\nfor v in xs[0]:\n    print(v)\n",
+			"1\na\n2.5\nNone\nTrue\n",
+		},
+		{
+			"break_and_continue_in_a_loop_over_a_slot",
+			"xs = []\nxs.append([1, 2, 3, 4])\nfor v in xs[0]:\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\n",
+			"1\n",
+		},
+		{
+			"the_else_arm_runs_when_the_loop_finishes",
+			"xs = []\nxs.append([1, 2])\nfor v in xs[0]:\n    print(v)\nelse:\n    print(\"done\")\n",
+			"1\n2\ndone\n",
+		},
+		{"a_computed_position_picks_the_haystack", "xs = []\nxs.append([7, 8])\ni = 0\nprint(7 in xs[i])\n", "True\n"},
+		{"an_empty_container_steps_zero_times", "xs = []\nxs.append([])\nfor v in xs[0]:\n    print(v)\nprint(\"end\")\n", "end\n"},
+		{"a_slot_read_as_the_needle", "xs = []\nxs.append([7, 8])\nys = []\nys.append(7)\nprint(ys[0] in xs[0])\n", "True\n"},
+		{"a_pair_bound_name_as_the_needle", "xs = []\nxs.append([7, 8])\nys = []\nys.append([7, 8])\nn = ys[0][0]\nprint(n in xs[0])\n", "True\n"},
+		{"a_container_as_the_needle", "xs = []\nxs.append([[1, 2], 3])\nprint([1, 2] in xs[0], [1, 3] in xs[0])\n", "True False\n"},
+		// The two raise sentences are not variations of one another and the corpus keeps them apart on
+		// purpose: membership names the type (`argument of type 'int' is not iterable`) and a loop names
+		// the object (`'int' object is not iterable`). Here both raises are caught, which is the point —
+		// a trap the program can name has to be reachble by the program's own `except` (ADR 0228).
+		{"a_loop_and_a_test_over_the_same_slot_are_both_caught", "xs = []\nxs.append(5)\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"loop\")\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"test\")\n", "loop\ntest\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "rt_read.gy", tc.src)
@@ -145,6 +201,50 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			src:  "d = {}\nd[\"a\"] = [1, 2]\nprint(d[\"z\"][0])\n",
 			msg:  "KeyError",
 		},
+		// ---- Gap R.95's failures: a slot holding something with nothing to walk. Each of these used to
+		// be answered at the exit code of success — the membership test read the payload as a heap handle
+		// and said False, the loop stepped over nothing — which is the class of bug the exit-code contract
+		// counts as ours rather than the program's.
+		{
+			name: "membership_of_an_int_slot",
+			src:  "xs = []\nxs.append(5)\nprint(1 in xs[0])\n",
+			msg:  "TypeError: argument of type 'int' is not iterable",
+		},
+		{
+			name: "membership_of_a_none_slot",
+			src:  "xs = []\nxs.append(None)\nprint(1 in xs[0])\n",
+			msg:  "TypeError: argument of type 'NoneType' is not iterable",
+		},
+		{
+			name: "membership_of_a_verdict_slot",
+			src:  "xs = []\nxs.append(True)\nprint(1 in xs[0])\n",
+			msg:  "TypeError: argument of type 'bool' is not iterable",
+		},
+		{
+			name: "membership_of_a_number_stored_by_assignment",
+			src:  "d = {}\nd[\"a\"] = 5\nprint(1 in d[\"a\"])\n",
+			msg:  "TypeError: argument of type 'int' is not iterable",
+		},
+		{
+			name: "a_text_haystack_rejects_a_number_needle",
+			src:  "xs = []\nxs.append(\"abc\")\nprint(1 in xs[0])\n",
+			msg:  "TypeError: 'in <string>' requires string as left operand, not int",
+		},
+		{
+			name: "a_loop_over_an_int_slot",
+			src:  "xs = []\nxs.append(5)\nfor v in xs[0]:\n    print(v)\n",
+			msg:  "TypeError: 'int' object is not iterable",
+		},
+		{
+			name: "a_loop_over_a_none_slot",
+			src:  "xs = []\nxs.append(None)\nfor v in xs[0]:\n    print(v)\n",
+			msg:  "TypeError: 'NoneType' object is not iterable",
+		},
+		{
+			name: "a_loop_over_a_float_stored_by_assignment",
+			src:  "d = {}\nd[\"a\"] = 1.5\nfor v in d[\"a\"]:\n    print(v)\n",
+			msg:  "TypeError: 'float' object is not iterable",
+		},
 		{
 			name: "character_position_out_of_range",
 			src:  "xs = []\nxs.append(\"ab\")\nprint(xs[0][5])\n",
@@ -191,9 +291,11 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 }
 
 // TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf is the debt, kept visible. The *read* of a slot
-// only the run time can describe is answered; the *number*, the *ordering*, the membership test and
-// the loop over that same slot are not, and each says which half is missing rather than answering with
-// a verdict. CPython's answer is written into the roadmap row beside each.
+// only the run time can describe is answered; so is the membership test and the loop over that same
+// slot (Gap R.95, whose two rows this table used to hold — they are parity rows above now). What the
+// door still declines is a haystack two slots deep: reaching it would mean dispatching on a tag that is
+// itself behind a dispatch, and each row says which half is missing rather than answering with a
+// verdict. CPython's answer is written into the roadmap row beside each.
 func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// The **number** use of the same slot, and its negation, were in this table until ADR 0265 answered
@@ -202,8 +304,10 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 		// gate that decides which programs may take the road at all.
 		// The *ordering* of the same slot used to be in this table; ADR 0252 answers it, and the rows
 		// moved to TestSlotOrderOfAnUnliteralisedSlotMatchesCPython in slot_order_object_test.go.
-		{"membership_in_a_built_container", "xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n", "needs a single static kind"},
-		{"iteration_of_a_built_container", "xs = []\nxs.append([7, 8])\nfor v in xs[0]:\n    print(v)\n", "needs a single static kind"},
+		// The membership test and the loop used to be the two rows here; Gap R.95 paid them, and they are
+		// parity rows in TestRunTimeBuiltNestedSlotReadsMatchCPython above.
+		{"membership_two_slots_deep", "xs = []\nxs.append([[7, 8]])\nprint(1 if 7 in xs[0][0] else 0)\n", "index cannot reach into xs's slots"},
+		{"iteration_two_slots_deep", "xs = []\nxs.append([[7, 8]])\nfor v in xs[0][0]:\n    print(v)\n", "index cannot reach into xs's slots"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "rt_refuse.gy", tc.src)
@@ -287,6 +391,58 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 				if !strings.Contains(combined, tc.msg) {
 					t.Errorf("%s did not raise %q: %s", engine, tc.msg, combined)
 				}
+			}
+		})
+	}
+}
+
+// TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop is filed, measured and not fixed.
+// Asking a slot for its contents when the slot holds an instance of a user class reaches the arm for a
+// value with nothing to walk, and the arm reports the kind the *slot* says — `int` — where the reference
+// reports the class. The arm is right and the tag is wrong: `xs.append(C())` stores the instance's heap
+// handle beside a tag of TagInt, so every question the tag answers in this program answers about a kind
+// the program never put there. It is the same missing word Gap R.112 found for a bool in a slot, three
+// levels up from where anyone had looked for it.
+//
+// The row is pinned rather than fixed here because the fix is the tag the *writer* leaves, not the door
+// that reads it, and a door that invented the class name would be guessing at an object it cannot see.
+func TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop(t *testing.T) {
+	for _, tc := range []struct{ name, src, compiled, reference string }{
+		{
+			"membership of an instance slot",
+			"class C:\n    pass\nxs = []\nxs.append(C())\nprint(1 in xs[0])\n",
+			"TypeError: argument of type 'int' is not iterable",
+			"TypeError: argument of type 'C' is not iterable",
+		},
+		{
+			"a loop over an instance slot",
+			"class C:\n    pass\nxs = []\nxs.append(C())\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError: 'int' object is not iterable",
+			"TypeError: 'C' object is not iterable",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "rt_inst.gy", tc.src)
+			want, pyCode := oracleTrap(t, path)
+			if !strings.Contains(want, tc.reference) {
+				t.Fatalf("the reference does not say %q, it says %q", tc.reference, want)
+			}
+			if pyCode == 0 {
+				t.Fatalf("the reference exited 0 on a program meant to trap")
+			}
+			combined := cliRun(t, "--aot", path)
+			_, code := cliRunCode(t, "--aot", path)
+			if code == 2 {
+				t.Errorf("--aot exited 2 (a compiler bug, ADR 0166):\n%s", combined)
+			}
+			if code != 3 {
+				t.Errorf("--aot exited %d where the reference's trap class 3 is the answer: %s", code, combined)
+			}
+			if !strings.Contains(combined, tc.compiled) {
+				t.Errorf("--aot raised %q, want the tag's own answer %q (the class name is the filed half)", combined, tc.compiled)
+			}
+			if strings.Contains(combined, "codegen:") {
+				t.Errorf("--aot refused what the reference traps on:\n%s", combined)
 			}
 		})
 	}

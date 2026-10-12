@@ -477,12 +477,6 @@
     "actual": "jit: codegen: unsupported attr expression"
   },
   {
-    "source": "d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: a compiled list holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]), v = xs[i] and — since ADR 0249 — a numeric use whose result kind the compiler can settle all work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, Gap R.82)"
-  },
-  {
     "source": "d = {\"a\": 1, \"b\": 2, \"a\": 3}\nc = dict(d)\nprint(c)\nprint(len(c))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",

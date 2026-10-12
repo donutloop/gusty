@@ -2751,6 +2751,41 @@ xs.append(5)
 print(xs[3][0])                             # TypeError: 'int' object is not subscriptable — as CPython
 ```
 
+**…and `in` and `for` over such a slot ask it too** (ADR 0323, `Gap R.95`). A membership test and a loop
+both pick a helper — which container's elements to walk, and how many there are — and for a container the
+program spelled out that choice is a compile-time fact. For a container it *built*, the fact lives beside
+the payload, so the question goes to the object: a list slot is walked by its elements, a dict slot by its
+**keys** (which is what `in` tests a dict by, and what a loop over a dict steps over), a set slot by its
+members, and a text slot as a substring test or as a run of one-character strings. Each arm is one test on
+the tag, and the loop's three questions — how many, which word, which kind — are asked of the object, so a
+list, a dict, a set and a text can be the haystacks of one program and each get the question that fits.
+
+```gy
+xs = []
+xs.append([7, 8])
+xs.append({"k": 1})
+xs.append({5})
+xs.append("abc")
+print(7 in xs[0])                            # True   — used to be refused: "needs a single static kind"
+print("k" in xs[1], "z" in xs[1])             # True False — a dict is tested by its keys
+print(5 in xs[2], 6 in xs[2])                 # True False — a set by its members
+print("b" in xs[3], "z" in xs[3])             # True False — a text by its substrings
+for v in xs[0]:
+    print(v)                                 # 7, 8   — the loop variable carries its tag (ADR 0185)
+d = {}
+d["a"] = [1, 2]
+for v in d["a"]:
+    print(v)                                 # 1, 2   — printed a single 0 before this door existed
+```
+
+A value with nothing to walk raises, and the two questions phrase it differently because the reference
+phrases them differently: `1 in xs[0]` over a number slot is `TypeError: argument of type 'int' is not
+iterable` and `for v in xs[0]` over the same slot is `TypeError: 'int' object is not iterable`. Asking a
+text whether it contains a number is neither of those — it is
+`TypeError: 'in <string>' requires string as left operand, not int`, which names the *needle*. All three are
+raises, not refusals, so the program's `except TypeError:` reaches them (`ADR 0228`), and a haystack the
+compiler cannot reach at all still says so in words: the second slot deep is `Gap R.210`.
+
 **…and an ordering of such a slot asks the object the same question** (ADR 0252). `<`, `<=`, `>`, `>=`
 have three answers — two numbers compared as numbers, two texts compared by their characters, and the
 `TypeError` CPython raises for a pair that does not order at all — and for a container the program built

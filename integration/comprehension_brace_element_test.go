@@ -61,6 +61,16 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 			"xs = [[x, x * 2] for x in [1, 2]]\nprint(xs[1][1])\n",
 			"4\n",
 		},
+		{
+			// Asking a comprehension's slot whether it contains something. The haystack's kind is a fact
+			// about the object the comprehension's builder wrote, not about the name it was bound to, so
+			// the test asks the tag which of its questions to ask; this refusal row moved here with
+			// ADR 0323 (roadmap L11.1, Gap R.95), and the compiled-vs-record debt row it used to be is
+			// gone from the ledger.
+			"membership_in_a_slot_of_a_built_comp",
+			"d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
+			"1\n",
+		},
 		// The untagged-element writes: each of these printed the machine word, not the value.
 		{"print_list_element_comp", "xs = [[1, 2] for x in [1, 2]]\nprint(xs)\n", "[[1, 2], [1, 2]]\n"},
 		{"read_list_element_comp", "xs = [[1, 2] for x in [1]]\nprint(xs[0])\n", "[1, 2]\n"},
@@ -114,11 +124,12 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 			// whose element is a set, and of one whose element is a dict. The object carries its own tags,
 			// so both answer CPython's answer now and are pinned in TestComprehensionElementsMatchCPython;
 			// ADR 0246.)
-			"membership_in_a_slot_of_a_built_comp",
-			"d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
-			"more than one kind",
-		},
-		{
+			//
+			// (A `membership_in_a_slot_of_a_built_comp` row used to sit here demanding the refusal
+			// "more than one kind". Whether a slot's object has elements, keys, members or characters is
+			// decided by the tag its writer left beside the payload, so the test asks the object now and
+			// prints CPython's answer; pinned in TestComprehensionElementsMatchCPython; ADR 0323.)
+			//
 			// (A `indexing a dict slot of a built comp` row used to sit here demanding the refusal
 			// "index must be a constant". The read below a comprehension's slot is answered by the tag the
 			// comprehension's builder wrote, so it prints CPython's answer now and is pinned in
