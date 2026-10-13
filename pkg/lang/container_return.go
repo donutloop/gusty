@@ -656,6 +656,35 @@ func (g *irGen) containerAnswerOperand(b *strings.Builder, e Expr) (Expr, contai
 	return &Name{Value: name, Src: c.Span()}, ans.kind, true
 }
 
+// containerAnswerSubscript is the one judgement a subscript makes before it chooses its road: is the thing
+// being subscripted a call that hands back a container? If so the subscript is rewritten to name the rooted
+// slot the answer was recorded under and the caller asks the road that reads a container **variable** — the
+// bounds check, the hash, the tagged read and the catchable raise all come from that road, so `build()[7]`
+// and `ys = build(); ys[7]` are one program written two ways rather than an answer and a refusal (roadmap
+// Gap R.214, ADR 0334).
+//
+// Only the `Index` spelling is rewritten. A `Slice` is the same question at a door that is itself broken for
+// every base — the slice road copies a list's words without their tags, so `print(ys[0:2])` answers `[1, 0]`
+// for a mixed list whether `ys` is a literal, a variable or a call's answer, and binding one prints `1`
+// (Gap R.230) — and trading the honest refusal the slice position gives an answer today for one more wrong
+// number at exit 0 would move the defect down the contract's ranking instead of up it. The slice of an
+// answer is filed with the other doors the answer has not reached (Gap R.229).
+//
+// It declines for anything else and the caller continues on its own road (ADR 0273's rule: an extra answer,
+// never a substitute for one) — so the fold keeps every literal it already answered.
+func (g *irGen) containerAnswerSubscript(b *strings.Builder, e Expr) (Expr, bool) {
+	if ix, isIx := e.(*Index); isIx {
+		name, _, ok := g.containerAnswerOperand(b, ix.Obj)
+		if !ok {
+			return e, false
+		}
+		redo := *ix
+		redo.Obj = name
+		return &redo, true
+	}
+	return e, false
+}
+
 // recordContainerAnswer writes what the roads look up for a container variable: which of the three it is,
 // and that no static literal describes its slots (the answer is an object the run time built, however it
 // was written, so the fold roads decline it exactly as they decline a container the program appended to).
@@ -674,8 +703,18 @@ func (g *irGen) recordContainerAnswer(name string, ans containerAnswer) {
 		g.mixedLists[name] = g.containerAnswerCarriesTags(ans)
 	case dictAnswer:
 		g.runtimeDicts[name] = true
+		// The builder's own question, asked here rather than guessed: `heapDictFrom` picks the tagged put —
+		// and sets the object's bit 8 — when an entry's key or value mixes kinds, and the print, binding and
+		// membership roads read that fact back out of `mixedDicts` before deciding whether to ask the slot or
+		// the dict. An arm the walk cannot see (`return d`, a dict the body filled in) is left alone: those
+		// slots were written by the store road, which recorded what it wrote, and claiming tags nobody wrote
+		// sends the reader to an empty tag array — which is how `for k in m:` / `t + m[k]` over a run-built
+		// answer started refusing with Gap R.146's sentence (roadmap Gap R.214, ADR 0232's rule).
+		g.mixedDicts[name] = g.containerAnswerDictCarriesTags(ans)
 	case setAnswer:
 		g.runtimeSets[name] = true
+		// The same question, asked of the same predicate `heapSetFrom` uses.
+		g.mixedSets[name] = g.containerAnswerSetCarriesTags(ans)
 	}
 	// The four kind notebooks are what tells a loop over the container that its elements are text
 	// rather than the @str_tab index the slot holds. The store road writes them for a container the
@@ -685,6 +724,27 @@ func (g *irGen) recordContainerAnswer(name string, ans containerAnswer) {
 	// every arm agrees — a container whose slots the compiler cannot describe records nothing, which
 	// is the shape the run time answers for itself (roadmap Gap R.67, ADR 0333).
 	g.recordContainerAnswerElementKinds(name, ans)
+	// A dict or a set whose slots carry their own tags has **no** single kind, and the builder says so by
+	// clearing the notebooks on the variable it builds into. The answer is built with no variable in hand,
+	// so the clearing has to happen here: a notebook claiming "the values are text" over a tagged dict sends
+	// the reader to the untagged road, which hands back an @str_tab index and calls it a number (ADR 0232's
+	// rule, read back through ADR 0333's table).
+	if g.mixedDicts[name] {
+		g.dictKeyStr[name], g.dictKeyInt[name] = false, false
+		g.dictValStr[name], g.dictValInt[name] = false, false
+	}
+	if g.mixedSets[name] {
+		g.setElemStr[name], g.setElemInt[name] = false, false
+	}
+	// The same clearing for a list whose slots carry their own tags. `rt_print_list_mixed` is asked before
+	// the notebooks (ADR 0333's printer), so the whole container is unaffected — but a slot read is not: a
+	// notebook saying "the elements are text" over a tagged object sends the reader to the untagged word
+	// road, which has no tag to print and refuses with Gap R.82's sentence while `print(xs[1])` of a static
+	// literal prints the text. That is why `def words(): return ["hi", "ho"]` refused both at the answer and
+	// at its binding, while the same list filled by `append` answered (roadmap Gap R.214, ADR 0334).
+	if g.mixedLists[name] {
+		g.listElemStr[name], g.listElemInt[name] = false, false
+	}
 	delete(g.containerLits, name)
 	delete(g.noneVars, name)
 	delete(g.boolVars, name)
@@ -807,9 +867,9 @@ func (g *irGen) recordContainerAnswerElementKinds(name string, ans containerAnsw
 // the caller's value becomes a slot of the answer, so the kind the caller wrote is part of what this table
 // may claim — the same whole-program question `strArgKinds` asks for the text door (ADR 0199).
 type containerAnswerCallTable struct {
-	args  map[string][]Expr     // callee -> every argument every call site hands it
-	binds map[string][]Expr     // name -> every value the program bound to it
-	float map[string]bool       // names known to hold a double
+	args  map[string][]Expr // callee -> every argument every call site hands it
+	binds map[string][]Expr // name -> every value the program bound to it
+	float map[string]bool   // names known to hold a double
 }
 
 func containerAnswerCallSites(prog *Program) containerAnswerCallTable {
@@ -886,8 +946,8 @@ func (t containerAnswerCallTable) argCarriesPair(e Expr, depth int) bool {
 			if t.argCarriesPair(b, depth+1) {
 				return true
 			}
-			}
-			return false
+		}
+		return false
 	}
 	return false
 }
@@ -926,6 +986,45 @@ func (g *irGen) containerAnswerCarriesTags(ans containerAnswer) bool {
 		// printer is the one that reads them. Asking only `literalNeedsTags` printed `[1, "a"]` as
 		// `[1, 0]`, because a text's index fits an i32 and needs a tag anyway (roadmap Gap R.67, ADR 0232).
 		if literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
+			return true
+		}
+	}
+	return false
+}
+
+// containerAnswerDictCarriesTags asks the dict the question `heapDictFrom` asks itself before it chooses the
+// tagged put: `taggableMixedDict` (a key or a value of a kind the dict's other entries do not share) or an
+// entry the pair road bound. An arm that is not a literal — `return d`, a dict the body filled slot by slot
+// — answers **no**, because those slots were tagged by the store road or not at all, and this table does not
+// get to claim a tag the writer did not write.
+func (g *irGen) containerAnswerDictCarriesTags(ans containerAnswer) bool {
+	if len(ans.arms) == 0 {
+		return false
+	}
+	for _, arm := range ans.arms {
+		dl, isDict := arm.(*DictLit)
+		if !isDict {
+			continue
+		}
+		if g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl) {
+			return true
+		}
+	}
+	return false
+}
+
+// containerAnswerSetCarriesTags is the set half of the same question, asked of the predicate `heapSetFrom`
+// uses: `taggableMixedSet`, or a member the pair road bound.
+func (g *irGen) containerAnswerSetCarriesTags(ans containerAnswer) bool {
+	if len(ans.arms) == 0 {
+		return false
+	}
+	for _, arm := range ans.arms {
+		sl, isSet := arm.(*SetLit)
+		if !isSet {
+			continue
+		}
+		if g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl) {
 			return true
 		}
 	}

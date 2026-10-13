@@ -556,6 +556,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// membership, the loop's iterable, a condition, `not`, a binding and a mutation — are all in this
 		// one program, whose expectation is what CPython printed for it.
 		"container_returns",
+		// The element of the answer a call hands back is read by the door that reads a container variable's
+		// slot. `def build(): return [1, 2]` / `print(build()[7])` is `IndexError: list index out of range` in
+		// the reference and used to be `codegen: index requires an inline list/dict/set literal` at exit 1 here,
+		// while `ys = build()` / `print(ys[7])` had raised the catchable trap since ADR 0326 and `print([1,2][7])`
+		// since the same ADR — one question, three doors, and the missing one chose its road from the base's
+		// spelling rather than from what the compiler holds (roadmap Gap R.214, ADR 0334). The three kinds, a
+		// mixed list, an all-text answer's slot, an int-keyed answer's slot, a list of dicts read twice, a nested
+		// answer, a run-built container, a loop-filled one, a forwarding call, a variable index, arithmetic and
+		// `str`/`repr` over a slot, and both raises caught by the program's own handler are in this one program,
+		// whose expectation is what CPython printed for it.
+		"container_subscript",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

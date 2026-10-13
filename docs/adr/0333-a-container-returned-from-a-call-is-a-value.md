@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: [ADR 0163](0163-a-container-binding-is-materialised-into-the-heap.md) (a literal binding is materialised — this is the same rule at a `return`), [ADR 0188](0188-a-global-array-name-never-escapes-its-own-instruction.md) (a global array name never sits in a value position), [ADR 0249](0249-a-gate-and-a-door-that-test-different-things-ship-a-refusal-nobody-measured.md) (a gate must be true of everything the door asks)
 Extends: [ADR 0232](0232-mixed-dicts-and-sets-answer-by-the-slots-they-carry.md) (the per-slot tag), [ADR 0258](0258-str-and-repr-are-one-pair-per-backend.md) (the one renderer this answer is printed by), [ADR 0331](0331-a-list-literal-is-read-by-the-door-a-list-elements-are-read-by.md)/[ADR 0332](0332-a-literals-element-that-is-itself-a-read-is-stored-as-the-pair-that-read-answers.md) (the element roads a returned container is built from)
 Supersedes: nothing
-Related: roadmap L11.1, Gap R.67 (closes), Gap R.214 (unblocked: the answer now arrives at the subscript door), Gap R.228 / R.229 (newly measured, filed here), Gap R.35, R.80, R.115, R.154, R.175 (the doors left standing, each named below)
+Related: roadmap L11.1, Gap R.67 (closes), Gap R.214 (**paid by [ADR 0334](0334-a-subscript-of-a-container-handed-back-by-a-call-is-read-by-the-door-that-reads-a-variables-slot.md)** — the answer arrived at the subscript door and its roads read it), Gap R.228 / R.229 / R.230 / R.231 / R.232 (newly measured, filed here and by ADR 0334), Gap R.35, R.80, R.115, R.154, R.175 (the doors left standing, each named below)
 Owner: `pkg/lang/container_return.go`, `pkg/lang/heapargs.go`
 
 ## Context

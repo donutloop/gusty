@@ -232,10 +232,34 @@ registered as text-returning on the evidence of one arm prints the other arm's n
 function the scan declines keeps the road it had. A call site that hands a **double** into a parameter is left
 to the pair road with its honest `(payload, tag)` sentence: `print(b(2))` is claimed and answers `[2, 1]`,
 `print(b(2.5))` is declined — the same body, the caller's word as the difference. `programs/container_returns.gy`
-is `match` on both legs; what still refuses — a subscript on the answer (**Gap R.214**, now unblocked), the
-answer as another literal's element or as a method receiver (**Gap R.229**), the answer through a parameter
-(Gap R.154), `build() + [9]` (Gap R.175), `None` returned from a function (**Gap R.228**) — names the function
-and the door, and never exits 2.
+is `match` on both legs; what still refuses — the
+answer as another literal's element or as a method receiver (**Gap R.229**), a slice of the answer (**Gap R.229**
+beside **Gap R.230**), the answer through a parameter (Gap R.154), `build() + [9]` (Gap R.175), `None` returned from
+a function (**Gap R.228**) — names the function and the door, and never exits 2.
+
+**A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
+named and left open. `print(build()[7])` is `IndexError: list index out of range` in the reference; here it was
+`codegen: index requires an inline list/dict/set literal` at exit 1 — while `ys = build()` / `print(ys[7])` had
+raised the same trap since ADR 0326 and `print([1, 2][7])` had raised it in the fold. One question, three doors, and
+the missing one chose its road from the **spelling of its base** (a call is not a literal) rather than from what the
+compiler holds once the answer is lowered. The fix is a rewrite, not a second reader: the call is lowered to the
+rooted name ADR 0333 records its notebooks under, the subscript node is **copied** with its base set to that name,
+and `ys[i]`'s roads answer — the kind roads first, then the mixed reads, then the tagged read, with ADR 0330's bounds
+check behind them. `print(build()[0])` is `1`, `print(grid()[1][0])` is `3`, `print(cfg()["b"])` hashes a key out of
+a dict answer, and the out-of-range position raises the reference's class, message and exit code — catchable by the
+program's own `except`. Two ordering facts came out of it: the rewrite must run **before** the print door's kind
+roads, or a dict built from a literal prints its `@str_tab` index as a number; and a tagged answer must **clear** its
+element notebooks the way `heapDictFrom` clears them for the variable it builds into — leaving `listElemStr` set over
+a tagged list was why `def words(): return ["hi","ho"]` refused `print(words()[1])` with Gap R.82's sentence while
+printing the whole list correctly. The slice is left refused on purpose: its road answers `[1, 0]` for a mixed list
+and `1` for a bound slice whatever the base is (**Gap R.230**), so widening it would have traded an honest refusal
+for a wrong number at exit 0. `programs/container_subscript.gy` is `match` on both legs, and the neighbours that keep
+their own sentences — a set answer (Gap R.217), an answer as an item-assignment target (Gap R.229), a numeric use of
+two slots (Gap R.82) — are asserted to stay refusals without exit 2, beside three rows measured on the way and filed
+rather than bundled: a number subscripting a text-keyed dict answers the slot at that position (**Gap R.231**), a
+slice that drops its slots' tags and a slice bound to a name that answers the handle (**Gap R.230**), and a
+membership test whose needle is a slot, refusing with a sentence that prints the needle's Go representation
+(**Gap R.232**).
 
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It

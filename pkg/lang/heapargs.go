@@ -3264,6 +3264,17 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 		fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", h, "_"+nm.Value)
 		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 	}
+	if _, isCall := ix.Obj.(*Call); isCall {
+		// The bottom of the chain is a call that hands back a container. `containerHandleOf` lowers it to
+		// the handle the callee's builders made and names the kind the scan recorded, and the read below is
+		// the one the variable road uses — so `build()[i]` and `ys = build(); ys[i]` cannot disagree about
+		// what slot i holds, which is the parity this row existed to buy (roadmap Gap R.214, ADR 0334).
+		h, kind, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
 	base, baseTag, okBase := g.runtimeSlotPairDeep(b, ix.Obj)
 	if !okBase {
 		return "", "", false
@@ -3313,6 +3324,17 @@ func (g *irGen) runtimeContainerSide(e Expr) bool {
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.mixedDicts[n.Value]
 	case *Index:
 		return g.runtimeSlotReadOf(n)
+	case *Call:
+		// A call that hands back a container is a side the run time owns: the callee materialised the
+		// object at its `ret`, so the slots carry the tags its builders wrote and the door below can read
+		// them. The scan — not the call site — is what proves it, and a call the scan cannot name keeps the
+		// refusal it always had (roadmap Gap R.214, ADR 0334; the return half is ADR 0333).
+		nm, isName := n.Fn.(*Name)
+		if !isName {
+			return false
+		}
+		_, ok := g.containerAnswerOf(nm.Value)
+		return ok && g.containerAnswerCallIsCarriable(n)
 	}
 	return false
 }

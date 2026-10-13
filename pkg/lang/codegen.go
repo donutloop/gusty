@@ -10775,6 +10775,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if g.badIndexGateAtSubscript(b, n) {
 			return "0", nil
 		}
+		// A subscript whose base is a call that hands back a container asks the door the bound form
+		// already answers. The callee materialised the object at its `ret` and the answer arrives under a
+		// rooted name carrying the notebooks this road consults for a container variable, so `build()[7]`
+		// is `ys = build(); ys[7]` written shorter — same read, same bounds check, same catchable raise.
+		// Until this arm the fold's own gate condemned the shape because a call is not a literal, which
+		// is the base's *spelling* rather than what the compiler holds: the same misattribution ADR 0251
+		// fixed for a container the program built, one construct over (roadmap Gap R.214, ADR 0334).
+		if redo, okAns := g.containerAnswerSubscript(b, n); okAns {
+			return g.value(b, redo)
+		}
 		// A subscript of a string the compiler cannot read asks the table (ADR 0229): the
 		// base only has to *be* a string, not be a constant. The fold below still answers
 		// everything the compiler can name, so this path is reached exactly when the fold
@@ -14053,6 +14063,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if nm, ok := a.(*Name); ok && g.unionVars[nm.Value] {
 				g.emitUnionPrint(b, nm.Value, "")
 				continue
+			}
+			// A subscript whose base is a call that hands back a container is printed by the roads below,
+			// which read a container *variable* — and the answer is one: the callee materialised the object at
+			// its `ret` and the answer reaches here under a rooted name carrying the notebooks those roads
+			// consult (the dict's key/value kind, the list's element kind, the set's member kind, the mixed
+			// reads and the tagged read beside them). Rewriting the base to that name **before any of them is
+			// asked** is what makes `print(build()[i])` and `ys = build(); print(ys[i])` one program rather than
+			// an answer and a wrong number: the kind roads have to run first, because a dict built from a
+			// literal carries no per-slot tags and the tagged read below would hand back its @str_tab index and
+			// call it a number (roadmap Gap R.214, ADR 0334; the return half is ADR 0333).
+			if redo, okAns := g.containerAnswerSubscript(b, a); okAns {
+				a = redo
 			}
 			// print a constant string: literals and folded string-method results. This is a
 			// context that wants the BYTES, so it takes the global pointer from strConst

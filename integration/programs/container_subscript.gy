@@ -1,0 +1,76 @@
+def make_list():
+    return [1, 2, 3]
+
+def make_dict():
+    return {"a": 1, "b": "two"}
+
+def make_mixed():
+    return [1, "a", None, 2.5, True, [7]]
+
+def make_nested():
+    return [[1, 2], [3, 4]]
+
+def built():
+    xs = []
+    xs.append("first")
+    xs.append("second")
+    return xs
+
+def filled():
+    d = {}
+    d["k"] = [8, 9]
+    return d
+
+def loop_filled():
+    ys = []
+    for i in range(3):
+        ys.append(i * i)
+    return ys
+
+def forwarded():
+    return make_list()[1]
+
+print(make_list()[0], make_list()[-1], make_list()[-3])
+print(make_dict()["a"], make_dict()["b"])
+print(make_mixed()[1], make_mixed()[2], make_mixed()[3], make_mixed()[4], make_mixed()[5][0])
+print(make_nested()[0][1], make_nested()[1][0], make_nested()[-1][-1])
+print(built()[0], built()[1])
+print(filled()["k"][1], len(filled()["k"]))
+print(loop_filled()[0], loop_filled()[1], loop_filled()[2])
+print(forwarded())
+i = 2
+print(make_list()[i], make_list()[i - 2])
+for j in range(3):
+    print(make_list()[j])
+n = make_list()[0] + make_list()[1]
+print(n)
+print(str(make_mixed()[1]), repr(make_dict()["b"]))
+print(make_list()[0] in [1, 9], make_list()[2] > 0)
+print(len(make_list()) == make_list()[2])
+print(make_dict() == {"a": 1, "b": "two"})
+ys = make_list()
+print(ys[1], ys[-1])
+print(make_nested()[0][0], make_nested()[1][1])
+try:
+    print(make_list()[9])
+except IndexError:
+    print("index out of range, caught")
+try:
+    print(make_dict()["zz"])
+except KeyError:
+    print("key missing, caught")
+
+def words():
+    return ["hi", "ho"]
+
+def keyed():
+    return {0: "zero", 7: "seven"}
+
+def pairs():
+    return [{}, {"k": 2}]
+
+print(words()[1], words()[0])
+print(str(words()[0]), repr(words()[1]))
+print(keyed()[7], keyed()[0])
+print(pairs()[0], pairs()[1]["k"])
+print("ho" in words(), len(words()))

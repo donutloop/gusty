@@ -261,20 +261,11 @@ func TestANumberWiderThanTheWordIsStillAnHonestRefusal(t *testing.T) {
 	}
 }
 
-// TestTheCallResultStillRefuses keeps the neighbouring gap visible rather than quietly folded into this
-// one: `build()[7]` cannot be read as a constant because the compiler does not know which list `build()`
-// hands back — that is the container-source row, and this row only pins that it stays an honest refusal
-// naming the shape it could not describe.
-func TestTheCallResultStillRefuses(t *testing.T) {
-	const src = "def build():\n    return [1, 2]\nprint(build()[7])"
-	_, err := JIT(src, 0)
-	if err == nil {
-		t.Fatalf("%q compiled, where the door should refuse and name the shape", src)
-	}
-	if !strings.Contains(err.Error(), "index requires an inline list/dict/set literal") {
-		t.Fatalf("the refusal %q does not name the shape it could not read", err.Error())
-	}
-}
+// The row this table carried for `def build(): return [1, 2]` / `print(build()[7])` — an honest refusal,
+// because the fold could not know which list the call hands back — answers `IndexError: list index out of
+// range` now that the answer arrives as an object (ADR 0333 gave the answer, ADR 0334 the door). It moved
+// to a raise row rather than disappearing: see
+// TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises in container_subscript_test.go.
 
 // TestTheConversionFoldsAnswerRatherThanTrap pins the other side of the door. A literal that *does*
 // spell a number answers — including the spellings CPython accepts and a naive parser drops — and the

@@ -624,11 +624,17 @@ loop-filled list, a comprehension and a forwarded answer (`return build()`) are 
 `not f()`, `if f():`, `for v in f():` and `f() == [1, 2]` answer the way the bound form `ys = f()` always
 did, because they are the same read of the same handle. The function is treated as a container only when
 **every** `return` in its body answers one and the same kind and the body cannot fall off its end; a body
-whose arms disagree keeps the one-word road it always had. A position with no container arm — a subscript
-on the answer (`f()[7]`, roadmap **Gap R.214**), the answer as another literal's element or as a method
-receiver (**Gap R.229**), the answer through a parameter (Gap R.154), `f() + [9]` (Gap R.175) — refuses and
-names the function and the door it is waiting for; none of them prints the handle. `None` handed back by a
-function is the one value in this family still answered as a number (**Gap R.228**).
+whose arms disagree keeps the one-word road it always had. A subscript of the answer is a value too, as of
+ADR 0334: `print(f()[0])` prints `1`, `print(f()[-1])` counts from the end, `print(f()[7])` raises the
+reference's catchable `IndexError: list index out of range`, `print(f()["b"])` hashes a key out of a dict
+answer, and `f()[0][1]` reads a slot of a slot — the call is lowered to the same rooted name a binding
+records, the subscript node is copied with that name as its base, and the roads that read `ys[i]` for
+`ys = f()` answer it, in the same order, with the same bounds check (roadmap **Gap R.214**, paid). What still
+has no arm — the answer as another literal's element or as a method receiver (**Gap R.229**), a slice of the
+answer (**Gap R.229** beside **Gap R.230**, whose road answers words for every base), the answer through a
+parameter (Gap R.154), `f() + [9]` (Gap R.175), a membership test whose needle is one of its slots (Gap R.232)
+— refuses and names the function and the door it is waiting for; none of them prints the handle. `None` handed
+back by a function is the one value in this family still answered as a number (**Gap R.228**).
 A comprehension over a value the compiler cannot see at compile time — a text, or a container built by
 running the program — is refused naming its missing runtime door (`Gap I.2`), where the retired engine
 evaluated it and the record still holds its answer.
@@ -1827,10 +1833,18 @@ for i in range(n):
   still refuse rather than print a handle (roadmap Gap R.218, and Gap R.146 for the position).
 
   Several are refused at compile time by the AOT backend rather than trapping (an honest refusal,
-  class 1: `len requires an inline list/dict/set literal`, `index of a non-literal variable`, `index
-  requires an inline list/dict/set literal` for a subscript on a call result — roadmap Gap R.214 — and
+  class 1: `len requires an inline list/dict/set literal`, `index of a non-literal variable` for a
+  subscript into a **set** — the raise that shape owes is `TypeError: 'set' object is not subscriptable`,
+  roadmap Gap R.217 — and
   `reading a dict literal by a key the compiler cannot type` for a tuple key, the same residue as
-  Gap R.212; messages that still need stable codes, roadmap L11.8). The missing
+  Gap R.212; messages that still need stable codes, roadmap L11.8). A subscript on a **call's container
+  answer** is no longer one of them (ADR 0334, roadmap Gap R.214): `def build(): return [1, 2]` /
+  `print(build()[0])` prints `1` and `print(build()[7])` raises the catchable
+  `IndexError: list index out of range`, because the subscript asks its base one question — *is this a call
+  that hands back a container?* — and, when it is, is answered by the door that reads `ys[i]` for
+  `ys = build()`. What that door still declines is filed where it belongs: a slice of an answer (the slice
+  road answers words, not pairs, for every base — Gap R.230), an answer as an item-assignment target or as a
+  method receiver (Gap R.229), and a membership test whose needle is a slot (Gap R.232). The missing
   attribute is the one shape where the compiled backend still answers with a value (roadmap Gap
   R.19), and it is pinned as `programs/probe_builtin_traps_untyped.gy` rather than left to be
   discovered.

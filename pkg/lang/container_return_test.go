@@ -367,18 +367,12 @@ func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
 		oracle   string // what CPython answers
 		gap      string
 	}{
+		// Two rows lived here and have moved: `print(build()[7])` (the reference's
+		// `IndexError: list index out of range`) and `print(f()["b"])` over a dict answer (the reference's
+		// `KeyError: 'b'`). Both raise today, at the trap code, and are asserted as raise rows in
+		// `container_subscript_test.go` — which is the row that paid Gap R.214 (ADR 0334).
 		{
-			"a subscript on the answer",
-			"def build():\n    return [1, 2]\n\nprint(build()[7])",
-			"", "IndexError: list index out of range", "roadmap Gap R.214 (Gap R.67 is paid: the answer arrives; the subscript door has no arm for it)",
-		},
-		{
-			"a text key into an answer that is a dict",
-			"def f():\n    return {\"a\": 1}\n\nprint(f()[\"b\"])",
-			"", "KeyError: 'b'", "roadmap Gap R.214",
-		},
-		{
-			"len() of the answer", // the length door beside the subscript door answers, the subscript does not
+			"len() of the answer", // the length door and the subscript door beside it both answer now
 			"def build():\n    return [1, 2]\n\nprint(len(build()))",
 			"2", "2", "roadmap Gap R.67 (the answer's length is the object's own count)",
 		},

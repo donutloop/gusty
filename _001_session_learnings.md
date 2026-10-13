@@ -9935,3 +9935,81 @@ One conformance line had to come *out* of `container_returns.gy`: `print(bool(ma
 printed `False False` where CPython prints `True False`. A conformance program asserts the doors this row
 answers; a line that disagrees with the reference belongs in a Gap row, not in a matrix row's expected file —
 and the line's own disagreement is now part of Gap R.229's evidence.
+
+## The same read, one statement shorter (L11.1, Gap R.214; ADR 0334)
+
+### One question, three doors — and the missing one asked about the spelling, not the value
+
+`print([1, 2][7])` raises `IndexError: list index out of range`. `ys = build()` / `print(ys[7])` raises it.
+`print(build()[7])` printed `codegen: index requires an inline list/dict/set literal` and exited 1. Same
+question, three spellings, two answers — and the diagnostic value was entirely in the *fold* spelling: it
+proved the language already owned the trap, the message and the exit class, so the third line could not be a
+missing feature, only a door in the wrong place. The subscript road dispatches on the **shape of its base**
+(`*ListLit` → fold, `*Name` → the variable's read, `*Index` → the object below), which was sound while a call
+handed back a global in a `ret` and stopped being sound the cycle ADR 0333 made the answer a heap handle. That
+is ADR 0251's sentence again — *the road chose from the base's spelling rather than from what the compiler
+holds* — one construct over, and the fix is the same: lower the call to the rooted name the notebooks are
+recorded under, copy the subscript node with that name as its base, and let `ys[i]`'s roads answer. Not a
+second reader. A second reader is how a "fixed" row comes back as a wrong answer the first time the tag table
+grows a kind.
+
+### The rewrite is the whole change only if its position in the print door is right
+
+`print(f()[2])` over `return {1: "one", 2: "two"}` printed `1` on my first attempt. The tagged read had been
+asked first, and a dict built from a **literal** carries no per-slot tags: `rt_dict_get_tagged` answered tag 0,
+which the printer reads as "int", and the number it printed was the value's `@str_tab` index. The bound form
+had always printed `two`, because in the print door the kind roads (`dictValStr`, `listElemStr`, …) run before
+the tagged read. So the hoist goes above **every** subscript arm of that door, not above some of them. "Read
+it the way a variable is read" is a claim about order as much as about code; if a reader can tell the answer
+from the variable by its output, the row is not done.
+
+### A notebook is a claim about bytes, and a tagged object has no single kind
+
+The stubborn one was `def words(): return ["hi", "ho"]` / `print(words()[1])`, which refused with Gap R.82's
+"this context needs a single static kind" while `print(words())` printed `['hi', 'ho']` correctly and
+`xs = ["hi", "ho"]` / `print(xs[1])` printed `ho`. Three facts localised it: the whole-container printer asks
+`mixedLists` **before** the notebooks (so it was unaffected); the slot read asks the notebooks first, and
+`listElemStr` was set; and the object was built **tagged**. A container whose slots describe themselves has no
+single kind — `heapDictFrom`/`heapSetFrom` have always cleared the notebooks when they set the tag bit, and the
+list builder has no variable in hand, so nobody had ever done it for the answer. Clearing on
+`mixedLists[name]` made the slot print `ho`. The mistake that hid it was mine: I had "proved" the clearing did
+not work by running a probe script that still pointed at the previous binary. Whenever a fix appears to do
+nothing, check the artifact under test before checking the reasoning — a false negative here costs a whole
+wrong design decision, not a re-run.
+
+### Do not widen a door onto a road that is broken for everybody
+
+The same judgement covers `Index` and `Slice`, and I wrote both, then deleted the slice arm. `print(b()[0:2])`
+refused after the deletion, and that is the decision: the slice road answers `[1, 0]` for
+`[1.5, "a", [7]]`, and `zs = ys[0:2]` / `print(zs)` answers `1` for `[1, 2, 3]` — at **exit 0**, for a literal,
+a variable, a comprehension and an answer alike. Widening the rewrite would have converted one honest refusal
+at exit 1 into two more silently-wrong programs at exit 0, which is moving a defect *down* the contract's
+ranking while calling it a fix. The filed rows (Gap R.230 for the slice's dropped tags, R.229 for the answer at
+that door) now carry the ordering: fix the slice road's tags first, and the subscript's `*Slice` arm lands with
+its two test rows already written. The general form: when a door is missing, measure what the road on the other
+side answers for **every** base before opening it — a refusal is sometimes the best thing that road can do today.
+
+### Three things that only existed on paper, caught by re-measuring
+
+- A raise row I had copied from a probe file claimed `{0: "zero"}` / `print(f()[0])` raises `KeyError: 0`.
+  CPython answers `zero`; the row asserted the wrong thing, and only running the reference caught it. Parity
+  expectations get derived from CPython or they do not go in.
+- `print(words()[0] in words())` looked like a nice extra matrix line until the CLI refused it with
+  `testing &{%!s(*lang.Call=&{0x4000…}) …} against the container "__cans10" …` — a refusal that prints a Go
+  struct dump and a compiler temp name instead of the construct. Filed as Gap R.232, with the sentence's honesty
+  as half of the row: a refusal is an interface, and an agent scrapes it as noise.
+- The conformance corpus is not free: adding `programs/container_subscript.gy` broke
+  `TestGCCorpusCollectsAndAgrees`, because every corpus program must have a record (`HasGoldenAnswer`). New
+  program ⇒ new records, in the same commit. The same cycle bit me twice on CLI shapes I trusted —
+  `--emit-llvm --file x` parses `--file` as a name, and `except IndexError as e:` does not parse at all, so a
+  "trap" row in a test table can be a parse error wearing a costume.
+
+### The tracker's shape is part of the feature
+
+Five rows I had filed in the last two cycles (`26m`–`26q`) had **no Status cell** — the row's text sat in the
+Status column, so any reader or agent parsing the queue read "L11.1 (the tag a call hands back)" as the status.
+They are fixed to carry ⏳ `PLANNED`, and the new rows this cycle filed (R.230/R.231/R.232) were shape-checked
+before committing. `TestTheRoadmapsCitationsResolve` then caught my own evidence cell citing
+`constant_trap_test.go::TestTheCallResultStillRefuses` — a test this very commit deletes. A citation to a case
+that no longer exists is worse than no citation: it tells the next reader the claim is checked when nothing
+checks it. Reworded to name the raise row that answers today.

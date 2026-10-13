@@ -1,5 +1,257 @@
 {
  "entries": {
+"def words():\n    return [\"hi\", \"ho\"]\n\nfor x in words():\n    print(x)": {
+    "stdout": "hi\nho\n",
+    "hasStdout": true
+   },
+
+"def words():\n    return [\"hi\", \"ho\"]\n\nprint(words())": {
+    "stdout": "['hi', 'ho']\n",
+    "hasStdout": true
+   },
+"def make_list():\n    return [1, 2, 3]\n\ndef make_dict():\n    return {\"a\": 1, \"b\": \"two\"}\n\ndef make_mixed():\n    return [1, \"a\", None, 2.5, True, [7]]\n\ndef make_nested():\n    return [[1, 2], [3, 4]]\n\ndef built():\n    xs = []\n    xs.append(\"first\")\n    xs.append(\"second\")\n    return xs\n\ndef filled():\n    d = {}\n    d[\"k\"] = [8, 9]\n    return d\n\ndef loop_filled():\n    ys = []\n    for i in range(3):\n        ys.append(i * i)\n    return ys\n\ndef forwarded():\n    return make_list()[1]\n\nprint(make_list()[0], make_list()[-1], make_list()[-3])\nprint(make_dict()[\"a\"], make_dict()[\"b\"])\nprint(make_mixed()[1], make_mixed()[2], make_mixed()[3], make_mixed()[4], make_mixed()[5][0])\nprint(make_nested()[0][1], make_nested()[1][0], make_nested()[-1][-1])\nprint(built()[0], built()[1])\nprint(filled()[\"k\"][1], len(filled()[\"k\"]))\nprint(loop_filled()[0], loop_filled()[1], loop_filled()[2])\nprint(forwarded())\ni = 2\nprint(make_list()[i], make_list()[i - 2])\nfor j in range(3):\n    print(make_list()[j])\nn = make_list()[0] + make_list()[1]\nprint(n)\nprint(str(make_mixed()[1]), repr(make_dict()[\"b\"]))\nprint(make_list()[0] in [1, 9], make_list()[2] \u003e 0)\nprint(len(make_list()) == make_list()[2])\nprint(make_dict() == {\"a\": 1, \"b\": \"two\"})\nys = make_list()\nprint(ys[1], ys[-1])\nprint(make_nested()[0][0], make_nested()[1][1])\ntry:\n    print(make_list()[9])\nexcept IndexError:\n    print(\"index out of range, caught\")\ntry:\n    print(make_dict()[\"zz\"])\nexcept KeyError:\n    print(\"key missing, caught\")\n\ndef words():\n    return [\"hi\", \"ho\"]\n\ndef keyed():\n    return {0: \"zero\", 7: \"seven\"}\n\ndef pairs():\n    return [{}, {\"k\": 2}]\n\nprint(words()[1], words()[0])\nprint(str(words()[0]), repr(words()[1]))\nprint(keyed()[7], keyed()[0])\nprint(pairs()[0], pairs()[1][\"k\"])\nprint(\"ho\" in words(), len(words()))\n": {
+    "stdout": "1 3 1\n1 two\na None 2.5 True 7\n2 3 4\nfirst second\n9 2\n0 1 4\n2\n3 1\n1\n2\n3\n3\na 'two'\nTrue True\nTrue\nTrue\n2 3\n1 4\nindex out of range, caught\nkey missing, caught\nho hi\nhi 'ho'\nseven zero\n{} 2\nTrue 2\n",
+    "hasStdout": true
+   },
+"def b():\n    return [1.5, \"a\", [7]]\n\nprint(b()[2][0], b()[1])": {
+    "stdout": "7 a\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"a\": \"x\", \"b\": \"y\"}\n\nprint(m()[\"b\"])": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[0], words()[1])": {
+    "stdout": "hi ho\n",
+    "hasStdout": true
+   },
+
+"def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[1])": {
+    "stdout": "ho\n",
+    "hasStdout": true
+   },
+
+"def z():\n    return {0: \"zero\"}\n\nprint(z()[0])": {
+    "stdout": "zero\n",
+    "hasStdout": true
+   },
+"def b():\n    return [1, 2]\n\nys = b()[0] + b()[1]\nprint(ys)": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"def b():\n    return [1, \"a\", None, [4]]\n\nprint(b()[1], b()[2], b()[3][0])": {
+    "stdout": "a None 4\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, \"a\", None, [4]]\n\nys = b()\nprint(ys[1], ys[2], ys[3][0])": {
+    "stdout": "a None 4\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, \"a\"]\n\nprint(str(b()[1]))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\ndef g():\n    return b()[1]\n\nprint(g())": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\ni = 1\nprint(b()[i])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nif b()[0] \u003e 1:\n    print(\"big\")\nelse:\n    print(\"small\")": {
+    "stdout": "small\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[\"a\"])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[-1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[-2])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[-9])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[0] + 1)": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[0] in [1, 9])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[0], b()[1])": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b()[7])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"def b():\n    return [1, 2]\n\ntry:\n    print(b()[9])\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nxs = b()[0]\nprint(xs)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nprint(ys[7])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"def b():\n    return [1.5, 2]\n\nprint(b()[0])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1.5, 2]\n\nys = b()\nprint(ys[0])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [10, 20, 30]\n\nfor i in range(3):\n    print(b()[i])": {
+    "stdout": "10\n20\n30\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [[\"a\", \"b\"], [\"c\"]]\n\nprint(b()[0][1], b()[1][0])": {
+    "stdout": "b c\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [[1, 2], [3]]\n\nprint(b()[0][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [x * 2 for x in [1, 2]]\n\nprint(b()[1])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [{\"a\": \"x\"}]\n\nprint(b()[0][\"a\"])": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [{\"a\": {\"b\": 1}}]\n\nprint(b()[0][\"a\"][\"b\"])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return {\"a\": [1, 2]}\n\nprint(2 in b()[\"a\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return {\"a\": [1, 2]}\n\nprint(b()[\"a\"][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return {\"k\": [7, 8]}\n\nprint(len(b()[\"k\"]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    xs = []\n    xs.append(\"q\")\n    return xs\n\nprint(b()[0])": {
+    "stdout": "q\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {\"a\": 1, \"b\": 2}\n\nprint(f()[\"a\"])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {\"a\": 1, \"b\": 2}\n\nprint(f()[\"b\"])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {\"a\": 1}\n\nd = f()\nprint(d[\"b\"])": {
+    "err": "KeyError: 'b'",
+    "exnType": "KeyError",
+    "exnMsg": "'b'"
+   },
+
+"def f():\n    return {\"a\": 1}\n\nprint(f()[\"zz\"])": {
+    "err": "KeyError: 'zz'",
+    "exnType": "KeyError",
+    "exnMsg": "'zz'"
+   },
+
+"def f():\n    return {\"a\": 1}\n\ntry:\n    print(f()[\"b\"])\nexcept KeyError:\n    print(\"missing\")": {
+    "stdout": "missing\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {\"a\": {\"b\": [3]}}\n\nprint(f()[\"a\"][\"b\"][0])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {1: \"one\", 2: \"two\"}\n\nd = f()\nprint(d[2])": {
+    "stdout": "two\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {1: \"one\", 2: \"two\"}\n\nprint(f()[2])": {
+    "stdout": "two\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {1: 2}\n\nprint(f()[0])": {
+    "err": "KeyError: 0",
+    "exnType": "KeyError",
+    "exnMsg": "0"
+   },
+
+"print([1, 2][0] + 1)": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
 "def make_list():\n    return [1, 2]\n\ndef make_set():\n    return {1, 2}\n\ndef make_dict():\n    return {\"a\": 1, \"b\": 2}\n\ndef build():\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n\ndef filled():\n    d = {}\n    d[\"a\"] = \"x\"\n    return d\n\ndef tags():\n    return [1, \"a\", None, True, [7]]\n\ndef empty_list():\n    return []\n\ndef empty_dict():\n    return {}\n\ndef empty_set():\n    return set()\n\ndef forward():\n    return make_list()\n\ndef computed(n):\n    return [n, n + 1]\n\ndef loop_filled():\n    ys = []\n    for i in range(3):\n        ys.append(i)\n    return ys\n\ndef comp():\n    return [x * 2 for x in [1, 2, 3]]\n\nprint(make_list())\nprint(make_set())\nprint(make_dict())\nprint(build())\nprint(filled())\nprint(tags())\nprint(empty_list(), empty_dict(), empty_set())\nprint(forward(), computed(4))\nprint(loop_filled(), comp())\nprint(str(make_list()), repr(make_dict()))\nprint(len(make_list()), 2 in make_list(), 7 in make_list(), 7 not in make_list())\nprint(len(make_dict()), \"a\" in make_dict(), \"z\" in make_dict())\nprint(len(make_set()), 1 in make_set())\nfor v in make_list():\n    print(v)\nfor k in make_dict():\n    print(k)\nif make_list():\n    print(\"non-empty\")\nif empty_list():\n    print(\"wrong\")\nelse:\n    print(\"empty is false\")\nprint(not make_list(), not empty_dict())\nys = make_list()\nprint(ys, len(ys), ys[0], ys[-1])\nys.append(3)\nprint(ys)\nzs = make_list()\nprint(ys is zs, ys == make_list())\nd = filled()\nprint(d, len(d), \"a\" in d)\nprint(make_list() == [1, 2], make_list() == [1, 3])\nprint(make_dict() == {\"b\": 2, \"a\": 1})\nprint(make_set() == {2, 1})\n": {
     "stdout": "[1, 2]\n{1, 2}\n{'a': 1, 'b': 2}\n[1, 2]\n{'a': 'x'}\n[1, 'a', None, True, [7]]\n[] {} set()\n[1, 2] [4, 5]\n[0, 1, 2] [2, 4, 6]\n[1, 2] {'a': 1, 'b': 2}\n2 True False True\n2 True False\n2 True\n1\n2\na\nb\nnon-empty\nempty is false\nFalse True\n[1, 2] 2 1 2\n[1, 2, 3]\nFalse False\n{'a': 'x'} 1 True\nTrue False\nTrue\nTrue\n",
     "hasStdout": true

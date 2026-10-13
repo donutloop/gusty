@@ -1,0 +1,26 @@
+1 3 1
+1 two
+a None 2.5 True 7
+2 3 4
+first second
+9 2
+0 1 4
+2
+3 1
+1
+2
+3
+3
+a 'two'
+True True
+True
+True
+2 3
+1 4
+index out of range, caught
+key missing, caught
+ho hi
+hi 'ho'
+seven zero
+{} 2
+True 2

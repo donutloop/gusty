@@ -9910,6 +9910,75 @@ the catchable pair, the fold's negative control, the printer claim, the refusal 
 `integration/dict_literal_key_test.go` at the CLI against CPython, with `integration/programs/dict_literal_key.gy`
 `match`-ing on both legs. The asymmetry the change had to leave behind is Gap R.220.
 
+<a id="gap-r-214"></a>
+
+### Gap R.214 — a subscript of a container handed back by a call is read by the door that reads a variable's slot (CLOSED by ADR 0334)
+
+**Closed 2026-10-14 by ADR 0334**, one cycle after ADR 0333 handed this row the answer it needed. One question
+— *read this position out of that list* — was asked of three spellings and got two answers:
+
+```python
+def build():
+    return [1, 2]
+
+print([1, 2][7])      # IndexError: list index out of range   — the fold's door, since ADR 0326
+ys = build()
+print(ys[7])          # IndexError: list index out of range   — the variable's door, since ADR 0326
+print(build()[7])     # exit 1: codegen: index requires an inline list/dict/set literal
+print(build()[0])     # the same refusal, where the reference answers 1
+```
+
+**Why it was wrong rather than missing.** Two of the three doors raised the program's own catchable
+`IndexError`, with the reference's class, message and exit class; only the third stopped the build with a
+compiler sentence. A refusal whose neighbours raise is the asymmetry this tracker prices above a plain
+missing feature, and the fold-shaped spelling was the proof: the language already had the trap, the message
+and the exit code, so the third line was a door in the wrong place, not an unbuilt room.
+
+**The root cause was a question asked of the wrong fact.** The subscript road chooses its door from the
+**spelling of its base** — `*ListLit` to the fold, `*Name` to the variable's read, `*Index` to the object
+below — and a `*Call` had no arm, so it fell to `slotReadRefusal`. That was sound while a call handed back
+`ret i32 @.lst1` (a global in a value position, which `llc` rejected: the exit-2 defect ADR 0333 exists to
+pay for). It stopped being sound the moment ADR 0333 made the answer a heap handle under a rooted name
+carrying the notebooks a container variable has. ADR 0251 wrote the same sentence about a container the
+program *built*; this is the same misattribution one construct over, which is why the fix is a rewrite and
+not a reader: `containerAnswerOperand` lowers the call, the subscript node is **copied** with its base set to
+that name, and `ys[i]`'s roads — the kind roads, the mixed reads, the tagged read, ADR 0330's bounds check —
+answer. The copy is load-bearing: the same AST node is lowered by more than one road, and an in-place rewrite
+would let the second road see a program the first one edited.
+
+**Two traps found while landing it.**
+
+- *Order, not content.* `print(f()[2])` over `{1: "one", 2: "two"}` printed `1` — the value's `@str_tab`
+  index — because the tagged door was asked before the kind roads, and a dict built from a **literal** carries
+  no per-slot tags, so `rt_dict_get_tagged` answered tag 0, which the printer reads as "int". The bound form
+  had always printed `two` because the notebooks are consulted first. The rewrite therefore happens *before*
+  every subscript arm of the print door: same roads, same order, or "the same read of the same object" is a
+  slogan.
+- *A notebook claiming a kind the object outgrew.* `def words(): return ["hi", "ho"]` / `print(words()[1])`
+  refused with Gap R.82's "this context needs a single static kind" while `print(xs[1])` of a static literal
+  printed `ho` and `print(words())` printed `['hi', 'ho']`. The answer was built **tagged**, and
+  `recordContainerAnswer` left `listElemStr` set: the reader took the untagged word road, which has no tag to
+  print. The fix is the builder's own rule, copied — a container whose slots describe themselves has no single
+  kind, so the element notebooks are cleared (`heapDictFrom`/`heapSetFrom` have always done this for the
+  variable they build into; the list half had no variable in hand and nobody did it for it).
+
+**What was deliberately not taken.** The `*Slice` arm of the same judgement. `print(b()[0:2])` refuses today,
+and that is the row's decision, recorded so a later cycle does not "finish" it into a wrong answer: the slice
+road answers `[1, 0]` for a mixed list and `1` for a bound slice whatever the base is (**Gap R.230**), so
+opening it would have converted one honest refusal at exit 1 into two more silently-wrong programs at exit 0.
+Two further defects measured on the way out were filed rather than bundled: **Gap R.231** (a number
+subscripting a text-keyed dict answers the slot at that position instead of raising `KeyError: 0`, wrong for
+every base) and **Gap R.232** (a membership test whose needle is a slot refuses, with a sentence that prints
+the needle's Go representation instead of the construct).
+
+**Evidence.** `pkg/lang/container_subscript_test.go` — 36 answered programs whose `want` is CPython's, the
+raise rows by class *and* message, the catchable forms, the bound-vs-direct parity runner (`runForParity`),
+the fold's negative control over `@main`, `llc` on every module, the filed-not-fixed ledger and the record leg
+(`TestTheCallResultSubscriptRowsAreRecorded`). `integration/container_subscript_test.go` runs the same programs
+through the CLI against CPython, with the refusals held at exit 1 (empty stdout, no exit 2) and the pair road
+witnessed keeping the numeric uses this row did not take. `integration/programs/container_subscript.gy`
+(matrix row `programs/container_subscript`, oracle `match`, 26 lines) is the whole door in one program.
+
 <a id="gap-r-216"></a>
 ### Gap R.216 — a dict literal that writes the same key twice keeps the FIRST value in the fold (CLOSED by ADR 0327)
 
@@ -10187,6 +10256,12 @@ those roads stop one position earlier, and they are different owners:
   builder has a register for it — and `isPairElem` does not ask about calls, so the element is lowered by
   the one-word road and the position has nowhere to put the kind. The refusal is honest and it is the right
   shape: the fix is to hand the answer's (handle, kind) to `rt_tag_elem` exactly as a read's pair goes.
+- **The slice door** (joined 2026-10-14 by ADR 0334). `print(b()[0:2])` over a container the callee built
+  refuses with ADR 0333's one-word sentence, and the row's decision is to leave it refused: the road it would
+  land on is broken for every base — `print(ys[0:2])` of a mixed list answers `[1, 0]`, and binding a slice
+  answers `1` (**Gap R.230**, which owns the tags the copy drops). Rewriting the answer into that road would
+  have bought one more silently-wrong program at exit 0 for one honest refusal at exit 1. The `*Slice` arm of
+  `containerAnswerSubscript` is written when R.230 pays, and its two test rows are already in place.
 - **The method door.** `build().append(3)` needs the receiver materialised before dispatch, and the method
   road chooses its receiver from a name or a literal. Gap R.154 owns the parameter half of the same
   question (`takes(build())` where `takes` is `len(xs)`), and this is the receiver half: the road that
@@ -10313,3 +10388,95 @@ wrong words is a trap reported wrongly. The container's kind is known at the doo
 to a raise that is already being made. The rows in `integration/programs/list_index_kind.gy` that exercise
 the out-of-range case assert the class and the catchability, and name this row as the one that owes the
 words — so the day the sentence is fixed, the program says so by printing the reference's line.
+
+
+<a id="gap-r-230"></a>
+
+### Gap R.230 — a slice answers words, not pairs, and binding a slice answers the handle (OPEN, found by ADR 0334)
+
+```python
+ys = [1.5, "a", [7]]
+print(ys[0:2])        # [1.5, 'a']   in the reference;  this backend: [1, 0]
+print(ys[1:])         # ['a', [7]]  in the reference;  this backend: [0, 2]
+
+zs = [1, 2, 3]
+w = zs[0:2]
+print(w)              # [1, 2]      in the reference;  this backend: 1
+```
+
+Four answers, all at **exit 0**, none of them the reference's. A slice is the one container operation that
+produces a **new container** from slots it reads one word at a time: `rt_slice` copies the payload and drops
+the tag, so a text slot survives as its `@str_tab` index and a float slot as its box handle, and the mixed
+printer then renders both as the numbers they are. Binding a slice is the same defect one step out — the
+binding road stores the slice's word into a name and records no container notebook for it, so `print(w)`
+prints the word.
+
+Why it is not the fold's business: an all-integer literal slice does answer (`print([1, 2, 3][0:2])` is
+right, because the fold has the elements), and the fold is the negative control that keeps this row honest —
+the fix is the object road's, and it is ADR 0187's rule applied to a copy: a payload without its tag is not
+the value. ADR 0294 already made the slice's **operand** a heap object (Gap R.179), so the remaining half is
+the slots.
+
+The row is also a boundary. ADR 0334 gave a call's container answer a subscript door and left the `*Slice` arm
+unwritten on purpose: `print(b()[0:2])` refuses with ADR 0333's one-word sentence, and rewriting it into this
+broken road would have turned an honest refusal at exit 1 into a wrong number at exit 0. The order of work is
+therefore this row first, then the `*Slice` case in `containerAnswerSubscript`, whose test table already has
+the two rows waiting for it.
+
+<a id="gap-r-231"></a>
+
+### Gap R.231 — a number subscripting a text-keyed dict reads a position instead of missing (OPEN, found by ADR 0334)
+
+```python
+d = {"a": 1, "b": 2}
+print(d[0], d[1])     # KeyError: 0 in the reference;  this backend: 1 2   (exit 0)
+```
+
+A number is a key like any other: CPython looks it up, does not find it among `"a"` and `"b"`, and raises.
+This backend has two dict reads, and only one of them remembers what a dict is. The hashing door
+(`rt_dict_get_tagged`, ADR 0328's gate beside it) is right — `d = {1: "one"}` / `print(d[9])` raises
+`KeyError: 9`, and `{0: "zero"}` / `print(d[0])` answers `zero`, both asserted in
+`pkg/lang/container_subscript_test.go`. Under it sits the positional lookup that list indexing shares, and an
+integer index walks straight into slot 0 and slot 1 whatever the keys are.
+
+L11.4's row states the rule this row breaks — *"Dicts and sets are exempt — their subscript is a key, and `-1`
+is a key you can store"* — and the exemption was implemented at the hashing door only. The fix is to ask the
+**key's** kind before choosing the road: for a dict whose recorded key kind is text, an integer index is a
+miss, and the answer is the reference's `KeyError` carrying that key's repr, catchable at exit 3 like every
+other trap the subscript door raises.
+
+<a id="gap-r-232"></a>
+
+### Gap R.232 — a membership test whose needle is a slot refuses, and the refusal names no construct (OPEN, found by ADR 0334)
+
+```python
+def words():
+    return ["hi", "ho"]
+
+print(words()[0] in words())    # True in the reference;  refuses here, at exit 1
+xs = ["hi", "ho"]
+print(xs[0] in xs)              # True here too — the static literal's needle is fine
+```
+
+The haystack is not the problem: `in` over a container answer works (`"ho" in words()` prints `True`). The
+**needle** is. When the value being looked for is itself a slot of a tagged container, the door cannot name a
+single static kind for it, and it refuses — while ADR 0332's `runtimeSlotPairDeep` is sitting there with both
+words of the pair in hand. The fix is to hand the membership helper the pair and dispatch on the tag, the way
+`rt_print_mixed_value` and `rt_tag_elem` already do.
+
+The second half of the row is the sentence:
+
+```
+gustyc: jit: codegen: testing &{%!s(*lang.Call=&{0x4000012f00 [] {4 12} list[str]}) %!s(*lang.IntLit=&{0 0 {4 15} int})
+{%!s(int=4) %!s(int=14)} any} against the container "__cans10" whose slots describe themselves needs a needle
+whose kind the compiler can prove; a bool, float or container needle needs the tagged value word (roadmap
+L11.1, ADR 0232)
+```
+
+A refusal is an interface, and this one prints the needle's Go representation — an unformatted struct dump,
+with a pointer address and a span — where the program's source belongs, plus the compiler's own temp name,
+which is a fact about the backend no source file contains. ADR 0249's rule is that a refusal names exactly
+what is missing; a `%!s(*lang.Call=…)` names nothing, and it is the kind of text an agent parses as noise and
+a human reads as a crash. Both halves ship together: the road, and a sentence that quotes the needle's source
+text instead of its type.
+
