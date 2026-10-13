@@ -9403,18 +9403,26 @@ func constI1(v bool) string {
 // heapContainerLenFn returns the runtime helper that reports a container
 // variable's length, when the expression names a known runtime container.
 func (g *irGen) heapContainerLenFn(e Expr) (string, bool) {
-	nm, ok := e.(*Name)
-	if !ok {
+	switch n := e.(type) {
+	case *Name:
+		// The container maps are keyed by the written name (see listVars/dicts/sets).
+		switch {
+		case g.listVars[n.Value]:
+			return "rt_list_len", true
+		case g.runtimeDicts[n.Value]:
+			return "rt_dict_len", true
+		case g.runtimeSets[n.Value]:
+			return "rt_set_len", true
+		}
 		return "", false
-	}
-	// The container maps are keyed by the written name (see listVars/dicts/sets).
-	switch {
-	case g.listVars[nm.Value]:
-		return "rt_list_len", true
-	case g.runtimeDicts[nm.Value]:
-		return "rt_dict_len", true
-	case g.runtimeSets[nm.Value]:
-		return "rt_set_len", true
+	case *Slice:
+		// A slice of a list **is** a list, so a condition on it asks the object `rt_slice` built whether it
+		// holds anything: `if xs[0:0]:` is false and `if xs[0:2]:` is true, which is what the reference reads
+		// and `not xs[0:0] == False` was the symptom of not asking. A text slice stays with the text road,
+		// and a dict or set is not sliced at all (roadmap Gap R.230, ADR 0335).
+		if kind, ok := g.staticContainerKind(n.Obj); ok && kind == "list" {
+			return "rt_list_len", true
+		}
 	}
 	return "", false
 }
@@ -10671,6 +10679,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return name, nil
 	case *Slice:
+		// A slice of a call's container answer asks the road that slices a container variable, by naming the
+		// slot the answer was recorded under. `rt_slice` copies the slots with their tags and the binding road
+		// records the copy, so `print(build()[0:2])` and `ys = build(); print(ys[0:2])` are one program written
+		// two ways — the base's spelling stopped being the relevant fact the day the answer became an object
+		// (roadmap Gap R.230, ADR 0335; the answer itself is ADR 0333, the index door ADR 0334).
+		if redo, okAns := g.containerAnswerSubscript(b, n); okAns {
+			return g.value(b, redo)
+		}
 		// String slices are folded at compile time via stringVal; the fold is a string
 		// value, so it is emitted as its @str_tab index -- the pointer is for printf
 		// contexts, which fold the text themselves (Gap R.42, ADR 0224).
@@ -10712,6 +10728,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			return "", fmt.Errorf("cannot fold string slice")
 		}
+		// The copy is only as good as the description of what it copies: `rt_slice` needs a heap list, and the
+		// roads that read the copy need to be told whether its slots describe themselves. Asked of a base
+		// neither record describes, the road used to emit the copy over whatever word the base lowered to and
+		// the caller printed that word — a heap handle wearing the program's answer (`print(m()["k"][0:1])`
+		// printed `3`, exit 0). The refusal names the missing record (ADR 0249's rule; roadmap Gap R.232,
+		// ADR 0335).
+		if !g.sliceBaseIsDescribed(n.Obj) {
+			return "", fmt.Errorf("cannot slice %s: the copy is a list whose slots are the base's payloads with their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one (roadmap Gap R.232, ADR 0335)", exprSnippet(n.Obj))
+		}
 		objReg, err := g.value(b, n.Obj)
 		if err != nil {
 			return "", err
@@ -10725,11 +10750,24 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// The base may be a literal NODE (`[1, 2, 3][1:]`) or a NAME the records hold a literal for
 		// (`xs = [1, 2, 3]` / `xs[1:]`); both lower to a global address and both need a heap object.
 		if lit := g.listLiteralOf(n.Obj); lit != nil {
-			built, berr := g.heapListFrom(b, lit, "")
+			// The same question the build site asks wherever a list literal becomes an object: do the slots
+			// need tags to be understood? A text's word is an interned index, a float's a box handle, a
+			// nested container's a handle — all of which the printer can only read from a tag. Asking
+			// `literalNeedsHeap` alone built the sliced source untagged, and `rt_slice` then faithfully copied
+			// tags nobody had written (roadmap Gap R.230, ADR 0187's pairing rule).
+			var berr error
+			if literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
+				built, terr := g.heapListFromTagged(b, lit)
+				if terr != nil {
+					return "", terr
+				}
+				objReg, berr = built, nil
+			} else {
+				objReg, berr = g.heapListFrom(b, lit, "")
+			}
 			if berr != nil {
 				return "", berr
 			}
-			objReg = built
 		}
 		lowReg := "0"
 		highReg := "0"
@@ -14299,8 +14337,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if err != nil {
 							return "", err
 						}
+						// The sliced object is a copy of the base's slots WITH their tags (`rt_slice`
+						// pairs them, ADR 0187's rule as ADR 0294 applied it), so the printer has to be the
+						// one that reads a tag. Asking only the base's element notebook printed a text slot as
+						// its @str_tab index and a None as its zero — `print(xs[0:2])` answered `[1, 0]` for
+						// `[1, "a"]` while `print(xs)` printed `[1, 'a']`, because the name arm below asks
+						// `mixedLists` first and this arm did not (roadmap Gap R.230, ADR 0335).
 						printer := "rt_print_list"
-						if g.listElemStr[nm2.Value] {
+						if g.mixedLists[nm2.Value] {
+							printer = "rt_print_list_mixed"
+						} else if g.listElemStr[nm2.Value] {
 							printer = "rt_print_list_str"
 						}
 						fmt.Fprintf(b, "  call void @%s(i32 %s, i32 0)\n", printer, h)
@@ -18076,6 +18122,20 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					boundKind = "dict"
 				}
 			}
+			// A slice of a container binds a container. `rt_slice` returns a fresh heap list whose slots are
+			// the base's payloads with their tags, so `ys = xs[0:2]` receives an object of the same kind as
+			// `xs` — and the name has to be recorded as one, or the binding keeps a handle nothing can name:
+			// `print(ys)` answered `1`, `len(ys)` refused `len of a non-string variable`, and
+			// `for v in ys:` printed a single `0` (roadmap Gap R.230, ADR 0335).
+			var boundSliceBase *Slice
+			boundIsSlice := false
+			if sl, isSlice := n.Value.(*Slice); isSlice && boundKind == "" {
+				if kind, okK := g.staticContainerKind(sl.Obj); okK && kind == "list" {
+					boundKind = kind
+					boundSliceBase = sl
+					boundIsSlice = true
+				}
+			}
 			// Container literals have their own lowering paths below, which register
 			// the kind themselves; only non-literal bindings (a call, an index, ...)
 			// need the inferred type to say so here.
@@ -18100,6 +18160,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						g.recordContainerAnswer(nm.Value, a)
 					}
 				}
+			}
+			// The sliced binding's facts are the same three questions — which kind, do the slots describe
+			// themselves, is there a static literal behind it — asked of the base the copy was taken from
+			// (roadmap Gap R.230).
+			if boundIsSlice {
+				g.recordContainerSlice(nm.Value, boundSliceBase.Obj)
 			}
 			// Track the None singleton the same way containers are tracked: the variable's
 			// *latest* assignment decides how print/truthiness/equality lower, and any other

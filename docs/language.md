@@ -1574,8 +1574,8 @@ hide it.
 
 ### A slice of a container
 
-`xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container on both legs (`Gap R.179`, ADR 0294) — a list, with
-the reference's rendering, and not the machine's handle for it:
+`xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container (`Gap R.179`, ADR 0294) — a list, with the reference's
+rendering, and not the machine's handle for it:
 
 ```
 print([1, 2, 3][1:])       # [2, 3]
@@ -1589,13 +1589,51 @@ print("abcdef"[2:])        # cdef         — a text slice belongs to the text r
 print([1, 2, 3][0])        # 1            — a subscript belongs to the element road
 ```
 
-Slice parts are all optional and negative bounds count from the end, as they do in the reference. The
-compiled form allocates a fresh heap object and copies **payload and tag together**: an element whose value
-is an interned text, a float or a nested container prints the same way in the slice as in the original.
+Slice parts are all optional and negative bounds count from the end, as they do in the reference. The compiled
+form allocates a fresh heap object and copies **payload and tag together** (**ADR 0335**): an element whose value
+is an interned text, a float or a nested container prints the same way in the copy as in the original. That
+sentence was a claim rather than a measurement until this row — `xs = [1.5, "a", [7]]` with `print(xs[0:2])`
+printed `[1, 0]` at exit 0, the text's table index and the float's box handle read as the numbers they are not —
+and paying it took three roads, because a copy is a container and each road asked about a different one:
+the printer has to be told to read a tag, the object being copied has to be built tagged in the first place,
+and the **binding** of a copy has to record that the name received a list:
 
-`len(...)` of a slice still refuses — `len` asks for an inline literal, which is a separate road (`Gap E`
-and L11.1's tagged value word cover it), and closing the slice did not quietly turn that refusal into a
-guess.
+```
+xs = [1.5, "a", [7]]
+print(xs[0:2])           # [1.5, 'a']
+ys = xs[0:2]
+print(ys)                # [1.5, 'a']      — and len(ys) is 2, `for v in ys` walks it, ys[0] is 1.5
+print(not xs[0:0])       # True            — an empty copy is false, a full one is not
+print(2 in xs[0:2])      # False
+print(xs[0:2] == [1.5, "a"])   # True
+
+def build():
+    return [1.5, "a", [7]]
+print(build()[0:2])      # [1.5, 'a']      — the answer is sliced by the door that slices a variable (ADR 0334)
+print(len(build()[0:2])) # 2               — Gap R.33's slice half
+```
+
+A list whose slots are all one kind keeps the plain copy and the plain printer; asserting both halves is the
+point, because a slice road that tags every copy sends a plain `[1, 2, 3]` to a tag array nobody wrote.
+
+`len(...)` of a slice answers the count — of a literal's slice, of a variable's, of a call's answer, and of a
+name bound to a copy.
+
+What the door still declines, and why, is filed rather than glossed:
+
+- **the copy's own slots, read directly** — `print(xs[0:2][0])` is `1.5` in the reference and
+  `index requires an inline list/dict/set literal` here, while the bound form (`ys = xs[0:2]`, `print(ys[0])`)
+  answers: **Gap R.235**;
+- **a base whose slots are reachable only through another object** — `print(m()["k"][0:1])` where `m()` returns
+  `{"k": [1.5, "a"]}`, and `print([x for x in [1, 2, 3]][0:2])`: the gate in front of the copy refuses with a
+  sentence naming the missing record instead of copying whatever word the base lowered to (**Gap R.235**; the
+  comprehension shape reached `llc` and had the module rejected before ADR 0335 — exit 2);
+- **a base that is not a list at all** — `print({1, 2}[0:1])` and `print(d[0:1])` over a dict refuse here, where
+  the reference raises `TypeError` naming the type (**Gap R.234**; both were exit 2 or a fabricated `[1]` before
+  the gate);
+- **bounds that are not numbers** — `print(xs["a":"b"])` answers `[1]` at exit 0 where the reference raises
+  `TypeError: slice indices must be integers or None or have an __index__ method`: **Gap R.233**, and the one
+  entry above that is a wrong answer rather than a refusal.
 
 ### A container in a numeric operand
 
@@ -1842,9 +1880,13 @@ for i in range(n):
   `print(build()[0])` prints `1` and `print(build()[7])` raises the catchable
   `IndexError: list index out of range`, because the subscript asks its base one question — *is this a call
   that hands back a container?* — and, when it is, is answered by the door that reads `ys[i]` for
-  `ys = build()`. What that door still declines is filed where it belongs: a slice of an answer (the slice
-  road answers words, not pairs, for every base — Gap R.230), an answer as an item-assignment target or as a
-  method receiver (Gap R.229), and a membership test whose needle is a slot (Gap R.232). The missing
+  `ys = build()` — and the **slice** beside the index, so `print(build()[0:2])` prints the copy the same door
+  reads off a variable (**ADR 0335**, roadmap Gap R.230). What those doors still decline is filed where it
+  belongs: a **slot of a copy** read directly (`print(xs[0:2][0])`, while the bound copy answers — Gap R.235), a
+  slice whose base is a slot or a comprehension's answer (Gap R.235), a slice of a set or dict, which the
+  reference raises rather than declines (Gap R.234), text bounds, which this backend answers instead of raising
+  (Gap R.233), an answer as an item-assignment target or as a method receiver (Gap R.229), and a membership test
+  whose needle is a slot (Gap R.232). The missing
   attribute is the one shape where the compiled backend still answers with a value (roadmap Gap
   R.19), and it is pinned as `programs/probe_builtin_traps_untyped.gy` rather than left to be
   discovered.

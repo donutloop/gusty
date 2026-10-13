@@ -2522,6 +2522,14 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 			}
 		}
 		return "", false
+	case *Slice:
+		// A slice of a list IS a list: `rt_slice` builds a fresh object out of the base's slots and their
+		// tags, so the kind question about the copy is the kind question about the base. A dict or a set is
+		// not sliced — the reference raises for both — so those keep the road they have today (Gap R.217).
+		if kind, ok := g.staticContainerKind(n.Obj); ok && kind == "list" {
+			return "list", true
+		}
+		return "", false
 	case *Index:
 		if _, ok := g.staticContainerKind(n.Obj); !ok {
 			return "", false
@@ -2576,6 +2584,19 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 			return "", "", false
 		}
 		return hh, "", true
+	case *Slice:
+		// A slice of a list IS a list: the object is the fresh heap list `rt_slice` built out of the base's
+		// slots and their tags, so `xs[0:1][0]` reads a slot of it exactly as it reads one of a variable's
+		// list. `containerOperand` lowers the copy and hands back the handle (roadmap Gap R.230, ADR 0335).
+		kindOfBase, okKind := g.staticContainerKind(n.Obj)
+		if !okKind || kindOfBase != "list" {
+			return "", "", false
+		}
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, "list", true
 	case *Name:
 		switch {
 		case g.runtimeDicts[n.Value]:
@@ -3275,6 +3296,16 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 		}
 		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 	}
+	if _, isSlice := ix.Obj.(*Slice); isSlice {
+		// The bottom is a slice: the object is the fresh list `rt_slice` built, its slots are the base's
+		// payloads with their tags, and the read below is the same one a variable's list gets — which is what
+		// lets `xs[0:1][0]` and `ys = xs[0:1]; ys[0]` be one program (roadmap Gap R.230, ADR 0335).
+		h, kind, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
 	base, baseTag, okBase := g.runtimeSlotPairDeep(b, ix.Obj)
 	if !okBase {
 		return "", "", false
@@ -3324,6 +3355,11 @@ func (g *irGen) runtimeContainerSide(e Expr) bool {
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.mixedDicts[n.Value]
 	case *Index:
 		return g.runtimeSlotReadOf(n)
+	case *Slice:
+		// The haystack may be a run of slots rather than a whole container: `2 in xs[0:2]` asks the sliced
+		// object, which is a list the run time built and tagged, exactly like one a variable holds
+		// (roadmap Gap R.230).
+		return g.isContainerExpr(n.Obj)
 	case *Call:
 		// A call that hands back a container is a side the run time owns: the callee materialised the
 		// object at its `ret`, so the slots carry the tags its builders wrote and the door below can read
@@ -4096,6 +4132,19 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		h, _, okH := g.containerHandleOf(b, e)
 		if !okH {
 			return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; reading an element as a container needs the tag the builder wrote (roadmap L11.1, ADR 0241)", exprSnippet(e))
+		}
+		return h, nil
+	case *Slice:
+		// A slice of a container IS the container the reference builds: a fresh heap list whose slots are
+		// copies of the base's payloads with their tags (`rt_slice` pairs them — ADR 0187's rule, applied by
+		// ADR 0294), so `2 in xs[0:2]`, `xs[0:2] == [1, 2]` and `xs[0:1][0]` ask the object the same questions
+		// a variable's list does. A text slice answers beside this, in the text road, so the base is asked.
+		if !g.isContainerExpr(n.Obj) {
+			break
+		}
+		h, serr := g.value(b, e)
+		if serr != nil {
+			return "", serr
 		}
 		return h, nil
 	case *Call:

@@ -289,10 +289,10 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 			"roadmap Gap R.229 (the item-assignment road takes a variable on the left; the answer is an object with no variable named for it)",
 		},
 		{
-			"a slice of an answer",
+			"a slice of an answer measured by the row that opened it",
 			"def b():\n    return [1, 2, 3]\n\nprint(len(b()[0:2]))",
-			"", "2",
-			"roadmap Gap R.33 (sequence operations: the length road has no arm for a slice of a heap answer)",
+			"2", "2",
+			"roadmap Gap R.33 (sequence operations: the length road took the copy this row's door builds; the row stays open for the shapes it still declines)",
 		},
 		{
 			"two text slots joined",
@@ -306,6 +306,9 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 			"", "2",
 			"roadmap Gap R.82 (the numeric use of a slot: the pair travels with the value, but this context wants one static kind)",
 		},
+		// The slice neighbours of this door — `print(b()[0:2])`, `ys = b()[0:2]`, `len(b()[0:2])` — were filed
+		// here as refusals and are answered by ADR 0335; they are witnessed in `slice_answer_test.go`, where a
+		// row that stops answering fails rather than quietly disappearing.
 		{
 			"two float slots added",
 			"def mk():\n    return [1.5, 2.5]\n\nprint(mk()[0] + mk()[1])",
@@ -318,21 +321,8 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 			"", "True",
 			"roadmap Gap R.232 (a needle the compiler cannot prove the kind of, and the sentence prints the node's Go representation rather than naming the construct)",
 		},
-		// Two neighbours measured while writing this row, each wrong for EVERY base — a literal, a variable
-		// or a call's answer alike — so the subscript road inherits the wrongness rather than causing it, and
-		// the slice of an answer is therefore left refused (Gap R.229's family) rather than widened into it.
-		{
-			"a slice of a container whose slots mix kinds",
-			"ys = [1.5, \"a\", [7]]\nprint(ys[0:2])",
-			"[1, 0]", "[1.5, 'a']",
-			"roadmap Gap R.230 (the slice road copies a list's words without their tags, for a literal, a variable and an answer alike)",
-		},
-		{
-			"a slice bound to a name",
-			"ys = [1, 2, 3]\nzs = ys[0:2]\nprint(zs)",
-			"1", "[1, 2]",
-			"roadmap Gap R.230 (binding a slice answers the one word the slice's handle is not)",
-		},
+		// A neighbour measured while writing this row, wrong for EVERY base — a literal, a variable
+		// or a call's answer alike — so the subscript road inherits the wrongness rather than causing it.
 		{
 			"a text-keyed dict subscripted by a number",
 			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",

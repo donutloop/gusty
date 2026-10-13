@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: [ADR 0326](0326-a-constant-that-is-not-there-is-the-programs-index-error.md) (the fold's bounds trap, which named this row as the door it could not reach), [ADR 0251](0251-a-slot-read-out-of-a-container-the-program-built-asks-the-object.md) (the same misattribution, for a container the program built), [ADR 0333](0333-a-container-returned-from-a-call-is-a-value.md) (the answer this door finally reads)
 Extends: [ADR 0331](0331-a-list-literal-is-read-by-the-door-a-list-elements-are-read-by.md)/[ADR 0327](0327-a-dict-literal-is-read-by-the-door-a-dict-variable-uses.md) (a literal read by the door a variable uses), [ADR 0332](0332-a-literals-element-that-is-itself-a-read-is-stored-as-the-pair-that-read-answers.md) (the gate and the door asked one question), [ADR 0187](0187-payload-and-tag-travel-together.md) (the pair the read returns), [ADR 0232](0232-mixed-dicts-and-sets-answer-by-the-slots-they-carry.md) (the per-slot tag the read consults)
 Supersedes: nothing
-Related: roadmap L11.1, Gap R.214 (closes), Gap R.67 (paid by ADR 0333 — the dependency this row waited on), Gap R.217 / R.227 / R.228 / R.229 / R.33 / R.82 (the doors beside this one, filed there), Gap R.230 / R.231 / R.232 (newly measured here, filed here)
+Related: roadmap L11.1, Gap R.214 (closes), Gap R.67 (paid by ADR 0333 — the dependency this row waited on), Gap R.217 / R.227 / R.228 / R.229 / R.33 / R.82 (the doors beside this one, filed there), Gap R.230 (paid by ADR 0335) / R.231 / R.232 (newly measured here, filed here), Gap R.233 / R.234 / R.235 (measured by ADR 0335 as it closed R.230)
 Owner: `pkg/lang/container_subscript_test.go`, `pkg/lang/heapargs.go`, `pkg/lang/codegen.go`
 
 ## Context
@@ -126,13 +126,13 @@ grows:
 | `def n(): return None` / `print(n()[0])` | `TypeError: 'NoneType' object is not subscriptable` | refuses | **Gap R.228** (a `None` handed back has no return kind) |
 | `def n(): return 5` / `print(n()[0])` | `TypeError: 'int' object is not subscriptable` | refuses | Gap R.227 (the same shape at a call) |
 | `b()[0] = 9` | `1` | refuses | **Gap R.229** (the item-assignment road takes a variable on the left) |
-| `print(b()[0:2])` | `[1, 2]` | refuses with ADR 0333's one-word sentence | **Gap R.229 / R.230** (the slice door has no road for an answer, and no tags for anybody) |
+| `print(b()[0:2])` | `[1, 2]` | refuses with ADR 0333's one-word sentence | **Gap R.229 / R.230** (the slice door has no road for an answer, and no tags for anybody) (paid 2026-10-14 by [ADR 0335](0335-a-slice-hands-back-a-copy-of-the-bases-slots-tags-included-and-the-copy-is-a-list-the-records-know.md)) |
 | `len(b()[0:2])` | `2` | refuses | Gap R.33 (sequence operations) |
 | `print(b()[0] + b()[1])` on text slots | `xy` | refuses | Gap R.82 (no road joins a text out of two slots) |
 | `print(mk()[0] + mk()[1])` on float slots | `4.0` | refuses with the pair road's sentence | Gap R.82 (kept: this row did not widen arithmetic over slots) |
 | `print(mk()[0]["k"] + 1)` | `2` | refuses: `index must be a constant` | Gap R.82 (the numeric use of a slot) |
-| `ys = [1.5, "a", [7]]` / `print(ys[0:2])` | `[1.5, 'a']` | `[1, 0]` at exit 0 | **Gap R.230** (the slice copies words, not pairs) |
-| `ys = [1,2,3]` / `zs = ys[0:2]` / `print(zs)` | `[1, 2]` | `1` at exit 0 | **Gap R.230** (binding a slice answers the handle) |
+| `ys = [1.5, "a", [7]]` / `print(ys[0:2])` | `[1.5, 'a']` | `[1, 0]` at exit 0 | **Gap R.230** (the slice copies words, not pairs) (paid 2026-10-14 by [ADR 0335](0335-a-slice-hands-back-a-copy-of-the-bases-slots-tags-included-and-the-copy-is-a-list-the-records-know.md)) |
+| `ys = [1,2,3]` / `zs = ys[0:2]` / `print(zs)` | `[1, 2]` | `1` at exit 0 | **Gap R.230** (binding a slice answers the handle) (paid 2026-10-14 by [ADR 0335](0335-a-slice-hands-back-a-copy-of-the-bases-slots-tags-included-and-the-copy-is-a-list-the-records-know.md)) |
 | `d = {"a": 1, "b": 2}` / `print(d[0], d[1])` | `KeyError: 0` | `1 2` at exit 0 | **Gap R.231** (a number is a key; the read treats it as a position) |
 | `print(words()[0] in words())` | `True` | refuses, printing the needle's Go representation | **Gap R.232** (an unprovable needle, and a sentence that names no construct) |
 

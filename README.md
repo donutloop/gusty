@@ -233,8 +233,8 @@ function the scan declines keeps the road it had. A call site that hands a **dou
 to the pair road with its honest `(payload, tag)` sentence: `print(b(2))` is claimed and answers `[2, 1]`,
 `print(b(2.5))` is declined — the same body, the caller's word as the difference. `programs/container_returns.gy`
 is `match` on both legs; what still refuses — the
-answer as another literal's element or as a method receiver (**Gap R.229**), a slice of the answer (**Gap R.229**
-beside **Gap R.230**), the answer through a parameter (Gap R.154), `build() + [9]` (Gap R.175), `None` returned from
+answer as another literal's element or as a method receiver (**Gap R.229**), a slot of a copy read directly
+(**Gap R.235**), the answer through a parameter (Gap R.154), `build() + [9]` (Gap R.175), `None` returned from
 a function (**Gap R.228**) — names the function and the door, and never exits 2.
 
 **A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
@@ -251,15 +251,41 @@ program's own `except`. Two ordering facts came out of it: the rewrite must run 
 roads, or a dict built from a literal prints its `@str_tab` index as a number; and a tagged answer must **clear** its
 element notebooks the way `heapDictFrom` clears them for the variable it builds into — leaving `listElemStr` set over
 a tagged list was why `def words(): return ["hi","ho"]` refused `print(words()[1])` with Gap R.82's sentence while
-printing the whole list correctly. The slice is left refused on purpose: its road answers `[1, 0]` for a mixed list
-and `1` for a bound slice whatever the base is (**Gap R.230**), so widening it would have traded an honest refusal
-for a wrong number at exit 0. `programs/container_subscript.gy` is `match` on both legs, and the neighbours that keep
+printing the whole list correctly. The slice was left refused for exactly that reason — its road answered
+`[1, 0]` for a mixed list and `1` for a bound slice whatever the base is (**Gap R.230**) — and **ADR 0335**
+closes it, below. `programs/container_subscript.gy` is `match` on both legs, and the neighbours that keep
 their own sentences — a set answer (Gap R.217), an answer as an item-assignment target (Gap R.229), a numeric use of
 two slots (Gap R.82) — are asserted to stay refusals without exit 2, beside three rows measured on the way and filed
-rather than bundled: a number subscripting a text-keyed dict answers the slot at that position (**Gap R.231**), a
-slice that drops its slots' tags and a slice bound to a name that answers the handle (**Gap R.230**), and a
+rather than bundled: a number subscripting a text-keyed dict answers the slot at that position (**Gap R.231**),
+a slice that drops its slots' tags and a slice bound to a name that answers the handle (**Gap R.230**, paid by
+**ADR 0335**), and a
 membership test whose needle is a slot, refusing with a sentence that prints the needle's Go representation
 (**Gap R.232**).
+
+**A slice hands back a copy of the base's slots, tags included, and the copy is a list the records know** — ADR
+0335 pays Gap R.230, the row ADR 0334 filed rather than widen. A slice was the one container operation that
+built a **new** container out of words it read one at a time, and it dropped the tag on the way through:
+`xs = [1.5, "a", [7]]` / `print(xs[0:2])` printed `[1, 0]` — the text's `@str_tab` index and the float's box
+handle, read as the numbers they are not — and `ys = xs[0:2]` / `print(ys)` printed `1`, the copy's heap handle,
+both at **exit 0**. Three roads each held a third of the truth, and each now asks the same question of the site
+that wrote the bytes: the printer asks `mixedLists` before the single-kind notebooks, the way the name arm
+beside it always did; the road that builds the sliced literal asks **its own** predicate
+(`literalNeedsHeap || literalNeedsTags || literalHasPairElement` → `heapListFromTagged`), so `rt_slice` copies
+tags somebody actually wrote; and `recordContainerSlice` records the binding — kind, tag fact, and the element
+notebooks cleared when the copy is tagged, because a tagged object has no single kind. From that one record come
+`print(ys)`, `len(ys)`, `for v in ys`, `ys[0]`, `not ys`, `2 in xs[0:2]`, `xs[0:2] == [1.5, "a"]`, a slice of a
+slice, and — with ADR 0334's rewrite grown to the `*Slice` case — `print(build()[0:2])`. A list whose slots are
+all one kind keeps the plain word copy and the plain printer, asserted both ways: a slice road that tagged every
+copy would send a plain `[1, 2, 3]` to a tag array nobody wrote (**ADR 0249**'s gate and door, growing together).
+In front of the copy stands `sliceBaseIsDescribed`, and it is the load-bearing part: handed a base the records
+cannot describe, the road used to emit `rt_slice` over whatever word the base lowered to and let the caller print
+it — `print(m()["k"][0:1])` answered `3` — and three shapes handed a compile-time global's address to a helper
+whose parameter is an i32 register, which `llc` rejected: **exit 2**, the code ADR 0166 reserves for a compiler
+bug. Those five are refusals that name the missing record today, and they are filed as **Gap R.234** (the base
+is a set or a dict, which the reference *raises*) and **Gap R.235** (the copy's own slots, and the bases reachable
+only through another object); the copy's bounds are a third question, still unanswered, filed as **Gap R.233**
+(`print(xs["a":"b"])` answers `[1]` where the reference raises `TypeError: slice indices must be integers or None
+or have an __index__ method`). `programs/slice_answer.gy` is `match` on both legs.
 
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It

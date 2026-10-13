@@ -1,5 +1,198 @@
 {
  "entries": {
+"def mixed():\n    return [1.5, \"a\", [7]]\n\ndef words():\n    return [\"hi\", \"ho\"]\n\ndef nums():\n    return [10, 20, 30]\n\ndef table():\n    return {\"k\": [1.5, \"a\"]}\n\nxs = [1.5, \"a\", [7]]\nprint(xs[0:2])\nprint(xs[0:1], xs[2:3], xs[0:0])\nprint(xs[1:], xs[:2], xs[::-1])\nys = xs[0:2]\nprint(ys)\nprint(len(ys))\nfor v in ys:\n    print(v)\nprint(ys[0], ys[1])\nprint(not xs[0:0], not xs[0:2])\nprint(2 in xs[0:2], \"a\" in xs[0:2])\nprint(xs[0:2] == [1.5, \"a\"], xs[0:2] == [1.5])\nzs = xs[0:2]\nprint(zs[0:1])\nprint(mixed()[0:2])\nprint(len(mixed()[0:2]))\nws = mixed()[0:2]\nprint(ws)\nprint(words()[0:1])\nplain = [1, 2, 3]\nprint(plain[0:2], plain[1:], plain[::-1])\nqs = plain[0:2]\nprint(qs, qs[0], qs[1])\nprint(table()[\"k\"])\ns = \"abcdef\"\nprint(s[1:3], s[::-1])\n": {
+    "stdout": "[1.5, 'a']\n[1.5] [[7]] []\n['a', [7]] [1.5, 'a'] [[7], 'a', 1.5]\n[1.5, 'a']\n2\n1.5\na\n1.5 a\nTrue False\nFalse True\nTrue False\n[1.5]\n[1.5, 'a']\n2\n[1.5, 'a']\n['hi']\n[1, 2] [2, 3] [3, 2, 1]\n[1, 2] 1 2\n[1.5, 'a']\nbc fedcba\n",
+    "hasStdout": true
+   },
+"def b():\n    return [1, \"a\", None, [4]]\nprint(b()[1:3])": {
+    "stdout": "['a', None]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nprint(len(b()[0:2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nys = b()[0:2]\nfor v in ys:\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1.5, \"a\", [7]]\nprint(b()[0:2])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1.5, \"a\", [7]]\nprint(len(b()[0:2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1.5, \"a\", [7]]\nys = b()[0:2]\nprint(ys)": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"a\": 1, \"b\": 2}\nprint(m()[\"b\"])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"def n():\n    return [10, 20, 30]\nprint(n()[1:])": {
+    "stdout": "[20, 30]\n",
+    "hasStdout": true
+   },
+
+"print(\"abcdef\"[::-1])": {
+    "stdout": "fedcba\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\", \"c\"][1:])": {
+    "stdout": "['b', 'c']\n",
+    "hasStdout": true
+   },
+
+"print([1.5, \"a\", [7]][0:2])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"s = \"abcdef\"\nprint(s[1:3])": {
+    "stdout": "bc\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nprint(xs[0:1])": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[0:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[0:2][0:1])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[1:])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(2 in xs[0:2])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(2 in xs[0:2])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(not xs[0:0])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(not xs[0:2])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:0])": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:1])": {
+    "stdout": "[1.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2] == [1.5, \"a\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2] == [1.5])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0:1])": {
+    "stdout": "[1.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[1:2])": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[1:])": {
+    "stdout": "['a', [7]]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[2:3])": {
+    "stdout": "[[7]]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[:2])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[::-1])": {
+    "stdout": "[[7], 'a', 1.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nfor v in ys:\n    print(v)": {
+    "stdout": "1.5\na\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(len(ys))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys)": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[0:1])": {
+    "stdout": "[1.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[0], ys[1])": {
+    "stdout": "1.5 a\n",
+    "hasStdout": true
+   },
 "def words():\n    return [\"hi\", \"ho\"]\n\nfor x in words():\n    print(x)": {
     "stdout": "hi\nho\n",
     "hasStdout": true

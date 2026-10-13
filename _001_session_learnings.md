@@ -10013,3 +10013,46 @@ before committing. `TestTheRoadmapsCitationsResolve` then caught my own evidence
 `constant_trap_test.go::TestTheCallResultStillRefuses` — a test this very commit deletes. A citation to a case
 that no longer exists is worse than no citation: it tells the next reader the claim is checked when nothing
 checks it. Reworded to name the raise row that answers today.
+
+## A copy is a container: the slice door copies slots, not words (L11.1, Gap R.230; ADR 0335; Gaps R.233, R.234, R.235 filed)
+
+**Feature (codegen)**: `xs = [1.5, "a", [7]]` / `print(xs[0:2])` printed `[1, 0]` and
+`ys = xs[0:2]` / `print(ys)` printed `1` — both at **exit 0** — while `print(xs)` printed `[1.5, 'a']` one line
+earlier. `rt_slice` copied seven i32s per slot and the tag was not one of them, because nothing had written the
+tag: the road that turns a sliced literal into an object asked only `literalNeedsHeap`, the print road asked
+only the base's single-kind notebook, and the binding road recorded nothing at all.
+
+- **A "fix" that turns a refusal into an exit-0 answer has to be measured against the previous commit's
+  binary, not against its own test table.** The first cut of this row made `print(m()["k"][0:1])` print `3`
+  where `gustyc` at HEAD had refused with `index must be a constant`. Nothing in the new tables caught it —
+  the row has no row for that shape, which is why the shape is a roadmap entry now (Gap R.235). The check that
+  caught it was mechanical: keep `/tmp/gustyc-athead` beside the working build and diff both against CPython on
+  a fixed probe file. A refusal that becomes a wrong number moved **down** the defect ranking.
+- **The gate is not polish; it is half of the feature.** Once the road could build a copy, the temptation was
+  to run on. `sliceBaseIsDescribed` is what made the difference between "the slice road answers correctly where
+  it answers" and "the slice road never fabricates an answer": it retired a second exit-2 class
+  (`call i32 @rt_slice(i32 @.set1, …)` — a compile-time global where `llc` wants an i32 register, for a set
+  literal, a dict literal and a comprehension alike) and a second exit-0 class (`print(s[0:1])` over a set
+  printing `[1]`). It is also a pure predicate over the records — no trial emission, no counters advanced, so
+  IR-sensitive tests stay emission-order-independent (ADR 0273's rule).
+- **A single-element slice is a fold, and folds hide roads.** `print(xs[0:1][0])` answered `1.5` while
+  `print(xs[0:2][0])` refused: `[0:1]` collapses to a literal at compile time, so the subscript never reached
+  the object road. A probe list built out of `[0:1]` slices therefore "proves" a slice door works when the two
+  element case is broken. Probe with two slots, or don't probe.
+- **Docs can carry a claim a year after the code stopped being true.** `docs/language.md` had said since ADR
+  0294 that the compiled copy takes "payload and tag together". It did not: the sentence described the runtime
+  helper's contract, not the compiler's use of it. The section is now measured prose — what answers, what
+  refuses, what the reference raises, each with its Gap row — and the stale `len(...) of a slice still refuses`
+  line went out with it (`print(len(xs[0:2]))`, `print(len(b()[0:2]))` and a bound copy all answer `2`).
+- **Three roads, one question, asked of whoever wrote the bytes.** The print arm, the build site and the
+  binding all ask the *same* predicate (`literalNeedsHeap || literalNeedsTags || literalHasPairElement`,
+  `containerAnswerCarriesTags`, `mixedLists`) rather than restating it — ADR 0232's rule, and the reason
+  `print(xs[0:2])` and `print(xs)` cannot disagree again. Where the tag question cannot be answered, the copy is
+  refused; where it can, `rt_print_list_mixed` is picked — and the untagged control (`[1, 2, 3]` sliced, printed
+  by `rt_print_list`) is in both packages, because a row that tags every copy has simply not asked.
+- **Machine bookkeeping that bites**: `go run ./tools/recmerge -sources FILE.json` is the only way to add record
+  entries (no dedupe mode; a second key for the same source is invisible to it) — and never run it while the
+  suite runs, or `TestTheRecordHasNoSourceSpelledTwice` fails on a race that is not a defect. The conformance
+  matrix rewrites itself the first time a matrix test asks for it, so the snapshot's counts (now 199 programs,
+  188 rows → 150 parity + 38 divergences, 135 oracle `match`, 6455 records, 327 ADRs highest `0335`, 116 of 151
+  rows owed) are read off the artifact after the run rather than guessed before it.

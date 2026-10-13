@@ -43,6 +43,13 @@ func TestACallResultSubscriptAnswersThroughTheCLI(t *testing.T) {
 		"def mk():\n    return [[3]]\n\nprint(mk()[0][0])",
 		"def m():\n    return {1: 2}\n\nprint(m()[1])",
 		"def m():\n    return {\"a\": \"x\", \"b\": \"y\"}\n\nprint(m()[\"b\"])",
+		// A slice of an answer is the same read one door further out: the copy `rt_slice` builds carries the
+		// answer's slots with their tags, and the printer is the one that reads a tag
+		// (roadmap Gap R.230, ADR 0335).
+		"def b():\n    return [1, 2, 3]\n\nprint(b()[0:2])",
+		"def b():\n    return [1.5, \"a\", [7]]\n\nprint(b()[0:2])",
+		"def b():\n    return [1.5, \"a\", [7]]\n\nys = b()[0:2]\nprint(ys)",
+		"def b():\n    return [1, 2, 3]\n\nprint(len(b()[0:2]))",
 		"def z():\n    return {0: \"zero\"}\n\nprint(z()[0])",
 		"def b():\n    return [1.5, \"a\", [7]]\n\nprint(b()[2][0], b()[1])",
 		"def built():\n    xs = []\n    xs.append(9)\n    xs.append(8)\n    return xs\n\nprint(built()[1])",
@@ -118,15 +125,7 @@ func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *test
 			mustSay:    "index of a non-literal variable",
 			mustNotSay: "index requires an inline list/dict/set literal",
 		},
-		// A slice of an answer is a subscript this row does not widen: the slice door answers words, not
-		// pairs, for every base (Gap R.230), so opening it here would trade an honest refusal at exit 1 for a
-		// wrong number at exit 0. It keeps ADR 0333's one-word sentence until it has its own road.
-		{
-			name:    "a slice of an answer",
-			src:     "def b():\n    return [1, 2, 3]\n\nprint(b()[0:2])",
-			mustSay: "Gap R.67",
-		},
-		// An answer subscripted as an item-assignment target is Gap R.229's door.
+		// An answer's slot written to is Gap R.229's door.
 		{
 			name:    "an answer as an item-assignment target",
 			src:     "def b():\n    return [1, 2]\n\nb()[0] = 9\nprint(b())",

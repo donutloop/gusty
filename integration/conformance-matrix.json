@@ -3214,6 +3214,27 @@
     },
     {
       "case": {
+        "id": "programs/slice_answer",
+        "name": "slice_answer.gy",
+        "source": "def mixed():\n    return [1.5, \"a\", [7]]\n\ndef words():\n    return [\"hi\", \"ho\"]\n\ndef nums():\n    return [10, 20, 30]\n\ndef table():\n    return {\"k\": [1.5, \"a\"]}\n\nxs = [1.5, \"a\", [7]]\nprint(xs[0:2])\nprint(xs[0:1], xs[2:3], xs[0:0])\nprint(xs[1:], xs[:2], xs[::-1])\nys = xs[0:2]\nprint(ys)\nprint(len(ys))\nfor v in ys:\n    print(v)\nprint(ys[0], ys[1])\nprint(not xs[0:0], not xs[0:2])\nprint(2 in xs[0:2], \"a\" in xs[0:2])\nprint(xs[0:2] == [1.5, \"a\"], xs[0:2] == [1.5])\nzs = xs[0:2]\nprint(zs[0:1])\nprint(mixed()[0:2])\nprint(len(mixed()[0:2]))\nws = mixed()[0:2]\nprint(ws)\nprint(words()[0:1])\nplain = [1, 2, 3]\nprint(plain[0:2], plain[1:], plain[::-1])\nqs = plain[0:2]\nprint(qs, qs[0], qs[1])\nprint(table()[\"k\"])\ns = \"abcdef\"\nprint(s[1:3], s[::-1])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1.5, 'a']\n[1.5] [[7]] []\n['a', [7]] [1.5, 'a'] [[7], 'a', 1.5]\n[1.5, 'a']\n2\n1.5\na\n1.5 a\nTrue False\nFalse True\nTrue False\n[1.5]\n[1.5, 'a']\n2\n[1.5, 'a']\n['hi']\n[1, 2] [2, 3] [3, 2, 1]\n[1, 2] 1 2\n[1.5, 'a']\nbc fedcba\n",
+      "python_ok": true,
+      "python_stdout": "[1.5, 'a']\n[1.5] [[7]] []\n['a', [7]] [1.5, 'a'] [[7], 'a', 1.5]\n[1.5, 'a']\n2\n1.5\na\n1.5 a\nTrue False\nFalse True\nTrue False\n[1.5]\n[1.5, 'a']\n2\n[1.5, 'a']\n['hi']\n[1, 2] [2, 3] [3, 2, 1]\n[1, 2] 1 2\n[1.5, 'a']\nbc fedcba\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3964,7 +3985,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/159/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/160/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3978,7 +3999,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/159/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/160/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4688,11 +4709,11 @@
       ]
     }
   ],
-  "rows": 187,
+  "rows": 188,
   "skipped": 38,
-  "pass": 149,
+  "pass": 150,
   "fail": 0,
-  "oracle_match": 134,
+  "oracle_match": 135,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

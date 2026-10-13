@@ -10392,7 +10392,7 @@ words — so the day the sentence is fixed, the program says so by printing the 
 
 <a id="gap-r-230"></a>
 
-### Gap R.230 — a slice answers words, not pairs, and binding a slice answers the handle (OPEN, found by ADR 0334)
+### Gap R.230 — a slice answers words, not pairs, and binding a slice answers the handle (paid by ADR 0335; found by ADR 0334)
 
 ```python
 ys = [1.5, "a", [7]]
@@ -10422,6 +10422,41 @@ unwritten on purpose: `print(b()[0:2])` refuses with ADR 0333's one-word sentenc
 broken road would have turned an honest refusal at exit 1 into a wrong number at exit 0. The order of work is
 therefore this row first, then the `*Slice` case in `containerAnswerSubscript`, whose test table already has
 the two rows waiting for it.
+
+**What paid it (ADR 0335).** Three roads, each holding one third of the truth, and one gate in front of all
+of them:
+
+- the **print** road chose its printer from the base's element notebook and never asked the question the name
+  arm beside it asks first — `mixedLists`, *do this object's slots describe themselves*. A copy of a tagged
+  base now goes to `rt_print_list_mixed`; a copy of an all-one-kind list keeps `rt_print_list`, and that half
+  is asserted as the negative control, because a row that tags every copy has not asked the question at all;
+- the road that turns the **sliced literal** into a heap object asked only `literalNeedsHeap`, so a mixed
+  literal was built untagged and `rt_slice` copied tags nobody had written. It now asks its own build site's
+  predicate — `literalNeedsHeap || literalNeedsTags || literalHasPairElement` → `heapListFromTagged` — imported
+  from the literal road rather than restated, which is ADR 0187's pairing rule moved onto the source of a copy
+  (ADR 0294 had already moved it onto the copy);
+- the **binding** road stored the copy's handle and recorded nothing, so the name was a container no road could
+  name. `recordContainerSlice` writes the kind bit, the tag fact asked of the base with the same predicates, and
+  clears the element notebooks when the copy is tagged — a tagged object has no single kind (ADR 0232's rule for
+  a container built by a call, now stated for a container built by `rt_slice`). `print(ys)`, `len(ys)`,
+  `for v in ys`, `ys[0]`, `not ys`, `in`, `==`, and a slice of the copy all follow from that one record.
+
+The `*Slice` arm ADR 0334 withheld is in `containerAnswerSubscript` beside its `*Index` one, so
+`print(build()[0:2])` and `ys = build()` / `print(ys[0:2])` are one program written two ways.
+
+**The gate, and why it is part of the decision.** `sliceBaseIsDescribed` asks, before any instruction is
+emitted, whether the base's slots can be described at all — the arms are `containerSlotsCarryTags`'s own, so a
+base is admissible exactly when the printer can be told about it. Without it the road emitted `rt_slice` over
+whatever word the base lowered to and the caller printed that word: `print(m()["k"][0:1])` answered `3` (the
+new list's heap handle) at exit 0, and three shapes — `print({1, 2}[0:1])`, `print({1: 2}[0:1])`,
+`print([x for x in [1, 2, 3]][0:2])` — handed a compile-time global's address to a helper whose parameter is an
+i32 register, which `llc` rejected: **exit 2**, ADR 0166's worst class. All four are refusals that name the
+missing record today, and each is filed where the answer belongs: **Gap R.234** (the base is not a list at all)
+and **Gap R.235** (the copy's own slots, and the bases reachable only through another object).
+
+A rooted name for every slice — `__cansN`, the shape ADR 0333 gives a call's answer — was tried and rejected:
+the slice's bounds are values read in the block where the slice sits, so hoisting the copy changes when they are
+evaluated. The bound form keeps a name because the *program* named it, which is the difference that matters.
 
 <a id="gap-r-231"></a>
 
@@ -10480,3 +10515,100 @@ what is missing; a `%!s(*lang.Call=…)` names nothing, and it is the kind of te
 a human reads as a crash. Both halves ship together: the road, and a sentence that quotes the needle's source
 text instead of its type.
 
+
+<a id="gap-r-233"></a>
+
+### Gap R.233 — a slice whose bounds are text answers a list instead of raising (OPEN, found by ADR 0335)
+
+```python
+xs = [1, 2]
+print(xs["a":"b"])    # TypeError: slice indices must be integers or None or have an __index__ method
+                      # this backend: [1]                                      (exit 0)
+```
+
+The bounds of a slice are lowered through the same door as any other expression, and `rt_slice` takes seven
+i32s — handle, three bounds, three presence flags. A text bound therefore arrives as its `@str_tab` index and
+becomes a position: `"a"` is interned at 0 on this program, so the copy runs from slot 0 and the answer is a
+plausible list at the exit code that means the program ran. Nothing raises, nothing refuses, and the program
+carries on with a value that was never in it.
+
+This is Gap R.222 one construct over. That row put a kind question in front of an `Index`'s position
+(`badIndexGateAtSubscript`) because a text index counted to slot 1 with an interned index; the slice road has
+the same seven i32s and the same question, and asks neither. ADR 0335's gate deliberately covers the **base**
+only — *are these slots describable?* — because the bounds ask a different question (*is this bound an
+integer?*) and answering one with the other would leave a wrong number standing behind a closed row.
+
+The fix is the same shape as R.222's: read the bound's kind before lowering it, and when it is neither an
+integer nor `None`, raise the reference's `TypeError` with the type named, catchable by the program's own
+`except`. The raise, not a decline: the reference raises here, and a refusal where the reference raises is the
+wrong-answer class one step away.
+
+<a id="gap-r-234"></a>
+
+### Gap R.234 — the slice road never asked what kind the base is (OPEN, found by ADR 0335)
+
+```python
+print({1, 2}[0:1])    # TypeError: 'set' object is not subscriptable
+                      # this backend before ADR 0335: exit 2 — llc rejected the module
+                      # this backend today:           exit 1, a refusal that names the missing record
+print({1: 2}[0:1])    # TypeError: unhashable type: 'slice'   — the same two lines
+s = {1, 2}
+print(s[0:1])         # TypeError: 'set' object is not subscriptable
+                      # before ADR 0335: [1]  (exit 0);  today: exit 1, a refusal
+```
+
+Four shapes, one missing question. A set has no position to slice from and a dict cannot be keyed by a slice
+object, but the slice road did not ask: it lowered the base however it could lower it and called `rt_slice`
+anyway. For a **literal** base that produced `call i32 @rt_slice(i32 @.set1, …)` — a compile-time global in a
+position whose type is an i32 register — and `llc` rejected the compiler's own module: **exit 2**, which ADR
+0166 counts as our bug whatever the program meant. For a base in a **name** the words copied happily into a new
+list and the program printed `[1]`: a list, of a set, that CPython refuses.
+
+ADR 0335's gate (`sliceBaseIsDescribed`) stops all four with a sentence that names what is missing — *a literal,
+a variable a binding recorded as a list, a call that hands back a list, or a slice of one* — which is the
+honest side of the line: the toolchain no longer fabricates a list and no longer hands `llc` a module it
+rejects. What those shapes still owe is the reference's behaviour, not a decline: the reference **raises**
+`TypeError` naming the type, and the row's job is to raise it too — the same move Gap R.222 made for a
+subscript asked with a key of the wrong kind. Four rows of
+`integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` are pinned as exit-1
+refusals today and move to the raise tables when this row lands; none of them may arrive at exit 2 on the way.
+
+<a id="gap-r-235"></a>
+
+### Gap R.235 — what the copy door builds it cannot read, and what it declines it declines for want of a record (OPEN, found by ADR 0335)
+
+```python
+xs = [1.5, "a", [7]]
+print(xs[0:2][0])     # 1.5 in the reference;  this backend: exit 1,
+                      #   "index requires an inline list/dict/set literal"
+ys = xs[0:2]
+print(ys[0])          # 1.5 — answered, since ADR 0335 recorded the binding
+xs = [1, 2]
+print(xs[0:2][5])     # IndexError: list index out of range;  this backend: the same refusal
+
+def m():
+    return {"k": [1.5, "a"]}
+print(m()["k"][0:1])  # [1.5] in the reference;  this backend: exit 1, the gate's sentence
+print([x for x in [1, 2, 3]][0:2])   # [1, 2, 3];  this backend: exit 1, the gate's sentence
+```
+
+ADR 0335 made the copy a real list with the tags its base carries, and the reads that follow from that record —
+`print`, `len`, a loop, truthiness, membership, equality, a second slice — all answer. The **subscript** road
+does not: it asks its fold gate for a literal, gets a `*Slice`, and declines with the fold's sentence. The
+result is the ADR 0334 defect one door over, in its exact shape: naming the copy in the program (`ys = xs[0:2]`)
+makes the slot read answer, and leaving it unnamed makes the same read a compiler sentence. A value with no road
+to its slots is half a door.
+
+The same row owns the bases the gate declines because their slots are reachable only through another object: a
+slot that holds a list (`m()["k"]`, `d[0]`) and a comprehension's answer, which is an object the loop builds and
+no record names. The first two are the description question the answer road already answers for a call — what
+`recordContainerAnswer` writes for a container handed back by a function, written for a slot and for a
+comprehension instead. The third reached `llc` before ADR 0335 and had the module rejected (exit 2), so its
+refusal is an improvement and not the destination.
+
+The fix has two halves and both are rewrites, not new readers: an `Index` whose base is a `*Slice` goes to
+`containerHandleOf` + `containerSlotRead` — the pair the equality and membership roads already use — instead of
+the fold's literal gate; and a base whose slots the records describe through another object records them the way
+a binding records a call's answer. Five rows are pinned as refusals today:
+`pkg/lang/slice_answer_test.go::TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed` and
+`integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` move them when they land.

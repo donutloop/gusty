@@ -567,6 +567,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `str`/`repr` over a slot, and both raises caught by the program's own handler are in this one program,
 		// whose expectation is what CPython printed for it.
 		"container_subscript",
+		// A slice hands back a copy of the base's slots WITH their tags, wherever the base lives. A mixed list
+		// `xs = [1.5, "a", [7]]` sliced with `print(xs[0:2])` is `[1.5, 'a']` in the reference and used to be
+		// `[1, 0]` at exit 0 here — the interned index of the text and the box handle of the float, read as the
+		// numbers they are not — while the same copy bound to a name printed its heap handle as `1` and `len` of it
+		// refused, because nothing had recorded that the name received a list. The three kinds of base (a literal
+		// node, a name bound to one, a call's container answer), the untagged copy that must keep its plain word
+		// road, a copy of a copy, the truthiness, membership and equality questions asked of a copy, and the text
+		// slice that never left its own road are in this one program, whose expectation is what CPython printed for
+		// it (roadmap Gap R.230, ADR 0335).
+		"slice_answer",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

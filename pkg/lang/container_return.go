@@ -663,26 +663,120 @@ func (g *irGen) containerAnswerOperand(b *strings.Builder, e Expr) (Expr, contai
 // and `ys = build(); ys[7]` are one program written two ways rather than an answer and a refusal (roadmap
 // Gap R.214, ADR 0334).
 //
-// Only the `Index` spelling is rewritten. A `Slice` is the same question at a door that is itself broken for
-// every base — the slice road copies a list's words without their tags, so `print(ys[0:2])` answers `[1, 0]`
-// for a mixed list whether `ys` is a literal, a variable or a call's answer, and binding one prints `1`
-// (Gap R.230) — and trading the honest refusal the slice position gives an answer today for one more wrong
-// number at exit 0 would move the defect down the contract's ranking instead of up it. The slice of an
-// answer is filed with the other doors the answer has not reached (Gap R.229).
+// Both spellings of a subscript ride the judgement, because the door underneath them now answers both. An
+// `Index` asks a slot of the answer; a `Slice` asks a run of them, and `rt_slice` copies the slots WITH their
+// tags, so the copy is a list like any other — printed by the tag-aware printer, measured by `len`, asked of
+// by `in`, bound to a name. Leaving the slice out would keep `print(ys[0:2])` answering `[1, 2]` while
+// `print(build()[0:2])` refused for want of a word, which is the base's spelling choosing the road again
+// (roadmap Gap R.214's neighbour Gap R.230, ADR 0335).
 //
 // It declines for anything else and the caller continues on its own road (ADR 0273's rule: an extra answer,
 // never a substitute for one) — so the fold keeps every literal it already answered.
 func (g *irGen) containerAnswerSubscript(b *strings.Builder, e Expr) (Expr, bool) {
-	if ix, isIx := e.(*Index); isIx {
-		name, _, ok := g.containerAnswerOperand(b, ix.Obj)
+	switch n := e.(type) {
+	case *Index:
+		name, _, ok := g.containerAnswerOperand(b, n.Obj)
 		if !ok {
 			return e, false
 		}
-		redo := *ix
+		redo := *n
+		redo.Obj = name
+		return &redo, true
+	case *Slice:
+		name, _, ok := g.containerAnswerOperand(b, n.Obj)
+		if !ok {
+			return e, false
+		}
+		redo := *n
 		redo.Obj = name
 		return &redo, true
 	}
 	return e, false
+}
+
+// recordContainerSlice writes what the roads look up for a name bound to a SLICE of a container —
+// `ys = xs[0:2]`, `ys = build()[0:2]`. `rt_slice` builds a fresh heap list whose slots are the base's
+// payloads copied WITH their tags (ADR 0187's pairing rule, applied to the slice road by ADR 0294), so
+// the object the name receives is a list like any other and has to be recorded as one: the binding used
+// to store the handle and record nothing, which is why `print(ys)` answered `1`, `len(ys)` refused for
+// want of a string and `for v in ys:` printed a single `0` (roadmap Gap R.230).
+//
+// The one judgement is whether the copy carries tags, and — the rule ADR 0232 exists to enforce — it is
+// asked of the base with the same predicates that chose the builder, never guessed: a tag is a claim about
+// bytes some writer wrote, and sending a reader to a tag array nobody filled prints the interned index
+// where the reference prints the text.
+func (g *irGen) recordContainerSlice(name string, base Expr) bool {
+	kind, ok := g.staticContainerKind(base)
+	if !ok || kind != "list" {
+		return false // a dict or a set is not sliced (the reference raises, and those doors are elsewhere)
+	}
+	g.listVars[name] = true
+	g.mixedLists[name] = g.containerSlotsCarryTags(base)
+	if g.mixedLists[name] {
+		g.listElemStr[name], g.listElemInt[name] = false, false
+	}
+	delete(g.containerLits, name)
+	delete(g.noneVars, name)
+	delete(g.boolVars, name)
+	if g.strVals != nil {
+		delete(g.strVals, name)
+	}
+	if g.dictVals != nil {
+		delete(g.dictVals, name)
+	}
+	return true
+}
+
+// containerSlotsCarryTags asks the sliced base the question its own builder asked when it wrote the
+// object: does every slot say what it holds? The answers are the build sites' predicates, imported
+// rather than restated — the literal road's `literalNeedsHeap || literalNeedsTags ||
+// literalHasPairElement`, the answer road's `containerAnswerCarryTags`, and for a variable the notebook
+// its builder left. A base the compiler cannot describe answers `no`, which is the conservative side: the
+// plain printer is what it was printed by before this row existed (roadmap Gap R.230).
+func (g *irGen) containerSlotsCarryTags(base Expr) bool {
+	switch n := base.(type) {
+	case *ListLit:
+		return literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n)
+	case *Name:
+		return g.mixedLists[n.Value]
+	case *Slice:
+		return g.containerSlotsCarryTags(n.Obj)
+	case *Call:
+		if nm, isName := n.Fn.(*Name); isName {
+			if a, ok := g.containerAnswerOf(nm.Value); ok {
+				return g.containerAnswerCarriesTags(a)
+			}
+		}
+	}
+	return false
+}
+
+// sliceBaseIsDescribed is the gate in front of the copy. `rt_slice` walks a heap list and copies its slots
+// WITH their tags, and the two roads that read the copy — the printer, which has to be told which printer, and
+// the binding, which has to record what arrived — can only be asked for a base the records describe. Handed a
+// base nobody describes, the road still emitted `rt_slice` over whatever word the base lowered to and the
+// caller printed that word: `print(m()["k"][0:1])` answered the new list's heap handle as the number `3` at
+// exit 0 (roadmap Gap R.232, ADR 0335's filed row). A refusal that names the missing record is what an
+// undescribable base gets, because a fabricated number outranks any refusal in the defect ranking.
+//
+// The arms are `containerSlotsCarryTags`'s own, one question asked twice rather than two questions asked
+// apart (ADR 0232's rule): a base whose tags the printer can be told about is exactly a base this answers yes
+// for.
+func (g *irGen) sliceBaseIsDescribed(base Expr) bool {
+	switch n := base.(type) {
+	case *ListLit:
+		return true
+	case *Name:
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.listLiteralOf(n) != nil
+	case *Slice:
+		return g.sliceBaseIsDescribed(n.Obj)
+	case *Call:
+		if nm, isName := n.Fn.(*Name); isName {
+			_, ok := g.containerAnswerOf(nm.Value)
+			return ok
+		}
+	}
+	return false
 }
 
 // recordContainerAnswer writes what the roads look up for a container variable: which of the three it is,
