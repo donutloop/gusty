@@ -28,8 +28,8 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 		theirs string
 	}{
 		{
-			name:   "a_position_past_the_end_of_a_literal_list",
-			src:    "print([][0])\n",
+			name: "a_position_past_the_end_of_a_literal_list",
+			src:  "print([][0])\n",
 			// ADR 0330 moved the sentence to the reference's, so the two columns agree — which is
 			// the assertion now (roadmap Gap R.223).
 			msg:    "IndexError: list index out of range",
@@ -76,8 +76,8 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 			msg:  "ValueError: chr() arg not in range(0x110000)",
 		},
 		{
-			name:   "a_position_below_a_comprehension",
-			src:    "xs = [x for x in [1, 2]]\nprint(xs[9])\n",
+			name: "a_position_below_a_comprehension",
+			src:  "xs = [x for x in [1, 2]]\nprint(xs[9])\n",
 			// ADR 0330 moved the sentence to the reference's, so the two columns agree — which is
 			// the assertion now (roadmap Gap R.223).
 			msg:    "IndexError: list index out of range",

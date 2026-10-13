@@ -65,7 +65,7 @@ func listIndexOutOfRange() string { return "list index out of range" }
 // because the actions differ — one read past the end, one wrote past it — and the shared bounds check
 // that normalises a negative index cannot tell them apart unless it is told (ADR 0330).
 func listAssignmentIndexOutOfRange() string { return "list assignment index out of range" }
-func stringIndexOutOfRange() string { return "string index out of range" }
+func stringIndexOutOfRange() string         { return "string index out of range" }
 
 // The `int()`/`float()` conversion sentences, in CPython's own words. Both quote the *source text* it
 // was handed, repr-quoted, which is the part a reader acts on — `invalid literal for int() with base 10`
