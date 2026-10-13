@@ -577,6 +577,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// slice that never left its own road are in this one program, whose expectation is what CPython printed for
 		// it (roadmap Gap R.230, ADR 0335).
 		"slice_answer",
+		// A slice bound is asked what it is: an integer (or a bool) is a position, `None` is the absence of one,
+		// and anything else the compiler can name the kind of is the reference's `TypeError: slice indices must be
+		// integers or None or have an __index__ method`. `xs = [1, 2]` with `print(xs["a":"b"])` answered `[1]` at
+		// exit 0 — the two texts' `@str_tab` indices taken for positions — and `print(xs[None:None])` answered `[]`
+		// because a `None` lowers to the word 0 and the presence flag was set beside it as though the program had
+		// written a number; `print(xs[[0]:2])` handed a list literal's global address to a helper whose parameter is
+		// an i32 register and `llc` rejected the module (exit 2). The `None` spellings, the bool bounds, the
+		// out-of-range and negative positions, the same questions over a text base and over a call's answer, and
+		// five of the raises taken by the program's own `except TypeError` are in this one program, whose expectation
+		// is what CPython printed for it (roadmap Gap R.233, ADR 0336).
+		"slice_bounds",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

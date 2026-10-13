@@ -287,6 +287,32 @@ only through another object); the copy's bounds are a third question, still unan
 (`print(xs["a":"b"])` answers `[1]` where the reference raises `TypeError: slice indices must be integers or None
 or have an __index__ method`). `programs/slice_answer.gy` is `match` on both legs.
 
+**A slice bound is asked what it is**, and ADR 0336 pays Gap R.233 — the question ADR 0335 left outside its own
+gate. `rt_slice` takes seven i32s and the road handed every bound to the generic expression door, so a text bound
+was its `@str_tab` index read as a position: `print(xs["a":"b"])` answered `[1]` and `print(s["a":"b"])` over
+`"abcd"` answered `b`, all at exit 0, while the reference raises `TypeError: slice indices must be integers or
+None or have an __index__ method`; `print(xs[[0]:2])` handed a list literal's global address to an i32 argument and
+`llc` rejected the module (exit 2). The other half was the bound the reference *excuses*: `None` lowers to the word
+0 and the presence flag was set beside it as though a bound had been written, so `print(xs[None:None])` answered
+`[]`, `print(s[None:None])` printed nothing, and `print(xs[::None])` was killed with exit 2. A bound now has two
+legal shapes and one illegal one — an integer (a `bool` included, since `True` is `1`) is a position, `None` is the
+absence of one, and anything else the compiler can name the kind of raises the reference's sentence through the
+non-local road, so `except TypeError:` takes it — and the ask happens **before any bound is lowered**, which is
+what keeps a container-valued bound out of an i32 slot. It runs after ADR 0335's base question, in the reference's
+order (`{1,2}["a":"b"]` complains about the set first), and every position that reads a copy asks it — print, `len`,
+a `for`, a condition, `==`, `in`, a binding — because they all lower through one door. Where the kind is a
+run-time fact the gate stays silent rather than guess (ADR 0232's rule: a claim about a kind is a claim about
+bytes some writer wrote), and the silence is priced: a bound hidden in a slot, in a call's answer or in a
+float-carrying parameter still answers `[1, 2]` (**Gap R.237**), a step of zero still hangs the runtime's loop and
+dies at **exit 2** where the reference raises `ValueError: slice step cannot be zero` (**Gap R.236**), a slice
+handed back by a function still travels as one word, so `print(n())` over `return xs[1:3]` answers `1` while
+`ys = n()` prints the list (**Gap R.238**), a comprehension over a copy refuses although the named copy iterates
+(**Gap R.239**), and `len` of a slice of a text refuses although `len` of the text and `len` of a list copy both
+answer (**Gap R.240**). Measuring the last of those found a defect that is not the slice road's and is now filed on
+its own: an `except` arm that **calls** a user function runs its handler and then takes the exception the handler
+already handled — traceback, exit 3, the statement after the `try` skipped (**Gap R.241**). `programs/slice_bounds.gy`
+is `match` on both legs.
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

@@ -1,5 +1,122 @@
 {
  "entries": {
+"def b():\n    return [1, 2, 3]\n\ns = \"abcd\"\nxs = [1, 2, 3]\nys = [1.5, \"a\"]\nflt = 1.5\ntxt = \"a\"\nlst = [1]\ndct = {1: 2}\n\nprint(xs[0:2], xs[1:], xs[:2], xs[::2], xs[-3:], xs[0:3:2])\nprint(s[1:3], s[:2], s[::2], s[-2:], s[::-1])\nprint(xs[None:None], xs[::None], xs[None:2], s[None:None], s[None::None])\nprint(xs[True:True], ys[True:True], xs[0:True])\nprint(ys[0:2], len(ys[0:2]))\nzs = xs[0:2]\nprint([x * 2 for x in zs])\nprint(1 in xs[0:2], xs[0:2] == [1, 2], s[1:3] == \"bc\")\n\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"raised: text low\")\ntry:\n    print(xs[txt:3])\nexcept TypeError:\n    print(\"raised: text high\")\ntry:\n    print(xs[0:2:txt])\nexcept TypeError:\n    print(\"raised: text step\")\ntry:\n    print(xs[flt:3])\nexcept TypeError:\n    print(\"raised: float low\")\ntry:\n    print(s[0:flt])\nexcept TypeError:\n    print(\"raised: float high\")\ntry:\n    print(xs[0:lst])\nexcept TypeError:\n    print(\"raised: list low\")\ntry:\n    print(xs[0:dct])\nexcept TypeError:\n    print(\"raised: dict low\")\ntry:\n    print(xs[0:(1, 2)])\nexcept TypeError:\n    print(\"raised: tuple low\")\ntry:\n    print(len(xs[0:txt]))\nexcept TypeError:\n    print(\"raised: length of bad bound\")\ntry:\n    for v in xs[0:txt]:\n        print(v)\nexcept TypeError:\n    print(\"raised: for over bad bound\")\ntry:\n    if xs[0:txt]:\n        print(\"truthy\")\nexcept TypeError:\n    print(\"raised: truthiness of bad bound\")\ntry:\n    print(xs[0:txt] == [1])\nexcept TypeError:\n    print(\"raised: equality of bad bound\")\ntry:\n    print(1 in xs[0:txt])\nexcept TypeError:\n    print(\"raised: membership of bad bound\")\ntry:\n    z = xs[0:txt]\n    print(z)\nexcept TypeError:\n    print(\"raised: bound from bad bound\")\ntry:\n    print(xs[0:txt][0:1])\nexcept TypeError:\n    print(\"raised: slice of bad bound\")\ntry:\n    print(b()[0:txt])\nexcept TypeError:\n    print(\"raised: call-answer base\")\ntry:\n    print(s[0:txt])\nexcept TypeError:\n    print(\"raised: text base\")\n": {
+    "stdout": "[1, 2] [2, 3] [1, 2] [1, 3] [1, 2, 3] [1, 3]\nbc ab ac cd dcba\n[1, 2, 3] [1, 2, 3] [1, 2] abcd abcd\n[] [] [1]\n[1.5, 'a'] 2\n[2, 4]\nTrue True True\nraised: text low\nraised: text high\nraised: text step\nraised: float low\nraised: float high\nraised: list low\nraised: dict low\nraised: tuple low\nraised: length of bad bound\nraised: for over bad bound\nraised: truthiness of bad bound\nraised: equality of bad bound\nraised: membership of bad bound\nraised: bound from bad bound\nraised: slice of bad bound\nraised: call-answer base\nraised: text base\n",
+    "hasStdout": true
+   },
+"xs = [1, 2, 3]\nprint(xs[None:None])\nprint(xs[None:2], xs[1:None], xs[::None])\nprint(xs[True:True], xs[True:3], xs[False:True])\nprint(xs[-9:9], xs[5:9])\nk = 2\nprint(xs[1:k], xs[k:k + 1])\nys = [1.5, \"a\", [7]]\nprint(ys[None:2], ys[0:0])\ns = \"abcdef\"\nprint(s[None:None], s[None:2], s[1:None], s[::None])\n\ndef built():\n    return [10, 20, 30]\n\nprint(built()[None:2], built()[1:])\n\ntry:\n    print(xs[\"a\":\"b\"])\nexcept TypeError:\n    print(\"text bounds, caught\")\n\ntry:\n    print(xs[1.5:2])\nexcept TypeError:\n    print(\"float bounds, caught\")\n\ntry:\n    print(xs[[0]:2])\nexcept TypeError:\n    print(\"list bounds, caught\")\n\ntry:\n    print(s[\"a\":\"b\"])\nexcept TypeError:\n    print(\"text bounds on text, caught\")\n\ntry:\n    print(len(xs[::\"a\"]))\nexcept TypeError:\n    print(\"text step, caught\")\n\ntry:\n    zs = xs[{\"a\": 1}:2]\n    print(zs)\nexcept TypeError:\n    print(\"dict bounds, caught\")\n": {
+    "stdout": "[1, 2, 3]\n[1, 2] [2, 3] [1, 2, 3]\n[] [2, 3] [1]\n[1, 2, 3] []\n[2] [3]\n[1.5, 'a'] []\nabcdef ab bcdef abcdef\n[10, 20] [20, 30]\ntext bounds, caught\nfloat bounds, caught\nlist bounds, caught\ntext bounds on text, caught\ntext step, caught\ndict bounds, caught\n",
+    "hasStdout": true
+   },
+"def b():\n    return [1, 2, 3]\nprint(b()[1:])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nprint(b()[None:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nys = b()[None:2]\nprint(ys)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(s[1:None])": {
+    "stdout": "bcd\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(s[::None])": {
+    "stdout": "abcd\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(s[None:2])": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(s[None:None])": {
+    "stdout": "abcd\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nk = 1\nprint(xs[k:k + 2])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nk = 2\nprint(xs[1:k])": {
+    "stdout": "[2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[-9:9])": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[0:2][None:1])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[1:], xs[:2], xs[::-1], xs[-2:])": {
+    "stdout": "[2, 3] [1, 2] [3, 2, 1] [2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[5:9])": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[False:True])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[True:3])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[True:True])": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\ni = None\nprint(xs[i:None])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs[1:None])": {
+    "stdout": "[2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs[::None])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs[None:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs[None:None])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[None:2])": {
+    "stdout": "[1.5, 'a']\n",
+    "hasStdout": true
+   },
 "def mixed():\n    return [1.5, \"a\", [7]]\n\ndef words():\n    return [\"hi\", \"ho\"]\n\ndef nums():\n    return [10, 20, 30]\n\ndef table():\n    return {\"k\": [1.5, \"a\"]}\n\nxs = [1.5, \"a\", [7]]\nprint(xs[0:2])\nprint(xs[0:1], xs[2:3], xs[0:0])\nprint(xs[1:], xs[:2], xs[::-1])\nys = xs[0:2]\nprint(ys)\nprint(len(ys))\nfor v in ys:\n    print(v)\nprint(ys[0], ys[1])\nprint(not xs[0:0], not xs[0:2])\nprint(2 in xs[0:2], \"a\" in xs[0:2])\nprint(xs[0:2] == [1.5, \"a\"], xs[0:2] == [1.5])\nzs = xs[0:2]\nprint(zs[0:1])\nprint(mixed()[0:2])\nprint(len(mixed()[0:2]))\nws = mixed()[0:2]\nprint(ws)\nprint(words()[0:1])\nplain = [1, 2, 3]\nprint(plain[0:2], plain[1:], plain[::-1])\nqs = plain[0:2]\nprint(qs, qs[0], qs[1])\nprint(table()[\"k\"])\ns = \"abcdef\"\nprint(s[1:3], s[::-1])\n": {
     "stdout": "[1.5, 'a']\n[1.5] [[7]] []\n['a', [7]] [1.5, 'a'] [[7], 'a', 1.5]\n[1.5, 'a']\n2\n1.5\na\n1.5 a\nTrue False\nFalse True\nTrue False\n[1.5]\n[1.5, 'a']\n2\n[1.5, 'a']\n['hi']\n[1, 2] [2, 3] [3, 2, 1]\n[1, 2] 1 2\n[1.5, 'a']\nbc fedcba\n",
     "hasStdout": true

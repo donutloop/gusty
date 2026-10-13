@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: [ADR 0187](0187-tagged-slots-are-written-as-pairs.md) (a tagged slot is written as a pair — the slice road was the last place they were separated), [ADR 0294](0294-a-slice-of-a-container-answers-the-list-the-handle-is-not-the.md) (a slice of a container answers the list; this row makes the copy carry what the list carries), [ADR 0334](0334-a-subscript-of-a-container-handed-back-by-a-call-is-read-by-the-door-that-reads-a-variables-slot.md) (the row that named this one and left the slice refused rather than widen it into a wrong number)
 Extends: [ADR 0232](0232-a-container-word-means-its-payload-and-its-tag.md) (the per-slot tag a read consults), [ADR 0175](0175-a-compiled-container-records-one-element-kind.md) (the notebooks a binding leaves), [ADR 0234](0234-a-comprehension-that-folds-is-the-literal-it-folds-to-and-a.md) (a binding records the kind it binds), [ADR 0333](0333-a-container-returned-from-a-call-is-a-value.md) (the answer a slice now copies)
 Supersedes: nothing
-Related: roadmap L11.1, Gap R.230 (closes), Gap R.33 (the slice half of sequence operations is paid here), Gap R.233 / R.234 / R.235 (newly measured here, filed here), Gap R.231 / R.229 / R.82 (the doors beside this one)
+Related: roadmap L11.1, Gap R.230 (closes), Gap R.33 (the slice half of sequence operations is paid here), Gap R.233 (paid by [ADR 0336](0336-a-slice-bound-is-asked-what-it-is-a-position-the-absence-of-one-or-the-reference-s-typeerror.md)) / R.234 / R.235 (newly measured here, filed here), Gap R.236 / R.237 / R.238 (measured by ADR 0336 as it closed R.233), Gap R.231 / R.229 / R.82 (the doors beside this one)
 Owner: `pkg/lang/slice_answer_test.go`, `pkg/lang/container_return.go`, `pkg/lang/codegen.go`, `pkg/lang/heapargs.go`
 
 ## Context
@@ -91,7 +91,7 @@ it, which is the difference that matters.
 
 | shape | CPython | this backend today | row |
 | --- | --- | --- | --- |
-| `xs = [1, 2]` / `print(xs["a":"b"])` | `TypeError: slice indices must be integers or None or have an __index__ method` | answers `[1]` at exit 0 | **Gap R.233** — the bounds are read as words whatever they hold |
+| `xs = [1, 2]` / `print(xs["a":"b"])` | `TypeError: slice indices must be integers or None or have an __index__ method` | answers `[1]` at exit 0 | **Gap R.233** — the bounds are read as words whatever they hold (paid by [ADR 0336](0336-a-slice-bound-is-asked-what-it-is-a-position-the-absence-of-one-or-the-reference-s-typeerror.md), which asks a bound what it is) |
 | `print({1, 2}[0:1])`, `print({1: 2}[0:1])` | `TypeError: 'set' object is not subscriptable` / `KeyError: slice(0, 1, None)` (a dict hashes the slice and reports the miss by name) | refuses (was **exit 2**) | **Gap R.234** — the slice road never asked what kind the base is |
 | `s = {1, 2}` / `print(s[0:1])`, `d = {1: 2}` / `print(d[0:1])` | the same two raises | refuses (was `[1]` at exit 0) | **Gap R.234** |
 | `xs = [1.5, "a", [7]]` / `print(xs[0:2][0])` | `1.5` | refuses: `index requires an inline list/dict/set literal` | **Gap R.235** — the copy has slots and no road reads them direct |

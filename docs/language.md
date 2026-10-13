@@ -1619,6 +1619,27 @@ point, because a slice road that tags every copy sends a plain `[1, 2, 3]` to a 
 `len(...)` of a slice answers the count — of a literal's slice, of a variable's, of a call's answer, and of a
 name bound to a copy.
 
+**A bound is a position or an absence, never a value of another kind** (**ADR 0336**). An integer — a `bool`
+included, because `True` is `1` — is a position; `None` means the same thing an omitted bound means; anything else
+the compiler can name the kind of raises the reference's
+`TypeError: slice indices must be integers or None or have an __index__ method`, catchable by the program's own
+`except`:
+
+```
+xs = [1, 2, 3]
+print(xs[None:None])   # [1, 2]   — the same slice as xs[:], because None is an absent bound, not a 0
+print(xs[::None])      # [1, 2]
+print(xs[True:3])      # [2, 3]   — a bool is an int
+print(xs[-9:9])        # [1, 2, 3] — an out-of-range bound clamps, it does not raise
+s = "abcdef"
+print(s[None:2])       # ab       — the same rule over the text road
+
+# and these raise, where the toolchain once answered a plausible list:
+#   xs["a":"b"]        TypeError: slice indices must be integers or None or have an __index__ method
+#   xs[1.5:2]          the same
+#   xs[[0]:2]          the same (this one used to reach `llc` as a global in an i32 argument: exit 2)
+```
+
 What the door still declines, and why, is filed rather than glossed:
 
 - **the copy's own slots, read directly** — `print(xs[0:2][0])` is `1.5` in the reference and
@@ -1631,10 +1652,25 @@ What the door still declines, and why, is filed rather than glossed:
 - **a base that is not a list at all** — `print({1, 2}[0:1])` and `print(d[0:1])` over a dict refuse here, where
   the reference raises `TypeError: 'set' object is not subscriptable` for the set and `KeyError: slice(0, 1, None)`
   for the dict (a slice of integers is hashable, so the dict hashes it and names the key it missed):
-  **Gap R.234**; both were exit 2 or a fabricated `[1]` before the gate);
-- **bounds that are not numbers** — `print(xs["a":"b"])` answers `[1]` at exit 0 where the reference raises
-  `TypeError: slice indices must be integers or None or have an __index__ method`: **Gap R.233**, and the one
-  entry above that is a wrong answer rather than a refusal.
+  **Gap R.234**; both were exit 2 or a fabricated `[1]` before the gate;
+- **a step of zero** — `print(xs[::0])` hangs the runtime's own copy loop and the run is killed with nothing on
+  either stream (**exit 2**, the code ADR 0166 reserves for a compiler bug) where the reference raises
+  `ValueError: slice step cannot be zero`: **Gap R.236**, and the worst entry below, because a tutorial's
+  one-liner is reported as our failure;
+- **a bound whose kind is a tag, not a record** — `ys = ["a"]` with `print(xs[ys[0]:2])`, or a call handing back a
+  text, answer `[1, 2]` at exit 0 where the reference raises the `TypeError` above: **Gap R.237**, the same missing
+  question one layer in, where the kind travels with the payload and the gate asks only where a record names it;
+- **a comprehension over a copy** — `print([x * 2 for x in xs[0:2]])` is `[2, 4]` in the reference and refuses
+  here with a sentence about texts, while the same copy *named* (`zs = xs[0:2]`) iterates and answers: **Gap R.239**,
+  because the iterable door asks none of what the binding door records;
+- **the length of a slice of a text** — `print(len(s[1:3]))` over `s = "abcd"` is `2` in the reference and refuses
+  with `len requires an inline list/dict/set literal`, although `len(s)` answers `4`, `len(xs[0:2])` of a list copy
+  answers `2`, and the fold that prints `s[1:3]` holds the characters it would count: **Gap R.240**;
+- **a slice handed back by a function** — `def n(): return xs[1:3]` with `print(n())` answers `1` (and `3` over a
+  mixed base, the copy's handle) where the reference prints `[2, 3]`, and `for v in n():` prints a single `0`:
+  **Gap R.238**, because the scan that decides whether a function hands back a container has no arm for a
+  `return` that is a slice — ADR 0333's decision one construct further out. `ys = n()` prints the list correctly,
+  which is what makes it a missing record rather than a missing object.
 
 ### A container in a numeric operand
 
@@ -1937,7 +1973,26 @@ for i in range(n):
   any direction the arm leaves by: falling through, `return`, `break` or `continue`. The compiled
   backend keeps that state in one module-wide flag, so an arm that accepted an exception without
   clearing it handed the program a second copy: the next call to a user-defined function found the
-  flag still set and reported the exception again, after the handler had already run and printed.
+  flag still set and reported the exception again, after the handler had already run and printed. ADR 0218 put that
+  clear on every **edge out** of the arm — falling through, `return`, `break`, `continue`. One shape is still open,
+  and it is the other direction: a call to a user-defined function **inside** the arm's body, whose statements run
+  with the flag still set, so the call's own post-call check takes the exception back before any edge-out clear is
+  reached. The arm prints, the traceback prints, the statement after the `try` never runs, and the run exits 3 —
+  while the same arm with a *builtin* in it (`print("caught")`) exits 0, because a builtin has no such check
+  (**Gap R.241**, measured while landing ADR 0336, reproduced with a plain out-of-range subscript):
+
+  ```py
+  def h():
+      print("caught")
+
+  xs = [1, 2, 3]
+  try:
+      print(xs[9])
+  except IndexError:
+      h()                    # the arm runs…
+  print("after")             # …CPython prints both lines at exit 0; this backend prints `caught`,
+                             # reports the handled IndexError again, and exits 3
+  ```
 
   ```py
   try:

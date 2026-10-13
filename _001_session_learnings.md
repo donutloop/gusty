@@ -10076,3 +10076,83 @@ item cell and its fix cell, the details section's code block and its prose, ADR 
   shapes and was true of two of them; the row's fix cell told the next reader to raise one sentence where two are
   owed, one of them from a different door (the hashing door's `KeyError`, Gap R.217's neighbourhood). The
   corrected row now names both, and the raise table that eventually lands must carry four rows, not two.
+
+## A bound is asked what it is: the slice door's three handles (L11.4, Gap R.233; ADR 0336; Gaps R.236, R.237, R.238 filed)
+
+**Feature (codegen)**: `print(xs["a":"b"])` answered `[1]`, `print(xs[1.5:2])` answered `[2]`,
+`print(s["a":"b"])` over `"abcd"` answered `b` — all at **exit 0** — and `print(xs[[0]:2])` was an **exit 2**.
+The same door that ADR 0335 had just fixed took seven i32s and never asked what three of them held. The mirror
+half was worse to look at: `None` is a bound the reference excuses, and the road set the presence flag beside the
+word `None` lowers to, so `print(xs[None:None])` answered `[]` and `print(xs[::None])` was killed with the run.
+
+- **The two halves of a missing question look like opposite bugs.** A text bound taken for a position invents a
+  list; a `None` bound taken for a position deletes one. Both came from "the bound is an i32, and an i32 has no
+  kind", and one file answers both — `sliceBoundIsAbsent` for the absence, `nonIntBoundTypeName` + `badSliceBoundGate`
+  for the kind — because splitting them would have produced a row that raises on `"a"` and still prints `[]` for
+  `None`, which is the same hole with a nicer message.
+- **Ask the kind before anything is lowered, and the exit-2 class goes with it.** Gap R.222's lesson re-paid: a
+  container-valued bound reaches `rt_slice`'s i32 argument as a `@.lstN` global address, `llc` rejects the module,
+  and the toolchain exits 2 on a two-line program. A gate that emits the raise and reopens its block never lowers
+  the offending expression, so the invalid instruction is never written — asserted by checking the emitted module
+  for the absence of `@rt_slice(` on a bad-bound program, not only by the exit code.
+- **The order of two gates is the reference's order, not the compiler's convenience.** ADR 0336's bounds gate runs
+  **after** ADR 0335's base gate, because `print({1, 2}["a":"b"])` is a complaint about a set in CPython, and a
+  toolchain that answers "your bound is not an integer" first is describing a program the reader did not write.
+  The same reasoning decided the print-road rewrite order in ADR 0334; it is worth naming as a rule, because both
+  times it looked like an implementation detail.
+- **A gate's silence is a decision with a price on it, so price it in the tracker.** A bound whose kind travels as
+  a *tag* — `ys[0]`, or a call handing back a text — still answers `[1, 2]` at exit 0. The alternative (raise when
+  the compiler cannot tell) turns `xs[k:2]` with `k = 1` into a coin flip, because the notebooks are not complete.
+  So the row keeps the silence and files **Gap R.237** naming the road that can see the pair
+  (`runtimeSlotPairDeep`), beside **Gap R.82** and **Gap R.146** where the same one-word position is already
+  priced.
+- **Two more wrong answers turned up in the row's own blast radius, and both were filed rather than folded in**: a
+  **step of zero** hangs `rt_slice`'s loop and the killed run comes out as exit 2 with nothing on either stream
+  (**R.236** — the only exit-2 shape left on the door, which is why it leads its family in the queue), and a slice
+  **returned** from a function answers one word — `print(n())` prints `1` where `ys = n()` prints the list, because
+  the scan that classifies a `return` has no arm for a slice (**R.238**, ADR 0333 one construct further out).
+  Bundling either would have hidden a second wrong-answer class inside a row about kinds.
+- **Test rows are claims, and a claim copied from the tool is not a claim.** Two of my hand-written rows were
+  wrong against CPython (`xs[None:2]` of a two-element list is `[1, 2]`, not `[1]`) and the parity leg failed them
+  before anything was recorded; `recmerge` refused a third outright (`def n(k): return xs[1:k]` answers `1` here,
+  `[2, 3]` there), which is how **R.238** was found — a refusing recorder is a measurement, not an obstacle.
+
+## The conformance program is a measurement engine, not a celebration (L11.4, Gap R.233; ADR 0336; Gaps R.239, R.240, R.241 filed)
+
+The row's behaviour landed green in one build (`/tmp/gustyc-r233`): 27 answered shapes, 28 raise rows, the catchable
+rows, the fold's control, the IR assertion. Writing `integration/programs/slice_bounds.gy` — one program, its stdout
+compared line for line against `python3` — then failed four times and each failure was a **new defect**, not a bug in
+this row:
+
+- **A shape the program needs may not exist.** `tup = (1, 2)` is `codegen: unsupported expression *lang.Tuple` at
+  exit 1, so the tuple-bound row cannot name its tuple; written inline — `print(xs[0:(1, 2)])` — it raises the
+  reference's `TypeError` correctly. The lesson is not "tuples are broken" (they are on the roadmap) but that the
+  *program* must be written in the subset the language answers, and the *test table* must say which spelling it means.
+- **Two doors, one copy: `print([x * 2 for x in xs[0:2]])` refuses while `zs = xs[0:2]` then
+  `print([x * 2 for x in zs])` answers `[2, 4]`** (**Gap R.239**). The same asymmetry this cycle made illegal for a
+  subscript (ADR 0334) survives for a comprehension's iterable, because the door asks a literal, `range()`, or a
+  recorded variable — and a `*Slice` node is none of those. Its refusal even speaks about texts ("the reference
+  iterates a text one character at a time"), so the copy never reaches this row's own gate: a bad bound inside a
+  comprehension is refused, not raised.
+- **`len` of a slice of a text refuses with `len requires an inline list/dict/set literal`** (**Gap R.240**) while
+  `len(s)` answers `4`, `len(xs[0:2])` answers `2`, and the fold that prints `s[1:3]` holds the count. Three doors
+  own the fact; the fourth names a literal that is nowhere in the program — ADR 0249 again, a refusal whose sentence
+  describes a different shape.
+- **An `except` arm that *calls* a user function takes the run down with the exception it already handled**
+  (**Gap R.241**): the arm prints, the traceback prints, the statement after the `try` never runs, exit 3 — and the
+  same arm with `print` in it exits 0. That pair *is* the diagnosis: every user call ends its own block with the
+  post-call check on the module-wide `@exn_flag`, and ADR 0218 put `clearExn` on the edges **out** of an arm, never on
+  the edge **into** one. It reproduces with a plain `print(xs[9])`, so it is filed as the exception road's and not
+  smuggled into a row about slices — and `docs/language.md`'s ADR 0218 bullet, which claimed the shape away, was
+  re-measured and corrected in the same commit.
+- **A conformance program asserts only its own row's doors.** Each of the four above is absent from
+  `programs/slice_bounds.gy` and present in a filed table with the reference's answer beside what the toolchain says
+  today; the program is `match` on both legs, and the refusals stay visible instead of being laundered into it.
+- **A roadmap row label is a machine-read field.** The Open queue's Pri cell must match `^[0-9]+[a-z]?$`
+  (`roadmap_snapshot_test.go`'s `queuePri`): a 27th row in the `26…` family cannot be `26aa`, and the failure mode is
+  spectacular rather than quiet — `TestTheRoadmapSnapshotIsMeasuredNotRemembered` stopped seeing the rows after the
+  first one and reported "32 of 45 queue rows" for a 157-row queue. New rows take a fresh numeric label and sit
+  physically beside their family (`130/131/132` here).
+- **The parser has no `except <Type> as e:`** (Gap R.113, open since 2026-10-02), so a catchable row can assert
+  `except TypeError:` and `except:` but not a named exception object. Where a row wants the name, the row is the
+  parser's.

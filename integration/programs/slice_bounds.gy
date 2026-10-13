@@ -1,0 +1,91 @@
+def b():
+    return [1, 2, 3]
+
+s = "abcd"
+xs = [1, 2, 3]
+ys = [1.5, "a"]
+flt = 1.5
+txt = "a"
+lst = [1]
+dct = {1: 2}
+
+print(xs[0:2], xs[1:], xs[:2], xs[::2], xs[-3:], xs[0:3:2])
+print(s[1:3], s[:2], s[::2], s[-2:], s[::-1])
+print(xs[None:None], xs[::None], xs[None:2], s[None:None], s[None::None])
+print(xs[True:True], ys[True:True], xs[0:True])
+print(ys[0:2], len(ys[0:2]))
+zs = xs[0:2]
+print([x * 2 for x in zs])
+print(1 in xs[0:2], xs[0:2] == [1, 2], s[1:3] == "bc")
+
+try:
+    print(xs[0:txt])
+except TypeError:
+    print("raised: text low")
+try:
+    print(xs[txt:3])
+except TypeError:
+    print("raised: text high")
+try:
+    print(xs[0:2:txt])
+except TypeError:
+    print("raised: text step")
+try:
+    print(xs[flt:3])
+except TypeError:
+    print("raised: float low")
+try:
+    print(s[0:flt])
+except TypeError:
+    print("raised: float high")
+try:
+    print(xs[0:lst])
+except TypeError:
+    print("raised: list low")
+try:
+    print(xs[0:dct])
+except TypeError:
+    print("raised: dict low")
+try:
+    print(xs[0:(1, 2)])
+except TypeError:
+    print("raised: tuple low")
+try:
+    print(len(xs[0:txt]))
+except TypeError:
+    print("raised: length of bad bound")
+try:
+    for v in xs[0:txt]:
+        print(v)
+except TypeError:
+    print("raised: for over bad bound")
+try:
+    if xs[0:txt]:
+        print("truthy")
+except TypeError:
+    print("raised: truthiness of bad bound")
+try:
+    print(xs[0:txt] == [1])
+except TypeError:
+    print("raised: equality of bad bound")
+try:
+    print(1 in xs[0:txt])
+except TypeError:
+    print("raised: membership of bad bound")
+try:
+    z = xs[0:txt]
+    print(z)
+except TypeError:
+    print("raised: bound from bad bound")
+try:
+    print(xs[0:txt][0:1])
+except TypeError:
+    print("raised: slice of bad bound")
+try:
+    print(b()[0:txt])
+except TypeError:
+    print("raised: call-answer base")
+try:
+    print(s[0:txt])
+except TypeError:
+    print("raised: text base")

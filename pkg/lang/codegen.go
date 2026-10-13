@@ -6779,7 +6779,10 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		step := int64(1)
 		hasLow := false
 		hasHigh := false
-		if n.Low != nil {
+		// A bound written as `None` is a bound the program did not write: the reference reads
+		// `s[None:None]` and `s[:]` as the same slice, so the fold reads them the same way and does
+		// not ask `foldConstInt` for a value that is standing in for an absence (roadmap Gap R.233).
+		if !g.sliceBoundIsAbsent(n.Low) {
 			v, ok := g.foldConstInt(n.Low)
 			if !ok {
 				return "", false
@@ -6787,7 +6790,7 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			low = v
 			hasLow = true
 		}
-		if n.High != nil {
+		if !g.sliceBoundIsAbsent(n.High) {
 			v, ok := g.foldConstInt(n.High)
 			if !ok {
 				return "", false
@@ -6795,7 +6798,7 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			high = v
 			hasHigh = true
 		}
-		if n.Step != nil {
+		if !g.sliceBoundIsAbsent(n.Step) {
 			v, ok := g.foldConstInt(n.Step)
 			if !ok {
 				return "", false
@@ -10695,26 +10698,33 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// still has an answer, and the table gives it (ADR 0229).
 		_, objIsFoldedStr := g.stringVal(n.Obj)
 		if objIsFoldedStr || g.exprIsString(n.Obj) {
+			// A text slice counts characters, so its bounds are positions and the reference's sentence for a
+			// bound that is neither an integer nor `None` is the same one a list's slice gets. Asked before the
+			// fold and before the helper, because both read a bound as a number without asking what it holds:
+			// `print(s["a":"b"])` over `s = "abcd"` answered `b` at exit 0 (roadmap Gap R.233, ADR 0336).
+			if g.badSliceBoundGate(b, n) {
+				return "0", nil
+			}
 			if sv, ok := g.stringVal(n); ok {
 				return g.internStr(b, sv), nil
 			}
 			// Bounds that are values rather than constants are still a slice of the same
 			// string: an absent bound is spelled with the helper's own sentinel, because an
 			// i32 argument cannot be "missing" (ADR 0229).
-			if n.Step == nil {
+			if g.sliceBoundIsAbsent(n.Step) {
 				if sreg, sok, serr := g.strReg(b, n.Obj); serr != nil {
 					return "", serr
 				} else if sok {
 					lo := "-2147483648"
 					hi := "2147483647"
-					if n.Low != nil {
+					if !g.sliceBoundIsAbsent(n.Low) {
 						v, lerr := g.strPosReg(b, n.Low)
 						if lerr != nil {
 							return "", lerr
 						}
 						lo = v
 					}
-					if n.High != nil {
+					if !g.sliceBoundIsAbsent(n.High) {
 						v, herr := g.strPosReg(b, n.High)
 						if herr != nil {
 							return "", herr
@@ -10732,10 +10742,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// roads that read the copy need to be told whether its slots describe themselves. Asked of a base
 		// neither record describes, the road used to emit the copy over whatever word the base lowered to and
 		// the caller printed that word — a heap handle wearing the program's answer (`print(m()["k"][0:1])`
-		// printed `3`, exit 0). The refusal names the missing record (ADR 0249's rule; roadmap Gap R.232,
+		// printed `3`, exit 0). The refusal names the missing record (ADR 0249's rule; roadmap Gap R.235,
 		// ADR 0335).
 		if !g.sliceBaseIsDescribed(n.Obj) {
-			return "", fmt.Errorf("cannot slice %s: the copy is a list whose slots are the base's payloads with their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one (roadmap Gap R.232, ADR 0335)", exprSnippet(n.Obj))
+			return "", fmt.Errorf("cannot slice %s: the copy is a list whose slots are the base's payloads with their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one (roadmap Gap R.235, ADR 0335)", exprSnippet(n.Obj))
+		}
+		// The base is a container the records describe; now the three bounds are asked the same question the
+		// subscript door asks its position (Gap R.222's gate, one construct over): an integer or a bool is a
+		// position, `None` is the absence of one, and anything else the compiler can name the kind of is the
+		// reference's `TypeError: slice indices must be integers or None or have an __index__ method`. Asked
+		// before any bound is lowered, so a text bound never becomes its `@str_tab` index and a position
+		// (`print(xs["a":"b"])` answered `[1]` at exit 0) and a list bound never reaches `rt_slice`'s i32
+		// arguments as a global address (exit 2, roadmap Gap R.233, ADR 0336).
+		if g.badSliceBoundGate(b, n) {
+			return "0", nil
 		}
 		objReg, err := g.value(b, n.Obj)
 		if err != nil {
@@ -10775,21 +10795,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		hasLow := "0"
 		hasHigh := "0"
 		hasStep := "0"
-		if n.Low != nil {
+		if !g.sliceBoundIsAbsent(n.Low) {
 			lowReg, err = g.value(b, n.Low)
 			if err != nil {
 				return "", err
 			}
 			hasLow = "1"
 		}
-		if n.High != nil {
+		if !g.sliceBoundIsAbsent(n.High) {
 			highReg, err = g.value(b, n.High)
 			if err != nil {
 				return "", err
 			}
 			hasHigh = "1"
 		}
-		if n.Step != nil {
+		if !g.sliceBoundIsAbsent(n.Step) {
 			stepReg, err = g.value(b, n.Step)
 			if err != nil {
 				return "", err

@@ -10518,7 +10518,7 @@ text instead of its type.
 
 <a id="gap-r-233"></a>
 
-### Gap R.233 — a slice whose bounds are text answers a list instead of raising (OPEN, found by ADR 0335)
+### Gap R.233 — a slice whose bounds are text answers a list instead of raising (paid by ADR 0336; found by ADR 0335)
 
 ```python
 xs = [1, 2]
@@ -10539,9 +10539,59 @@ only — *are these slots describable?* — because the bounds ask a different q
 integer?*) and answering one with the other would leave a wrong number standing behind a closed row.
 
 The fix is the same shape as R.222's: read the bound's kind before lowering it, and when it is neither an
-integer nor `None`, raise the reference's `TypeError` with the type named, catchable by the program's own
-`except`. The raise, not a decline: the reference raises here, and a refusal where the reference raises is the
-wrong-answer class one step away.
+integer nor `None`, raise the reference's `TypeError` — and note that this sentence, unlike the one Gap R.222
+quotes, names **no** type: `slice indices must be integers or None or have an __index__ method` comes out of the
+slice object before the container is ever asked, which is why the same words are right for a list and for a text.
+The raise, not a decline: the reference raises here, and a refusal where the reference raises is the wrong-answer
+class one step away.
+
+**What paid it (ADR 0336).** A bound has two legal shapes and one illegal one, and the road now asks which it
+has — `pkg/lang/slice_bounds_kind.go`, the door-form file beside `list_index_kind.go` rather than a second copy
+of it:
+
+- `sliceBoundIsAbsent` reads a missing bound, a `None` literal and a name the binding recorded as the singleton as
+  **one absence**, and every road that lowers a bound asks it instead of `!= nil`: the list road's three presence
+  flags, the string fold's `hasLow`/`hasHigh`, the `rt_str_slice` step test. That single change retires the mirror
+  half of the defect — `xs[None:None]` answering `[]`, `s[None:None]` printing nothing, `xs[::None]` being killed
+  with **exit 2** — because a presence flag set beside the word `None` lowers to is a claim that the program wrote
+  a bound, and it did not.
+- `nonIntBoundTypeName` is ADR 0329's classifier with the two rulings a *bound* needs that an *index* does not
+  (`None` is legal; an absent bound is not a kind claim at all). A text, float, list, dict, set or tuple bound is
+  refused, by literal or by the notebook the print door asks — `i = "a"` makes `xs[i:2]` a text bound, because the
+  last thing the program put in `i` was a text.
+- `badSliceBoundGate` asks low, high, step in that order **before any bound is lowered** and raises through the
+  non-local road, so `except TypeError:` takes it. Not lowering a refused bound is the point: it is what keeps a
+  container-valued bound out of an i32 argument slot, the shape that had `llc` reject the module.
+
+The gate stands **after** ADR 0335's base question, which is the reference's order: `print({1, 2}["a":"b"])`
+complains about the set (`TypeError: 'set' object is not subscriptable`), not the bounds, and a reader told about
+the base is told the thing that has to be fixed first. Every position that reads a copy asks the bounds question
+— print, `len`, a `for`, a condition, `==`, `in`, a binding — because they all lower through the one door.
+
+**What the gate cannot see is filed, not guessed.** A bound whose kind is a run-time fact keeps the road it always
+went through, exactly as ADR 0329's gate stays silent for an `Index`: `ys = ["a"]` with `print(xs[ys[0]:2])`, and
+`def g(): return "a"` with `print(xs[g():2])`, both answer `[1, 2]` at exit 0 where the reference raises
+(**Gap R.237**). Two more shapes were measured on the way and are rows of their own: a **step of zero** hangs the
+runtime's own loop and the run is killed with no output at all — **exit 2** — where the reference raises
+`ValueError: slice step cannot be zero` (**Gap R.236**); and a **slice handed back by a function** still travels as
+one word, so `print(n())` over `return xs[1:3]` answers `1` where the reference prints `[2, 3]` (**Gap R.238**).
+
+A third batch came out of writing the row's conformance program — the program is a measurement, and each of these is
+absent from `programs/slice_bounds.gy` (which asserts only the doors this row answers) and present in a filed table
+with the reference's answer beside what the toolchain says today:
+
+- **a comprehension whose iterable is a copy** — `print([x * 2 for x in xs[0:2]])` refuses, while `zs = xs[0:2]` /
+  `print([x * 2 for x in zs])` answers `[2, 4]`: **Gap R.239**, the iterable door asking none of what the binding
+  door records (`recordContainerSlice`, ADR 0335) — and the copy's bounds never reach this row's gate through that
+  door, because the comprehension refuses first;
+- **the length of a slice of a text** — `print(len(s[1:3]))` refuses with `len requires an inline list/dict/set
+  literal` where `len(s)` answers `4`, `len(xs[0:2])` answers `2`, and the fold that prints `s[1:3]` holds the
+  characters it would count: **Gap R.240**;
+- **an `except` arm that calls a user function** — the arm runs, then the exception the arm already handled is
+  reported again: traceback, exit 3, the statement after the `try` skipped, where the same arm with a builtin in it
+  exits 0. It reproduces with a plain `print(xs[9])`, so it is the exception road's row (**Gap R.241**), and
+  `docs/language.md`'s ADR 0218 bullet — which claimed the shape away — was re-measured and corrected in this
+  commit: `clearExn` stands on the edges **out** of an arm, and the missing one is on the edge **into** it.
 
 <a id="gap-r-234"></a>
 
@@ -10622,3 +10672,224 @@ the fold's literal gate; and a base whose slots the records describe through ano
 a binding records a call's answer. Five rows are pinned as refusals today:
 `pkg/lang/slice_answer_test.go::TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed` and
 `integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` move them when they land.
+
+<a id="gap-r-236"></a>
+
+### Gap R.236 — a slice with a step of zero hangs the run and leaves the toolchain holding the blame (OPEN, found by ADR 0336)
+
+```python
+xs = [1, 2]
+print(xs[::0])        # ValueError: slice step cannot be zero
+print(xs[0:2:0])      #   in the reference
+                      # this backend: exit 2, and nothing on either stream
+```
+
+The bounds gate ADR 0336 built asks the **kind** of a bound — integer, bool, `None`, or the reference's
+`TypeError` — and a `0` is a perfectly good integer, so it walks straight through the gate into `rt_slice`, which
+is handed `step = 0` with its presence flag set and walks its own loop forever: the index never reaches the end
+and never passes it, the counter moves by nothing, and the run dies when the harness's budget expires. Exit 2 is
+the code ADR 0166 reserves for a **compiler** bug, so an ordinary one-line program — the kind a tutorial writes
+to show what a step is — is reported as our failure, with no message to tell the reader that the program was the
+problem.
+
+This is the value question on the same three i32s, which is why it is not folded into the kind row: the reference
+answers it with a different class (`ValueError`, not `TypeError`) and a different sentence (`slice step cannot be
+zero`), and a row that closed both would have hidden a second raise inside a row about kinds.
+
+Two halves, in the order the reference asks them:
+
+- in `badSliceBoundGate`, after the kind question, ask the value — a step the compiler can read as the integer 0
+  raises `ValueError: slice step cannot be zero` through the same non-local road the kind raise takes, catchable by
+  the program's own `except ValueError`;
+- a step the compiler cannot read (a variable, a slot) is checked where the loop runs — a guard beside the call
+  to `rt_slice`, or in the helper itself — because the loop that hangs is the runtime's, and a compile-time-only
+  check leaves `k = 0` with `xs[0:2:k]` as a hang rather than a raise.
+
+`print(xs[::0])`, `print(xs[0:2:0])` and the variable-step shape raise the reference's class and sentence
+catchably at exit 3, no row of the slice tables reaches exit 2, and the rows move from here into the raise table
+of `pkg/lang/slice_bounds_kind_test.go`.
+
+<a id="gap-r-237"></a>
+
+### Gap R.237 — a bound whose kind lives in a slot or in a call's answer is read as a word (OPEN, found by ADR 0336)
+
+```python
+xs = [1, 2]
+ys = ["a"]
+print(xs[ys[0]:2])    # TypeError: slice indices must be integers or None or have an __index__ method
+                      # this backend: [1, 2]      (exit 0)
+
+def g():
+    return "a"
+print(xs[g():2])      # the reference raises;  this backend: [1, 2]   (exit 0)
+```
+
+ADR 0336's gate names a bound's kind where a **record** names it: a literal says its own kind, and a name carries
+the notebook its last binding left. A slot and a call's answer carry their kind somewhere the gate does not look —
+in the **tag** that travels beside the payload — so the bound arrives as one word, the word a text is, and is
+counted as a position. `ys[0]` is the text `"a"`, whose word is an index into `@str_tab`; the slice takes that
+index for a position, and the copy arrives with elements nobody asked for at the exit code that means the program
+ran.
+
+It is Gap R.233's defect seen from the side the compiler cannot see, and it is deliberately left unfixed by that
+row: the gate could only reach these shapes by **guessing** a kind, and ADR 0232's rule is that a kind is a claim
+about bytes some writer wrote, not a probability. Accusing a name whose kind nobody wrote is the other way to be
+wrong — `xs[k:2]` with `k = 1` is the ordinary case, and a gate that flinches at a variable bound is worse than a
+gate that misses a slot.
+
+A third spelling arrived with the gate's own tests: a **float** handed to a parameter that slices by it.
+
+```python
+def at(k):
+    xs = [1, 2, 3]
+    return xs[0:k]
+
+print(at(1.5))   # TypeError in the reference;  this backend: 1   (exit 0) — the copy's heap handle
+print(at("a"))   # TypeError in the reference;  this backend: raises TypeError  ✓
+```
+
+The same body, two arguments, two verdicts — and that is the row's diagnosis handed to it: a text argument has a
+kind the notebooks carry into the body, so the gate names `str` and raises; a float parameter belongs to the **pair
+road** (ADR 0273), where the compiler deliberately holds no static kind, so the gate stays silent and the copy is
+built from the box's address. It is the missing record, not the missing syntax, and it is pinned beside the two
+slot/call rows in both filed tables.
+
+The fix is to stop asking the bound for one word and ask it for the pair the slot roads already compute:
+`runtimeSlotPairDeep` and its neighbours hand back `(payload, tag)` for exactly this question, and the tag decides
+what the static classifier would have decided — text, float or container is the reference's `TypeError`, raised
+before the bound is lowered; an int or a bool is a position and the copy answers as it does today. That is the
+same road as **Gap R.82** (a slot used arithmetically) and **Gap R.146** (a pair handed to a position that keeps
+one word), reached from the slice door: one predicate, three doors, and it should be paid once.
+
+<a id="gap-r-238"></a>
+
+### Gap R.238 — a slice handed back by a function answers one word (OPEN, found by ADR 0336)
+
+```python
+def n():
+    xs = [1, 2, 3]
+    return xs[1:3]
+
+print(n())            # [2, 3] in the reference;  this backend: 1        (exit 0)
+ys = n()
+print(ys)             # [2, 3] — answered, because the program named the answer
+for v in n():
+    print(v)          # 2, 3 in the reference;    this backend: 0        (exit 0)
+print(len(n()))       # 2 in the reference;       this backend: refuses (exit 1)
+print(n() == [2, 3])  # True in the reference;    this backend: refuses (exit 1)
+```
+
+ADR 0333 decided that a container handed back by a call is a **value**: the callee materialises the object at its
+`ret`, and the caller receives a handle under a rooted name with the notebooks the doors read. The decision was
+made for the returns the scan can **read** — a literal, a comprehension, an empty-container builtin — and the scan
+has no arm for a `return` that is a *slice*, so the copy of ADR 0335 travels as the one word `rt_slice` returned.
+The print door has no record to ask, so it prints the word: `1` for an all-integer copy, `3` — the heap handle —
+for a mixed one. The loop asks a length of that word and gets one iteration printing `0`. `len` and `==` refuse,
+which is the honest residue of the same missing record.
+
+The name-bound form is the proof that this is a missing record rather than a missing object: `ys = n()` prints
+`[2, 3]`, because the binding road asks `containerAnswerOf` and takes whatever the callee's own body says — and
+one more `return` the scan can read is all that is left. The arm belongs in `containerKindOfIn`/`answerOf` beside
+the `*Comp` case: a slice of something the body describes as a list **is** a list answer, tagged when the base is
+tagged (`containerSlotsCarryTags`, asked once, at the callee's `ret`, where the builder's question belongs —
+ADR 0232's rule, not a guess at the call site).
+
+Five rows are pinned with their wrong answers today, in
+`pkg/lang/slice_bounds_kind_test.go::TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed`: the two print shapes,
+the loop, and the two refusals. They move into the answered tables when the scan grows the arm, and the row cannot
+be closed by deleting them.
+
+<a id="gap-r-239"></a>
+
+### Gap R.239 — a comprehension whose iterable is a copy refuses while the same copy, named, iterates (OPEN, found by ADR 0336)
+
+```python
+xs = [1, 2, 3]
+
+print([x * 2 for x in xs[0:2]])   # [2, 4] in the reference;  this backend: refuses (exit 1)
+zs = xs[0:2]
+print([x * 2 for x in zs])        # [2, 4] — answered, because the program named the copy
+```
+
+ADR 0335 made the copy a list and ADR 0336 gave its bounds a door to stand at; neither touched the
+comprehension's **iterable**. That door asks its question of an inline literal, of `range()`, or of a variable the
+element-kind notebooks describe — and a `*Slice` node is none of those, so the whole expression is declined with a
+sentence about texts (`the reference iterates a text one character at a time`), which is the refusal of a different
+shape wearing this one's clothes.
+
+The named form is the control, and it is the whole argument: binding the copy records it (`recordContainerSlice`,
+roadmap Gap R.230), the loop door reads that record, and the comprehension walks the copy and answers `[2, 4]`. One
+program, two doors, and the difference is whether the program happened to write a name — the shape ADR 0334 made
+illegal for a subscript and this row keeps for the iterable.
+
+The bounds do not matter here: `print([v for v in xs[0:txt]])` — a copy whose bound the reference would refuse with
+a `TypeError` — is refused by the same comprehension sentence, so ADR 0336's raise never reaches that door either.
+Both shapes are pinned in the two filed tables (`pkg/lang/slice_bounds_kind_test.go`,
+`integration/slice_bounds_test.go`) beside the reference's answer, and the row is closed by giving the iterable the
+`*Slice` arm its loop sibling already has, not by widening the refusal.
+
+<a id="gap-r-240"></a>
+
+### Gap R.240 — the length of a slice of a text refuses (OPEN, found by ADR 0336)
+
+```python
+s = "abcd"
+
+print(len(s))            # 4   — answered
+print(len(s[1:3]))       # 2   in the reference;  this backend: refuses (exit 1)
+print(len(s[::-1]))      # 4   in the reference;  this backend: refuses (exit 1)
+print(len("abcd"[1:3]))  # 2   in the reference;  this backend: refuses (exit 1)
+print(s[1:3])            # bc  — answered, by the fold that knows how many characters they are
+```
+
+Three doors answer the same fact and the fourth declines to ask it. `len` of a text variable reads the interned
+text's length; `len` of a copy of a **list** takes the handle `rt_slice` built (the `*Slice` arm ADR 0335 added to
+`heapContainerLenFn`); and `print(s[1:3])` is answered by the string fold, which computes the sliced characters and
+therefore holds the count. Only `len` of a `*Slice` whose base is a text falls through to `len requires an inline
+list/dict/set literal` — a sentence about literals, spoken where no literal is at fault, which is ADR 0249's
+complaint about a refusal that names the wrong door.
+
+This is why the row's conformance program compares `s[1:3] == "bc"` instead of measuring it: the program asserts
+only doors its own row answers (Gap N's rule), and the measurement of the refusal is this section. The fix is one
+arm per road — the fold's shapes and the `rt_str_slice` one — answering the character count through the helper `len`
+already trusts for a text variable, so a step and a negative bound are counted the way the printer walks them.
+
+<a id="gap-r-241"></a>
+
+### Gap R.241 — an `except` arm that calls a function takes the run down with the exception it handled (OPEN, found by ADR 0336)
+
+```python
+def h():
+    print("caught")
+
+xs = [1, 2, 3]
+try:
+    print(xs[9])
+except IndexError:
+    h()               # the arm runs…
+print("after")        # …and is then handed the exception it already handled
+
+# CPython:  caught\nafter          exit 0
+# this toolchain: caught + traceback "IndexError: list index out of range"   exit 3
+```
+
+Not the slice road's defect — it reproduces with a plain out-of-range subscript, and it surfaced here because the
+row's conformance program needed an arm that *prints* rather than one that calls (`Gap R.113`'s missing `as` clause
+ruled out the other spelling).
+
+The arm's own statements are lowered with `@exn_flag` still set: `clearExn` stands on the edges **out** of an arm —
+a `return`, a `break`, a `continue`, and falling off its end (ADR 0218's compiled half of Gap R.21) — and on none
+**into** one. Every call to a user function ends its block with the post-call check `load i32, i32* @exn_flag` →
+branch to the handler in scope or to the raise-exit. So the first call in the arm takes that branch, the handler is
+entered a second time, no arm matches any more (`@exn_code` still names the handled class), and the exception is
+handed to the top: the traceback prints, the statement after the `try` is skipped, and the run exits 3 with the
+handler's own output sitting on stdout behind it. A builtin in the arm (`print("caught")`) has no such check, which
+is why the shape that works has been working all along and why the suite never saw this.
+
+The fix is the missing half of ADR 0218's own rule: clear the flag when an arm **accepts** the exception, before its
+first statement — the place where the `except <Type> as e:` binding Gap R.113 owes will put the caught object
+anyway. `blockEndsInTerminator`'s `armed` reading then stops mattering for the flag, because there is none left to
+hand back. Three rows pin today's behaviour in
+`integration/slice_bounds_test.go::TestACallInsideAnExceptArmStillTakesTheRunDown` — the subscript arm and this
+row's bounds arm, both exit 3, and the builtin arm as the control at exit 0; they move into the catchable table when
+the clear moves.

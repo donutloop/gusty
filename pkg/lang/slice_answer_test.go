@@ -321,12 +321,10 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"", "KeyError: slice(0, 1, None)",
 			"roadmap Gap R.234 (the dict half of the same road, answered `[1]` at exit 0 before the gate; the reference's miss is the same one it would raise for any key the dict does not hold)",
 		},
-		{
-			"a slice whose bounds are text",
-			"xs = [1, 2]\nprint(xs[\"a\":\"b\"])",
-			"[1]", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.233 (the bounds are read as words whatever they hold: a text slot's interned index becomes a position and the answer is a list at exit 0)",
-		},
+		// The bounds neighbour of these four — `xs = [1, 2]` / `print(xs["a":"b"])`, filed here as Gap R.233 with
+		// the wrong answer `[1]` pinned — is answered by ADR 0336: the shape now raises the reference's
+		// `TypeError: slice indices must be integers or None or have an __index__ method`. It is witnessed in
+		// `slice_bounds_kind_test.go`, where a row that stops raising fails rather than quietly disappearing.
 		{
 			"a text-keyed dict subscripted by a number",
 			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",

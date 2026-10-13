@@ -101,3 +101,36 @@ clears it, and `checkExn` is the only reader.
   alternative: it would make the state per-frame instead of module-global and structurally prevent
   this class of bug, at the cost of personality functions, real call stacks (Gap K.8/L8.5) and a much
   larger lowering. Recorded here so the next reader knows the option was seen, not missed.
+
+## Residual (measured 2026-10-14 while landing [ADR 0336](0336-a-slice-bound-is-asked-what-it-is-a-position-the-absence-of-one-or-the-reference-s-typeerror.md): roadmap Gap R.241)
+
+The decision above says the flag is cleared on *every* edge an arm leaves by, and the implementation does that — and
+one shape still answers wrongly, because the arm's own **body** is not an edge. `clearExn` is emitted on the arm's
+fall-through, `return`, `break` and `continue`; it is not emitted when the arm **accepts** the exception, so the
+arm's statements run with the module-wide `@exn_flag` set. Every call to a user-defined function ends its own block
+with the post-call check on that flag, so the first such call inside an arm takes it:
+
+```python
+def h():
+    print("caught")
+
+xs = [1, 2, 3]
+try:
+    print(xs[9])
+except IndexError:
+    h()                # the arm runs…
+print("after")         # …and CPython prints both lines at exit 0; this backend prints `caught`,
+                       # reports the handled IndexError again, and exits 3
+```
+
+The check branches to the handler in scope, which has already run; no arm matches any more (`@exn_code` still names
+the handled class), so the exception is handed outward and reported. A builtin in the arm has no post-call check,
+which is why `except IndexError: print("caught")` has always worked and the suite never saw this — the passing shape
+and the failing one differ by one token.
+
+Not a rejection of anything decided here: it is the same rule, one position earlier. The clear belongs where an arm
+accepts the exception — before its first statement, at the place `except <Type> as e:` (Gap R.113, unimplemented)
+will one day bind the caught object — with the edge-out clear kept as the belt-and-braces case it already is. Three
+rows in `integration/slice_bounds_test.go::TestACallInsideAnExceptArmStillTakesTheRunDown` pin today's behaviour and
+move to the catchable table when the clear moves; `docs/language.md`'s ADR 0218 bullet was corrected in the same
+commit, because it had been reading as if this shape were covered.

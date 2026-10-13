@@ -1,0 +1,24 @@
+[1, 2] [2, 3] [1, 2] [1, 3] [1, 2, 3] [1, 3]
+bc ab ac cd dcba
+[1, 2, 3] [1, 2, 3] [1, 2] abcd abcd
+[] [] [1]
+[1.5, 'a'] 2
+[2, 4]
+True True True
+raised: text low
+raised: text high
+raised: text step
+raised: float low
+raised: float high
+raised: list low
+raised: dict low
+raised: tuple low
+raised: length of bad bound
+raised: for over bad bound
+raised: truthiness of bad bound
+raised: equality of bad bound
+raised: membership of bad bound
+raised: bound from bad bound
+raised: slice of bad bound
+raised: call-answer base
+raised: text base

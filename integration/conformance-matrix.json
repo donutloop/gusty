@@ -3235,6 +3235,27 @@
     },
     {
       "case": {
+        "id": "programs/slice_bounds",
+        "name": "slice_bounds.gy",
+        "source": "def b():\n    return [1, 2, 3]\n\ns = \"abcd\"\nxs = [1, 2, 3]\nys = [1.5, \"a\"]\nflt = 1.5\ntxt = \"a\"\nlst = [1]\ndct = {1: 2}\n\nprint(xs[0:2], xs[1:], xs[:2], xs[::2], xs[-3:], xs[0:3:2])\nprint(s[1:3], s[:2], s[::2], s[-2:], s[::-1])\nprint(xs[None:None], xs[::None], xs[None:2], s[None:None], s[None::None])\nprint(xs[True:True], ys[True:True], xs[0:True])\nprint(ys[0:2], len(ys[0:2]))\nzs = xs[0:2]\nprint([x * 2 for x in zs])\nprint(1 in xs[0:2], xs[0:2] == [1, 2], s[1:3] == \"bc\")\n\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"raised: text low\")\ntry:\n    print(xs[txt:3])\nexcept TypeError:\n    print(\"raised: text high\")\ntry:\n    print(xs[0:2:txt])\nexcept TypeError:\n    print(\"raised: text step\")\ntry:\n    print(xs[flt:3])\nexcept TypeError:\n    print(\"raised: float low\")\ntry:\n    print(s[0:flt])\nexcept TypeError:\n    print(\"raised: float high\")\ntry:\n    print(xs[0:lst])\nexcept TypeError:\n    print(\"raised: list low\")\ntry:\n    print(xs[0:dct])\nexcept TypeError:\n    print(\"raised: dict low\")\ntry:\n    print(xs[0:(1, 2)])\nexcept TypeError:\n    print(\"raised: tuple low\")\ntry:\n    print(len(xs[0:txt]))\nexcept TypeError:\n    print(\"raised: length of bad bound\")\ntry:\n    for v in xs[0:txt]:\n        print(v)\nexcept TypeError:\n    print(\"raised: for over bad bound\")\ntry:\n    if xs[0:txt]:\n        print(\"truthy\")\nexcept TypeError:\n    print(\"raised: truthiness of bad bound\")\ntry:\n    print(xs[0:txt] == [1])\nexcept TypeError:\n    print(\"raised: equality of bad bound\")\ntry:\n    print(1 in xs[0:txt])\nexcept TypeError:\n    print(\"raised: membership of bad bound\")\ntry:\n    z = xs[0:txt]\n    print(z)\nexcept TypeError:\n    print(\"raised: bound from bad bound\")\ntry:\n    print(xs[0:txt][0:1])\nexcept TypeError:\n    print(\"raised: slice of bad bound\")\ntry:\n    print(b()[0:txt])\nexcept TypeError:\n    print(\"raised: call-answer base\")\ntry:\n    print(s[0:txt])\nexcept TypeError:\n    print(\"raised: text base\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2] [2, 3] [1, 2] [1, 3] [1, 2, 3] [1, 3]\nbc ab ac cd dcba\n[1, 2, 3] [1, 2, 3] [1, 2] abcd abcd\n[] [] [1]\n[1.5, 'a'] 2\n[2, 4]\nTrue True True\nraised: text low\nraised: text high\nraised: text step\nraised: float low\nraised: float high\nraised: list low\nraised: dict low\nraised: tuple low\nraised: length of bad bound\nraised: for over bad bound\nraised: truthiness of bad bound\nraised: equality of bad bound\nraised: membership of bad bound\nraised: bound from bad bound\nraised: slice of bad bound\nraised: call-answer base\nraised: text base\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2] [2, 3] [1, 2] [1, 3] [1, 2, 3] [1, 3]\nbc ab ac cd dcba\n[1, 2, 3] [1, 2, 3] [1, 2] abcd abcd\n[] [] [1]\n[1.5, 'a'] 2\n[2, 4]\nTrue True True\nraised: text low\nraised: text high\nraised: text step\nraised: float low\nraised: float high\nraised: list low\nraised: dict low\nraised: tuple low\nraised: length of bad bound\nraised: for over bad bound\nraised: truthiness of bad bound\nraised: equality of bad bound\nraised: membership of bad bound\nraised: bound from bad bound\nraised: slice of bad bound\nraised: call-answer base\nraised: text base\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3985,7 +4006,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/160/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/161/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3999,7 +4020,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/160/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/161/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4709,11 +4730,11 @@
       ]
     }
   ],
-  "rows": 188,
+  "rows": 189,
   "skipped": 38,
-  "pass": 150,
+  "pass": 151,
   "fail": 0,
-  "oracle_match": 135,
+  "oracle_match": 136,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
