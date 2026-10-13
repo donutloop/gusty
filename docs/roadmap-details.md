@@ -3885,6 +3885,17 @@ not create it — closing Gap J.2 removed the refusal that used to stand in fron
 it got measured. One commit per feature (AGENTS.md), and the fix belongs with L11.1: a tagged value
 word makes the handle *and* its kind travel together, which is what removes both halves at once.
 Until then the shapes above stay untested and unfixed, and this row is where they are recorded.
+
+**Closed 2026-10-14 by [ADR 0333](adr/0333-a-container-returned-from-a-call-is-a-value.md).** The two
+halves turned out to be one table and one call: `containerReturningFuncs` records the container kind a
+function's arms all answer, and the `return` materialises through the same builders a binding uses. The
+`ret i32 @.lst1` class is gone by assertion rather than by hope — `TestNoEmittedModuleReturnsAGlobal`
+scans every module this row's programs emit for `ret i32 @.` and each is put through `llc`. What the row
+deliberately left standing is the *doors* list in the ADR: the subscript on an answer (**Gap R.214**,
+now unblocked), an answer as another literal's element and as a method receiver (**Gap R.229**), an
+answer through a parameter (Gap R.154), a run-time concatenate (Gap R.175), a module-level container read
+by a function (Gap R.35) — and `None` handed back by a function, which answers `0` for the same reason
+this row's handle did (**Gap R.228**, filed by the cycle that closed this one).
 <a id="original-preamble"></a>
 
 ## Original preamble, snapshot, component map and sequencing note (verbatim)
@@ -10126,6 +10137,65 @@ computed and let `slotReadUnderTag` ask the object what the payload is, which is
 a container the program built. The reference does not refuse these two and does not answer them: it raises, so
 the definition of done is a trap at exit 3 with the reference's own sentence, catchable, and no `codegen:`
 sentence anywhere in the output.
+
+<a id="gap-r-228"></a>
+
+### Gap R.228 — a `None` handed back by a function answers the digit `0` (OPEN, found by ADR 0333)
+
+```python
+def f():
+    return None
+
+print(f())      # 0 here;  the reference prints None
+```
+
+Exit 0, no diagnostic, and a number the program never wrote — the same signature Gap R.115 recorded for a
+container before ADR 0333 gave it a kind: the call hands back one word, nothing about that word says what
+it means, and the print road's fall-through writes it with `%d`. The void value's payload happens to be `0`,
+so the wrong answer is at least stable.
+
+This is not the container table's bug wearing a different hat. `containerReturningFuncs` declines a body
+whose arms are not all one container kind, which is correct — and it means a function returning `None` is
+left on the ordinary one-word road with no record at all. The cure is the same *shape* of record (a
+whole-program scan, a verdict only when every road agrees, ADR 0249's gate) with its own table and its own
+printer decision, because a `None` needs the void printer, not a container one. Gap R.103 is the standing
+reminder that a `print(f())` answering digits has more than one cause; it is why this row is filed instead
+of being folded into the one that found it.
+
+The definition of done is `None` on both witness legs and `f() is None` answering `True`; the row sits in
+`TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed` until then, so the day the door grows, a test
+fails rather than a right answer appearing without a record of the wrong one.
+
+<a id="gap-r-229"></a>
+
+### Gap R.229 — a container answer is not yet a value at the element door or the method door (OPEN, found by ADR 0333)
+
+```python
+def build():
+    return [1, 2]
+
+print([build(), 3])          # [[1, 2], 3] in the reference;  refuses here
+print(build().append(3))     # None in the reference;           refuses here
+```
+
+ADR 0333 gave the answer — a heap handle and a recorded kind — and eight roads consume it: print,
+`str`/`repr`/f-string, `len`, `in`, `not`, truthiness, a loop iterable, `==`, a binding. Two neighbours of
+those roads stop one position earlier, and they are different owners:
+
+- **The element door.** ADR 0332 taught the container builder to take a *subscript* as a (payload, tag)
+  pair. A **call** that answers a container is the same situation — the compiler knows the kind and the
+  builder has a register for it — and `isPairElem` does not ask about calls, so the element is lowered by
+  the one-word road and the position has nowhere to put the kind. The refusal is honest and it is the right
+  shape: the fix is to hand the answer's (handle, kind) to `rt_tag_elem` exactly as a read's pair goes.
+- **The method door.** `build().append(3)` needs the receiver materialised before dispatch, and the method
+  road chooses its receiver from a name or a literal. Gap R.154 owns the parameter half of the same
+  question (`takes(build())` where `takes` is `len(xs)`), and this is the receiver half: the road that
+  already has a container in hand will not look inside a call for one.
+
+Both rows carry the reference's answer beside this backend's refusal in
+`TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed`, and both name the door rather than the value,
+which is the distinction that makes them two owners instead of one: the value exists, and each door has to
+grow an arm to reach it.
 
 <a id="gap-r-219"></a>
 ### Gap R.219 — a function is registered as returning text on the evidence of one arm (OPEN, found by ADR 0327)

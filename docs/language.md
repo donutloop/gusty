@@ -617,8 +617,18 @@ What still refuses in the compiled backend refuses *with the list spelling's wor
 `TestContainerComprehensionRefusalsStayHonest`: an iterable the escape analysis folded away
 (`xs = [1, 2, 3]` with no mutation, then `{x for x in xs}` — `xs.append(...)` materialises it; L11.1's
 tagged element retires the category), and a non-integer iterable, element or key (L11.5, L11.6).
-A container **returned** from a function is a separate hole, literals included: `return [1, 2]` emits
-`ret i32 @.lst1` and `la = [1, 2]; return la` prints the handle (roadmap Gap R.67).
+A container **returned** from a function is a value, as of ADR 0333: `return [1, 2]`, `return {1, 2}`,
+`return {"a": 1}`, `return set()`, a container the body built (`xs = []` / `xs.append(1)` / `return xs`), a
+loop-filled list, a comprehension and a forwarded answer (`return build()`) are all materialised at the
+`return` and read back as the object they are — `print(f())`, `str(f())`, `len(f())`, `2 in f()`,
+`not f()`, `if f():`, `for v in f():` and `f() == [1, 2]` answer the way the bound form `ys = f()` always
+did, because they are the same read of the same handle. The function is treated as a container only when
+**every** `return` in its body answers one and the same kind and the body cannot fall off its end; a body
+whose arms disagree keeps the one-word road it always had. A position with no container arm — a subscript
+on the answer (`f()[7]`, roadmap **Gap R.214**), the answer as another literal's element or as a method
+receiver (**Gap R.229**), the answer through a parameter (Gap R.154), `f() + [9]` (Gap R.175) — refuses and
+names the function and the door it is waiting for; none of them prints the handle. `None` handed back by a
+function is the one value in this family still answered as a number (**Gap R.228**).
 A comprehension over a value the compiler cannot see at compile time — a text, or a container built by
 running the program — is refused naming its missing runtime door (`Gap I.2`), where the retired engine
 evaluated it and the record still holds its answer.
@@ -3538,8 +3548,10 @@ must be integers or slices, not str` (Gap R.222's gate, reached through the new 
 the position that keeps one word for a whole value — `[id({"a": "x"}["a"]), 1]` still refuses with Gap R.146's
 sentence — and what stays wrong, filed rather than hidden, is an element that *contains* a read rather than
 being one (Gap R.225: `[str({"a": "x"}["a"]), 1]` prints `[1, 1]`), the loop that unrolls a literal directly
-(Gap R.226: `for v in [{"a": "x"}["a"], 2]:` prints `1` where the bound form prints `x`), a subscript of a
-subscript of a literal (Gap R.227) and a container crossing a `return` (Gap R.67).
+(Gap R.226: `for v in [{"a": "x"}["a"], 2]:` prints `1` where the bound form prints `x`) and a subscript of a
+subscript of a literal (Gap R.227). The fourth row ADR 0332 filed — this same list crossing a `return`,
+recorded as answering `0` — answers `['x', 2]` as of ADR 0333, and is asserted beside the element door that
+always got it right.
 
 An **f-string field** asks the same question and gets the same answer (ADR 0307): the field goes through the
 module's one tag-reading printer — the door `print()`, `str()` and `repr()` use — so the field, `str(n)` and

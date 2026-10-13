@@ -1,0 +1,82 @@
+def make_list():
+    return [1, 2]
+
+def make_set():
+    return {1, 2}
+
+def make_dict():
+    return {"a": 1, "b": 2}
+
+def build():
+    xs = []
+    xs.append(1)
+    xs.append(2)
+    return xs
+
+def filled():
+    d = {}
+    d["a"] = "x"
+    return d
+
+def tags():
+    return [1, "a", None, True, [7]]
+
+def empty_list():
+    return []
+
+def empty_dict():
+    return {}
+
+def empty_set():
+    return set()
+
+def forward():
+    return make_list()
+
+def computed(n):
+    return [n, n + 1]
+
+def loop_filled():
+    ys = []
+    for i in range(3):
+        ys.append(i)
+    return ys
+
+def comp():
+    return [x * 2 for x in [1, 2, 3]]
+
+print(make_list())
+print(make_set())
+print(make_dict())
+print(build())
+print(filled())
+print(tags())
+print(empty_list(), empty_dict(), empty_set())
+print(forward(), computed(4))
+print(loop_filled(), comp())
+print(str(make_list()), repr(make_dict()))
+print(len(make_list()), 2 in make_list(), 7 in make_list(), 7 not in make_list())
+print(len(make_dict()), "a" in make_dict(), "z" in make_dict())
+print(len(make_set()), 1 in make_set())
+for v in make_list():
+    print(v)
+for k in make_dict():
+    print(k)
+if make_list():
+    print("non-empty")
+if empty_list():
+    print("wrong")
+else:
+    print("empty is false")
+print(not make_list(), not empty_dict())
+ys = make_list()
+print(ys, len(ys), ys[0], ys[-1])
+ys.append(3)
+print(ys)
+zs = make_list()
+print(ys is zs, ys == make_list())
+d = filled()
+print(d, len(d), "a" in d)
+print(make_list() == [1, 2], make_list() == [1, 3])
+print(make_dict() == {"b": 2, "a": 1})
+print(make_set() == {2, 1})

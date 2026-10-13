@@ -9843,3 +9843,95 @@ first pass typed two and the test named each one. One new test row was also wron
 expected `strs[9]` (an out-of-range position into a text literal) to decline the gate, and the gate correctly
 said "not the fold's" and let the bounds door raise the `IndexError`. A gate decision table written from what
 the code should do, rather than from what the code does, is where I keep finding my own assumptions.
+
+## The answer that crossed a `return` (L11.1, Gap R.67; ADR 0333)
+
+### Exit 2 on a two-line program is the bug worth stopping for
+
+`def build(): return [1, 2]` / `print(build())` was not a missing feature — it was `llc` rejecting our module
+(`global variable reference must have pointer type`) because codegen had put `@.lst1`, an i32 global, in a
+`ret`. Exit **2** is the code the contract reserves for a broken compiler, and it is the only class where the
+tool apologises for a program the reference runs. I started by probing the queue's next row (Gap R.214) and
+found I could not even *build* its own example; the blocker two rows down was the exit-2 one, and taking it
+first was the right call for exactly the reason ADR 0166 gives: a compiler-bug class outranks a missing door.
+The lesson is to read the exit code before reading the message. The three shapes in this row's title all
+looked like "printing a container is broken"; only the first was a verifier failure, and the two that built
+were wrong at exit 0, which the queue ranks above any refusal but which no red `llc` output advertises.
+
+### A call site holds one word and a name, so the kind has to be a record
+
+The design question was whether to return a `(payload, tag)` pair across the `ret`, like the slot roads, or
+to record the kind at compile time. The pair is the honest answer when the caller cannot see the callee; here
+the caller does not need to — the callee's own source says what it hands back, and a register per call for one
+construct is what `pairRetDone` pays for shapes where the kind genuinely is dynamic. So `containerReturningFuncs`
+is a whole-program scan beside `strFuncs`, and the interesting part is what it *refuses to believe*: every
+`return` must answer one kind, the body cannot fall off its end, a bare `return` condemns the function, and
+`containerBodyIsOpaque` condemns any statement form the walk did not visit rather than let it slip past. A scan
+that fails open is worse than no scan — the caller has no way to check. Gap R.219 (`strFuncs` registering a
+function as text-returning from ONE arm, so the arm returning a number printed a byte string's interned index)
+is the cautionary tale, and I wrote the 18 decline-rows before the answer-rows so the scan had to earn each
+claim.
+
+### The re-dispatch was the feature; the notebooks were the fine print
+
+The first version lowered a container-returning call to a temp name and printed it. Correct output, wrong
+design: `for k in build():` printed `0 1` for `{"a": 1, "b": 2}`, because the loop road asks `dictKeyStr`, not
+`runtimeDicts`, and `print([1, "a", …])` printed `[1, 0, …]`, because the printer asks `listElemStr`. Every road
+in this backend already consults a per-name notebook for a container *variable*; the win was that
+`containerAnswerOperand` writes those notebooks and then re-dispatches the operand as the name, so there is one
+answer per shape rather than nine private copies. Two rules came out of it: (a) a name handed to a notebook must be
+a rooted temp, because the loop roads read a name back as an operand, and a bare `%t7` would re-read the wrong
+row — the same lesson ADR 0273 learned for the pair road's arity, in the other direction; (b) the notebook writer
+must be called with the **same predicate as the build site** — `literalNeedsHeap || literalNeedsTags ||
+literalHasPairElement`. Asking only `literalNeedsTags` is how the first build printed `[1, 0]` for `[1, "a"]`: the
+string slot's tag never got written, and the printer faithfully read the interned index as the number it is.
+
+### The tag question and the build question are one question
+
+That bug is ADR 0249 wearing a new hat — a gate asking a narrower question than the door it stands in front
+of — and it is worth restating as a search rule: when a decision has to match an emission, grep for the
+emission's own predicate and call *it*, rather than writing the decision from what you believe the emission
+does. Every time this cycle I wrote a second predicate I got it wrong, and every time I called the first one I
+did not.
+
+### Do not let a new scan steal programs from a road whose refusal is a contract
+
+The scan initially claimed `def pack(v): return [v, 1]` unconditionally, and `print(pack(2.5))` — which the pair
+road refuses in words, naming the `(payload, tag)` pair it is missing — started taking the container road and
+printing a wrong list. A refusal sentence is a promise about what the compiler knows (ADR 0249), and an
+over-claiming table that re-routes the program breaks the promise instead of the refusal. The fix is a
+whole-program call-site table: if any call site hands a double, a float-typed name, a pair-bound name or a
+pair-returning call into a parameter that lands in a slot, the function is declined and the pair road keeps it.
+The decision table's two rows differ by one character in the call — `print(b(2))` is claimed, `print(b(2.5))` is
+not — which is the clearest evidence I have that the gate is asking about the *value*, not the shape. Widening a
+door must never quietly relax a refusal elsewhere, and the guard for that is a test in the other direction:
+`TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt` fails if my table wins a program it should have left alone.
+
+### A refusal that names the door is worth more than a handle at exit 0
+
+Once the answer existed, every position that has no container arm would have printed the handle — the `0` this
+row exists to remove. So the ordinary one-word call road asks the table and, for an unasked container answer,
+refuses naming the function and the door that does answer, at exit 1. Every one of those is filed with the
+reference's answer beside it (`build()[7]` → Gap R.214, `[build(), 3]` and `build().append(3)` → Gap R.229,
+`takes(build())` → Gap R.154, `build() + [9]` → Gap R.175, `la = [1,2]; return la` → Gap R.35, `return None` →
+Gap R.228), and each row fails the day its door grows. Exit 2 is asserted absent from all of them.
+
+### Probing found the wrong answer hiding under the right one
+
+`print(f())` where `f` returns `None` answers `0`. It has answered `0` on every binary I built this cycle, old
+and new, and it sat inside my probe file between two rows I was watching, so for two days it read as "the None
+case, still broken, presumably mine". Comparing the *old* binary and the new one on the same probe was what
+made it obviously pre-existing, and it is now Gap R.228 with its own row — filed, not bundled, and not quietly
+fixed inside a commit whose title is about containers. The probe file itself is the tool worth keeping: 46
+programs, and a filter that prints only the ones where the compiled answer differs from CPython's, which is the
+only way I noticed the eight that differ for reasons nobody had measured.
+
+### The guards earned their keep again
+
+`tools/recmerge` wrote 50 entries and the artifact-count guards caught every number this cycle moved (record
+6316 → 6366, programs 196 → 197, matrix 185 → 186, parity 147 → 148, oracle `match` 132 → 133, ADRs 324 → 325,
+queue 111/143 → 112/145); none was typed from memory, and each was named by a failing test rather than by me.
+One conformance line had to come *out* of `container_returns.gy`: `print(bool(make_list()), bool(empty_set()))`
+printed `False False` where CPython prints `True False`. A conformance program asserts the doors this row
+answers; a line that disagrees with the reference belongs in a Gap row, not in a matrix row's expected file —
+and the line's own disagreement is now part of Gap R.229's evidence.

@@ -324,11 +324,11 @@ func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"print([[1, 2][0][0], 1])",
 			"", "TypeError: 'int' object is not subscriptable", "roadmap Gap R.227 (Gap R.214's shape one level in)",
 		},
-		{
-			"a container literal returned from a function",
-			"def f():\n    return [{\"a\": \"x\"}[\"a\"], 2]\nprint(f())",
-			"0", "['x', 2]", "roadmap Gap R.67 (Gap R.103 for the dict)",
-		},
+		// The row this table carried for Gap R.67 — `def f(): return [{"a": "x"}["a"], 2]` /
+		// `print(f())`, recorded as answering `0` — answers `['x', 2]` now the return door exists, and it
+		// moved to the answering table beside the element door that always got it right:
+		// TestAPairElementListReturnedFromACallAnswersTheList in container_return_test.go. A row that stops
+		// refusing moves; it does not disappear.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, refused := compiledOutOrRefusal(t, tc.src)

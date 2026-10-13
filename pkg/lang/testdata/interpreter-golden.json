@@ -1,5 +1,253 @@
 {
  "entries": {
+"def make_list():\n    return [1, 2]\n\ndef make_set():\n    return {1, 2}\n\ndef make_dict():\n    return {\"a\": 1, \"b\": 2}\n\ndef build():\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n\ndef filled():\n    d = {}\n    d[\"a\"] = \"x\"\n    return d\n\ndef tags():\n    return [1, \"a\", None, True, [7]]\n\ndef empty_list():\n    return []\n\ndef empty_dict():\n    return {}\n\ndef empty_set():\n    return set()\n\ndef forward():\n    return make_list()\n\ndef computed(n):\n    return [n, n + 1]\n\ndef loop_filled():\n    ys = []\n    for i in range(3):\n        ys.append(i)\n    return ys\n\ndef comp():\n    return [x * 2 for x in [1, 2, 3]]\n\nprint(make_list())\nprint(make_set())\nprint(make_dict())\nprint(build())\nprint(filled())\nprint(tags())\nprint(empty_list(), empty_dict(), empty_set())\nprint(forward(), computed(4))\nprint(loop_filled(), comp())\nprint(str(make_list()), repr(make_dict()))\nprint(len(make_list()), 2 in make_list(), 7 in make_list(), 7 not in make_list())\nprint(len(make_dict()), \"a\" in make_dict(), \"z\" in make_dict())\nprint(len(make_set()), 1 in make_set())\nfor v in make_list():\n    print(v)\nfor k in make_dict():\n    print(k)\nif make_list():\n    print(\"non-empty\")\nif empty_list():\n    print(\"wrong\")\nelse:\n    print(\"empty is false\")\nprint(not make_list(), not empty_dict())\nys = make_list()\nprint(ys, len(ys), ys[0], ys[-1])\nys.append(3)\nprint(ys)\nzs = make_list()\nprint(ys is zs, ys == make_list())\nd = filled()\nprint(d, len(d), \"a\" in d)\nprint(make_list() == [1, 2], make_list() == [1, 3])\nprint(make_dict() == {\"b\": 2, \"a\": 1})\nprint(make_set() == {2, 1})\n": {
+    "stdout": "[1, 2]\n{1, 2}\n{'a': 1, 'b': 2}\n[1, 2]\n{'a': 'x'}\n[1, 'a', None, True, [7]]\n[] {} set()\n[1, 2] [4, 5]\n[0, 1, 2] [2, 4, 6]\n[1, 2] {'a': 1, 'b': 2}\n2 True False True\n2 True False\n2 True\n1\n2\na\nb\nnon-empty\nempty is false\nFalse True\n[1, 2] 2 1 2\n[1, 2, 3]\nFalse False\n{'a': 'x'} 1 True\nTrue False\nTrue\nTrue\n",
+    "hasStdout": true
+   },
+"def build():\n    d = {}\n    d[\"a\"] = \"x\"\n    return d\n\nprint(build())": {
+    "stdout": "{'a': 'x'}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, \"a\", None, 2.5, True, [7]]\n\nprint(build())": {
+    "stdout": "[1, 'a', None, 2.5, True, [7]]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\ndef g():\n    return build()\n\nprint(g())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\ndef g():\n    return build()\n\nprint(len(g()))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nfor v in build():\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nif build():\n    print(\"t\")\nelse:\n    print(\"f\")": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(2 in build())": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(7 in build())": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(7 not in build())": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(build() == [1, 2])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(build() == [1, 3])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(build())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(build(), build())": {
+    "stdout": "[1, 2] [1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(len(build()))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(not build())": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(repr(build()))": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nprint(str(build()))": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nys = build()\nfor v in ys:\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nys = build()\nprint(len(ys))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nys = build()\nprint(ys)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nys = build()\nprint(ys[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1, 2]\n\nys = build()\nys.append(3)\nprint(ys)": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [1]\n\ndef other():\n    return [2]\n\nprint(build(), other())": {
+    "stdout": "[1] [2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [[1, 2], [3]]\n\nprint(build())": {
+    "stdout": "[[1, 2], [3]]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return []\n\nif build():\n    print(\"t\")\nelse:\n    print(\"f\")": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return []\n\nprint(build())": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [x for x in [1, 2]]\n\nprint(build())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return [{\"a\": [7]}]\n\nprint(build())": {
+    "stdout": "[{'a': [7]}]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return list()\n\nprint(build())": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return set()\n\nprint(build())": {
+    "stdout": "set()\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {\"a\": 1, \"b\": 2}\n\nfor k in build():\n    print(k)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {\"a\": 1}\n\nys = build()\nprint(\"a\" in ys)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {\"a\": 1}\n\nys = build()\nprint(ys[\"a\"])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {1, 2}\n\nprint(build())": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {1: \"a\", 2: None}\n\nprint(build())": {
+    "stdout": "{1: 'a', 2: None}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {1: 2}\n\nprint(build())": {
+    "stdout": "{1: 2}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    return {}\n\nprint(build())": {
+    "stdout": "{}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    s = set()\n    s.add(1)\n    return s\n\nprint(build())": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"def build():\n    xs = [1, 2]\n    return xs\n\nprint(build())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    xs = []\n    for i in range(3):\n        xs.append(i)\n    return xs\n\nprint(build())": {
+    "stdout": "[0, 1, 2]\n",
+    "hasStdout": true
+   },
+
+"def build():\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n\nprint(build())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"ab\"\n\nprint(f())": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1.5\n\nprint(f())": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 5\n\nprint(f())": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return True\n\nprint(f())": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [{\"a\": \"x\"}[\"a\"], 2]\n\nprint(f())": {
+    "stdout": "['x', 2]\n",
+    "hasStdout": true
+   },
+
+"def f(n):\n    return [n, n + 1]\n\nprint(f(1))": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def f(n):\n    return {n: n * 2}\n\nprint(f(2))": {
+    "stdout": "{2: 4}\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return [x]\n\nprint(f([1, 2]))": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
 "d = {\"a\": {\"b\": \"z\"}}\nprint([d[\"a\"][\"b\"], 1])": {
     "stdout": "['z', 1]\n",
     "hasStdout": true

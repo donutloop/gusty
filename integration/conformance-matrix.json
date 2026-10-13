@@ -3172,6 +3172,27 @@
     },
     {
       "case": {
+        "id": "programs/container_returns",
+        "name": "container_returns.gy",
+        "source": "def make_list():\n    return [1, 2]\n\ndef make_set():\n    return {1, 2}\n\ndef make_dict():\n    return {\"a\": 1, \"b\": 2}\n\ndef build():\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n\ndef filled():\n    d = {}\n    d[\"a\"] = \"x\"\n    return d\n\ndef tags():\n    return [1, \"a\", None, True, [7]]\n\ndef empty_list():\n    return []\n\ndef empty_dict():\n    return {}\n\ndef empty_set():\n    return set()\n\ndef forward():\n    return make_list()\n\ndef computed(n):\n    return [n, n + 1]\n\ndef loop_filled():\n    ys = []\n    for i in range(3):\n        ys.append(i)\n    return ys\n\ndef comp():\n    return [x * 2 for x in [1, 2, 3]]\n\nprint(make_list())\nprint(make_set())\nprint(make_dict())\nprint(build())\nprint(filled())\nprint(tags())\nprint(empty_list(), empty_dict(), empty_set())\nprint(forward(), computed(4))\nprint(loop_filled(), comp())\nprint(str(make_list()), repr(make_dict()))\nprint(len(make_list()), 2 in make_list(), 7 in make_list(), 7 not in make_list())\nprint(len(make_dict()), \"a\" in make_dict(), \"z\" in make_dict())\nprint(len(make_set()), 1 in make_set())\nfor v in make_list():\n    print(v)\nfor k in make_dict():\n    print(k)\nif make_list():\n    print(\"non-empty\")\nif empty_list():\n    print(\"wrong\")\nelse:\n    print(\"empty is false\")\nprint(not make_list(), not empty_dict())\nys = make_list()\nprint(ys, len(ys), ys[0], ys[-1])\nys.append(3)\nprint(ys)\nzs = make_list()\nprint(ys is zs, ys == make_list())\nd = filled()\nprint(d, len(d), \"a\" in d)\nprint(make_list() == [1, 2], make_list() == [1, 3])\nprint(make_dict() == {\"b\": 2, \"a\": 1})\nprint(make_set() == {2, 1})\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n{1, 2}\n{'a': 1, 'b': 2}\n[1, 2]\n{'a': 'x'}\n[1, 'a', None, True, [7]]\n[] {} set()\n[1, 2] [4, 5]\n[0, 1, 2] [2, 4, 6]\n[1, 2] {'a': 1, 'b': 2}\n2 True False True\n2 True False\n2 True\n1\n2\na\nb\nnon-empty\nempty is false\nFalse True\n[1, 2] 2 1 2\n[1, 2, 3]\nFalse False\n{'a': 'x'} 1 True\nTrue False\nTrue\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n{1, 2}\n{'a': 1, 'b': 2}\n[1, 2]\n{'a': 'x'}\n[1, 'a', None, True, [7]]\n[] {} set()\n[1, 2] [4, 5]\n[0, 1, 2] [2, 4, 6]\n[1, 2] {'a': 1, 'b': 2}\n2 True False True\n2 True False\n2 True\n1\n2\na\nb\nnon-empty\nempty is false\nFalse True\n[1, 2] 2 1 2\n[1, 2, 3]\nFalse False\n{'a': 'x'} 1 True\nTrue False\nTrue\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3922,7 +3943,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/157/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/158/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3936,7 +3957,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/157/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/158/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4646,11 +4667,11 @@
       ]
     }
   ],
-  "rows": 185,
+  "rows": 186,
   "skipped": 38,
-  "pass": 147,
+  "pass": 148,
   "fail": 0,
-  "oracle_match": 132,
+  "oracle_match": 133,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

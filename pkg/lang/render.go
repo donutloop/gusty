@@ -211,6 +211,14 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 // rt_str_of_container reads the object's own kind record, so one entry point renders list,
 // dict and set and this scope only has to say "this operand names a container".
 func (g *irGen) renderPairContainer(b *strings.Builder, e Expr) (string, bool, error) {
+	// `str(build())`, `repr(build())` and `f"{build()}"` render the container the callee built. The
+	// ordinary road has no word for that object, so it is materialised to a name and asked again: the
+	// road below already renders a container variable from its own object, and an answer is that same
+	// object in a different name — which is what keeps `str(build())` and `ys = build()` / `str(ys)`
+	// from ever disagreeing (roadmap Gap R.67, ADR 0333).
+	if ansName, _, okAns := g.containerAnswerOperand(b, e); okAns {
+		return g.renderPairContainer(b, ansName)
+	}
 	if isContainerLiteral(e) {
 		// A list that mixes kinds, or whose elements are other containers, is built with
 		// per-element tags — the same build print chooses, so the pair and print construct

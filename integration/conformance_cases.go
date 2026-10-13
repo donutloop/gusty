@@ -546,6 +546,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// set member ride the same door, and the two raises inside an element are the reference's own,
 		// caught here by their own class.
 		"pair_element_read",
+		// The answer a call hands back when it hands back a container is a value. `def build(): return
+		// [1, 2]` / `print(build())` spent the contract's compiler-bug code on a program the reference runs
+		// (`ret i32 @.lst1` — a global in a value position, which `llc` rejects), the run-time-built spelling
+		// answered `0` at the code of success, and a loop over the answer printed nothing while a condition on
+		// it called a non-empty list false (roadmap Gap R.67). The three kinds, the empty containers spelled
+		// two ways, the tags a mixed list carries, a forwarding `return`, a body that filled the container in
+		// a loop or with a comprehension, and every door that reads a container back — print, str/repr, len,
+		// membership, the loop's iterable, a condition, `not`, a binding and a mutation — are all in this
+		// one program, whose expectation is what CPython printed for it.
+		"container_returns",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -4060,6 +4060,11 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	g.pairCallAsked = map[string]bool{}
 	g.pairTagDeclared = map[string]bool{}
+	// Which functions hand back a container, and which one: asked of the whole program, before any IR
+	// exists, so a `def` written below its first call and a call written below that `def` read one answer
+	// (roadmap Gap R.67, ADR 0333; the same statelessness ADR 0273 requires of the pair road's arity).
+	g.containerRet = containerReturningFuncs(prog)
+	g.containerAsked = map[string]bool{}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
@@ -4666,6 +4671,16 @@ type irGen struct {
 	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
 	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
 	pairCallAsked map[string]bool
+	// containerRet is the scan's answer to "which functions hand back a container, and which container"
+	// (roadmap Gap R.67, ADR 0333). The answer is one word — a heap handle — and its kind is a fact about
+	// the function's whole body, so it is written down once here rather than guessed per call site: a
+	// caller that renders a number through the container printer is Gap R.219's defect wearing a tag.
+	containerRet map[string]containerAnswer
+	// containerAsked is `containerAnswerOperand`'s permission, beside `pairCallAsked`'s: the ordinary
+	// single-word road refuses a call whose answer is a container, and the door that has just handed that
+	// answer to a road which can read one lowers the call with this set marked (ADR 0273's rule, applied
+	// to the container answer by ADR 0333).
+	containerAsked map[string]bool
 	// doubleSlot records the names whose stack slot was allocated as a `double`, which is the one fact
 	// that says whether a later `store double` fits: `floatVars` says what the newest binding *is*, and a
 	// tagged rebinding deletes that record while the allocation stays behind. Read by the pair road that
@@ -8852,6 +8867,13 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 			return g.markI1(p), nil
 		}
 	}
+	// `if build():` asks whether the container the callee built has anything in it. The ordinary road has
+	// no word for that object, so the condition is asked again of the name the container door materialised
+	// for it — and the road below (`heapContainerLenFn`) already knows how to ask a container name whether
+	// it is empty, which is what a condition on a container has always meant (roadmap Gap R.67, ADR 0333).
+	if ansName, _, okAns := g.containerAnswerOperand(b, e); okAns {
+		return g.truthOperandErr(b, ansName)
+	}
 	// Strings and containers test their *content*, never their representation: a
 	// string is an i8* and a container is a compile-time struct or a heap handle,
 	// so `if xs:` on a handle would be true even for [] and testing the string
@@ -9900,6 +9922,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, i1))
 			return res, nil
 		}
+		// `7 in build()` — the haystack is the container the callee built, whose word the ordinary road
+		// cannot keep. The membership test is asked again of the name the container door materialised for
+		// it: every road below already reads a container variable, and a container answer is precisely one
+		// of those (roadmap Gap R.67, ADR 0333). The needle keeps its own lowering, so a container needle
+		// beside an answer still takes the tagged slot rule.
+		if (n.Op == "in" || n.Op == "not in") && g.isContainerExpr(n.R) {
+			if ansName, _, okAns := g.containerAnswerOperand(b, n.R); okAns {
+				redo := *n
+				redo.R = ansName
+				return g.value(b, &redo)
+			}
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -10479,6 +10513,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		return t, nil
 	case *UnOp:
+		// `not build()` asks the same question `if build():` asks, of the container the callee built: the
+		// operand is materialised to a name and the operator asked again, so the truth road below — the one
+		// a container variable already goes through — answers the answer (roadmap Gap R.67, ADR 0333).
+		if n.Op == "not" {
+			if ansName, _, okAns := g.containerAnswerOperand(b, n.X); okAns {
+				redo := *n
+				redo.X = ansName
+				return g.value(b, &redo)
+			}
+		}
 		// `-xs[i]` before the operand is read as a plain number: the read below would refuse, and the
 		// float arms are the only place that can ask the slot's tag what it holds. Negation carries its
 		// own sentence, so a text slot says `bad operand type for unary -: 'str'` the way CPython does
@@ -13075,11 +13119,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
 			}
+			// `xs.append(build())` puts the container the callee built into a slot. The answer is materialised
+			// to a name first, so the slot is filled the way `ys = build()` / `xs.append(ys)` fills it and every
+			// question below — pair, tag, kind — is asked of a container variable rather than of a call this
+			// road can only lower to one word (roadmap Gap R.67, ADR 0333).
+			arg := c.Args[0]
+			if ansName, _, okAns := g.containerAnswerOperand(b, arg); okAns {
+				arg = ansName
+			}
 			// An element the pair road bound carries its kind in a register, and the tagged append is
 			// the door that takes it: payload and tag are one operation (ADR 0187), and the list stops
 			// claiming a kind this pass cannot state, because the kind is now a register the objects
 			// wrote (roadmap L11.1, Gap R.146; ADR 0306's literal element, ADR 0232's promotion, ADR 0311).
-			if pv, pt, isPair := g.pairElemPair(b, c.Args[0]); isPair {
+			if pv, pt, isPair := g.pairElemPair(b, arg); isPair {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
@@ -13092,7 +13144,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// rt_append alone would leave the new slot reading back with whatever tag the
 				// freed slot last carried, which is how an appended string would print as its
 				// interned index (roadmap L11.1, ADR 0187).
-				if av, tag, terr := g.mixedElemTag(b, c.Args[0]); terr == nil {
+				if av, tag, terr := g.mixedElemTag(b, arg); terr == nil {
 					g.heapSeq++
 					hs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
@@ -13102,20 +13154,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", terr
 				}
 			}
-			av, interned, err := g.heapElemKind(b, c.Args[0])
+			av, interned, err := g.heapElemKind(b, arg)
 			if err != nil {
 				return "", err
 			}
 			// The value is asked twice what it is: heapElemKind answers for the word it interned,
 			// printsAsInternedStr for the value the source says it is, and `xs.append(d["a"])` is
 			// the shape where only the second one knows (ADR 0232).
-			if g.printsAsInternedStr(c.Args[0]) {
+			if g.printsAsInternedStr(arg) {
 				interned = true
 			}
 			g.heapSeq++
 			hs := g.heapSeq
 			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-			if err := g.recordElemKind(nm.Value, "list", interned, c.Args[0]); err != nil {
+			if err := g.recordElemKind(nm.Value, "list", interned, arg); err != nil {
 				// Growing a list with a value of the other kind used to be the refusal, because
 				// the container records one kind and would print the new element through the old
 				// one. The slots carry tags, so the honest move is to stop claiming a kind
@@ -13129,8 +13181,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// printer shows 1 where Python shows 1.5. The slots already carry tags, so the honest
 			// move is the one ADR 0232 made for strings — stop claiming a kind (roadmap L11.1, ADR 0233).
 			if !g.mixedLists[nm.Value] {
-				if t, ok := g.elemKindTag(c.Args[0]); ok && slotTagSelfDescribing(t) {
-					if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", c.Args[0]) {
+				if t, ok := g.elemKindTag(arg); ok && slotTagSelfDescribing(t) {
+					if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", arg) {
 						g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
 					}
 				}
@@ -13138,7 +13190,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// Payload and tag are one operation, so an append cannot leave the new slot carrying
 			// the tag of whoever held it last (ADR 0187, ADR 0189): there is no untagged append
 			// left to fall back to.
-			b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, av, g.elemTagOperand(b, c.Args[0], interned)))
+			b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, av, g.elemTagOperand(b, arg, interned)))
 			if interned {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 1)\n", hs))
 			}
@@ -13774,6 +13826,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if g.pairRetDone[fnName] && !g.pairCallAsked[fnName] {
 			return "", fmt.Errorf("codegen: %s hands back the (payload, tag) pair its answer arrived in: print(...), a binding, and the positions that read one number ask the tag, and this position keeps one word for the value, so the tag has nowhere to go (roadmap L11.1, Gap R.146, ADR 0273)", fnName)
 		}
+		// A call whose answer is a container is lowered by the container door alone: the ordinary road
+		// would take the heap handle for the number it is not, which is how `print(f())` printed `0` and
+		// `[f(), 9]` printed `[1, 9]` (roadmap Gap R.67, ADR 0333). The permission is this call's alone and
+		// is off while the arguments are lowered, so a nested call of the same shape keeps its own refusal
+		// — ADR 0273's rule, read again by the door beside the pair road's.
+		if _, isContainerAnswer := g.containerAnswerOf(fnName); isContainerAnswer && !g.containerAnswerIsAsked(fnName) && g.containerAnswerCallIsCarriable(c) {
+			return "", containerAnswerRefusal(fnName)
+		}
 		asked := g.pairCallAsked
 		g.pairCallAsked = map[string]bool{}
 		provided := make([]bool, n)
@@ -14387,6 +14447,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  call void @rt_out_txt(i8* getelementptr inbounds ([%d x i8], [%d x i8]* @.%s, i32 0, i32 0))\n", len(word)+1, len(word)+1, "fmtdict"+word))
 				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
 				b.WriteString("  call void @rt_out_txt(i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.fmtdictclose, i32 0, i32 0))\n")
+				continue
+			}
+			// print(build()) — a call whose answer is a container. The answer is a heap handle and its kind
+			// is in the scan's table, so the operand is lowered to the name that holds it and printed by the
+			// printer that name would be printed by: `ys = build()` / `print(ys)` has printed `[1, 2]` all
+			// along, and `print(build())` printing `0` was the same object asked a second question and given
+			// the first answer it had (roadmap Gap R.67, ADR 0333).
+			if ansName, ansKind, okAns := g.containerAnswerOperand(b, a); okAns {
+				h, herr := g.value(b, ansName)
+				if herr != nil {
+					return "", herr
+				}
+				g.heapUsed = true
+				b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", g.answerPrinter(ansName.(*Name).Value, ansKind), h))
 				continue
 			}
 			if comp, ok := a.(*Comp); ok {
@@ -17954,6 +18028,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			_, literalDict := rhs.(*DictLit)
 			_, literalSet := rhs.(*SetLit)
 			boundKind := containerKindFromTy(exprTyName(n.Value))
+			// A call that hands back a container says so from its own body, which is better evidence than an
+			// inferred type name: the answer is an object of that kind whatever the inference made of the call
+			// (roadmap Gap R.67, ADR 0333 — `xs = build()` with `def build(): return {"a": 1}` printed the
+			// handle because nothing had recorded `xs` as a dict).
+			if c, isCall := n.Value.(*Call); isCall {
+				if nm, isName := c.Fn.(*Name); isName {
+					if a, okA := g.containerAnswerOf(nm.Value); okA && boundKind == "" {
+						boundKind = a.kind.String()
+					}
+				}
+			}
 			// A comprehension says what it binds better than an inferred type can: the kind is written
 			// in the syntax — `[..]`, `{..}` and `{k: v ..}` build a list, a set and a dict — and the
 			// runtime loop has just put a handle of that kind in the slot. Without the record,
@@ -17981,6 +18066,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.listVars[nm.Value] = true
 				case "set":
 					g.runtimeSets[nm.Value] = true
+				}
+			}
+			// A container handed back by a call records its own facts, and they are richer than the three
+			// kind bits above: whether its slots describe themselves, and that no static literal describes
+			// them — the two questions every read of a container the program built at run time asks (ADR
+			// 0232's rule, applied to the answer of a call by roadmap Gap R.67, ADR 0333).
+			if c, isCall := n.Value.(*Call); isCall {
+				if cn, isName := c.Fn.(*Name); isName {
+					if a, okA := g.containerAnswerOf(cn.Value); okA {
+						g.recordContainerAnswer(nm.Value, a)
+					}
 				}
 			}
 			// Track the None singleton the same way containers are tracked: the variable's
@@ -18079,7 +18175,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
+				// A container the callee built is handed over as the handle its builders made; the ordinary
+				// road refuses to use that word as a number, so the binding — which can hold it — asks for the
+				// permission first (roadmap Gap R.67, ADR 0333).
+				perm := g.permitContainerAnswer(n.Value)
 				h, herr := g.value(b, n.Value)
+				perm.Done()
 				if herr != nil {
 					return herr
 				}
@@ -18383,7 +18484,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// measured beside Gap R.96). The value is asked for once, in the domain that stores it.
 				v = "0"
 			} else {
+				// A binding is a position that CAN keep the handle a container answer travels in — the slot
+				// it stores into is what the container roads read back — so it asks the door's permission
+				// before the ordinary road is asked for the word (roadmap Gap R.67, ADR 0333).
+				perm := g.permitContainerAnswer(n.Value)
 				v, err = g.value(b, n.Value)
+				perm.Done()
 				if err != nil {
 					return err
 				}
@@ -18889,6 +18995,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
+		// `for v in build():` — the iterable is the container the callee built. The loop road below reads a
+		// container by name, which is what the container door hands over: the call is emitted once, the
+		// answer is rooted for the collector, and the loop runs over the answer as over any other container
+		// the program named (roadmap Gap R.67, ADR 0333).
+		if ansName, _, okAns := g.containerAnswerOperand(b, n.Iter); okAns {
+			n.Iter = ansName
+		}
 		// `for x in [1, 2, 3]`: iterate an inline list literal's constant
 		// elements by unrolling one body block per element. `break` skips the
 		// `else`, `continue` advances to the next element; after the last
@@ -19445,6 +19558,37 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.gcCloseFrame(b)
 				b.WriteString(fmt.Sprintf("  ret i32 %s\n", it))
 				return nil
+			}
+		}
+		// A container handed back by a `return` is an object, and an object has a handle rather than a
+		// global. `return [1, 2]` used to lower the literal to its compile-time array and write
+		// `ret i32 @.lst1`, which is not IR: `llc` rejected the module and `gustyc` exited **2** — the code
+		// the exit-code contract reserves for a compiler bug — on `def build(): return [1, 2]` with
+		// `print(build())`, a program the reference runs and prints `[1, 2]` (roadmap Gap R.67, ADR 0333).
+		// The builders reached here are the ones a binding already uses, so the word that crosses the `ret`
+		// is the same handle `ys = build()` has been handing back all along, and the roads that read a
+		// container variable read the answer as soon as the print door asks it (below).
+		if _, isContainerAnswer := g.containerAnswerOf(g.curFunc); isContainerAnswer {
+			mustBuild := false
+			switch n.Expr.(type) {
+			case *ListLit, *SetLit, *DictLit, *Comp:
+				mustBuild = true // the scan proved the answer; a builder that declines says so, it does not emit a global
+			}
+			if h, _, okHandle := g.containerHandleOf(b, n.Expr); okHandle {
+				g.heapUsed = true
+				if err := g.runDeferred(b); err != nil {
+					return err
+				}
+				g.gcCloseFrame(b)
+				b.WriteString(fmt.Sprintf("  ret i32 %s\n", h))
+				return nil
+				}
+			if mustBuild {
+				_, cErr := g.containerOperand(b, n.Expr)
+				if cErr != nil {
+					return cErr
+				}
+				return fmt.Errorf("codegen: %q answers a container this backend cannot build at the return (roadmap Gap R.67, ADR 0333)", g.curFunc)
 			}
 		}
 		if g.pairRetDone[g.curFunc] {

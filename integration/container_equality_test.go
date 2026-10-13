@@ -47,6 +47,11 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 		},
 		// A container against a scalar is unequal, not a trap and not a crash.
 		{"xs = [1]\nif xs == 1:\n    print(\"eq\")\nelse:\n    print(\"ne\")\n", "ne\n"},
+		// The container on the right is the answer a call handed back: its kind is a fact the whole-program
+		// scan read off the callee's own `return`, so the comparison asks the object instead of refusing
+		// (roadmap Gap R.67, ADR 0333). The spelling whose callee hands back a value of no kind — `echo(v)` —
+		// still refuses, below.
+		{"def make():\n    return [1]\n\nxs = [1]\nprint(xs == make())\n", "True\n"},
 		// `is` keeps asking the identity question.
 		{"xs = [1, 2]\nys = [1, 2]\nif xs is xs:\n    print(\"same\")\nif xs is ys:\n    print(\"aliased\")\nelse:\n    print(\"distinct\")\n", "same\ndistinct\n"},
 	} {
@@ -66,10 +71,11 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 
 // Comparing a container with something of unknown kind has no honest answer until values carry
 // tags (Gap R.112): the i32s are both numbers, and only one of them is a handle. It refuses, and the
-// refusal says what is missing.
+// refusal says what is missing. The spelling of it that was a call's answer — `def make(): return [1]` —
+// answers since the container-answer table read the kind off the callee's own `return` (roadmap Gap R.67,
+// ADR 0333); it moved up to the answering test, which is where a row that stops refusing goes.
 func TestContainerEqualityWithUnknownKindRefuses(t *testing.T) {
 	for _, src := range []string{
-		"def make():\n    return [1]\n\nxs = [1]\nprint(xs == make())\n",
 		"def echo(v):\n    return v\n\nxs = [1]\nprint(xs == echo(1))\n",
 	} {
 		_, err := lang.Compile(src)

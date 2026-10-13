@@ -103,10 +103,13 @@ func TestContainerComparisonNeverEmitsAGlobalInValuePosition(t *testing.T) {
 
 // A comparison of a container against something whose kind the compiler cannot see refuses. The
 // two i32s are both *some* number; deciding which of them is a handle needs the tagged value of
-// L11.2, and guessing is how this repo keeps producing answers CPython does not give.
+// L11.2, and guessing is how this repo keeps producing answers CPython does not give. The spelling
+// where the unknown thing was a call's answer — `def make(): return [1]` — answers `True` since the
+// container-answer table read the kind off the callee's own `return` (roadmap Gap R.67, ADR 0333);
+// it lives in the answering table of container_return_test.go now, which is where a row that stops
+// refusing goes.
 func TestContainerCompareWithUnknownKindRefuses(t *testing.T) {
 	for _, src := range []string{
-		"def make():\n    return [1]\n\nxs = [1]\nprint(xs == make())\n",
 		"def probe(v):\n    return v\n\nxs = [1]\nprint(xs == probe(1))\n",
 	} {
 		_, err := Compile(src)

@@ -211,8 +211,31 @@ The fold keeps the shapes it can read (`[[1, 2][0], 3]` is `[1, 3]`, still a con
 a raise inside an element is the program's own catchable exception, and the position that keeps one word for a
 whole value still refuses rather than printing a payload (Gap R.146). What the door still cannot reach is
 filed with both answers written into the row: an element that *contains* a read (Gap R.225), the loop that
-unrolls a literal directly (Gap R.226), a subscript of a subscript of a literal (Gap R.227) and a container
-crossing a `return` (Gap R.67).
+unrolls a literal directly (Gap R.226) and a subscript of a subscript of a literal (Gap R.227). The fourth
+row it carried — a container crossing a `return`, recorded as answering `0` — answers `['x', 2]` as of ADR
+0333 below, and sits in that row's answering table rather than this one.
+
+A **container returned from a call is a value**, and ADR 0333 closes the oldest container row in the queue.
+`def build(): return [1, 2]` used to emit `ret i32 @.lst1` — a global in a value position, `llc` refusing the
+module and `gustyc` exiting **2**, the code the contract reserves for a compiler bug, on a two-line program
+CPython prints `[1, 2]` for. The two shapes that did build were worse for being quiet: `xs = []` /
+`xs.append(1)` / `return xs` printed `0`, `for v in build():` printed nothing at all, `if build():` was false
+for a two-element list, and `str(build())` wrote the handle's digits. The `return` now materialises through
+the builders a binding already uses, so the word crossing the `ret` is a heap handle in a register — **no
+emitted module under this row contains `ret i32 @.`**, by an IR-shape assertion put through `llc` — and
+`containerReturningFuncs` records the one kind a function's arms all answer, so the call site (which holds
+one word and a name, and cannot see a body) reads the answer as the container it is. `print`, `str`/`repr`/
+f-string, `len`, `in`, `not in`, `not`, truthiness, a `for` iterable, `==` and a binding then answer the way
+the bound form `ys = build()` always did — because they are the same read of the same handle. A function is
+claimed only when **every** road through its body agrees (Gap R.219 is the standing lesson: a function
+registered as text-returning on the evidence of one arm prints the other arm's number as a byte string), and a
+function the scan declines keeps the road it had. A call site that hands a **double** into a parameter is left
+to the pair road with its honest `(payload, tag)` sentence: `print(b(2))` is claimed and answers `[2, 1]`,
+`print(b(2.5))` is declined — the same body, the caller's word as the difference. `programs/container_returns.gy`
+is `match` on both legs; what still refuses — a subscript on the answer (**Gap R.214**, now unblocked), the
+answer as another literal's element or as a method receiver (**Gap R.229**), the answer through a parameter
+(Gap R.154), `build() + [9]` (Gap R.175), `None` returned from a function (**Gap R.228**) — names the function
+and the door, and never exits 2.
 
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
@@ -555,6 +578,9 @@ truncated `1` before it, Gap R.102), a container **returned** from a function (`
 `{'k': 2.5}` — filed as Gap R.103 and re-measured as Gap R.67's, since the same dict written with no function around it prints
 `{'k': 2.5}` on both legs), and `min`/`max` with two arguments refusing on the record (Gap R.104,
 closed two cycles later by ADR 0256 — which found the compiled leg had its own half of the same question).
+ADR 0333 paid the half of that row which is not a double: `def f(): return {"k": 1}` / `print(f())` answers
+`{'k': 1}`. The half where the **caller's double** becomes a slot of the answer (`def f(x): return {"k": x}` /
+`print(f(1.0))`, still `0`) is left to the pair road on purpose — see the carve-out under ADR 0333 below.
 
 The element of a comprehension over a container the program built is free to **branch**, and the loop had to
 be told (ADR 0255, closing Gap R.100). `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit
@@ -973,7 +999,7 @@ position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `r
 a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call, and an f-string used as a
 value — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
-R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, `print(f"{xs}")` is Gap
+R.115, a tuple is L11.3's, `print(f"{xs}")` is Gap
 R.114, and an unrelated container's nested slot read refusing is Gap R.191's). `--json --eval 'repr("hi")'` reports
 `{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on both legs.
 

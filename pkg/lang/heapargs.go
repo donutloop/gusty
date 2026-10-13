@@ -2470,6 +2470,17 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		// load (roadmap L11.1, ADR 0241).
 		_, ok := g.staticContainerKind(n)
 		return ok
+	case *Call:
+		// A call that hands back a container IS a container: its answer is the handle the callee's builders
+		// made (Gap R.67), and the kind was proved by the scan of the callee's whole body rather than guessed
+		// from this call site. Every road below this question that then asks `containerHandleOf` gets the same
+		// answer to both — the comparison, the membership test, the loop, the truthiness test — which is the
+		// reason the two are kept as a pair (roadmap Gap R.67, ADR 0333).
+		if nm, isName := n.Fn.(*Name); isName {
+			_, ok := g.containerAnswerOf(nm.Value)
+			return ok && g.containerAnswerCallIsCarriable(n)
+		}
+		return false
 	}
 	_, ok := emptyContainerLiteral(e)
 	return ok
@@ -2498,6 +2509,17 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 		}
 		if lit, ok := g.containerLits[n.Value]; ok {
 			return g.staticContainerKind(lit)
+		}
+		return "", false
+	case *Call:
+		// The answer of a function that answers a container is a container, and the table says which —
+		// the same pair of questions the roads beside this one ask of a name or a slot, asked here of a
+		// call: decide from the table, build with `containerHandleOf`, which answers the same shape
+		// (roadmap Gap R.67, ADR 0333).
+		if nm, isName := n.Fn.(*Name); isName {
+			if a, ok := g.containerAnswerOf(nm.Value); ok && g.containerAnswerCallIsCarriable(n) {
+				return a.kind.String(), true
+			}
 		}
 		return "", false
 	case *Index:
@@ -2601,6 +2623,24 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 			return "", "", false
 		}
 		return val, inner, true
+	case *Call:
+		// A call that hands back a container named it as surely as a variable does: the callee's `ret`
+		// carries the handle its builders made (Gap R.67), so the doors that read a container — the
+		// comparison, the membership test, the loop, the element road — read this answer too. The scan, not
+		// the call site, is what proves the answer is a container; a call the scan cannot name declines, and
+		// the caller's own refusal stands.
+		if nm, isName := n.Fn.(*Name); isName {
+			if a, okA := g.containerAnswerOf(nm.Value); okA && g.containerAnswerCallIsCarriable(n) {
+				g.heapUsed = true
+				g.containerAsked[nm.Value] = true
+				h, err := g.value(b, e)
+				delete(g.containerAsked, nm.Value)
+				if err != nil {
+					return "", "", false
+				}
+				return h, a.kind.String(), true
+			}
+		}
 	}
 	return "", "", false
 }
@@ -4036,6 +4076,22 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 			return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; reading an element as a container needs the tag the builder wrote (roadmap L11.1, ADR 0241)", exprSnippet(e))
 		}
 		return h, nil
+	case *Call:
+		// `return build()` forwards a container a second function built. That function's own `ret` is
+		// already the handle its builders made (Gap R.67), so this body hands the word on; the scan proved
+		// the callee answers a container, and the permission below is what lets the ordinary call road
+		// lower it here instead of refusing to use its own answer (ADR 0273's permission, read again by
+		// ADR 0333).
+		if nm, isName := n.Fn.(*Name); isName {
+			if _, isContainerAnswer := g.containerAnswerOf(nm.Value); isContainerAnswer && g.containerAnswerCallIsCarriable(n) {
+				g.heapUsed = true
+				g.containerAsked[nm.Value] = true
+				h, err := g.value(b, e)
+				delete(g.containerAsked, nm.Value)
+				return h, err
+			}
+		}
+		return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; a call answers a container only where the scan can see every arm of the callee answer one (roadmap Gap R.67, ADR 0333)", exprSnippet(e))
 	case *Comp:
 		// A comprehension is a container the same way a literal is. The constant path hands
 		// back a folded global (@.lstN / @.setN / @.dictN), whose layout is a length plus an
