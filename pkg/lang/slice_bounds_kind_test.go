@@ -70,6 +70,12 @@ var sliceBoundsAnswered = []struct {
 	{"print(\"abcdef\"[::-1])", "fedcba"},
 	// The copy of a copy keeps the same bound rule.
 	{"xs = [1, 2, 3]\nprint(xs[0:2][None:1])", "[1]"},
+	// A step the compiler cannot read is a step the row guards rather than refuses: the guard is beside the
+	// copy, and an ordinary stride answers exactly what it answered before the row (roadmap Gap R.236, ADR 0337).
+	{"xs = [1, 2, 3, 4]\nk = 2\nprint(xs[::k])", "[1, 3]"},
+	{"def z(n):\n    return n\nxs = [1, 2, 3, 4]\nprint(xs[::z(2)])", "[1, 3]"},
+	{"xs = [1, 2, 3, 4]\nprint(xs[0:4:2])", "[1, 3]"},
+	{"xs = [1, 2, 3, 4]\nk = 3\nprint(xs[::k])", "[1, 4]"},
 }
 
 // TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises covers the bounds the compiler can name the kind of.
@@ -228,6 +234,156 @@ func TestEverySliceBoundsModuleVerifies(t *testing.T) {
 	}
 }
 
+// TestASliceStepOfZeroRaisesWhatTheReferenceRaises covers the one value a bound may not take. The kind gate above
+// cannot ask it — `0` is a perfectly good integer — and `rt_slice` walks its own loop forever on it, so the run
+// had to be killed and the contract filed the toolchain's own bug (exit 2, ADR 0166) for a program whose only
+// fault was writing `::0`. The reference answers `ValueError: slice step cannot be zero` wherever the bounds say
+// what the answer should be, and the row asserts the class, the message, the silence on stdout and the absence of
+// the compiler's `codegen:` prefix on every position that reads a copy (roadmap Gap R.236, ADR 0337).
+func TestASliceStepOfZeroRaisesWhatTheReferenceRaises(t *testing.T) {
+	const message = "slice step cannot be zero"
+	for _, tt := range []struct {
+		src string
+	}{
+		// The shape the row was measured on, and the ones beside it: no bounds at all, both bounds, a
+		// negative zero, a constant expression, a variable, a call's answer.
+		{"xs = [1, 2]\nprint(xs[::0])"},
+		{"print([1, 2, 3][::0])"},
+		{"xs = [1, 2]\nprint(xs[0:2:0])"},
+		{"xs = [1, 2]\nprint(xs[::-0])"},
+		{"xs = [1, 2]\nprint(xs[::1 - 1])"},
+		{"xs = [1, 2]\nk = 0\nprint(xs[::k])"},
+		{"def z():\n    return 0\nxs = [1, 2]\nprint(xs[::z()])"},
+		{"def b():\n    return [1, 2, 3]\nprint(b()[::0])"},
+		{"xs = [1.5, \"a\", [7]]\nprint(xs[::0])"},
+		// A text counts characters and strides the same way; the fold used to refuse it.
+		{"s = \"abcd\"\nprint(s[::0])"},
+		{"print(\"abcd\"[::0])"},
+		{"print(\"abcd\"[0:4:0])"},
+		// Every position that reads a copy asks it too.
+		{"xs = [1, 2]\nprint(len(xs[::0]))"},
+		{"xs = [1, 2]\nfor v in xs[::0]:\n    print(v)"},
+		{"xs = [1, 2]\nif xs[::0]:\n    print(\"yes\")"},
+		{"xs = [1, 2]\nprint(xs[::0] == [1])"},
+		{"xs = [1, 2]\nprint(1 in xs[::0])"},
+		{"xs = [1, 2]\nys = xs[::0]\nprint(ys)"},
+		{"xs = [1, 2]\nprint(xs[::0][0:1])"},
+	} {
+		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			class, msg := jitTrap(t, tt.src)
+			if class != "ValueError" || msg != message {
+				t.Fatalf("%q raised %s: %s; the reference raises ValueError: %s", tt.src, class, msg, message)
+			}
+		})
+	}
+}
+
+// TestASliceStepOfZeroIsTheProgramsExceptionNotTheCompilers: the raise is catchable, and the statement after the
+// handler still runs — which is the difference between the program's ValueError and the killed run this row
+// replaced (a killed run prints nothing, catches nothing, and exits 2).
+func TestASliceStepOfZeroIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{
+			"xs = [1, 2]\ntry:\n    print(xs[::0])\nexcept ValueError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"xs = [1, 2]\nk = 0\ntry:\n    print(xs[::k])\nexcept ValueError:\n    print(\"caught\")\nprint(\"after\")",
+			"caught\nafter",
+		},
+		{
+			"s = \"abcd\"\ntry:\n    print(s[::0])\nexcept ValueError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"xs = [1, 2]\nprint(\"first\")\ntry:\n    print(xs[0:2:0])\nexcept ValueError:\n    print(\"caught\")\nprint(\"last\")",
+			"first\ncaught\nlast",
+		},
+		{
+			// A `TypeError` arm does not take a `ValueError`: the classes are the reference's, not ours to blur.
+			"xs = [1, 2]\ntry:\n    print(xs[::0])\nexcept TypeError:\n    print(\"wrong arm\")\nexcept ValueError:\n    print(\"right arm\")",
+			"right arm",
+		},
+	} {
+		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
+				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
+			}
+			if out, trap := runForParity(t, tc.src); trap != "" || out+"\n" != tc.want+"\n" {
+				t.Fatalf("%q printed %q with trap %q, the reference prints %q", tc.src, out, trap, tc.want)
+			}
+		})
+	}
+}
+
+// TestTheZeroStepGuardIsInTheModuleWhereTheValueIs is the row asked of the emitted IR: the three cases the fix
+// distinguishes are three different modules, and each is checked for the shape rather than for the exit code.
+//
+//   - a step the compiler reads as zero raises and builds nothing — no `@rt_slice(` anywhere, the copy never exists;
+//   - a step the compiler cannot read carries the guard beside the call, because the loop that hangs is the
+//     helper's and the value only exists at run time;
+//   - a step the compiler reads as anything else asks nothing: the ordinary `xs[::2]` module is no fatter than it
+//     was, which is the negative control a guard emitted unconditionally would fail.
+func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		src         string
+		want        []string
+		forbidsCall bool
+	}{
+		{
+			name:        "a known zero raises with no copy",
+			src:         "xs = [1, 2]\nprint(xs[::0])",
+			want:        []string{"store i32 1, i32* @exn_flag", "slice step cannot be zero"},
+			forbidsCall: true,
+		},
+		{
+			name:        "a step the compiler cannot read is guarded beside the copy",
+			src:         "def z(n):\n    return n\nxs = [1, 2]\nprint(xs[::z(2)])",
+			want:        []string{"= icmp eq i32", "store i32 1, i32* @exn_flag", "call i32 @rt_slice(", "slice step cannot be zero"},
+			forbidsCall: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(res.IR, want) {
+					t.Fatalf("the module does not carry %q:\n%s", want, res.IR)
+				}
+			}
+			if tc.forbidsCall && strings.Contains(mainBodyOf(res.IR), "call i32 @rt_slice(") {
+				t.Fatalf("the module builds a copy the program can never read:\n%s", res.IR)
+			}
+			mustVerifyWithLLC(t, res.IR)
+		})
+	}
+	for _, src := range []string{
+		"xs = [1, 2, 3, 4]\nprint(xs[::2])",
+		"xs = [1, 2, 3, 4]\nprint(xs[::-1])",
+		"xs = [1, 2, 3, 4]\nprint(xs[0:4:2])",
+	} {
+		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			res, err := Compile(src)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			if !strings.Contains(res.IR, "call i32 @rt_slice(") {
+				t.Fatalf("an answered slice no longer copies:\n%s", res.IR)
+			}
+			if strings.Contains(res.IR, "slice step cannot be zero") {
+				t.Fatalf("a step the compiler reads still carries a raise site it can never reach:\n%s", res.IR)
+			}
+			mustVerifyWithLLC(t, res.IR)
+		})
+	}
+}
+
 // TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed keeps the neighbours of this door visible, each with the
 // reference's answer beside what this backend says today. A row that stops answering fails the test and moves;
 // it does not disappear.
@@ -239,11 +395,13 @@ func TestEverySliceBoundsModuleVerifies(t *testing.T) {
 // while the same body handed a **text** raises (that row is in the raise table above, and the difference is the
 // record, not the syntax). Two further neighbours the row measured and filed rather than folded in: a
 // comprehension whose iterable is a copy (Gap R.239 — name the copy and it answers) and the length of a slice of
-// a text (Gap R.240). The step of zero is not in this table because it cannot be asserted here: it does not
-// answer, does not refuse and does not raise — `rt_slice` loops on it and the run is killed (exit 2, roadmap Gap
-// R.236), which is the reason that row ranks first in its family. And the `except` arm that calls a function is
-// pinned one altitude out, in `integration/slice_bounds_test.go`, where the run's exit code is the thing (Gap
-// R.241).
+// a text (Gap R.240). The step of zero used to be in this table as an unwitnessable row — it answered nothing, refused nothing,
+// raised nothing: `rt_slice` looped and the run was killed (exit 2, the old **Gap R.236**) — and it left for the
+// raise tables above when ADR 0337 put the value question beside the call. What the text road still cannot answer
+// is its own row: a step that is a *value* (`s[::k]`) refuses with the fold's sentence where the reference strides
+// the text, because `rt_str_slice` takes a low and a high and no stride at all (**Gap R.243**). And the `except`
+// arm that calls a function is pinned one altitude out, in `integration/slice_bounds_test.go`, where the run's
+// exit code is the thing (Gap R.241).
 func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -339,6 +497,12 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"s = \"abcd\"\nprint(len(s[1:3]))",
 			"", "2",
 			"roadmap Gap R.240 (`len(s)` answers 4 and `len(xs[0:2])` answers 2; the length door has no arm for a copy of a text, whatever its bounds are)",
+		},
+		{
+			"a stepped slice of a text whose step is a value",
+			"s = \"abcd\"\nk = 2\nprint(s[::k])",
+			"", "ac",
+			"roadmap Gap R.243 (`rt_str_slice` takes a low and a high and no stride, so the fold answers a constant step and refuses any other; `s[i:i+2]` — the same road without a step — has answered since ADR 0229)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

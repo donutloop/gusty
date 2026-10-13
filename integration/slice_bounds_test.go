@@ -221,18 +221,104 @@ func TestTheBoundGateIsInTheModule(t *testing.T) {
 	}
 }
 
+// TestASliceStepOfZeroRaisesThroughTheCLI is Gap R.236's symptom at this altitude: `print(xs[::0])` used to end
+// with **exit 2** and nothing on either stream — `rt_slice` walked its own loop until the run was killed, and the
+// contract files a killed run as the compiler's own bug (ADR 0166) — while the reference raises
+// `ValueError: slice step cannot be zero`. The three shapes the row measured answered three different ways (the
+// killed run, `[]` at exit 0 when the bounds happened to stop the loop, and a front-end refusal for a text), so
+// each is asserted separately, and the two answered shapes beside them are the negative control: a stride the
+// compiler reads must still answer, not raise.
+func TestASliceStepOfZeroRaisesThroughTheCLI(t *testing.T) {
+	const msg = "ValueError: slice step cannot be zero"
+	for _, tt := range []struct {
+		name string
+		src  string
+	}{
+		{"no bounds", "xs = [1, 2, 3]\nprint(xs[::0])"},
+		{"with bounds", "xs = [1, 2, 3]\nprint(xs[0:2:0])"},
+		{"negative zero", "xs = [1, 2, 3]\nprint(xs[::-0])"},
+		{"a literal base", "print([1, 2, 3][::0])"},
+		{"a mixed base", "xs = [1.5, \"a\", [7]]\nprint(xs[::0])"},
+		{"a call's answer as the base", "def b():\n    return [1, 2, 3]\nprint(b()[::0])"},
+		{"a step in a name", "xs = [1, 2, 3]\nk = 0\nprint(xs[::k])"},
+		{"a step from a call", "def z(n):\n    return n\nxs = [1, 2, 3]\nprint(xs[::z(0)])"},
+		{"a text base", "s = \"abcd\"\nprint(s[::0])"},
+		{"a text literal", "print(\"abcd\"[0:4:0])"},
+		{"measured by len", "xs = [1, 2, 3]\nprint(len(xs[::0]))"},
+		{"looped over", "xs = [1, 2, 3]\nfor v in xs[::0]:\n    print(v)"},
+		{"tested for truth", "xs = [1, 2, 3]\nif xs[::0]:\n    print(\"truthy\")"},
+		{"compared", "xs = [1, 2, 3]\nprint(xs[::0] == [1])"},
+		{"tested for membership", "xs = [1, 2, 3]\nprint(1 in xs[::0])"},
+		{"bound to a name", "xs = [1, 2, 3]\nys = xs[::0]\nprint(ys)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
+			if code == 2 {
+				t.Fatalf("exit 2 — the code the contract reserves for a compiler bug, which is exactly what this shape used to be (ADR 0166):\n%s", stderr)
+			}
+			if code == 0 {
+				t.Fatalf("answered %q at exit 0 where the reference raises: a step of zero is the program's exception, not a copy the compiler chooses to build\nstderr %q", stdout, stderr)
+			}
+			if strings.Contains(stderr, "codegen:") {
+				t.Fatalf("the program was refused by the compiler rather than raised by the runtime:\n%s", stderr)
+			}
+			if strings.TrimSpace(stdout) != "" {
+				t.Fatalf("the raise printed %q on stdout before it raised: the copy is refused, not built and reported", stdout)
+			}
+			if !strings.Contains(stderr, msg) {
+				t.Fatalf("the raise does not carry the reference's sentence %q:\n%s", msg, stderr)
+			}
+		})
+	}
+}
+
+// TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI is the guard's negative control: a stride the compiler
+// can read raises nothing and emits no raise site at all, and a stride it cannot read is guarded and still
+// strides. These are the rows a guard emitted unconditionally would fail while every other row stayed green.
+func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
+	for _, tt := range []struct {
+		src  string
+		want string
+	}{
+		{"xs = [1, 2, 3, 4]\nprint(xs[::2])", "[1, 3]"},
+		{"xs = [1, 2, 3, 4]\nprint(xs[::-1])", "[4, 3, 2, 1]"},
+		{"xs = [1, 2, 3, 4]\nprint(xs[0:4:2])", "[1, 3]"},
+		{"xs = [1, 2, 3, 4]\nk = 2\nprint(xs[::k])", "[1, 3]"},
+		{"def z(n):\n    return n\nxs = [1, 2, 3, 4]\nprint(xs[::z(2)])", "[1, 3]"},
+		{"s = \"abcd\"\nprint(s[::-1])", "dcba"},
+		{"s = \"abcd\"\nprint(s[0:4:2])", "ac"},
+	} {
+		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			want := pythonOutput(t, tt.src+"\n")
+			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
+			if code == 2 {
+				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
+			}
+			if code != 0 {
+				t.Fatalf("exit %d, want 0: the reference answers this program, so a raise is the wrong answer\nstderr %q", code, stderr)
+			}
+			if got := strings.TrimSpace(stdout); got != strings.TrimSpace(want) {
+				t.Fatalf("printed %q, the reference prints %q", got, strings.TrimSpace(want))
+			}
+		})
+	}
+}
+
 // TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI is the filed half at this altitude: six shapes the
 // reference answers or raises and this backend does not, each pinned with what it says today and what the
 // reference says, so the day a road grows the answer the row fails and the row moves (it cannot be closed by
 // deleting a table). None of them may reach exit 2 — the code the contract reserves for a compiler bug
-// (ADR 0166) — including the three the slice family still owes a record for.
+// (ADR 0166) — which is the claim that stopped being true the day the step of zero was filed: that shape used to
+// sit here, unwitnessable, until ADR 0337 made it a raise.
 //
 // The first three are the silent half of this row's own gate: it names a kind only where a record names one, and
 // a slot, a call's answer and a float-carrying parameter each hold theirs one word too far away (roadmap Gap
-// R.237). The last three are the neighbours this row measured and filed rather than fixed: a comprehension whose
-// iterable is a copy (Gap R.239), `len` of a slice of a text (Gap R.240), and an `except` arm that calls a
-// function (Gap R.241 — the arm runs with the exception flag still set, so the call's own post-call check takes
-// it back, the traceback prints, and the statement after the `try` never runs).
+// R.237). The rest are the neighbours this row measured and filed rather than fixed: a comprehension whose
+// iterable is a copy (Gap R.239), `len` of a slice of a text (Gap R.240), a stepped slice of a text whose step is
+// a value (Gap R.243 — the fold answers a constant stride and refuses any other), and an `except` arm that calls
+// a function (Gap R.241 — pinned in its own test below, because there the run's exit code is the thing: the arm
+// runs with the exception flag still set, so the call's own post-call check takes it back, the traceback prints,
+// and the statement after the `try` never runs).
 func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -269,7 +355,19 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 			"the length of a slice of a text",
 			"s = \"abcd\"\nprint(len(s[1:3]))",
 			"", "2",
-			"roadmap Gap R.240 (`len` of the text answers 4 and `len` of a list copy answers 2; the door has no arm for a copy of a text)",
+			"roadmap Gap R.240 (`len(s)` answers 4 and `len(xs[0:2])` answers 2; the door has no arm for a copy of a text)",
+		},
+		{
+			"a stepped slice of a text whose step is a value",
+			"s = \"abcd\"\nk = 2\nprint(s[::k])",
+			"", "ac",
+			"roadmap Gap R.243 (`rt_str_slice` takes a low and a high and no stride: a constant step folds and answers, a value step refuses — the one shape in this family that cannot hang, because there is no loop to hang in)",
+		},
+		{
+			"a stepped slice of a text whose step is a value",
+			"s = \"abcd\"\nk = 2\nprint(s[::k])",
+			"", "ac",
+			"roadmap Gap R.243 (`rt_str_slice` takes a low and a high and no stride: a constant step folds and answers, a value step refuses — and this is the one shape in the family that cannot hang, because there is no loop to hang in)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

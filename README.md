@@ -303,15 +303,26 @@ order (`{1,2}["a":"b"]` complains about the set first), and every position that 
 a `for`, a condition, `==`, `in`, a binding — because they all lower through one door. Where the kind is a
 run-time fact the gate stays silent rather than guess (ADR 0232's rule: a claim about a kind is a claim about
 bytes some writer wrote), and the silence is priced: a bound hidden in a slot, in a call's answer or in a
-float-carrying parameter still answers `[1, 2]` (**Gap R.237**), a step of zero still hangs the runtime's loop and
-dies at **exit 2** where the reference raises `ValueError: slice step cannot be zero` (**Gap R.236**), a slice
-handed back by a function still travels as one word, so `print(n())` over `return xs[1:3]` answers `1` while
-`ys = n()` prints the list (**Gap R.238**), a comprehension over a copy refuses although the named copy iterates
-(**Gap R.239**), and `len` of a slice of a text refuses although `len` of the text and `len` of a list copy both
-answer (**Gap R.240**). Measuring the last of those found a defect that is not the slice road's and is now filed on
-its own: an `except` arm that **calls** a user function runs its handler and then takes the exception the handler
-already handled — traceback, exit 3, the statement after the `try` skipped (**Gap R.241**). `programs/slice_bounds.gy`
-is `match` on both legs.
+float-carrying parameter still answers `[1, 2]` (**Gap R.237**), a slice handed back by a function still travels as
+one word, so `print(n())` over `return xs[1:3]` answers `1` while `ys = n()` prints the list (**Gap R.238**), a
+comprehension over a copy refuses although the named copy iterates (**Gap R.239**), and `len` of a slice of a text
+refuses although `len` of the text and `len` of a list copy both answer (**Gap R.240**).
+
+**The step of zero is asked what it holds, and ADR 0337 pays Gap R.236** — the worst row of that family, and the one
+that could not be witnessed: `rt_slice` walked its loop forever on a zero step, the run was killed, and **exit 2**
+reported the compiler's own bug (ADR 0166) for `print(xs[::0])`; `print(xs[0:2:0])` answered `[]` at exit 0 and
+`print("abcd"[::0])` was refused. All three now raise the reference's `ValueError: slice step cannot be zero`,
+catchable by `except ValueError:`. The fix is three-way where the value is: a step the compiler reads as zero raises
+with **no copy built and no counter advanced** (ADR 0273's purity — `call i32 @rt_slice(` is absent from a raising
+module), a step it cannot read carries a guard beside the call, and a step it reads as anything else asks nothing, so
+the ordinary `xs[::2]` module is no fatter than it was. The text road keeps what it cannot answer: `rt_str_slice` has
+no stride argument, so `s[::k]` still refuses (**Gap R.243**). Measuring this row also found a defect that is not the
+slice road's and is the queue's worst class: `y = x-1` — no space before the minus — **answers `x` at exit 0**, and
+`print(1-1)` is a parse error, because the lexer emits `-1` as one token whenever a minus is followed by a digit and
+never asks what came before it (**Gap R.242**, priority 1, the next row this loop takes). Also filed from the same session, and not a slice defect
+either: an `except` arm that **calls** a user function runs its handler and then takes back the exception the handler
+already handled — traceback, exit 3, the statement after the `try` skipped (**Gap R.241**).
+`programs/slice_bounds.gy` is `match` on both legs.
 
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It

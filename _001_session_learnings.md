@@ -10156,3 +10156,47 @@ this row:
 - **The parser has no `except <Type> as e:`** (Gap R.113, open since 2026-10-02), so a catchable row can assert
   `except TypeError:` and `except:` but not a named exception object. Where a row wants the name, the row is the
   parser's.
+
+## The row that could not be witnessed was the worst one in the family (L11.4, Gap R.236; ADR 0337; Gaps R.242, R.243 filed)
+
+`print(xs[::0])` did not answer, did not refuse and did not raise. `rt_slice` walked `for (i = low; i != high; i +=
+step)` with `step = 0`, the index never moved, the harness's budget expired, and the CLI came back with **exit 2** —
+the code ADR 0166 reserves for a *compiler* bug — with nothing on either stream. Its neighbours answered `[]` at exit
+0 (`xs[0:2:0]`: the bounds stopped the loop the stride never moved) and refused (`print("abcd"[::0])`: `cannot fold
+string slice`). One program, three behaviours, and the reference's one `ValueError: slice step cannot be zero` for all
+three.
+
+- **A defect the suite cannot assert is a lead, not a nuisance.** Gap R.236 sat in the filed tables as a *note*
+  because a killed run returns nothing to compare — which is exactly why it ranked above the rows that did have
+  expectations. The closure's first job was to make it assertable: raise, and the row becomes 19 rows of class and
+  message with exit 2 forbidden.
+- **Three behaviours to one question means the question is missing.** The kind gate (ADR 0336) could not have caught
+  this: `0` is a perfectly good integer. `ValueError` and `TypeError`, two messages, two DoDs — the value question
+  shares the file and the call site, never the predicate.
+- **Split the fix by what the compiler can read, and make the negative control a row.** A step read as zero raises
+  with no `@rt_slice(` and no counter advanced (ADR 0273's purity — a gate that bumps `heapSeq` on its way out is a
+  gate with a side effect); a step it cannot read carries `icmp eq i32 %step, 0` beside the call; a step read as
+  anything else emits **nothing**. `TestTheZeroStepGuardIsInTheModuleWhereTheValueIs` asserts all three shapes, and
+  the third one is the row that fails if someone "simplifies" the guard into an unconditional tax on every
+  `xs[::2]`.
+- **The trap stays in codegen.** A helper that raised would own exception state the codegen cannot see and hand back
+  an uncatchable trap (ADR 0214 — `except ValueError:` is language surface); a helper that treated a zero step as 1
+  would have printed `[1, 2]` where the reference raises, which is the worst trade this contract knows — a wrong value
+  at exit 0 dressed up as a fix. `rt_slice`'s signature and body are unchanged; the guard rides beside it, after the
+  bounds are evaluated, because that is where the value is *and* the order the reference raises in.
+- **The house style was hiding a priority-1 defect.** Measuring the zero step with no spaces (`xs[::0]` needs none)
+  found that the lexer emits `-1` as a single token whenever a minus is followed by a digit, with no question about
+  the previous token — so `y = x-1` parses as `y = x` plus an expression statement `-1` and **answers `x` at exit 0**,
+  while `print(1-1)`, `print(x-1)`, `print(len(xs)-1)` and `for i in range(3-1):` are parse errors. `print(2- 3)` is
+  right, and `print(x - 1)` is right: every program in this repository writes the spaced form, so a fully green suite
+  had never seen it (the ADR 0187/ADR 0232 lesson for the third time — a defect survives in the one spelling nobody
+  writes). Filed as **Gap R.242** with the twelve-row table, and its closure owes the **token stream** both ways, not
+  just the rendered answer, because "the tests pass" is what the spaced spelling has been saying all along.
+- **A refusal can be the honest remainder of a fix, if it is named.** ADR 0337 answers the zero step on the road that
+  can stride and leaves `s[::k]` refusing — `rt_str_slice` has no stride argument — as **Gap R.243**, with the
+  code-point rule (L11.5) written into its fix cell so the next cycle cannot "just add a step parameter" and make
+  `"café"[::2]` count bytes.
+- **The recorder keeps being the best oracle.** `recmerge` cross-checks the compiled leg against CPython and refused
+  nothing this time — five sources went in (four answered stride shapes and the grown conformance program), record
+  6484 — and the program still asserts only its own row's doors: no comprehension over a copy, no `len` of a text
+  slice, no call in an `except` arm, no user-call in the handler that Gap R.241 makes fatal.

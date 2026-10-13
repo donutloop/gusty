@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: [ADR 0329](0329-an-index-that-is-not-a-position-names-its-type.md) (the same question at the subscript door, for an `Index`'s position — this row is that gate with the bounds in it), [ADR 0335](0335-a-slice-hands-back-a-copy-of-the-bases-slots-tags-included-and-the-copy-is-a-list-the-records-know.md) (the door this row stands in front of; its filed table carried this shape as Gap R.233)
 Extends: [ADR 0229](0229-a-string-slice-with-values-for-bounds-asks-the-table.md) (a string slice whose bounds are values still has an answer, and the same bounds are positions there), [ADR 0166](0166-unsupported-lowering-is-a-diagnostic.md) (the exit-2 half: a container bound reached `rt_slice`'s i32 argument as a global address and `llc` rejected the module), [ADR 0214](0214-a-trap-the-program-cannot-name-is-not-handlable.md) (the raise is the program's, and its `except` takes it)
 Supersedes: nothing
-Related: roadmap L11.4 (the position/key rule), Gap R.233 (closes), Gap R.222 (paid: the index half of the same question), Gap R.236 / R.237 / R.238 / R.239 / R.240 / R.241 (newly measured here, filed here)
+Related: roadmap L11.4 (the position/key rule), Gap R.233 (closes), Gap R.222 (paid: the index half of the same question), Gap R.236 (paid by [ADR 0337](0337-a-slice-step-is-asked-what-it-holds-zero-is-the-programs-valueerror-and-a-run-that-has-to-be-killed-is-the-compilers-bug.md)) / R.237 / R.238 / R.239 / R.240 / R.241 (newly measured here, filed here)
 Owner: `pkg/lang/slice_bounds_kind.go`, `pkg/lang/slice_bounds_kind_test.go`, `pkg/lang/codegen.go`
 
 ## Context
@@ -84,7 +84,7 @@ the other way to be wrong, and the tracker already has the price on it (ADR 0232
 
 | shape | CPython | this backend today | row |
 | --- | --- | --- | --- |
-| `print(xs[::0])`, `print(xs[0:2:0])` | `ValueError: slice step cannot be zero` | the run is killed with no output — **exit 2** | **Gap R.236** — a zero step is a *value* question on the same three i32s, and `rt_slice` loops on it |
+| `print(xs[::0])`, `print(xs[0:2:0])` | `ValueError: slice step cannot be zero` | the run is killed with no output — **exit 2** | **Gap R.236** (paid by [ADR 0337](0337-a-slice-step-is-asked-what-it-holds-zero-is-the-programs-valueerror-and-a-run-that-has-to-be-killed-is-the-compilers-bug.md), which asks the step what it holds beside the call that would have walked forever) |
 | `ys = ["a"]` / `print(xs[ys[0]:2])` | the `TypeError` above | answers `[1, 2]` at exit 0 | **Gap R.237** — the bound is a pair the compiler holds one word of |
 | `def g(): return "a"` / `print(xs[g():2])` | the `TypeError` above | answers `[1, 2]` at exit 0 | **Gap R.237** |
 | `def n(): return xs[1:3]` / `print(n())` | `[2, 3]` | answers `1` (and `3` over a mixed base) at exit 0 | **Gap R.238** — the scan that decides whether a function hands back a container has no arm for a slice |

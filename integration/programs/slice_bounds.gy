@@ -89,3 +89,24 @@ try:
     print(s[0:txt])
 except TypeError:
     print("raised: text base")
+
+try:
+    print(xs[::0])
+except ValueError:
+    print("raised: zero step")
+try:
+    print(xs[0:2:0])
+except ValueError:
+    print("raised: zero step with bounds")
+try:
+    print(s[::0])
+except ValueError:
+    print("raised: zero step on a text")
+try:
+    k = 0
+    print(xs[::k])
+except ValueError:
+    print("raised: zero step in a name")
+print(xs[::2], xs[::-1], xs[0:4:2])
+k2 = 2
+print(xs[::k2], s[::2])

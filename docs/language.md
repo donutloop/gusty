@@ -1640,7 +1640,27 @@ print(s[None:2])       # ab       — the same rule over the text road
 #   xs[[0]:2]          the same (this one used to reach `llc` as a global in an i32 argument: exit 2)
 ```
 
-What the door still declines, and why, is filed rather than glossed:
+**A step is asked what it holds, and zero is the program's `ValueError`** (**ADR 0337**). `0` is a perfectly good
+integer, so it passes the kind gate above — and `rt_slice` walks its own loop forever on it, which used to end with
+the run killed and **exit 2**, the code ADR 0166 reserves for a compiler bug, reported for a program whose only fault
+was writing `xs[::0]`. The reference answers `ValueError: slice step cannot be zero`, and so does this backend, on
+the road that must be caught:
+
+```
+xs = [1, 2, 3]
+print(xs[::2])         # [1, 3]   — a stride answers; nothing is asked of it at run time
+print(xs[::-1])        # [3, 2, 1]
+k = 2
+print(xs[::k])         # [1, 3]   — a stride the compiler cannot read is guarded beside the copy, and strides
+
+# and these raise, catchable by the program's own `except ValueError:`:
+#   xs[::0], xs[0:2:0], xs[::-0]        ValueError: slice step cannot be zero
+#   k = 0 with xs[::k]                  the same (the guard is where the value is)
+#   s[::0] over s = "abcd"              the same — over a text as well
+```
+
+A stride the compiler can read as anything but zero asks nothing at all: no compare, no raise block, no interned
+message in the module. What the door still declines, and why, is filed rather than glossed:
 
 - **the copy's own slots, read directly** — `print(xs[0:2][0])` is `1.5` in the reference and
   `index requires an inline list/dict/set literal` here, while the bound form (`ys = xs[0:2]`, `print(ys[0])`)
@@ -1653,10 +1673,11 @@ What the door still declines, and why, is filed rather than glossed:
   the reference raises `TypeError: 'set' object is not subscriptable` for the set and `KeyError: slice(0, 1, None)`
   for the dict (a slice of integers is hashable, so the dict hashes it and names the key it missed):
   **Gap R.234**; both were exit 2 or a fabricated `[1]` before the gate;
-- **a step of zero** — `print(xs[::0])` hangs the runtime's own copy loop and the run is killed with nothing on
-  either stream (**exit 2**, the code ADR 0166 reserves for a compiler bug) where the reference raises
-  `ValueError: slice step cannot be zero`: **Gap R.236**, and the worst entry below, because a tutorial's
-  one-liner is reported as our failure;
+- **a stepped slice of a text whose step is a value** — `k = 2` with `print(s[::k])` is `ac` in the reference and
+  refuses with `cannot fold string slice`, while the same stride written as a literal answers (`s[::2]`, `s[0:4:2]`,
+  `s[::-1]`) and the *unstepped* road with value bounds answers too (`s[i:i+2]`, ADR 0229): `rt_str_slice` takes a
+  low and a high and **no stride**, so only the fold can honour a step and a fold needs a constant — **Gap R.243**
+  (it is the one slice shape in this family that cannot hang: there is no loop here to walk forever);
 - **a bound whose kind is a tag, not a record** — `ys = ["a"]` with `print(xs[ys[0]:2])`, or a call handing back a
   text, answer `[1, 2]` at exit 0 where the reference raises the `TypeError` above: **Gap R.237**, the same missing
   question one layer in, where the kind travels with the payload and the gate asks only where a record names it;

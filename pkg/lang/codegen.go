@@ -10705,6 +10705,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if g.badSliceBoundGate(b, n) {
 				return "0", nil
 			}
+			// A step of zero is the reference's `ValueError: slice step cannot be zero`, and the fold reads a
+			// step as a stride without asking whether it strides at all — asked here, before the fold and
+			// before the helper, so the shape that used to be refused with `cannot fold string slice` is the
+			// program's exception instead (roadmap Gap R.236, ADR 0336).
+			if g.sliceStepIsKnownZero(n) {
+				g.raiseSliceStepIsZero(b, n)
+				return "0", nil
+			}
 			if sv, ok := g.stringVal(n); ok {
 				return g.internStr(b, sv), nil
 			}
@@ -10815,6 +10823,25 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return "", err
 			}
 			hasStep = "1"
+		}
+		if hasStep == "1" {
+			// The kind gate above could not ask this: `0` is a perfectly good integer. It is the one
+			// value a step may not take, and `rt_slice` walks its own loop forever on it — a run that has
+			// to be killed comes out as exit 2, which the contract blames on the compiler (ADR 0166), and
+			// that is what `print(xs[::0])` did. The question is asked where the value is, after every
+			// bound has been evaluated and before any copy is built, which is the order the reference
+			// raises in: a step the compiler can read is settled there and then — a known zero raises with
+			// no copy and no counter touched (a gate stays pure, ADR 0273), a known non-zero needs no test
+			// at all — and only a step it cannot read carries the run-time guard (roadmap Gap R.236,
+			// ADR 0336's neighbour, paid by ADR 0337).
+			if v, known := g.sliceStepIsKnown(n); known {
+				if v == 0 {
+					g.raiseSliceStepIsZero(b, n)
+					return "0", nil
+				}
+			} else {
+				g.zeroStepGuardAtSlice(b, stepReg, n.Span())
+			}
 		}
 		r := g.heapSeq
 		g.heapSeq++
@@ -19690,7 +19717,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.gcCloseFrame(b)
 				b.WriteString(fmt.Sprintf("  ret i32 %s\n", h))
 				return nil
-				}
+			}
 			if mustBuild {
 				_, cErr := g.containerOperand(b, n.Expr)
 				if cErr != nil {

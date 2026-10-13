@@ -104,3 +104,65 @@ func (g *irGen) badSliceBoundGate(b *strings.Builder, n *Slice) bool {
 	}
 	return false
 }
+
+// sliceStepZeroMessage is the reference's own words for the one *value* a bound may not take. The kind question
+// above cannot answer it: `0` is a perfectly good integer, and the road that trusts it walks forever.
+//
+//	xs = [1, 2]
+//	print(xs[::0])      # ValueError: slice step cannot be zero
+//	                    # this backend: nothing at all — the run is killed, and exit 2 reports OUR bug (ADR 0166)
+//	print(xs[0:2:0])    # the same ValueError
+//	                    # this backend: []   at exit 0 — the loop happened to terminate on its bounds
+//	print("abcd"[::0])  # the same ValueError
+//	                    # this backend: `cannot fold string slice` at exit 1 — a refusal where the program raises
+//
+// Three shapes, three wrong answers, one missing question — and it is a different question from the gate's: that
+// one asks what a bound *is*, this one asks what it *holds* (roadmap Gap R.236, ADR 0336's neighbour).
+const sliceStepZeroMessage = "slice step cannot be zero"
+
+// sliceStepIsKnown reports what the compiler can read of the step without running anything — a literal, a
+// constant expression (`xs[::1 - 1]` with the spaces the parser needs, a name the constant notebook holds). A
+// step it can read is settled at compile time: a known zero raises and emits no copy, a known non-zero needs no
+// test at all, and only a step it cannot read (`xs[::k]`) carries the run-time guard. That split is what keeps
+// the ordinary `xs[::2]` module free of a raise site it could never reach.
+func (g *irGen) sliceStepIsKnown(n *Slice) (int64, bool) {
+	if n == nil || g.sliceBoundIsAbsent(n.Step) {
+		return 0, false
+	}
+	return g.foldConstInt(n.Step)
+}
+
+// sliceStepIsKnownZero is the question the text road asks: it has no run-time stepped helper to guard, so a
+// step it can read as zero is the whole of the shape it can answer honestly.
+func (g *irGen) sliceStepIsKnownZero(n *Slice) bool {
+	v, ok := g.sliceStepIsKnown(n)
+	return ok && v == 0
+}
+
+// raiseSliceStepIsZero raises the reference's ValueError on the non-local road — `except ValueError:` takes it,
+// and an uncaught one reports the class and the message and exits 3 — then reopens the block, so the door stays
+// a valid module either way.
+func (g *irGen) raiseSliceStepIsZero(b *strings.Builder, n *Slice) {
+	g.heapUsed = true
+	g.raiseTo(b, exnCode("ValueError"), "ValueError", sliceStepZeroMessage, n.Span())
+	cont := g.newLabel("sbz.cont")
+	b.WriteString(fmt.Sprintf("%s:\n", cont))
+}
+
+// zeroStepGuardAtSlice asks the same question of a step the compiler could not read — `xs[::k]`, where `k` is a
+// variable, a parameter, or the answer of a call. The check has to live where the value is, because the loop that
+// never ends is the helper's own, and a run that has to be killed comes out as exit 2: the contract's compiler-bug
+// class, paid by the toolchain for a program whose only fault is writing `::k`. It is emitted immediately before
+// the copy is built, after every bound has been evaluated, which is the order the reference raises in: a slice
+// object is constructed from the three bounds and *then* refuses a step of zero.
+func (g *irGen) zeroStepGuardAtSlice(b *strings.Builder, stepReg string, sp Span) {
+	bad := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", bad, stepReg))
+	g.markI1(bad)
+	badL, okL := g.newLabel("sbz.bad"), g.newLabel("sbz.ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+	b.WriteString(badL + ":\n")
+	g.raiseTo(b, exnCode("ValueError"), "ValueError", sliceStepZeroMessage, sp)
+	b.WriteString(okL + ":\n")
+	g.heapUsed = true
+}

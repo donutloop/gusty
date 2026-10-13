@@ -10675,39 +10675,69 @@ a binding records a call's answer. Five rows are pinned as refusals today:
 
 <a id="gap-r-236"></a>
 
-### Gap R.236 — a slice with a step of zero hangs the run and leaves the toolchain holding the blame (OPEN, found by ADR 0336)
+### Gap R.236 — a slice with a step of zero hangs the run and leaves the toolchain holding the blame (paid by ADR 0337; found by ADR 0336)
 
 ```python
 xs = [1, 2]
-print(xs[::0])        # ValueError: slice step cannot be zero
-print(xs[0:2:0])      #   in the reference
+
+print(xs[::0])        # ValueError: slice step cannot be zero   in the reference
                       # this backend: exit 2, and nothing on either stream
+print(xs[0:2:0])      # the same ValueError
+                      # this backend: []   at exit 0 — the bounds stopped the loop the stride never moved
+print("abcd"[::0])    # the same ValueError
+                      # this backend: `cannot fold string slice` at exit 1 — a refusal where the program raises
 ```
 
 The bounds gate ADR 0336 built asks the **kind** of a bound — integer, bool, `None`, or the reference's
-`TypeError` — and a `0` is a perfectly good integer, so it walks straight through the gate into `rt_slice`, which
-is handed `step = 0` with its presence flag set and walks its own loop forever: the index never reaches the end
-and never passes it, the counter moves by nothing, and the run dies when the harness's budget expires. Exit 2 is
-the code ADR 0166 reserves for a **compiler** bug, so an ordinary one-line program — the kind a tutorial writes
-to show what a step is — is reported as our failure, with no message to tell the reader that the program was the
-problem.
+`TypeError` — and a `0` is a perfectly good integer, so it walked straight through the gate into `rt_slice`, which
+was handed `step = 0` with its presence flag set and walked its own loop forever: the index never reached the end
+and never passed it, the counter moved by nothing, and the run died when the harness's budget expired. Exit 2 is
+the code ADR 0166 reserves for a **compiler** bug, so an ordinary one-line program — the kind a tutorial writes to
+show what a step is — was reported as our failure, with no message to tell the reader that the program was the
+problem. It is also the one row in the family that could not be witnessed: a killed run returns nothing to compare,
+so it sat in the filed tables as a note rather than an assertion.
 
-This is the value question on the same three i32s, which is why it is not folded into the kind row: the reference
-answers it with a different class (`ValueError`, not `TypeError`) and a different sentence (`slice step cannot be
-zero`), and a row that closed both would have hidden a second raise inside a row about kinds.
+Three shapes, three behaviours, none of them the reference's — which is the row's own evidence that the question was
+missing rather than misanswered: the reference asks one question and gets one `ValueError` everywhere.
 
-Two halves, in the order the reference asks them:
+**What paid it (ADR 0337).** The step is asked what it *holds*, and it is asked **where the value is**.
+`sliceStepIsKnown` (in `pkg/lang/slice_bounds_kind.go`, beside the kind gate it shares a call site with) decides
+between three emitted shapes, and the test table asserts the three modules, not just the three answers:
 
-- in `badSliceBoundGate`, after the kind question, ask the value — a step the compiler can read as the integer 0
-  raises `ValueError: slice step cannot be zero` through the same non-local road the kind raise takes, catchable by
-  the program's own `except ValueError`;
-- a step the compiler cannot read (a variable, a slot) is checked where the loop runs — a guard beside the call
-  to `rt_slice`, or in the helper itself — because the loop that hangs is the runtime's, and a compile-time-only
-  check leaves `k = 0` with `xs[0:2:k]` as a hang rather than a raise.
+- a step the compiler **reads as zero** — a literal, a constant expression, a name in the constant notebook —
+  raises on the non-local road where the call would have stood: no copy, no `call i32 @rt_slice(`, and no counter
+  advanced, because a gate stays pure (ADR 0273) and nothing that is about to be raised may also be built;
+- a step the compiler **cannot read** (`xs[::k]`, a parameter, a call's answer) carries `zeroStepGuardAtSlice`
+  beside the call — `icmp eq i32 %step, 0` → the raise, else the continuation — the same block shape
+  `normalizeIndexFor` has used for bounds traps since ADR 0210. The check has to live where the value is, because
+  the loop that never ends is the helper's own; a compile-time-only check would leave `xs[::k]` with `k = 0` a hang
+  rather than a raise;
+- a step the compiler **reads as anything else** asks nothing: no compare, no raise block, no interned string in the
+  module. That is the row's negative control — a guard emitted beside every `rt_slice` call would have kept every
+  raise row green while making the ordinary `xs[::2]` pay for the pathological one.
 
-`print(xs[::0])`, `print(xs[0:2:0])` and the variable-step shape raise the reference's class and sentence
-catchably at exit 3, no row of the slice tables reaches exit 2, and the rows move from here into the raise table
-of `pkg/lang/slice_bounds_kind_test.go`.
+The question is asked **after every bound has been evaluated and before the copy exists**, which is the order the
+reference raises in (a slice object is built from low, high and step and only then refuses a zero stride), and which
+keeps the bounds' own side effects running in the order a reader expects. `rt_slice`'s signature and body are
+untouched: a helper that raised would own exception state the codegen cannot see and hand back a trap the program
+could not catch (ADR 0214), and a helper that treated a zero step as 1 would have answered `[1, 2]` where the
+reference raises — the worst trade in this contract, a wrong value at exit 0 dressed up as a fix.
+
+The text road answers what it can: a slice of a text whose step is a **constant** zero now raises the same
+ValueError, where it used to be refused with `cannot fold string slice`. A step that is a **value** on a text is out
+of reach and stays named: `rt_str_slice` takes `(str, low, high)` and no stride, so there is no loop to guard and no
+answer to give — that refusal is [Gap R.243](#gap-r-243), filed with the measurement rather than folded in.
+
+Nineteen raise rows in `pkg/lang/slice_bounds_kind_test.go` (class **and** message, exit 2 forbidden, the
+`codegen:` prefix forbidden), five catchable rows — one of them the arm-order row that proves a `TypeError` arm does
+**not** take this `ValueError` — sixteen CLI raise rows over every position that reads a copy, four answered stride
+rows on both legs and on the record, and the three-module IR row; `integration/programs/slice_bounds.gy` grew four
+raising rows and two stride rows and is line-for-line the reference. **Exit 2 is gone from the slice door.**
+
+Measured on the way, and not a slice row: the same probe session found that `y = x-1` — no space before the minus —
+**answers `x` at exit 0**, because the lexer emits `-1` as one token whenever a minus is followed by a digit and the
+statement is parsed as `y = x` plus an expression statement `-1`. That is [Gap R.242](#gap-r-242), the priority-1
+class, and it is the next row this loop takes.
 
 <a id="gap-r-237"></a>
 
@@ -10893,3 +10923,106 @@ hand back. Three rows pin today's behaviour in
 `integration/slice_bounds_test.go::TestACallInsideAnExceptArmStillTakesTheRunDown` — the subscript arm and this
 row's bounds arm, both exit 3, and the builtin arm as the control at exit 0; they move into the catchable table when
 the clear moves.
+<a id="gap-r-242"></a>
+
+### Gap R.242 — `a-b` is not a subtraction: the lexer's `-1` rule eats the operator (OPEN, found by ADR 0337)
+
+```python
+x = 5
+y = x-1
+print(y)              # 4 in the reference;   this backend: 5   (exit 0 — the subtraction is never parsed)
+
+print(1-1)            # 0 in the reference;   this backend: parse error at 1:8: expected ")"
+```
+
+One token rule, two faces of the same defect, and the silent face is the priority-1 class: a wrong value on stdout
+at the code that means the program ran.
+
+`pkg/lang/lexer.go` carries
+
+```go
+case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
+        // … one TokInt with Int = -ival, one TokFloat with Float = -fval
+```
+
+with no question about what came **before** it. So the token stream for `x-1` is `x`, `-1` — two primaries side by
+side. In a statement position the parser is happy enough: `y = x` is a complete assignment, and `-1` is an expression
+statement, so the subtraction is dropped without complaint and `y` keeps `x`'s value. In an expression position the
+same two tokens are a syntax error, and the toolchain refuses a program CPython runs:
+
+| program | the reference | this backend |
+| --- | --- | --- |
+| `print(1-1)` | `0` | `parse error at 1:8: expected ")"` |
+| `print(2-3)` | `-1` | parse error |
+| `x = 5` / `print(x-1)` | `4` | parse error |
+| `x = 5` / `print(x -1)` | `4` | parse error — the rule reads the character **after** the `-`, so a space *before* it does not help |
+| `print(2- 3)` | `-1` | ✓ — a space **after** the `-` is the only spelling that works |
+| `xs = [1,2,3]` / `print(xs[2-1])` | `2` | `parse error at 2:11: expected "]"` |
+| `print(3.5-1)` | `2.5` | parse error |
+| `print(len("abc")-1)` | `2` | parse error |
+| `print(abs(-3)-1)` | `2` | parse error |
+| `for i in range(3-1): print(i)` | `0`, `1` | two parse errors |
+| `x = 5` / `y = x-1` / `print(y)` | `4` | **`5`, exit 0** |
+| `xs = [1,2,3]` / `n = len(xs)-1` / `print(n)` | `2` | **`3`, exit 0** |
+
+The shapes that need the merge still work, and they are the reason the rule exists: `print(-1)`, `print(-x)`,
+`xs[-1]`, `{-1: "a"}` with `d[-1]`, `range(-3)`, and `print(y*-1)` — which is right by the accident that `*` is not
+followed by a digit-and-minus pair.
+
+**Why the suite has never seen it.** Every program in `integration/programs`, every verify case and every test table
+in this repository writes `x - 1` with the spaces the house style asks for, so the merged token never appears and the
+row is invisible to a green build. That is the same lesson ADR 0187 and ADR 0232 recorded — a defect survives in the
+one spelling nobody writes — and the reason the closure owes **both** spellings in the token-stream assertion, not
+just the rendered answer.
+
+**The fix is one question, asked where `emit` already stands.** The negative-literal rule fires only when the previous
+emitted token cannot *end* an expression: start of line, after an operator, after `,` `:` `(` `[` `{` `=`, after a
+keyword such as `in`, `return`, `else`. After a number, a name, a string, `)` or `]` the `-` is the binary operator,
+and the parser's existing unary-minus rule — the one that already answers `print(-x)` — takes the rest. No new
+token, no parser change, and `pkg/lang/lexer_test.go` asserts the stream both ways so a stub that drops the context
+check fails the `1-1` row and not the file.
+
+**Why it was filed and not fixed inside ADR 0337.** It is a different component (`pkg/lang/lexer.go`, not codegen),
+it is larger than the slice row that found it, and the loop's rule is that a newly measured defect gets a fresh row
+rather than being buried in a closed one. The measurement above is this section's; the closure owes the twelve table
+rows as both-legs cases plus the token-stream cases.
+
+<a id="gap-r-243"></a>
+
+### Gap R.243 — a stepped slice of a text whose step is a value refuses (OPEN, found by ADR 0337)
+
+```python
+s = "abcd"
+
+print(s[::2])         # ac — answered, by the fold
+print(s[0:4:2])       # ac — answered, by the fold
+print(s[::-1])        # dcba — answered, by the fold
+k = 2
+print(s[::k])         # ac in the reference;  this backend: refuses — cannot fold string slice  (exit 1)
+print(s[0:4:k])       # ac in the reference;  this backend: refuses — cannot fold string slice  (exit 1)
+i = 1
+print(s[i:i+2])       # bc — answered (ADR 0229), because this slice has no step at all
+```
+
+ADR 0229 gave the text road value bounds by adding `rt_str_slice(h, low, high)` — three i32s, and the fold stepped
+aside for it. It has **no stride argument**, so the only thing that can honour a step is the compile-time fold, and a
+fold needs a constant: write the stride as a literal and the answer is right, write it as a variable, a parameter or
+a call's answer and the build stops with `cannot fold string slice` — a sentence about the compiler's folder in a
+program that never mentioned a folder (ADR 0249's complaint about a refusal that describes the wrong door).
+
+ADR 0337 took the one member of this family it could answer honestly — a step the compiler *reads* as zero, which now
+raises `ValueError: slice step cannot be zero` on both roads — and left the rest standing with a row rather than
+inventing a stride in the compiler. It is also the only slice shape in the family that cannot hang: there is no loop
+here to walk forever, so the failure is a refusal at exit 1 rather than a run that has to be killed.
+
+**The fix, and where it belongs.** A striding helper beside `rt_str_slice` — `rt_str_strided(h, low, high, step)` —
+walking **code points** through the same decode ADR 0234 built for `len`/`s[i]`, so a step counts characters and not
+UTF-8 bytes (that is [L11.5](#l11-5)'s rule, and the reason this row is not a three-line patch: a byte stride through
+`"café"[::2]` is wrong in a way the tests must be able to see). Emit it whenever the step is present and not a
+constant, and ask it the zero-step question ADR 0337 asks beside the list copy, so the raise arrives on both roads and
+`except ValueError:` is writable over either.
+
+`print(s[::k])`, `print(s[0:4:k])`, `print(s[::-k])` and `print(s[k:len(s):2])` answer the reference on both legs with
+`k = 0` raising the ValueError catchably; the rows move out of `TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed`
+and its CLI twin into the answered tables, and `docs/language.md` loses the last `refuses: cannot fold string slice`
+line ADR 0229 recorded.
