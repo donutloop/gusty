@@ -160,7 +160,7 @@ func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 			"print(+1)", "unexpected token", "Gap R.244",
 		},
 		{
-			// L11.1/L11.2 (ADR 0192): a comprehension over a list the compiler kept static.
+			// L11.1 (the tagged value word; ADR 0192 is the comprehension's record): a comprehension over a list the compiler kept static.
 			"xs = [1, 2, 3]\nys = [x*2 for x in xs]\nprint(ys)", "compile-time constant", "L11.1",
 		},
 	} {

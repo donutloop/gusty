@@ -382,6 +382,15 @@ engines (`parse error at 1:8: expected ")"`, exit 1) where CPython parses them a
 (`programs/probe_float_literal_with_exponent`, an `oracle: debt` row) so the row cannot be forgotten while
 scientific-looking values are being typed into a program.
 
+**The bare-dot float is not in the number lexer either**: `print(.5)` is `0.5` in the reference and
+`parse error at 1:7: unexpected token` (exit 1) here, and with it `print(1+.5)`, `print(-.5)`, `print(.5+.5)` and
+`x = .5` / `print(x)`. Write the leading zero — `0.5`, `1_0.5`, `1.5` — and the literal lexes, folds and prints
+today; `lexNumber` is entered on a digit and on the base prefixes, and there is no case for a leading `.`, so the dot
+reaches the operator path and the parser meets a `.` where a primary belongs. Growing that case has the same
+constraint ADR 0338 met with `-`: it may be entered only where the `.` cannot be the member operator, so `obj.5`
+stays the attribute error the reference reports instead of becoming a float. Filed as roadmap **Gap R.245**, beside
+**Gap R.135**'s exponent marker — the neighbouring half of the same function.
+
 **The two values with no decimal spelling are `float("inf")` and `float("nan")`** (with `-float("inf")`
 for the third). They print `inf`, `-inf` and `nan` on every engine, and they survive a binding, an
 arithmetic step and a `sqrt` (`sqrt(inf)` is `inf`, `sqrt(nan)` is `nan`, `sqrt(-inf)` raises
@@ -426,7 +435,7 @@ Two shapes stand outside the row, both filed rather than smuggled in: **`+` befo
 refused** (`print(+1)` is `parse error: unexpected token` where CPython prints `1`) because the
 grammar has no unary-plus rule at all — roadmap **Gap R.244** — and a comprehension whose
 iterable is a list the compiler kept as a compile-time constant still refuses (roadmap
-**L11.1/L11.2**, ADR 0192).
+**L11.1**, the tagged value word, and ADR 0192 is that refusal's own record).
 
 ## Statements
 

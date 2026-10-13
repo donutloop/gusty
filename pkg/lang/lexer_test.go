@@ -622,3 +622,44 @@ func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
 		})
 	}
 }
+
+// TestTheNumberRuleStillRefusesTheBareDot pins the neighbour ADR 0338 measured in the same function and filed as
+// roadmap **Gap R.245**: `print(.5)` is the reference's `0.5` and a parse error here (`parse error at 1:7:
+// unexpected token`, exit 1), because `lexNumber` is entered on a digit and on the `0x`/`0b`/`0o` prefixes and never
+// on a leading `.` — the dot goes to the operator path, and the parser meets a `.` where a primary belongs.
+//
+// The row is pinned at the altitude of the defect (the token boundary) and of the reference's answer (a citation,
+// not a memory). The last row is the one the fix must not break: `obj.5` is an attribute error in the reference too,
+// so a leading-`.` case that enters after a name would turn a refusal into a wrong answer — the previous token
+// decides, exactly as `minusBeginsLiteral` decides for `-`.
+func TestTheNumberRuleStillRefusesTheBareDot(t *testing.T) {
+	for _, tc := range []struct {
+		src    string
+		stream string
+		oracle string // what CPython prints for the same source
+	}{
+		{"print(.5)", "IDENT:print OP:( OP:. INT:5 OP:)", "0.5"},
+		{"print(1+.5)", "IDENT:print OP:( INT:1 OP:+ OP:. INT:5 OP:)", "1.5"},
+		// the merge rule needs a DIGIT after the minus, and a `.` is not one, so `-.5` is the operator, the dot and
+		// the number three tokens — the sign rule is not what is missing here, the number rule is
+		{"print(-.5)", "IDENT:print OP:( OP:- OP:. INT:5 OP:)", "-0.5"},
+		{"obj.5", "IDENT:obj OP:. INT:5", "AttributeError — no attribute '5'"},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			got := tokenStream(t, tc.src)
+			if got != tc.stream {
+				t.Fatalf("Lex(%q) streamed\n  %s\nwant\n  %s\n(the filed row roadmap Gap R.245 expects the dot to reach the operator path; the reference answers %q)",
+					tc.src, got, tc.stream, tc.oracle)
+			}
+			if tc.src == "obj.5" {
+				if _, err := Parse(tc.src + "\n"); err == nil {
+					t.Fatalf("obj.5 parses; the reference gives an AttributeError, and the leading-dot fix must not answer it as a float (roadmap Gap R.245)")
+				}
+				return
+			}
+			if _, err := Parse(tc.src + "\n"); err == nil {
+				t.Fatalf("%q parses; roadmap Gap R.245 expects a refusal — the number rule grew the leading-`.` case, so move the row (the reference answers %q)", tc.src, tc.oracle)
+			}
+		})
+	}
+}

@@ -341,7 +341,7 @@ module is pinned to contain the `sub i32` the program asked for (`programs/minus
 legs, 22 lines of CPython beside it). What the row leaves standing is filed, not folded in: **`+` before an
 operand is refused** (`print(+1)` is `unexpected token` where CPython prints `1`) — the grammar has no unary-plus
 rule at all (**Gap R.244**, filed by this row) — and a comprehension whose iterable is a list the compiler kept as
-a compile-time constant still refuses (roadmap **L11.1/L11.2**, ADR 0192).
+a compile-time constant still refuses (roadmap **L11.1**, the tagged value word, whose refusal carries ADR 0192's own sentence).
 
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It

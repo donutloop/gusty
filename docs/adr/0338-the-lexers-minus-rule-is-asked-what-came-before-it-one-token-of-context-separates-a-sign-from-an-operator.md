@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: nothing directly — this is the lexer's own rule, and the first ADR to say that a token's *meaning* is decided by the token before it as well as the characters after it
 Extends: [ADR 0166](0166-unsupported-lowering-is-a-diagnostic.md) (a refusal is a diagnostic, and a parse error is the front end's; the shapes this row *answered* were never capability boundaries, so a refusal there is a wrong answer), [ADR 0249](0249-a-refusal-names-what-is-missing-or-it-is-a-bug.md) (what the row leaves refused still has to name itself), [ADR 0273](0273-a-gate-is-pure-no-trial-emission-no-counters-advanced.md) (a rule that reads its context advances nothing and emits nothing — it decides a token boundary and stops), [ADR 0302](0302-the-ast-interpreter-is-retired-one-execution-backend-remains.md) (the newly answered programs are recorded from the reference, and the compiled leg is cross-checked by the matrix)
 Supersedes: nothing
-Related: roadmap L11.1/L11.2 (the tagged value word, which owns the comprehension the row leaves refused, ADR 0192), Gap R.242 (closes), **Gap R.244 (newly measured here, filed here)**, Gap R.82 (string arithmetic, which the row's probe found already filed)
+Related: roadmap L11.1 (the tagged value word, which owns the comprehension this row leaves refused — the refusal's own text cites `L11.2, ADR 0192`, and ADR 0192 is the comprehension's record), Gap R.242 (closes), **Gap R.244 and Gap R.245 (newly measured here, filed here)**, Gap R.82 (string arithmetic, which the row's probe found already filed)
 Owner: `pkg/lang/lexer.go`, `pkg/lang/lexer_test.go`, `pkg/lang/minus_operator_test.go`, `integration/minus_operator_test.go`, `integration/programs/minus_operator.gy`
 
 ## Context
@@ -122,17 +122,19 @@ difference between the two answers. So the tests are written at that altitude an
   token`) where CPython prints `1`, and that is the parser's missing rule, not this one. It is **Gap R.244**, pinned
   in `TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` with what the backend says today and what the reference
   says, so it fails the day it is fixed rather than staying quietly unfixed. The comprehension over a list the
-  compiler kept static is refused for the same reason and is already owned by L11.1/L11.2 (ADR 0192).
+  compiler kept static is refused for the same reason and is already owned by **L11.1** (its refusal carries ADR 0192's sentence).
 
 ## Consequences
 
-- The lexer's number rule is now context-sensitive, and it is the first rule in it that is. A future rule of the same
-  kind (`.` followed by a digit — roadmap L11.2/Gap N.4 wants `.5`) must ask the same question and will find the
-  predicate beside it.
+- The lexer's number rule is now context-sensitive, and it is the first rule in it that is. A future rule that has
+  to decide a token boundary from what came before it — the bare-dot float `.5` is exactly that shape: `print(.5)`
+  is `0.5` in the reference and `parse error at 1:7: unexpected token` here, because the number rule has no case for
+  a leading `.` at all, filed as **Gap R.245** — must ask the same question of the previous token, and will find
+  `minusBeginsLiteral` beside it as the pattern to follow.
 - Every program in the wild that wrote `a-1`, `len(xs)-1` or `i-1` and *got an answer* was getting the wrong one;
   those answers change here, and change to CPython's. Nothing in the record held an affected source — the eight
   candidate entries are all `-` inside a text or a comment — and no conformance program spelled a subtraction
   without its space, which is the fact that let the defect live. The record grows 56 newly answered programs plus the
   one conformance program.
 - Exit 2 is untouched by this row, and the two refusals it leaves standing are named: Gap R.244 (unary plus) and the
-  static-list comprehension (L11.1/L11.2).
+  static-list comprehension (**L11.1**, ADR 0192).

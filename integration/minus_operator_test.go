@@ -189,7 +189,7 @@ func programFunctionBodies(t *testing.T, ir string) string {
 // the backend says today and what the reference says, so the day a road grows the answer the row fails and the
 // row moves. A `+` before an operand is Python's grammar and the parser has no rule for it at all (roadmap Gap
 // R.244, filed by this row); a comprehension whose iterable is a list the compiler kept as a compile-time
-// constant is the tagged value word's own row (roadmap L11.1/L11.2, ADR 0192).
+// constant is the tagged value word's own row (roadmap **L11.1**; the refusal's text cites `L11.2, ADR 0192`).
 func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -211,7 +211,7 @@ func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 		{
 			"a comprehension over a constant list", "xs = [1, 2, 3]\nys = [x*2 for x in xs]\nprint(ys)",
 			"compile-time constant", "[2, 4, 6]",
-			"roadmap L11.1/L11.2 (ADR 0192: the tagged value word makes every container a runtime object)",
+			"roadmap L11.1 (the tagged value word makes every container a runtime object; ADR 0192 is the comprehension's own record)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

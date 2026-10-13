@@ -10250,3 +10250,34 @@ green suite had never seen it (the ADR 0187 / ADR 0232 / Gap R.236 lesson, now f
   reads as `--emit-llvm "-file"` and reports `undefined name "file"`. IR assertions in tests go through
   `lang.Compile(src).IR`, which is the machine path anyway (ADR 0166's sibling: the IR is an artifact, not a stdout
   side effect).
+
+## A citation is a claim about a file you have not just read (Gap R.245 filed; the correction of two claims in ADR 0338)
+
+Before pushing ADR 0338, two of its sentences were checked against the source and both were wrong.
+
+- It cited "roadmap **L11.2/Gap N.4** wants `.5`". `L11.2` is *"`str()` vs `repr()` are one pair per backend"*
+  (`✅ DONE`), and there is no `Gap N.4` anywhere in the tracker. The construct was real, the row was invented.
+- Its test table claimed `print(-.5)` lexes as one `FLOAT:-.5`. It does not: the merge rule requires a **digit**
+  after the minus, and a `.` is not one, so the stream is `OP:- OP:. INT:5`. The row was written from a guess about
+  the rule rather than from the rule.
+
+The fix was not to soften the prose. `-` followed by `.` is a token stream, and `print(.5)` is a program: measured
+against CPython (`0.5`, `1.5`, `-0.5`, `1.0`, and `x = .5` → `0.5`, all refused here at exit 1), it is a defect nobody
+had filed — `Gap R.135` owns only the exponent marker — so it became a fresh row (**Gap R.245**) with a fresh ID, a
+section in `docs/roadmap-details.md`, a paragraph in `docs/language.md`, and a pin in `pkg/lang/lexer_test.go` that
+asserts the **token stream** of the refusal and the parse's refusal, with the reference's answer written beside each
+row as a citation. One of those rows is the fix's own negative control: `obj.5` must stay a refusal, because the
+reference gives it an `AttributeError` and a leading-`.` case that enters after a name would turn a refusal into a
+wrong answer.
+
+- **The rule generalises:** any ADR or roadmap cell that names an ID, a file, a line or a token is a claim that can
+  be *read*, so read it before pushing. `grep -n "L11\.2" roadmap.md` costs nothing and returns a sentence that makes
+  the citation false. An invented ID is worse than a missing one, because item IDs are permanent and something will
+  eventually go looking for this one.
+- **A refusal row is worth as much instrumentation as an answer row.** The `.5` defect had no probe, no matrix row
+  and no test; three `Lex` dumps and one `Parse` gave it all four in a minute, and now the day someone grows the case
+  the pin fails and the row moves instead of the defect being fixed in an unlogged commit.
+- **Check the neighbour before borrowing its row.** `Gap R.135` (the exponent marker) is the same function and the
+  same family, and it was tempting to widen it. It is a separate row because the exponent needs a marker *after* a
+  fraction and this needs an entry condition *before* one — and because a fresh ID is what makes the two fixable
+  independently.

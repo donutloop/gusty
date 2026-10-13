@@ -11015,7 +11015,7 @@ programs rather than editing one.
 
 **What the row leaves standing, filed.** `print(+1)` is refused where CPython prints `1` — the grammar has no unary
 plus — filed as [Gap R.244](#gap-r-244); and a comprehension whose iterable is a list the compiler kept as a
-compile-time constant still refuses, which is L11.1/L11.2's own road (ADR 0192). Both are pinned in
+compile-time constant still refuses, which is **L11.1**'s own road (the tagged value word; the refusal's own text points at `L11.2, ADR 0192`, and ADR 0192 is the comprehension's record). Both are pinned in
 `TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` with today's answer and the reference's beside them.
 
 <a id="gap-r-243"></a>
@@ -11089,3 +11089,32 @@ untouched, and `+` between two operands is still the addition it is today.
 Two rows in `TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` (and their `pkg/lang` twin in
 `TestWhatTheMinusRowLeavesStandingIsFiledNotFixed`) pin today's answer beside the reference's, so the day the rule
 grows, the rows fail and the row moves — a filed row is closed by that failure, not by deleting a table.
+
+<a id="gap-r-245"></a>
+
+### Gap R.245 — a float with no leading digit does not lex (OPEN, found by ADR 0338)
+
+```python
+print(.5)             # 0.5 in the reference;   this backend: parse error at 1:7: unexpected token  (exit 1)
+print(1+.5)           # 1.5                     this backend: parse error at 2:9: unexpected token
+print(-.5)            # -0.5                    this backend: parse error at 3:8: unexpected token
+print(.5+.5)          # 1.0                     this backend: parse error at 4:7: unexpected token
+x = .5
+print(x)              # 0.5                     this backend: parse error
+```
+
+`lexNumber` is entered on a digit (`case c >= '0' && c <= '9'`) and on the `0x`/`0b`/`0o` prefixes; there is no case
+for a leading `.`, so the `.` falls through to the operator path and the parser meets a `.` where a primary belongs.
+The float the reference writes as `0.5` has always had the second spelling (`0.5`, `1_0.5`, `1.5` all lex and fold
+today); it is the leading-zero-free one that the number rule cannot see.
+
+ADR 0338 was in this same function, repairing the `-` rule — a number rule that decides a **token boundary** — and
+this is the neighbour it measured and left standing: the fix is a case in `lexNumber`, not a lexer-wide change, and it
+must be entered only where the `.` cannot be the member operator. That second half is the same question ADR 0338
+answered for `-`: `obj.5` is an attribute error in the reference and must not become a float here, so the previous
+token decides, and `minusBeginsLiteral` is the pattern to copy.
+
+`Gap R.135` (the exponent marker: `1e18`, `1.5e-3`, `2E8`) is the neighbouring half of the same function and neither
+owes the other — which is why they are two rows: the exponent needs a marker after a fraction, and this needs an entry
+condition before one. `print(1 .5)` stays refused on both legs, because CPython refuses it too (`SyntaxError: invalid
+syntax`), and the row owes that row as a negative control.
