@@ -588,6 +588,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// five of the raises taken by the program's own `except TypeError` are in this one program, whose expectation
 		// is what CPython printed for it (roadmap Gap R.233, ADR 0336).
 		"slice_bounds",
+		// The minus between two expressions is the SUBTRACTION operator and the minus before a literal in
+		// an expression position is its SIGN — one question the lexer used to answer from the character after
+		// the minus alone, so `x = 5` / `y = x-1` / `print(y)` wrote `5` at exit 0 where the reference writes
+		// `4` (the program never contained a subtraction: it was `y = x` and an expression statement `-1`) and
+		// `print(1-1)` died with `parse error at 1:8: expected ")"`, taking `print(x-1)`, `len(xs)-1`,
+		// `xs[2-1]`, `range(3-1)`, `return n-1` and `w["a"]-1` down with it. The operator side, the sign side
+		// that must not move (`print(-1)`, `xs[-1]`, `{-1: "neg"}`, `f(-1)`, `2 ** -1`, `def f(a=-1)`), the
+		// `5--1`/`5- -1` spellings, the bool and float answers, the loop heads and a method's `self.n-1` are
+		// in this one program, whose expectation is what CPython printed for it (roadmap Gap R.242, ADR 0338).
+		"minus_operator",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

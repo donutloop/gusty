@@ -324,6 +324,25 @@ either: an `except` arm that **calls** a user function runs its handler and then
 already handled — traceback, exit 3, the statement after the `try` skipped (**Gap R.241**).
 `programs/slice_bounds.gy` is `match` on both legs.
 
+**The minus between two expressions is the operator, and ADR 0338 pays Gap R.242** — the priority-1 defect that
+measuring the slice door turned up. The lexer read `-` followed by a digit as one negative integer wherever it
+appeared, never asking what came *before* it, so `x = 5` / `y = x-1` / `print(y)` wrote **`5`** at exit 0 where
+CPython writes `4`: the program never contained a subtraction — it was `y = x` and an expression statement `-1`
+whose value nothing prints — and no diagnostic could have said so. The same rule met an expression the parser
+could not swallow, and `print(1-1)`, `print(x-1)`, `print(len(xs)-1)`, `print(xs[2-1])`, `print(3.5-1)`,
+`for i in range(3-1):` and `def g(n): return n-1` all died with `expected ")"`; the spaced spelling (`x - 1`) was
+always right, which is the only reason the corpus never saw the tight one. The rule now asks the previous token,
+which is already in hand: after a number, name, text, closing `)` `]` `}` or one of `True`/`False`/`None` the
+minus is the operator and the parser's existing unary minus takes the rest; everywhere else — start of line,
+after an operator, after `,` `:` `(` `[` `{` `=`, after `return`/`in`/`else` — `-N` stays one literal, so `print(-1)`,
+`xs[-1]`, `{-1: "neg"}`, `f(-1)`, `2 ** -1` and `def f(a=-1)` answer exactly as they did, and `x -= 1` is still the
+longest match. The token stream is pinned both ways, the parse is pinned as *one* statement and not two, and the
+module is pinned to contain the `sub i32` the program asked for (`programs/minus_operator.gy`, `match` on both
+legs, 22 lines of CPython beside it). What the row leaves standing is filed, not folded in: **`+` before an
+operand is refused** (`print(+1)` is `unexpected token` where CPython prints `1`) — the grammar has no unary-plus
+rule at all (**Gap R.244**, filed by this row) — and a comprehension whose iterable is a list the compiler kept as
+a compile-time constant still refuses (roadmap **L11.1/L11.2**, ADR 0192).
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

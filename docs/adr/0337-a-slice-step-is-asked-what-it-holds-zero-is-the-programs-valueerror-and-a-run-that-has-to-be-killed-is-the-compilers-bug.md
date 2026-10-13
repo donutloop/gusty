@@ -4,7 +4,7 @@ Status: accepted (2026-10-14)
 Amends: [ADR 0336](0336-a-slice-bound-is-asked-what-it-is-a-position-the-absence-of-one-or-the-reference-s-typeerror.md) (the bound door: it asks what a bound *is*, and had nothing to say about what it *holds*), [ADR 0335](0335-a-slice-hands-back-a-copy-of-the-bases-slots-tags-included-and-the-copy-is-a-list-the-records-know.md) (the copy this row refuses to build)
 Extends: [ADR 0166](0166-unsupported-lowering-is-a-diagnostic.md) (exit 2 is the compiler's own code — a killed run wearing it is the worst thing this toolchain can do to a program), [ADR 0214](0214-a-trap-the-program-cannot-name-is-not-handlable.md) (the trap must be the program's, so its `except ValueError:` can take it), [ADR 0273](0273-a-gate-is-pure-no-trial-emission-no-counters-advanced.md) (the gate touches no counter and emits nothing it will not use), [ADR 0229](0229-a-string-is-an-index-into-a-table-the-runtime-can-add-to.md) (the text road, whose stepped half still cannot answer — filed as Gap R.243)
 Supersedes: nothing
-Related: roadmap L11.4 (the position/key rule), Gap R.236 (closes), Gap R.237 / R.238 / R.239 / R.240 / R.241 (the family ADR 0336 filed), **Gap R.242 / R.243 (newly measured here, filed here)**
+Related: roadmap L11.4 (the position/key rule), Gap R.236 (closes), Gap R.237 / R.238 / R.239 / R.240 / R.241 (the family ADR 0336 filed), **Gap R.242 (newly measured here, filed here — closed by [ADR 0338](0338-the-lexers-minus-rule-is-asked-what-came-before-it-one-token-of-context-separates-a-sign-from-an-operator.md)) / R.243 (newly measured here, filed here)**
 Owner: `pkg/lang/slice_bounds_kind.go`, `pkg/lang/slice_bounds_kind_test.go`, `pkg/lang/codegen.go`
 
 ## Context
@@ -119,7 +119,10 @@ it is filed with a row, a measurement and a fix sketch rather than being fixed i
 - **Fix the zero step and the lexer's `-1` in one commit.** The second is the larger bug and a different component
   (`pkg/lang/lexer.go`, a priority-1 silently-wrong row); bundling it would have made the slice row's evidence — the
   raise tables, the guard, the negative control — unreadable, and would have hidden a *new* defect inside a *closed*
-  row. It is filed as Gap R.242 with the measurement in its section, and it is the next row this loop takes.
+  row. It is filed as Gap R.242 with the measurement in its section, and it is the next row this loop takes — which
+  it did: [ADR 0338](0338-the-lexers-minus-rule-is-asked-what-came-before-it-one-token-of-context-separates-a-sign-from-an-operator.md)
+  closes it, one predicate on the token before the minus, and files the `+` neighbour this row measured at the same
+  sitting as Gap R.244.
 
 ## Verification
 

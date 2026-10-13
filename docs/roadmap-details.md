@@ -10925,7 +10925,7 @@ row's bounds arm, both exit 3, and the builtin arm as the control at exit 0; the
 the clear moves.
 <a id="gap-r-242"></a>
 
-### Gap R.242 — `a-b` is not a subtraction: the lexer's `-1` rule eats the operator (OPEN, found by ADR 0337)
+### Gap R.242 — `a-b` is not a subtraction: the lexer's `-1` rule eats the operator (PAID by ADR 0338, found by ADR 0337)
 
 ```python
 x = 5
@@ -10987,6 +10987,37 @@ it is larger than the slice row that found it, and the loop's rule is that a new
 rather than being buried in a closed one. The measurement above is this section's; the closure owes the twelve table
 rows as both-legs cases plus the token-stream cases.
 
+**What paid it (ADR 0338).** `minusBeginsLiteral(toks)` in `pkg/lang/lexer.go` is the one question, asked of the token
+already in hand where `emit` is called — no look-ahead past the digit, no parser change, no new token. Three details
+are the row, and each is asserted:
+
+- the things that END an expression are a number, a name, any of the five text forms, a closing `)` `]` `}`, and the
+  three literal keywords `True`, `False`, `None` — the last are keywords, so a rule keyed on "keyword means a sign
+  position" would strand `print(True-1)`, which the reference answers with arithmetic;
+- a `TokWarning` is skipped when looking back, because the homoglyph note the warning path appends after an
+  identifier is not part of the program's token stream;
+- `-=` never reaches the question — it is matched by the longest-match operator path, which only sees a `-` the
+  number rule declined, so `x -= 1` is one augmented-assignment token as it always was.
+
+**The suite it owes, and the measurement that says the suite bites.** `TestTheMinusBeforeADigitIsAskedWhatItFollows`
+(31 rendered token streams, both halves of the rule), `TestTheContextQuestionIsAskedOfThePreviousToken` (19 hand-built
+streams), `TestASubtractionIsOneExpressionNotTwo` (the parse: one statement whose value is a `*BinOp`; and the sign
+half, an `*IntLit` of `-1` rather than a `*UnOp`, which is what rejects "just lex a bare `-` always"), 59 answered
+programs on both legs, 43 through the CLI, the IR row that requires `sub i32` in the program's own functions and
+requires its absence in four sign programs, and `programs/minus_operator.gy` at `parity`/`match`. Deleting the
+context check fails 17 assertions, which is the difference between a gate and a comment.
+
+**What the record says about the blast radius.** Eight recorded sources contain an `X-N` pair and all eight hold it
+inside a text or a comment (`print(int("-7"))`, `print("-42".zfill(4))`, comment-bearing programs) — none changes
+answer, and no conformance program spelled a subtraction without its space. That is the fact that let a priority-1
+defect sit in the most ordinary arithmetic in the language, and it is why the closure records 56 newly answered
+programs rather than editing one.
+
+**What the row leaves standing, filed.** `print(+1)` is refused where CPython prints `1` — the grammar has no unary
+plus — filed as [Gap R.244](#gap-r-244); and a comprehension whose iterable is a list the compiler kept as a
+compile-time constant still refuses, which is L11.1/L11.2's own road (ADR 0192). Both are pinned in
+`TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` with today's answer and the reference's beside them.
+
 <a id="gap-r-243"></a>
 
 ### Gap R.243 — a stepped slice of a text whose step is a value refuses (OPEN, found by ADR 0337)
@@ -11026,3 +11057,35 @@ constant, and ask it the zero-step question ADR 0337 asks beside the list copy, 
 `k = 0` raising the ValueError catchably; the rows move out of `TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed`
 and its CLI twin into the answered tables, and `docs/language.md` loses the last `refuses: cannot fold string slice`
 line ADR 0229 recorded.
+
+<a id="gap-r-244"></a>
+
+### Gap R.244 — unary plus is not in the grammar (OPEN, found by ADR 0338)
+
+```python
+print(+1)             # 1 in the reference;   this backend: parse error at 1:7: unexpected token  (exit 1)
+print(+1.5)           # 1.5                   this backend: parse error at 2:7: unexpected token
+print(+True)          # 1                     this backend: parse error at 3:7: unexpected token
+x = 5
+print(x-+1)           # 4                     this backend: parse error at 4:9: unexpected token
+print(-+1)            # -1                    this backend: parse error at 5:8: unexpected token
+```
+
+`print(-1)` has always answered, `print(-x)` has always answered, and `print(+1)` has never parsed: the prefix
+expression rule has a `-` and no `+`. ADR 0338 repaired the *other* minus — the one between two expressions, which the
+lexer was eating as the sign of the literal after it — and this shape is the neighbour it measured and left alone, so
+it is filed rather than folded into a commit whose subject is the number rule.
+
+The row is small and it is real: the reference runs all five programs above and this toolchain exits 1 on each, and
+the refusal is the parser's generic `unexpected token`, which names neither the operator nor what the program has to
+write instead (ADR 0249's complaint).
+
+**The fix, and where it belongs.** The same road unary minus already takes: a prefix `+` whose type *is* the operand's
+— `+1` the int, `+1.5` the float, `+True` the int `1` the reference answers, `+-1` the int `-1`, `+"a"` the reference's
+`TypeError: bad operand type for unary +: 'str'` rather than a number the compiler invented. `a-+1` must parse as
+`a - (+1)`, which is the ADR 0338 token stream (`INT:a OP:- OP:+ INT:1`) reaching a parser that can read it; `+=` is
+untouched, and `+` between two operands is still the addition it is today.
+
+Two rows in `TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` (and their `pkg/lang` twin in
+`TestWhatTheMinusRowLeavesStandingIsFiledNotFixed`) pin today's answer beside the reference's, so the day the rule
+grows, the rows fail and the row moves — a filed row is closed by that failure, not by deleting a table.

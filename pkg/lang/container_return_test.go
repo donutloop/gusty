@@ -137,10 +137,10 @@ func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
 	ir := emittedModuleIR(t, "def build():\n    return [1, 2]\n\nprint(build())")
 	fn := functionBodyOf(ir, "gy_build")
 	for _, want := range []string{
-		"call i32 @rt_alloc(",        // the object is built, not named by a global
-		"call void @rt_set_elem(",    // and every slot is written
-		"call void @rt_tag_elem(",    // beside the tag that says what the slot holds
-		"ret i32 %t",                 // the answer is a register
+		"call i32 @rt_alloc(",     // the object is built, not named by a global
+		"call void @rt_set_elem(", // and every slot is written
+		"call void @rt_tag_elem(", // beside the tag that says what the slot holds
+		"ret i32 %t",              // the answer is a register
 	} {
 		if !strings.Contains(fn, want) {
 			t.Fatalf("the return road does not emit %q:\n%s", want, fn)
@@ -152,8 +152,8 @@ func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
 	body := mainBodyOf(ir)
 	for _, want := range []string{
 		"call i32 @gy_build()",
-		"call void @rt_root_put(",          // the answer is rooted before anything can collect it
-		"call void @rt_print_list(i32 ",    // and printed by the printer for the kind the table names
+		"call void @rt_root_put(",       // the answer is rooted before anything can collect it
+		"call void @rt_print_list(i32 ", // and printed by the printer for the kind the table names
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the print door does not emit %q:\n%s", want, body)
@@ -162,8 +162,8 @@ func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
 	// The three kinds get the three printers, because `{1, 2}` printed by the list printer is a rendering
 	// the reference never produces (ADR 0234's rule for a comprehension, applied to an answer).
 	for src, want := range map[string]string{
-		"def b():\n    return {1, 2}\n\nprint(b())":   "call void @rt_set_print(",
-		"def b():\n    return {1: 2}\n\nprint(b())":   "call void @rt_dict_print(",
+		"def b():\n    return {1, 2}\n\nprint(b())":     "call void @rt_set_print(",
+		"def b():\n    return {1: 2}\n\nprint(b())":     "call void @rt_dict_print(",
 		"def b():\n    return [1, \"a\"]\n\nprint(b())": "call void @rt_print_list_mixed(",
 	} {
 		ir2 := emittedModuleIR(t, src)

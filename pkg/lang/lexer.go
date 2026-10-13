@@ -17,6 +17,57 @@ var ops = []string{
 	",", ":", ".", "&", "|", "@",
 }
 
+// minusBeginsLiteral answers the one question a `-` followed by a digit cannot
+// answer by itself: is it the SIGN of a literal (`x = -1`, `xs[-1]`, `f(-1)`,
+// `{-1: "neg"}`) or the SUBTRACTION operator that the parser can already follow
+// with a unary minus (`y = x-1`)? The rule used to look only at the character
+// AFTER the minus, so `y = x-1` was lexed as `y = x` and an expression statement
+// `-1`: the program printed `5` where the reference prints `4`, at exit 0, and
+// `print(1-1)` did not even parse (roadmap Gap R.242). The character before the
+// minus is already in hand wherever `emit` is called, so the rule asks it:
+//
+//   - after something that can END an expression — a number, a name, a string,
+//     a closing `)` `]` `}`, or one of the three literal keywords `True`, `False`,
+//     `None` — the minus is the operator and the parser's existing unary-minus
+//     rule takes whatever comes next, which is what `5--1` and `5- -1` already
+//     exercised;
+//
+//   - everywhere else — the start of a line, after an operator, after `,` `:`
+//     `(` `[` `{` `=`, after a keyword like `return`, `in`, `else` or `not`, after
+//     a homoglyph note that is not a token of the program at all — `-N` stays one
+//     literal, exactly as it was, so no call argument, index, dict key, default or
+//     `print(-1)` changes answer.
+//
+// Only the SIGN position of a `-digit` changes; no other token is affected, and
+// the merge is never decided by looking ahead past the digit.
+func minusBeginsLiteral(toks []Token) bool {
+	for j := len(toks) - 1; j >= 0; j-- {
+		t := toks[j]
+		if t.Kind == TokWarning {
+			// the homoglyph note a warning path appends after an identifier is not
+			// part of the program's token stream
+			continue
+		}
+		switch t.Kind {
+		case TokInt, TokFloat, TokString, TokRawString, TokTripleString, TokRawTripleString, TokFString, TokIdent:
+			return false
+		case TokOp:
+			switch t.Text {
+			case ")", "]", "}":
+				return false
+			}
+		case TokKeyword:
+			switch t.Text {
+			// `True-1` is an arithmetic expression, not a statement followed by `-1`
+			case "True", "False", "None":
+				return false
+			}
+		}
+		return true
+	}
+	return true // nothing emitted yet: the minus begins the line
+}
+
 // LexError is a lexical error with a source span.
 type LexError struct {
 	Span Span
@@ -382,7 +433,7 @@ func Lex(src string) ([]Token, error) {
 				}
 				i = end
 				emit(TokString, src[start:i], start, i, func(t *Token) { t.Str = val })
-			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
+			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])) && minusBeginsLiteral(toks):
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
 				if lerr != nil {

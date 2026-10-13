@@ -385,3 +385,240 @@ func TestLexNoConfusableASCII(t *testing.T) {
 		}
 	}
 }
+
+// tokenKindName is the print name a token stream assertion reads. The kinds have no
+// String() — the stream is only ever printed by a failing test, and a failing test that
+// prints `6` for an integer is not a diagnostic (roadmap Gap R.242, ADR 0338).
+func tokenKindName(k TokenKind) string {
+	switch k {
+	case TokEOF:
+		return "EOF"
+	case TokNewline:
+		return "NL"
+	case TokIndent:
+		return "INDENT"
+	case TokDedent:
+		return "DEDENT"
+	case TokIdent:
+		return "IDENT"
+	case TokInt:
+		return "INT"
+	case TokFloat:
+		return "FLOAT"
+	case TokString:
+		return "STR"
+	case TokRawString:
+		return "RAWSTR"
+	case TokTripleString:
+		return "TRIPLE"
+	case TokRawTripleString:
+		return "RAWTRIPLE"
+	case TokFString:
+		return "FSTR"
+	case TokOp:
+		return "OP"
+	case TokKeyword:
+		return "KW"
+	case TokError:
+		return "ERR"
+	case TokWarning:
+		return "WARN"
+	case TokSemi:
+		return "SEMI"
+	}
+	return "?"
+}
+
+// tokenStream renders a token stream as `KIND:text` pairs, dropping the statement
+// terminators and the EOF every line gets: the question the `-N` rows ask is about the
+// tokens that carry the program's meaning, and `Int:-1` beside `OP:- Int:1` is the whole
+// difference between `y = x-1` answering `4` and answering `5`.
+func tokenStream(t *testing.T, src string) string {
+	t.Helper()
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src, err)
+	}
+	parts := make([]string, 0, len(toks))
+	for _, tk := range toks {
+		if tk.Kind == TokNewline || tk.Kind == TokEOF || tk.Kind == TokWarning {
+			continue
+		}
+		parts = append(parts, tokenKindName(tk.Kind)+":"+tk.Text)
+	}
+	return strings.Join(parts, " ")
+}
+
+// TestTheMinusBeforeADigitIsAskedWhatItFollows is the token stream both ways (roadmap
+// Gap R.242, ADR 0338). The rule used to look only at the character AFTER the minus, so
+// `y = x-1` was lexed as `y = x` followed by an expression statement `-1` — the program
+// printed the value the subtraction never produced (`5`, where the reference prints `4`)
+// at exit 0, and `print(1-1)` did not parse at all. Each row below is a token stream the
+// reference's grammar forces; a lexer that drops the context question fails the `1-1`
+// rows, and a lexer that always splits fails the `-1` rows.
+func TestTheMinusBeforeADigitIsAskedWhatItFollows(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		// ---- the operator: after something that can END an expression ----
+		{"y = x-1", "IDENT:y OP:= IDENT:x OP:- INT:1"},
+		{"print(1-1)", "IDENT:print OP:( INT:1 OP:- INT:1 OP:)"},
+		{"print(1-1-1)", "IDENT:print OP:( INT:1 OP:- INT:1 OP:- INT:1 OP:)"},
+		{"print(x-1)", "IDENT:print OP:( IDENT:x OP:- INT:1 OP:)"},
+		{"print(len(xs)-1)", "IDENT:print OP:( IDENT:len OP:( IDENT:xs OP:) OP:- INT:1 OP:)"},
+		{"print(xs[2-1])", "IDENT:print OP:( IDENT:xs OP:[ INT:2 OP:- INT:1 OP:] OP:)"},
+		{"print((1)-1)", "IDENT:print OP:( OP:( INT:1 OP:) OP:- INT:1 OP:)"},
+		{"print(w[\"a\"]-1)", "IDENT:print OP:( IDENT:w OP:[ STR:\"a\" OP:] OP:- INT:1 OP:)"},
+		{"print(True-1)", "IDENT:print OP:( KW:True OP:- INT:1 OP:)"},
+		{"print(False-1)", "IDENT:print OP:( KW:False OP:- INT:1 OP:)"},
+		{"print({1}-1)", "IDENT:print OP:( OP:{ INT:1 OP:} OP:- INT:1 OP:)"},
+		{"print(\"ab\"-1)", "IDENT:print OP:( STR:\"ab\" OP:- INT:1 OP:)"},
+		{"x = 5\nprint(x-1)", "IDENT:x OP:= INT:5 IDENT:print OP:( IDENT:x OP:- INT:1 OP:)"},
+		// the spaced spelling is the same token stream it always was
+		{"print(x - 1)", "IDENT:print OP:( IDENT:x OP:- INT:1 OP:)"},
+		// `-=` is the longest match and is not a sign, whatever follows it
+		{"x-=1", "IDENT:x OP:-= INT:1"},
+		// ---- the sign: everywhere else ----
+		{"print(-1)", "IDENT:print OP:( INT:-1 OP:)"},
+		{"print(-1.5)", "IDENT:print OP:( FLOAT:-1.5 OP:)"},
+		{"print(xs[-1])", "IDENT:print OP:( IDENT:xs OP:[ INT:-1 OP:] OP:)"},
+		{"print(f(-1))", "IDENT:print OP:( IDENT:f OP:( INT:-1 OP:) OP:)"},
+		{"print(1, -1)", "IDENT:print OP:( INT:1 OP:, INT:-1 OP:)"},
+		{"print(5*-1)", "IDENT:print OP:( INT:5 OP:* INT:-1 OP:)"},
+		{"print(2 ** -1)", "IDENT:print OP:( INT:2 OP:** INT:-1 OP:)"},
+		{"x = -1", "IDENT:x OP:= INT:-1"},
+		{"print(d[-1:1])", "IDENT:print OP:( IDENT:d OP:[ INT:-1 OP:: INT:1 OP:] OP:)"},
+		{"print({-1: \"n\"})", "IDENT:print OP:( OP:{ INT:-1 OP:: STR:\"n\" OP:} OP:)"},
+		// a minus after the operator is the sign of the operand the parser already takes
+		{"print(5--1)", "IDENT:print OP:( INT:5 OP:- INT:-1 OP:)"},
+		{"print(5- -1)", "IDENT:print OP:( INT:5 OP:- INT:-1 OP:)"},
+		{"x-=-1", "IDENT:x OP:-= INT:-1"},
+		// a `-` inside a text is not a token at all, and a `-` inside a comment is not either
+		{"x = int(\"-7\")", "IDENT:x OP:= IDENT:int OP:( STR:\"-7\" OP:)"},
+		{"x = 5 # a-1", "IDENT:x OP:= INT:5"},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			if got := tokenStream(t, tc.src); got != tc.want {
+				t.Errorf("Lex(%q) streamed\n  %s\nwant\n  %s", tc.src, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTheContextQuestionIsAskedOfThePreviousToken is the predicate on its own, so a
+// change to the rule cannot hide behind a token-stream row that happens to agree (ADR 0338).
+func TestTheContextQuestionIsAskedOfThePreviousToken(t *testing.T) {
+	tok := func(k TokenKind, text string) Token { return Token{Kind: k, Text: text} }
+	for _, tc := range []struct {
+		name string
+		toks []Token
+		want bool
+	}{
+		{"start of a line", nil, true},
+		{"after a newline", []Token{tok(TokNewline, "\n")}, true},
+		{"after an indent", []Token{tok(TokNewline, "\n"), tok(TokIndent, "")}, true},
+		{"after an operator", []Token{tok(TokIdent, "x"), tok(TokOp, "*")}, true},
+		{"after an open bracket", []Token{tok(TokOp, "[")}, true},
+		{"after a comma", []Token{tok(TokIdent, "f"), tok(TokOp, "("), tok(TokOp, ",")}, true},
+		{"after an equals", []Token{tok(TokIdent, "a"), tok(TokOp, "=")}, true},
+		{"after the return keyword", []Token{tok(TokKeyword, "return")}, true},
+		{"after the in keyword", []Token{tok(TokKeyword, "for"), tok(TokIdent, "i"), tok(TokKeyword, "in")}, true},
+		{"after a homoglyph note", []Token{tok(TokIdent, "x"), tok(TokWarning, "")}, false},
+		{"after a number", []Token{tok(TokInt, "5")}, false},
+		{"after a float", []Token{tok(TokFloat, "1.5")}, false},
+		{"after a name", []Token{tok(TokIdent, "x")}, false},
+		{"after a text", []Token{tok(TokString, "\"a\"")}, false},
+		{"after a closing paren", []Token{tok(TokInt, "1"), tok(TokOp, ")")}, false},
+		{"after a closing bracket", []Token{tok(TokIdent, "xs"), tok(TokOp, "["), tok(TokInt, "0"), tok(TokOp, "]")}, false},
+		{"after a closing brace", []Token{tok(TokOp, "{"), tok(TokInt, "1"), tok(TokOp, "}")}, false},
+		{"after the True keyword", []Token{tok(TokKeyword, "True")}, false},
+		{"after the None keyword", []Token{tok(TokKeyword, "None")}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := minusBeginsLiteral(tc.toks); got != tc.want {
+				t.Errorf("minusBeginsLiteral(%+v) = %v, want %v", tc.toks, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestASubtractionIsOneExpressionNotTwo is the parse the token stream decides: `y = x-1`
+// used to be TWO statements — an assignment and an expression statement holding `-1` —
+// which is why the program printed `5` and why no diagnostic could have told the author.
+func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
+	for _, tc := range []struct {
+		src   string
+		stmts int
+		check func(t *testing.T, e Stmt)
+	}{
+		{"y = x-1", 1, func(t *testing.T, e Stmt) {
+			a, ok := e.(*AssignStmt)
+			if !ok {
+				t.Fatalf("the line is a %T, not an assignment", e)
+			}
+			b, ok := a.Value.(*BinOp)
+			if !ok {
+				t.Fatalf("y = x-1 holds a %T, not a subtraction", a.Value)
+			}
+			if b.Op != "-" {
+				t.Errorf("the operator is %q, want -", b.Op)
+			}
+		}},
+		{"print(1-1)", 1, func(t *testing.T, e Stmt) {
+			s, ok := e.(*ExprStmt)
+			if !ok {
+				t.Fatalf("the line is a %T, not an expression statement", e)
+			}
+			c, ok := s.Expr.(*Call)
+			if !ok || len(c.Args) != 1 {
+				t.Fatalf("print(1-1) is not a one-argument call: %T", s.Expr)
+			}
+			if _, ok := c.Args[0].(*BinOp); !ok {
+				t.Fatalf("print(1-1) argues with a %T, not a subtraction", c.Args[0])
+			}
+		}},
+		// the sign side must stay a LITERAL, not a unary minus the parser rebuilt
+		{"x = -1", 1, func(t *testing.T, e Stmt) {
+			a, ok := e.(*AssignStmt)
+			if !ok {
+				t.Fatalf("the line is a %T, not an assignment", e)
+			}
+			n, ok := a.Value.(*IntLit)
+			if !ok {
+				t.Fatalf("x = -1 holds a %T; the sign stopped merging", a.Value)
+			}
+			if n.Value != -1 {
+				t.Errorf("x = -1 is %d", n.Value)
+			}
+		}},
+		{"xs = [1, 2, 3]\nprint(xs[-1])", 2, func(t *testing.T, e Stmt) {
+			s, ok := e.(*ExprStmt)
+			if !ok {
+				t.Fatalf("the line is a %T, not an expression statement", e)
+			}
+			c, ok := s.Expr.(*Call)
+			if !ok || len(c.Args) != 1 {
+				t.Fatalf("print(xs[-1]) is not a one-argument call: %T", s.Expr)
+			}
+			ix, ok := c.Args[0].(*Index)
+			if !ok {
+				t.Fatalf("xs[-1] is a %T, not a subscript", c.Args[0])
+			}
+			if n, ok := ix.Idx.(*IntLit); !ok || n.Value != -1 {
+				t.Fatalf("xs[-1] indexes with a %T, not the literal -1", ix.Idx)
+			}
+		}},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			p, err := Parse(tc.src)
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", tc.src, err)
+			}
+			if len(p.Stmts) != tc.stmts {
+				t.Fatalf("Parse(%q) produced %d statements, want %d", tc.src, len(p.Stmts), tc.stmts)
+			}
+			tc.check(t, p.Stmts[len(p.Stmts)-1])
+		})
+	}
+}

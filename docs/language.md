@@ -391,6 +391,43 @@ program died with exit 2; the emitter now writes the IEEE bit pattern (`0x7FF000
 `0xFFF0000000000000`, `0x7FF8000000000000`), and both bad spellings are on the shared `forbiddenIR`
 blacklist every codegen test runs (Gap R.134, closed alongside `floor`/`ceil`/`sqrt` by ADR 0264).
 
+### A `-` before a digit is asked what it follows (Gap R.242, ADR 0338)
+
+A minus has two jobs in this language, and the lexer used to decide between them by looking at
+the character **after** it: `-` followed by a digit was read as one negative integer, wherever
+it appeared. That is right for `x = -1`, `xs[-1]`, `f(-1)` and `{-1: "neg"}`, and wrong
+everywhere else. `y = x-1` was `y = x` followed by an expression statement `-1`, so the program
+printed the value the subtraction never produced — `5` where CPython prints `4`, at **exit 0**,
+with no diagnostic anywhere to read. The other face met an expression the parser could not
+swallow: `print(1-1)`, `print(x-1)`, `print(len(xs)-1)`, `print(xs[2-1])`, `print(3.5-1)`,
+`for i in range(3-1):` and `def g(n): return n-1` all died with `parse error: expected ")"`.
+Write the same expression with a space (`x - 1`) and it was right, which is the only reason a
+corpus written in this house's style never saw it.
+
+The rule now asks the token **before** the minus, which is already in hand where the token is
+emitted:
+
+- after anything that can **end** an expression — a number, a name, a text, a closing `)` `]`
+  `}`, or one of `True` / `False` / `None` — the `-` is the subtraction operator and the parser's
+  existing unary-minus rule takes whatever comes next, which is why `5--1` and `5- -1` keep
+  answering `6` and `x -= 1` still decrements; and
+- everywhere else — the start of a line, after an operator, after `,` `:` `(` `[` `{` `=`, after
+  a keyword like `return`, `in` or `else` — `-N` stays **one literal**, so no index, call
+  argument, dict key, parameter default or `print(-1)` changed answer.
+
+`x -= 1` is still the longest match, and a `-` inside a text or a comment is not a token at all.
+The token stream is asserted both ways in `pkg/lang/lexer_test.go` (`INT:-1` beside
+`OP:- INT:1` is the whole difference), the parse is asserted as *one* statement rather than two,
+and `integration/minus_operator_test.go` asserts the arithmetic is in the module (`sub i32` in
+`@main` or a `@gy_*` function) — before the row, the module for `y = x-1` contained no
+subtraction at all.
+
+Two shapes stand outside the row, both filed rather than smuggled in: **`+` before an operand is
+refused** (`print(+1)` is `parse error: unexpected token` where CPython prints `1`) because the
+grammar has no unary-plus rule at all — roadmap **Gap R.244** — and a comprehension whose
+iterable is a list the compiler kept as a compile-time constant still refuses (roadmap
+**L11.1/L11.2**, ADR 0192).
+
 ## Statements
 
 ### Statement separators (`;`)

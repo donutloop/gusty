@@ -10200,3 +10200,53 @@ three.
   nothing this time — five sources went in (four answered stride shapes and the grown conformance program), record
   6484 — and the program still asserts only its own row's doors: no comprehension over a copy, no `len` of a text
   slice, no call in an `except` arm, no user-call in the handler that Gap R.241 makes fatal.
+
+## The most ordinary arithmetic in the language was wrong, silently, in the one spelling nobody writes (L11.2 lexer surface, Gap R.242; ADR 0338; Gap R.244 filed)
+
+```
+x = 5
+y = x-1
+print(y)      # CPython: 4 — this toolchain: 5, exit 0, nothing on stderr
+print(1-1)    # CPython: 0 — this toolchain: parse error at 1:8: expected ")"
+```
+
+`case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1]))` read `-1` as one integer wherever a minus was followed
+by a digit, never asking what came *before* it. `y = x-1` therefore was `y = x` and an expression statement `-1`: the
+subtraction was not mis-evaluated, it was never parsed, and the program printed the value the subtraction never
+produced. The other face — `print(1-1)`, `print(x-1)`, `print(len(xs)-1)`, `print(xs[2-1])`, `print(3.5-1)`,
+`for i in range(3-1):`, `def g(n): return n-1` — was refused by the parser. `x - 1` was right. That space is why a
+green suite had never seen it (the ADR 0187 / ADR 0232 / Gap R.236 lesson, now for the fourth time).
+
+- **A wrong answer is a *token boundary* before it is a wrong output, so the tests had to be written at that
+  altitude.** `INT:-1` beside `OP:- INT:1` is the entire difference between `5` and `4`. Thirty-one rendered token
+  streams (both halves of the rule), the predicate on its own over 19 hand-built streams, and — the assertion that
+  actually pins the defect — the parse: `y = x-1` is **one** statement whose value is a `*BinOp`, and `x = -1` is one
+  statement whose value is an `*IntLit` of `-1`, not a `*UnOp` the parser rebuilt. That last half is what rejects the
+  tempting "just lex a bare `-` always" fix, which answers the arithmetic and moves every index, key, default and
+  `print(-1)` in the corpus.
+- **A negative control earns its keep only if it can fail both ways.** Deleting the context check fails 17 of the
+  token-stream rows (measured, not asserted); always splitting fails the sign rows; and the IR row requires `sub i32`
+  in `@main`/`@gy_*` for four programs and its **absence** for four sign programs — the module for `y = x-1` held no
+  arithmetic at all before the row, so that assertion is the defect's own shape in the emitted code, not a proxy.
+- **"Every keyword begins a sign position" is wrong in exactly three keywords.** `True`, `False` and `None` are
+  `TokKeyword` and they END an expression, so `print(True-1)` must be arithmetic (the reference answers `0`) and not a
+  stray `-1`; every other keyword — `return`, `in`, `else`, `not` — begins one, which is what keeps `return -1` a
+  literal. And the homoglyph path appends a `TokWarning` *after* an identifier, so a rule that reads the previous
+  token has to skip the notes that are not part of the program.
+- **The record is not a safety net for spellings nobody writes.** Eight recorded sources contain an `X-N` pair; all
+  eight hold it inside a text or a comment (`print(int("-7"))`, `"-42".zfill(4)`), none changes answer, and no
+  conformance program contained an unspaced subtraction. A priority-1 defect with 6 484 recorded programs and a
+  200-program matrix had literally zero coverage of it — so the fix recorded 56 newly answered programs plus the new
+  `programs/minus_operator.gy` (record 6541, programs 201, matrix 190 rows / 152 parity / 0 fail / oracle 137 `match`).
+- **An IR assertion must know whose code it is reading.** The runtime's own helpers contain `sub i32` (`rt_str_index`
+  counts backwards), so the first version of the IR row passed on the *negative* controls for the wrong reason; the
+  file now extracts `@main` and the program's own `@gy_*` functions and nothing else. Same lesson as `cliMainBody`:
+  a whole-module substring match on a module that ships the runtime attached asserts almost nothing.
+- **Filed, not folded in.** `print(+1)` is refused (`unexpected token`) where CPython prints `1` — the grammar has no
+  unary plus at all, and the number rule was not the parser's to fix: **Gap R.244**, with `+1.5`/`+True`/`-+1`/`x-+1`
+  measured and cited. The comprehension over a list the compiler kept static still refuses, and that door belongs to
+  L11.1/L11.2 (ADR 0192); pinning it here means the day either road grows an answer, the row fails and moves.
+- **CLI trivia worth remembering:** `--emit-llvm` takes a *filename*, not a switch — `gustyc --emit-llvm --file p.gy`
+  reads as `--emit-llvm "-file"` and reports `undefined name "file"`. IR assertions in tests go through
+  `lang.Compile(src).IR`, which is the machine path anyway (ADR 0166's sibling: the IR is an artifact, not a stdout
+  side effect).
