@@ -1,0 +1,16 @@
+10 30 20 20
+a c 3
+[10, 20]
+[3, 4] 3
+1 five True
+a text index raises TypeError
+a float index raises TypeError
+a nothing index raises TypeError
+a list index raises TypeError
+a dict index raises TypeError
+a tuple index raises TypeError
+a text-indexed string raises TypeError
+a text store index raises TypeError
+a bound text index raises TypeError
+a position out of range raises IndexError
+10 20 30 b

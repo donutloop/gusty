@@ -932,7 +932,15 @@ knows: `{c: 1}` over a container slot raises `TypeError: unhashable type: 'list'
 as a dict key or a set needle at any of the three dict doors — `d[[1]] = 2`, `print({"a": 1}[[1]])`,
 `[1] in {"a": 1}` — catchable by the program's
 own `except TypeError:`, where reading the payload alone would have put an address in the bucket and printed a
-plausible container at the exit code of success (ADR 0310, ADR 0232, Gap R.81). What still refuses is a
+plausible container at the exit code of success (ADR 0310, ADR 0232, Gap R.81). The other container family
+asks the other question — a list and a string **count** positions, so there the question is *is this a
+position*: `print(xs["a"])`, `print(xs[1.5])`, `print(xs[None])` and `s["a"]` each printed an element at exit 0
+(a text index is an index into `@str_tab`, so the door counted to the slot the interned number named) and now
+raise `TypeError: list indices must be integers or slices, not str` — quoted for a string, bare for a list —
+while `xs[True]` stays position 1, a slice stays a slice, and `xs[[0]]` compiles instead of lowering a list
+literal into the bounds check's `icmp slt` and making `llc` reject the module at exit 2, the code the contract
+reserves for a compiler bug (ADR 0329, Gap R.222; `unhashable_key.gy` and `list_index_kind.gy` are corpus
+surface, byte-identical to CPython). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,
 a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call, and an f-string used as a
 value — and the refusal names

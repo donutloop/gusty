@@ -1,5 +1,123 @@
 {
  "entries": {
+"try:\n    s = \"ab\"\n    print(s[1.5])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1, 2]\n    print(xs[\"a\"])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1, 2]\n    xs[\"a\"] = 1\n    print(\"stored\")\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[0] + xs[1] + xs[2])": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 9\nprint(xs[0])": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"xs = [10, 20, 30]\nprint(xs[0], xs[-1], xs[True], xs[1])\ns = \"abc\"\nprint(s[0], s[2], len(s))\nprint(xs[0:2])\nm = [[1, 2], [3, 4]]\nprint(m[1], m[1][0])\nd = {\"a\": 1, 5: \"five\"}\nprint(d[\"a\"], d[5], \"a\" in d)\ntry:\n    print(xs[\"a\"])\nexcept TypeError:\n    print(\"a text index raises TypeError\")\ntry:\n    print(xs[1.5])\nexcept TypeError:\n    print(\"a float index raises TypeError\")\ntry:\n    print(xs[None])\nexcept TypeError:\n    print(\"a nothing index raises TypeError\")\ntry:\n    print(xs[[0]])\nexcept TypeError:\n    print(\"a list index raises TypeError\")\ntry:\n    print(xs[{1: 2}])\nexcept TypeError:\n    print(\"a dict index raises TypeError\")\ntry:\n    print(xs[(0, 1)])\nexcept TypeError:\n    print(\"a tuple index raises TypeError\")\ntry:\n    print(s[1.5])\nexcept TypeError:\n    print(\"a text-indexed string raises TypeError\")\ntry:\n    xs[\"a\"] = 99\n    print(\"the store answered\", xs[0])\nexcept TypeError:\n    print(\"a text store index raises TypeError\")\nt = \"a\"\ntry:\n    print(xs[t])\nexcept TypeError:\n    print(\"a bound text index raises TypeError\")\ntry:\n    print(xs[5])\nexcept IndexError:\n    print(\"a position out of range raises IndexError\")\nprint(xs[0], xs[1], xs[2], s[1])": {
+    "stdout": "10 30 20 20\na c 3\n[10, 20]\n[3, 4] 3\n1 five True\na text index raises TypeError\na float index raises TypeError\na nothing index raises TypeError\na list index raises TypeError\na dict index raises TypeError\na tuple index raises TypeError\na text-indexed string raises TypeError\na text store index raises TypeError\na bound text index raises TypeError\na position out of range raises IndexError\n10 20 30 b\n",
+    "hasStdout": true
+   },
+"print([1, 2][\"a\"])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"s = \"ab\"\nprint(s[\"a\"])": {
+    "err": "TypeError: string indices must be integers, not 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "string indices must be integers, not 'str'"
+   },
+
+"s = \"ab\"\nprint(s[1.5])": {
+    "err": "TypeError: string indices must be integers, not 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "string indices must be integers, not 'float'"
+   },
+
+"s = \"ab\"\nprint(s[[0]])": {
+    "err": "TypeError: string indices must be integers, not 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "string indices must be integers, not 'list'"
+   },
+
+"xs = [1, 2, 3]\nf = 1.5\nprint(xs[f])": {
+    "err": "TypeError: list indices must be integers or slices, not float",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not float"
+   },
+
+"xs = [1, 2, 3]\nt = \"a\"\nprint(xs[t])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"xs = [1, 2]\nprint(xs[\"a\"])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"xs = [1, 2]\nprint(xs[(0, 1)])": {
+    "err": "TypeError: list indices must be integers or slices, not tuple",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not tuple"
+   },
+
+"xs = [1, 2]\nprint(xs[1.5])": {
+    "err": "TypeError: list indices must be integers or slices, not float",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not float"
+   },
+
+"xs = [1, 2]\nprint(xs[None])": {
+    "err": "TypeError: list indices must be integers or slices, not NoneType",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not NoneType"
+   },
+
+"xs = [1, 2]\nprint(xs[[0]])": {
+    "err": "TypeError: list indices must be integers or slices, not list",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not list"
+   },
+
+"xs = [1, 2]\nprint(xs[{1: 2}])": {
+    "err": "TypeError: list indices must be integers or slices, not dict",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not dict"
+   },
+
+"xs = [1, 2]\nprint(xs[{1}])": {
+    "err": "TypeError: list indices must be integers or slices, not set",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not set"
+   },
+
+"xs = [1, 2]\nxs[\"a\"] = 1": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"xs = [1, 2]\nxs[[0]] = 1": {
+    "err": "TypeError: list indices must be integers or slices, not list",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not list"
+   },
 "d = {\"a\": 1, 5: \"five\"}\nprint(d[\"a\"], d[5])\nprint(\"a\" in d, 2 in d)\nprint({\"a\": 1}[\"a\"], {5: \"five\"}[5])\nprint(1 in {\"a\": 1}, \"a\" in {\"a\": 1})\nprint([1] in [[1], [2]], [3] in [[1], [2]])\nprint({1} in [{1}])\nprint({\"a\": 1} in [{\"a\": 1}])\ntry:\n    print({\"a\": 1}[[1]])\nexcept TypeError:\n    print(\"a list key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1: 2}])\nexcept TypeError:\n    print(\"a dict key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1}])\nexcept TypeError:\n    print(\"a set key raises TypeError\")\ntry:\n    print([1] in {\"a\": 1})\nexcept TypeError:\n    print(\"a list needle raises TypeError\")\ntry:\n    store = {}\n    store[[1]] = 2\n    print(\"the store answered\", store)\nexcept TypeError:\n    print(\"a list store key raises TypeError\")\nx = [7]\ntry:\n    print(d[x])\nexcept TypeError:\n    print(\"a bound name key raises TypeError\")\ny = {\"k\": 1}\ntry:\n    print(y in {1, 2})\nexcept TypeError:\n    print(\"a dict needle raises TypeError\")\nprint(len(d))": {
     "stdout": "1 five\nTrue False\n1 five\nFalse True\nTrue False\nTrue\nTrue\na list key raises TypeError\na dict key raises TypeError\na set key raises TypeError\na list needle raises TypeError\na list store key raises TypeError\na bound name key raises TypeError\na dict needle raises TypeError\n2\n",
     "hasStdout": true

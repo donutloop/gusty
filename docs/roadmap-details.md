@@ -10003,22 +10003,49 @@ already uses, applied wherever `runtimeDicts` names a dict. It is filed here rat
 it is L11.1's tagged value word by another name, and that row — not this one — owns the decision about
 what a word carries.
 
-### Gap R.222 — a list or string subscript asked with a key of the wrong kind answers (OPEN, found by ADR 0328)
+### Gap R.222 — a list or string subscript asked with a key of the wrong kind answers (CLOSED by ADR 0329, found by ADR 0328)
 
-The unhashable-key gate had to be asked only of the containers that hash, and finding that boundary
-measured the ones that walk:
+**Closed 2026-07-14 by ADR 0329.** `pkg/lang/list_index_kind.go` asks, at the two doors that subscript a
+container which counts, whether the index has a kind a position can have. `nonIntIndexTypeName` reads it
+back from the source — a text, a float, `None`, a list, a dict, a set or a tuple literal, or a name the
+program most recently filled with one of them — and the door raises the reference's own pair of sentences,
+which are *not* one sentence: `list indices must be integers or slices, not str` names the type bare, and
+`string indices must be integers, not 'str'` quotes it. `*IntLit` and `*BoolLit` are positions, so
+`xs[True]` is still `xs[1]`, and a name whose kind is only a run-time fact is left alone — the bounds check
+keeps the behaviour it always had rather than accuse something the compiler cannot see.
+
+The gate runs **before the index is lowered**, and that ordering is what makes the row's worst case
+disappear with the rest of it: a list used as an index lowered to a bare `@.lstN` global reference and
+landed inside `normalizeIndex`'s `icmp slt`, `llc` rejected the module, and `gustyc` exited **2** — the code
+the exit-code contract reserves for a compiler bug. `TestTheListValuedIndexBuildsAModuleInsteadOfBreakingOne`
+asserts exit ≠ 2 for that shape so the failure can never again be indistinguishable from a broken compiler,
+and the read road, the store road and the list-literal base all go through the one gate.
+
+Measured on the way and filed rather than bundled: **Gap R.223**, the bounds trap's own sentence.
+`xs[5]` dies with `IndexError: index out of range` where the reference says `list index out of range`, and
+`xs[5] = 1` says plain `index out of range` where the reference says `list assignment index out of range`.
+The string road already names its container (`string index out of range`), which is what makes the two list
+sentences a defect rather than a style: one helper is being specific while the doors beside it are not. The
+out-of-range rows in this cycle's conformance program assert the *class* and the catchability, and name the
+row that owes the words.
+
+### Gap R.223 — the bounds trap does not say which container was out of range (OPEN, found by ADR 0329)
+
+`normalizeIndex` is the bounds check that stands on the roads a counting container is subscripted by, and
+it raises one sentence for all of them:
 
 ```python
 xs = [1, 2]
-print(xs["a"])          # TypeError: list indices must be integers or slices, not str — compiled: 1
-xs[[0]] = 5             # the same sentence naming `list` — compiled: the store happens
+print(xs[5])    # IndexError: index out of range        — reference: list index out of range
+xs[5] = 1       # IndexError: index out of range        — reference: list assignment index out of range
+s  = "ab"
+print(s[5])     # IndexError: string index out of range — and here it is already right
 ```
 
-A text index is an interned `@str_tab` index, and `normalizeIndex` bounds a position it never *typed*:
-the read of a list by `"a"` uses the interned number as the offset and prints whatever sits at slot 1, so
-the program answers `1` at exit 0 — a number nobody wrote, which is the class of defect this repo treats
-as worse than a refusal. The gate belongs beside `normalizeIndex`, naming the type the way
-`unhashableKeyName` names it for a dict key, and the two share their classifier: the container that walks
-asks "is this an integer or a slice?", the container that hashes asks "can this be hashed?". Filed rather
-than bundled, because the string door has its own sentence (`string indices must be integers, not 'list'`)
-and L11.4 owns the index rule (ADR 0210).
+The string road names its container; the two list roads do not. That asymmetry is the defect rather than a
+matter of taste — a traceback is the interface, and `Gap R.35` established that a trap reported with the
+wrong words is a trap reported wrongly. The container's kind is known at the door that calls
+`normalizeIndex`, which is exactly where ADR 0329's gate now stands, so the fix is to carry one more fact
+to a raise that is already being made. The rows in `integration/programs/list_index_kind.gy` that exercise
+the out-of-range case assert the class and the catchability, and name this row as the one that owes the
+words — so the day the sentence is fixed, the program says so by printing the reference's line.

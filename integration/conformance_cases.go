@@ -512,7 +512,6 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
 		"gc_precise",
-		"unhashable_key",
 		// A key the language refuses to hash, at the three doors a dict is consulted through. The
 		// read said `KeyError: key not found`, the membership test answered `False` at exit 0 and the
 		// store built the entry and printed `{[1]: 2}`; the reference raises `TypeError: unhashable
@@ -520,6 +519,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// that goes missing is a door that stopped refusing (roadmap Gap R.217, ADR 0328). The list
 		// haystacks in the same program are the soundness half: `[1] in [[1], [2]]` walks, does not
 		// hash, and must stay True.
+		"unhashable_key",
+		// An index that is not a position, at the two doors that subscript a container which counts.
+		// `xs["a"]`, `xs[1.5]` and `xs[None]` each printed an element and `s["a"]` printed a character,
+		// all at exit 0 — a text index is an @str_tab index, so the door counted to the slot the interned
+		// number named — and `xs[[0]]` lowered a list literal into the bounds check's `icmp slt`, so llc
+		// rejected the module and the toolchain exited 2, the code the exit-code contract reserves for a
+		// compiler bug. The reference raises TypeError naming the type (roadmap Gap R.222, ADR 0329); the
+		// program prints the caught sentence for each, and the positions, the negative position, the bool
+		// and the slice on the way through are the rows a gate that fired too eagerly would break.
+		"list_index_kind",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

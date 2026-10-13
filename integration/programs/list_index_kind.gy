@@ -1,0 +1,52 @@
+xs = [10, 20, 30]
+print(xs[0], xs[-1], xs[True], xs[1])
+s = "abc"
+print(s[0], s[2], len(s))
+print(xs[0:2])
+m = [[1, 2], [3, 4]]
+print(m[1], m[1][0])
+d = {"a": 1, 5: "five"}
+print(d["a"], d[5], "a" in d)
+try:
+    print(xs["a"])
+except TypeError:
+    print("a text index raises TypeError")
+try:
+    print(xs[1.5])
+except TypeError:
+    print("a float index raises TypeError")
+try:
+    print(xs[None])
+except TypeError:
+    print("a nothing index raises TypeError")
+try:
+    print(xs[[0]])
+except TypeError:
+    print("a list index raises TypeError")
+try:
+    print(xs[{1: 2}])
+except TypeError:
+    print("a dict index raises TypeError")
+try:
+    print(xs[(0, 1)])
+except TypeError:
+    print("a tuple index raises TypeError")
+try:
+    print(s[1.5])
+except TypeError:
+    print("a text-indexed string raises TypeError")
+try:
+    xs["a"] = 99
+    print("the store answered", xs[0])
+except TypeError:
+    print("a text store index raises TypeError")
+t = "a"
+try:
+    print(xs[t])
+except TypeError:
+    print("a bound text index raises TypeError")
+try:
+    print(xs[5])
+except IndexError:
+    print("a position out of range raises IndexError")
+print(xs[0], xs[1], xs[2], s[1])

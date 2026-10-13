@@ -8978,6 +8978,11 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	// built the entry, so `d = {}; d[[1]] = 2; print(d)` answered `{[1]: 2}` at exit 0 where the
 	// reference never stores it (roadmap Gap R.217, ADR 0328). The store below is still emitted
 	// — unreachable, so the module stays valid — and only after the raise branched away.
+	if g.badIndexGateAtSubscript(b, ix) {
+		// The store road is the same question: `xs["a"] = 1` counted to slot 0 and stored there
+		// while the reference refuses to treat a text as a position (Gap R.222, ADR 0329).
+		return nil
+	}
 	if g.dictVarHasKind(nm.Value) {
 		if _, bad := g.unhashableKeyName(ix.Idx); bad {
 			tn, _ := g.unhashableKeyName(ix.Idx)
@@ -10700,6 +10705,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return fmt.Sprintf("%%sl%d", r), nil
 
 	case *Index:
+		// An index that is not a position is asked about before the subscript is lowered at all.
+		// The bounds check downstream takes an i32 and never asked what it meant, so `xs["a"]`
+		// counted to slot 1 with the text's @str_tab index and printed an element nobody asked
+		// for, and `xs[[0]]` lowered a list literal to a @.lstN global reference inside an
+		// `icmp slt` — a module llc rejected, exit 2, the code the contract reserves for a
+		// compiler bug. The reference raises TypeError naming the type, and so does this (roadmap
+		// Gap R.222, ADR 0329). A dict or a set is not subscripted by position and is left to the
+		// hashing door beside it (Gap R.217, ADR 0328).
+		if g.badIndexGateAtSubscript(b, n) {
+			return "0", nil
+		}
 		// A subscript of a string the compiler cannot read asks the table (ADR 0229): the
 		// base only has to *be* a string, not be a constant. The fold below still answers
 		// everything the compiler can name, so this path is reached exactly when the fold

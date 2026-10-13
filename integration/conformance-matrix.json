@@ -3109,6 +3109,27 @@
     },
     {
       "case": {
+        "id": "programs/list_index_kind",
+        "name": "list_index_kind.gy",
+        "source": "xs = [10, 20, 30]\nprint(xs[0], xs[-1], xs[True], xs[1])\ns = \"abc\"\nprint(s[0], s[2], len(s))\nprint(xs[0:2])\nm = [[1, 2], [3, 4]]\nprint(m[1], m[1][0])\nd = {\"a\": 1, 5: \"five\"}\nprint(d[\"a\"], d[5], \"a\" in d)\ntry:\n    print(xs[\"a\"])\nexcept TypeError:\n    print(\"a text index raises TypeError\")\ntry:\n    print(xs[1.5])\nexcept TypeError:\n    print(\"a float index raises TypeError\")\ntry:\n    print(xs[None])\nexcept TypeError:\n    print(\"a nothing index raises TypeError\")\ntry:\n    print(xs[[0]])\nexcept TypeError:\n    print(\"a list index raises TypeError\")\ntry:\n    print(xs[{1: 2}])\nexcept TypeError:\n    print(\"a dict index raises TypeError\")\ntry:\n    print(xs[(0, 1)])\nexcept TypeError:\n    print(\"a tuple index raises TypeError\")\ntry:\n    print(s[1.5])\nexcept TypeError:\n    print(\"a text-indexed string raises TypeError\")\ntry:\n    xs[\"a\"] = 99\n    print(\"the store answered\", xs[0])\nexcept TypeError:\n    print(\"a text store index raises TypeError\")\nt = \"a\"\ntry:\n    print(xs[t])\nexcept TypeError:\n    print(\"a bound text index raises TypeError\")\ntry:\n    print(xs[5])\nexcept IndexError:\n    print(\"a position out of range raises IndexError\")\nprint(xs[0], xs[1], xs[2], s[1])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "10 30 20 20\na c 3\n[10, 20]\n[3, 4] 3\n1 five True\na text index raises TypeError\na float index raises TypeError\na nothing index raises TypeError\na list index raises TypeError\na dict index raises TypeError\na tuple index raises TypeError\na text-indexed string raises TypeError\na text store index raises TypeError\na bound text index raises TypeError\na position out of range raises IndexError\n10 20 30 b\n",
+      "python_ok": true,
+      "python_stdout": "10 30 20 20\na c 3\n[10, 20]\n[3, 4] 3\n1 five True\na text index raises TypeError\na float index raises TypeError\na nothing index raises TypeError\na list index raises TypeError\na dict index raises TypeError\na tuple index raises TypeError\na text-indexed string raises TypeError\na text store index raises TypeError\na bound text index raises TypeError\na position out of range raises IndexError\n10 20 30 b\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3859,7 +3880,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/154/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/155/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3873,7 +3894,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/154/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/155/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4583,11 +4604,11 @@
       ]
     }
   ],
-  "rows": 182,
+  "rows": 183,
   "skipped": 38,
-  "pass": 144,
+  "pass": 145,
   "fail": 0,
-  "oracle_match": 129,
+  "oracle_match": 130,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

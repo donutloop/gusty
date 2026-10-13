@@ -900,6 +900,33 @@ be hashed* — and only the tag can answer it: a container-valued key or member 
 reading the payload alone would have put a heap handle in the bucket and printed a plausible container at the
 exit code of success (`Gap R.81` owns the general hashing rule).
 
+The two container families divide the language's key question, and each gets its own sentence. A dict
+or a set **hashes** its key, so the question there is *can this be hashed* — a list, dict or set cannot,
+and the raise names the type (ADR 0328, `Gap R.217`, below). A list or a string **counts** positions, so
+the question there is *is this a position*, and the answer is CPython's own pair of sentences
+(ADR 0329, `Gap R.222`):
+
+```python
+xs = [10, 20, 30]
+print(xs["a"])    # TypeError: list indices must be integers or slices, not str
+print(xs[1.5])    # TypeError: list indices must be integers or slices, not float
+print(xs[None])   # TypeError: list indices must be integers or slices, not NoneType
+print(xs[[0]])    # TypeError: list indices must be integers or slices, not list
+print(xs[True])   # 20 — a bool IS an integer, so this is position 1
+s = "abc"
+print(s[1])       # b
+print(s["a"])     # TypeError: string indices must be integers, not 'str'   — quoted, for a string
+print(xs[0:2])    # [10, 20] — a slice is a position-shaped thing
+print(xs[5])      # IndexError: index out of range   (`Gap R.223`: the reference names the list too)
+```
+
+A text index is an index into `@str_tab`, so before this rule the door counted to the slot the interned
+number named and printed whatever was there — `xs["a"]` answered `20` at exit 0. The store road
+(`xs["a"] = 99`) stored into that slot; the reference refuses to treat a text as a position at either
+door, and so does this. A name the program last filled with a float or a text is the same index
+(`t = "a"` / `xs[t]`), read from the same kind maps the print door uses; where the kind is only a
+run-time fact the door keeps the bounds check it always had rather than accuse something it cannot see.
+
 The question is asked at **every door that consults a dict**, not only the deep ones (ADR 0328,
 `Gap R.217`). All three of these raise the reference's sentence, on both dict roads — a literal written in
 place and a variable bound to one:

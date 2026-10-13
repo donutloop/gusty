@@ -1,5 +1,38 @@
 # Session Learnings
 
+## Round 4 — An index that is not a position names its type, and the toolchain stops taking the blame for a typo (roadmap Gap R.222 closed; ADR 0329; Gap R.223 filed)
+
+**Feature (codegen + runtime refusal)**: `print(xs["a"])` printed an element, `print(xs[1.5])` printed an
+element, `print(xs[None])` printed an element and `print(s["a"])` printed a character — four wrong answers
+at exit 0, because a text index in this backend is an index into `@str_tab` and `normalizeIndex` bounds a
+position it was never asked to type. `pkg/lang/list_index_kind.go` asks that question at the two doors that
+subscript a container which counts, and raises the reference's own pair of sentences — a list names the type
+bare, a string quotes it. `xs[[0]]` was the sharpest case: the list literal lowered to a bare `@.lstN` global
+inside the check's `icmp slt`, `llc` rejected the module and the CLI exited **2**, the code the exit-code
+contract reserves for a compiler bug. Fixing the answer and fixing the crash turned out to be the same act,
+because the gate runs before the index is lowered.
+
+- **The worst defect in a family is often the same bug wearing a different hat.** A wrong answer at exit 0
+  and an invalid-module crash looked like two rows; they were one ordering decision. The row that documents
+  the crash is a test named for it — `TestTheListValuedIndexBuildsAModuleInsteadOfBreakingOne`, asserting
+  exit ≠ 2 — so the contract has an enforcer here rather than only a promise.
+- **The two sentences are not one sentence.** `list indices must be integers or slices, not str` and
+  `string indices must be integers, not 'str'` differ by the quotes and by the plural; both were read off
+  CPython in the same session rather than recalled, which is the only reason the string form survived review.
+- **A bool is an integer, and the classifier has to know it.** `xs[True]` is `xs[1]` in the reference. A rule
+  written as "numbers yes, everything else no" would have broken a legal program — the same direction of wrong
+  that round 3's `[1] in [[1], [2]]` lesson recorded for the hashing gate. Both classifiers now keep an
+  explicit "this is legal" row, not just a "this is refused" one.
+- **A conformance row is not just a program.** Adding `list_index_kind.gy` to `conformanceStandalone()`
+  without recording its text in the golden record broke `TestGCCorpusCollectsAndAgrees` (`ADR 0302`: a missing
+  entry fails the case). Round 3 wrote that lesson down and this cycle still had to meet it — the corpus is
+  derived from the matrix, so a new matrix row is also a new record obligation.
+- **`git stash` is the cheapest oracle for "did I break this?"** — it answered in one command whether the GC
+  corpus failure was mine, and the answer ("yes, but via the matrix row, not via codegen") pointed straight at
+  the missing record rather than at the runtime.
+
+
+
 ## Round 3 — A key the language cannot hash now names its type at every dict door (roadmap Gap R.217 closed; ADR 0328; Gaps R.221, R.222 filed)
 
 **Feature (codegen + runtime refusal)**: `print({"a": 1}[[1]])`, `print([1] in {"a": 1})` and `d = {}` /
