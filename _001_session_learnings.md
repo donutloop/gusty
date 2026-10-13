@@ -1,5 +1,34 @@
 # Session Learnings
 
+## Round 5 — The bounds check names its container, and the record is demoted to evidence (roadmap Gap R.223 closed; ADR 0330)
+
+**Feature (runtime sentences)**: `print(xs[5])` said `IndexError: index out of range` and `xs[5] = 1` said
+the same, where the reference says `list index out of range` and `list assignment index out of range`; the
+string door next to them had been saying `string index out of range` correctly all along. One shared
+normaliser (`normalizeIndex`) was raising one sentence for two different acts. `normalizeIndexFor` now takes
+the sentence from the door that calls it.
+
+- **The old wording was not invented here — it was the retired engine's, and the backend had been loyal to
+  the wrong leg.** `pkg/lang/testdata/interpreter-golden.json` held `index out of range`, and
+  `constant_trap_test.go` had a table with `ours:`/`theirs:` columns documenting the gap without closing it.
+  AGENTS.md settles it (where the record and CPython disagree, CPython wins and the record is the debt), so
+  nine rows went onto the two drift ledgers with `expected` = the engine's words and `actual` = the
+  reference's, and the record itself was left exactly as it was. The `ours`/`theirs` table survived with its
+  columns equal — which is now the assertion instead of the apology.
+- **A divergence ledger is only worth registering when the direction is right.** Nine new rows is a thing a
+  reviewer should ask about, so the ADR says why: the compiled answer moved *toward* CPython, and the
+  two-way ratchet still fails if the sentence drifts back or the divergence quietly disappears.
+- **Round 4's conformance program had already paid for this row.** Its out-of-range row could only assert the
+  *class*, because the sentence was the row's own debt; the day the wording is fixed, the program is the
+  thing that says so. Writing a test at the weakest strength the current defect allows — and naming the row
+  that owes the rest — turns a workaround into a tripwire.
+- **Small rows are where the record-leg discipline actually bites.** Two rounds of container-door traps
+  (Gap R.217, R.222) were pure codegen; this one was one sentence table, two call sites, nine ledger rows and
+  six test assertions, and it was the only one of the three that made me re-read the two-leg rule and apply
+  it in the direction that hurts.
+
+
+
 ## Round 4 — An index that is not a position names its type, and the toolchain stops taking the blame for a typo (roadmap Gap R.222 closed; ADR 0329; Gap R.223 filed)
 
 **Feature (codegen + runtime refusal)**: `print(xs["a"])` printed an element, `print(xs[1.5])` printed an

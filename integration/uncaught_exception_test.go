@@ -111,7 +111,7 @@ var uncaughtCases = []struct {
 		"out-of-range item assignment",
 		"xs = [1, 2, 3]\nxs[9] = 5\nprint(\"after\")\n",
 		"", // nothing printed before the raise, and "after" must not appear
-		"IndexError: index out of range",
+		"IndexError: list assignment index out of range",
 	},
 	{
 		"raise with a message",

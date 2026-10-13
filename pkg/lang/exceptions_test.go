@@ -91,8 +91,8 @@ func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
 		exnType string
 		msg     string
 	}{
-		{"xs = [1]\nprint(xs[5])\n", "IndexError", "index out of range"},
-		{"xs = [1]\nxs[5] = 2\n", "IndexError", "index out of range"},
+		{"xs = [1]\nprint(xs[5])\n", "IndexError", "list index out of range"},
+		{"xs = [1]\nxs[5] = 2\n", "IndexError", "list assignment index out of range"},
 		// The reference's KeyError names the KEY -- `KeyError: 9`, not a prose "key not found" -- so a
 		// program that catches and prints the exception sees the same thing it would in Python. This pin
 		// asserted the old generic sentence and moved rather than being deleted (Gap R.189, ADR 0301).
@@ -220,7 +220,9 @@ func TestContainerReadsAreCheckedInIR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile list read: %v", err)
 	}
-	for _, want := range []string{"@rt_list_len", "IndexError: index out of range", "@rt_get_elem"} {
+	// The sentence in the module is the reference's, container named: the bounds check and the raise
+	// are one door, and the door speaks what CPython speaks (roadmap Gap R.223, ADR 0330).
+	for _, want := range []string{"@rt_list_len", "IndexError: list index out of range", "@rt_get_elem"} {
 		if !strings.Contains(res.IR, want) {
 			t.Errorf("list-read IR missing %q:\n%s", want, res.IR)
 		}

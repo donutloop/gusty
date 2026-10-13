@@ -10029,7 +10029,25 @@ sentences a defect rather than a style: one helper is being specific while the d
 out-of-range rows in this cycle's conformance program assert the *class* and the catchability, and name the
 row that owes the words.
 
-### Gap R.223 — the bounds trap does not say which container was out of range (OPEN, found by ADR 0329)
+### Gap R.223 — the bounds trap does not say which container was out of range (CLOSED by ADR 0330, found by ADR 0329)
+
+**Closed 2026-07-14 by ADR 0330.** `listIndexOutOfRange()` says `list index out of range`, the new
+`listAssignmentIndexOutOfRange()` says `list assignment index out of range`, and `normalizeIndexFor` takes
+the sentence from the door that calls it — the read road and the store road share the normalisation of a
+negative index and the bounds rule, and nothing else, so the caller says which act is being bounded. The
+string road already named its container and is untouched, as are `pop`'s `pop index out of range` and the
+slice roads.
+
+What made this more than a wording change is where the old words came from. The record held
+`IndexError: index out of range` for the list rows: the retired engine had its own phrasing, and the compiled
+backend had been faithful to the *engine* rather than to the language. `constant_trap_test.go` carried an
+`ours`/`theirs` table that documented the difference instead of closing it. Following AGENTS.md's rule — where
+the record and CPython disagree, CPython wins and the record is the debt — the compiled sentence moved to
+CPython's and nine rows (eight in `pkg/lang`, one in `integration`) were registered on
+`testdata/interpreter-golden-drift.json` with the retired engine's wording in `expected` and the reference's in
+`actual`. The record was not edited: it is evidence, not a specification, and the ledger is what makes the
+disagreement visible. The `ours`/`theirs` table stays, and its columns are now equal — which is the assertion
+that replaced the one that documented the gap.
 
 `normalizeIndex` is the bounds check that stands on the roads a counting container is subscripted by, and
 it raises one sentence for all of them:

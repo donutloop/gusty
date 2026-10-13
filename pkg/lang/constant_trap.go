@@ -54,7 +54,17 @@ func (g *irGen) constantTrap(b *strings.Builder, class, msg string, sp Span) {
 // program gets two different messages for the same accident depending on whether the compiler happened
 // to see the position (roadmap Gap R.90 owns the remaining distance between the first of these and
 // CPython's `list index out of range`).
-func listIndexOutOfRange() string   { return "index out of range" }
+// listIndexOutOfRange is the READ sentence, and it names its container: CPython says
+// `list index out of range`, not the bare `index out of range` this backend had been saying while the
+// string road beside it was already specific (roadmap Gap R.223, ADR 0330). A traceback is the
+// interface — Gap R.35 established that a trap reported with the wrong words is a trap reported
+// wrongly — and the container is the word a reader needs when two containers are on the line.
+func listIndexOutOfRange() string { return "list index out of range" }
+
+// listAssignmentIndexOutOfRange is the store's own sentence. The reference distinguishes the two
+// because the actions differ — one read past the end, one wrote past it — and the shared bounds check
+// that normalises a negative index cannot tell them apart unless it is told (ADR 0330).
+func listAssignmentIndexOutOfRange() string { return "list assignment index out of range" }
 func stringIndexOutOfRange() string { return "string index out of range" }
 
 // The `int()`/`float()` conversion sentences, in CPython's own words. Both quote the *source text* it

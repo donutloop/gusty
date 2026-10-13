@@ -19,7 +19,7 @@ func TestRuntimeTrapJSONReportsItsExceptionClass(t *testing.T) {
 		msg   string
 	}{
 		{"print(1 / 0)\n", "ZeroDivisionError", "division by zero"},
-		{"xs = [1]\nprint(xs[5])\n", "IndexError", "index out of range"},
+		{"xs = [1]\nprint(xs[5])\n", "IndexError", "list index out of range"},
 		{`raise ValueError("boom")` + "\n", "ValueError", "boom"},
 		// A constant the compiler can read is still the program's own failure: the fold that used to stop
 		// compilation over it now emits the trap the reference raises, so the payload reports a class and

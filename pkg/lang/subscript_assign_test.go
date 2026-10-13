@@ -91,7 +91,7 @@ func TestCompiledSubscriptAssignment(t *testing.T) {
 
 func TestCompiledSubscriptAssignmentErrors(t *testing.T) {
 	cases := []struct{ src, want string }{
-		{"xs = [1]\nxs[5] = 2\n", "index out of range"},
+		{"xs = [1]\nxs[5] = 2\n", "list assignment index out of range"},
 		{"s = {1, 2}\ns[0] = 5\n", "cannot assign to a set element"},
 	}
 	for _, tc := range cases {

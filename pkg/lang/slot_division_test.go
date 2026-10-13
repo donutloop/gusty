@@ -200,7 +200,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{
 			"the bounds check still fires",
 			"xs = []\nxs.append([1, 2])\nprint(xs[0][9] / 1)\n",
-			"IndexError", "index out of range",
+			"IndexError", "list index out of range",
 		},
 		{
 			"a missing key still raises its own KeyError",

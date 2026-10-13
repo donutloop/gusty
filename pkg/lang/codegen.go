@@ -9205,7 +9205,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		// this site used to do: the extra call emitted a word nobody read, and for a name the pair road
 		// bound it refused before this road ever got to ask its own question (roadmap L11.1, Gap R.146).
 		endL := g.newLabel("item.end")
-		key = g.normalizeIndex(b, h, key, ix.Span())
+		key = g.normalizeIndexFor(b, h, key, ix.Span(), listAssignmentIndexOutOfRange())
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, sv))
 		b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %s)\n", h, key, g.elemTagOperand(b, val, sIsStr)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
@@ -16523,6 +16523,14 @@ func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string, sp S
 // slicing: a negative index counts from the end (roadmap L11.4, ADR 0210). Dict and set
 // subscripts never come here — their index is a key, and `-1` is a key you can store.
 func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) string {
+	return g.normalizeIndexFor(b, h, idx, sp, listIndexOutOfRange())
+}
+
+// normalizeIndexFor is the bounds check with the sentence the door owns. The reference distinguishes
+// `list index out of range` from `list assignment index out of range` because reading past the end and
+// writing past it are different acts, and one shared normaliser cannot know which it is doing unless
+// the caller says (roadmap Gap R.223, ADR 0330).
+func (g *irGen) normalizeIndexFor(b *strings.Builder, h, idx string, sp Span, sentence string) string {
 	ln := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
 	neg := g.newTmp()
@@ -16544,7 +16552,7 @@ func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) strin
 	badL, okL := g.newLabel("ix.bad"), g.newLabel("ix.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("IndexError"), "IndexError", listIndexOutOfRange(), sp)
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", sentence, sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 	g.heapUsed = true
 	return ix

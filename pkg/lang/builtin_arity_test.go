@@ -257,7 +257,9 @@ func TestBuiltinArityIsAskedBeforeTheOperandNamesTheProgram(t *testing.T) {
 			if !strings.Contains(err.ExnMsg, tc.want) {
 				t.Errorf("message %q does not name the builtin %s the program called", err.ExnMsg, tc.want)
 			}
-			if strings.Contains(err.ExnMsg, "index out of range") {
+			// The Go runtime's own slice panic — bracketed, unlike the language's raise, which since
+			// ADR 0330 reads `list index out of range` and would otherwise trip a bare substring test.
+			if strings.Contains(err.ExnMsg, "index out of range [") {
 				t.Errorf("the Go runtime described the program instead of the compiler: %s", err.ExnMsg)
 			}
 		})

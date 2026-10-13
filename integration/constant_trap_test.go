@@ -30,7 +30,9 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 		{
 			name:   "a_position_past_the_end_of_a_literal_list",
 			src:    "print([][0])\n",
-			msg:    "IndexError: index out of range",
+			// ADR 0330 moved the sentence to the reference's, so the two columns agree — which is
+			// the assertion now (roadmap Gap R.223).
+			msg:    "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		{
@@ -76,14 +78,17 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 		{
 			name:   "a_position_below_a_comprehension",
 			src:    "xs = [x for x in [1, 2]]\nprint(xs[9])\n",
-			msg:    "IndexError: index out of range",
+			// ADR 0330 moved the sentence to the reference's, so the two columns agree — which is
+			// the assertion now (roadmap Gap R.223).
+			msg:    "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		{
 			name: "a_position_out_of_range_inside_a_method",
 			src:  "class C:\n    def m(self):\n        return [][0]\nc = C()\nprint(c.m())\n",
-			msg:  "IndexError: index out of range",
-			// The reference raises the same class from the same place; only the words differ.
+			msg:  "IndexError: list index out of range",
+			// The reference raises the same class from the same place, and since ADR 0330 the
+			// same words too (roadmap Gap R.223).
 			theirs: "IndexError: list index out of range",
 		},
 	} {

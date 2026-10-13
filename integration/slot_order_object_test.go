@@ -166,7 +166,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{
 			name:   "the_bounds_check_fires_before_the_ordering",
 			src:    "xs = []\nxs.append([1, 2])\nprint(1 if xs[0][9] > 1 else 0)\n",
-			msg:    "IndexError: index out of range",
+			msg:    "IndexError: list index out of range",
 			oracle: "IndexError: list index out of range",
 		},
 		{

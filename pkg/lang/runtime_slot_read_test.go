@@ -117,9 +117,9 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			"KeyError", "not in set",
 		},
 		{"position out of range below the slot", "xs = []\nxs.append([7, 8])\nprint(xs[0][9])\n",
-			"IndexError", "index out of range"},
+			"IndexError", "list index out of range"},
 		{"negative position out of range below the slot", "xs = []\nxs.append([7, 8])\nprint(xs[0][-9])\n",
-			"IndexError", "index out of range"},
+			"IndexError", "list index out of range"},
 		// The INTERPRETED leg answers `KeyError: 'z'` -- a KeyError carries the key's repr (Gap
 		// R.189, ADR 0301). The compiled leg still prints the module's constant "key not found",
 		// because its raise is a compile-time string and naming the key needs the key rendered at run

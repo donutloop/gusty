@@ -14,9 +14,11 @@ import (
 // `except` and never a refusal.
 
 // constantTrapRecordLeg asks the record what a program's answer is and asserts the compiled backend
-// gives the same raise. The record leg is the one that decides the *sentence*: it is the retired
-// engine's own wording (`index out of range`, not CPython's `list index out of range`) and a fold that
-// invented a second sentence would split one trap into two wordings.
+// gives the same raise. The record leg used to be the one that decided the *sentence*, because the
+// retired engine had its own wording for this trap — `index out of range`, where CPython names the
+// container — and the compiled backend matched the engine rather than the reference. ADR 0330 moved the
+// sentence to CPython's, so the record leg now holds a registered divergence on these rows and the
+// reference leg below is the one that decides the words (roadmap Gap R.223).
 func constantTrapRecordLeg(t *testing.T, src, wantMsg string) {
 	t.Helper()
 	want := goldenLookup(t, src)
@@ -194,9 +196,10 @@ func TestAConstantTrapRaisesWhatTheRecordRaises(t *testing.T) {
 }
 
 // TestAConstantTrapRaisesWhatTheReferenceRaises covers the rows the record cannot hold: the list-index
-// ones, where this language's sentence differs from CPython's (Gap R.90) so the recorder refuses to
-// write an entry the two legs do not agree on. The class, the raise and the exit code are still pinned
-// against the reference — only the words are owed, and by one row that owns both roads.
+// ones. Their sentence used to be this backend's own — `ours` and `theirs` differed, and the row recorded
+// the debt — and ADR 0330 closed the difference by naming the container the way the reference does. The
+// two columns are equal now, which IS the assertion: the compiled raise and CPython's raise are the same
+// sentence, at the same class, at the same exit code (roadmap Gap R.223).
 func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, ours, theirs string
@@ -204,19 +207,19 @@ func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
 		{
 			name:   "a_position_past_the_end_of_a_literal_list",
 			src:    "print([][0])",
-			ours:   "IndexError: index out of range",
+			ours:   "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		{
 			name:   "a_position_past_the_end_of_a_filled_literal_list",
 			src:    "print([1,2][5])",
-			ours:   "IndexError: index out of range",
+			ours:   "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		{
 			name:   "a_negative_position_below_the_start",
 			src:    "print([1,2][-3])",
-			ours:   "IndexError: index out of range",
+			ours:   "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		// The same trap under the other constant read that used to refuse: a comprehension's object.
@@ -225,13 +228,13 @@ func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
 		{
 			name:   "a_position_below_a_comprehension",
 			src:    "xs = [x for x in [1, 2]]\nprint(xs[9])",
-			ours:   "IndexError: index out of range",
+			ours:   "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 		{
 			name:   "a_position_below_a_method_body",
 			src:    "class C:\n    def m(self):\n        return [][0]\nprint(C().m())",
-			ours:   "IndexError: index out of range",
+			ours:   "IndexError: list index out of range",
 			theirs: "IndexError: list index out of range",
 		},
 	} {
@@ -385,8 +388,14 @@ print("done")`,
 // second phrasing of its own — the failure mode the row had was a refusal, and a fold that raised with
 // a sentence only it used would have traded a refusal for a divergence.
 func TestTheTrapDoorSpeaksTheSharedSentenceTable(t *testing.T) {
-	if got, want := listIndexOutOfRange(), "index out of range"; got != want {
+	if got, want := listIndexOutOfRange(), "list index out of range"; got != want {
 		t.Fatalf("listIndexOutOfRange() = %q, want %q", got, want)
+	}
+	// The store's sentence is a sentence of its own: the reference distinguishes reading past the end
+	// from writing past it, and the shared bounds check that normalises a negative index has to be told
+	// which door it is standing in to get either one right (roadmap Gap R.223, ADR 0330).
+	if got, want := listAssignmentIndexOutOfRange(), "list assignment index out of range"; got != want {
+		t.Fatalf("listAssignmentIndexOutOfRange() = %q, want %q", got, want)
 	}
 	if got, want := stringIndexOutOfRange(), "string index out of range"; got != want {
 		t.Fatalf("stringIndexOutOfRange() = %q, want %q", got, want)

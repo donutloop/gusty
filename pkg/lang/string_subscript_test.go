@@ -108,7 +108,7 @@ func TestUnlowerableConditionIsAnErrorNotAFalseBranch(t *testing.T) {
 func TestOutOfRangeConstantConditionRaisesBelowTheTernary(t *testing.T) {
 	for _, tc := range []struct{ src, class, want string }{
 		{"s = \"abc\"\nprint(1 if s[9] == \"b\" else 0)\n", "IndexError", "string index out of range"},
-		{"print(1 if [1, 2][5] < 2 else 0)\n", "IndexError", "index out of range"},
+		{"print(1 if [1, 2][5] < 2 else 0)\n", "IndexError", "list index out of range"},
 	} {
 		if _, err := Compile(tc.src); err != nil {
 			t.Fatalf("%q was refused at the compile door; a position that does not exist is a runtime trap: %v", tc.src, err)

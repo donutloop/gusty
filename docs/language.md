@@ -917,7 +917,8 @@ s = "abc"
 print(s[1])       # b
 print(s["a"])     # TypeError: string indices must be integers, not 'str'   — quoted, for a string
 print(xs[0:2])    # [10, 20] — a slice is a position-shaped thing
-print(xs[5])      # IndexError: index out of range   (`Gap R.223`: the reference names the list too)
+print(xs[5])      # IndexError: list index out of range     — the container is named (ADR 0330)
+xs[5] = 1         # IndexError: list assignment index out of range  — reading and writing differ
 ```
 
 A text index is an index into `@str_tab`, so before this rule the door counted to the slot the interned

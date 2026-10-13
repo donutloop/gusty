@@ -186,7 +186,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{
 			"the bounds check still fires, in the block the comparison starts in",
 			"xs = []\nxs.append([1, 2])\nprint(1 if xs[0][9] > 1 else 0)\n",
-			"IndexError", "index out of range",
+			"IndexError", "list index out of range",
 		},
 		{
 			"a missing key still raises its own KeyError",

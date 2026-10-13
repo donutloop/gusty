@@ -82,7 +82,7 @@ func TestCLIStrAndReprOfARuntimeValueAnswerLikeCPython(t *testing.T) {
 func TestCLIStrOfASlotInheritsTheTrapsTheReadCarries(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range []struct{ src, trap string }{
-		{"xs = [1]\nprint(str(xs[5]))\n", "IndexError: index out of range"},
+		{"xs = [1]\nprint(str(xs[5]))\n", "IndexError: list index out of range"},
 		{"d = {}\nprint(str(d[\"z\"]))\n", "KeyError: 'z'"},
 	} {
 		path := writeSrc(t, dir, "strpair_trap.gy", tc.src)

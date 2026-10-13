@@ -214,14 +214,14 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 		{
 			name: "position_below_the_slot_is_out_of_range",
 			src:  "xs = []\nxs.append([7, 8])\nprint(xs[0][9])\n",
-			msg:  "IndexError: index out of range",
+			msg:  "IndexError: list index out of range",
 			// gusty's own wording; the class and the raise are what the row is about (Gap R.90).
 			oracle: "IndexError",
 		},
 		{
 			name: "negative_position_below_the_slot_is_out_of_range",
 			src:  "xs = []\nxs.append([7, 8])\nprint(xs[0][-9])\n",
-			msg:  "IndexError: index out of range",
+			msg:  "IndexError: list index out of range",
 			// gusty's own wording; the class and the raise are what the row is about (Gap R.90).
 			oracle: "IndexError",
 		},

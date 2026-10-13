@@ -127,7 +127,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{"float_slot_int_zero_literal", "xs = []\nxs.append(3.5)\nprint(xs[0] / 0)\n", "ZeroDivisionError: float division by zero", ""},
 		{"float_zero_literal_divisor", "xs = []\nxs.append(3)\nprint(xs[0] / 0.0)\n", "ZeroDivisionError: float division by zero", ""},
 		{"settled_zero_float_divisor", "xs = []\nxs.append(3)\nd = 0.0\nprint(xs[0] / d)\n", "ZeroDivisionError: float division by zero", ""},
-		{"bounds_check_still_fires", "xs = []\nxs.append([1, 2])\nprint(xs[0][9] / 1)\n", "IndexError: index out of range", "IndexError: list index out of range"},
+		{"bounds_check_still_fires", "xs = []\nxs.append([1, 2])\nprint(xs[0][9] / 1)\n", "IndexError: list index out of range", "IndexError: list index out of range"},
 		{"missing_key_still_raises", "d = {}\nd[\"a\"] = 4\nprint(d[\"z\"] / 2)\n", "KeyError", "KeyError"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
