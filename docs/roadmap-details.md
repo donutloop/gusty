@@ -9942,29 +9942,98 @@ the dict write; the read doors never ask it, so the literal inherits exactly wha
 wrong — which is the point: this row is one door's missing check, not two.
 
 <a id="gap-r-218"></a>
-### Gap R.218 — a list literal read by a position answers the payload, not the value (OPEN, found by ADR 0327)
+<a id="gap-r-218"></a>
+### Gap R.218 — a list literal is read by the door a list's elements are read by (CLOSED by ADR 0331, found by ADR 0327)
 
-**Measured again 2026-07-14, and the root cause has a name.** The four wrong answers are
-`print(["a", "b"][0])` → `0` (the `@str_tab` index), `print([1.5, 2][0])` → `1` (a `@float_box` handle),
-`print([None, 2][0])` → `0` and `print([True, 2][0])` → `1`, all at exit 0. What sharpens the fix is which
-rows are already whole: the same element read off a **variable** answers correctly (`xs = ["a","b"]` /
-`print(xs[0])` is `a`), and the literal road is correct for the kinds that already carry a tag —
-`print([[1, 2]][0])` is `[1, 2]` and `print([{"a": 1}][0])` is `{'a': 1}`. So the door is not missing and the
-tag scheme is not missing; `runtimeSlotPairDeep` in `heapargs.go` has a `*DictLit` arm — the one ADR 0327
-added for the dict side of this exact asymmetry — and no `*ListLit` arm beside it. A list literal is simply
-never admitted to the one subscript read that answers a (payload, tag) pair, so it falls back to the
-compile-time fold, which has one word and no place to put the kind. The fix is that arm plus the gate that
-leaves the fold the shape it genuinely reads (every element an integer constant, the index an integer) and
-the print/binding sites asked the same question the dict sites ask — `print(["a","b"][0] + "!")` is the row's
-own residue, since a one-word arithmetic operand cannot carry a kind (Gap R.146's standing).
+The four wrong answers, all at **exit 0**:
 
+| program | the reference | the compiled backend | what the word actually was |
+|---|---|---|---|
+| `print(["a", "b"][0])` | `a` | `0` | an index into `@str_tab` |
+| `print([1.5, 2][0])` | `1.5` | `1` | a `@float_box` handle |
+| `print([None, 2][0])` | `None` | `0` | nothing at all |
+| `print([True, 2][0])` | `True` | `1` | a bool's 0/1 |
 
-The gap ADR 0327 closed for dicts, still open for lists: `print(["a", "b"][0])` prints `0` (the `@str_tab`
-index), `print([1.5, 2][0])` prints `1` (the `@float_box` handle), `print([None, 2][0])` prints `0` and
-`print([True, 2][0])` prints `1` — every one at **exit 0**, where the reference prints `a`, `1.5`, `None`,
-`True`. The list fold has the same shape as the dict fold and the same defect: a payload where a value should
-be, and no tag to correct it. `containerHandleOf` already answers a `*ListLit` and `containerSlotRead` already
-reads `rt_tag_of` beside `rt_get_elem`, so it is the gate again, not the door.
+and the rows that were already whole are what made this a defect rather than a missing feature:
+
+| program | the reference | the compiled backend |
+|---|---|---|
+| `xs = ["a", "b"]` / `print(xs[0])` | `a` | `a` |
+| `print([[1, 2], [3, 4]][0])` | `[1, 2]` | `[1, 2]` |
+| `print([{"a": 1}][0]["a"])` | `1` | `1` |
+
+**The root cause had a name before the fix, and that is why the fix is one arm.** A subscript has two roads.
+The compile-time fold has one word, and reads only a literal of integer constants at an integer position. The
+pair door builds the object, writes each element's kind beside its payload as the builder runs, and answers
+`(payload, tag)`. `runtimeSlotPairDeep` (`heapargs.go`) *is* that door, and it carried a `*DictLit` arm — ADR
+0327's — with nothing list-shaped beside it. A list literal was never admitted, so the fold kept answering
+shapes it cannot read.
+
+Four decisions around that arm:
+
+- **The fold keeps exactly what it reads.** `listLiteralFoldAnswers` accepts a literal only when every element
+  is an integer constant *and* the position is an integer the literal has. `print([1, 2][0])` still emits a
+  constant; the guard is an IR test that fails if it grows an allocation or a call to `rt_print_mixed_value`.
+  A gate wider than the fold is how a fix ships a refusal nobody measured (ADR 0249), so the gate is also
+  tested as a predicate, away from codegen, with the out-of-range position and the bool position in the table.
+- **The door is the variable's door, not a second read.** `listLiteralPair` builds with `containerHandleOf` and
+  reads with `containerSlotRead` — the same two calls `xs[i]` emits (`rt_get_elem` beside `rt_tag_of`) — so the
+  two roads cannot grow apart, and `TestTheLiteralListRoadIsNeverWorseThanTheVariableRoad` fails the build if
+  they do (a row skips only when the *variable* road itself refuses, which is Gap R.82's `xs = [[]]` / `if xs[0]:`).
+- **A condition is a pair position, not a one-word position.** The fold used to answer `if [True][0]:` by
+  comparing a payload to zero — right for a bool, wrong for the three shapes a tag exists to distinguish:
+  `[0.0, 1][0]`, `[[]][0]` and `[""][0]` are falsy in the reference and non-zero words here (a box handle, a
+  container handle, an interned index). An `if`, a `while` and a ternary's operand now ask `@rt_pair_truth`,
+  the table `and`/`or` already ask. This was not widening for symmetry: the retired engine's own record runs
+  `if [True][0]:` / `print("yes")`, so a fix that turned that program into a refusal would have bought a
+  ledger row by narrowing the door — a coverage loss dressed as a fix, and the first draft of this cycle did
+  exactly that before the ledger caught it.
+- **The one-word positions still refuse.** `return ["a","b"][0]`, `id(["a","b"][0])`,
+  `print(["a","b"][0] + "!")` and an f-string field name the missing half, the door that does answer it, and
+  the two rows that own it (Gap R.218 for the read, Gap R.146 for the position). A wrong answer at exit 0 is
+  the failure this row was; refusal is the floor underneath it.
+
+**One gate moved, because widening a door can move a defect through it.** With the literal admitted to the
+pair door, `print([1, 2]["a"])` printed whichever slot the text's `@str_tab` index counts to, and
+`print(["a", "b"][[0]])` had no word to lower at all — Gap R.222's defect reborn at the new site, caught by
+probing the door rather than by the plan. The dict branch of `containerSlotRead` has always asked its own
+version of that question *inside* the door (`checkKeyReadTagged`, Gap R.217's unhashable gate); the list
+branch now asks its version too (`badIndexGate`), so both halves of the subscript are guarded at the door and
+not only on the road that reaches it. `["a","b"][True]` stays legal, because a bool is an int and `True` is
+position 1.
+
+Filed rather than bundled, as **Gap R.224**: the same read one layer out — a literal's element that is itself
+a literal read — still answers the payload, because the builder's `pairElemPair` admits a `*Name` and not a
+subscript.
+
+<a id="gap-r-224"></a>
+### Gap R.224 — a literal read placed inside another literal answers the payload (OPEN, found by ADR 0331)
+
+```python
+print([{"a": "x"}["a"], 2])   # exit 0, prints [1, 2]; the reference prints ['x', 2]
+```
+
+ADR 0331's door, one layer out. A container literal builds itself element by element, and each position is
+asked for **two** words: a payload, and the tag that says what the payload means. `pairElemPair`
+(`heapargs.go`) is the hook that hands over a pair, and it admits exactly one shape — a `*Name` the pair road
+bound. A subscript is not a name, so the read is asked for one word, the tag is dropped on the way in, and the
+slot ends up holding an `@str_tab` index that the printer is then told to read as a string.
+
+The three twin shapes refuse instead, which is the same door declining rather than lying:
+
+| program | the reference | the compiled backend |
+|---|---|---|
+| `print([["a"][0], 2])` | `['a', 2]` | refusal (Gap R.218's one-word message) |
+| `print([[1.5, 2][0], 3])` | `[1.5, 3]` | refusal (same) |
+| `xs = [1, "a"]` / `print([xs[1], 2])` | `['a', 2]` | refusal (a mixed list's element *is* a pair) |
+
+so this row is one wrong answer and three missing halves. The fix is one hook: teach `pairElemPair` and
+`nameIsPairElem` the subscript as well as the name, so a literal element that is itself a read arrives as the
+`(payload, tag)` pair `heapListFromTagged` and `heapDictFrom` already know how to store — and keep the gates
+that decide taggedness (`literalNeedsTags`, `taggableMixedList`, `elemTaggableOrPair`) asking the question the
+builders ask. That last clause is ADR 0249's rule and the reason the row is written before the code: a gate
+that admits what the door refuses, or refuses what the door admits, is how this fix would ship a refusal
+nobody measured.
 
 <a id="gap-r-219"></a>
 ### Gap R.219 — a function is registered as returning text on the evidence of one arm (OPEN, found by ADR 0327)

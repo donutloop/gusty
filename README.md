@@ -186,6 +186,19 @@ catches it: `{"a": 1}["b"]`, `{"a": 1}[1]` and `{1: 2}["a"]` each die at exit 3 
 literal whose keys and values are all integers — and it keeps the reference's repeated-key rule, so
 `{1: 2, 1: 3}[1]` is `3` rather than the `2` the fold used to answer (Gap R.216).
 
+A **list literal** is a list, and ADR 0331 takes the same decision one container over:
+`["a", "b"][0]` is `a`, `[1.5, 2][0]` is `1.5`, `[None, 2][0]` is `None`, `[True, 2][0]` is `True`,
+`["a", "b"][-1]` is `b` and `[[1, 2], [3, 4]][0][1]` is `2`. Until now those four printed `0`, `1`, `0` and
+`1` — the element's *payload*, an index into `@str_tab` or a `@float_box` handle — at exit 0, while the very
+same element read off a variable (`xs = ["a", "b"]` / `print(xs[0])`) answered correctly, because the door that
+answers a subscript as a `(payload, tag)` pair had a dict arm and never grew the list arm beside it. The
+literal is now built the way the binding road builds a list and read by the same call `xs[i]` emits; the
+compile-time lookup stays for the shape it genuinely reads (`[1, 2, 3][0]` is still a constant, asserted by an
+IR test that fails if it starts allocating), a position past the end is the catchable
+`IndexError: list index out of range`, an index that is not a position is `TypeError: list indices must be
+integers or slices, not str`, and a condition over such an element asks the runtime's truth table rather than
+comparing a handle to zero — `if [0.0, 1][0]:`, `if [[]][0]:` and `if [""][0]:` are all false (Gap R.218).
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

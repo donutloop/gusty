@@ -3130,6 +3130,27 @@
     },
     {
       "case": {
+        "id": "programs/list_literal_read",
+        "name": "list_literal_read.gy",
+        "source": "print([\"a\", \"b\"][0], [\"a\", \"b\"][1])\nprint([1.5, 2][0], [1.5, 2][1])\nprint([None, 2][0], [True, 2][0])\nprint([\"a\", 1.5, None, True][0], [\"a\", 1.5, None, True][1], [\"a\", 1.5, None, True][2], [\"a\", 1.5, None, True][3])\nprint([1, 2, 3][0], [1, 2, 3][2], [1, 2, 3][-1])\nprint([\"a\", \"b\"][-1])\nprint([[1, 2], [3, 4]][0], [[1, 2], [3, 4]][0][1])\nprint([{\"a\": 1}][0], [{\"a\": 1}][0][\"a\"])\nprint(str([\"a\", 1.5][0]), repr([\"a\", 1.5][0]))\nprint(str([None, \"z\"][0]), repr([None, \"z\"][1]))\nprint(len([\"a\", \"b\", \"c\"]))\nprint(\"a\" in [\"a\", \"b\"], 1 in [1, 2])\nfirst = [\"a\", \"b\"][0]\nprint(first)\nmixed = [1.5, None, \"z\"]\nprint(mixed[0], mixed[1], mixed[2])\nfor v in [None, 1.5, \"z\"]:\n    print(v)\nprint([1, 2, 3][1] + 10)\nprint(sorted([\"b\", \"a\"]))\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(\"a position past the end raises IndexError\")\nd = {1: [\"a\", \"b\"]}\nprint(d[1][0])\nif [True][0]:\n    print(\"a bool element decides a condition by its kind\")\nif [0.0, 1][0]:\n    print(\"never\")\nif [[]][0]:\n    print(\"never\")\nif [\"\"][0]:\n    print(\"never\")\nprint(1 if [None, \"z\"][0] else 0)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "a b\n1.5 2\nNone True\na 1.5 None True\n1 3 3\nb\n[1, 2] 2\n{'a': 1} 1\na 'a'\nNone 'z'\n3\nTrue True\na\n1.5 None z\nNone\n1.5\nz\n12\n['a', 'b']\na position past the end raises IndexError\na\na bool element decides a condition by its kind\n0\n",
+      "python_ok": true,
+      "python_stdout": "a b\n1.5 2\nNone True\na 1.5 None True\n1 3 3\nb\n[1, 2] 2\n{'a': 1} 1\na 'a'\nNone 'z'\n3\nTrue True\na\n1.5 None z\nNone\n1.5\nz\n12\n['a', 'b']\na position past the end raises IndexError\na\na bool element decides a condition by its kind\n0\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3880,7 +3901,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/155/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/156/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3894,7 +3915,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/155/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/156/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4604,11 +4625,11 @@
       ]
     }
   ],
-  "rows": 183,
+  "rows": 184,
   "skipped": 38,
-  "pass": 145,
+  "pass": 146,
   "fail": 0,
-  "oracle_match": 130,
+  "oracle_match": 131,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

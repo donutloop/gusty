@@ -1,5 +1,47 @@
 # Session Learnings
 
+## Round 6 — A list literal is read by the door a list's elements are read by (roadmap Gap R.218 closed; ADR 0331; Gap R.224 filed)
+
+**Feature (codegen)**: `print(["a", "b"][0])` printed `0`, `print([1.5, 2][0])` printed `1`,
+`print([None, 2][0])` printed `0` and `print([True, 2][0])` printed `1` — four payloads at **exit 0**, where
+the reference prints `a`, `1.5`, `None`, `True` — while the same element read off a variable answered all four
+properly. `runtimeSlotPairDeep` had ADR 0327's `*DictLit` arm and no `*ListLit` arm beside it, so a list
+literal was never admitted to the one subscript read that answers a `(payload, tag)` pair.
+
+- **A fix can be a coverage loss wearing a fix, and only the ledger notices.** The first cut widened the door
+  and left a condition on the fold, which turned `if [True][0]: print("yes")` — a program the retired
+  engine's own record runs — into a refusal. The drift check named it as a NEW divergence within the run, and
+  the honest reading is that the *pair* door answers a condition (`@rt_pair_truth`, the table `and`/`or`
+  already ask) rather than that the payload is nearly right. Filing that as a divergence would have been a
+  ledger row bought by narrowing a door.
+- **The payload-only answer was never wrong as often as it looked.** The three conditions that decide the
+  shape are `if [0.0, 1][0]:`, `if [[]][0]:` and `if [""][0]:` — all falsy in the reference, all non-zero
+  words (a box handle, a container handle, an interned index). A bool and a text happen to work off the
+  payload; a float, a container and an empty text do not. "It printed the right thing" is not evidence about
+  a representation.
+- **Widening a door can move a defect through it.** The moment the literal reached `containerSlotRead`,
+  `print([1, 2]["a"])` printed whichever slot the text's `@str_tab` index counts to — Gap R.222's defect, one
+  door over, found by probing the new road and not by the plan. The dict half of that door has always asked
+  its kind question inside itself (`checkKeyReadTagged`, Gap R.217); the list half now asks `badIndexGate`
+  there too. A gate that stands on one road and not the other is a gate with a hole in the shape of the
+  second road.
+- **The fold keeps what it reads, and that has to be an IR claim.** `print([1, 2][0])` still emits a constant;
+  the guard fails if the module grows an allocation or a `rt_print_mixed_value`. "Same answer" is not "same
+  program" — a door that swallows the cheap shape makes the fast path pay for the general one and no stdout
+  test will ever tell you.
+- **The fold's gate and the door's gate have to ask the same question** (ADR 0249 again, and it keeps being
+  worth paying for): position in range, every element an integer constant, no bool smuggled in as a position.
+  `listLiteralFoldAnswers` is tested as a predicate with a table of its own, away from codegen, because a
+  disagreement between the two is invisible in stdout and visible only as a refusal nobody measured.
+- **Parity tests are how you tell a defect from a missing feature.** `print([[1, 2]][0])` was already right
+  (a nested container is a handle, and a handle means the same thing with or without a fold) and
+  `print(["a", "b"][0])` was wrong; the variable road answered both. Without the never-worse-than-the-variable
+  row this reads as "lists have four broken element kinds", and with it it reads as "one arm is missing".
+- **Measured on the way, filed, not bundled**: `print([{"a": "x"}["a"], 2])` answers `[1, 2]` where the
+  reference answers `['x', 2]` — the same missing half one layer out, because the builder's `pairElemPair`
+  admits a `*Name` and not a subscript. **Gap R.224**, with its three twin refusals written into the row so
+  the next cycle inherits the measurement.
+
 ## Round 5 — The bounds check names its container, and the record is demoted to evidence (roadmap Gap R.223 closed; ADR 0330)
 
 **Feature (runtime sentences)**: `print(xs[5])` said `IndexError: index out of range` and `xs[5] = 1` said

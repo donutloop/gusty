@@ -3168,6 +3168,23 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 		}
 		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 	}
+	if ll, isLit := ix.Obj.(*ListLit); isLit {
+		// The bottom of the chain is a literal the fold could not read: build the list the way the binding
+		// road builds it — each element's kind written beside its payload — and read the position the
+		// program named, tags and all. This is ADR 0327's dict arm one container over: a list literal is a
+		// list the compiler happens to be looking at, and the element whose kind lives in the tag (a text's
+		// @str_tab index, a float's @float_box handle, None, a bool) has always been answered correctly for
+		// the same element read off a variable (roadmap Gap R.218, ADR 0331). The fold's own shape stays the
+		// fold's answer; the door declines it, so the two can only disagree in the safe direction.
+		if g.listLiteralFoldAnswers(ll, ix.Idx) {
+			return "", "", false
+		}
+		h, kind, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
 	if nm, isName := ix.Obj.(*Name); isName {
 		// The bottom of the chain: the variable's own slot holds the object, and the tracked kind says
 		// which container the handle names — the same read ADR 0246 put behind len(...) of a slot.
@@ -3211,6 +3228,13 @@ func (g *irGen) runtimeSlotReadOf(e Expr) bool {
 // extension promises for a set subscript.
 func (g *irGen) runtimeContainerSide(e Expr) bool {
 	switch n := e.(type) {
+	case *ListLit:
+		// A list literal is a container the compiler is looking at, not one it holds: the elements the fold
+		// cannot read — a text, a float, None, a bool — have their kinds written beside their payloads by the
+		// same builder a list *variable* uses, so the pair door that serves the variable serves the literal
+		// too. Where the fold answers, the door below declines and the fold stays in charge (roadmap
+		// Gap R.218, ADR 0331 — ADR 0327's decision, taken for the other container).
+		return len(n.Elems) > 0
 	case *DictLit:
 		// A dict literal is a container the compiler is looking at, not a container the compiler holds:
 		// the entries the fold cannot read — a text key, a float value, a nested container — have their
@@ -3908,6 +3932,22 @@ func (g *irGen) containerSlotRead(b *strings.Builder, base, kind string, key Exp
 	}
 	g.heapUsed = true
 	if kind == "list" || kind == "dict" {
+		if kind == "list" {
+			// The index is asked what it is BEFORE it is lowered, at the door itself and not only on the
+			// road that reaches the fold: a text, a float, a None or a bool cannot be a position, and a
+			// list or dict used as an index has no word to lower to at all — handing one to the bounds
+			// check is what put a `@.lstN` global inside an `icmp slt` and made `llc` reject the module
+			// (Gap R.222, ADR 0329). The dict branch beside this one has always asked its own version of
+			// the same question inside the door (`checkKeyReadTagged` and Gap R.217's unhashable gate),
+			// so both halves of the subscript — the one the fold answers and the one the pair door answers
+			// — are guarded by the same gate, which is the only way `print([1,2]["a"])` and
+			// `print(xs["a"])` cannot grow apart (roadmap Gap R.218, ADR 0331).
+			if g.badIndexGate(b, "", key, sp) {
+				// The raise ends the block; the two words the caller reads back are unreachable, and
+				// handing back the pair the caller expects is what keeps the module valid.
+				return "0", "0", true
+			}
+		}
 		kv, kt, okTag := g.taggedOperand(b, key)
 		if !okTag {
 			return "", "", false

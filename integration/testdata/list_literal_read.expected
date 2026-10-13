@@ -1,0 +1,23 @@
+a b
+1.5 2
+None True
+a 1.5 None True
+1 3 3
+b
+[1, 2] 2
+{'a': 1} 1
+a 'a'
+None 'z'
+3
+True True
+a
+1.5 None z
+None
+1.5
+z
+12
+['a', 'b']
+a position past the end raises IndexError
+a
+a bool element decides a condition by its kind
+0

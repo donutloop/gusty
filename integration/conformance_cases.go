@@ -529,6 +529,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// program prints the caught sentence for each, and the positions, the negative position, the bool
 		// and the slice on the way through are the rows a gate that fired too eagerly would break.
 		"list_index_kind",
+		// A list literal read by a position, through the door a list variable's element is read by. Four
+		// shapes answered their payload at exit 0 — `print(["a", "b"][0])` printed `0` (an index into
+		// @str_tab), `[1.5, 2][0]` printed `1` (a @float_box handle), and None and a bool printed `0` and
+		// `1` — while the same element off a variable answered correctly, because the pair door had a
+		// `*DictLit` arm from ADR 0327 and no list one beside it (roadmap Gap R.218, ADR 0331). The fold's
+		// all-integer shape, the negative position, the nested literal, str()/repr(), len, `in`, a binding
+		// and a loop are all in the same program: the fold keeps what it reads, and the door answers the rest.
+		"list_literal_read",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -1,5 +1,196 @@
 {
  "entries": {
+"if [\"\"][0]:\n    print(\"yes\")": {
+    "hasStdout": true
+   },
+
+"if [\"a\"][0]:\n    print(\"yes\")": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"if [0.0, 1][0]:\n    print(\"yes\")": {
+    "hasStdout": true
+   },
+
+"if [False][0]:\n    print(\"yes\")": {
+    "hasStdout": true
+   },
+
+"if [None][0]:\n    print(\"yes\")": {
+    "hasStdout": true
+   },
+
+"if [True][0]:\n    print(\"yes\")": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"if [[1]][0]:\n    print(\"yes\")": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"if [[]][0]:\n    print(\"yes\")": {
+    "hasStdout": true
+   },
+
+"if [{\"a\": {}}][0]:\n    print(\"yes\")": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"print(1 if [\"z\", None][0] else 0)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(1 if [None, \"a\"][0] else 0)": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][0], [\"a\", \"b\"][1])\nprint([1.5, 2][0], [1.5, 2][1])\nprint([None, 2][0], [True, 2][0])\nprint([\"a\", 1.5, None, True][0], [\"a\", 1.5, None, True][1], [\"a\", 1.5, None, True][2], [\"a\", 1.5, None, True][3])\nprint([1, 2, 3][0], [1, 2, 3][2], [1, 2, 3][-1])\nprint([\"a\", \"b\"][-1])\nprint([[1, 2], [3, 4]][0], [[1, 2], [3, 4]][0][1])\nprint([{\"a\": 1}][0], [{\"a\": 1}][0][\"a\"])\nprint(str([\"a\", 1.5][0]), repr([\"a\", 1.5][0]))\nprint(str([None, \"z\"][0]), repr([None, \"z\"][1]))\nprint(len([\"a\", \"b\", \"c\"]))\nprint(\"a\" in [\"a\", \"b\"], 1 in [1, 2])\nfirst = [\"a\", \"b\"][0]\nprint(first)\nmixed = [1.5, None, \"z\"]\nprint(mixed[0], mixed[1], mixed[2])\nfor v in [None, 1.5, \"z\"]:\n    print(v)\nprint([1, 2, 3][1] + 10)\nprint(sorted([\"b\", \"a\"]))\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(\"a position past the end raises IndexError\")\nd = {1: [\"a\", \"b\"]}\nprint(d[1][0])\nif [True][0]:\n    print(\"a bool element decides a condition by its kind\")\nif [0.0, 1][0]:\n    print(\"never\")\nif [[]][0]:\n    print(\"never\")\nif [\"\"][0]:\n    print(\"never\")\nprint(1 if [None, \"z\"][0] else 0)\n": {
+    "stdout": "a b\n1.5 2\nNone True\na 1.5 None True\n1 3 3\nb\n[1, 2] 2\n{'a': 1} 1\na 'a'\nNone 'z'\n3\nTrue True\na\n1.5 None z\nNone\n1.5\nz\n12\n['a', 'b']\na position past the end raises IndexError\na\na bool element decides a condition by its kind\n0\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][None])": {
+    "err": "TypeError: list indices must be integers or slices, not NoneType",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not NoneType"
+   },
+
+"print([\"a\", \"b\"][True])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][[0]])": {
+    "err": "TypeError: list indices must be integers or slices, not list",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not list"
+   },
+
+"print([[1, 2], [3, 4]][0][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": 1}][0][\"a\"])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(repr([\"a\", 1.5][0]))": {
+    "stdout": "'a'\n",
+    "hasStdout": true
+   },
+
+"print(str([\"a\", 1.5][0]))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print({1: [\"a\", \"b\"]}[1][\"a\"])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+"for v in [None, 1.5, \"z\"]:\n    print(v)": {
+    "stdout": "None\n1.5\nz\n",
+    "hasStdout": true
+   },
+
+"mixed = [1.5, None, \"z\"]\nprint(mixed[1])": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][-1])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"print([1, 2, 3][1] + 10)": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"print([True, False][False])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nprint(xs[0])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+"first = [\"a\", \"b\"][0]\nprint(first)": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][0])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print([\"a\", \"b\"][0], [\"a\", \"b\"][1])\nprint([1.5, 2][0], [1.5, 2][1])\nprint([None, 2][0], [True, 2][0])\nprint([\"a\", 1.5, None, True][0], [\"a\", 1.5, None, True][1], [\"a\", 1.5, None, True][2], [\"a\", 1.5, None, True][3])\nprint([1, 2, 3][0], [1, 2, 3][2], [1, 2, 3][-1])\nprint([\"a\", \"b\"][-1])\nprint([[1, 2], [3, 4]][0], [[1, 2], [3, 4]][0][1])\nprint([{\"a\": 1}][0], [{\"a\": 1}][0][\"a\"])\nprint(str([\"a\", 1.5][0]), repr([\"a\", 1.5][0]))\nprint(str([None, \"z\"][0]), repr([None, \"z\"][1]))\nprint(len([\"a\", \"b\", \"c\"]))\nprint(\"a\" in [\"a\", \"b\"], 1 in [1, 2])\nfirst = [\"a\", \"b\"][0]\nprint(first)\nmixed = [1.5, None, \"z\"]\nprint(mixed[0], mixed[1], mixed[2])\nfor v in [None, 1.5, \"z\"]:\n    print(v)\nprint([1, 2, 3][1] + 10)\nprint(sorted([\"b\", \"a\"]))\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(\"a position past the end raises IndexError\")\nd = {1: [\"a\", \"b\"]}\nprint(d[1][0])": {
+    "stdout": "a b\n1.5 2\nNone True\na 1.5 None True\n1 3 3\nb\n[1, 2] 2\n{'a': 1} 1\na 'a'\nNone 'z'\n3\nTrue True\na\n1.5 None z\nNone\n1.5\nz\n12\n['a', 'b']\na position past the end raises IndexError\na\n",
+    "hasStdout": true
+   },
+
+"print([\"a\",\"b\"][-1])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"print([1, 2][5])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"print([1,2,3][1] + 10)": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"print([1.5, 2][0])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"print([None, 2][0])": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print([True, 2][0])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([[1, 2], [3, 4]][0])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": 1}][0])": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"print(len([\"a\", \"b\", \"c\"]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([1, 2][5])\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
 "try:\n    s = \"ab\"\n    print(s[1.5])\nexcept TypeError:\n    print(\"caught\")": {
     "stdout": "caught\n",
     "hasStdout": true

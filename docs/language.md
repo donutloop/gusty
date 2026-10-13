@@ -1802,6 +1802,20 @@ for i in range(n):
   answer's kind lives in the tag beside the payload: handing such an entry back from a `return`, or to a call,
   is `Gap R.146`'s to pay and says so (roadmap Gap R.215).
 
+  **A list literal is a list** (ADR 0331), and the same decision taken one container over.
+  `["a", "b"][0]` is `a`, `[1.5, 2][0]` is `1.5`, `[None, 2][0]` is `None`, `[True, 2][0]` is `True`,
+  `["a", "b"][-1]` is `b`, `[[1, 2], [3, 4]][0][1]` is `2`, `[True, False][False]` is `True` (a bool is an
+  int, so it is a legal position), and a position the literal does not hold raises the catchable
+  `IndexError: list index out of range`. Before this the four non-integer elements printed their payload —
+  `0`, `1`, `0`, `1` — while the *same element read off a variable* answered correctly, because the pair door
+  had a dict arm and no list one. The read now goes to the object through the same call a list variable's read
+  emits (`rt_get_elem` beside `rt_tag_of`, on a list built by the binding road's builder), the compile-time
+  lookup is kept for the one shape it can read — an integer position into a literal whose elements are all
+  integers — and a condition asks the same pair: `if [0.0, 1][0]:`, `if [[]][0]:` and `if [""][0]:` are all
+  false in the reference and all were non-zero words, so truth comes from `@rt_pair_truth` rather than from a
+  payload compared to zero. The one-word positions — a `return`, a call argument, an operand of arithmetic —
+  still refuse rather than print a handle (roadmap Gap R.218, and Gap R.146 for the position).
+
   Several are refused at compile time by the AOT backend rather than trapping (an honest refusal,
   class 1: `len requires an inline list/dict/set literal`, `index of a non-literal variable`, `index
   requires an inline list/dict/set literal` for a subscript on a call result — roadmap Gap R.214 — and

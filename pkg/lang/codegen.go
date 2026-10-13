@@ -8960,6 +8960,21 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 		fmt.Fprintf(b, "  %s = %s i32 %s, %s\n", t, cmpI1Op(n.Op), l, r)
 		return g.markI1(t), nil
 	}
+	// A list literal read by a position, in the one position that asks only "is it true": the element's kind
+	// lives in the tag the builder wrote beside its payload, and truth is the tag's fact — an empty text, an
+	// empty container, None, 0.0 and False are all false, and none of that is readable off the payload alone
+	// (`[0.0, 1][0]` is false in the reference and a payload tested against zero calls it true). The pair door
+	// that answers print, str/repr and a binding answers the condition as well, through the same table the
+	// printer and the `and`/`or` operands ask (roadmap Gap R.218, ADR 0331).
+	if ix, isIdx := e.(*Index); isIdx {
+		if ll, isLit := ix.Obj.(*ListLit); isLit && !g.listLiteralFoldAnswers(ll, ix.Idx) {
+			payload, tag, okPair := g.listLiteralPair(b, ll, ix.Idx, ix.Span())
+			if !okPair {
+				return "", listLiteralOneWordErr(ll, ix.Idx)
+			}
+			return g.pairTruth(b, payload, tag), nil
+		}
+	}
 	v, err := g.value(b, e)
 	if err != nil {
 		return "", err
@@ -10907,6 +10922,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				// not a compile stop that no handler can reach (roadmap Gap R.37, ADR 0326).
 				g.constantTrap(b, "IndexError", listIndexOutOfRange(), n.Span())
 				return "0", nil
+			}
+			if !g.listLiteralFoldAnswers(obj, n.Idx) {
+				// Two doors, one question — the dict arm above, taken for the other container (ADR 0327).
+				// Where the compiler can read the whole literal (every element an integer constant) the read
+				// is a compile-time lookup and the program gets the number. Where it cannot, the element's
+				// kind lives in the tag the builder wrote beside its payload, and a position that keeps one
+				// word for a whole value has nowhere to put it: this road refuses by name rather than hand
+				// back an @str_tab index or a @float_box handle wearing a number. print, str()/repr(), an
+				// f-string field and a binding ask the pair door instead, which is where the answer is
+				// the reference's (roadmap Gap R.218, ADR 0331; the residue is Gap R.146).
+				return g.listLiteralRead(b, obj, n.Idx, n.Span())
 			}
 			return g.value(b, obj.Elems[li])
 		case *DictLit:
@@ -14275,6 +14301,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// what the slot holds instead of on what the compiler guessed: the same
 				// (value, tag) pair a tagged variable carries, produced at the read site
 				// (roadmap L11.1, ADR 0187).
+				// The same door, one container over: a list literal's element whose kind lives in the tag —
+				// a text's @str_tab index, a float's @float_box handle, None, a bool — prints through the
+				// printer that dispatches on the tag, which is what the same element read off a *variable*
+				// has always done. The fold still answers the all-integer shape, so this arm runs exactly
+				// where the fold cannot (roadmap Gap R.218, ADR 0331).
+				if ll, isLit := ix.Obj.(*ListLit); isLit && !g.listLiteralFoldAnswers(ll, ix.Idx) {
+					val, tag, okPair := g.listLiteralPair(b, ll, ix.Idx, ix.Span())
+					if !okPair {
+						return "", listLiteralOneWordErr(ll, ix.Idx)
+					}
+					g.heapUsed = true
+					g.floatFmtUsed = true
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
+					continue
+				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
 					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
 					if err != nil {

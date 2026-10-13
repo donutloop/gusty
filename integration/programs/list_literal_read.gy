@@ -1,0 +1,35 @@
+print(["a", "b"][0], ["a", "b"][1])
+print([1.5, 2][0], [1.5, 2][1])
+print([None, 2][0], [True, 2][0])
+print(["a", 1.5, None, True][0], ["a", 1.5, None, True][1], ["a", 1.5, None, True][2], ["a", 1.5, None, True][3])
+print([1, 2, 3][0], [1, 2, 3][2], [1, 2, 3][-1])
+print(["a", "b"][-1])
+print([[1, 2], [3, 4]][0], [[1, 2], [3, 4]][0][1])
+print([{"a": 1}][0], [{"a": 1}][0]["a"])
+print(str(["a", 1.5][0]), repr(["a", 1.5][0]))
+print(str([None, "z"][0]), repr([None, "z"][1]))
+print(len(["a", "b", "c"]))
+print("a" in ["a", "b"], 1 in [1, 2])
+first = ["a", "b"][0]
+print(first)
+mixed = [1.5, None, "z"]
+print(mixed[0], mixed[1], mixed[2])
+for v in [None, 1.5, "z"]:
+    print(v)
+print([1, 2, 3][1] + 10)
+print(sorted(["b", "a"]))
+try:
+    print([1, 2][5])
+except IndexError:
+    print("a position past the end raises IndexError")
+d = {1: ["a", "b"]}
+print(d[1][0])
+if [True][0]:
+    print("a bool element decides a condition by its kind")
+if [0.0, 1][0]:
+    print("never")
+if [[]][0]:
+    print("never")
+if [""][0]:
+    print("never")
+print(1 if [None, "z"][0] else 0)
