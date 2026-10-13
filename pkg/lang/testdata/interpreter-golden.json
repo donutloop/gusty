@@ -1,5 +1,289 @@
 {
  "entries": {
+"d = {\"a\": {\"b\": \"z\"}}\nprint([d[\"a\"][\"b\"], 1])": {
+    "stdout": "['z', 1]\n",
+    "hasStdout": true
+   },
+
+"d = {\"k\": [1, 2]}\nprint([d[\"k\"], 0])": {
+    "stdout": "[[1, 2], 0]\n",
+    "hasStdout": true
+   },
+
+"d = {}\nd[\"k\"] = \"v\"\nprint([d[\"k\"], 1])": {
+    "stdout": "['v', 1]\n",
+    "hasStdout": true
+   },
+
+"m = {\"a\": {\"b\": [1, 2]}}\nprint([m[\"a\"][\"b\"][0], 0])": {
+    "stdout": "[1, 0]\n",
+    "hasStdout": true
+   },
+
+"n = {\"a\": \"x\"}[\"a\"]\nprint([n, 1])": {
+    "stdout": "['x', 1]\n",
+    "hasStdout": true
+   },
+
+"nested = [[1, \"q\"], [2, \"r\"]]\nprint([nested[1][1], nested[0][1]])": {
+    "stdout": "['r', 'q']\n",
+    "hasStdout": true
+   },
+
+"print([1, 2][0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print([[\"a\", \"b\"][-1], 1])": {
+    "stdout": "['b', 1]\n",
+    "hasStdout": true
+   },
+
+"print([[\"a\"][0], 2])": {
+    "stdout": "['a', 2]\n",
+    "hasStdout": true
+   },
+
+"print([[1, 2, 3][1], 4])": {
+    "stdout": "[2, 4]\n",
+    "hasStdout": true
+   },
+
+"print([[1, 2][\"a\"], 1])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"print([[1, 2][0], 3])": {
+    "stdout": "[1, 3]\n",
+    "hasStdout": true
+   },
+
+"print([[1.5, 2][0], 3])": {
+    "stdout": "[1.5, 3]\n",
+    "hasStdout": true
+   },
+
+"print([[1.5][0], 2])": {
+    "stdout": "[1.5, 2]\n",
+    "hasStdout": true
+   },
+
+"print([[None][0], 2])": {
+    "stdout": "[None, 2]\n",
+    "hasStdout": true
+   },
+
+"print([[None][0], True])": {
+    "stdout": "[None, True]\n",
+    "hasStdout": true
+   },
+
+"print([[True, False][1], 0])": {
+    "stdout": "[False, 0]\n",
+    "hasStdout": true
+   },
+
+"print([[{\"a\": \"x\"}[\"a\"]], 2])": {
+    "stdout": "[['x'], 2]\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": \"x\"}[\"a\"], 2] == [\"x\", 2])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": \"x\"}[\"a\"], 2] == [1, 2])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": \"x\"}[\"a\"], 2])": {
+    "stdout": "['x', 2]\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": \"x\"}[\"a\"], 2])\nprint([[\"a\", \"b\"][0], 1])\nprint([[1.5, 2][0], 3])\nprint([[None][0], True])\nprint([1, 2][0], [[1, 2][0], 3])\nxs = [1, \"a\"]\nprint([xs[1], 2])\nprint([xs[0], xs[1]])\nd = {\"a\": \"x\"}\nprint([d[\"a\"], 2])\nbuilt = []\nbuilt.append([7, 8])\nprint([built[0][1], 0])\nfilled = {}\nfilled[\"k\"] = \"v\"\nprint([filled[\"k\"], 1])\nprint({\"k\": {\"a\": \"x\"}[\"a\"], \"n\": 2})\nprint({1: {\"a\": \"x\"}[\"a\"]})\nprint({{\"a\": \"x\"}[\"a\"]: 1})\nprint({{\"a\": \"x\"}[\"a\"]})\nys = [{\"a\": \"x\"}[\"a\"], 2]\nprint(ys, len(ys), ys[0], \"x\" in ys)\nfor v in ys:\n    print(v)\nprint(str([{\"a\": \"x\"}[\"a\"], 2]))\nprint(repr([[{\"a\": \"x\"}[\"a\"]], 2]))\nprint([{\"a\": \"x\"}[\"a\"], 2] == [\"x\", 2])\nprint([[\"a\", \"b\"][-1], 1])\ndeep = {\"a\": {\"b\": \"z\"}}\nprint([[deep[\"a\"][\"b\"], 1]])\nprint([{\"a\": \"x\"}[\"a\"], [1, 2], None, True, 1.5])\nnested = [[1, \"q\"], [2, \"r\"]]\nprint([nested[1][1], nested[0][1]])\ntry:\n    print([{\"a\": 1}[\"b\"], 2])\nexcept KeyError:\n    print(\"a missing entry inside a literal raises KeyError\")\ntry:\n    print([xs[5], 1])\nexcept IndexError:\n    print(\"a position past the end inside a literal raises IndexError\")": {
+    "stdout": "['x', 2]\n['a', 1]\n[1.5, 3]\n[None, True]\n1 [1, 3]\n['a', 2]\n[1, 'a']\n['x', 2]\n[8, 0]\n['v', 1]\n{'k': 'x', 'n': 2}\n{1: 'x'}\n{'x': 1}\n{'x'}\n['x', 2] 2 x True\nx\n2\n['x', 2]\n[['x'], 2]\nTrue\n['b', 1]\n[['z', 1]]\n['x', [1, 2], None, True, 1.5]\n['r', 'q']\na missing entry inside a literal raises KeyError\na position past the end inside a literal raises IndexError\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": \"x\"}[\"a\"], [1, 2], None, True, 1.5])": {
+    "stdout": "['x', [1, 2], None, True, 1.5]\n",
+    "hasStdout": true
+   },
+
+"print([{1: 2}[1], 3])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"print(repr([[{\"a\": \"x\"}[\"a\"]], 2]))": {
+    "stdout": "[['x'], 2]\n",
+    "hasStdout": true
+   },
+
+"print(str([{\"a\": \"x\"}[\"a\"], 2]))": {
+    "stdout": "['x', 2]\n",
+    "hasStdout": true
+   },
+
+"print({\"k\": {\"a\": \"x\"}[\"a\"], \"n\": 2})": {
+    "stdout": "{'k': 'x', 'n': 2}\n",
+    "hasStdout": true
+   },
+
+"print({1: {\"a\": \"x\"}[\"a\"]})": {
+    "stdout": "{1: 'x'}\n",
+    "hasStdout": true
+   },
+
+"print({{\"a\": \"x\"}[\"a\"]: 1})": {
+    "stdout": "{'x': 1}\n",
+    "hasStdout": true
+   },
+
+"print({{\"a\": \"x\"}[\"a\"]})": {
+    "stdout": "{'x'}\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([[1, 2][\"a\"], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([{\"a\": 1}[\"b\"], 2])\nexcept KeyError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1, \"a\"]\n    print([xs[\"a\"], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1, \"a\"]\n    print([xs[5], 1])\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1, 2]\n    print([xs[0][0], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = {\"a\": 1}\n    print([xs[\"a\"][\"b\"], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\", None, 2.5, True, [7]]\nprint([xs[0], xs[1], xs[2], xs[3], xs[4], xs[5]])": {
+    "stdout": "[1, 'a', None, 2.5, True, [7]]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint([xs[\"a\"], 1])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"xs = [1, \"a\"]\nprint([xs[1], 2])": {
+    "stdout": "['a', 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint([xs[5], 1])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"xs = [1, \"a\"]\ntry:\n    print([xs[\"a\"], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint([xs[0][0], 1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"xs = [1, 2]\nprint([xs[1] - 1, 0])": {
+    "stdout": "[1, 0]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\ntry:\n    print([xs[0][0], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [[7, 8]]\nprint([xs[0], 0])": {
+    "stdout": "[[7, 8], 0]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(\"s\")\nprint([xs[0], 1])": {
+    "stdout": "['s', 1]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([7, 8])\nprint([xs[0][1], 0])": {
+    "stdout": "[8, 0]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([7, 8])\nprint([xs[0][1], 2])": {
+    "stdout": "[8, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = {\"a\": \"x\"}\nprint([xs[\"a\"], 2])": {
+    "stdout": "['x', 2]\n",
+    "hasStdout": true
+   },
+
+"xs = {\"a\": 1}\nprint([xs[\"a\"][\"b\"], 1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"xs = {\"a\": 1}\ntry:\n    print([xs[\"a\"][\"b\"], 1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"ys = [{\"a\": \"x\"}[\"a\"], 2]\nfor v in ys:\n    print(v)": {
+    "stdout": "x\n2\n",
+    "hasStdout": true
+   },
+
+"ys = [{\"a\": \"x\"}[\"a\"], 2]\nprint(\"x\" in ys)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"ys = [{\"a\": \"x\"}[\"a\"], 2]\nprint(len(ys))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"ys = [{\"a\": \"x\"}[\"a\"], 2]\nprint(ys)": {
+    "stdout": "['x', 2]\n",
+    "hasStdout": true
+   },
+
+"ys = [{\"a\": \"x\"}[\"a\"], 2]\nprint(ys[0])": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
 "if [\"\"][0]:\n    print(\"yes\")": {
     "hasStdout": true
    },

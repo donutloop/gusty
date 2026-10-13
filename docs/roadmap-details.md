@@ -10007,7 +10007,7 @@ a literal read — still answers the payload, because the builder's `pairElemPai
 subscript.
 
 <a id="gap-r-224"></a>
-### Gap R.224 — a literal read placed inside another literal answers the payload (OPEN, found by ADR 0331)
+### Gap R.224 — a literal read placed inside another literal answers the payload (CLOSED by ADR 0332, found by ADR 0331)
 
 ```python
 print([{"a": "x"}["a"], 2])   # exit 0, prints [1, 2]; the reference prints ['x', 2]
@@ -10031,9 +10031,101 @@ so this row is one wrong answer and three missing halves. The fix is one hook: t
 `nameIsPairElem` the subscript as well as the name, so a literal element that is itself a read arrives as the
 `(payload, tag)` pair `heapListFromTagged` and `heapDictFrom` already know how to store — and keep the gates
 that decide taggedness (`literalNeedsTags`, `taggableMixedList`, `elemTaggableOrPair`) asking the question the
-builders ask. That last clause is ADR 0249's rule and the reason the row is written before the code: a gate
+builders ask. that last clause is ADR 0249's rule and the reason the row is written before the code: a gate
 that admits what the door refuses, or refuses what the door admits, is how this fix would ship a refusal
 nobody measured.
+
+**Closed by ADR 0332 (2026-10-13), measured the same afternoon.** The hook grew the `*Index` arm beside the
+`*Name` one and calls `taggedSlotPair` — the same call `print(xs[i])` emits — rather than a second read, so a
+slot the builder wrote and the same slot the printer reads cannot mean different things. The gate is
+`subscriptIsPairElem` in the new `pkg/lang/pair_element_read.go`: it emits nothing and asks the door's two
+questions in the door's order (is the container side one the run time owns; is the read one the fold cannot
+answer alone), and `isPairElem` — the union of "a name the pair road bound" and "a subscript the pair door
+reads" — is now the question all three taggedness gates ask (`elemTaggableOrPair`, `literalHasPairElement`,
+and through it the bit-8 "the slots describe themselves" claim). All four shapes answer the reference, and the
+families that ride the same door came with them without extra work: a dict entry
+(`print({1: {"a": "x"}["a"]})` was `{1: 1}`), a dict key (`print({{"a": "x"}["a"]: 1})` was `{1: 1}`), a set
+member (was `{1}`), a container slot of a container the program built (`xs = []` / `xs.append([7, 8])` /
+`print([xs[0][1], 0])` was refused outright), a dict *variable* read into a slot
+(`xs = {"a": "x"}` / `print([xs["a"], 2])` was `[1, 2]`), and `print([str(x) …])`-free re-reads of the list
+the element landed in (`len`, subscript, `in`, `for`, `str`, `repr`, `==`).
+
+Two negative controls carry as much weight as the answers. The fold's shapes allocate nothing and call none of
+the object doors — asserted over `@main` alone, because the runtime library legitimately calls `rt_get_elem`.
+And one refusal stayed a refusal: `[id({"a": "x"}["a"]), 1]` hands a callee one `i32` and has nowhere to put a
+register, so it names the missing half (Gap R.146) rather than joining the payload road. The row was watched
+for exactly the inversion — a refusal relaxed to keep a suite green — and a guard asserts it still refuses.
+
+Measured on the way, and **filed rather than bundled**: Gaps **R.225**, **R.226** and **R.227** below, plus
+one shape that changed road rather than being fixed — `def f(): return [{"a": "x"}["a"], 2]` used to stop the
+build with the static-array sentence and now prints `0`, which is **Gap R.67**'s road (`return [1, 2]` emits
+`ret i32 @.lst1`; `la = [1, 2]; return la` prints `0`) arrived at from a new direction.
+
+<a id="gap-r-225"></a>
+### Gap R.225 — a literal element that is an *operation over* a read still answers the payload (OPEN, found by ADR 0332)
+
+```python
+print([str({"a": "x"}["a"]), 1])   # exit 0, prints [1, 1]; the reference prints ['x', 1]
+print([{"a": "x"}["a"] + "!", 1])  # exit 0, prints [3, 1]; the reference prints ['x!', 1]
+xs = [1, "a"]
+print([str(xs[1]), 1])             # exit 0, prints [0, 1]; the reference prints ['a', 1]
+d = {"a": "x"}
+print([d["a"].upper(), 1])         # exit 0, prints [2, 1]; the reference prints ['X', 1]
+```
+
+ADR 0332 taught the builder to ask the pair door for an element that *is* a subscript. An element that merely
+*contains* one is lowered by the ordinary road, which asks the subscript for one word — the read's payload —
+and the container then labels the slot from the *expression's* apparent kind (`printsAsInternedStr` says
+"text", which is true of the answer and useless for the word stored). The `@str_tab` position of `"x"` is `1`;
+the slot says `int`; the printer obliges.
+
+The gate's question is therefore one step short of the whole question: it asks about the element, not about
+the element's operands. Widening it means answering "does *any* operand of this expression denote a pair?"
+per operator and per call — and where the answer's kind cannot be labelled at all, refusing rather than
+tagging it from the spelling, which is what makes this a separate row from R.224 and not a loose end of it.
+The shapes are pinned with both answers written into
+`TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed`, so the day the door grows, a test fails loudly
+instead of a wrong answer shipping quietly.
+
+<a id="gap-r-226"></a>
+### Gap R.226 — the loop that unrolls a literal binds the payload, not the value (OPEN, found by ADR 0332)
+
+```python
+for v in [{"a": "x"}["a"], 2]:   # prints 1 then 2; the reference prints x then 2
+    print(v)
+```
+
+The same literal bound first prints correctly — `ys = [{"a": "x"}["a"], 2]` / `for v in ys:` — because that is
+ADR 0185's loop: it walks the object and fetches `rt_get_elem` *and* `rt_tag_of` into `%_v` and `%_v_tag`. The
+direct form is not a loop at all. `for` over a literal is unrolled, and each element expression is stored into
+the loop variable through the one-word road, so the register the pair door computed never reaches the variable
+and `print(v)` reads the integer road. Emitted IR says it plainly: a `store i32 %t8, i32* %_v` with no store
+beside it into `%_v_tag`.
+
+The fix is the unrolled binding asking `isPairElem` and storing both words — the pair, in the same
+block, at both words — or ceasing to unroll a literal whose element the pair door answers. Until then the
+bound form is the road that works, and the conformance program uses it (an honest `match`) while this row and
+a filed-not-fixed row carry the direct form.
+
+<a id="gap-r-227"></a>
+### Gap R.227 — a subscript whose base is itself a subscript of a literal refuses (OPEN, found by ADR 0332)
+
+```python
+print([[1, 2][0][0], 1])   # exit 1: codegen: index requires an inline list/dict/set literal
+print([[1][0][0], 1])      # the reference raises TypeError: 'int' object is not subscriptable
+```
+
+The fold answers the inner read — every element is an integer constant, the position is an integer — and the
+outer subscript is then holding a base that is no longer a literal, so the subscript road's own gate condemns
+it. The run-time door is never consulted, because the shape *started* from a literal and the roads are chosen
+by the base's spelling rather than by what the compiler actually still holds.
+
+Gap R.214 measured this at a call (`def build(): return [1, 2]` / `print(build()[7])`); this is the same
+missing half one level in, and the same cure: hand the outer subscript the (payload, tag) pair the inner read
+computed and let `slotReadUnderTag` ask the object what the payload is, which is exactly what ADR 0251 does for
+a container the program built. The reference does not refuse these two and does not answer them: it raises, so
+the definition of done is a trap at exit 3 with the reference's own sentence, catchable, and no `codegen:`
+sentence anywhere in the output.
 
 <a id="gap-r-219"></a>
 ### Gap R.219 — a function is registered as returning text on the evidence of one arm (OPEN, found by ADR 0327)

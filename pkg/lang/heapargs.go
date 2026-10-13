@@ -1025,18 +1025,32 @@ func (g *irGen) instanceSlotExpr(e Expr) bool {
 // asking its `value()` is the refusal Gap R.146 kept printing for `[n]`, `{"k": n}` and `min([n, 3])`. The
 // heap builder already writes both words per slot (ADR 0187), so the answer is to route the literal there
 // rather than to refuse the element (roadmap L11.1).
-// pairElemPair is the element-side question: does this literal element name a value the pair road bound,
-// and if so what are its two words? The builders below take the tag as a constant, which is right for a
-// literal element and wrong for a pair, whose tag is a register the objects wrote. Passing the register to
-// the same call is the whole difference between `[n]` printing `[7]` and refusing (roadmap L11.1,
-// Gap R.146; ADR 0187's rule that a payload is never written without its tag).
+// pairElemPair is the element-side question: does this literal element name a value the pair road bound
+// or *read*, and if so what are its two words? The builders below take the tag as a constant, which is
+// right for a literal element and wrong for a pair, whose tag is a register the objects wrote. Passing the
+// register to the same call is the whole difference between `[n]` printing `[7]` and refusing (roadmap
+// L11.1, Gap R.146; ADR 0187's rule that a payload is never written without its tag).
+//
+// Gap R.224 widened the door from "a name the pair road bound" to "anything the pair road reads": an
+// element that is itself a subscript — `[xs[1], 2]`, `[{"a": "x"}["a"], 2]` — denotes the same (payload,
+// tag) pair that `print(xs[1])` asks for, and a builder that stores one word plus a compile-time tag for it
+// is storing an `@str_tab` index and calling it a string. The gate that admits it lives beside
+// `pairElemPair`'s own file, in `pair_element_read.go`.
 func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
-	nm, isName := e.(*Name)
-	if !isName || !g.nameIsPairElem(e) {
+	if !g.isPairElem(e) {
 		return "", "", false
 	}
-	payload, tag = g.numericPairRegs(b, nm.Value)
-	return payload, tag, true
+	switch n := e.(type) {
+	case *Name:
+		payload, tag = g.numericPairRegs(b, n.Value)
+		return payload, tag, true
+	case *Index:
+		// The one subscript door, the same call `print(xs[i])`, `v = xs[i]` and ADR 0331's literal read
+		// emit. Asking it rather than re-implementing the read is what keeps a slot stored by the
+		// builder and the same slot printed by the printer from ever meaning different things.
+		return g.taggedSlotPair(b, n)
+	}
+	return "", "", false
 }
 
 // nameIsPairElem is `pairElemPair`'s question without the two loads: is this expression a name the
@@ -1062,8 +1076,12 @@ func (g *irGen) nameIsPairElem(x Expr) bool {
 // on one path and a number on another) keeps the literal on the road that refuses it: a payload
 // stored beside a tag nobody proved is exactly the wrong answer the refusal exists to prevent
 // (roadmap L11.1, Gap R.146; ADR 0232's tagged slots, ADR 0187's payload-never-written-without-tag).
+//
+// Since Gap R.224 the pair half of the question is `isPairElem`, which counts a subscript beside a bound
+// name: the element `xs[1]` is read by the same door `print(xs[1])` asks, so the builder is handed a
+// register for the tag exactly as it is for a name the pair road bound.
 func (g *irGen) elemTaggableOrPair(e Expr) bool {
-	if g.nameIsPairElem(e) {
+	if g.isPairElem(e) {
 		return true
 	}
 	_, ok := g.elemKindTag(e)
@@ -1157,8 +1175,12 @@ func (g *irGen) guardHashableTag(b *strings.Builder, tag string, sp Span) {
 
 func (g *irGen) literalHasPairElement(e Expr) bool {
 	pairName := func(x Expr) bool {
-		nm, isName := x.(*Name)
-		return isName && g.taggedVars[nm.Value] && g.taggedOrigin != nil
+		if nm, isName := x.(*Name); isName {
+			return g.taggedVars[nm.Value] && g.taggedOrigin != nil
+		}
+		// An element that is itself a subscript denotes the pair the pair door reads, and the builder
+		// that never learns it will store one word and a tag the compiler invented (roadmap Gap R.224).
+		return g.subscriptIsPairElem(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:

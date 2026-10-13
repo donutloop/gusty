@@ -199,6 +199,21 @@ IR test that fails if it starts allocating), a position past the end is the catc
 integers or slices, not str`, and a condition over such an element asks the runtime's truth table rather than
 comparing a handle to zero — `if [0.0, 1][0]:`, `if [[]][0]:` and `if [""][0]:` are all false (Gap R.218).
 
+A **literal's element that is itself a read** is stored as the pair that read answers, and ADR 0332 closes the
+layer ADR 0331 named: `print([{"a": "x"}["a"], 2])` is `['x', 2]` where it printed `[1, 2]` at exit 0, and
+`print([["a"][0], 2])`, `print([[1.5, 2][0], 3])` and `xs = [1, "a"]` / `print([xs[1], 2])` — which refused —
+are `['a', 2]`, `[1.5, 3]` and `['a', 2]`. The print, binding, membership and length doors had always asked a
+subscript for a `(payload, tag)` pair; the container builder alone asked for one word and then labelled the
+slot from the element's spelling. It takes the register the objects wrote now — from the same call
+`print(xs[i])` emits — and a dict entry, a dict key and a set member ride that one door with the list element:
+`{1: {"a": "x"}["a"]}` was `{1: 1}`, `{{"a": "x"}["a"]: 1}` was `{1: 1}`, `{{"a": "x"}["a"]}` was `{1}`.
+The fold keeps the shapes it can read (`[[1, 2][0], 3]` is `[1, 3]`, still a constant with nothing allocated),
+a raise inside an element is the program's own catchable exception, and the position that keeps one word for a
+whole value still refuses rather than printing a payload (Gap R.146). What the door still cannot reach is
+filed with both answers written into the row: an element that *contains* a read (Gap R.225), the loop that
+unrolls a literal directly (Gap R.226), a subscript of a subscript of a literal (Gap R.227) and a container
+crossing a `return` (Gap R.67).
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

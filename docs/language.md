@@ -3505,6 +3505,42 @@ print(len(y), 7 in y, str(y)) # 1 True [7]
 The same rule covers a float, `None`, a `bool` and a nested container in that element position, and the list
 bound to a name keeps working through every read — `len`, subscript, `in`, `append`, `for`, `str`, `repr`, `==`.
 
+**An element that is itself a read is stored as the pair that read answers** (ADR 0332). The print door, the
+binding door, the membership door and the length door have always asked a subscript for two words — a payload
+and the tag that says what it means; the container builder alone asked for one, and answered `[1, 2]` for
+`['x', 2]`. It asks for the pair now, taken from the same call `print(xs[i])` emits, so a slot the builder
+wrote and the same slot the printer reads cannot mean different things:
+
+```python
+print([{"a": "x"}["a"], 2])          # ['x', 2] — was [1, 2], the text's @str_tab position
+print([["a"][0], 2])                 # ['a', 2]
+print([[1.5, 2][0], 3])              # [1.5, 3]
+xs = [1, "a"]
+print([xs[1], 2])                    # ['a', 2]
+print([xs[0], xs[1]])                # [1, 'a']
+xs = {"a": "x"}
+print([xs["a"], 2])                  # ['x', 2]
+print({1: {"a": "x"}["a"]})          # {1: 'x'} — a dict entry, a dict key and a set member ride the same door
+print({{"a": "x"}["a"]: 1})          # {'x': 1}
+print({{"a": "x"}["a"]})             # {'x'}
+xs = []
+xs.append([7, 8])
+print([xs[0][1], 0])                 # [8, 0] — a slot of a container the program built
+deep = {"a": {"b": "z"}}
+print([deep["a"]["b"], 1])           # ['z', 1] — the chain is one pair per level
+```
+
+The compile-time lookup keeps exactly the shape it could read — `[[1, 2][0], 3]` is `[1, 3]` and emits a
+constant, allocating nothing and asking none of the object doors — and a raise inside an element is the
+program's exception rather than the compiler's: `[({"a": 1})["b"], 2]` raises the catchable `KeyError: 'b'`,
+`[xs[5], 1]` the catchable `IndexError: list index out of range`, `[xs["a"], 1]` the `TypeError: list indices
+must be integers or slices, not str` (Gap R.222's gate, reached through the new door). What stays refused is
+the position that keeps one word for a whole value — `[id({"a": "x"}["a"]), 1]` still refuses with Gap R.146's
+sentence — and what stays wrong, filed rather than hidden, is an element that *contains* a read rather than
+being one (Gap R.225: `[str({"a": "x"}["a"]), 1]` prints `[1, 1]`), the loop that unrolls a literal directly
+(Gap R.226: `for v in [{"a": "x"}["a"], 2]:` prints `1` where the bound form prints `x`), a subscript of a
+subscript of a literal (Gap R.227) and a container crossing a `return` (Gap R.67).
+
 An **f-string field** asks the same question and gets the same answer (ADR 0307): the field goes through the
 module's one tag-reading printer — the door `print()`, `str()` and `repr()` use — so the field, `str(n)` and
 `print(n)` cannot disagree about `6` versus `6.0`, and a text field prints its text rather than its interned

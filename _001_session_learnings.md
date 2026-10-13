@@ -9773,3 +9773,73 @@ the file happened to be unmodified, which was luck and not process. So: a helper
 `grep -rn "func name"` has printed it in this session, a row number goes into a document only after `grep -c` has
 printed it, and an append to a big file is an `edit` against an anchor or a shell append — never a whole-file
 `write`.
+
+## The element that is a read (L11.1, Gap R.224; ADR 0332)
+
+### A door with one caller left in it
+
+ADR 0331 made a list literal answer the position the program named, and named this row in its own
+consequences. Reading the two side by side was the whole planning step: the print door, the binding door,
+the membership door and the length door all ask a subscript for a `(payload, tag)` pair, and `pairElemPair`
+— the hook that hands a builder both words — admitted a `*Name` and nothing else. One caller in the language
+was still asking for one word, and the answer it got was `[1, 2]` where CPython prints `['x', 2]`. The lesson
+generalises past this family: when a capability is "paid", ask **which callers of the old question are still
+standing**, because the last one is where the next row lives.
+
+### The gate is the row, not the door
+
+The door was four lines: an `*Index` arm that calls `taggedSlotPair`, the same call `print(xs[i])` emits.
+The row was the gate — `subscriptIsPairElem`, which asks the door's own two questions in the door's order and
+nothing else (does the run time own the container side; can the fold answer this read alone). ADR 0249's rule
+says a gate and a door that test different things ship a refusal nobody measured, and the shape it protects
+against here was specific and easy to miss: had the gate admitted the fold's shapes, `[[1, 2][0], 3]` would
+have started allocating a list to ask a question the compiler can see the answer to. The negative control
+(`TestTheFoldStillOwnsTheReadItCanAnswer`, plus the CLI's `--emit-llvm` row) is what makes that claim instead
+of a paragraph.
+
+### Three gates asked a narrower question than the builders
+
+`literalHasPairElement` had its own inline `pairName` predicate, weaker than `nameIsPairElem` (it skipped the
+origin switch), and `elemTaggableOrPair` asked the name question only. Had I widened `pairElemPair` alone,
+the dict and set would have kept their old refusals and the list would have gone to the static-array road and
+errored — three behaviours, one change, none of them measured. They now all ask `isPairElem`. When a decision
+is asked in more than one place, the diff has to include every place, and the way to find them is to grep the
+*question* (`grep -n "literalNeedsTags\|taggableMixedList\|elemTaggableOrPair"`) rather than the answer.
+
+### Do not let a widening convert a refusal into a lie
+
+One shape moved the wrong way while the door widened: `def f(): return [{"a": "x"}["a"], 2]` used to stop the
+build with the static-array sentence, and started printing `0`. The refusal had been accidental — the fold
+happening to error — and the road it fell to is Gap R.67's, which already answers `0` for `return ["a", 2]`.
+Filing it under the row that owns it, and pinning it in the filed-not-fixed table with CPython's `['x', 2]`
+beside it, is the honest third option: neither a fix, nor a silence. The rule I applied to the rest of the
+family is the same one ADR 0331 applied to its own residue — `[id({"a": "x"}["a"]), 1]` is asserted to **keep**
+refusing, with Gap R.146 named, because a green suite bought by relaxing a refusal is a suite that certifies a
+wrong answer.
+
+### Derive the parity expectation, even when you are sure
+
+`TestTheElementRoadIsNeverWorseThanThePrintRoad` first composed its expectation by wrapping the print road's
+answer in `[…, 2]`. It failed on text — `print(x)` writes `x`, a container writes `'x'` — which is ADR 0258's
+str/repr split, not a bug in the parity. The row now asks CPython for the element program's answer inside the
+case (`PythonRun`), the way `integration/` derives every expectation from the reference (Gap N's standing
+rule). A parity test whose expectation is assembled from the other leg's *rendering* is testing a rendering
+theory; asking the reference removes the theory.
+
+### Four rows fell out of probing, and each got its own owner
+
+Gap R.225 (an element that *contains* a read: `[str({"a":"x"}["a"]), 1]` is `[1, 1]`), Gap R.226 (the loop
+that unrolls a literal binds the payload while the bound form binds the pair — visible in the IR as a
+`store i32 %t8, i32* %_v` with no tag store beside it), and Gap R.227 (a subscript whose base is a subscript
+of a literal refuses, Gap R.214's shape one level in). Each has a different owner — an operand gate, the
+unrolled loop, the subscript road — and one row with three owners makes two of them undiscoverable.
+
+### The guards earned their keep again
+
+`tools/recmerge` wrote 56 entries and refused the ones the compiled leg would not agree to; the artifact-count
+guards caught every number this cycle changed (record 6260 → 6316, programs 195 → 196, matrix 184 → 185,
+oracle `match` 131 → 132, ADRs 323 → 324, queue 109/140 → 111/143) and none of them was typed by hand — the
+first pass typed two and the test named each one. One new test row was also wrong before it was run: I
+expected `strs[9]` (an out-of-range position into a text literal) to decline the gate, and the gate correctly
+said "not the fold's" and let the bounds door raise the `IndexError`. A gate decision table written from what
+the code should do, rather than from what the code does, is where I keep finding my own assumptions.

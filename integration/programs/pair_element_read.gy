@@ -1,0 +1,41 @@
+print([{"a": "x"}["a"], 2])
+print([["a", "b"][0], 1])
+print([[1.5, 2][0], 3])
+print([[None][0], True])
+print([1, 2][0], [[1, 2][0], 3])
+xs = [1, "a"]
+print([xs[1], 2])
+print([xs[0], xs[1]])
+d = {"a": "x"}
+print([d["a"], 2])
+built = []
+built.append([7, 8])
+print([built[0][1], 0])
+filled = {}
+filled["k"] = "v"
+print([filled["k"], 1])
+print({"k": {"a": "x"}["a"], "n": 2})
+print({1: {"a": "x"}["a"]})
+print({{"a": "x"}["a"]: 1})
+print({{"a": "x"}["a"]})
+ys = [{"a": "x"}["a"], 2]
+print(ys, len(ys), ys[0], "x" in ys)
+for v in ys:
+    print(v)
+print(str([{"a": "x"}["a"], 2]))
+print(repr([[{"a": "x"}["a"]], 2]))
+print([{"a": "x"}["a"], 2] == ["x", 2])
+print([["a", "b"][-1], 1])
+deep = {"a": {"b": "z"}}
+print([[deep["a"]["b"], 1]])
+print([{"a": "x"}["a"], [1, 2], None, True, 1.5])
+nested = [[1, "q"], [2, "r"]]
+print([nested[1][1], nested[0][1]])
+try:
+    print([{"a": 1}["b"], 2])
+except KeyError:
+    print("a missing entry inside a literal raises KeyError")
+try:
+    print([xs[5], 1])
+except IndexError:
+    print("a position past the end inside a literal raises IndexError")

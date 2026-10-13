@@ -1002,7 +1002,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6260 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 6316 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1810,6 +1810,14 @@ variable (ADR 0184, ADR 0185, ADR 0187). What still refuses — with a message n
 work — is a tagged element reaching a context that needs one static kind (`xs[i] + 1`,
 `xs[i] > 2`, `f(xs[i])`, `xs[i]` in a format spec), dict/set element tags, and the tag-less
 kinds (bool, float, nested container).
+
+An agent witnesses an element's tag without reading LLVM text by hand (ADR 0332, closing roadmap Gap R.224):
+`--eval 'print([{"a": "x"}["a"], 2])'` answers `['x', 2]`, and the question “was the slot written with a tag
+the objects computed, or one the compiler guessed?” is answered by `--emit-llvm` over `@main` —
+`call void @rt_tag_elem(i32 %t1, i32 0, i32 %t9)` with a **register** beside the payload the pair door
+returned, and `call void @rt_mark_estr(i32 %t1, i32 8)` claiming the slots are the truth — where a read the
+compile-time fold owns emits a constant and allocates nothing. `--verify-llvm` is the second ask on every one
+of those rows, because a raise inside an element ends a block and the module has to reopen one.
 
 Container **printing** is total on the AOT path (ADR 0188): a literal or a zero-argument
 constructor in print position builds the runtime object and calls the runtime printer, so

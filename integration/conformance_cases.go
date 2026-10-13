@@ -537,6 +537,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// all-integer shape, the negative position, the nested literal, str()/repr(), len, `in`, a binding
 		// and a loop are all in the same program: the fold keeps what it reads, and the door answers the rest.
 		"list_literal_read",
+		// A literal's element that is itself a read is stored as the pair the read answers. Four shapes
+		// asked the builder for one word: `[{"a": "x"}["a"], 2]` printed `[1, 2]` (the text's @str_tab
+		// position), `[["a"][0], 2]`, `[[1.5, 2][0], 3]` and `xs = [1, "a"]` / `[xs[1], 2]` refused with the
+		// one-word sentence, while `print(xs[1])` had printed `a` all along — the print door, the binding
+		// door and the membership door all ask the subscript for a (payload, tag) pair and only the
+		// container builder asked for one word (roadmap Gap R.224). The dict entry, the dict key and the
+		// set member ride the same door, and the two raises inside an element are the reference's own,
+		// caught here by their own class.
+		"pair_element_read",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
