@@ -24,7 +24,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -44,7 +45,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -64,7 +66,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -84,7 +87,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -104,7 +108,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -124,7 +129,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -144,7 +150,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -164,7 +171,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -184,7 +192,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -204,7 +213,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -235,7 +245,8 @@
       "oracle_reason": "{5, 6, 7}[6] — subscripting a set by position is gusty surface; CPython raises TypeError ('set' object is not subscriptable)",
       "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
@@ -258,7 +269,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -289,7 +301,8 @@
       "oracle_reason": "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against the compiled path",
       "oracle_ref": "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -312,7 +325,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -332,7 +346,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -352,7 +367,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -372,7 +388,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -392,7 +409,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -412,7 +430,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -432,7 +451,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -452,7 +472,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -472,7 +493,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -492,7 +514,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -512,7 +535,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -532,7 +556,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -552,7 +577,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -572,7 +598,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -592,7 +619,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -612,7 +640,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -632,7 +661,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -652,7 +682,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -672,7 +703,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -692,7 +724,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -712,7 +745,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -732,7 +766,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -752,7 +787,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -772,7 +808,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -792,7 +829,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -812,7 +850,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -832,7 +871,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -852,7 +892,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -872,7 +913,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -892,7 +934,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -923,7 +966,8 @@
       "oracle_reason": "{1, 2, 3}[2] — positional set subscript again; the CPython leg stops there and never reaches the rest of the program",
       "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
@@ -957,7 +1001,8 @@
       "oracle_reason": "string.DIGITS / string.LOWERCASE are this language's stdlib names; Python's string module has no such attributes",
       "oracle_ref": "roadmap Phase 2 § on-disk stdlib modules",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -980,7 +1025,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1000,7 +1046,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1020,7 +1067,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1040,7 +1088,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1071,7 +1120,8 @@
       "oracle_reason": "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
       "oracle_ref": "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -1105,7 +1155,8 @@
       "oracle_reason": "a positional class sub-pattern needs __match_args__, which this language does not have — a class pattern binds attributes by the capture name, so CPython stops at the first case with `TypeError: Point() accepts 0 positional sub-patterns`",
       "oracle_ref": "docs/language.md § Class patterns (ADR 0235)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -1128,7 +1179,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1148,7 +1200,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1168,7 +1221,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1188,7 +1242,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1219,7 +1274,8 @@
       "oracle_reason": "await at module scope is a SyntaxError in CPython; the minimal synchronous-coroutine model accepts it (L5.6)",
       "oracle_ref": "docs/shared-lowering-spec.md § async / await",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 5"
@@ -1253,7 +1309,8 @@
       "oracle_reason": "async for outside an async function is a SyntaxError in CPython; lowered as a plain for loop here (L5.6)",
       "oracle_ref": "docs/shared-lowering-spec.md § async / await",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 3"
@@ -1287,7 +1344,8 @@
       "oracle_reason": "await at module scope is a SyntaxError in CPython (L5.6)",
       "oracle_ref": "docs/shared-lowering-spec.md § async / await",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 5"
@@ -1310,7 +1368,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1330,7 +1389,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1350,7 +1410,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1370,7 +1431,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1390,7 +1452,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1410,7 +1473,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1441,7 +1505,8 @@
       "oracle_reason": "def offset(base, step=10, bonus) is a SyntaxError in CPython (`parameter without a default follows parameter with a default`); here positional binding fills left to right and a keyword call names what it fills, so every parameter is reachable",
       "oracle_ref": "roadmap Gap R.11 (closed) and docs/language.md § Parameters and defaults (ADR 0206)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 11"
@@ -1475,7 +1540,8 @@
       "oracle_reason": "`for i in 4:` treats an integer as a repeat count; CPython raises TypeError ('int' object is not iterable), so the CPython leg stops at the first loop and never sees the rest of the file",
       "oracle_ref": "docs/language.md § Control flow (integer repeat count) and roadmap Gap R.14 (ADR 0207)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -1498,7 +1564,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1518,7 +1585,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1538,7 +1606,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1558,7 +1627,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1578,7 +1648,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1598,7 +1669,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1618,7 +1690,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1638,7 +1711,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1658,7 +1732,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1678,7 +1753,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1698,7 +1774,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1718,7 +1795,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1738,7 +1816,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1758,7 +1837,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1778,7 +1858,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1798,7 +1879,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1818,7 +1900,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1838,7 +1921,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1858,7 +1942,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1878,7 +1963,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1898,7 +1984,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1918,7 +2005,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1949,7 +2037,8 @@
       "oracle_reason": "await at module scope is a SyntaxError in CPython; this is the L7.6 legal-async surface the checker must accept, so what is pinned is that the compiled path agree and nothing was reported",
       "oracle_ref": "docs/language.md § Async (the await/return discipline)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 46"
@@ -1972,7 +2061,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -1992,7 +2082,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2012,7 +2103,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2032,7 +2124,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2052,7 +2145,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2072,7 +2166,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2092,7 +2187,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2112,7 +2208,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2132,7 +2229,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2162,7 +2260,8 @@
       "oracle_reason": "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
       "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -2185,7 +2284,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2205,7 +2305,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2225,7 +2326,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2245,7 +2347,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2265,7 +2368,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2285,7 +2389,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2305,7 +2410,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2325,7 +2431,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2345,7 +2452,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2365,7 +2473,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2385,7 +2494,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2405,7 +2515,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2425,7 +2536,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2445,7 +2557,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2465,7 +2578,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2485,7 +2599,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2505,7 +2620,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2525,7 +2641,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2545,7 +2662,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2565,7 +2683,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2585,7 +2704,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2605,7 +2725,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2625,7 +2746,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2645,7 +2767,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2665,7 +2788,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2685,7 +2809,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2705,7 +2830,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2725,7 +2851,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2745,7 +2872,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2765,7 +2893,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2785,7 +2914,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2805,7 +2935,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2825,7 +2956,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2845,7 +2977,29 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/runtime_slot_instance_tag",
+        "name": "runtime_slot_instance_tag.gy",
+        "source": "class C:\n    pass\n\nclass D:\n    pass\n\nc = C()\nd = D()\nxs = []\nxs.append(c)\nxs.append(d)\nprint(xs[0] == xs[0])\nprint(xs[0] == xs[1])\nprint(len({c}))\nprint(len({d}))\nd1 = {}\nd1[c] = 1\nprint(d1[c])\ntry:\n    print(len(xs[0]))\nexcept TypeError:\n    print(\"len named the class, not the handle\")\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"membership named the class, not int\")\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"iteration named the class, not int\")\ntry:\n    print(c in \"abc\")\nexcept TypeError:\n    print(\"text asked for a text needle\")\ntry:\n    print(\"abc\" in c)\nexcept TypeError:\n    print(\"instance is not iterable\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\n1\n1\n1\nlen named the class, not the handle\nmembership named the class, not int\niteration named the class, not int\ntext asked for a text needle\ninstance is not iterable\n",
+      "python_ok": true,
+      "python_stdout": "True\nFalse\n1\n1\n1\nlen named the class, not the handle\nmembership named the class, not int\niteration named the class, not int\ntext asked for a text needle\ninstance is not iterable\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2865,7 +3019,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2885,7 +3040,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2905,7 +3061,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -2936,7 +3093,8 @@
       "oracle_reason": "inherits data_b's positional set subscript, which CPython rejects",
       "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
@@ -2970,7 +3128,8 @@
       "oracle_reason": "inherits features_b's positional set subscript, which CPython rejects; features_a's \"abc\"[1] == 98 divergence is pinned on its own row",
       "oracle_ref": "roadmap L11.5 (code-point strings)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
@@ -2993,7 +3152,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -3013,7 +3173,8 @@
       "oracle": "match",
       "oracle_declared": "match",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -3045,7 +3206,8 @@
       "oracle_reason": "CPython runs the whole program and the reference runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
       "oracle_ref": "roadmap Gap R.188 and Gap R.63 (the compiled path' receiver tables, owner L12.11); docs/adr/0301",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: extend() on \"xs\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"xs\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
@@ -3080,7 +3242,8 @@
       "oracle_reason": "CPython prints None for every in-place mutation and the item for `pop`, and the reference prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
       "oracle_ref": "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
@@ -3115,7 +3278,8 @@
       "oracle_reason": "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the reference prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
       "oracle_ref": "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: the format spec \"05d\" needs a value this backend can read at compile time (AOT backend)"
@@ -3150,7 +3314,8 @@
       "oracle_reason": "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the reference now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
       "oracle_ref": "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
@@ -3183,7 +3348,8 @@
       "oracle_reason": "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
       "oracle_ref": "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3218,7 +3384,8 @@
       "oracle_reason": "CPython and the reference print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
       "oracle_ref": "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: len requires an inline list/dict/set literal"
@@ -3251,7 +3418,8 @@
       "oracle_reason": "a min/max fold can name the winner only when it can read every candidate: with a name the compiler has not folded, the run-time select keeps the payload and nothing says it came from a verdict, so the compiled leg prints 1 while the interpreter and CPython print True; the literal-backed candidate in the same program is parity",
       "oracle_ref": "roadmap Gap R.124 (measured while closing Gap R.117, ADR 0261)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3284,7 +3452,8 @@
       "oracle_reason": "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
       "oracle_ref": "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3317,7 +3486,8 @@
       "oracle_reason": "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
       "oracle_ref": "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3353,7 +3523,8 @@
       "oracle_reason": "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
       "oracle_ref": "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -3388,7 +3559,8 @@
       "oracle_reason": "CPython answers 7000000000 and so does the reference, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
       "oracle_ref": "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: exit status 3"
@@ -3423,7 +3595,8 @@
       "oracle_reason": "CPython prints 8 and the reference prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
       "oracle_ref": "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
@@ -3458,7 +3631,8 @@
       "oracle_reason": "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
       "oracle_ref": "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: parse error at 1:8: expected \")\""
@@ -3492,7 +3666,8 @@
       "oracle_reason": "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on the compiled path",
       "oracle_ref": "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -3527,7 +3702,8 @@
       "oracle_reason": "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table but not in the call table, so the compiled leg refuses the call — a program the reference runs, spent on exit 1 (ADR 0211's misclassed class)",
       "oracle_ref": "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: \"pow\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
@@ -3560,7 +3736,8 @@
       "oracle_reason": "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
       "oracle_ref": "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3593,7 +3770,8 @@
       "oracle_reason": "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
       "oracle_ref": "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3618,7 +3796,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/150/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/151/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3628,10 +3806,11 @@
       "oracle_reason": "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
       "oracle_ref": "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/150/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/151/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3663,7 +3842,8 @@
       "oracle_reason": "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
       "oracle_ref": "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
@@ -3698,7 +3878,8 @@
       "oracle_reason": "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
       "oracle_ref": "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: comprehension key must be constant"
@@ -3732,7 +3913,8 @@
       "oracle_reason": "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
       "oracle_ref": "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -3766,7 +3948,8 @@
       "oracle_reason": "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
       "oracle_ref": "roadmap L11.3 (tuples are values)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: unsupported expression *lang.Tuple"
@@ -3799,7 +3982,8 @@
       "oracle_reason": "a function whose return paths have different types is lowered as returning one of them, so the compiled caller reads the integer as an interned-string index and prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
       "oracle_ref": "roadmap Gap R.22 (mixed return types; ADR 0213 refiled the original Gap R.21 reading, which blamed try/except)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -3833,7 +4017,8 @@
       "oracle_reason": "the interpreter and CPython agree on all five handler lines, but the compiled backend answers the missing-attribute case with a value instead of raising (Gap R.19) and refuses the others at compile time with prose diagnostics, so the compiled leg never completes",
       "oracle_ref": "roadmap Gap R.25 (typed built-in traps) and Gap R.19 (attribute answers 0 in AOT); ADR 0214",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: int on non-integer string"
@@ -3867,7 +4052,8 @@
       "oracle_reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
       "oracle_ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
@@ -3901,7 +4087,8 @@
       "oracle_reason": "the interpreter and CPython agree on all seven handler lines, but the compiled backend answers `1 + None` with a value instead of raising and refuses the rest at compile time, so the compiled leg never completes",
       "oracle_ref": "roadmap Gap R.27 (operand kinds unchecked in the compiled backend); ADR 0215",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
@@ -3935,7 +4122,8 @@
       "oracle_reason": "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
       "oracle_ref": "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
@@ -3970,7 +4158,8 @@
       "oracle_reason": "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, while the compiled backend parses `global gz` as the *expression* `global gz` and refuses the program for having no binding for `global` — it disagrees with the reference on a construct every Python reader expects",
       "oracle_ref": "roadmap Gap R.48 (`global` is not in the language); Gap R.36 (the probe pass that found it)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -4007,7 +4196,8 @@
       "oracle_reason": "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; the compiled leg prints the same first line and raises the same class, which it did not before ADR 0228 -- it printed 0 for the unbound call and exited 0",
       "oracle_ref": "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -4041,7 +4231,8 @@
       "oracle_reason": "Python spells these math.pi / math.e, so the source is not a CPython program — the row stays not-applicable for the spelling alone: what the twin asserts is the two numbers below, and integration/module_const_test.go asks the reference for its own spelling beside them. The fold's lost float type — the answer this row pinned at 3 and 2 compiled — is paid (roadmap L11.6, ADR 0272)",
       "oracle_ref": "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
@@ -4075,7 +4266,8 @@
       "oracle_reason": "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(\u003ccontainer\u003e) copies are refused in AOT",
       "oracle_ref": "roadmap L11.7 + L11.3 (tuples are values)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: list(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; CPython answers them — build the container with list() and add elements"
@@ -4109,7 +4301,8 @@
       "oracle_reason": "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
       "oracle_ref": "roadmap L11.7 (functions are values that compile)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
@@ -4143,7 +4336,8 @@
       "oracle_reason": "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
       "oracle_ref": "roadmap L11.7 (functions are values that compile)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
@@ -4177,7 +4371,8 @@
       "oracle_reason": "the record holds CPython's five lines from the retired engine; the compiled leg refuses the body that calls a parameter (`\"f\" is called but is not a function this backend can build a call to`), the higher-order limit L11.7 records",
       "oracle_ref": "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
@@ -4210,7 +4405,8 @@
       "oracle_reason": "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
       "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled stdout differs from CPython"
@@ -4245,7 +4441,8 @@
       "oracle_reason": "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
       "oracle_ref": "roadmap L11.7 (functions are values that compile)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: sum of a comprehension whose elements are computed at runtime needs a runtime reduction (roadmap L11.7, ADR 0192)"
@@ -4280,7 +4477,8 @@
       "oracle_reason": "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
       "oracle_ref": "roadmap L11.2 (the tagged value word makes every container a runtime object)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: xs is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
@@ -4314,18 +4512,19 @@
       "oracle_reason": "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
       "oracle_ref": "roadmap L7.6a (deferred coroutines in codegen)",
       "oracle_rules": [
-        "set-order"
+        "set-order",
+        "instance-identity"
       ],
       "oracle_notes": [
         "the CPython leg did not complete: exit status 1: File \"prog.py\", line 10"
       ]
     }
   ],
-  "rows": 178,
+  "rows": 179,
   "skipped": 38,
-  "pass": 140,
+  "pass": 141,
   "fail": 0,
-  "oracle_match": 125,
+  "oracle_match": 126,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

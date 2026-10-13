@@ -27,6 +27,7 @@ import (
 const integrationDriftFile = "testdata/interpreter-golden-drift.json"
 
 func TestMain(m *testing.M) {
+	lang.WarmGoldenRecord()
 	code := lang.GoldenDriftMain(m, integrationDriftFile)
 	if os.Getenv("GUSTY_DEBT_UPDATE") == "1" {
 		writeReferenceDebt(&testing.T{}, referenceDebtFile)

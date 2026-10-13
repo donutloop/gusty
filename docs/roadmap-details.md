@@ -9667,27 +9667,46 @@ out of a comprehension-built list, recorded as "the compiled backend cannot buil
 which is the `@rt_set_contains_tagged` arm arriving from the other direction (338 → 337).
 
 <a id="gap-r-209"></a>
-### Gap R.209 — an instance written into a container slot carries the `int` tag (OPEN, found by ADR 0323)
+### Gap R.209 — an instance written into a container slot carries the `int` tag (CLOSED by ADR 0325, found by ADR 0323)
 
-`xs = []` / `xs.append(C())` / `print(xs[0])` prints `1` — the heap handle — where the reference prints
-`<__main__.C object at 0x…>`. `len(xs[0])` raises `object of type 'int' has no len()`. Asking the slot for a
-membership test or a loop, which is what ADR 0323 added, raises `argument of type 'int' is not iterable` and
+`xs = []` / `xs.append(C())` / `print(xs[0])` printed `1` — the heap handle — where the reference prints
+`<__main__.C object at 0x…>`. `len(xs[0])` raised `object of type 'int' has no len()`. Asking the slot for a
+membership test or a loop, which is what ADR 0323 added, raised `argument of type 'int' is not iterable` and
 `'int' object is not iterable` where the reference names the class.
 
 One cause, four symptoms: the tag the *writer* left beside the payload says int. Everything downstream —
-the printer, the length check, the ordering sentence, and now the two doors this cycle added — obeys the tag,
+the printer, the length check, the ordering sentence, and the two doors ADR 0323 added — obeys the tag,
 which is the rule ADR 0182 and ADR 0187 exist to enforce, so the bug is not in any of them. `elemKindTag` is the
-one place the answer is written, and it already has the table to read: `negation.go`'s `signlessOperandKind`
+one place the answer is written, and it already had the table to read: `negation.go`'s `signlessOperandKind`
 names `Token` for `-Token()` and `abs(Token())` (ADR 0271), so the class of a construction is knowable at the
-write site. ADR 0259 is the precedent for the change — a bool in a slot went from `TagInt` to `TagBool` and the
-container printer, the set dedup and the ordering sentence followed without being touched — and the printer's
-instance arm is the second half, because a tag nobody can render is only half a kind.
+write site. ADR 0259 is the precedent — a bool in a slot went from `TagInt` to `TagBool` and the container
+printer, the set dedup and the ordering sentence followed without being touched.
 
-Pinned filed-not-fixed by
-`integration/runtime_slot_read_test.go::TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop`, which
-writes both legs' answers into the row: the compiled raise must name `'int'` (the tag's answer) at exit 3, catchably,
-and the reference's must name `'C'`. When the tag is fixed the row moves to the parity table; it will fail before
-that, which is what a pin is for.
+**Closed on the ADR 0259 pattern.** `elemKindTag` now admits a bare constructor call or a name whose latest
+binding the assignment walk knows to be an instance, and returns `TagInstance`. The payload remains the heap
+handle. The class name is not copied into the slot: the constructor already wrote the dispatch id into object
+slot 0, and the module's class table reads it. `@rt_class_qual` supplies `__main__.C` to the identity form,
+`@rt_class_short` supplies `C` to the five TypeError sentences, and `@rt_instance_msg_ptr` formats only the
+selected sentence while the compiler arm owns the code, span and landing pad. The four symptoms follow because
+the four readers were already obedient; none of them was asked to guess.
+
+The second measurement was the static binary road. `c in "abc"` had answered `True`, and `"abc" in c` had
+answered `False`, at exit 0, before either arm consulted the object's tag. Membership of a text takes a text
+needle, and membership of an instance is a raise against the haystack; the two sentences name different sides
+of the operation. Those arms now raise before the substring or container road can turn a reference TypeError
+into a verdict.
+
+A CPython address is an allocation accident, not a semantic claim. The compiled backend prints the object's
+heap slot in the same position, and the oracle's narrow `instance-identity` rule normalizes only the complete
+identity form on both legs to `0x…`. The class inside the brackets is still compared byte for byte, and the CLI
+row explicitly rejects output that is merely a number.
+
+The filed pin `TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop` is gone. In its place, the
+parity and trap tables answer the old wrong answers directly: 6 CLI traps and 6 CLI identity-print rows, plus
+the unit class-runtime, identity-containment and negative-control tables. `runtime_slot_instance_tag.gy` joined
+the conformance corpus, and 11 sources went to the record through `tools/recmerge` (6084 → 6095). The pair
+variable `y = xs[0]` in an ordinary binary membership operand remains under Gap R.146, which owns the one-word
+operand road; this row is the writer's tag, and that half is closed.
 
 <a id="gap-r-210"></a>
 ### Gap R.210 — the membership test and the loop reach one slot down and no further (CLOSED by ADR 0324, found by ADR 0323)

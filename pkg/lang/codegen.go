@@ -1687,7 +1687,17 @@ checkDict:
   br i1 %isDict, label %cont, label %checkSet
 checkSet:
   %isSet = icmp eq i32 %t, 7
-  br i1 %isSet, label %cont, label %num
+  br i1 %isSet, label %cont, label %checkInstance
+checkInstance:
+  ; An instance slot is a heap handle too, but it is not a container and must not be printed as
+  ; its integer address. The class name is in instance slot 0, and the table beside it says what
+  ; the reference puts inside the angle brackets of the identity form (roadmap Gap R.209, ADR 0325).
+  %isInst = icmp eq i32 %t, 10
+  br i1 %isInst, label %inst, label %num
+inst:
+  %ip = call i8* @rt_instance_repr_ptr(i32 %v)
+  call void @rt_out_txt(i8* %ip)
+  ret void
 cont:
   call void @rt_print_container_value(i32 %v, i32 %quote)
   ret void
@@ -4308,6 +4318,12 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	if needHeap {
 		g.globals.WriteString(heapRuntimeIR)
+		// The instance printer and the class-name table ride with the heap block because the heap block's
+		// mixed printer references `@rt_instance_repr_ptr`, and an internal call that no block defines is the
+		// undefined-symbol failure ADR 0173 made the whole rule about. The class names cannot live in the
+		// static block: they are this module's classes, keyed by the dispatch ids its constructors stored
+		// (roadmap Gap R.209, ADR 0325).
+		g.globals.WriteString(g.instanceRuntimeIR())
 	}
 	// The tagged arithmetic door (roadmap L11.1, ADR 0265) is its own block for the same reason the two
 	// above are: a program that never does arithmetic on a slot it cannot see should not carry a
@@ -5833,6 +5849,160 @@ func (g *irGen) strConst(s string) string {
 	// and backslashes are single bytes) plus one trailing null.
 	g.strGlobals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc))
 	return name
+}
+
+// emitLLVMStringGlobal writes one immutable `c"..."\00` byte array. The escaping is strConst's
+// (a class name or an error template is not exempt from a quote ending the literal), extracted so
+// the class table and the traceback templates cannot invent a second, less careful version.
+func emitLLVMStringGlobal(out *strings.Builder, name, s string) string {
+	esc := strings.ReplaceAll(s, "\\", "\\\\")
+	esc = strings.ReplaceAll(esc, "\"", "\\22")
+	esc = strings.ReplaceAll(esc, "\n", "\\0A")
+	esc = strings.ReplaceAll(esc, "\t", "\\09")
+	esc = strings.ReplaceAll(esc, "\r", "\\0D")
+	fmt.Fprintf(out, "%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc)
+	return fmt.Sprintf("getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0)", len(s)+1, len(s)+1, name)
+}
+
+// instanceExpressionClass names the class of an expression the program constructed or bound to an
+// instance, when the module's records can see it. It is deliberately narrow: a name whose binding the
+// assignment walk tracked, or a bare construction. Anything else is a value the ordinary road may still
+// answer, and stealing it here would turn a working int into a print dispatch no one asked for.
+func (g *irGen) instanceExpressionClass(e Expr) string {
+	if g == nil || e == nil {
+		return ""
+	}
+	switch n := e.(type) {
+	case *Name:
+		return g.varClasses[n.Value]
+	case *Call:
+		if nm, ok := n.Fn.(*Name); ok {
+			if _, isClass := g.classInfos[nm.Value]; isClass {
+				return nm.Value
+			}
+		}
+	}
+	return ""
+}
+
+// instanceRuntimeIR is the module's own half of the instance tag: the class-id-to-qualified-name
+// table and the helpers that ask a heap handle for the name its constructor stored in slot 0. The
+// tag says *instance*; only the object says `C`. That distinction is what made a slot appended with
+// `C()` answer every tag-keyed question as `int` (roadmap Gap R.209), and a tag no renderer can name
+// is only half a kind — so this block is emitted whenever the heap block is, because the heap block's
+// mixed printer references its `@rt_instance_repr_ptr` by name.
+func (g *irGen) instanceRuntimeIR() string {
+	var out strings.Builder
+	out.WriteString("; The class-name table and the two instance renderers (roadmap Gap R.209, ADR 0325).\n")
+	out.WriteString("; An instance slot's payload is a heap handle, and the object's class id lives in the\n")
+	out.WriteString("; object's own slot 0 — written by the constructor, read here. A user class therefore names\n")
+	out.WriteString("; itself in a TypeError or a print, instead of the tag's fallback word `object`.\n")
+	out.WriteString("@rt.inst.buf = internal global [192 x i8] zeroinitializer\n")
+
+	defaultName := emitLLVMStringGlobal(&out, "@rt.inst.default", "object")
+	fmt0 := emitLLVMStringGlobal(&out, "@rt.inst.fmt0", "TypeError: argument of type '%s' is not iterable")
+	fmt1 := emitLLVMStringGlobal(&out, "@rt.inst.fmt1", "TypeError: '%s' object is not iterable")
+	fmt2 := emitLLVMStringGlobal(&out, "@rt.inst.fmt2", "TypeError: object of type '%s' has no len()")
+	fmt3 := emitLLVMStringGlobal(&out, "@rt.inst.fmt3", "TypeError: 'in <string>' requires string as left operand, not %s")
+	fmt4 := emitLLVMStringGlobal(&out, "@rt.inst.fmt4", "TypeError: unhashable type: '%s'")
+	fmt5 := emitLLVMStringGlobal(&out, "@rt.inst.fmt5", "<%s object at 0x%x>")
+
+	modName := g.curModName
+	if modName == "" {
+		modName = "__main__"
+	}
+	n := len(g.classOrder)
+	if n > 0 {
+		qualified := make([]string, n)
+		short := make([]string, n)
+		for i, cls := range g.classOrder {
+			if cls == "" {
+				cls = "object"
+			}
+			qualified[i] = emitLLVMStringGlobal(&out, fmt.Sprintf("@rt.inst.qname%d", i), modName+"."+cls)
+			short[i] = emitLLVMStringGlobal(&out, fmt.Sprintf("@rt.inst.sname%d", i), cls)
+		}
+		fmt.Fprintf(&out, "@rt.inst.names = private global [%d x i8*] [", n)
+		for i, np := range qualified {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(&out, "i8* %s", np)
+		}
+		out.WriteString("]\n")
+		fmt.Fprintf(&out, "@rt.inst.short_names = private global [%d x i8*] [", n)
+		for i, np := range short {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(&out, "i8* %s", np)
+		}
+		out.WriteString("]\n")
+	}
+
+	// The reference puts two different words in two different places. A `TypeError` names the class
+	// (`argument of type 'C' is not iterable`); the identity form names the class as the interpreter
+	// saw it (`<__main__.C object at 0x...>`). One helper per spelling, because the two are not free to
+	// drift back into each other.
+	out.WriteString("define internal i8* @rt_class_qual(i32 %id) {\nentry:\n")
+	if n == 0 {
+		// No class in this module can have stored an id, so nothing can reach a table. Keep the
+		// helper total anyway: the printer arm that calls it lives in the static heap block, and a
+		// program that allocates no instance must still verify when a tag of 10 somehow reaches it.
+		fmt.Fprintf(&out, "  ret i8* %s\n}\n\n", defaultName)
+	} else {
+		fmt.Fprintf(&out, "  %%ok = icmp ult i32 %%id, %d\n", n)
+		out.WriteString("  br i1 %ok, label %load, label %fallback\n")
+		out.WriteString("load:\n")
+		fmt.Fprintf(&out, "  %%p = getelementptr [%d x i8*], [%d x i8*]* @rt.inst.names, i32 0, i32 %%id\n", n, n)
+		out.WriteString("  %name = load i8*, i8** %p\n")
+		out.WriteString("  ret i8* %name\n")
+		out.WriteString("fallback:\n")
+		fmt.Fprintf(&out, "  ret i8* %s\n}\n\n", defaultName)
+	}
+	out.WriteString("define internal i8* @rt_class_short(i32 %id) {\nentry:\n")
+	if n == 0 {
+		fmt.Fprintf(&out, "  ret i8* %s\n}\n\n", defaultName)
+	} else {
+		fmt.Fprintf(&out, "  %%ok = icmp ult i32 %%id, %d\n", n)
+		out.WriteString("  br i1 %ok, label %load, label %fallback\n")
+		out.WriteString("load:\n")
+		fmt.Fprintf(&out, "  %%p = getelementptr [%d x i8*], [%d x i8*]* @rt.inst.short_names, i32 0, i32 %%id\n", n, n)
+		out.WriteString("  %name = load i8*, i8** %p\n")
+		out.WriteString("  ret i8* %name\n")
+		out.WriteString("fallback:\n")
+		fmt.Fprintf(&out, "  ret i8* %s\n}\n\n", defaultName)
+	}
+
+	// rt_instance_repr_ptr renders the stable identity form. The reference prints a real address;
+	// this backend prints the object's heap slot in the same position, because an ASLR'd pointer in a
+	// compiled program would make a byte-for-byte corpus run impossible. Only the *class* is the claim.
+	out.WriteString("define internal i8* @rt_instance_repr_ptr(i32 %h) {\nentry:\n")
+	out.WriteString("  %id = call i32 @rt_inst_get(i32 %h, i32 0)\n")
+	out.WriteString("  %name = call i8* @rt_class_qual(i32 %id)\n")
+	out.WriteString("  %buf = getelementptr [192 x i8], [192 x i8]* @rt.inst.buf, i32 0, i32 0\n")
+	fmt.Fprintf(&out, "  call i32 (i8*, i32, i8*, ...) @snprintf(i8* %%buf, i32 192, i8* %s, i8* %%name, i32 %%h)\n", fmt5)
+	out.WriteString("  ret i8* %buf\n}\n\n")
+
+	// rt_instance_msg_ptr writes one of five sentences into the module's one instance message buffer.
+	// It is not a raise: the arm that calls it owns the exception code, the span and the landing pad, and
+	// then stores the buffer over the static text setExn wrote. A helper that raised would re-derive none
+	// of that (ADR 0265, ADR 0271).
+	out.WriteString("define internal i8* @rt_instance_msg_ptr(i32 %h, i32 %which) {\nentry:\n")
+	out.WriteString("  %id = call i32 @rt_inst_get(i32 %h, i32 0)\n")
+	out.WriteString("  %name = call i8* @rt_class_short(i32 %id)\n")
+	out.WriteString("  %buf = getelementptr [192 x i8], [192 x i8]* @rt.inst.buf, i32 0, i32 0\n")
+	for _, which := range []int{4, 3, 2, 1, 0} {
+		fmt.Fprintf(&out, "  %%c%d = icmp eq i32 %%which, %d\n", which, which)
+	}
+	fmt.Fprintf(&out, "  %%f4 = select i1 %%c4, i8* %s, i8* %s\n", fmt4, fmt3)
+	fmt.Fprintf(&out, "  %%f3 = select i1 %%c3, i8* %s, i8* %%f4\n", fmt3)
+	fmt.Fprintf(&out, "  %%f2 = select i1 %%c2, i8* %s, i8* %%f3\n", fmt2)
+	fmt.Fprintf(&out, "  %%f1 = select i1 %%c1, i8* %s, i8* %%f2\n", fmt1)
+	fmt.Fprintf(&out, "  %%f0 = select i1 %%c0, i8* %s, i8* %%f1\n", fmt0)
+	out.WriteString("  call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 192, i8* %f0, i8* %name)\n")
+	out.WriteString("  ret i8* %buf\n}\n\n")
+	return out.String()
 }
 
 // reversedExprs returns a copy of elems with the order reversed.
@@ -9947,6 +10117,24 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// Membership tests need runtime container access, so handle them
 		// separately from the i32 arithmetic/comparison ops.
 		if n.Op == "in" || n.Op == "not in" {
+			// An instance is not iterable, and it is not a number either. The compiler may know the class
+			// from the name or constructor that wrote the value, in which case the raise can name it directly;
+			// when the value only carries a tag, the tag asks the object. Either way, asking membership of
+			// `C()` is a TypeError that says `C`, not one that says `int` or `object` (Gap R.209).
+			if cls := g.instanceExpressionClass(n.R); cls != "" {
+				g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence(cls), n.Span())
+				return "0", nil
+			}
+			if cls := g.instanceExpressionClass(n.L); cls != "" {
+				if _, ok := g.stringVal(n.R); ok {
+					g.raiseTo(b, exnCode("TypeError"), "TypeError", inStrNeedleSentence(cls), n.Span())
+					return "0", nil
+				}
+				if g.printsAsInternedStr(n.R) {
+					g.raiseTo(b, exnCode("TypeError"), "TypeError", inStrNeedleSentence(cls), n.Span())
+					return "0", nil
+				}
+			}
 			// Literal container (list/set/dict literal): unroll `l == elem`
 			// checks against the constant integer elements/keys. This fixes
 			// `x in [1,2,3]` where the container is a compile-time global
@@ -13928,6 +14116,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// literal never described. The callee's tag word says what the objects said, and the one printer
 			// that takes a value *and* its kind renders it, which is the same door ADR 0265 opened for the
 			// expression itself and ADR 0269 for an operand a test chose (roadmap L11.1, ADR 0273).
+			if g.instanceExpressionClass(a) != "" {
+				// `print(C())` and `print(c)` after `c = C()`: the value is a heap handle and always was,
+				// but only the object's slot-0 class id says what to call it. Without this arm the print road
+				// treats it as an int and prints the slot (roadmap Gap R.209).
+				h, herr := g.value(b, a)
+				if herr != nil {
+					return "", herr
+				}
+				g.heapUsed = true
+				b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %d, i32 0)\n", h, int(TagInstance)))
+				continue
+			}
 			if printed, perr := g.pairCallPrint(b, a); perr != nil {
 				return "", perr
 			} else if printed {
@@ -14348,7 +14548,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		case *DictLit:
 			// A dict literal with strings is a heap object (its keys/values are interned),
 			// so measure it through the runtime like any other dict (Gap J.6).
-			if literalNeedsHeap(lit) {
+			if literalNeedsHeap(lit) || g.taggableMixedDict(lit) || g.literalTakesPairSlots(lit) {
 				h, err := g.heapDictFrom(b, lit, "")
 				if err != nil {
 					return "", err
@@ -14366,7 +14566,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32], [%d x i32]}, {i32, [%d x i32], [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, n, n, name))
 			return v, nil
 		case *SetLit:
-			if literalNeedsHeap(lit) {
+			if literalNeedsHeap(lit) || g.taggableMixedSet(lit) || g.literalTakesPairSlots(lit) {
 				h, err := g.heapSetFrom(b, lit, "")
 				if err != nil {
 					return "", err

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,10 +57,17 @@ const (
 	// byte would pin an accident of one CPython build. Dict renderings (an entry
 	// containing ": ") keep their order — that order is insertion order in both.
 	RuleSetOrder = "set-order"
+
+	// RuleInstanceIdentity compares the stable part of the reference's object identity form. CPython's
+	// default `__repr__` is `<module.Class object at 0x…>`; the address is an allocation accident, but
+	// the module-qualified class inside the brackets is exactly the claim Gap R.209 made. This rule keeps
+	// the class and elides only the address — an ordinary hex integer elsewhere in the program is not an
+	// object identity form and is not touched.
+	RuleInstanceIdentity = "instance-identity"
 )
 
 // DefaultOracleRules are applied to every leg before comparison.
-func DefaultOracleRules() []string { return []string{RuleSetOrder} }
+func DefaultOracleRules() []string { return []string{RuleSetOrder, RuleInstanceIdentity} }
 
 // PythonBinary is the record used for the oracle leg. It is overridable
 // (`GUSTY_PYTHON`) because the pinned oracle is a *named* toolchain, recorded in
@@ -301,8 +309,20 @@ func OracleNormalize(s string, rules []string) string {
 	if hasRule(rules, RuleSetOrder) {
 		s = normalizeSetOrder(s)
 	}
+	if hasRule(rules, RuleInstanceIdentity) {
+		s = normalizeInstanceIdentity(s)
+	}
 	return s
 }
+
+// normalizeInstanceIdentity turns only the reference's object identity form into a comparison of class
+// names. The address is a process fact in CPython and a heap-slot fact here; keeping it would make an
+// ordinary `print(C())` permanently incomparable, which is not a reason to omit the class claim entirely.
+func normalizeInstanceIdentity(s string) string {
+	return instanceIdentityRe.ReplaceAllString(s, "<$1 object at 0x…>")
+}
+
+var instanceIdentityRe = regexp.MustCompile(`<([^<>]+) object at 0x[0-9a-fA-F]+>`)
 
 func hasRule(rules []string, want string) bool {
 	for _, r := range rules {

@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -745,5 +746,95 @@ func TestRunTimeBuiltNestedSlotReadAsksTheObjectInTheModule(t *testing.T) {
 	}
 	if !strings.Contains(res.IR, "call i32 @rt_dict_has_tagged(") {
 		t.Errorf("the dict arm lost its KeyError check:\n%s", res.IR)
+	}
+}
+
+// TestAnInstanceSlotNamesItsClassForEveryTagQuestion is the unit half of Gap R.209's closure. The
+// four questions below all dispatch on the same word, so one wrong writer makes all four answer about
+// `int`; one right writer makes all four answer about `C` without any of the doors learning the name.
+// The reference is asked for each source, not paraphrased.
+func TestAnInstanceSlotNamesItsClassForEveryTagQuestion(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"membership", "class C:\n    pass\nxs = []\nxs.append(C())\nprint(1 in xs[0])\n",
+			"TypeError: argument of type 'C' is not iterable"},
+		{"loop", "class C:\n    pass\nxs = []\nxs.append(C())\nfor v in xs[0]:\n    print(v)\n",
+			"TypeError: 'C' object is not iterable"},
+		{"len", "class C:\n    pass\nxs = []\nxs.append(C())\nprint(len(xs[0]))\n",
+			"TypeError: object of type 'C' has no len()"},
+		{"string membership", "class C:\n    pass\nxs = []\nxs.append(\"ab\")\nys = []\nys.append(C())\nprint(ys[0] in xs[0])\n",
+			"TypeError: 'in <string>' requires string as left operand, not C"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("refused what the reference traps on: %v", err)
+			}
+			if ref := pythonTwinLine(t, tc.src); !strings.Contains(ref, tc.want) {
+				t.Fatalf("the reference does not say %q: %q", tc.want, ref)
+			}
+			out := runIRMayTrap(t, res.IR)
+			if !strings.Contains(out, "Traceback (most recent call last):") {
+				t.Errorf("printed no traceback:\n%s", out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("compiled raise %q lacks the object's class %q\nsrc: %s", out, tc.want, tc.src)
+			}
+			if strings.Contains(out, "'int'") {
+				t.Errorf("compiled raise answered the writer's old int tag instead of the object:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestAnInstanceSlotPrintsItsIdentityForm pins the other half of the tag: a handle the printer used to
+// printf as a slot number. The address is intentionally not compared — the reference's is a process
+// address and has no business being byte-identical to ours — but the class inside the brackets is.
+func TestAnInstanceSlotPrintsItsIdentityForm(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"bare construction", "class C:\n    pass\nprint(C())\n", "<__main__.C object at 0x"},
+		{"bound name", "class C:\n    pass\nc = C()\nprint(c)\n", "<__main__.C object at 0x"},
+		{"built slot", "class C:\n    pass\nxs = []\nxs.append(C())\nprint(xs[0])\n", "<__main__.C object at 0x"},
+		{"literal list", "class C:\n    pass\nc = C()\nprint([c])\n", "[<__main__.C object at 0x"},
+		{"dict value", "class C:\n    pass\nc = C()\nprint({\"k\": c})\n", "{'k': <__main__.C object at 0x"},
+		{"set member", "class C:\n    pass\nc = C()\nprint({c})\n", "{<__main__.C object at 0x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			out := runIR(t, res.IR)
+			if !strings.HasPrefix(strings.TrimSpace(out), tc.want) {
+				t.Errorf("compiled printed %q, want the identity form %q\nsrc: %s", out, tc.want, tc.src)
+			}
+			if regexp.MustCompile(`^\d+$`).MatchString(strings.TrimSpace(out)) {
+				t.Errorf("compiled printed the heap handle: %q", out)
+			}
+		})
+	}
+}
+
+// TestTheInstanceTagDoesNotDisturbTheOrdinaryContainerQuestions is a negative control: the same
+// run-time-built doors now know instances, and a container slot must not start paying the class table or
+// the instance raise. The IR assertion is the point; the answers keep the old doors honest.
+func TestTheInstanceTagDoesNotDisturbTheOrdinaryContainerQuestions(t *testing.T) {
+	src := "xs = []\nxs.append([1, 2])\nxs.append(\"abc\")\nprint(1 in xs[0], \"b\" in xs[1])\nfor v in xs[0]:\n    print(v)\n"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	for _, want := range []string{"call i32 @rt_contains_tagged(", "call i32 @rt_str_contains(", "call i32 @rt_iter_len("} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("the ordinary door lost %q:\n%s", want, res.IR)
+		}
+	}
+	// The definitions live in the heap block that any container touches, so their absence is not a claim
+	// this suite can honestly test (ADR 0324's lesson about `@rt_iter_len`). The module-specific class
+	// table is: a program with no class must not grow one, and a built-slot door may still call the total
+	// helper because the object it reads can only speak for itself.
+	for _, notWant := range []string{"@rt.inst.qname", "@rt.inst.sname", "@rt.inst.names", "@rt.inst.short_names"} {
+		if strings.Contains(res.IR, notWant) {
+			t.Errorf("a program without a class carries the class table %q:\n%s", notWant, res.IR)
+		}
 	}
 }

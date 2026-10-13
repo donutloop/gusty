@@ -820,7 +820,7 @@ oracle: match
       | 2
   python      ok       the oracle
       | 2
-  rules: set-order
+  rules: set-order, instance-identity
 
 $ gustyc --oracle 'print([True, 1])'; echo $?
 oracle: match
@@ -828,7 +828,7 @@ oracle: match
       | [True, 1]
   python      ok       the oracle
       | [True, 1]
-  rules: set-order
+  rules: set-order, instance-identity
 0
 ```
 
@@ -851,7 +851,7 @@ oracle: debt (parity yes)
       | True
   note: interpreter stdout differs from CPython
   note: compiled stdout differs from CPython
-  rules: set-order
+  rules: set-order, instance-identity
 6
 ```
 
@@ -959,10 +959,12 @@ drift fails the build **in both directions**: a row that got worse, and a row th
 (`oracle debt is paid: the compiled backend now print CPython's answer — update the registry`). A
 ledger that cannot be falsified is decoration.
 
-Two comparisons would otherwise be meaningless and are normalised by one named rule, on by
+Three comparisons would otherwise be meaningless and are normalised by one named rule, on by
 default and echoed per row: `set-order` treats a bare `{…}` rendering with no `k: v` entry as an
 unordered multiset, because CPython's set iteration order depends on hash seed and insertion
-history. A dict rendering keeps its order — that one is observable in both languages. Any extra
+history; `instance-identity` rewrites only the complete `<class object at 0x…>` identity form on
+both legs, comparing the module-qualified class while eliding an address that is a process fact in
+CPython and a heap-slot fact here. A dict rendering keeps its order — that one is observable in both languages. Any extra
 rule a row declares is applied and listed, including names the compiler does not implement, so a
 stale claim stays visible instead of silently passing.
 
@@ -998,7 +1000,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6084 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 6095 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (337 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |

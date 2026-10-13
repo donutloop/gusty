@@ -483,6 +483,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// such a slot has answered since ADR 0251; what was missing was handing the pair it computes to the
 		// two callers that pick a runtime helper (roadmap Gap R.210 and Gap R.211, ADR 0324).
 		"runtime_slot_haystack_deep",
+		// The tag a *writer* leaves, not the door that reads it. An instance slot used to answer as `int`
+		// to print, len, membership and the loop; the object's own class id now names itself in all four,
+		// static `c in "abc"` / `"abc" in c` raise the reference's text and iterable sentences, and identity
+		// comparisons stay identity. The stable claims are the oracle row; the CLI identity-print rows carry
+		// the address-form claim separately, normalized by `instance-identity` (roadmap Gap R.209, ADR 0325).
+		"runtime_slot_instance_tag",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

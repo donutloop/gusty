@@ -398,3 +398,23 @@ func TestBuildOracleReportKeepsAnOldOracleDiagnosingItself(t *testing.T) {
 		t.Fatalf("notes should name the failure and the pin:\n%s", joined)
 	}
 }
+
+// TestOracleInstanceIdentityRuleComparesClassesNotAddresses pins the second default comparison rule.
+// The address is an allocation fact, but the module-qualified class is the claim Gap R.209 makes; the
+// rule must normalize one and preserve the other, and it must do that only where the reference's identity
+// form actually appears.
+func TestOracleInstanceIdentityRuleComparesClassesNotAddresses(t *testing.T) {
+	rules := DefaultOracleRules()
+	left := "<__main__.C object at 0x7fff1234>\n[<__main__.C object at 0x1>, 'x']\n"
+	right := "<__main__.C object at 0x99>\n[<__main__.C object at 0x22>, 'x']\n"
+	if OracleNormalize(left, rules) != OracleNormalize(right, rules) {
+		t.Errorf("two identities of one class must compare equal:\n%s\n%s",
+			OracleNormalize(left, rules), OracleNormalize(right, rules))
+	}
+	if OracleNormalize("<__main__.C object at 0x1>\n", rules) == OracleNormalize("<__main__.D object at 0x1>\n", rules) {
+		t.Errorf("two different classes must not normalize to the same identity")
+	}
+	if got := OracleNormalize("0xFF\n", rules); got != "0xFF\n" {
+		t.Errorf("an ordinary hex integer is not an object identity: %q", got)
+	}
+}

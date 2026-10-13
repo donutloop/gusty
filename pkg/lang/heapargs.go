@@ -981,13 +981,13 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) {
 				return true
 			}
 		}
@@ -998,12 +998,24 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 			}
 		}
 		for _, v := range n.Vals {
-			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
+			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) || g.instanceSlotExpr(v) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// instanceSlotExpr is the fourth question literalNeedsTags asks of each slot: is this payload an
+// instance's heap handle? A number's payload is its value, a float box's, a container's and an instance's
+// are all only handles, so the container has to stop claiming one kind and let the printer read the tag
+// (roadmap Gap R.209).
+func (g *irGen) instanceSlotExpr(e Expr) bool {
+	if g == nil || e == nil {
+		return false
+	}
+	t, ok := g.elemKindTag(e)
+	return ok && t == int32(TagInstance)
 }
 
 // literalHasPairElement asks the third question of a container literal, beside "does it need the heap" and
@@ -1458,6 +1470,21 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	if g != nil && g.printsAsBool(e) {
 		return int32(TagBool), true
 	}
+	// A user instance is not an integer wearing a tag. The payload has always been the heap handle;
+	// the missing word was the label beside it, which made the printer, `len`, membership and the loop
+	// each report the kind the *slot* carried rather than the object the program stored (roadmap
+	// Gap R.209). The class name itself is the object's — its slot 0 already has the dispatch id, and
+	// the module's class table turns that into `__main__.C` at run time.
+	if nm, isName := e.(*Name); isName && g != nil && g.varClasses[nm.Value] != "" {
+		return int32(TagInstance), true
+	}
+	if c, isCall := e.(*Call); isCall && g != nil {
+		if nm, isName := c.Fn.(*Name); isName {
+			if _, isClass := g.classInfos[nm.Value]; isClass {
+				return int32(TagInstance), true
+			}
+		}
+	}
 	return int32(TagInt), true
 }
 
@@ -1547,7 +1574,7 @@ func (g *irGen) compElemPrintsAsText(c *Comp) bool {
 // ADR 0232's move, extended to the tags a compiled word cannot render at all (roadmap L11.1).
 func slotTagSelfDescribing(t int32) bool {
 	switch t {
-	case int32(TagBool), int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
+	case int32(TagBool), int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet), int32(TagInstance):
 		return true
 	}
 	return false
@@ -2796,7 +2823,17 @@ func (g *irGen) lenOfTaggedSlot(b *strings.Builder, payload, tag string, sp Span
 	badBlock(int32(TagFloat), "TypeError", "object of type 'float' has no len()")
 	badBlock(int32(TagBool), "TypeError", "object of type 'bool' has no len()")
 	badBlock(int32(TagNone), "TypeError", "object of type 'NoneType' has no len()")
-	// What is left is text, a container, or a kind this language has not grown yet (tuple, instance).
+	{
+		arm, chk := g.newLabel("len.inst"), g.newLabel("len.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, int32(TagInstance))
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		g.raiseInstanceTo(b, payload, instanceMsgLen, sp)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// What is left is text, a container, or a kind this language has not grown yet (tuple).
 	// The measurable tags ask their own question; everything else is told it has no length rather
 	// than being measured as if it were a container, which would read a word that means nothing.
 	parts := make([]string, 0, 4)
@@ -3390,6 +3427,36 @@ func (g *irGen) builtSlotPair(b *strings.Builder, ix *Index) (payload, tag strin
 	return g.runtimeSlotPairDeep(b, ix)
 }
 
+// The five sentences an object's own class must name. They are not one template with the word
+// substituted at the call site: CPython keeps membership and iteration apart, names the needle rather
+// than the haystack for `in <string>`, and quotes a key/member kind but not the operand of
+// `requires string`. Each arm chooses one; the runtime formats it from the class id the object carries.
+const (
+	instanceMsgMembership = iota
+	instanceMsgLoop
+	instanceMsgLen
+	instanceMsgStrNeedle
+	instanceMsgUnhashable
+)
+
+// raiseInstanceTo is ADR 0228's contract for a failure whose subject is a heap object the compiler can
+// name only by asking it. The static raise roads store a compile-time string; an instance's class is in
+// the object, so the helper formats the message into the module buffer and the store below replaces the
+// placeholder setExn had to write. The exception code, span and landing pad stay where every other
+// emitted raise puts them — in the arm that knows the source position.
+func (g *irGen) raiseInstanceTo(b *strings.Builder, payload string, kind int, sp Span) {
+	g.heapUsed = true
+	msg := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i8* @rt_instance_msg_ptr(i32 %s, i32 %d)\n", msg, payload, kind)
+	g.setExn(b, exnCode("TypeError"), "TypeError", "instance", sp)
+	fmt.Fprintf(b, "  store i8* %s, i8** @exn_msg\n", msg)
+	if len(g.handlerStack) > 0 {
+		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+	} else {
+		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+	}
+}
+
 // notIterableSentence is the sentence the reference writes for the two questions a value with no
 // iteration is asked: membership names the type (`argument of type 'int' is not iterable`) and a loop
 // names the object (`'int' object is not iterable`). They are not variations of one another, and one
@@ -3482,7 +3549,9 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 	// the container the needle was read out of, not the needle — the answer came back "not present"
 	// for two containers the reference calls equal (roadmap L11.1, Gap R.95's needle half, ADR 0187).
 	needle, needleTag, okNeedle := "", "", false
+	needleIsIndex := false
 	if nix, isIdx := n.L.(*Index); isIdx {
+		needleIsIndex = true
 		needle, needleTag, okNeedle = g.builtSlotPair(b, nix)
 	}
 	if !okNeedle {
@@ -3559,12 +3628,40 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 			tail := g.newLabel("in.tail")
 			fmt.Fprintf(b, "  br label %%%s\n", tail)
 			got = append(got, verdict{hit, tail})
+		} else if needleKind == int32(TagInstance) {
+			// Asking a text whether it contains an instance is not a question answered `False`; the
+			// sentence names the needle's class, which the slot's tag alone cannot say (Gap R.209).
+			g.raiseInstanceTo(b, needle, instanceMsgStrNeedle, sp)
+		} else if needleIsIndex {
+			// A slot-read needle's compile-time kind can only describe the container it came out of, not
+			// the slot at its end. The tag the pair carries is the fact; the compiler's default word is not.
+			instArm, staticArm := g.newLabel("in.instneedle"), g.newLabel("in.staticneedle")
+			c := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, needleTag, int32(TagInstance))
+			g.markI1(c)
+			fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, instArm, staticArm)
+			fmt.Fprintf(b, "%s:\n", instArm)
+			g.raiseInstanceTo(b, needle, instanceMsgStrNeedle, sp)
+			fmt.Fprintf(b, "%s:\n", staticArm)
+			g.raiseTo(b, exnCode("TypeError"), "TypeError", inStrNeedleSentence(g.tagName(needleKind)), sp)
 		} else {
 			// The haystack is text and the needle provably is not: no verdict is available, so this arm
 			// has no edge into the merge — ADR 0205's rule, the one that keeps a phi's predecessors all
 			// blocks that stored a value.
 			g.raiseTo(b, exnCode("TypeError"), "TypeError", inStrNeedleSentence(g.tagName(needleKind)), sp)
 		}
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	// An instance has no iterator, but it is not a number either: the reference stops with the class
+	// the program actually stored, and slot 0 of the heap object is the only place that can say it.
+	{
+		arm, chk := g.newLabel("in.bad"), g.newLabel("in.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, int32(TagInstance))
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		g.raiseInstanceTo(b, hay, instanceMsgMembership, sp)
 		fmt.Fprintf(b, "%s:\n", chk)
 	}
 	// A number, a verdict and None have no elements, keys, members or characters. The reference stops
@@ -3588,10 +3685,9 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence(t.name), sp)
 		fmt.Fprintf(b, "%s:\n", chk)
 	}
-	// What is left is a kind this language has no membership for — a tuple, a class, an instance, a
-	// function. It is told it does not contain things rather than walked as a container it is not,
-	// which is the word the reference itself uses for an `object`; naming a user class the class is
-	// what the tagged word would buy, and it is a row of its own.
+	// What is left is a kind this language has no membership for — a tuple, a class or a function.
+	// It is told it does not contain things rather than walked as a container it is not, which is the
+	// word the reference itself uses for an `object`.
 	g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence("object"), sp)
 
 	merge := g.newLabel("in.merge")
@@ -3641,6 +3737,16 @@ func (g *irGen) iterLenUnderTag(b *strings.Builder, hay, tag string, sp Span) st
 		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
 		fmt.Fprintf(b, "%s:\n", arm)
 		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableLoopSentence(t.name), sp)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	{
+		arm, chk := g.newLabel("iter.bad"), g.newLabel("iter.chk")
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, int32(TagInstance))
+		g.markI1(c)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
+		fmt.Fprintf(b, "%s:\n", arm)
+		g.raiseInstanceTo(b, hay, instanceMsgLoop, sp)
 		fmt.Fprintf(b, "%s:\n", chk)
 	}
 	// The four kinds a loop can step over; anything else is the same sentence again, wearing the word

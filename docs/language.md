@@ -2810,6 +2810,46 @@ the reference itself makes: `{1} in {1, 2}` is answered `False`, not raised, bec
 the frozenset it converts to. What still refuses is a needle whose kind no road can prove — a call that returns a
 number on one path and a text on another (`Gap R.212`), which says so in words rather than guessing.
 
+**…and an instance slot names its own class** (ADR 0325, paying `Gap R.209`). A slot written by
+`xs.append(C())`, a literal `[c]`, `{c}`, `"k": c`, or any other container position whose element is a user-class
+instance carries `TagInstance`, not `TagInt`. The payload is still the heap handle; the object's own slot 0 carries
+the class id, and the module's class table reads it when a renderer or raise has to name the class. Printing an
+instance therefore gives the default identity form rather than a number, and a tag-keyed question raises the
+reference's sentence with the class the program stored:
+
+```gy
+class C:
+    pass
+
+xs = []
+xs.append(C())
+print(xs[0])                 # <__main__.C object at 0x…> — the address is the heap slot, not a process pointer
+try:
+    print(len(xs[0]))        # TypeError: object of type 'C' has no len()
+except TypeError:
+    pass
+try:
+    print(1 in xs[0])        # TypeError: argument of type 'C' is not iterable
+except TypeError:
+    pass
+try:
+    for v in xs[0]:
+        print(v)
+except TypeError:
+    pass
+
+ys = []
+ys.append(C())
+xs2 = []
+xs2.append("ab")
+print(ys[0] in xs2[0])       # TypeError: 'in <string>' requires string as left operand, not C
+```
+
+The same rule reaches the ordinary binary road: `c in "abc"` is the `'in <string>'` raise, while `"abc" in c` is
+the membership raise, so the sentence names the side CPython names — the needle for a text haystack, the haystack
+for iterability. Identity equality remains identity: two separate `C()` objects compare `False`, and a slot
+compares equal to itself.
+
 **…and an ordering of such a slot asks the object the same question** (ADR 0252). `<`, `<=`, `>`, `>=`
 have three answers — two numbers compared as numbers, two texts compared by their characters, and the
 `TypeError` CPython raises for a pair that does not order at all — and for a container the program built

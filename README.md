@@ -228,6 +228,13 @@ chain four slots long ask the object at the *end* of the chain what it is, becau
 parameter; and a needle that is itself a slot read is read as a `(payload, tag)` pair rather than from the notebook,
 so two equal dicts in two different containers compare `True`, while a container needle into a dict or set slot
 raises `TypeError: unhashable type: 'list'` rather than quietly answering “not present” (`runtime_slot_haystack_deep.gy`).
+ADR 0325 then fixed the word the *writer* had been leaving beside an instance: `xs.append(C())` used to tag the
+slot `int`, so `print(xs[0])` printed the heap handle and `len`, membership and the loop named `'int'` for an object
+the program never stored. The slot now carries `TagInstance`; the constructor's dispatch id in object slot 0 selects
+the module's class table, `print(xs[0])` answers the identity form `<__main__.C object at 0x…>` (with only the class
+compared byte-for-byte by the CLI oracle), and the raises name `C` — including the two ordinary binary shapes
+`c in "abc"` and `"abc" in c`, which now raise the reference's text and iterable sentences instead of inventing
+`True` or `False` (`runtime_slot_instance_tag.gy`).
 An **ordering** of
 those slots asks the object the same
 question (ADR 0252, closing Gap R.93): `xs = []` + `xs.append(i)` in a loop + `print(1 if xs[0] > "a" else 0)`

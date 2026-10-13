@@ -16,5 +16,6 @@ import (
 // with the ledger file sitting there looking authoritative. GoldenDriftMain itself is in golden_main.go
 // so the integration binary can call the same adjudicator against its own ledger.
 func TestMain(m *testing.M) {
+	WarmGoldenRecord()
 	os.Exit(GoldenDriftMain(m, GoldenDriftFile))
 }

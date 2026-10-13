@@ -1,0 +1,39 @@
+class C:
+    pass
+
+class D:
+    pass
+
+c = C()
+d = D()
+xs = []
+xs.append(c)
+xs.append(d)
+print(xs[0] == xs[0])
+print(xs[0] == xs[1])
+print(len({c}))
+print(len({d}))
+d1 = {}
+d1[c] = 1
+print(d1[c])
+try:
+    print(len(xs[0]))
+except TypeError:
+    print("len named the class, not the handle")
+try:
+    print(1 in xs[0])
+except TypeError:
+    print("membership named the class, not int")
+try:
+    for v in xs[0]:
+        print(v)
+except TypeError:
+    print("iteration named the class, not int")
+try:
+    print(c in "abc")
+except TypeError:
+    print("text asked for a text needle")
+try:
+    print("abc" in c)
+except TypeError:
+    print("instance is not iterable")

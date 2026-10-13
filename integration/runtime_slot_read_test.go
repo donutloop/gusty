@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -488,53 +489,132 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 	}
 }
 
-// TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop is filed, measured and not fixed.
-// Asking a slot for its contents when the slot holds an instance of a user class reaches the arm for a
-// value with nothing to walk, and the arm reports the kind the *slot* says — `int` — where the reference
-// reports the class. The arm is right and the tag is wrong: `xs.append(C())` stores the instance's heap
-// handle beside a tag of TagInt, so every question the tag answers in this program answers about a kind
-// the program never put there. It is the same missing word Gap R.112 found for a bool in a slot, three
-// levels up from where anyone had looked for it.
-//
-// The row is pinned rather than fixed here because the fix is the tag the *writer* leaves, not the door
-// that reads it, and a door that invented the class name would be guessing at an object it cannot see.
-func TestASlotHoldingAnInstanceNamesTheWrongKindForMembershipAndLoop(t *testing.T) {
-	for _, tc := range []struct{ name, src, compiled, reference string }{
+// TestASlotHoldingAnInstanceNamesItsOwnClass is the row the ADR 0323 family filed as Gap R.209, closed.
+// The tag the *writer* leaves beside a heap handle used to say `int`, which made every tag-keyed question
+// about the slot answer about a kind the program never stored. The object's own slot 0 already carries the
+// class id; the module's class table is what turns it back into `C` (in the TypeError) and `__main__.C`
+// (in the identity form). This is the bool-in-a-slot precedent, ADR 0259, applied one object further out.
+func TestASlotHoldingAnInstanceNamesItsOwnClass(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
 		{
 			"membership of an instance slot",
 			"class C:\n    pass\nxs = []\nxs.append(C())\nprint(1 in xs[0])\n",
-			"TypeError: argument of type 'int' is not iterable",
 			"TypeError: argument of type 'C' is not iterable",
 		},
 		{
 			"a loop over an instance slot",
 			"class C:\n    pass\nxs = []\nxs.append(C())\nfor v in xs[0]:\n    print(v)\n",
-			"TypeError: 'int' object is not iterable",
 			"TypeError: 'C' object is not iterable",
+		},
+		{
+			"len of an instance slot",
+			"class C:\n    pass\nxs = []\nxs.append(C())\nprint(len(xs[0]))\n",
+			"TypeError: object of type 'C' has no len()",
+		},
+		{
+			"a text slot asked whether it contains an instance",
+			"class C:\n    pass\nxs = []\nxs.append(\"ab\")\nys = []\nys.append(C())\nprint(ys[0] in xs[0])\n",
+			"TypeError: 'in <string>' requires string as left operand, not C",
+		},
+		{
+			"a text asked whether it contains a bare instance",
+			"class C:\n    pass\nc = C()\nprint(c in \"abc\")\n",
+			"TypeError: 'in <string>' requires string as left operand, not C",
+		},
+		{
+			"a bare instance asked whether it contains a text",
+			"class C:\n    pass\nc = C()\nprint(\"abc\" in c)\n",
+			"TypeError: argument of type 'C' is not iterable",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "rt_inst.gy", tc.src)
 			want, pyCode := oracleTrap(t, path)
-			if !strings.Contains(want, tc.reference) {
-				t.Fatalf("the reference does not say %q, it says %q", tc.reference, want)
+			if !strings.Contains(want, tc.want) {
+				t.Fatalf("the reference does not say %q, it says %q", tc.want, want)
 			}
 			if pyCode == 0 {
 				t.Fatalf("the reference exited 0 on a program meant to trap")
 			}
-			combined := cliRun(t, "--aot", path)
-			_, code := cliRunCode(t, "--aot", path)
-			if code == 2 {
-				t.Errorf("--aot exited 2 (a compiler bug, ADR 0166):\n%s", combined)
+			for _, engine := range cliEngines {
+				combined := cliRun(t, engine, path)
+				_, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Errorf("%s exited 2 (a compiler bug, ADR 0166):\n%s", engine, combined)
+				}
+				if code != 3 {
+					t.Errorf("%s exited %d where the reference's trap class 3 is the answer: %s", engine, code, combined)
+				}
+				if !strings.Contains(combined, tc.want) {
+					t.Errorf("%s raised %q, want the class's own name %q", engine, combined, tc.want)
+				}
+				if strings.Contains(combined, "'int'") {
+					t.Errorf("%s reported the writer's old tag instead of the object: %s", engine, combined)
+				}
+				if strings.Contains(combined, "codegen:") {
+					t.Errorf("%s refused what the reference traps on:\n%s", engine, combined)
+				}
 			}
-			if code != 3 {
-				t.Errorf("--aot exited %d where the reference's trap class 3 is the answer: %s", code, combined)
+		})
+	}
+}
+
+// TestAnInstanceSlotPrintsItselfRatherThanItsHandle compares the stable half of the reference's identity
+// form. A CPython address is not reproducible and has no business in a byte-for-byte matrix; the class the
+// address is attached to is the claim under test. The same handle printed by the old TagInt came out as the
+// slot number, so the two assertions below are not satisfied by the same output.
+func TestAnInstanceSlotPrintsItselfRatherThanItsHandle(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"a bare construction",
+			"class C:\n    pass\nprint(C())\n",
+			"<__main__.C object at 0x",
+		},
+		{
+			"an instance bound to a name",
+			"class C:\n    pass\nc = C()\nprint(c)\n",
+			"<__main__.C object at 0x",
+		},
+		{
+			"a slot of a container the program built",
+			"class C:\n    pass\nxs = []\nxs.append(C())\nprint(xs[0])\n",
+			"<__main__.C object at 0x",
+		},
+		{
+			"a literal list of instances",
+			"class C:\n    pass\nc = C()\nprint([c])\n",
+			"[<__main__.C object at 0x",
+		},
+		{
+			"a dict value",
+			"class C:\n    pass\nc = C()\nprint({\"k\": c})\n",
+			"{'k': <__main__.C object at 0x",
+		},
+		{
+			"a set member",
+			"class C:\n    pass\nc = C()\nprint({c})\n",
+			"{<__main__.C object at 0x",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "rt_inst_print.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok {
+				if !strings.HasPrefix(strings.TrimSpace(py), tc.want) {
+					t.Fatalf("CPython does not open its identity form with %q: %q", tc.want, py)
+				}
 			}
-			if !strings.Contains(combined, tc.compiled) {
-				t.Errorf("--aot raised %q, want the tag's own answer %q (the class name is the filed half)", combined, tc.compiled)
-			}
-			if strings.Contains(combined, "codegen:") {
-				t.Errorf("--aot refused what the reference traps on:\n%s", combined)
+			for _, engine := range cliEngines {
+				out, code := cliRunCode(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, out)
+				}
+				if !strings.HasPrefix(strings.TrimSpace(out), tc.want) {
+					t.Errorf("%s printed %q, want the identity form %q", engine, out, tc.want)
+				}
+				// The claim that was broken in particular: the handle must not appear on its own.
+				if regexp.MustCompile(`^\d+$`).MatchString(strings.TrimSpace(out)) {
+					t.Errorf("%s printed the heap handle, not the object: %q", engine, out)
+				}
 			}
 		})
 	}

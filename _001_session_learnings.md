@@ -9455,3 +9455,43 @@ raising inside a helper where the span and the landing-pad bookkeeping would be 
   316/`0324` — and one new kind: the roadmap's row-count `129b` has to be unique in the queue table or
   `TestTheQueueCounterSeesWhatASplitTableHides` fails. `git push` still fails (`agent refused operation`) and is
   retried every cycle rather than treated as done.
+
+## The tag a writer leaves is the kind every reader must obey (L11.1, Gap R.209, ADR 0325)
+
+An instance appended into a container printed its heap slot, and `len`, membership and the loop all said `int`.
+There were not four bugs. The slot's tag said `int`, and ADR 0187 has made every reader obey that word. The fix was
+therefore one writer-side decision in `elemKindTag` — a known instance gets `TagInstance` — followed by the renderer
+and raise arms that make the tag meaningful. Patching the printer or membership arm alone would have left three
+doors reporting a kind the program never stored. This is ADR 0259's bool-slot precedent one object further out, and
+it is the clearest evidence so far that the tag table, not each call site, is the language's source of truth.
+
+### The tag says "object"; only the object says which class
+
+`TagInstance` is not enough to print `<__main__.C object at 0x…>` or `argument of type 'C' is not iterable`. The
+constructor already stores the dispatch id in object slot 0, so the module emits a class table beside its heap block
+and reads that word when a message or identity form needs the name. Qualification differs by place: the TypeError
+names `C`, while identity names `__main__.C`. One table for both would eventually make one of them wrong, so there
+are `@rt_class_short` and `@rt_class_qual`. The runtime formats the sentence; it does not raise it, because span,
+exception code and landing-pad destination belong to the compiler arm, not to a helper reached with two `i32`s.
+
+### A conformance rule may remove an accident, never answer the question
+
+CPython's address is a process fact, and the compiled backend's is a heap-slot fact. The oracle gained
+`instance-identity`, which rewrites only the complete `<… object at 0x…>` form and leaves the class inside the
+brackets as the assertion. A general `0x…` normalizer would have been a machine for turning unrelated wrong output
+into a match. The CLI test also rejects output that is merely a number, which is the old bug and is not removable by
+normalization.
+
+### The static binary road was inventing two answers
+
+`c in "abc"` answered `True`, and `"abc" in c` answered `False`, both at exit 0, because the text-membership and
+generic-container roads never consulted the instance subject. The two reference raises name opposite sides of the
+operation: a text haystack names the needle's class, and a non-iterable haystack names itself. The ordinary binary
+arms now consult the same kind question before either road can turn a TypeError into a verdict.
+
+### One tag can expose a forgotten gate
+
+`print({c})` already used the tagged heap builder, but `len({c})` still fell into the static set-literal path because
+its gate only asked `literalNeedsHeap`. After the instance tag arrived, the same object could print and refuse to be
+measured. The lesson is to make the literal question explicit at every consumer: does this container need the heap,
+can its elements label themselves, or did the pair road bind one? A gate copied for one builder is not the rule.

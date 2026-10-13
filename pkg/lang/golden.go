@@ -149,6 +149,20 @@ func goldenLookup(t errorReporter, src string) goldenEntry {
 	return e
 }
 
+// WarmGoldenRecord loads the record while the process is still in its package directory.
+// Some cases chdir to a temporary import root before their first golden question; the record is
+// otherwise resolved lazily, so the first case in a shard decides the path for every later case in
+// that process. Warming in TestMain makes the lookup independent of test order and shard partition.
+type goldenWarmReporter struct{}
+
+func (goldenWarmReporter) Fatalf(format string, args ...any) {
+	panic(fmt.Sprintf(format, args...))
+}
+
+func WarmGoldenRecord() {
+	loadGolden(goldenWarmReporter{})
+}
+
 // --- the divergence ledger -------------------------------------------------------------------
 //
 // The record and the compiled backend does not agree about every source yet. Where they disagree —

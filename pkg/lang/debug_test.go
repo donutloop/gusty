@@ -404,6 +404,10 @@ func runtimeIRBlocks() []string {
 	return []string{
 		raiseRuntimeIR, floatRuntimeIR, heapRuntimeIR,
 		rootRuntimeIR, rootGlobalsIR,
+		// The instance renderers are emitted per module, but they are runtime code and their names
+		// never come from the program. Asking the generator with no classes is what keeps this list
+		// derived from the blocks themselves rather than a hand-written exemption (roadmap Gap R.209).
+		(&irGen{}).instanceRuntimeIR(),
 	}
 }
 
