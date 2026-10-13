@@ -92,8 +92,8 @@ it, which is the difference that matters.
 | shape | CPython | this backend today | row |
 | --- | --- | --- | --- |
 | `xs = [1, 2]` / `print(xs["a":"b"])` | `TypeError: slice indices must be integers or None or have an __index__ method` | answers `[1]` at exit 0 | **Gap R.233** — the bounds are read as words whatever they hold |
-| `print({1, 2}[0:1])`, `print({1: 2}[0:1])` | `TypeError: 'set' object is not subscriptable` / `TypeError: unhashable type: 'slice'` | refuses (was **exit 2**) | **Gap R.234** — the slice road never asked what kind the base is |
-| `s = {1, 2}` / `print(s[0:1])`, `d = {1: 2}` / `print(d[0:1])` | the same two `TypeError`s | refuses (was `[1]` at exit 0) | **Gap R.234** |
+| `print({1, 2}[0:1])`, `print({1: 2}[0:1])` | `TypeError: 'set' object is not subscriptable` / `KeyError: slice(0, 1, None)` (a dict hashes the slice and reports the miss by name) | refuses (was **exit 2**) | **Gap R.234** — the slice road never asked what kind the base is |
+| `s = {1, 2}` / `print(s[0:1])`, `d = {1: 2}` / `print(d[0:1])` | the same two raises | refuses (was `[1]` at exit 0) | **Gap R.234** |
 | `xs = [1.5, "a", [7]]` / `print(xs[0:2][0])` | `1.5` | refuses: `index requires an inline list/dict/set literal` | **Gap R.235** — the copy has slots and no road reads them direct |
 | `print(xs[0:2][9])` | `IndexError: list index out of range` | refuses (same sentence) | **Gap R.235** |
 | `print(m()["k"][0:1])`, `d = [[1, 2]]` / `print(d[0][0:1])` | `[1.5]`, `[1]` | refuses: the gate, naming the missing record | **Gap R.235** |
@@ -136,8 +136,10 @@ fails the test and moves into the answered tables; it does not disappear.
 - **Fix the bounds (Gap R.233) in this commit.** The bounds question — *is this bound an integer?* — is a
   different predicate from *does this slot describe itself*, it has its own wrong answer at exit 0, and bundling
   it would hide a fresh defect inside a closed row.
-- **Give the slice road a set/dict arm** (so `{1,2}[0:1]` answers something): the reference raises for both, so
-  the answer those shapes owe is a `TypeError`, not a list. Filed as R.234 with the raise named.
+- **Give the slice road a set/dict arm** (so `{1,2}[0:1]` answers something): the reference raises for both —
+  `TypeError: 'set' object is not subscriptable` for a set, `KeyError: slice(0, 1, None)` for a dict, which
+  hashes the slice and reports the miss by name — so what those shapes owe is a raise, not a list. Filed as
+  R.234 with both sentences named.
 
 ## Verification
 

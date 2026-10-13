@@ -306,8 +306,8 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		{
 			"a slice of a dict literal",
 			"print({1: 2}[0:1])",
-			"", "TypeError: unhashable type: 'slice'",
-			"roadmap Gap R.234 (the same missing question, asked of a dict)",
+			"", "KeyError: slice(0, 1, None)",
+			"roadmap Gap R.234 (the same missing question, asked of a dict — and a dict's answer is a miss, not a type complaint: a slice of integers is hashable, so the reference hashes it and raises the KeyError that names it)",
 		},
 		{
 			"a slice of a set kept in a name",
@@ -318,8 +318,8 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		{
 			"a slice of a dict kept in a name",
 			"d = {1: 2}\nprint(d[0:1])",
-			"", "TypeError: unhashable type: 'slice'",
-			"roadmap Gap R.234 (the dict half of the same road, answered `[1]` at exit 0 before the gate)",
+			"", "KeyError: slice(0, 1, None)",
+			"roadmap Gap R.234 (the dict half of the same road, answered `[1]` at exit 0 before the gate; the reference's miss is the same one it would raise for any key the dict does not hold)",
 		},
 		{
 			"a slice whose bounds are text",

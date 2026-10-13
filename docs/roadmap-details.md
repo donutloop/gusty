@@ -10551,25 +10551,35 @@ wrong-answer class one step away.
 print({1, 2}[0:1])    # TypeError: 'set' object is not subscriptable
                       # this backend before ADR 0335: exit 2 — llc rejected the module
                       # this backend today:           exit 1, a refusal that names the missing record
-print({1: 2}[0:1])    # TypeError: unhashable type: 'slice'   — the same two lines
+print({1: 2}[0:1])    # KeyError: slice(0, 1, None)
+                      # this backend before ADR 0335: exit 2 — llc rejected the module
+                      # this backend today:           exit 1, a refusal that names the missing record
 s = {1, 2}
 print(s[0:1])         # TypeError: 'set' object is not subscriptable
                       # before ADR 0335: [1]  (exit 0);  today: exit 1, a refusal
+d = {1: 2}
+print(d[0:1])         # KeyError: slice(0, 1, None)
+                      # before ADR 0335: [1]  (exit 0);  today: exit 1, a refusal
 ```
 
-Four shapes, one missing question. A set has no position to slice from and a dict cannot be keyed by a slice
-object, but the slice road did not ask: it lowered the base however it could lower it and called `rt_slice`
-anyway. For a **literal** base that produced `call i32 @rt_slice(i32 @.set1, …)` — a compile-time global in a
-position whose type is an i32 register — and `llc` rejected the compiler's own module: **exit 2**, which ADR
-0166 counts as our bug whatever the program meant. For a base in a **name** the words copied happily into a new
-list and the program printed `[1]`: a list, of a set, that CPython refuses.
+Four shapes, one missing question. A set has no position to slice from, and a dict — which hashes its keys —
+treats a slice the way it treats any other key: `slice(0, 1, None)` is hashable, so the reference stores nothing
+under it and raises the `KeyError` that names it. The slice road asked neither: it lowered the base however it
+could lower it and called `rt_slice` anyway. For a **literal** base that produced
+`call i32 @rt_slice(i32 @.set1, …)` — a compile-time global in a position whose type is an i32 register — and
+`llc` rejected the compiler's own module: **exit 2**, which ADR 0166 counts as our bug whatever the program
+meant. For a base in a **name** the words copied happily into a new list and the program printed `[1]`: a list,
+of a set, that CPython refuses.
 
 ADR 0335's gate (`sliceBaseIsDescribed`) stops all four with a sentence that names what is missing — *a literal,
 a variable a binding recorded as a list, a call that hands back a list, or a slice of one* — which is the
 honest side of the line: the toolchain no longer fabricates a list and no longer hands `llc` a module it
-rejects. What those shapes still owe is the reference's behaviour, not a decline: the reference **raises**
-`TypeError` naming the type, and the row's job is to raise it too — the same move Gap R.222 made for a
-subscript asked with a key of the wrong kind. Four rows of
+rejects. What those shapes still owe is the reference's behaviour, not a decline, and it is two classes rather
+than one: the **set** shapes raise `TypeError: 'set' object is not subscriptable` (the same sentence Gap R.217
+owns for a set subscript), and the **dict** shapes raise `KeyError: slice(0, 1, None)` — the dict hashed the
+slice, found no entry, and says so with the key's repr, exactly as it would for any other absent key. The row's
+job is to raise both, the same move Gap R.222 made for a subscript asked with a key of the wrong kind and Gap
+R.217 made for a key a dict cannot hash. Four rows of
 `integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` are pinned as exit-1
 refusals today and move to the raise tables when this row lands; none of them may arrive at exit 2 on the way.
 

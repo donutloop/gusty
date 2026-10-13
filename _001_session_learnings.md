@@ -10056,3 +10056,23 @@ only the base's single-kind notebook, and the binding road recorded nothing at a
   matrix rewrites itself the first time a matrix test asks for it, so the snapshot's counts (now 199 programs,
   188 rows → 150 parity + 38 divergences, 135 oracle `match`, 6455 records, 327 ADRs highest `0335`, 116 of 151
   rows owed) are read off the artifact after the run rather than guessed before it.
+
+### A correction on the same row: an oracle column is a citation, and citations get verified
+
+`Gap R.234` as first filed said the reference answers `print({1: 2}[0:1])` with
+`TypeError: unhashable type: 'slice'`. It does not: it answers **`KeyError: slice(0, 1, None)`** — a slice whose
+bounds are integers is hashable, so the dict hashes it, finds no entry, and names the key it missed, exactly as
+it would for any other absent key. Only the **set** shapes raise the `TypeError` (`'set' object is not
+subscriptable`). The sentence came from a probe file written from memory rather than from `python3` on the row
+being quoted, and it had propagated into five places by the time the measurement was made: the roadmap row's
+item cell and its fix cell, the details section's code block and its prose, ADR 0335's filed table, its
+"alternatives rejected" bullet, and the two `oracle` columns in the pkg/lang filed rows.
+
+- **An oracle column is the reference's words, not the row's paraphrase.** Same rule as an expectation file: run
+  the row, paste the line. The `oracle` column of a filed row is the only place a reader (or an agent) will look
+  for what the shape owes, and it is not asserted by any test — the filed rows assert *this* backend's behaviour
+  and quote the reference for the reader.
+- **A single sentence can hide a class split.** "The reference raises `TypeError` naming the type" covered four
+  shapes and was true of two of them; the row's fix cell told the next reader to raise one sentence where two are
+  owed, one of them from a different door (the hashing door's `KeyError`, Gap R.217's neighbourhood). The
+  corrected row now names both, and the raise table that eventually lands must carry four rows, not two.

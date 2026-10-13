@@ -1629,8 +1629,9 @@ What the door still declines, and why, is filed rather than glossed:
   sentence naming the missing record instead of copying whatever word the base lowered to (**Gap R.235**; the
   comprehension shape reached `llc` and had the module rejected before ADR 0335 — exit 2);
 - **a base that is not a list at all** — `print({1, 2}[0:1])` and `print(d[0:1])` over a dict refuse here, where
-  the reference raises `TypeError` naming the type (**Gap R.234**; both were exit 2 or a fabricated `[1]` before
-  the gate);
+  the reference raises `TypeError: 'set' object is not subscriptable` for the set and `KeyError: slice(0, 1, None)`
+  for the dict (a slice of integers is hashable, so the dict hashes it and names the key it missed):
+  **Gap R.234**; both were exit 2 or a fabricated `[1]` before the gate);
 - **bounds that are not numbers** — `print(xs["a":"b"])` answers `[1]` at exit 0 where the reference raises
   `TypeError: slice indices must be integers or None or have an __index__ method`: **Gap R.233**, and the one
   entry above that is a wrong answer rather than a refusal.
