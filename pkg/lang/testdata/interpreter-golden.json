@@ -1,5 +1,252 @@
 {
  "entries": {
+"# A `for` loop asks its iterable what it is (Gap R.246, ADR 0339).\n# Every answer here is the reference's; the compiled backend is judged against it.\n\ndef b():\n    return [3, 1, 2]\n\nxs = [3, 1, 2]\nys = [1, 2, 3]\nwords = [\"b\", \"a\"]\nempty = []\n\n# the containers the compiler can write down, which it used to step over as a repeat count\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=True):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=False):\n    print(v)\nfor v in sorted([]):\n    print(v)\nfor v in reversed([]):\n    print(v)\nfor v in reversed(\"abc\"):\n    print(v)\nfor v in sorted([2, 2, 1]):\n    print(v)\n\n# the operations nest, and apply in the order the reference applies them\nfor v in sorted(reversed([3, 1, 2])):\n    print(v)\nfor v in reversed(sorted([1, 3, 2])):\n    print(v)\n\n# the containers the runtime measures, which the container pair now hands the loop\nfor v in sorted(xs):\n    print(v)\nfor v in reversed(ys):\n    print(v)\nfor v in sorted(words):\n    print(v)\nfor v in reversed(words):\n    print(v)\nfor v in sorted(b()):\n    print(v)\nfor v in reversed(b()):\n    print(v)\nfor v in sorted([3, 1, 2][0:2]):\n    print(v)\nfor v in sorted(empty):\n    print(v)\n\n# one ordering, written once: what the program prints and what it steps over are the same sequence\nprint(sorted([3, 1, 2]), sorted(xs), sorted([3, 1, 2], reverse=True), sorted(xs, reverse=True))\n\n# the loop's own semantics survive the fold\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        break\n    print(v)\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        continue\n    print(v)\nfor v in sorted([3, 1]):\n    print(v)\nelse:\n    print(\"done\")\nfor v in reversed([7, 8]):\n    print(v * 10)\n\n# the roads the row is not allowed to disturb\nfor v in [1, 2, 3]:\n    print(v)\nfor c in \"abc\":\n    print(c)\nfor i in range(3):\n    print(i)\nfor v in xs:\n    print(v)\nfor v in [1, 2, 3][0:2]:\n    print(v)\nfor k in {1: 2}:\n    print(k)\nfor v in {1, 2}:\n    print(v)\nfor v in b():\n    print(v)\n": {
+    "stdout": "1\n2\n3\n3\n2\n1\n3\n2\n1\n1\n2\n3\nc\nb\na\n1\n2\n2\n1\n2\n3\n3\n2\n1\n1\n2\n3\n3\n2\n1\na\nb\na\nb\n1\n2\n3\n2\n1\n3\n1\n3\n[1, 2, 3] [1, 2, 3] [3, 2, 1] [3, 2, 1]\n1\n1\n3\n1\n3\ndone\n80\n70\n1\n2\n3\na\nb\nc\n0\n1\n2\n3\n1\n2\n1\n2\n1\n1\n2\n3\n1\n2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nfor v in b():\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nfor v in reversed(b()):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2, 3]\nfor v in sorted(b()):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [3, 1, 2]\nfor v in sorted(b()):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"def gen():\n    yield 1\n    yield 2\nfor v in gen():\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def gen():\n    yield 1\n    yield 2\nxs = gen()\nfor v in xs:\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def sorted(xs):\n    return [9]\nfor v in sorted([1]):\n    print(v)": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"for c in \"abc\":\n    print(c)": {
+    "stdout": "a\nb\nc\n",
+    "hasStdout": true
+   },
+
+"for c in \"abc\":\n    print(c)\nfor i in range(2):\n    print(i)": {
+    "stdout": "a\nb\nc\n0\n1\n",
+    "hasStdout": true
+   },
+
+"for c in reversed(\"café\"):\n    print(c)": {
+    "stdout": "é\nf\na\nc\n",
+    "hasStdout": true
+   },
+
+"for i in range(1, 7, 2):\n    print(i)": {
+    "stdout": "1\n3\n5\n",
+    "hasStdout": true
+   },
+
+"for i in range(3):\n    print(i)": {
+    "stdout": "0\n1\n2\n",
+    "hasStdout": true
+   },
+
+"for k in {\"a\": 1}:\n    print(k)\nfor v in [7, 8]:\n    print(v)": {
+    "stdout": "a\n7\n8\n",
+    "hasStdout": true
+   },
+
+"for k in {1: 2}:\n    print(k)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"for v in [1, \"a\", 2.5]:\n    print(v)": {
+    "stdout": "1\na\n2.5\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2, 3]:\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2, 3][0:2]:\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"for v in []:\n    print(v)": {
+    "hasStdout": true
+   },
+
+"for v in reversed(\"abc\"):\n    print(v)": {
+    "stdout": "c\nb\na\n",
+    "hasStdout": true
+   },
+
+"for v in reversed([1, 2, 3]):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"for v in reversed([7, 8]):\n    print(v * 10)": {
+    "stdout": "80\n70\n",
+    "hasStdout": true
+   },
+
+"for v in reversed(sorted([1, 3, 2])):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([\"b\", \"a\"]):\n    print(v)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([1, 1, 1]):\n    print(v)": {
+    "stdout": "1\n1\n1\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([2, 2, 1]):\n    print(v)": {
+    "stdout": "1\n2\n2\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2]):\n    if v == 2:\n        break\n    print(v)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2]):\n    if v == 2:\n        continue\n    print(v)": {
+    "stdout": "1\n3\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2]):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2], reverse=False):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2], reverse=True):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1, 2][0:2]):\n    print(v)": {
+    "stdout": "1\n3\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([3, 1]):\n    print(v)\nelse:\n    print(\"done\")": {
+    "stdout": "1\n3\ndone\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([]):\n    print(v)": {
+    "hasStdout": true
+   },
+
+"for v in sorted(reversed([3, 1, 2])):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"for v in {1, 2}:\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"words = [\"b\", \"a\"]\nfor v in sorted(words):\n    print(v)\nfor v in range(2):\n    print(v)": {
+    "stdout": "a\nb\n0\n1\n",
+    "hasStdout": true
+   },
+
+"words = [\"b\", \"a\"]\nfor v in words:\n    print(v)\nfor v in range(2):\n    print(v)": {
+    "stdout": "b\na\n0\n1\n",
+    "hasStdout": true
+   },
+
+"words = [\"b\", \"a\"]\nxs = [1, 2]\nfor v in sorted(words):\n    print(v)\nfor v in sorted(xs):\n    print(v)": {
+    "stdout": "a\nb\n1\n2\n",
+    "hasStdout": true
+   },
+
+"words = [\"b\", \"a\"]\nxs = [1, 2]\nfor v in words:\n    print(v)\nfor v in xs:\n    print(v)": {
+    "stdout": "b\na\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nfor v in reversed(xs):\n    print(v)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nfor v in sorted(xs):\n    print(v)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nprint(sorted(xs))": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nfor v in reversed(xs):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nfor v in xs:\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nfor v in sorted(xs):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nfor v in sorted(xs, reverse=True):\n    print(v)": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint(sorted(xs))\nfor v in sorted(xs):\n    print(v)": {
+    "stdout": "[1, 2, 3]\n1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint(sorted(xs, reverse=True))": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(4)\nxs.append(5)\nfor v in xs:\n    print(v)": {
+    "stdout": "4\n5\n",
+    "hasStdout": true
+   },
 "# The minus between two expressions is the operator, not the sign of the next\n# literal (roadmap Gap R.242, ADR 0338).\n#\n#   x = 5\n#   y = x-1\n#   print(y)\n#\n# printed `5` at exit 0: the lexer read `-1` as one integer wherever a digit\n# followed the minus, so the program became `y = x` and an expression statement\n# `-1`. `print(1-1)` did not even parse (`expected \")\"`), and with it every\n# `len(xs)-1`, `xs[2-1]`, `range(3-1)` and `return n-1`. The same rule is why\n# `print(-1)`, `xs[-1]`, `{-1: \"neg\"}` and `f(-1)` must keep answering exactly as\n# they did — which is the other half of this program.\n#\n# This file's expectation is what CPython printed for it, line for line.\n\nx = 5\ny = x-1\nprint(y, x-1, x - 1)\nprint(1-1, 3-1, 1-1-1, 10-3*2)\nprint(5*-1, 5--1, 5- -1, 2*-3+1)\nprint(-1, -1.5, -0, abs(-3), 2 ** -1)\n\nxs = [1, 2, 3]\nprint(xs[-1], xs[0-1], xs[2-1], xs[len(xs)-1])\nprint(len(xs)-1, int(\"5\")-1, max(1, 2)-1, min(3, 1, 2)-1)\nprint(xs[1-1:3-1], [1, 2, 3][1-1])\n\nd = {-1: \"neg\", 1: \"pos\"}\nprint(d[-1], d[1])\nw = {\"a\": 1}\nprint(w[\"a\"]-1)\n\nprint(True-1, False-1, True-True)\nprint(3.5-1, 2-2.0, 10//3-1)\n\ndef step(n):\n    return n-1\n\ndef dflt(a=x-1):\n    return a\n\nprint(step(5), step(0), step(5)-1)\nprint(dflt(), dflt(2))\n\nfor i in range(3-1):\n    print(i, i-1)\n\nk = 0\nwhile k-1 \u003c 2:\n    print(k, k-1)\n    k = k+1\n\nprint(-1 if True else 1, (1)-1, --1, -(1))\n\nclass Counter:\n    def __init__(self):\n        self.n = 5\n\n    def last(self):\n        return self.n-1\n\nprint(Counter().last(), Counter().last()-1)\n": {
     "stdout": "4 4 4\n0 2 -1 4\n-5 6 6 -5\n-1 -1.5 0 3 0.5\n3 3 2 3\n2 4 1 0\n[1, 2] 1\nneg pos\n0\n0 -1 0\n2.5 0.0 2\n4 -1 3\n4 2\n0 -1\n1 0\n0 -1\n1 0\n2 1\n-1 0 1 -1\n4 3\n",
     "hasStdout": true

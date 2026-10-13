@@ -598,6 +598,19 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `5--1`/`5- -1` spellings, the bool and float answers, the loop heads and a method's `self.n-1` are
 		// in this one program, whose expectation is what CPython printed for it (roadmap Gap R.242, ADR 0338).
 		"minus_operator",
+		// A `for` loop asks its ITERABLE what it is before choosing a road for it. The loop had three
+		// ways to step over an iterable and no question to choose between them, so a container the
+		// compiler could write down but could not NAME — `sorted([3, 1, 2])`, `reversed([1, 2, 3])`,
+		// `sorted([3, 1, 2], reverse=True)`, `sorted([])`, `reversed("abc")`, `sorted(xs)`, `sorted(b())`,
+		// a slice copy — fell to the counter road, which read the iterable's word as a repeat count:
+		// `%t1 = icmp slt i32 %_ctr1.ld1, @.lst1`, which `llc` refuses (exit 2, the code ADR 0166
+		// reserves for a compiler bug), or succeeded and printed the counter, or printed nothing at all.
+		// The literal fold, the runtime copy the container pair names, the loop's own semantics over a
+		// folded iterable (break, continue, else), the roads the row must not disturb (a list, a text,
+		// `range`, a set, a dict's keys, a generator's answer, a user function's answer) and the claim a
+		// loop variable makes from its OWN iterable are in this one program, whose expectation is what
+		// CPython printed for it (roadmap Gap R.246, Gap R.252, ADR 0339).
+		"for_iterables",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

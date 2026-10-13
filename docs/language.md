@@ -4221,9 +4221,11 @@ strings, an empty list — is built as a runtime list and sorted by `rt_sort`, w
 name binds a container, so `print`, indexing, `len` and `for` all work on it.
 `reversed(x)` returns a
 reversed copy of a list or string: `reversed([1, 2, 3])` -> `[3, 2, 1]`,
-`reversed("abc")` -> `"cba"`. `reversed` is interpreter-only on non-literal
-arguments (the AOT codegen constant-folds it only on literal list/string
-arguments); see ADR 0082.
+`reversed("abc")` -> `"cba"`. On a non-literal argument the compiled backend copies the list
+with `rt_list_copy` and flips it with `rt_reverse` — `for v in reversed(xs)` and
+`list(reversed(xs))` both answer `3, 2, 1` — while `print(reversed(xs))` still renders the
+argument untouched against the reference's `<list_reverseiterator …>` (roadmap Gap R.251);
+see ADR 0082, widened by ADR 0339.
 `enumerate(x)` returns a list of `[index, value]` pairs for each element of a
 list: `enumerate([10, 20, 30])` -> `[[0, 10], [1, 20], [2, 30]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested
@@ -4243,6 +4245,52 @@ slot and LLVM rejected the module).
 A character is a one-character **string**, not a distinct char type, and strings are byte
 sequences today: `len("café")` is `5` and `"héllo"[1]` is the byte `195` (roadmap L11.5,
 `programs/unicode_text.gy`).
+
+### A `for` asks its iterable what it is (Gap R.246, ADR 0339)
+
+A `for` loop asks its iterable **before** choosing a road, and a container the compiler can
+write down or name is never read as a repeat count:
+
+```python
+for v in sorted([3, 1, 2]):        # 1, 2, 3      — the loop folds the same ordering print(sorted(...)) renders
+for v in reversed([1, 2, 3]):      # 3, 2, 1
+for v in sorted([3, 1, 2], reverse=True):   # 3, 2, 1
+xs = [3, 1, 2]
+for v in sorted(xs):               # 1, 2, 3      — a heap copy built by @rt_sort, walked as a list variable
+for v in reversed(xs[0:3]):        # 2, 1, 3      — @rt_list_copy + @rt_reverse over the slice's copy
+def b(): return [3, 1, 2]
+for v in sorted(b()):              # 1, 2, 3      — a user call's container answer, sorted by the runtime
+for c in reversed("café"):         # é, f, a, c   — reversed by code point, not by byte
+```
+
+Both doors take their ordering from the `sorted` builtin's own comparator (`sortedLiteralElems`
+for what the compiler can write down, `@rt_sort` for what only the runtime can measure), so a
+program that prints a sorted list and a program that steps over one cannot see two orders
+(ADR 0318). `reverse=True` / `reverse=False` are the builtin's own spelling; duplicates come
+out stable; an empty iterable steps over nothing. `sorted` and `reversed` are still ordinary
+names — a program that defines `sorted` itself shadows the builtin and the loop folds nothing.
+
+What neither door reaches is **refused in words**, naming the half that is missing rather than
+falling through to the counter (`for v in sorted([3,1,2])` used to print `3 1 2` at exit 0,
+`for v in sorted(xs)` used to emit `icmp slt i32 %_ctr1.ld1, @.lst1` and die in `llc` at exit
+2): a dict (`sorted(d)` would order its **keys**, stored as `[key, value]` pairs), a text
+through `sorted`, a `range`, a float or mixed list, a `key=`/positional key callable, and a
+non-builtin call nested inside the argument. The loop's sentence always carries `roadmap L11.1,
+ADR 0339` and the words `repeat count`, and names the row that owns the missing half (`roadmap
+Gap R.247`–`R.251`), so an agent can tell the loop's refusal from the builtin's own
+(`roadmap L11.7` for `key=`/`reverse=`).
+
+A loop variable's kind belongs to the loop that bound it: `for v in words` over a text list
+claims `v` as interned text **for that loop only**, and the numeric and counter roads take the
+claim back, so a second loop over `[1, 2]` with the same variable prints `1`, `2` and not the
+string table (the untagged half of **Gap R.252**; the tagged half stays open).
+
+This does not change the language's own reading of `for x in <integer>` as a repeat count
+(ADR 0207), nor any loop that already answered: a literal, a string, `range`, a list name, a
+slice, a dict's keys, a set's elements, a user function's container answer and a generator are
+asserted unchanged, on both witness legs, in `pkg/lang/for_iterable_test.go` and
+`integration/programs/for_iterables.gy`.
+
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in the compiled backend: the AOT codegen folds `int` on

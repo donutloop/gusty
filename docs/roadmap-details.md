@@ -11118,3 +11118,184 @@ token decides, and `minusBeginsLiteral` is the pattern to copy.
 owes the other — which is why they are two rows: the exponent needs a marker after a fraction, and this needs an entry
 condition before one. `print(1 .5)` stays refused on both legs, because CPython refuses it too (`SyntaxError: invalid
 syntax`), and the row owes that row as a negative control.
+
+<a id="gap-r-246"></a>
+
+### Gap R.246 — a `for` loop reads an un-nameable container as a repeat count (DONE, ADR 0339)
+
+```python
+for v in sorted([3,1,2]):                print(v)   # 1 2 3      this backend: EXIT 2, llc rejects the module
+for v in reversed([1,2,3]):              print(v)   # 3 2 1      this backend: EXIT 2
+for v in sorted([]):                     print(v)   # (nothing)  this backend: EXIT 2
+for v in sorted([3,1,2], reverse=True):  print(v)   # 3 2 1      this backend: EXIT 2
+for v in sorted([3,1,2][0:2]):           print(v)   # 1 3        this backend: 0        at exit 0
+for v in sorted(["b","a"]):              print(v)   # a b        this backend: nothing  at exit 0
+for v in reversed("abc"):                print(v)   # c b a      this backend: nothing  at exit 0
+xs = [3,1,2]
+for v in sorted(xs):                     print(v)   # 1 2 3      this backend: 0        at exit 0
+def b(): return [3,1,2]
+for v in sorted(b()):                    print(v)   # 1 2 3      this backend: nothing  at exit 0
+```
+
+**The measurement.** Five shapes of one program, two bad answers. The first four reached `llc-20`, which
+wrote out the module it had been handed and refused to assemble it:
+
+```
+global variable reference must have pointer type: %t1 = icmp slt i32 %_ctr1.ld1, @.lst1
+```
+
+— the loop's counter had been told to count up to the *address* of a list's global, and exit 2 is the code
+ADR 0166 reserves for exactly that: a module the compiler wrote and LLVM refused. The fifth shape was worse,
+because the comparison *succeeded*: the counter road ran, bound the loop variable to the counter, and `print(v)`
+printed the counter — a number the program never wrote, at the exit code that means the program ran. The silent
+rows (an empty sorted list, a text handed to `reversed`, a list of text, a call's answer) were the same road
+stepping over nothing.
+
+**Root cause.** `case *ForStmt:` had three roads and no question. The unrolled literal road takes a `*ListLit`
+or a `*StrLit` standing where the iterable goes. The runtime container road takes a name, a set or a dict
+literal, or whatever `containerHandleOf` will vouch for. Everything else fell to the numeric counter road,
+which asks the iterable for a *bound* — and a container's word is a global's address. `sorted` and `reversed`
+were in none of the three, while the same calls standing where an expression goes had been answered for as
+long as the builtin existed: `print(sorted([3, 1, 2]))` prints `[1, 2, 3]`. The bug was not the builtin; it was
+that the loop never asked what it was about to step over.
+
+**Two doors, and the rule that keeps them from being two implementations.** A fold for what the compiler can
+write down, and a name for what the runtime can measure. Both were written by *calling the expression road*,
+not by re-doing its work:
+
+- `foldedForIterable` rewrites `for v in sorted([3, 1, 2])` into `for v in [1, 2, 3]` — the literal road's own
+  shape — by calling `sortedLiteralElems`, the same ordering `builtinSorted`'s literal branch reads. A program
+  that prints a sorted list and a program that loops over one cannot see two orders (ADR 0318's rule that a
+  fold that orders containers asks their elements rather than reading a number out of a handle — applied to a
+  loop). The fold recurses rather than unwrapping, so the operations apply in
+  the order the reference applies them: `reversed(sorted([1, 3, 2]))` is `3, 2, 1`, not the literal reversed
+  and then sorted (`2, 3, 1`) — the difference `listCallElems` does not have to care about for `len`/`sum`, and
+  the reason it could not be reused here.
+- `materializeSortedReversedForLoop` builds the copy with `sortedRuntime` (@rt_sort) or @rt_list_copy +
+  @rt_reverse, **names** the result in a rooted slot, records its element kind in the same notebooks a
+  `xs = [...]` assignment fills, and lets the loop walk it down the road it has always used for a list variable.
+
+Naming rather than passing a bare handle is the part that took a measurement to learn. Handing the loop a handle
+through the generic `containerHandleOf` arm makes it a *tagged* iteration, and the tag stuck to the loop variable
+for the rest of the function: `for v in sorted(words)` followed by `for v in [7, 8]` printed `(null)` twice, and
+the same variable used as a number a few statements later met Gap R.146's refusal. Measured, then designed out.
+
+**The pair could not take these two builtins — and that measurement narrowed this row.** The first version of
+this row added `sorted`/`reversed` arms to `isContainerExpr`, `staticContainerKind` **and** `containerHandleOf`,
+on ADR 0333's reasoning that the two answers must come from one place. It broke `print(1 in sorted(xs))`, which
+answers `True` today: the membership road asks `isContainerExpr` and then reaches for `containerOperand`, whose
+arm these builtins did not have, so widening one half of a three-part pair turned a working answer into a
+refusal (ADR 0249's rule, and the reason a "pair" has to be counted as the whole set of roads that ask). The
+arms were withdrawn; the row is now entirely local to the loop's own case, and the widened version is filed as
+**Gap R.253** with the measurement that withdrew it.
+
+**What the row refuses, and why that is the right answer for those.** A `for` whose body prints the loop
+variable answers at exit 0 whether it walked anything or not, so the third option — refuse — is the only honest
+one left where neither door reaches: a text, a dict, a set, a range, a float list, a mixed list, a callable
+argument (`key=`), and a call inside the builtin whose answer the scan cannot see. Each refusal names the
+iterable *and* the half that is missing (`its argument is a DICT: sorted() would order its KEYS, which the
+runtime stores as [key, value] pairs the sort does not walk`), and each has a row: **Gap R.247**, **R.248**,
+**R.249**, **R.250**. Before the row these shapes were exit-2 modules or silent exit-0 answers; a refusal is
+not a regression against that.
+
+**What the row paid on the way (Gap R.252's first half).** Asking the iterable per loop also meant un-learning a
+claim: the container road *set* `g.internedVars[loopVar]` when its iterable held text and nothing ever took it
+back, so `for v in words:` (text) followed by `for v in xs:` (numbers) printed `b`, `a`, `a`, `(null)` for the
+reference's `b`, `a`, `1`, `2`, and `for v in range(2)` after a text loop printed the string table. Both roads
+now claim from their own iterable and delete otherwise. That is the same defect ADR 0339's title names — a loop
+that does not ask its own iterable takes the previous loop's answer — and the tagged half of it remains open in
+**Gap R.252**.
+
+**The negative controls that make this a widening and not a swap.** `for v in [1, 2, 3]`, `for c in "abc"`,
+`for i in range(3)`, this language's own `for i in 3:` repeat-count deviation, a set literal, a dict's keys, a
+user function's container answer, a generator's answer, and a program that defines `sorted` itself (which is not
+the builtin's shape and the fold must not steal) all answer what they answered, on both legs, in the same table
+as the new rows. The IR is asserted both ways: the counter-against-a-container-global instruction is absent from
+every module the suite compiles, and `call void @rt_sort` / `call void @rt_reverse` are present for the six
+programs whose order comes from the runtime — so "the loop stopped calling the runtime helper" cannot pass here.
+
+<a id="gap-r-247"></a>
+
+### Gap R.247 — `sorted`/`reversed` over an argument neither door can name (PLANNED, found by ADR 0339)
+
+See the row's `Item` cell for the programs. The short version: the two doors ADR 0339 opens are gated on the
+argument being a *list* and on its element kind being visible. A text, a dict, a set, a range and a slice or
+call whose text elements the comparator cannot see all fail that gate and are refused. The reference answers
+all of them. The interesting row-mate is `print(sorted(xs[0:2]))` over a list of text, which answers
+`['b', 'a']` — the reference's `['a', 'b']` gone wrong at exit 0 — because @rt_sort picks its comparator from
+the argument's *spelling* (a `*Name`'s notebook, a literal's elements) and a slice or a call's answer is
+neither, so the text is ordered by payload, i.e. by arrival order. That half is the builtin's own door and this
+row owns it too, which is why the loop's refusal for the same program names the comparator rather than shrugging.
+
+<a id="gap-r-248"></a>
+
+### Gap R.248 — no comparator reaches a float list, and the sentence blames a mix that is not there (PLANNED, found by ADR 0339)
+
+`xs = [1.5, 0.5]` / `for v in sorted(xs)` is a refusal, and the builtin's sentence for the same list says
+`cannot sort a list whose elements are of more than one kind; Python raises TypeError here too` — words that are
+false of that program: a float list is one kind. The cause is `sortedRuntime`'s `mixedLists` test, which a list
+that is neither integers nor interned text falls into because that is how this backend stores it (tagged), not
+because the program mixed anything. The loop's own refusal at least says which half is missing. Both halves want
+the same thing: a comparator that asks each element what it is (L11.1's tagged value word), after which the
+sentence can name the kinds it actually means.
+
+<a id="gap-r-249"></a>
+
+### Gap R.249 — `sorted`'s callable arguments (PLANNED, found by ADR 0339)
+
+`sorted(xs, key=f)` and `sorted(xs, cmp=f)` need a callable the runtime can call per element — the door
+`min`/`max(key=)` and `list.sort(key=)` already stand at. A second *positional* argument is the reference's
+`key`, and the reference itself stops that program (`sorted([3,1,2], True)` → `TypeError: 'bool' object is not
+callable`), so this backend's refusal there is not owed an answer; it is owed the honesty that the reference
+stops it too, which its sentence now says.
+
+<a id="gap-r-250"></a>
+
+### Gap R.250 — a `sorted` of a call the container scan cannot see (PLANNED, found by ADR 0339)
+
+`for v in sorted(sorted(xs))` is refused. The outer builtin's argument is a call, and the container question for
+a call is answered by the whole-program scan of *user* functions' `return` arms, which has no entry for a builtin
+call's answer — so the container inside the sort is invisible even though `sorted(xs)` alone answers. The fix is
+to answer the container question of a builtin call from the builtin's own return contract, starting with the two
+in this file and taking `list(...)`/`split(...)` next.
+
+<a id="gap-r-251"></a>
+
+### Gap R.251 — `reversed` as an expression answers its argument unreversed (PLANNED, found by ADR 0339)
+
+`print(reversed(xs))` writes `[1, 2, 3]`. The reference writes
+`<list_reverseiterator object at 0x…>`, which is not a value this backend can render, and `list(reversed(xs))`
+answers `[3, 2, 1]` correctly — so the builtin's bare form is not "wrong vs the reference", it is *a second
+answer for one call*: the loop ADR 0339 just fixed walks `3, 2, 1` while the print beside it shows the argument
+untouched. ADR 0339's sharing test deliberately does not pair `reversed` the way it pairs `sorted`: sharing an
+ordering with a road that does not order would certify the bug.
+
+<a id="gap-r-252"></a>
+
+### Gap R.252 — a loop variable keeps the kind claim of the loop that bound it (PARTIAL: paid by ADR 0339 for the untagged half)
+
+`words = ["b","a"]` / `xs = [1,2]` / `for v in words: print(v)` / `for v in xs: print(v)` printed `b`, `a`, `a`,
+`(null)` at exit 0 where the reference prints `b`, `a`, `1`, `2`, and the same second loop written
+`for v in range(2)` printed `b`, `a` — the string table — for `0`, `1`. The container road *set* the interned-text
+claim on the loop variable and nothing ever took it back, so the next loop inherited the previous loop's answer.
+ADR 0339's question — the loop asks its *own* iterable — fixes both roads by construction: the claim is made from
+this iterable's element kind and deleted when that kind is not text, and the counter road takes it back too
+(a counter is a number; there is no reading under which it is interned text).
+
+What is left is the tagged half: `ys = [1,"a"]` / `for v in ys: print(v)` followed by a second loop over the same
+name still refuses with Gap R.146's sentence (`this position keeps one word for its operand, so the tag has
+nowhere to go`) where the reference prints `1`, `a`, `a`, `b`. That half is the tagged value word's, and this row
+stays open against L11.1.
+
+<a id="gap-r-253"></a>
+
+### Gap R.253 — membership over a sorted literal hands `llc` a global where a word belongs (PLANNED, found by ADR 0339)
+
+`print(1 in sorted([3,1,2]))` emits `%t2 = call i32 @rt_contains(i32 @.lst1, i32 1)` and `llc-20` refuses the
+module: *global variable reference must have pointer type*, exit 2, on a program the reference answers with
+`True`. It is the same instruction shape ADR 0339 removed from the loop road, at the membership door beside it,
+and it is the measurement that kept this row honest: the first attempt at the row widened
+`isContainerExpr`/`staticContainerKind`/`containerHandleOf` to cover these builtins, and `print(1 in sorted(xs))`
+— which answers `True` today — became a refusal, because the membership road asks the pair one question and then
+reaches for `containerOperand`, whose arm these builtins do not have. The arms were withdrawn from the row and
+filed here instead: the pair is only widen-able together with `containerOperand`, or not at all.

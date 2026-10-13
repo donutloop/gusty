@@ -343,6 +343,33 @@ operand is refused** (`print(+1)` is `unexpected token` where CPython prints `1`
 rule at all (**Gap R.244**, filed by this row) — and a comprehension whose iterable is a list the compiler kept as
 a compile-time constant still refuses (roadmap **L11.1**, the tagged value word, whose refusal carries ADR 0192's own sentence).
 
+**A `for` loop asks its iterable what it is, and ADR 0339 pays Gap R.246** — the loop had three roads and no
+question in front of them, so anything the compiler could not name fell through to the numeric counter road and
+was read as a *repeat count*. `for v in sorted(xs)` over a heap list emitted `icmp slt i32 %_ctr1.ld1, @.lst1`
+— the counter told to count up to the **address of a list global** — and `llc` refused the module: exit 2, the
+code the contract reserves for a compiler bug, on the most ordinary program in the language (the same five
+programs CPython answers `1 2 3`). The shapes whose comparison *succeeded* were worse, because they ran:
+`for v in sorted([3, 1, 2][0:2])` printed `0` where CPython prints `1` and `3`, and `for v in sorted(["b",
+"a"])`, `for v in reversed("abc")` and `for v in sorted(b())` printed **nothing at exit 0**. The builtin itself
+was never the problem — `print(sorted([3, 1, 2]))` has always answered `[1, 2, 3]` — the loop never asked what
+it was about to step over. It asks now: a container the compiler can write down is folded to the literal it
+denotes (`reversed(sorted([1, 3, 2]))` is `3, 2, 1`, the order the reference applies them, using
+`sortedLiteralElems` — the same ordering the print road renders, so the two cannot diverge, ADR 0318), and a
+container only the runtime can measure is copied by `@rt_sort` / `@rt_list_copy` + `@rt_reverse` into a named,
+rooted slot and walked down the list-variable road ADR 0323 made correct. Neither door claims an element kind it
+cannot see — a dict, a text through `sorted`, a `range`, a float or mixed list, a `key=` callable and a call the
+container scan cannot see are refused by name, with the missing half in the sentence, and each refusal is a
+row: **Gap R.247–R.251**. One measurement narrowed the row: the first version opened the second door through the
+container *pair*, which made `print(1 in sorted(xs))` — a program that answers `True` today — become a refusal,
+because the membership road asks `isContainerExpr` and then reaches for `containerOperand`, whose arm those
+builtins do not have. The arms came out (ADR 0233 forbids trading an answer for a refusal), the pair is
+untouched, and the widening is filed as **Gap R.253** with that measurement as its evidence. Asking the iterable
+per loop also meant un-asking the previous loop: the container road claimed its loop variable was interned text
+and nothing took the claim back, so a text loop followed by `for v in xs` printed `b`, `a`, `a`, `(null)` for
+CPython's `b`, `a`, `1`, `2` — each road now claims from its own iterable and deletes otherwise, the untagged
+half of **Gap R.252**. 198 cases, `programs/for_iterables.gy` `match` on both legs, and the counter-vs-container-global
+instruction is now banned *by shape* from every module the suite compiles.
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

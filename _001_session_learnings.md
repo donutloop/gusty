@@ -10281,3 +10281,71 @@ wrong answer.
   same family, and it was tempting to widen it. It is a separate row because the exponent needs a marker *after* a
   fraction and this needs an entry condition *before* one — and because a fresh ID is what makes the two fixable
   independently.
+
+## The loop had three roads and no question: an un-nameable container read as a repeat count (L11.1, Gap R.246; ADR 0339; Gaps R.247–R.253 filed)
+
+`for v in sorted(xs)` reached `llc` as `%t1 = icmp slt i32 %_ctr1.ld1, @.lst1` — *global variable reference must
+have pointer type*, exit 2, ADR 0166's bug class, on the most ordinary loop in the language. Five programs of that
+shape, all five answered by CPython with `1 2 3`. The same five with a **literal** instead of a name did not crash,
+and that is the one that should keep the lesson: `for v in sorted([3, 1, 2][0:2])` printed `0` at exit 0 (CPython:
+`1`, `3`), and `for v in sorted(["b", "a"])`, `for v in reversed("abc")`, `for v in sorted(b())` printed **nothing
+at exit 0** — the loop bound its variable to the counter, and the body dutifully printed whatever the counter's
+word was. The `sorted` builtin had been correct the whole time (`print(sorted([3, 1, 2]))` answers `[1, 2, 3]`);
+`case *ForStmt:` had three roads — unrolled literal, runtime container, numeric counter — and asked no question in
+front of them, so anything the first two would not claim fell to the third, which asks the iterable for a *bound*.
+A container's word is a global's address. Given a literal, the comparison succeeds and the program lies.
+
+- **A fall-through road is the defect, not the missing arm.** The fix's most useful line is not the fold, it is the
+  guard immediately *above* the counter road: a container that neither door claims is refused, naming the half that
+  is missing. Deleting the guard fails the refused table and fails **nothing** in the answered table — which is the
+  mutation test that proves the guard is a refusal and not an accidental source of values.
+- **An AST-level fold must run before the rewriter that names things.** `case *ForStmt:` opened with
+  `containerAnswerOperand(n.Iter)`, whose job is to turn a container-returning call into a fresh `__cansN` name —
+  so by the time the case asked "what is this iterable?", `sorted([3,1,2])` was a *name* and both the literal fold
+  and the builtin-name roads were unreachable. The three questions now run fold → materialise → name, in that
+  order. Any road that rewrites the AST before a later road classifies it is a question taken away from that road.
+- **A dispatch arm must not claim a shape it has not answered.** The container road's `*Call` arm matched *every*
+  call and then did something only for generators; a non-generator call got nothing and fell through. Narrowing it
+  to `forIterCallIsGenerator` let the handle road see the call at all. An `else`-less arm that matches a type and
+  answers a subset is a silent sink.
+- **Count the whole family before widening a shared predicate — and believe the regression, not the design.** The
+  first version added `sorted`/`reversed` arms to `isContainerExpr`, `staticContainerKind` **and**
+  `containerHandleOf`, on the "these are a pair" reading. It made `print(1 in sorted(xs))` — which answers `True`
+  today — *refuse*, because the membership road asks the first question and then reaches for `containerOperand`,
+  the fourth member nobody counted. Turning a working answer into a refusal is the one regression ADR 0233
+  forbids, so the arms came out entirely, the row is local to the loop's own case, and the widening is
+  **Gap R.253** with this measurement as its evidence. Before widening a predicate, list every road that asks it.
+- **Naming beats handing over a handle, when the consumer keeps a notebook.** Routing the runtime copy through the
+  generic `containerHandleOf` arm made the iteration *tagged*, and the tag stuck to the loop variable for the rest
+  of the function: `for v in sorted(words)` then `for v in [7, 8]` printed `(null)`, and the same name used as a
+  number met Gap R.146's sentence. Materialising the copy into a rooted `__srtN` slot, recording its element kind
+  in the same notebooks an `xs = [...]` assignment fills, and walking the list-variable road is both simpler and
+  the road ADR 0323 already made correct.
+- **A loop variable's kind claim belongs to the loop that made it.** The container road set
+  `g.internedVars[loopVar]` for a text iterable and nothing ever removed it, so `for v in words` (text) followed by
+  `for v in xs` (numbers) printed `b`, `a`, `a`, `(null)` for CPython's `b`, `a`, `1`, `2`, and `for v in range(2)`
+  after a text loop printed the *string table*. Two silent wrongs, both measured on this row's own first draft,
+  both caught by the negative-control table rather than by a new test. Every road that binds a loop variable now
+  either claims or clears the name — a counter is a number under no reading.
+- **Zero matrix coverage is how a no-op survives.** A sorted literal in a loop position had no probe, no matrix row
+  and no record entry, so the road that silently ignored `sorted` printed the record's own answer at exit 0 for as
+  long as it liked: the record is a witness cut from the compiler being tested. 50 newly recorded sources and an
+  89-line conformance program (`programs/for_iterables.gy`, generated from `/usr/bin/python3` and compared
+  line-for-line) is what it cost to make that class unfree.
+- **Rebuild before believing a failure — and grep the binary, do not `strings` it.** The first "the fix does nothing"
+  reading was a stale `/tmp/gustyc-*` binary. `strings` on the rebuilt binary came back empty for a sentence that
+  was verifiably in the source; `grep -a` found it. A tool that silently finds nothing is worse than a failing test,
+  because it converts a build mistake into a design conclusion.
+- **Two ADRs of one number, and six invented links in one header.** `docs/adr/` held a draft 0339 from earlier in
+  the session beside the one being written now; `ls docs/adr | grep ^0339` catches that in one command. The retained
+  draft's header linked six files that do not exist (`0249-a-refusal-names-what-is-missing-or-it-is-a-bug.md`,
+  `0262-a-fold-and-a-renderer-must-not-move-apart.md`, `0273-a-gate-is-pure-…`, `0302-the-ast-interpreter-is-retired-…`,
+  `0333-a-container-returned-from-a-function-is-a-named-thing.md`, `0196-the-for-loop-binds-its-variable-…`) and cited
+  ADR 0117 for the integer repeat count, which is ADR **0207**. The whole header is now checked mechanically —
+  extract every `(0NNN-…md)` link, `[ -f docs/adr/$f ]` — which is cheaper than being right, and returns a list
+  instead of an apology. Real titles also disagree with in-code shorthand (`0249` is a slot-read question, `0233` is
+  the implemented/refused/absent rule); the ADR file is what a reader can verify, so the ADR cites the real ones.
+- **A refusal is only honest if the two doors' refusals are distinguishable.** The builtin refuses `key=` at its own
+  door and the loop refuses an unwalkable iterable at its own; the CLI test therefore always requires `roadmap
+  L11.1` and requires the loop's own markers (`ADR 0339`, `repeat count`) only when the sentence speaks as the loop.
+  An agent that cannot tell which door refused cannot plan a workaround.

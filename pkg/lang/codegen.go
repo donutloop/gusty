@@ -15607,33 +15607,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// what this program handed it, and which roadmap row owns the rest (ADR 0166).
 			return "", fmt.Errorf("codegen: sorted(%s) is refused: this backend sorts an inline list literal it can evaluate at compile time, and this argument is not one — the reference sorts any iterable by building the container at run time, which needs the value word that carries its own kind (roadmap L11.1)", exprSurface(c.Args[0]))
 		}
-		vals := make([]int64, len(ln.Elems))
-		for i, el := range ln.Elems {
-			il, ok := el.(*IntLit)
-			if !ok {
-				return "", fmt.Errorf("sorted: list elements must be integer literals")
-			}
-			vals[i] = il.Value
+		// One ordering, one implementation: the loop road (`for v in sorted([3, 1, 2])`) and this answer call
+		// the same `sortedLiteralElems`, so the order a program sees when it prints the sorted list and the
+		// order it sees when it steps over it cannot drift apart (ADR 0258's one-table rule, applied to a loop; roadmap
+		// Gap R.246, ADR 0339).
+		elems, folded, ferr := g.sortedLiteralElems(ln.Elems, c.Args[1:])
+		if ferr != nil {
+			return "", ferr
 		}
-		sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
-		if len(c.Args) == 2 {
-			revExpr := c.Args[1]
-			if kw, ok := c.Args[1].(*KeywordArg); ok {
-				revExpr = kw.Value
-			}
-			rv, rerr := g.constIntVal(revExpr)
-			if rerr != nil {
-				return "", rerr
-			}
-			if rv != 0 {
-				for i, j := 0, len(vals)-1; i < j; i, j = i+1, j-1 {
-					vals[i], vals[j] = vals[j], vals[i]
-				}
-			}
-		}
-		elems := make([]Expr, len(vals))
-		for i, v := range vals {
-			elems[i] = &IntLit{Value: v}
+		if !folded {
+			return "", fmt.Errorf("sorted: list elements must be integer literals")
 		}
 		return g.emitList(&ListLit{Elems: elems})
 	case "chr":
@@ -19130,11 +19113,32 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
-		// `for v in build():` — the iterable is the container the callee built. The loop road below reads a
-		// container by name, which is what the container door hands over: the call is emitted once, the
-		// answer is rooted for the collector, and the loop runs over the answer as over any other container
-		// the program named (roadmap Gap R.67, ADR 0333).
-		if ansName, _, okAns := g.containerAnswerOperand(b, n.Iter); okAns {
+		// The iterable is asked what it is BEFORE any road is chosen for it (roadmap Gap R.246, ADR 0339).
+		// Three questions, in this order, because each is cheaper and narrower than the next, and the last
+		// one is the door every other `for` has always gone through:
+		//
+		//   1. can the compiler WRITE the container down? `sorted`/`reversed` over a literal list, a literal
+		//      text reversed, either nested in the other — the fold hands the literal road the elements in the
+		//      order the reference yields them, through the same function the `print` answer uses (ADR 0258).
+		//   2. can the compiler NAME the container the builtin denotes? `sorted(xs)`, `reversed(xs)`,
+		//      `sorted(b())` — the copy @rt_sort built or @rt_list_copy + @rt_reverse flipped is rooted in a
+		//      slot and the loop walks it exactly as it walks a list variable: one road for a list, whichever
+		//      builtin produced it (ADR 0333's pattern, applied to the two builtins that hand back a list).
+		//   3. otherwise the container door beside this, for the container a user function built.
+		//
+		// Before these two questions the loop had no way to ask: a `sorted`/`reversed` fell to the counter
+		// road, which read the iterable's word as a repeat count — `%t1 = icmp slt i32 %_ctr1.ld1, @.lst1`,
+		// which `llc` rejects (exit 2, the code ADR 0166 reserves for a compiler bug), or succeeded and
+		// printed the counter, or printed nothing at all.
+		if folded, okFold := g.foldedForIterable(n.Iter); okFold {
+			n.Iter = folded
+		} else if named, okNamed := g.materializeSortedReversedForLoop(b, n.Iter); okNamed {
+			n.Iter = named
+		} else if ansName, _, okAns := g.containerAnswerOperand(b, n.Iter); okAns {
+			// `for v in build():` — the iterable is the container the callee built. The loop road below reads a
+			// container by name, which is what the container door hands over: the call is emitted once, the
+			// answer is rooted for the collector, and the loop runs over the answer as over any other container
+			// the program named (roadmap Gap R.67, ADR 0333).
 			n.Iter = ansName
 		}
 		// `for x in [1, 2, 3]`: iterate an inline list literal's constant
@@ -19269,7 +19273,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			case g.runtimeDicts[name.Value]:
 				iterKind = "dict"
 			}
-		} else if call, ok := n.Iter.(*Call); ok {
+		} else if call, ok := n.Iter.(*Call); ok && g.forIterCallIsGenerator(call) {
 			if fn, ok2 := call.Fn.(*Name); ok2 {
 				if g.genFuncs[fn.Value] {
 					iterKind = "list"
@@ -19327,14 +19331,28 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				delete(g.noneVars, loopVar)
 			}
 			if name, ok := n.Iter.(*Name); ok {
+				// The claim is made from THIS iterable and taken back when this iterable's elements
+				// are not text. Setting it only one way left the name interned for every later loop in
+				// the function: `for v in words:` (text) followed by `for v in xs:` (numbers) printed
+				// `b`, `a`, `a`, `(null)` for the reference's `b`, `a`, `1`, `2`, because the second
+				// loop never asked its own iterable what it held — the first loop's answer was still
+				// on the name. Asking per loop is what this row's question means (roadmap Gap R.246,
+				// ADR 0339; the same rule the unrolled road beside it already follows).
 				switch iterKind {
 				case "list", "set":
-					if !mixedIter && (g.listElemStr[name.Value] || g.setElemStr[name.Value]) {
+					if mixedIter {
+						// left alone above: the tag decides
+					} else if g.listElemStr[name.Value] || g.setElemStr[name.Value] {
 						g.internedVars[loopVar] = true
+					} else {
+						delete(g.internedVars, loopVar)
 					}
 				case "dict":
-					if g.dictKeyStr[name.Value] {
+					if mixedIter {
+					} else if g.dictKeyStr[name.Value] {
 						g.internedVars[loopVar] = true
+					} else {
+						delete(g.internedVars, loopVar)
 					}
 				}
 			} else if !mixedIter {
@@ -19516,6 +19534,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// a code-point index for an element (ADR 0229, ADR 0196).
 			return g.emitForOverRuntimeString(b, n)
 		}
+		// The same silent-wrong-answer fall-through, one kind over: the iterable is a CONTAINER that neither
+		// the unrolled literal road nor the runtime container road took (`sorted(xs)` of a named list, a
+		// `sorted` of a call's answer, a `sorted` of a slice copy). The counter road below compares its
+		// counter with the iterable's word and binds the loop variable to the COUNTER, so the program printed
+		// `0` once (`for v in sorted([3,1,2][0:2])`, the reference `1`, `3`) or printed nothing at all
+		// (`for v in sorted(["b","a"])`, the reference `a`, `b`) at the exit code of success. Refusing is the
+		// honest answer for what the backend cannot walk, and the sentence names the half that is missing
+		// (roadmap Gap R.246, ADR 0339; ADR 0166, ADR 0249).
+		if g.forIterableIsUnwalkableContainer(n.Iter) {
+			return fmt.Errorf("%s", g.forIterableRefusal(n.Iter))
+		}
 		start, stop, step, err := g.rangeBounds(b, n.Iter)
 		if err != nil {
 			return err
@@ -19525,6 +19554,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			g.gcReg(b, loopVarName(n.Var))
 			g.allocd[loopVarName(n.Var)] = true
 		}
+		// A counter is a number, so the loop variable holds a number: the text claim a PREVIOUS loop
+		// left on the same name is withdrawn here, as the container road beside this withdraws it when
+		// its own iterable is not a list of text. Without it, `for v in words:` (text) followed by
+		// `for v in range(2):` printed the STRING TABLE — `b`, `a` — for the reference's `0`, `1`, at
+		// the exit code of success: the second loop never asked its own iterable what it held
+		// (roadmap Gap R.246, ADR 0339; the claim is Gap I.2's, the rule for taking it back is this row's).
+		delete(g.internedVars, loopVar)
 		// The induction counter is the loop's own, never the loop variable's slot.
 		// Sharing them made the variable answer the *bound* after the loop —
 		// `for i in range(3): print(i)` and then `print(i)` gave 3 where Python and

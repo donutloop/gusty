@@ -1,0 +1,89 @@
+# A `for` loop asks its iterable what it is (Gap R.246, ADR 0339).
+# Every answer here is the reference's; the compiled backend is judged against it.
+
+def b():
+    return [3, 1, 2]
+
+xs = [3, 1, 2]
+ys = [1, 2, 3]
+words = ["b", "a"]
+empty = []
+
+# the containers the compiler can write down, which it used to step over as a repeat count
+for v in sorted([3, 1, 2]):
+    print(v)
+for v in reversed([1, 2, 3]):
+    print(v)
+for v in sorted([3, 1, 2], reverse=True):
+    print(v)
+for v in sorted([3, 1, 2], reverse=False):
+    print(v)
+for v in sorted([]):
+    print(v)
+for v in reversed([]):
+    print(v)
+for v in reversed("abc"):
+    print(v)
+for v in sorted([2, 2, 1]):
+    print(v)
+
+# the operations nest, and apply in the order the reference applies them
+for v in sorted(reversed([3, 1, 2])):
+    print(v)
+for v in reversed(sorted([1, 3, 2])):
+    print(v)
+
+# the containers the runtime measures, which the container pair now hands the loop
+for v in sorted(xs):
+    print(v)
+for v in reversed(ys):
+    print(v)
+for v in sorted(words):
+    print(v)
+for v in reversed(words):
+    print(v)
+for v in sorted(b()):
+    print(v)
+for v in reversed(b()):
+    print(v)
+for v in sorted([3, 1, 2][0:2]):
+    print(v)
+for v in sorted(empty):
+    print(v)
+
+# one ordering, written once: what the program prints and what it steps over are the same sequence
+print(sorted([3, 1, 2]), sorted(xs), sorted([3, 1, 2], reverse=True), sorted(xs, reverse=True))
+
+# the loop's own semantics survive the fold
+for v in sorted([3, 1, 2]):
+    if v == 2:
+        break
+    print(v)
+for v in sorted([3, 1, 2]):
+    if v == 2:
+        continue
+    print(v)
+for v in sorted([3, 1]):
+    print(v)
+else:
+    print("done")
+for v in reversed([7, 8]):
+    print(v * 10)
+
+# the roads the row is not allowed to disturb
+for v in [1, 2, 3]:
+    print(v)
+for c in "abc":
+    print(c)
+for i in range(3):
+    print(i)
+for v in xs:
+    print(v)
+for v in [1, 2, 3][0:2]:
+    print(v)
+for k in {1: 2}:
+    print(k)
+for v in {1, 2}:
+    print(v)
+for v in b():
+    print(v)
