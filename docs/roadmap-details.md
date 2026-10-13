@@ -9944,6 +9944,21 @@ wrong — which is the point: this row is one door's missing check, not two.
 <a id="gap-r-218"></a>
 ### Gap R.218 — a list literal read by a position answers the payload, not the value (OPEN, found by ADR 0327)
 
+**Measured again 2026-07-14, and the root cause has a name.** The four wrong answers are
+`print(["a", "b"][0])` → `0` (the `@str_tab` index), `print([1.5, 2][0])` → `1` (a `@float_box` handle),
+`print([None, 2][0])` → `0` and `print([True, 2][0])` → `1`, all at exit 0. What sharpens the fix is which
+rows are already whole: the same element read off a **variable** answers correctly (`xs = ["a","b"]` /
+`print(xs[0])` is `a`), and the literal road is correct for the kinds that already carry a tag —
+`print([[1, 2]][0])` is `[1, 2]` and `print([{"a": 1}][0])` is `{'a': 1}`. So the door is not missing and the
+tag scheme is not missing; `runtimeSlotPairDeep` in `heapargs.go` has a `*DictLit` arm — the one ADR 0327
+added for the dict side of this exact asymmetry — and no `*ListLit` arm beside it. A list literal is simply
+never admitted to the one subscript read that answers a (payload, tag) pair, so it falls back to the
+compile-time fold, which has one word and no place to put the kind. The fix is that arm plus the gate that
+leaves the fold the shape it genuinely reads (every element an integer constant, the index an integer) and
+the print/binding sites asked the same question the dict sites ask — `print(["a","b"][0] + "!")` is the row's
+own residue, since a one-word arithmetic operand cannot carry a kind (Gap R.146's standing).
+
+
 The gap ADR 0327 closed for dicts, still open for lists: `print(["a", "b"][0])` prints `0` (the `@str_tab`
 index), `print([1.5, 2][0])` prints `1` (the `@float_box` handle), `print([None, 2][0])` prints `0` and
 `print([True, 2][0])` prints `1` — every one at **exit 0**, where the reference prints `a`, `1.5`, `None`,
