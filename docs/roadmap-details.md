@@ -9910,7 +9910,30 @@ the fold's key scan runs from the last entry to the first, in the subscript fold
 asserts the module carries none of the object doors, so the fold keeps its shape and its rule at the same time.
 
 <a id="gap-r-217"></a>
-### Gap R.217 — a dict read by a container key raises the wrong class (OPEN, found by ADR 0327)
+### Gap R.217 — a dict read by a container key raises the wrong class (CLOSED by ADR 0328, found by ADR 0327)
+
+**Closed 2026-07-14 by ADR 0328.** A gate asks the program, at each of the three doors that consults
+a dict, whether the key is something the language refuses to hash — `pkg/lang/unhashable_key.go`'s
+`unhashableKeyName` reads it back from the source (a list, dict or set literal; a tuple carrying one,
+where the reference names the inner type it choked on, so `(1, [2])` says `'list'`; a name the program
+last filled with one of them) and the door raises CPython's own sentence, `TypeError: unhashable type:
+'list'`, catchably, on the same non-local road every other exception in this backend takes. The three
+doors are the subscript read (`checkKeyRead`, `checkKeyReadTagged`) and the store
+(`assignIndex`) — the store being the worst of the three, because `d = {}; d[[1]] = 2; print(d)` printed
+`{[1]: 2}` at exit 0 — plus the membership test, which had been answering `[1] in {"a": 1}` with `False`
+at exit 0. The gate is asked only of a haystack that hashes its needle: `haystackHashesKeys` keeps it off
+a list and a tuple, where membership walks, and `[1] in [[1], [2]]` stays `True` — the direction of wrong
+that matters, since a gate that fires too eagerly turns a working program into a raise. The rows are
+`pkg/lang/unhashable_key_test.go` (thirteen traps, the soundness table, the classifier and the haystack
+asked directly, and the record leg reading `exnType`/`exnMsg` beside the compiled raise) and
+`integration/unhashable_key_test.go` (the same doors through the CLI, exit 3 and an empty stdout asserted,
+and `integration/programs/unhashable_key.gy` printed line-for-line against CPython). What the row still
+does not close is the key whose kind is only a run-time fact — a name the compiler cannot pin to one
+container keeps the answer it always gave rather than raise a TypeError it may not deserve, and that is
+L11.1's tagged word (ADR 0232's soundness rule). Two neighbours measured on the way are filed beside it:
+**Gap R.221** (a dict variable keyed by `None` or a bool reads the wrong entry — the payload road ADR 0327
+built a door for and did not finish) and **Gap R.222** (a list or string subscript asked with a key of the
+wrong kind answers a number instead of raising `list indices must be integers or slices, not str`).
 
 `print({"a": 1}[[1]])` and `d = {"a": 1}` / `print(d[[1]])` both die with `KeyError: key not found` at exit 3
 where the reference raises `TypeError: unhashable type: 'list'`. A list is not an absent key; it is a key that
@@ -9956,3 +9979,46 @@ road refuses the same program, which is the asymmetry `pkg/lang/dict_literal_key
 TestTheLiteralRoadIsNeverWorseThanTheVariableRoad` holds open: the literal road may not refuse a program the
 variable road answers the reference's way, and today the variable road does not answer it that way. The day the
 argument road carries the pair, that case fails until both roads print `x`.
+
+
+### Gap R.221 — a dict variable whose key is `None` or a bool reads the wrong entry (OPEN, found by ADR 0328)
+
+ADR 0328's conformance program began with two more probes than it finished with, and they came out
+because the program is required to match CPython line for line:
+
+```python
+d = {None: 3.5}
+print(d[None])          # 3.5 in the reference; 3 compiled
+d = {False: [2]}
+print(d[False])         # [2] in the reference; 3 compiled — a heap slot number
+```
+
+Both are wrong answers at exit 0, and both are the same fault: the value of an entry is one word, and
+what that word means lives in the tag stored beside it. ADR 0327 gave the dict *literal* its pair door
+(`rt_dict_get_tagged` beside `rt_dict_value_tag`) and left the dict *variable* road reading the payload
+alone, so a float value is read through the int road and comes out truncated, and a container value comes
+out as its handle. `d[None]` and `d[False]` are only the keys that make it visible — the road is any dict
+variable whose values are not plain ints. The fix is not new machinery: it is the door `literalDictRead`
+already uses, applied wherever `runtimeDicts` names a dict. It is filed here rather than bundled because
+it is L11.1's tagged value word by another name, and that row — not this one — owns the decision about
+what a word carries.
+
+### Gap R.222 — a list or string subscript asked with a key of the wrong kind answers (OPEN, found by ADR 0328)
+
+The unhashable-key gate had to be asked only of the containers that hash, and finding that boundary
+measured the ones that walk:
+
+```python
+xs = [1, 2]
+print(xs["a"])          # TypeError: list indices must be integers or slices, not str — compiled: 1
+xs[[0]] = 5             # the same sentence naming `list` — compiled: the store happens
+```
+
+A text index is an interned `@str_tab` index, and `normalizeIndex` bounds a position it never *typed*:
+the read of a list by `"a"` uses the interned number as the offset and prints whatever sits at slot 1, so
+the program answers `1` at exit 0 — a number nobody wrote, which is the class of defect this repo treats
+as worse than a refusal. The gate belongs beside `normalizeIndex`, naming the type the way
+`unhashableKeyName` names it for a dict key, and the two share their classifier: the container that walks
+asks "is this an integer or a slice?", the container that hashes asks "can this be hashed?". Filed rather
+than bundled, because the string door has its own sentence (`string indices must be integers, not 'list'`)
+and L11.4 owns the index rule (ADR 0210).

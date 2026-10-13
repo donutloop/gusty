@@ -512,6 +512,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
 		"gc_precise",
+		"unhashable_key",
+		// A key the language refuses to hash, at the three doors a dict is consulted through. The
+		// read said `KeyError: key not found`, the membership test answered `False` at exit 0 and the
+		// store built the entry and printed `{[1]: 2}`; the reference raises `TypeError: unhashable
+		// type: 'list'` at all three, and the program prints the caught sentence for each, so a line
+		// that goes missing is a door that stopped refusing (roadmap Gap R.217, ADR 0328). The list
+		// haystacks in the same program are the soundness half: `[1] in [[1], [2]]` walks, does not
+		// hash, and must stay True.
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

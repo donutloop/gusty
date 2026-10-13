@@ -3088,6 +3088,27 @@
     },
     {
       "case": {
+        "id": "programs/unhashable_key",
+        "name": "unhashable_key.gy",
+        "source": "d = {\"a\": 1, 5: \"five\"}\nprint(d[\"a\"], d[5])\nprint(\"a\" in d, 2 in d)\nprint({\"a\": 1}[\"a\"], {5: \"five\"}[5])\nprint(1 in {\"a\": 1}, \"a\" in {\"a\": 1})\nprint([1] in [[1], [2]], [3] in [[1], [2]])\nprint({1} in [{1}])\nprint({\"a\": 1} in [{\"a\": 1}])\ntry:\n    print({\"a\": 1}[[1]])\nexcept TypeError:\n    print(\"a list key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1: 2}])\nexcept TypeError:\n    print(\"a dict key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1}])\nexcept TypeError:\n    print(\"a set key raises TypeError\")\ntry:\n    print([1] in {\"a\": 1})\nexcept TypeError:\n    print(\"a list needle raises TypeError\")\ntry:\n    store = {}\n    store[[1]] = 2\n    print(\"the store answered\", store)\nexcept TypeError:\n    print(\"a list store key raises TypeError\")\nx = [7]\ntry:\n    print(d[x])\nexcept TypeError:\n    print(\"a bound name key raises TypeError\")\ny = {\"k\": 1}\ntry:\n    print(y in {1, 2})\nexcept TypeError:\n    print(\"a dict needle raises TypeError\")\nprint(len(d))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "1 five\nTrue False\n1 five\nFalse True\nTrue False\nTrue\nTrue\na list key raises TypeError\na dict key raises TypeError\na set key raises TypeError\na list needle raises TypeError\na list store key raises TypeError\na bound name key raises TypeError\na dict needle raises TypeError\n2\n",
+      "python_ok": true,
+      "python_stdout": "1 five\nTrue False\n1 five\nFalse True\nTrue False\nTrue\nTrue\na list key raises TypeError\na dict key raises TypeError\na set key raises TypeError\na list needle raises TypeError\na list store key raises TypeError\na bound name key raises TypeError\na dict needle raises TypeError\n2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -3838,7 +3859,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/153/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/154/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3852,7 +3873,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/153/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/154/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4562,11 +4583,11 @@
       ]
     }
   ],
-  "rows": 181,
+  "rows": 182,
   "skipped": 38,
-  "pass": 143,
+  "pass": 144,
   "fail": 0,
-  "oracle_match": 128,
+  "oracle_match": 129,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

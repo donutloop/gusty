@@ -928,7 +928,9 @@ objects wrote — the same shape ADR 0306 paid for a list element, asked of two 
 to the runtime. The binding keeps its tags too, so `d = {"k": n}` answers `d["k"]`, `len(d)`, `k in d`, `d[k]`,
 `str(d)`, `d == {"k": "a"}` and a `for k in d`, and `s = {n}` answers `7 in s`, `len(s)` and a `for v in s`. A
 key or a member asks one question an element never asks — **can this value be hashed** — and the tag is what
-knows: `{c: 1}` over a container slot raises `TypeError: unhashable type: 'list'`, catchable by the program's
+knows: `{c: 1}` over a container slot raises `TypeError: unhashable type: 'list'`, and so does a container used
+as a dict key or a set needle at any of the three dict doors — `d[[1]] = 2`, `print({"a": 1}[[1]])`,
+`[1] in {"a": 1}` — catchable by the program's
 own `except TypeError:`, where reading the payload alone would have put an address in the bucket and printed a
 plausible container at the exit code of success (ADR 0310, ADR 0232, Gap R.81). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,

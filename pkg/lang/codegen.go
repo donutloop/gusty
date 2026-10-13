@@ -8973,6 +8973,20 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	if !ok {
 		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
 	}
+	// Storing under an unhashable key is the same refusal as reading under one, asked at the
+	// other door: the reference raises TypeError naming the type, and the put road happily
+	// built the entry, so `d = {}; d[[1]] = 2; print(d)` answered `{[1]: 2}` at exit 0 where the
+	// reference never stores it (roadmap Gap R.217, ADR 0328). The store below is still emitted
+	// — unreachable, so the module stays valid — and only after the raise branched away.
+	if g.dictVarHasKind(nm.Value) {
+		if _, bad := g.unhashableKeyName(ix.Idx); bad {
+			tn, _ := g.unhashableKeyName(ix.Idx)
+			g.heapUsed = true
+			g.raiseTo(b, exnCode("TypeError"), "TypeError", unhashableKeyMessage(tn), ix.Span())
+			cont := g.newLabel("uhk.cont")
+			b.WriteString(fmt.Sprintf("%s:\n", cont))
+		}
+	}
 	h, err := g.value(b, ix.Obj)
 	if err != nil {
 		return err
@@ -9676,6 +9690,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// the operands are lowered, because a tagged loop variable has no untagged lowering at
 		// all — `for x in s: x in t` is the shape this exists for.
 		if n.Op == "in" || n.Op == "not in" {
+			// `[1] in {"a": 1}` is not a question the reference allows: an unhashable needle is
+			// a TypeError naming its type, and the payload-only scan answered it False at exit 0
+			// (roadmap Gap R.217, ADR 0328). Asked first, before any fold and before the tagged
+			// membership door, so no arm of the test gets to answer it.
+			if g.haystackHashesKeys(n.R) {
+				if res, bad := g.unhashableKeyGate(b, n.L, n.Span()); bad {
+					return res, nil
+				}
+			}
 			if res, ok, err := g.mixedMembership(b, n); err != nil {
 				return "", err
 			} else if ok {
@@ -16707,6 +16730,13 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 // by the same path, asked of the (payload, tag) key. Without the tag the check would answer "the
 // key is there" for {0: 1} when asked for "0", and the raise below would never come.
 func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, keyExpr Expr, sp Span) {
+	// A key the language refuses to hash is not a missing entry, and the two questions must be
+	// asked in that order: the reference raises TypeError naming the type, and a scan that cannot
+	// match the key would otherwise report KeyError (roadmap Gap R.217, ADR 0328).
+	if res, bad := g.unhashableKeyGate(b, keyExpr, sp); bad {
+		_ = res
+		return
+	}
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has_tagged(i32 %s, i32 %s, i32 %s)\n", ok, h, key, keyTag))
 	isZero := g.newTmp()
@@ -16722,6 +16752,13 @@ func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, ke
 // checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
 // key used to return 0, where Python raises KeyError.
 func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp Span) {
+	// Asked before the dict is consulted, for the same reason as the tagged door above: a list,
+	// dict or set key is unhashable, and a scan that can never match it answers "no such entry"
+	// where the reference raises TypeError naming the type (roadmap Gap R.217, ADR 0328).
+	if res, bad := g.unhashableKeyGate(b, keyExpr, sp); bad {
+		_ = res
+		return
+	}
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", ok, h, key))
 	isZero := g.newTmp()

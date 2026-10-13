@@ -1,5 +1,46 @@
 # Session Learnings
 
+## Round 3 — A key the language cannot hash now names its type at every dict door (roadmap Gap R.217 closed; ADR 0328; Gaps R.221, R.222 filed)
+
+**Feature (codegen + runtime refusal)**: `print({"a": 1}[[1]])`, `print([1] in {"a": 1})` and `d = {}` /
+`d[[1]] = 2` were three doors into one language rule and the backend had three different wrong answers to
+it — `KeyError: key not found`, and, twice, an *answer at exit 0*: `False` for the membership test and
+`{[1]: 2}` for the store, a dict the reference cannot build. `pkg/lang/unhashable_key.go` asks the program
+whether the key is something the language refuses to hash, at each door, before the door consults the dict,
+and raises CPython's `TypeError: unhashable type: 'list'` naming the innermost type — a tuple key says
+`'list'`, because the reference hashes a tuple by walking its elements. The record leg settled the argument
+before it started: re-recording the thirty new sources came back `exnType: "TypeError"` for all of them, so
+the retired engine had this rule and only the compiled backend had lost it.
+
+- **The fix's own soundness bug was the most valuable line of the cycle.** The first gate fired on the
+  needle alone, and `[1] in [[1], [2]]` — `True` in the reference, because a list haystack walks instead of
+  hashing — started raising. Nothing in the code reads as wrong; the reference is what caught it.
+  `haystackHashesKeys` is now a named function with its own test table precisely so that the boundary is a
+  thing the next cycle can break loudly rather than quietly.
+- **Ask the reference before writing the expected output, and diff the whole program.** The conformance
+  program was written first and `diff <(gustyc --file …) <(python3 …)` found a *second*, unrelated defect in
+  the same session — `{None: 3.5}` reading as `3` and `{False: [2]}` reading as a heap slot number. Those
+  probes were removed from the program (a program that is an asserted `match` may not contain a known lie)
+  and filed as Gap R.221 instead of being quietly dropped.
+- **A half-built feature costs more than no feature.** An L11.7 slice (a parameter the body calls, monomorphic
+  over the witness every call site passes) got as far as a scan pass and four codegen hunks before it was
+  reverted to `HEAD` unshipped. The reason is not the difficulty — it is that the work had been built on
+  readings of `codegen.go` that turned out not to be in the file, so every "existing helper" it leaned on was
+  fiction until `go build` said otherwise. `git checkout` + a clean build, then re-measuring from things that
+  had actually executed (CLI runs, `git diff`), put the cycle back on solid ground inside minutes.
+- **Compile is the only reliable reader of a file this size.** `pkg/lang/codegen.go` is 19,577 lines and
+  several greps on it returned output I read as fact. The discipline that survived: a claim about the tree is
+  admitted only from a build, a run, or `git diff` — and `go build` errors were the cheapest truth available
+  every time I guessed an API (`g.prog`, `provKind`, `Program.Functions`, `evalGolden`'s arity).
+- **One-commit scope made the two defects cheap to keep apart.** Gap R.217 shipped; the two wrong answers it
+  exposed on the way (a dict variable's non-int key; a list asked for an integer index) became rows R.221 and
+  R.222 with their own evidence lines, so the next cycle inherits a measurement rather than a rumour.
+- **The record count is a test, twice over.** 6169 → 6199 required editing the sentence in `AGENTS.md`,
+  `docs/operations.md` and the Snapshot table, and the guard names the file that lies. Same for ADRs (320,
+  highest 0328), programs (193) and rows owed (110 of 138) — every one recomputed from the tree, none typed
+  from memory.
+
+
 ## Round 24 — The stdlib answers the reference's name, and the tracker's own tally was short by four rows (roadmap L11.6 closed; ADR 0321; Gaps R.206, R.207, R.208 filed)
 
 **Feature (stdlib + conformance)**: `import math` / `print(math.PI)` has printed `3.141592653589793` since ADR 0272

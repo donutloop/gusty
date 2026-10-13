@@ -1,0 +1,15 @@
+1 five
+True False
+1 five
+False True
+True False
+True
+True
+a list key raises TypeError
+a dict key raises TypeError
+a set key raises TypeError
+a list needle raises TypeError
+a list store key raises TypeError
+a bound name key raises TypeError
+a dict needle raises TypeError
+2

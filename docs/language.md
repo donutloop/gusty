@@ -900,6 +900,27 @@ be hashed* — and only the tag can answer it: a container-valued key or member 
 reading the payload alone would have put a heap handle in the bucket and printed a plausible container at the
 exit code of success (`Gap R.81` owns the general hashing rule).
 
+The question is asked at **every door that consults a dict**, not only the deep ones (ADR 0328,
+`Gap R.217`). All three of these raise the reference's sentence, on both dict roads — a literal written in
+place and a variable bound to one:
+
+```python
+print({"a": 1}[[1]])      # TypeError: unhashable type: 'list'
+print([1] in {"a": 1})    # TypeError: unhashable type: 'list'   (not `False` — the question is not allowed)
+d = {}
+d[[1]] = 2                # TypeError: unhashable type: 'list'   (the entry is never stored)
+print({"a": 1}[(1, [2])]) # TypeError: unhashable type: 'list'   — a tuple is hashable, its element is not
+```
+
+A tuple key names the *inner* type, because the reference hashes a tuple by hashing its elements left to
+right and reports the first one it cannot. A name bound to a container is a container key
+(`x = [1]` / `d[x]`), and the kind is read from what the source wrote. **A list and a tuple are the
+containers that walk rather than hash**, so membership in one takes an unhashable needle legally:
+`[1] in [[1], [2]]` is `True` and `{1} in [{1}]` is `True` — the gate that refuses a dict key must not
+follow the needle into a list haystack, where it would turn a working program into a raise. What still
+refuses, rather than answering, is a key whose kind is only a run-time fact: a name the compiler cannot
+pin to one container keeps its lookup honest by declining (L11.1's tagged word, `Gap R.212`).
+
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
 > does not have is `KeyError: not in set`. CPython rejects the shape outright with

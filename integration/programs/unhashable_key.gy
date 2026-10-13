@@ -1,0 +1,41 @@
+d = {"a": 1, 5: "five"}
+print(d["a"], d[5])
+print("a" in d, 2 in d)
+print({"a": 1}["a"], {5: "five"}[5])
+print(1 in {"a": 1}, "a" in {"a": 1})
+print([1] in [[1], [2]], [3] in [[1], [2]])
+print({1} in [{1}])
+print({"a": 1} in [{"a": 1}])
+try:
+    print({"a": 1}[[1]])
+except TypeError:
+    print("a list key raises TypeError")
+try:
+    print({"a": 1}[{1: 2}])
+except TypeError:
+    print("a dict key raises TypeError")
+try:
+    print({"a": 1}[{1}])
+except TypeError:
+    print("a set key raises TypeError")
+try:
+    print([1] in {"a": 1})
+except TypeError:
+    print("a list needle raises TypeError")
+try:
+    store = {}
+    store[[1]] = 2
+    print("the store answered", store)
+except TypeError:
+    print("a list store key raises TypeError")
+x = [7]
+try:
+    print(d[x])
+except TypeError:
+    print("a bound name key raises TypeError")
+y = {"k": 1}
+try:
+    print(y in {1, 2})
+except TypeError:
+    print("a dict needle raises TypeError")
+print(len(d))
