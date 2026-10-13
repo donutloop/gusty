@@ -176,6 +176,16 @@ because `1`, `True` and `1.0` are one key (ADR 0259's key equality). This is the
 *interpreter* was the diverging engine and the compiled answer was CPython's; both legs had disagreed
 about an ordinary dictionary until a program wrote one.
 
+A **dict literal** is a dict, so it is read by the door a dict *variable*'s entries are read by (ADR 0327).
+`{"a": 1}["a"]` is `1`, `{"a": "x"}["a"]` prints `x` rather than the `@str_tab` index it is interned by,
+`{1: 1.5}[1]` is `1.5`, `{1: None}[1]` is `None`, `{1: "a"}[True]` is `a` — the reference's key identity, where
+`1`, `1.0` and `True` are one key and a text never is — and `{"a": [1, 2]}["a"]` prints `[1, 2]`. A key the
+literal does not hold is the reference's exception, with the key's own repr as its message and a handler that
+catches it: `{"a": 1}["b"]`, `{"a": 1}[1]` and `{1: 2}["a"]` each die at exit 3 under `KeyError`, and
+`except KeyError:` runs. The compile-time lookup stays for the one shape it can read — an integer key into a
+literal whose keys and values are all integers — and it keeps the reference's repeated-key rule, so
+`{1: 2, 1: 3}[1]` is `3` rather than the `2` the fold used to answer (Gap R.216).
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

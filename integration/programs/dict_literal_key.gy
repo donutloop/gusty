@@ -1,0 +1,44 @@
+# A dict literal is a dict, so its entries are read the way a dict variable's are: the entry is built,
+# the key is compared as a (payload, tag) pair, and the answer carries the kind the object gave it.
+# Every line below is what the reference prints (roadmap Gap R.215, ADR 0327).
+print({"a": 1}["a"])
+print({"a": "x"}["a"])
+print({1: 1.5}[1])
+print({1: None}[1])
+print({1: True}[1])
+print({None: 5}[None])
+print({1.5: 2}[1.5])
+print({True: 9}[True])
+print({1: "a"}[True])
+print({1: 2, "a": 3}["a"])
+print({1: 2, "a": 3}[1])
+print({"a": [1, 2]}["a"])
+print({"a": {"b": 3}}["a"]["b"])
+print({"a": [[1, 2]]}["a"][0][1])
+x = {"a": "x"}["a"]
+print(x)
+print(len({"a": [1, 2]}["a"]))
+print(2 in {"a": [1, 2]}["a"])
+for v in {"a": [1, 2]}["a"]:
+    print(v)
+print(str({"a": "x"}["a"]), repr({"a": "x"}["a"]))
+print({"a": 1}["a"] + 1)
+print({"a": "x"}["a"] + "!")
+def show(v):
+    print(v)
+
+show({"a": 1}["a"])
+print({1: 2, 1: 3}[1])
+try:
+    print({1: 2, 1: 3}["a"])
+except KeyError:
+    print("the fold cannot read that key")
+print({1: 2}[1])
+try:
+    print({"a": 1}["b"])
+except KeyError:
+    print("no such key")
+try:
+    print({1: 2}["a"])
+except KeyError:
+    print("not a number key")

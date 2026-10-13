@@ -9574,3 +9574,57 @@ reflex caught a worse error mid-cycle: two claims about `roadmap.md` (a "Gap R.1
 measured, and do not exist in the file at all. `grep -c` over the file is the difference between a claim with an
 owner and a fabrication wearing a row number; from here, a number or a row name goes into a document only after
 a command has printed it in this session.
+
+## The gate was the bug, not the door (L11.1, Gap R.215/R.216, ADR 0327)
+
+`print({"a": 1}["a"])` refused with `index must be a constant` while `d = {"a": 1}` / `print(d["b"])` raised
+`KeyError: 'b'`. The tempting description was "the backend cannot read a dict literal with a text key", and the
+thing I found in the code was narrower and stupider: the subscript road opens with a gate that accepts a
+non-integer key **only when the base is a registered container name**, so `case *DictLit:` below it was
+reachable with an integer key and nothing else. Every part of the answer already existed and was in production
+use — `heapDictFrom` builds the literal, `taggedSlotPair` reads an entry as `(payload, tag)`,
+`rt_dict_has_tagged`/`rt_dict_get_tagged`/`rt_dict_value_tag` ask the object, ADR 0326's raise names the missing
+key. A gate, not a missing door. The first question for any "the backend refuses X" row should therefore be
+*which check rejects it*, because a gate is a five-line change and a door is a runtime helper.
+
+### A literal is the same value as the name you would bind it to
+
+The rule that paid the row is one sentence: **a dict literal is a dict**, so its entries are read by the door a
+dict variable's entries are read by. Where the fold genuinely can read the shape (`{1: 2}[1]`) it answers and the
+module carries none of the heap dict — pinned by a negative control, with the positive half asserted in a
+neighbouring test so the control cannot pass vacuously. The key rule fell out of reading the key as a *value*
+instead of as a spelling: `1`, `1.0` and `True` are one key, `True` finds the entry `1` wrote, and `{0: 1}["0"]`
+raises where the payload-read answer was "the key is there".
+
+### A wrong answer at exit 0 is worth an exit 1 refusal, and the pair is the whole difference
+
+Routing the read through the object was easy; keeping the *tag* was the work. `def f(): return {"a": "x"}["a"]`
+and `g({"a": "x"}["a"])` both measured as `1` at **exit 0** — the text's `@str_tab` index — because those
+positions keep one word for a whole value. They stay refusals, and the refusal says which half is missing and
+which row owns it (Gap R.146, plus Gap R.220 filed from the variable side of the same road). The gate asks
+whether the entry is a plain integer rather than trusting `strFuncs`; had it trusted `strFuncs`, Gap R.219 (a
+function registered as text-returning on the evidence of one arm) would have turned `{"a": 1}["a"]` into a
+`1` printed as text. The invariant that keeps the whole family honest is
+`TestTheLiteralRoadIsNeverWorseThanTheVariableRoad`: the literal road may answer where the variable road refuses,
+must answer the reference's way when it answers, and may refuse only where the variable road is not right either.
+
+### Four rows fell out of probing, and one of them was this cycle's own fold
+
+`{1: 2, 1: 3}[1]` answered `2` while the object road answered `3` — one construct, two answers, and the fold's
+was wrong (Gap R.216, paid by scanning the literal's keys from last to first). Three more are filed, not
+bundled: a container key raises `KeyError` where the reference raises `TypeError: unhashable` (Gap R.217 — and
+the *variable* road says the same thing, which is what "one door" is supposed to buy), a **list** literal read by
+a position still answers the payload (`["a","b"][0]` prints `0`, Gap R.218 — the same defect, other base), and a
+dict read handed to a call answers the payload (Gap R.220).
+
+### Twice in one cycle I wrote a citation I had not measured
+
+Two failures worth recording, because both were *my* tooling habits rather than the language's. First, I filled
+in a test-name citation and a `file.go:line` reference from what the code "must" look like — `compiledRepr`,
+`runCompiledRepr`, `pkg/lang/codegen_robject_index_test.go` — none of which exist; the compile caught the first
+two, and only a `grep`/`ls` re-run caught the third. Second, I reached for `write` to *append* a section to
+`docs/roadmap-details.md` and overwrote 9,873 lines with a placeholder; `git checkout --` restored it because
+the file happened to be unmodified, which was luck and not process. So: a helper name goes into a test only after
+`grep -rn "func name"` has printed it in this session, a row number goes into a document only after `grep -c` has
+printed it, and an append to a big file is an `edit` against an anchor or a shell append — never a whole-file
+`write`.

@@ -9858,16 +9858,101 @@ now, and the row is about handing it something to check. `pkg/lang/constant_trap
 TestTheCallResultStillRefuses` pins the refusal so that paying the row has to break a test rather than a
 memory.
 
-### Gap R.215 — a text key into a dict literal refuses while the same key into a dict variable traps (OPEN, found by ADR 0326)
+<a id="gap-r-215"></a>
+### Gap R.215 — a text key into a dict literal refuses while the same key into a dict variable traps (CLOSED by ADR 0327)
 
 ```
-print({"a": 1}["b"])        # codegen: index must be a constant      (exit 1)
-print({"a": 1}["a"])        # codegen: index must be a constant      (exit 1)
+print({"a": 1}["b"])        # codegen: index must be a constant      (exit 1)  → KeyError: 'b' (exit 3)
+print({"a": 1}["a"])        # codegen: index must be a constant      (exit 1)  → 1
 d = {"a": 1}
-print(d["b"])               # KeyError: 'b'                          (exit 3)
+print(d["b"])               # KeyError: 'b'                          (exit 3)  ✅ both before and after
 ```
 
-A literal is the most constant base there is, and the one road that reads its base statically is the one road
-that cannot see a text key — the variable road looks the key up and raises. The keys of a literal dict are
-constants to hand; the road needs the same lookup and then the raise this cycle built. Measured while landing
-ADR 0326, and left open rather than bundled: it is a second lowering, not the same door.
+A literal is the most constant base there is, and the one road that reads its base statically was the one road
+that could not see a text key — the variable road looks the key up and raises. Measured while landing ADR 0326,
+and left open rather than bundled; closed the next cycle, and **the root cause was not a missing door**. The
+subscript road opens with a gate: a key that is not an `IntLit` is accepted only when the base is a registered
+container *name*, and everything else returns `index must be a constant`. The `case *DictLit:` below that gate
+was therefore only ever reachable with an integer key, and its helpers (`dictLiteralKeys`, `dictLiteralVals`)
+admitted nothing but integer constants — so the fold was not a fast path in front of a general road, it was the
+only road, and the sentence `a compiled dict literal holds constant integer keys only; CPython supports string
+and other keys` was the backend describing its own gate as a property of the language.
+
+The fix is the gate plus one call: a literal dict whose entries the fold cannot read is built by
+`heapDictFrom` — the builder a binding already uses — and read by `taggedSlotPair` against a
+`*DictLit` base, which asks `rt_dict_has_tagged` (a miss is the `KeyError` ADR 0326 built, with the key's repr
+as its message), `rt_dict_get_tagged` and `rt_dict_value_tag`. The answer is the pair, so the print door, the
+`str`/`repr` door, the binding door and the element-position door all take both words; `exprIsString` and
+`printsAsInternedStr` answer "is this entry a text?" from the *entry* rather than from a guessed tag. Because the
+key is now compared as a value, the literal inherits the dict key rule it always should have had: `1`, `1.0` and
+`True` are one key, `True` finds the entry `1` wrote, and a text key is never a number key — `{0: 1}["0"]`
+raises where the fold's payload read answered "the key is there".
+
+Two positions stay refusals rather than joining the wrong answers, because they keep one word for a whole value:
+`def f(): return {"a": "x"}["a"]` and `g({"a": "x"}["a"])` measured as `1` at **exit 0** under a naive routing —
+the text's `@str_tab` index, printed as a number. The refusal names the pair, the one word, and **Gap R.146**,
+the row that owns handing a pair across a call. The gate asks whether the entry is a plain integer rather than
+trusting `strFuncs`, which is why Gap R.219 is filed beside this row rather than hidden inside it.
+
+Pinned by `pkg/lang/dict_literal_key_test.go` (29 answering rows, 7 missing-key rows with class *and* sentence,
+the catchable pair, the fold's negative control, the printer claim, the refusal sentences) and by
+`integration/dict_literal_key_test.go` at the CLI against CPython, with `integration/programs/dict_literal_key.gy`
+`match`-ing on both legs. The asymmetry the change had to leave behind is Gap R.220.
+
+<a id="gap-r-216"></a>
+### Gap R.216 — a dict literal that writes the same key twice keeps the FIRST value in the fold (CLOSED by ADR 0327)
+
+`print({1: 2, 1: 3}[1])` is `3` in the reference — a repeated key is one key written twice, and the later write
+owns the value — and the fold answered `2`, while the *object* road already answered `3` because it builds by
+insertion. One construct, two answers, and only one of them the reference's. Paid by the whole of the change:
+the fold's key scan runs from the last entry to the first, in the subscript fold and in `dictIndex` beside it.
+`pkg/lang/dict_literal_key_test.go::TestTheFoldKeepsTheLastValueOfARepeatedKeyWhenTheFoldReadsIt` answers `3` and
+asserts the module carries none of the object doors, so the fold keeps its shape and its rule at the same time.
+
+<a id="gap-r-217"></a>
+### Gap R.217 — a dict read by a container key raises the wrong class (OPEN, found by ADR 0327)
+
+`print({"a": 1}[[1]])` and `d = {"a": 1}` / `print(d[[1]])` both die with `KeyError: key not found` at exit 3
+where the reference raises `TypeError: unhashable type: 'list'`. A list is not an absent key; it is a key that
+cannot be asked. ADR 0324 got this right for a needle into a container *slot*, and `guardHashableTag` stands on
+the dict write; the read doors never ask it, so the literal inherits exactly what the variable road already got
+wrong — which is the point: this row is one door's missing check, not two.
+
+<a id="gap-r-218"></a>
+### Gap R.218 — a list literal read by a position answers the payload, not the value (OPEN, found by ADR 0327)
+
+The gap ADR 0327 closed for dicts, still open for lists: `print(["a", "b"][0])` prints `0` (the `@str_tab`
+index), `print([1.5, 2][0])` prints `1` (the `@float_box` handle), `print([None, 2][0])` prints `0` and
+`print([True, 2][0])` prints `1` — every one at **exit 0**, where the reference prints `a`, `1.5`, `None`,
+`True`. The list fold has the same shape as the dict fold and the same defect: a payload where a value should
+be, and no tag to correct it. `containerHandleOf` already answers a `*ListLit` and `containerSlotRead` already
+reads `rt_tag_of` beside `rt_get_elem`, so it is the gate again, not the door.
+
+<a id="gap-r-219"></a>
+### Gap R.219 — a function is registered as returning text on the evidence of one arm (OPEN, found by ADR 0327)
+
+`def f(x):` / `    if x:` / `        return "x"` / `    return 0` with `print(f(1))` / `print(f(0))` prints `x`
+and `x` where the reference prints `x` and `0`. `returnsStringExpr`/`methodReturnsStr` set `strFuncs` when *any*
+return yields text, and the call site then renders the other arm's number through the text printer. Measured
+while probing this cycle's return-position gate — which is why that gate asks whether the entry is a plain
+integer and does not trust `strFuncs`: trusting it would have made `def f(): return {"a": 1}["a"]` compile and
+`def f(): return {"a": "x"}["a"]` answer `1`.
+
+<a id="gap-r-220"></a>
+### Gap R.220 — a dict read handed to a call answers the payload, not the value (OPEN, found by ADR 0327)
+
+```
+d = {"a": "x"}
+def id(v):
+    return v
+
+print(id(d["a"]))     # exit 0, prints 1 — the text's @str_tab index; the reference prints x
+print(id({"a": "x"}["a"]))  # exit 1: refuses, naming the pair, the one word and Gap R.146
+```
+
+Gap R.146's one-word position measured from the dict side: the read produces a `(payload, tag)` pair and the
+parameter keeps one word, so the tag is dropped on the way in and the printer has nothing to read. The literal
+road refuses the same program, which is the asymmetry `pkg/lang/dict_literal_key_test.go::
+TestTheLiteralRoadIsNeverWorseThanTheVariableRoad` holds open: the literal road may not refuse a program the
+variable road answers the reference's way, and today the variable road does not answer it that way. The day the
+argument road carries the pair, that case fails until both roads print `x`.

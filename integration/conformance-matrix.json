@@ -3025,6 +3025,27 @@
     },
     {
       "case": {
+        "id": "programs/dict_literal_key",
+        "name": "dict_literal_key.gy",
+        "source": "# A dict literal is a dict, so its entries are read the way a dict variable's are: the entry is built,\n# the key is compared as a (payload, tag) pair, and the answer carries the kind the object gave it.\n# Every line below is what the reference prints (roadmap Gap R.215, ADR 0327).\nprint({\"a\": 1}[\"a\"])\nprint({\"a\": \"x\"}[\"a\"])\nprint({1: 1.5}[1])\nprint({1: None}[1])\nprint({1: True}[1])\nprint({None: 5}[None])\nprint({1.5: 2}[1.5])\nprint({True: 9}[True])\nprint({1: \"a\"}[True])\nprint({1: 2, \"a\": 3}[\"a\"])\nprint({1: 2, \"a\": 3}[1])\nprint({\"a\": [1, 2]}[\"a\"])\nprint({\"a\": {\"b\": 3}}[\"a\"][\"b\"])\nprint({\"a\": [[1, 2]]}[\"a\"][0][1])\nx = {\"a\": \"x\"}[\"a\"]\nprint(x)\nprint(len({\"a\": [1, 2]}[\"a\"]))\nprint(2 in {\"a\": [1, 2]}[\"a\"])\nfor v in {\"a\": [1, 2]}[\"a\"]:\n    print(v)\nprint(str({\"a\": \"x\"}[\"a\"]), repr({\"a\": \"x\"}[\"a\"]))\nprint({\"a\": 1}[\"a\"] + 1)\nprint({\"a\": \"x\"}[\"a\"] + \"!\")\ndef show(v):\n    print(v)\n\nshow({\"a\": 1}[\"a\"])\nprint({1: 2, 1: 3}[1])\ntry:\n    print({1: 2, 1: 3}[\"a\"])\nexcept KeyError:\n    print(\"the fold cannot read that key\")\nprint({1: 2}[1])\ntry:\n    print({\"a\": 1}[\"b\"])\nexcept KeyError:\n    print(\"no such key\")\ntry:\n    print({1: 2}[\"a\"])\nexcept KeyError:\n    print(\"not a number key\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "1\nx\n1.5\nNone\nTrue\n5\n2\n9\na\n3\n2\n[1, 2]\n3\n2\nx\n2\nTrue\n1\n2\nx 'x'\n2\nx!\n1\n3\nthe fold cannot read that key\n2\nno such key\nnot a number key\n",
+      "python_ok": true,
+      "python_stdout": "1\nx\n1.5\nNone\nTrue\n5\n2\n9\na\n3\n2\n[1, 2]\n3\n2\nx\n2\nTrue\n1\n2\nx 'x'\n2\nx!\n1\n3\nthe fold cannot read that key\n2\nno such key\nnot a number key\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_math_constant_answers_the_references_spelling",
         "name": "probe_math_constant_answers_the_references_spelling.gy",
         "source": "# Oracle probe (L11.6, ADR 0321) — the standard library answers the reference's NAME, not only ours.\n#\n# `print(math.PI)` has printed 3.141592653589793 on every engine since ADR 0272 gave a data module's constant\n# its type. What that row could never be measured is the NAME: the reference spells its constants `math.pi`,\n# `math.e` and `math.tau`, so the compiled answer for `math.PI` had no CPython to compare against — the ledger\n# recorded the program `not_applicable` for the spelling, and the twin in integration/module_const_test.go\n# carried the comparison by hand. A surface the reference cannot spell is a surface the reference leg cannot\n# adjudicate, and an unadjudicated surface is where a wrong answer lives comfortably.\n#\n# So `stdlib/math.gy` declares the reference's spellings as the literal and this language's upper-case names as\n# aliases of it — one number, two names, written in one place. This program is written the reference's way,\n# which means the CPython leg RUNS it and the two legs are compared rather than described. The last four lines\n# are why it is not a one-liner: a module constant is an ordinary value, and the questions L11.6 owns are\n# asked of it — the floored division, the modulo, the digit count, the container, the f-string field — each one\n# a place the folded literal used to be poured into an `i32`.\n#\n# What CPython prints for each line (python3, 3.12):\n#\n#   3.141592653589793\n#   2.718281828459045\n#   6.283185307179586\n#   6.283185307179586\n#   -3.141592653589793\n#   True\n#   3.14\n#   [3.141592653589793, 2.718281828459045]\n#   1.0\n#   1.1415926535897931\n#   2.718281828459045\n#\nimport math\n\nprint(math.pi)\nprint(math.e)\nprint(math.tau)\nprint(math.pi * 2)\nprint(-math.pi)\nx = math.pi\nprint(x \u003e 3.14)\nprint(round(math.pi, 2))\nprint([math.pi, math.e])\nprint(math.pi // 2)\nprint(math.pi % 2)\nprint(f\"{math.e}\")\n",
@@ -3817,7 +3838,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/152/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/153/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3831,7 +3852,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/152/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/153/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4541,11 +4562,11 @@
       ]
     }
   ],
-  "rows": 180,
+  "rows": 181,
   "skipped": 38,
-  "pass": 142,
+  "pass": 143,
   "fail": 0,
-  "oracle_match": 127,
+  "oracle_match": 128,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

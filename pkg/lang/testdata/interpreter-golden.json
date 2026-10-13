@@ -1,5 +1,206 @@
 {
  "entries": {
+"print({\"a\": 1}[\"b\"])\n": {
+    "err": "KeyError: 'b'",
+    "exnType": "KeyError",
+    "exnMsg": "'b'"
+   },
+
+"print({\"a\": 1}[\"zz\"])\n": {
+    "err": "KeyError: 'zz'",
+    "exnType": "KeyError",
+    "exnMsg": "'zz'"
+   },
+
+"print({\"a\": 1}[1])\n": {
+    "err": "KeyError: 1",
+    "exnType": "KeyError",
+    "exnMsg": "1"
+   },
+
+"print({0: 2}[\"a\"])\n": {
+    "err": "KeyError: 'a'",
+    "exnType": "KeyError",
+    "exnMsg": "'a'"
+   },
+
+"print({1: 2, 1: 3}[\"a\"])\n": {
+    "err": "KeyError: 'a'",
+    "exnType": "KeyError",
+    "exnMsg": "'a'"
+   },
+
+"print({1: 2}[\"a\"])\n": {
+    "err": "KeyError: 'a'",
+    "exnType": "KeyError",
+    "exnMsg": "'a'"
+   },
+
+"print({1: 2}[None])\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+"# A dict literal is a dict, so its entries are read the way a dict variable's are: the entry is built,\n# the key is compared as a (payload, tag) pair, and the answer carries the kind the object gave it.\n# Every line below is what the reference prints (roadmap Gap R.215, ADR 0327).\nprint({\"a\": 1}[\"a\"])\nprint({\"a\": \"x\"}[\"a\"])\nprint({1: 1.5}[1])\nprint({1: None}[1])\nprint({1: True}[1])\nprint({None: 5}[None])\nprint({1.5: 2}[1.5])\nprint({True: 9}[True])\nprint({1: \"a\"}[True])\nprint({1: 2, \"a\": 3}[\"a\"])\nprint({1: 2, \"a\": 3}[1])\nprint({\"a\": [1, 2]}[\"a\"])\nprint({\"a\": {\"b\": 3}}[\"a\"][\"b\"])\nprint({\"a\": [[1, 2]]}[\"a\"][0][1])\nx = {\"a\": \"x\"}[\"a\"]\nprint(x)\nprint(len({\"a\": [1, 2]}[\"a\"]))\nprint(2 in {\"a\": [1, 2]}[\"a\"])\nfor v in {\"a\": [1, 2]}[\"a\"]:\n    print(v)\nprint(str({\"a\": \"x\"}[\"a\"]), repr({\"a\": \"x\"}[\"a\"]))\nprint({\"a\": 1}[\"a\"] + 1)\nprint({\"a\": \"x\"}[\"a\"] + \"!\")\ndef show(v):\n    print(v)\n\nshow({\"a\": 1}[\"a\"])\nprint({1: 2, 1: 3}[1])\ntry:\n    print({1: 2, 1: 3}[\"a\"])\nexcept KeyError:\n    print(\"the fold cannot read that key\")\nprint({1: 2}[1])\ntry:\n    print({\"a\": 1}[\"b\"])\nexcept KeyError:\n    print(\"no such key\")\ntry:\n    print({1: 2}[\"a\"])\nexcept KeyError:\n    print(\"not a number key\")\n": {
+    "stdout": "1\nx\n1.5\nNone\nTrue\n5\n2\n9\na\n3\n2\n[1, 2]\n3\n2\nx\n2\nTrue\n1\n2\nx 'x'\n2\nx!\n1\n3\nthe fold cannot read that key\n2\nno such key\nnot a number key\n",
+    "hasStdout": true
+   },
+"# A dict literal is a dict, so its entries are read the way a dict variable's are: the entry is built,\n# the key is compared as a (payload, tag) pair, and the answer carries the kind the object gave it.\n# Every line below is what the reference prints (roadmap Gap R.215, ADR 0327).\nprint({\"a\": 1}[\"a\"])\nprint({\"a\": \"x\"}[\"a\"])\nprint({1: 1.5}[1])\nprint({1: None}[1])\nprint({1: True}[1])\nprint({None: 5}[None])\nprint({1.5: 2}[1.5])\nprint({True: 9}[True])\nprint({1: \"a\"}[True])\nprint({1: 2, \"a\": 3}[\"a\"])\nprint({1: 2, \"a\": 3}[1])\nprint({\"a\": [1, 2]}[\"a\"])\nprint({\"a\": {\"b\": 3}}[\"a\"][\"b\"])\nprint({\"a\": [[1, 2]]}[\"a\"][0][1])\nx = {\"a\": \"x\"}[\"a\"]\nprint(x)\nprint(len({\"a\": [1, 2]}[\"a\"]))\nprint(2 in {\"a\": [1, 2]}[\"a\"])\nfor v in {\"a\": [1, 2]}[\"a\"]:\n    print(v)\nprint(str({\"a\": \"x\"}[\"a\"]), repr({\"a\": \"x\"}[\"a\"]))\nprint({\"a\": 1}[\"a\"] + 1)\nprint({\"a\": \"x\"}[\"a\"] + \"!\")\ntry:\n    print({\"a\": 1}[\"b\"])\nexcept KeyError:\n    print(\"no such key\")\ntry:\n    print({1: 2}[\"a\"])\nexcept KeyError:\n    print(\"not a number key\")\nprint({1: 2}[1])\n": {
+    "stdout": "1\nx\n1.5\nNone\nTrue\n5\n2\n9\na\n3\n2\n[1, 2]\n3\n2\nx\n2\nTrue\n1\n2\nx 'x'\n2\nx!\nno such key\nnot a number key\n2\n",
+    "hasStdout": true
+   },
+"print({1: 2, 1: 3}[1])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"for v in {\"a\": [1, 2]}[\"a\"]:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"print(2 in {\"a\": [1, 2]}[\"a\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(len({\"a\": [1, 2]}[\"a\"]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(str({\"a\": \"x\"}[\"a\"]), repr({\"a\": \"x\"}[\"a\"]))": {
+    "stdout": "x 'x'\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": \"x\"}[\"a\"] + \"!\")": {
+    "stdout": "x!\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": \"x\"}[\"a\"])": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1}[\"a\"] + 1)": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1}[\"a\"])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1}[\"a\"], {\"b\": 2}[\"b\"])": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1}[\"b\"])": {
+    "err": "KeyError: 'b'",
+    "exnType": "KeyError",
+    "exnMsg": "'b'"
+   },
+
+"print({\"a\": 1}[1])": {
+    "err": "KeyError: 1",
+    "exnType": "KeyError",
+    "exnMsg": "1"
+   },
+
+"print({\"a\": [1, 2]}[\"a\"])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": [[1, 2]]}[\"a\"][0][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": {\"b\": 3}}[\"a\"][\"b\"])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print({0: 2}[\"a\"])": {
+    "err": "KeyError: 'a'",
+    "exnType": "KeyError",
+    "exnMsg": "'a'"
+   },
+
+"print({1.5: 2}[1.5])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({1: \"a\"}[True])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print({1: 1.5}[1])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"print({1: 2, \"a\": 3}[\"a\"])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print({1: 2, \"a\": 3}[1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({1: 2, 1.0: 3}[1])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print({1: 2}[\"a\"])": {
+    "err": "KeyError: 'a'",
+    "exnType": "KeyError",
+    "exnMsg": "'a'"
+   },
+
+"print({1: 2}[1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({1: None}[1])": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print({1: True}[1])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print({None: 5}[None])": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print({True: 9}[True])": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({\"a\": 1}[\"b\"])\nexcept KeyError:\n    print(\"no such key\")\nprint(\"after\")\n": {
+    "stdout": "no such key\nafter\n",
+    "hasStdout": true
+   },
+
+"x = {\"a\": \"x\"}[\"a\"]\nprint(x)\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
 "# The constant fold raises what the reference raises (roadmap Gap R.37, ADR 0326).\n#\n# Every read below has a literal underneath it and a position, key or text that cannot be honoured. The\n# compiler used to stop the program at the compile door for them — exit 1, `codegen: index of a literal\n# X is out of range` — which is the exit code the contract reserves for *the program being wrong*, and it\n# took the `except` away with it: nobody wraps an index in a try to find out what the index should have\n# been. They are ordinary raises now, so this program runs, catches each one by its class, and prints an\n# answer CPython prints, in the same order, for the same reasons.\n#\n# The last two lines are the other half of the door. A literal that does spell a number answers,\n# including the spellings a naive parser drops — surrounding spaces, a sign, an underscore between digits,\n# a bool, and the no-argument forms — and a fold that trapped on those would be as wrong as the silent\n# 0.0 `float(\"x\")` used to hand back.\n\ntry:\n    print([][0])\nexcept IndexError:\n    print(\"list index\")\n\ntry:\n    print(\"abc\"[7])\nexcept IndexError:\n    print(\"string index\")\n\ntry:\n    print({1: 2}[3])\nexcept KeyError:\n    print(\"missing key\")\n\ntry:\n    print(int(\"12 x\"))\nexcept ValueError:\n    print(\"not a number\")\n\ntry:\n    print(float(None))\nexcept TypeError:\n    print(\"not a number at all\")\n\ntry:\n    print(ord(\"ab\"))\nexcept TypeError:\n    print(\"not one character\")\n\ntry:\n    print(chr(1114112))\nexcept ValueError:\n    print(\"no such character\")\n\nxs = [x for x in [1, 2]]\ntry:\n    print(xs[9])\nexcept IndexError:\n    print(\"below the comprehension\")\n\nprint(int(\" 12 \"), int(\"1_0\"), int(True), float(\"1_0.5\"), float(True), int(), float())\n\ntotal = 0\nfor x in [1, 2, 3]:\n    total = total + x\nprint(total)\n": {
     "stdout": "list index\nstring index\nmissing key\nnot a number\nnot a number at all\nnot one character\nno such character\nbelow the comprehension\n12 10 1 10.5 1.0 0 0.0\n6\n",
     "hasStdout": true

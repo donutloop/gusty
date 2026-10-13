@@ -5393,6 +5393,12 @@ func (g *irGen) exprIsString(e Expr) bool {
 		if nm, ok := v.Obj.(*Name); ok {
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
 		}
+		if dl, isLit := v.Obj.(*DictLit); isLit {
+			// The entry a literal dict's read answers has a kind, and it is the entry's own: asking the
+			// dict would be asking the wrong thing, because a literal has no name for the bookkeeping to
+			// be recorded against (roadmap Gap R.215, ADR 0327).
+			return g.dictLiteralValueIsString(dl, v.Idx)
+		}
 		return false
 	case *Comp:
 		if len(v.Elems) != 1 {
@@ -6943,8 +6949,10 @@ func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for i, k := range keys {
-		if k == key {
+	// A repeated key in a literal is one key written twice, and the reference lets the later entry win the
+	// value: `{1: 2, 1: 3}[1]` is `3`. Scanning backwards is the whole of it (roadmap Gap R.216, ADR 0327).
+	for i := len(keys) - 1; i >= 0; i-- {
+		if keys[i] == key {
 			return fmt.Sprintf("%d", vals[i]), nil
 		}
 	}
@@ -10690,12 +10698,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if il, ok := n.Idx.(*IntLit); ok {
 			key = il.Value
 		} else {
-			// non-literal index: only runtime containers support it (x[a]).
+			// non-literal index: only runtime containers support it (x[a]) — and a dict literal, which is
+			// a runtime container the compiler happens to be looking at. Refusing the text key here is what
+			// made `print({"a": 1}["a"])` stop the program at exit 1 while `d = {"a": 1}; print(d["a"])`
+			// answered `1`: one construct, two doors (roadmap Gap R.215, ADR 0327).
 			if nm, ok := n.Obj.(*Name); ok {
 				if !g.listVars[nm.Value] && !g.runtimeDicts[nm.Value] && !g.runtimeSets[nm.Value] {
 					return "", fmt.Errorf("index must be a constant")
 				}
-			} else {
+			} else if _, isDictLit := n.Obj.(*DictLit); !isDictLit {
 				return "", fmt.Errorf("index must be a constant")
 			}
 		}
@@ -10860,27 +10871,40 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			return g.value(b, obj.Elems[li])
 		case *DictLit:
-			// constant-key lookup: find the key in the literal and return its
-			// constant value at compile time.
-			keys, err := dictLiteralKeys(obj)
-			if err != nil {
-				return "", err
-			}
-			vals, err := dictLiteralVals(obj)
-			if err != nil {
-				return "", err
-			}
-			for i, k := range keys {
-				if k == key {
-					return fmt.Sprintf("%d", vals[i]), nil
+			// Two doors, one question. Where the compiler can read the whole literal and the key — every key
+			// and every value an integer constant, the key an integer literal — the read is a compile-time
+			// lookup and the program gets the number. Where it cannot, the read is a message to the object:
+			// the same three calls a dict variable's read makes, on a dict the builder just tagged slot by
+			// slot, so a text key, a number key, a key of a kind the dict's other entries never held, and a
+			// key that is simply absent all get the answer the object gives rather than the answer the
+			// spelling suggests (roadmap Gap R.215, ADR 0327).
+			if g.dictLiteralFoldAnswers(obj, n.Idx) {
+				keys, err := dictLiteralKeys(obj)
+				if err != nil {
+					return "", err
 				}
+				vals, err := dictLiteralVals(obj)
+				if err != nil {
+					return "", err
+				}
+				// A repeated key in a literal is the SAME key written twice, so the later entry wins the value
+				// and the earlier one only contributes its spelling of the key: `{1: 2, 1: 3}[1]` is `3` in the
+				// reference, which is what a reverse scan says and a forward one gets backwards. The dict is
+				// built by insertion, so the object already answered this correctly — the fold was the half that
+				// had never been asked (roadmap Gap R.216, ADR 0327).
+				for i := len(keys) - 1; i >= 0; i-- {
+					if keys[i] == key {
+						return fmt.Sprintf("%d", vals[i]), nil
+					}
+				}
+				// A constant key the literal does not hold is the KeyError the reference raises, with the key
+				// itself as its message — the same sentence the dynamic read of a heap dict raises through
+				// `checkKeyRead`, so one program gets one message whichever way the compiler reached it
+				// (roadmap Gap R.37, ADR 0326).
+				g.constantTrap(b, "KeyError", g.keyNotFoundMessage(n.Idx), n.Span())
+				return "0", nil
 			}
-			// A constant key the literal does not hold is the KeyError the reference raises, with the key
-			// itself as its message — the same sentence the dynamic read of a heap dict raises through
-			// `checkKeyRead`, so one program gets one message whichever way the compiler reached it
-			// (roadmap Gap R.37, ADR 0326).
-			g.constantTrap(b, "KeyError", g.keyNotFoundMessage(n.Idx), n.Span())
-			return "0", nil
+			return g.literalDictRead(b, obj, n.Idx, n.Span())
 		case *SetLit:
 			// constant membership lookup: return the element if present.
 			elems, err := setLiteralElems(obj)
@@ -13638,6 +13662,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if g.pairClosed[fnName] != nil && g.pairClosed[fnName][idx] && g.isFloat(a) {
 				return "", fmt.Errorf("codegen: %s is a float handed to parameter %d of %s, a position this pass considered for the (payload, tag) pair and closed because another call site hands it something it cannot name: the ordinary road keeps one word per argument and would truncate the double to its int half, which is a wrong number rather than a refusal (roadmap L11.6, Gap R.164, ADR 0280)", exprSurface(a), idx, fnName)
 			}
+			// The same judgement, one construct nearer the source: an entry of a dict literal whose kind the
+			// object chose is a pair, and the ordinary argument road has one word per argument. The answer's
+			// tag would be dropped at the door, which is how `g({"a": "x"}["a"])` prints the `@str_tab`
+			// position instead of the word — the Gap R.164 shape with a text where ADR 0280 had a float.
+			if dl, key, isLit := literalDictReadOf(a); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
+				return "", literalDictOneWordErr(key)
+			}
 			return argVal(a, idx)
 		}
 		// callArgWords is the one place the arity is spelled: every parameter's word, plus the tag word
@@ -14186,6 +14217,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 			}
 			if ix, ok := a.(*Index); ok {
+				// print({"a": "x"}["a"]) reads a dict the program spelled out and never bound: the entry is
+				// built, the key is compared as a (payload, tag) pair, and the answer is printed from the pair
+				// the object hands back — so an int entry prints a number, a text entry its word, a float
+				// entry its decimal and a container entry its own contents. The fold still answers what it can
+				// read, so this arm runs exactly where the fold cannot (roadmap Gap R.215, ADR 0327).
+				if dl, isLit := ix.Obj.(*DictLit); isLit && !g.dictLiteralFoldAnswers(dl, ix.Idx) {
+					val, tag, derr := g.literalDictPair(b, dl, ix.Idx, ix.Span())
+					if derr != nil {
+						return "", derr
+					}
+					g.heapUsed = true
+					g.floatFmtUsed = true
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
+					continue
+				}
 				// print(xs[i]) reads the element *and* its tag, so the printer dispatches on
 				// what the slot holds instead of on what the compiler guessed: the same
 				// (value, tag) pair a tagged variable carries, produced at the read site
@@ -15934,6 +15980,12 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 			// integer index whenever the whole dict had not been printed first (the
 			// runtime @estr flag only covers printing the container itself).
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
+		}
+		if dl, isLit := v.Obj.(*DictLit); isLit {
+			// One entry of a literal dict, asked as the entry the key names: printing it must show the
+			// word when that entry is text and not the @str_tab position it is stored as
+			// (roadmap Gap R.215, ADR 0327).
+			return g.dictLiteralValueIsString(dl, v.Idx)
 		}
 	}
 	return false
@@ -17980,6 +18032,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
+				if dl, isLit := ix.Obj.(*DictLit); isLit && !g.dictLiteralFoldAnswers(dl, ix.Idx) {
+					// `v = {"a": "x"}["a"]` binds the pair for the same reason `v = d[k]` does: the entry's kind is
+					// a fact about the object, and a payload without its tag is a table index or a box handle
+					// wearing a number. The door is the one the print position asks, so the two cannot disagree
+					// about the answer (roadmap Gap R.215, ADR 0327 — ADR 0267's rule one construct nearer the source).
+					val, tag, derr := g.literalDictPair(b, dl, ix.Idx, ix.Span())
+					if derr != nil {
+						return derr
+					}
+					g.bindTaggedVar(b, nm.Value, val, tag)
+					g.recordSlotOrigin(nm.Value)
+					return nil
+				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
 					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
 					if err != nil {
@@ -19226,6 +19291,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			g.gcCloseFrame(b)
 			b.WriteString(fmt.Sprintf("  ret i32 %s\n", t))
 			return nil
+		}
+		// One word crosses a `return`, and a dict literal's entry does not always travel in one word: the
+		// answer to `{"a": "x"}["a"]` is a text whose payload is an `@str_tab` index, and a caller with no tag
+		// to read prints the table position — the reference's `x` turned into a number at exit 0. The pair road
+		// at the call boundary (ADR 0273) is the row that owns carrying it (Gap R.146); until it does, this
+		// door refuses by name rather than answers wrongly, and every position that does carry the pair —
+		// print, str()/repr(), an f-string field, a binding — is answered (roadmap Gap R.215, ADR 0327).
+		if dl, key, isLit := literalDictReadOf(n.Expr); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
+			return literalDictOneWordErr(key)
 		}
 		if g.floatFuncs[g.curFunc] {
 			// A pair-returning callee under a double return: the callee answered (payload, tag) beside its

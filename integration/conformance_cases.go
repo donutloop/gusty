@@ -495,6 +495,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// literals that DO spell a number answer — including `int(" 12 ")`, `int("1_0")`, `int(True)`,
 		// `float("1_0.5")` and the no-argument forms (roadmap Gap R.37, ADR 0326).
 		"constant_trap",
+		// A dict literal is a dict: its entries are read by the door a dict variable's entries are read by.
+		// A text key, a float key, a `None` key, a bool key that IS a number key, an entry whose value is a
+		// container, a key that is simply absent (KeyError, catchable) — all of them answers the reference's
+		// answer here, where the same programs used to stop the build at exit 1 with `index must be a
+		// constant` (roadmap Gap R.215, ADR 0327).
+		"dict_literal_key",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

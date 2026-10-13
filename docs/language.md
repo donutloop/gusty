@@ -1740,11 +1740,24 @@ for i in range(n):
   — where the reference has an unbounded `int` and this language has a 64-bit slot (roadmap L12.12 is the
   decision that row is waiting for).
 
+  **A dict literal is a dict** (ADR 0327). `{"a": 1}["a"]` is `1`, `{1: 1.5}[1]` is `1.5`, `{1: None}[1]` is
+  `None`, `{1: "a"}[True]` is `a` (the reference's key identity: `1`, `1.0` and `True` are one key, and a text
+  never is), `{"a": [1, 2]}["a"]` is `[1, 2]`, and a key the literal does not hold raises the `KeyError` the
+  program can catch — `{"a": 1}["b"]`, `{"a": 1}[1]`, `{1: 2}["a"]` all die at exit 3 with the key's own repr
+  as the message, exactly as the same read through a variable does. The read goes to the object the same door
+  a dict *variable*'s read uses (`rt_dict_has_tagged` / `rt_dict_get_tagged` / `rt_dict_value_tag` on a dict
+  built by the binding road's builder), so the answer carries its kind instead of having one guessed for it;
+  the compile-time lookup is kept for the one shape it can read — an integer key into a literal whose keys and
+  values are all integers — and a repeated key in a literal keeps the value the *last* entry gave it
+  (`{1: 2, 1: 3}[1]` is `3`). Two positions still refuse, because they keep one word for a whole value and the
+  answer's kind lives in the tag beside the payload: handing such an entry back from a `return`, or to a call,
+  is `Gap R.146`'s to pay and says so (roadmap Gap R.215).
+
   Several are refused at compile time by the AOT backend rather than trapping (an honest refusal,
   class 1: `len requires an inline list/dict/set literal`, `index of a non-literal variable`, `index
   requires an inline list/dict/set literal` for a subscript on a call result — roadmap Gap R.214 — and
-  `index must be a constant` for a text key into a dict literal, Gap R.215; messages that still need stable
-  codes, roadmap L11.8). The missing
+  `reading a dict literal by a key the compiler cannot type` for a tuple key, the same residue as
+  Gap R.212; messages that still need stable codes, roadmap L11.8). The missing
   attribute is the one shape where the compiled backend still answers with a value (roadmap Gap
   R.19), and it is pinned as `programs/probe_builtin_traps_untyped.gy` rather than left to be
   discovered.

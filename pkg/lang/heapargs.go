@@ -3154,6 +3154,20 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 	if !isIx || !g.runtimeSlotReadOf(ix) {
 		return "", "", false
 	}
+	if dl, isLit := ix.Obj.(*DictLit); isLit {
+		// The bottom of the chain is a literal the fold could not read: build the dict the way the binding
+		// road builds it and read the entry the key names, tags and all (roadmap Gap R.215, ADR 0327). The
+		// fold's own shape stays the fold's answer — the gate above admits every literal dict, and the door
+		// declines the ones the compile-time lookup reads, so the two can only disagree in the safe direction.
+		if g.dictLiteralFoldAnswers(dl, ix.Idx) {
+			return "", "", false
+		}
+		h, kind, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
 	if nm, isName := ix.Obj.(*Name); isName {
 		// The bottom of the chain: the variable's own slot holds the object, and the tracked kind says
 		// which container the handle names — the same read ADR 0246 put behind len(...) of a slot.
@@ -3197,6 +3211,13 @@ func (g *irGen) runtimeSlotReadOf(e Expr) bool {
 // extension promises for a set subscript.
 func (g *irGen) runtimeContainerSide(e Expr) bool {
 	switch n := e.(type) {
+	case *DictLit:
+		// A dict literal is a container the compiler is looking at, not a container the compiler holds:
+		// the entries the fold cannot read — a text key, a float value, a nested container — have their
+		// kinds written beside their payloads by the same builder a dict *variable* uses, so the pair door
+		// that serves the variable serves the literal too. Where the fold answers, the door below declines
+		// and the fold stays in charge (roadmap Gap R.215, ADR 0327).
+		return len(n.Keys) > 0
 	case *Name:
 		// A name the escape analysis kept as a compile-time value has no slot to load; emitting the
 		// load anyway is the module llc rejects (ADR 0192).
