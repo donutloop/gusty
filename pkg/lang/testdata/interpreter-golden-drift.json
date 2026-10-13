@@ -1420,12 +1420,6 @@
     "actual": "jit: codegen: chr expects one argument"
   },
   {
-    "source": "print(float(\"zzz\"))\n",
-    "reason": "the program answered where the record says it traps",
-    "expected": "trap eval error: could not convert string to float: 'zzz'",
-    "actual": "answered (no answer)"
-  },
-  {
     "source": "print(floor())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: floor expects 1 argument, none given: floor(x) answers the largest whole number at or below x",
@@ -1436,12 +1430,6 @@
     "reason": "the program trapped where the record has an answer",
     "expected": "result \"None\"",
     "actual": "trapped: OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)"
-  },
-  {
-    "source": "print(int(\"abc\"))\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: invalid literal for int() with base 10: 'abc'",
-    "actual": "jit: codegen: int on non-integer string"
   },
   {
     "source": "print(len())\n",
@@ -1597,12 +1585,6 @@
     "expected": "3"
   },
   {
-    "source": "s = \"abc\"\nprint(s[9])\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: string index out of range",
-    "actual": "jit: codegen: the text position this program asks for is out of range, and this backend refuses to build the read rather than answer it wrongly: the reference runs the program and raises IndexError when that position is reached, so a `try:`/`except IndexError:` around it is legal and answered there — making this a runtime trap instead of a compile-time stop is roadmap Gap R.37 (see also L11.1 for a position whose kind is a run-time fact)"
-  },
-  {
     "source": "s = \"abc\"\ns[0] = \"z\"\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: strings are immutable",
@@ -1706,18 +1688,6 @@
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: unsupported attr expression"
-  },
-  {
-    "source": "try:\n    print(float(\"zzz\"))\nexcept ValueError:\n    print(\"handled\")\n",
-    "reason": "stdout differs from the record",
-    "expected": "handled\n",
-    "actual": "0.0\n"
-  },
-  {
-    "source": "try:\n    print(int(\"abc\"))\nexcept ValueError:\n    print(\"handled\")\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: int on non-integer string"
   },
   {
     "source": "try:\n    print(len(5))\nexcept TypeError:\n    print(\"handled\")\n",

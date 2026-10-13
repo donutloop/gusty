@@ -11,6 +11,7 @@
 package integration
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,53 @@ func assertOutput(t *testing.T, src, want string) {
 	t.Helper()
 	if got := compileAndRun(t, src); got != want {
 		t.Fatalf("output for %q:\n got %q\nwant %q", src, got, want)
+	}
+}
+
+// assertNativeTrap compiles src through the same native pipeline as assertOutput, and asserts the run
+// died with the reference's sentence: exit 3 (the contract's "the program raised", ADR 0166), the
+// class-and-message on stderr, and no `codegen:` refusal — a program the reference runs must never be
+// refused by this compiler, and must never exit 0 with a substituted value either.
+func assertNativeTrap(t *testing.T, src, want string) {
+	t.Helper()
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("the compiler refused a program the reference runs: %v", err)
+	}
+	dir := t.TempDir()
+	irPath := filepath.Join(dir, "prog.ll")
+	objPath := filepath.Join(dir, "prog.o")
+	binPath := filepath.Join(dir, "prog")
+	if err := os.WriteFile(irPath, []byte(res.IR), 0o600); err != nil {
+		t.Fatalf("write IR: %v", err)
+	}
+	if out, err := exec.Command(llc, "-filetype=obj", "-relocation-model=pic", irPath, "-o", objPath).CombinedOutput(); err != nil {
+		t.Fatalf("llc-20 rejected module for %q: %v\n%s", src, err, out)
+	}
+	if out, err := exec.Command("cc", objPath, "-lm", "-o", binPath).CombinedOutput(); err != nil {
+		t.Fatalf("link failed for %q: %v\n%s", src, err, out)
+	}
+	cmd := exec.Command(binPath)
+	var errb bytes.Buffer
+	cmd.Stdout = nil
+	cmd.Stderr = &errb
+	runErr := cmd.Run()
+	code := 0
+	if runErr != nil {
+		ee, ok := runErr.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("run failed for %q: %v", src, runErr)
+		}
+		code = ee.ExitCode()
+	}
+	if code != 3 {
+		t.Fatalf("%q exited %d where a trap is the answer (ADR 0166); stderr %q", src, code, errb.String())
+	}
+	if !strings.Contains(errb.String(), want) {
+		t.Fatalf("%q did not raise %q; stderr %q", src, want, errb.String())
+	}
+	if strings.Contains(errb.String(), "codegen:") {
+		t.Fatalf("%q was refused rather than run: %s", src, errb.String())
 	}
 }
 
@@ -996,7 +1044,13 @@ func TestExecImportOrdString(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(old)
-	assertOutput(t, "import msg\nprint(ord(msg.msg))", "104\n")
+	// One character answers, and the answer is the code point the reference gives.
+	assertOutput(t, "import msg\nprint(ord(\"h\"))", "104\n")
+	// A text longer than one character is the reference's TypeError, not its first byte. This case used
+	// to pin `104` for `msg.msg` ("hello!"), which is the answer the fold read off a text the reference
+	// refuses to reduce — the constant fold had no door to the raise (roadmap Gap R.37, ADR 0326).
+	assertNativeTrap(t, "import msg\nprint(ord(msg.msg))\n",
+		"TypeError: ord() expected a character, but string of length 6 found")
 }
 
 func TestExecImportReversedString(t *testing.T) {

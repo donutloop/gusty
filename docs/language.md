@@ -1722,10 +1722,29 @@ for i in range(n):
   | `x = 5` then `x()` | `TypeError: 'int' object is not callable` |
   | `len(5)` | `TypeError: object of type 'int' has no len()` |
   | `x = 5` then `x[0]` | `TypeError: 'int' object is not subscriptable` |
+  | `[][0]`, `[1,2][5]`, `[1,2][-3]` | `IndexError: index out of range` |
+  | `"abc"[7]`, `"abc"[-4]` | `IndexError: string index out of range` |
+  | `{1: 2}[3]` | `KeyError: 3` |
+  | `float(None)`, `float([1,2])`, `float({"a":1})` | `TypeError: float() argument must be a string or a real number, not 'NoneType'` / `'list'` / `'dict'` |
+  | `int([1])` | `TypeError: int() argument must be a string, a bytes-like object or a real number, not 'list'` |
+  | `ord("")`, `ord("ab")` | `TypeError: ord() expected a character, but string of length 0 found` / `… length 2 found` |
+  | `chr(-1)`, `chr(1114112)` | `ValueError: chr() arg not in range(0x110000)` |
+
+  **A trap is decided where the value is reached, not where it is written** (ADR 0326). A read the compiler
+  can fold — a literal list, a literal text, a literal dict, a comprehension's object, a method body that
+  returns one — raises the same class from the same table as a read it cannot see into, so `except
+  IndexError:` and `except ValueError:` work whichever road the read took. A literal that *does* spell a
+  number answers rather than trapping, including the spellings a naive parser drops: `int(" 12 ")` is `12`,
+  `int("1_0")` is `10`, `int(True)` is `1`, `float("1_0.5")` is `10.5`, and `int()` and `float()` are `0`
+  and `0.0`. The one conversion still refused is a literal too wide for the word — `int("99999999999999999999999999")`
+  — where the reference has an unbounded `int` and this language has a 64-bit slot (roadmap L12.12 is the
+  decision that row is waiting for).
 
   Several are refused at compile time by the AOT backend rather than trapping (an honest refusal,
-  class 1: `int on non-integer string`, `len requires an inline list/dict/set literal`, `index of a
-  non-literal variable` — messages that still need stable codes, roadmap L11.8). The missing
+  class 1: `len requires an inline list/dict/set literal`, `index of a non-literal variable`, `index
+  requires an inline list/dict/set literal` for a subscript on a call result — roadmap Gap R.214 — and
+  `index must be a constant` for a text key into a dict literal, Gap R.215; messages that still need stable
+  codes, roadmap L11.8). The missing
   attribute is the one shape where the compiled backend still answers with a value (roadmap Gap
   R.19), and it is pinned as `programs/probe_builtin_traps_untyped.gy` rather than left to be
   discovered.

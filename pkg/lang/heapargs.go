@@ -3325,7 +3325,7 @@ func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *I
 	// IndexError that says there is no such position.
 	fmt.Fprintf(b, "%s:\n", strArm)
 	sv := g.rtStrCall(b, "rt_str_char", "i32 "+base, "i32 "+key)
-	g.checkStrSentinels(b, sv, "IndexError", "string index out of range", sp, "slotchr")
+	g.checkStrSentinels(b, sv, "IndexError", stringIndexOutOfRange(), sp, "slotchr")
 	fmt.Fprintf(b, "  br label %%%s\n", tailS)
 
 	// ---- the set arm: the subscript is a member the set is asked about, and the member comes back —

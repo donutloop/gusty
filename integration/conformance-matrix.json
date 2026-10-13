@@ -3004,6 +3004,27 @@
     },
     {
       "case": {
+        "id": "programs/constant_trap",
+        "name": "constant_trap.gy",
+        "source": "# The constant fold raises what the reference raises (roadmap Gap R.37, ADR 0326).\n#\n# Every read below has a literal underneath it and a position, key or text that cannot be honoured. The\n# compiler used to stop the program at the compile door for them — exit 1, `codegen: index of a literal\n# X is out of range` — which is the exit code the contract reserves for *the program being wrong*, and it\n# took the `except` away with it: nobody wraps an index in a try to find out what the index should have\n# been. They are ordinary raises now, so this program runs, catches each one by its class, and prints an\n# answer CPython prints, in the same order, for the same reasons.\n#\n# The last two lines are the other half of the door. A literal that does spell a number answers,\n# including the spellings a naive parser drops — surrounding spaces, a sign, an underscore between digits,\n# a bool, and the no-argument forms — and a fold that trapped on those would be as wrong as the silent\n# 0.0 `float(\"x\")` used to hand back.\n\ntry:\n    print([][0])\nexcept IndexError:\n    print(\"list index\")\n\ntry:\n    print(\"abc\"[7])\nexcept IndexError:\n    print(\"string index\")\n\ntry:\n    print({1: 2}[3])\nexcept KeyError:\n    print(\"missing key\")\n\ntry:\n    print(int(\"12 x\"))\nexcept ValueError:\n    print(\"not a number\")\n\ntry:\n    print(float(None))\nexcept TypeError:\n    print(\"not a number at all\")\n\ntry:\n    print(ord(\"ab\"))\nexcept TypeError:\n    print(\"not one character\")\n\ntry:\n    print(chr(1114112))\nexcept ValueError:\n    print(\"no such character\")\n\nxs = [x for x in [1, 2]]\ntry:\n    print(xs[9])\nexcept IndexError:\n    print(\"below the comprehension\")\n\nprint(int(\" 12 \"), int(\"1_0\"), int(True), float(\"1_0.5\"), float(True), int(), float())\n\ntotal = 0\nfor x in [1, 2, 3]:\n    total = total + x\nprint(total)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "list index\nstring index\nmissing key\nnot a number\nnot a number at all\nnot one character\nno such character\nbelow the comprehension\n12 10 1 10.5 1.0 0 0.0\n6\n",
+      "python_ok": true,
+      "python_stdout": "list index\nstring index\nmissing key\nnot a number\nnot a number at all\nnot one character\nno such character\nbelow the comprehension\n12 10 1 10.5 1.0 0 0.0\n6\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_math_constant_answers_the_references_spelling",
         "name": "probe_math_constant_answers_the_references_spelling.gy",
         "source": "# Oracle probe (L11.6, ADR 0321) — the standard library answers the reference's NAME, not only ours.\n#\n# `print(math.PI)` has printed 3.141592653589793 on every engine since ADR 0272 gave a data module's constant\n# its type. What that row could never be measured is the NAME: the reference spells its constants `math.pi`,\n# `math.e` and `math.tau`, so the compiled answer for `math.PI` had no CPython to compare against — the ledger\n# recorded the program `not_applicable` for the spelling, and the twin in integration/module_const_test.go\n# carried the comparison by hand. A surface the reference cannot spell is a surface the reference leg cannot\n# adjudicate, and an unadjudicated surface is where a wrong answer lives comfortably.\n#\n# So `stdlib/math.gy` declares the reference's spellings as the literal and this language's upper-case names as\n# aliases of it — one number, two names, written in one place. This program is written the reference's way,\n# which means the CPython leg RUNS it and the two legs are compared rather than described. The last four lines\n# are why it is not a one-liner: a module constant is an ordinary value, and the questions L11.6 owns are\n# asked of it — the floored division, the modulo, the digit count, the container, the f-string field — each one\n# a place the folded literal used to be poured into an `i32`.\n#\n# What CPython prints for each line (python3, 3.12):\n#\n#   3.141592653589793\n#   2.718281828459045\n#   6.283185307179586\n#   6.283185307179586\n#   -3.141592653589793\n#   True\n#   3.14\n#   [3.141592653589793, 2.718281828459045]\n#   1.0\n#   1.1415926535897931\n#   2.718281828459045\n#\nimport math\n\nprint(math.pi)\nprint(math.e)\nprint(math.tau)\nprint(math.pi * 2)\nprint(-math.pi)\nx = math.pi\nprint(x \u003e 3.14)\nprint(round(math.pi, 2))\nprint([math.pi, math.e])\nprint(math.pi // 2)\nprint(math.pi % 2)\nprint(f\"{math.e}\")\n",
@@ -3796,7 +3817,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/151/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/152/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3810,7 +3831,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/151/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/152/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4007,7 +4028,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "int on non-integer string",
+      "aot_error": "codegen: tuple assignment length mismatch",
       "python_ok": true,
       "python_stdout": "attr ok\nvalue ok\nunpack ok\ncall ok\nlen ok\n",
       "aot_matches_python": false,
@@ -4021,7 +4042,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: int on non-integer string"
+        "compiled leg failed: codegen: tuple assignment length mismatch"
       ]
     },
     {
@@ -4520,11 +4541,11 @@
       ]
     }
   ],
-  "rows": 179,
+  "rows": 180,
   "skipped": 38,
-  "pass": 141,
+  "pass": 142,
   "fail": 0,
-  "oracle_match": 126,
+  "oracle_match": 127,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

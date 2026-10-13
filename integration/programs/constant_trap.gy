@@ -1,0 +1,61 @@
+# The constant fold raises what the reference raises (roadmap Gap R.37, ADR 0326).
+#
+# Every read below has a literal underneath it and a position, key or text that cannot be honoured. The
+# compiler used to stop the program at the compile door for them — exit 1, `codegen: index of a literal
+# X is out of range` — which is the exit code the contract reserves for *the program being wrong*, and it
+# took the `except` away with it: nobody wraps an index in a try to find out what the index should have
+# been. They are ordinary raises now, so this program runs, catches each one by its class, and prints an
+# answer CPython prints, in the same order, for the same reasons.
+#
+# The last two lines are the other half of the door. A literal that does spell a number answers,
+# including the spellings a naive parser drops — surrounding spaces, a sign, an underscore between digits,
+# a bool, and the no-argument forms — and a fold that trapped on those would be as wrong as the silent
+# 0.0 `float("x")` used to hand back.
+
+try:
+    print([][0])
+except IndexError:
+    print("list index")
+
+try:
+    print("abc"[7])
+except IndexError:
+    print("string index")
+
+try:
+    print({1: 2}[3])
+except KeyError:
+    print("missing key")
+
+try:
+    print(int("12 x"))
+except ValueError:
+    print("not a number")
+
+try:
+    print(float(None))
+except TypeError:
+    print("not a number at all")
+
+try:
+    print(ord("ab"))
+except TypeError:
+    print("not one character")
+
+try:
+    print(chr(1114112))
+except ValueError:
+    print("no such character")
+
+xs = [x for x in [1, 2]]
+try:
+    print(xs[9])
+except IndexError:
+    print("below the comprehension")
+
+print(int(" 12 "), int("1_0"), int(True), float("1_0.5"), float(True), int(), float())
+
+total = 0
+for x in [1, 2, 3]:
+    total = total + x
+print(total)

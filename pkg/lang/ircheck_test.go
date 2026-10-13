@@ -994,10 +994,16 @@ func TestIRChrOrdFolds(t *testing.T) {
 		t.Fatalf("ord(\"A\") should fold to 65, got:\n%s", ir)
 	}
 
-	// ord folds to the first byte codepoint (interpreter mirrors sval[0]).
+	// ord folds to the first code point (ADR 0225) — and only when the text IS one code point.
+	// `ord("hello")` used to fold to the first byte, which is an answer the reference declines to give:
+	// it raises TypeError naming the length. The fold now emits that raise, so the module is asserted to
+	// carry the sentence rather than the number (roadmap Gap R.37, ADR 0326).
 	ir = llcCompiles(t, `print(ord("hello"))`)
-	if !strings.Contains(ir, "104") {
-		t.Fatalf("ord(\"hello\") should fold to first byte 104, got:\n%s", ir)
+	if !strings.Contains(ir, "ord() expected a character, but string of length 5 found") {
+		t.Fatalf("ord(\"hello\") should raise the reference's sentence, got:\n%s", ir)
+	}
+	if strings.Contains(ir, "104") {
+		t.Fatalf("ord(\"hello\") still folds to the first byte, which is an answer CPython never gives:\n%s", ir)
 	}
 }
 

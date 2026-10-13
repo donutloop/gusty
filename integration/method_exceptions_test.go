@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"strings"
+
 	"testing"
 )
 
@@ -72,33 +74,44 @@ func TestMethodExceptionsMatchCPythonOnBothLegs(t *testing.T) {
 	}
 }
 
-// TestRefusalInsideAMethodIsNotAToolchainRejection separates the two answers a method body can
-// get for a construct the compiler cannot lower. the record traps at runtime the way Python
-// does (exit 3, our runtime-error class); the compiled backend refuses during codegen (exit 1, a
-// compile error) because a constant `[][0]` is folded before it can become a catchable trap --
-// that asymmetry is roadmap Gap R.37, asserted here rather than hidden. What must never happen is
-// what used to happen: the refusal dropped on the floor, half a function emitted, and exit 2
-// blaming the toolchain (ADR 0166, Gap R.41).
-func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
+// TestTrapInsideAMethodIsNotAToolchainRejection separates the two answers a method body can get for a
+// construct the compiler cannot lower. A construct it CAN lower but the reference refuses to answer is
+// a runtime trap: exit 3, our runtime-error class, the class the record names — which is what a constant
+// `[][0]` is since ADR 0326 closed roadmap Gap R.37 (it used to be folded into a compile-time refusal,
+// a different language event that no `except IndexError:` could catch). What must never happen is what
+// used to happen: the failure dropped on the floor, half a function emitted, and exit 2 blaming the
+// toolchain (ADR 0166, Gap R.41).
+func TestTrapInsideAMethodIsNotAToolchainRejection(t *testing.T) {
 	src := "class C:\n    def m(self) -> int:\n        return [][0]\n\nprint(C().m())\n"
+	path := writeSrc(t, t.TempDir(), "method_trap.gy", src)
+	out, code := cliRunMerged(t, "--aot", path)
+	if code != 3 {
+		t.Fatalf("compiled exited %d, want 3 (a runtime trap); Gap R.37 is closed, so a refusal here means the fold stopped trapping:\n%s", code, out)
+	}
+	if !strings.Contains(out, "IndexError") {
+		t.Fatalf("the compiled leg raised without naming the class the reference raises:\n%s", out)
+	}
+	// The reference dies on the same program, which is the whole content of the row.
+	if _, pyCode := oracleTrap(t, path); pyCode == 0 {
+		t.Fatalf("the oracle answered a program both other legs die on")
+	}
+	if out, code := cliRunCode(t, "--aot", path); code == 2 {
+		t.Fatalf("the compiled leg reported a toolchain rejection for a source error (Gap R.41):\n%s", out)
+	}
+}
+
+// TestRefusalInsideAMethodIsNotAToolchainRejection is the half of the claim that still is a refusal: a
+// construct with no lowering at all stops the program at the compile door, in words, at exit 1 — never
+// at the toolchain's own exit 2 (ADR 0166, Gap R.41).
+func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
+	src := "class C:\n    def m(self) -> int:\n        return len(5)\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_refusal.gy", src)
-	// The trap is a runtime event in the reference; the compiled path either traps the same way or
-	// refuses the shape at the compile door naming the half it lacks (Gap R.37: a trap the compiler
-	// can see coming should still be a runtime trap, and until it is, the refusal is the honest class
-	// — never exit 2, and never an answer).
-	if out, code := cliRunMerged(t, "--aot", path); code != 3 {
-		if code == 1 && refusesHonestly(out) {
-			noteCompiledGap(t, src, out)
-		} else {
-			t.Fatalf("compiled exited %d, want 3 (a runtime trap) or an honest refusal naming the missing half (Gap R.37):\n%s", code, out)
-		}
+	if out, code := cliRunMerged(t, "--aot", path); code != 1 || !refusesHonestly(out) {
+		t.Fatalf("compiled exit %d, want 1 (a compile error naming the refusal):\n%s", code, out)
 	}
 	out, code := cliRunCode(t, "--aot", path)
 	if code == 2 {
 		t.Fatalf("the compiled leg reported a toolchain rejection for a source error (Gap R.41):\n%s", out)
-	}
-	if code != 1 {
-		t.Fatalf("compiled exit %d, want 1 (a compile error naming the refusal); Gap R.37 covers why it is not a trap:\n%s", code, out)
 	}
 	combined := cliRun(t, "--aot", path)
 	if combined == "" {

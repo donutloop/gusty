@@ -99,10 +99,15 @@ except:
 // method used to be discarded by the emitter, which then produced a half-written function and an
 // `llc` rejection -- exit 2, "the compiler is broken", for what is a source the front end should
 // name (ADR 0166's rule, reached through a method this time).
+//
+// The construct here was `return [][0]` until ADR 0326: a constant read whose position is out of range
+// is no longer an unsupported construct, it is the trap the reference raises (roadmap Gap R.37), and
+// the method-body half of that claim is asserted by
+// TestConstantTrapInsideMethodBodyIsARuntimeTrap beside this one.
 func TestRefusalInsideMethodBodyIsACompileError(t *testing.T) {
 	src := `class C:
     def m(self) -> int:
-        return [][0]
+        return len(5)
 
 print(C().m())
 `
@@ -110,14 +115,35 @@ print(C().m())
 	if err == nil {
 		t.Fatalf("the compiler accepted a construct it cannot lower and emitted:\n%s", res.IR)
 	}
-	if !strings.Contains(err.Error(), "out of range") {
-		t.Fatalf("refusal = %q, want the codegen refusal for the constant fold", err.Error())
+	if !strings.Contains(err.Error(), "len requires an inline list/dict/set literal") {
+		t.Fatalf("refusal = %q, want the codegen refusal for the construct this body cannot lower", err.Error())
 	}
-	// The sentence must also say who owns the gap, now that it is a refusal the reader can act on:
-	// the reference would run this and raise, and the row that asks for the runtime trap instead of
-	// this compile-time stop is Gap R.37 (ADR 0166: a refusal names the half it lacks).
-	if !strings.Contains(err.Error(), "Gap R.37") {
-		t.Fatalf("the refusal does not name the roadmap row that owns it: %q", err.Error())
+	// A refusal the reader can act on: it names the half the backend lacks (ADR 0166).
+	if !strings.Contains(err.Error(), "inline") {
+		t.Fatalf("the refusal does not name the missing half: %q", err.Error())
+	}
+}
+
+// TestConstantTrapInsideMethodBodyIsARuntimeTrap is the other half of the same exit-code claim, told
+// from a construct the compiler CAN lower: an out-of-range constant read inside a method is not a
+// compile error at all, it is an IndexError that travels out of the method's frame and into the caller's
+// `except`. The retired engine answered this exact program the same way (roadmap Gap R.37, ADR 0326).
+func TestConstantTrapInsideMethodBodyIsARuntimeTrap(t *testing.T) {
+	src := `class C:
+    def m(self) -> int:
+        return [][0]
+
+try:
+    print(C().m())
+except IndexError:
+    print("caught in the caller")
+`
+	out, err := RunSource(src)
+	if err != nil {
+		t.Fatalf("the trap inside the method did not reach the caller's handler: %v", err)
+	}
+	if out != "caught in the caller\n" {
+		t.Fatalf("stdout = %q, want the caller's handler to have run", out)
 	}
 }
 

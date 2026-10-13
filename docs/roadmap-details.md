@@ -9797,3 +9797,77 @@ The missing half is already built for a different door: ADR 0273's callee return
 third return road), which is what lets `print(twice(xs[0][0]))` print `14`. Hand that pair to `taggedOperand` for
 a call operand and this row moves to the parity tables; until then it is Gap R.83's unprovable operand, seen from
 the membership door instead of the equality door.
+
+### Gap R.37 — the constant fold refused, or answered, what the reference raises (CLOSED by ADR 0326)
+
+The trap machinery was finished long before this row was paid. ADR 0211 gave every built-in trap a class,
+ADR 0181 gave the raise a frame-closing unwind, ADR 0166 fixed what each exit code means — and there was a
+second place a trap got decided that none of them had visited: the **constant fold**. When a subscript's base
+was something the compiler could read — a literal list, a literal text, a literal dict, a comprehension's
+object, a function that hands back a literal — five roads asked themselves what to do with a position that did
+not fit, and all five answered the same way: a `codegen:` refusal, at `gustyc`'s exit 1.
+
+The comparison that makes that a defect rather than a limitation is not "refusal versus a correct answer", it
+is "refusal versus **the reference**". The reference does not refuse. `print([][0])` prints a traceback; a
+`try:` around it is legal, and the `except IndexError:` runs. The compiler was converting a fact about a value
+at the moment it is read into a verdict about the whole program, delivered before the program had executed
+anything — and taking the `except` with it, which is not cosmetic: wrapping the read is how a person finds out
+which index was wrong.
+
+The half that made the row urgent was the conversions, because those had not refused — they had been *widened*,
+which is how a wrong answer ships:
+
+| program | what the fold did | what the reference says |
+|---------|-------------------|-------------------------|
+| `print(float("x"))`, `print(float(" "))` | printed `0.0` (`goErr` swallowed the parse failure and `strconv.ParseFloat("")` returned 0) | `ValueError: could not convert string to float: 'x'` |
+| `print(float(None))`, `print(float([1,2]))`, `print(float({"a":1}))`, `print(float({1}))` | printed `0.0` | `TypeError: float() argument must be a string or a real number, not '…'` |
+| `print(int("abc"))`, `print(int("1 0"))`, `print(int("0x10"))` | refused: `int on non-integer string` (Gap I.2) | `ValueError: invalid literal for int() with base 10: 'abc'` |
+| `print(ord("ab"))`, `print(ord(""))` | printed `97` and `0` — the first byte of a text that is not one character | `TypeError: ord() expected a character, but string of length 2 found` |
+| `print(chr(-1))`, `print(chr(1114112))` | built a one-element list of a nonsense code point | `ValueError: chr() arg not in range(0x110000)` |
+| `print(int(True))`, `print(float(True))` | refused: `int expects a number or numeric string` (Gap R.213) | `1` and `1.0` |
+
+One door closes all of it: `constantTrap` is the fold's route to the raise the program would have reached, and
+it opens a fresh block behind the raise because `raiseTo` ends the current one — the first build emitted past a
+terminator and failed the verifier, which is ADR 0166's exit 2 and the reason the block is part of the door
+rather than the caller's problem. The sentences come from the table the *dynamic* road already read
+(`listIndexOutOfRange`, `stringIndexOutOfRange`), so paying this row did not create a second wording of one
+error; the wording that differs from the reference (`index out of range` vs `list index out of range`) stays
+Gap R.90's, for both roads at once, and is why three unit rows assert the two sentences separately — the
+recorder refuses to write a record the two legs do not agree on, which is the recorder being right.
+
+Five ledger rows went out as **paid**: `print(int("abc"))`, `print(float("zzz"))`, `s = "abc"; print(s[9])`
+and the two `try:/except ValueError:` versions of the first pair — recorded as "the compiled backend cannot
+build a program the engine ran" and as "answered 0.0 where the record prints `handled`". The ledger is 337 →
+332 and the record is 6095 → 6130, every new entry cross-checked against the compiled leg by `tools/recmerge`.
+
+### Gap R.213 — a `bool` asked to be a number was refused (CLOSED by ADR 0326)
+
+`int(True)` is `1` in the reference and `codegen: int expects a number or numeric string` at exit 1 here. The
+conversion folds had arms for integer literals, float literals, texts and the no-argument forms; the boolean
+arm was simply absent, in a language whose `True` is an `int`. Paid in the same door: `int`/`float` take a
+`BoolLit` and answer `1`/`0`, `1.0`/`0.0`. Pinned in `TestTheConversionFoldsAnswerRatherThanTrap` and in the
+record, because a fold that traps on a *good* literal is as wrong as one that silently answers on a bad one.
+
+### Gap R.214 — a subscript on a call result still refuses (OPEN, found by ADR 0326)
+
+`def build(): return [1, 2]` with `print(build()[7])` is `IndexError` in the reference and `codegen: index
+requires an inline list/dict/set literal` at exit 1 here, while `print([1,2][7])` has raised the trap since
+this cycle. The fold knows a literal's element count and does not know which object a call hands back, so the
+position has nowhere to be checked. This is a container-*source* gap, not a trap-door gap: the door exists
+now, and the row is about handing it something to check. `pkg/lang/constant_trap_test.go::
+TestTheCallResultStillRefuses` pins the refusal so that paying the row has to break a test rather than a
+memory.
+
+### Gap R.215 — a text key into a dict literal refuses while the same key into a dict variable traps (OPEN, found by ADR 0326)
+
+```
+print({"a": 1}["b"])        # codegen: index must be a constant      (exit 1)
+print({"a": 1}["a"])        # codegen: index must be a constant      (exit 1)
+d = {"a": 1}
+print(d["b"])               # KeyError: 'b'                          (exit 3)
+```
+
+A literal is the most constant base there is, and the one road that reads its base statically is the one road
+that cannot see a text key — the variable road looks the key up and raises. The keys of a literal dict are
+constants to hand; the road needs the same lookup and then the raise this cycle built. Measured while landing
+ADR 0326, and left open rather than bundled: it is a second lowering, not the same door.

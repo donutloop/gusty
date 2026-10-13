@@ -235,6 +235,18 @@ the module's class table, `print(xs[0])` answers the identity form `<__main__.C 
 compared byte-for-byte by the CLI oracle), and the raises name `C` — including the two ordinary binary shapes
 `c in "abc"` and `"abc" in c`, which now raise the reference's text and iterable sentences instead of inventing
 `True` or `False` (`runtime_slot_instance_tag.gy`).
+A **trap the compiler could read** used to be a compile error: `[][0]`, `"abc"[7]`, `{1: 2}[3]`, a position
+below a comprehension and `return [][0]` inside a method each stopped the build with `codegen: index of a
+literal … is out of range` at exit 1 — the class the exit-code contract reserves for a program that is wrong,
+issued before the program ran an instruction, with the program's own `except IndexError:` out of reach — and
+the conversions that had been widened instead of refused answered instead: `float("x")` and `float(None)`
+printed `0.0`, `ord("ab")` printed `97`. ADR 0326 gave the fold the one door it had never had to ADR 0181's
+raise, so a fold may compute a value only where the reference would have produced one: those programs now
+raise `IndexError`/`KeyError`/`ValueError`/`TypeError` at exit 3 with a traceback, catchably, from the same
+sentence table the dynamic road reads, while the literals that do spell numbers answer — `int(" 12 ")`,
+`int("1_0")`, `int(True)`, `float("1_0.5")`, `int()` and `float()` (`constant_trap.gy` is corpus surface,
+byte-identical to CPython; the number too wide for the word is still refused, because there the slot rather
+than the program is wrong).
 An **ordering** of
 those slots asks the object the same
 question (ADR 0252, closing Gap R.93): `xs = []` + `xs.append(i)` in a loop + `print(1 if xs[0] > "a" else 0)`

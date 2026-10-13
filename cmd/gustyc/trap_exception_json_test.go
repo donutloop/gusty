@@ -21,6 +21,11 @@ func TestRuntimeTrapJSONReportsItsExceptionClass(t *testing.T) {
 		{"print(1 / 0)\n", "ZeroDivisionError", "division by zero"},
 		{"xs = [1]\nprint(xs[5])\n", "IndexError", "index out of range"},
 		{`raise ValueError("boom")` + "\n", "ValueError", "boom"},
+		// A constant the compiler can read is still the program's own failure: the fold that used to stop
+		// compilation over it now emits the trap the reference raises, so the payload reports a class and
+		// the exit is the runtime one (roadmap Gap R.37, ADR 0326). It sits in this table because a trap
+		// that quietly became an answer would be the wrong answer at exit 0.
+		{`print(int("abc"))` + "\n", "ValueError", "invalid literal for int() with base 10: 'abc'"},
 	}
 	for _, tc := range cases {
 		out, code := cliExit(t, "--json", "--eval", tc.src)
@@ -67,7 +72,6 @@ func TestCompiledBackendRefusesWhereTheReferenceTraps(t *testing.T) {
 		trap string // what the reference raises, for the record
 	}{
 		{"x = 5\nx()\n", "is not a function", "roadmap L11.1 (a value that can be called needs the tagged value word)", "TypeError: 'int' object is not callable"},
-		{"print(int(\"abc\"))\n", "non-integer string", "roadmap Gap I.2 (int() over text the compiler cannot read)", "ValueError: invalid literal for int() with base 10: 'abc'"},
 		{"print(len(5))\n", "inline list/dict/set literal", "roadmap Gap L11.1 (len() over a value whose kind is a run-time fact)", "TypeError: object of type 'int' has no len()"},
 		{"a, b = [1]\n", "length mismatch", "roadmap Gap K.x (unpacking a container whose length is a run-time fact)", "ValueError: not enough values to unpack (expected 2, got 1)"},
 	}

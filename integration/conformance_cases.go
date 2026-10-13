@@ -489,6 +489,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// comparisons stay identity. The stable claims are the oracle row; the CLI identity-print rows carry
 		// the address-form claim separately, normalized by `instance-identity` (roadmap Gap R.209, ADR 0325).
 		"runtime_slot_instance_tag",
+		// The constant fold, which used to stop the program at the compile door for a wrong literal.
+		// `[][0]`, `"abc"[7]`, `{1: 2}[3]`, `int("12 x")`, `float(None)`, `ord("ab")`, `chr(1114112)` and a
+		// position below a comprehension are now ordinary raises, each caught here by its own class, and the
+		// literals that DO spell a number answer — including `int(" 12 ")`, `int("1_0")`, `int(True)`,
+		// `float("1_0.5")` and the no-argument forms (roadmap Gap R.37, ADR 0326).
+		"constant_trap",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

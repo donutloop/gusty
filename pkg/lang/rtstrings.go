@@ -68,7 +68,7 @@ func (g *irGen) emitStrChar(b *strings.Builder, base Expr, idx Expr, sp Span) (s
 		return "", true, err
 	}
 	ch := g.rtStrCall(b, "rt_str_char", "i32 "+reg, "i32 "+pos)
-	g.checkStrSentinels(b, ch, "IndexError", "string index out of range", sp, "stridx")
+	g.checkStrSentinels(b, ch, "IndexError", stringIndexOutOfRange(), sp, "stridx")
 	return ch, true, nil
 }
 
@@ -289,7 +289,7 @@ func (g *irGen) emitForOverRuntimeString(b *strings.Builder, n *ForStmt) error {
 	cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
 	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", cbd, ctr)
 	ch := g.rtStrCall(b, "rt_str_char", "i32 "+sreg, "i32 "+cbd)
-	g.checkStrSentinels(b, ch, "IndexError", "string index out of range", n.Span(), "forstr")
+	g.checkStrSentinels(b, ch, "IndexError", stringIndexOutOfRange(), n.Span(), "forstr")
 	// The slot is the name's own, spelled the way every other slot is spelled in this
 	// generator, or the store points at a register that was never allocated.
 	fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", ch, lv)

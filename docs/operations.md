@@ -1000,8 +1000,8 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6095 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (337 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden.json` | 6130 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (332 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -1071,7 +1071,7 @@ Four claims the harness makes, each pinned by `tools/testshards/main_test.go`:
 
   ```
   testshards: /…/pkg/lang/testdata/interpreter-golden-drift.json adjudicated over 20 shard(s) —
-    337 divergence(s) over 2868 source(s) asked, all on the ledger
+    332 divergence(s) over 2937 source(s) asked, all on the ledger
   ```
 
   A shard that fails skips the adjudication: it already reddens the run, and its evidence may be truncated.
@@ -1388,6 +1388,15 @@ not comments, so a future re-recording cannot silently undo them.
   (`TypeError: bad operand type for abs(): 'function'`), so a harness can match on message text and
   `except TypeError:` runs the arm the reference runs; a wrong-arity call is refused by either stage and
   must never produce a number (`Gap R.168` guards that).
+- a trap the compiler can **read** is still the program's failure, not the compiler's. `print([][0])`,
+  `print("abc"[7])`, `print({1: 2}[3])` and `print(int("abc"))` all used to be **exit 1** with a `codegen:`
+  sentence — a verdict on a program that had not executed an instruction, with its own `except IndexError:`
+  unreachable — and the conversion folds that had been widened instead raised nothing and printed `0.0`. They
+  are **exit 3** now, with `"exception": "IndexError"` / `"ValueError"` / `"TypeError"` and
+  `"exception_message"` in the `--json` payload, an `except` that runs, and a traceback that names the method
+  when the raise came out of one (`roadmap Gap R.37`, **ADR 0326**). The one shape in that family that stays
+  exit 1 is `int("99999999999999999999999999")`, where the reference's unbounded `int` meets this backend's
+  64-bit slot and the refusal says so and names `L12.12`.
 - a feature this backend does not build is refused at **exit 1 with the reference's answer quoted**,
   which is what makes "not implemented" distinguishable from "wrong" without reading the IR:
   `--aot --file` on `print("%.2f" % 3.5)` reports

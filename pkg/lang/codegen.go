@@ -6840,7 +6840,10 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			// The `str` fold beside this one already asked how many arguments there were; this one reached
 			// n.Args[0] on the strength of the name alone, so `print(chr())` panicked with a Go index-out-
 			// of-range trace and exit 2 (roadmap Gap R.131, ADR 0287).
-			if il, ok := n.Args[0].(*IntLit); ok {
+			if il, ok := n.Args[0].(*IntLit); ok && il.Value >= 0 && il.Value <= 0x10FFFF {
+				// The range test is the call road's, and the print fold has to make the same test or it
+				// answers the replacement glyph for a code point the reference refuses with a ValueError —
+				// this fold is reached first, so the trap below it never ran (roadmap Gap R.37, ADR 0326).
 				return string(rune(il.Value)), true
 			}
 		}
@@ -8417,11 +8420,28 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					fmt.Fprintf(b, "  %s = sitofp i32 %d to double\n", t, a.Value)
 					return t
 				case *StrLit:
-					if fv, err := strconv.ParseFloat(a.Value, 64); err == nil {
+					if fv, okF := floatFromText(a.Value); okF {
 						t := g.newTmp()
 						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
 						return t
 					}
+					// The fold has no answer, which is not the same as the operand having no number: the
+					// fall-through below widened the text's @str_tab index with `sitofp` and printed `0.0`
+					// for a program the reference stops with a ValueError (roadmap Gap R.37, ADR 0326 — the
+					// silent sibling of the refusal the i32 road used to print).
+					g.constantTrap(b, "ValueError", floatLiteralSentence(a.Value), n.Span())
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fadd double 0.0, 0.0\n", t)
+					return t
+				}
+				if kind := g.unconvertibleArg(arg); kind != "" {
+					// The double road's own version of the converter's complaint: widening the word a None,
+					// a container or a text lowers to is how `float(None)` printed `0.0` and `float([1, 2])`
+					// printed an empty line for a program the reference stops (roadmap Gap R.37, ADR 0326).
+					g.constantTrap(b, "TypeError", convertArgumentSentence("float", kind), n.Span())
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fadd double 0.0, 0.0\n", t)
+					return t
 				}
 				t := g.newTmp()
 				fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, arg))
@@ -9112,7 +9132,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 			badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 			b.WriteString(fmt.Sprintf("%s:\n", badL))
-			g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", ix.Span())
+			g.raiseTo(b, exnCode("IndexError"), "IndexError", listIndexOutOfRange(), ix.Span())
 			b.WriteString(fmt.Sprintf("%s:\n", okL))
 			b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, sv))
 			b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %s)\n", h, key, tag))
@@ -10690,7 +10710,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				runes := []rune(txt)
 				i := normPosIndex(key, int64(len(runes)))
 				if i < 0 || i >= int64(len(runes)) {
-					return "", fmt.Errorf("%s", outOfRangeRead("text"))
+					g.constantTrap(b, "IndexError", stringIndexOutOfRange(), n.Span())
+					return "0", nil
 				}
 				return g.internStr(b, string(runes[i])), nil
 			}
@@ -10831,7 +10852,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// exit-code contract classifies as a compiler bug (ADR 0168's rule).
 			li := int(normPosIndex(key, int64(len(obj.Elems))))
 			if li < 0 || li >= len(obj.Elems) {
-				return "", fmt.Errorf("%s", outOfRangeRead("list"))
+				// The position is a constant, so this backend is the first to notice it is not there — and
+				// notice it the reference does: an IndexError the program's `except IndexError:` can take,
+				// not a compile stop that no handler can reach (roadmap Gap R.37, ADR 0326).
+				g.constantTrap(b, "IndexError", listIndexOutOfRange(), n.Span())
+				return "0", nil
 			}
 			return g.value(b, obj.Elems[li])
 		case *DictLit:
@@ -10850,7 +10875,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return fmt.Sprintf("%d", vals[i]), nil
 				}
 			}
-			return "", fmt.Errorf("dict key not found")
+			// A constant key the literal does not hold is the KeyError the reference raises, with the key
+			// itself as its message — the same sentence the dynamic read of a heap dict raises through
+			// `checkKeyRead`, so one program gets one message whichever way the compiler reached it
+			// (roadmap Gap R.37, ADR 0326).
+			g.constantTrap(b, "KeyError", g.keyNotFoundMessage(n.Idx), n.Span())
+			return "0", nil
 		case *SetLit:
 			// constant membership lookup: return the element if present.
 			elems, err := setLiteralElems(obj)
@@ -10878,7 +10908,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				n := g.compLen[obj]
 				key = normPosIndex(key, int64(n))
 				if key < 0 || key >= int64(n) {
-					return "", fmt.Errorf("%s", outOfRangeRead("list"))
+					g.constantTrap(b, "IndexError", listIndexOutOfRange(), obj.Span())
+					return "0", nil
 				}
 				v := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
@@ -10923,7 +10954,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			runes := []rune(str)
 			key = normPosIndex(key, int64(len(runes)))
 			if key < 0 || key >= int64(len(runes)) {
-				return "", fmt.Errorf("%s", outOfRangeRead("text"))
+				g.constantTrap(b, "IndexError", stringIndexOutOfRange(), n.Span())
+				return "0", nil
 			}
 			return g.internStr(b, string(runes[key])), nil
 		case *Call:
@@ -10934,7 +10966,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if elems, ok2 := g.indexListElems(obj); ok2 {
 				key = normPosIndex(key, int64(len(elems)))
 				if key < 0 || int(key) >= len(elems) {
-					return "", fmt.Errorf("%s", outOfRangeRead("list"))
+					g.constantTrap(b, "IndexError", listIndexOutOfRange(), n.Span())
+					return "0", nil
 				}
 				return g.value(b, elems[key])
 			}
@@ -15148,12 +15181,38 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
 		}
+		if bl, ok := c.Args[0].(*BoolLit); ok {
+			// A verdict IS the number 1 or 0 to the reference — `int(True)` is 1 — and this fold already
+			// answered for an `int` literal, so refusing it was a hole in one door rather than a missing
+			// feature (roadmap Gap R.213, closed by ADR 0326 beside the traps this row owns).
+			if bl.Value {
+				return "1", nil
+			}
+			return "0", nil
+		}
 		if sl, ok := c.Args[0].(*StrLit); ok {
-			n, err := strconv.ParseInt(sl.Value, 10, 64)
-			if err != nil {
-				return "", fmt.Errorf("int on non-integer string")
+			n, okNum, tooWide := intFromText(sl.Value)
+			if tooWide {
+				// Not this row's decision: the reference's `int` is unbounded and this backend's word is
+				// an i64, so folding `int("99999999999999999999")` would answer a wrong number at the exit
+				// code of success. A refusal is the honest direction to be wrong in (roadmap L12.12).
+				return "", fmt.Errorf("codegen: int(%s) is an integer wider than this backend's word: the reference has an unbounded int and this one has a 64-bit slot, so the fold would answer a plausible wrong number rather than the reference's — the bounded-vs-arbitrary decision roadmap L12.12 is waiting for (ADR 0326)", exprSurface(c.Args[0]))
+			}
+			if !okNum {
+				// The reference does not refuse this program: it raises ValueError and lets the program's
+				// `except ValueError:` answer. The fold used to stop the whole compilation at exit 1, which
+				// is a different language event and unreachable from the handler (roadmap Gap R.37, ADR 0326).
+				g.constantTrap(b, "ValueError", intLiteralSentence(sl.Value), c.Span())
+				return "0", nil
 			}
 			return fmt.Sprintf("%d", n), nil
+		}
+		if kind := g.unconvertibleArg(c.Args[0]); kind != "" {
+			// The reference does not fold these: it raises TypeError and names the operand's type. The
+			// fold used to answer "codegen folds only literal int/string args", which is a fact about this
+			// compiler rather than about the program (roadmap Gap R.37, ADR 0326).
+			g.constantTrap(b, "TypeError", convertArgumentSentence("int", kind), c.Span())
+			return "0", nil
 		}
 		return "", fmt.Errorf("int: codegen folds only literal int/string args")
 	case "reversed":
@@ -15272,6 +15331,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if cerr != nil {
 			return "", fmt.Errorf("chr: codegen folds only a constant integer arg")
 		}
+		if cn < 0 || cn > 0x10FFFF {
+			// The fold turned an out-of-range code point into a rune Go renders as a replacement glyph,
+			// so `print(chr(-1))` printed a byte the program never named at the exit code of success.
+			// The reference stops the program with a ValueError the author can catch (Gap R.37, ADR 0326).
+			g.constantTrap(b, "ValueError", chrSentence(), c.Span())
+			return "0", nil
+		}
 		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 		return g.internStr(b, string(rune(cn))), nil
 	case "ord":
@@ -15289,9 +15355,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if lit, ok5 := globals[attr.Name.Value]; ok5 {
 							if str, ok6 := lit.(*StrLit); ok6 {
 								if str.Value == "" {
-									return "", fmt.Errorf("codegen: ord of empty string")
+									g.constantTrap(b, "TypeError", ordSentence(0), c.Span())
+									return "0", nil
 								}
-								return fmt.Sprintf("%d", int([]rune(str.Value)[0])), nil
+								modRunes := []rune(str.Value)
+								if len(modRunes) != 1 {
+									g.constantTrap(b, "TypeError", ordSentence(len(modRunes)), c.Span())
+									return "0", nil
+								}
+								return fmt.Sprintf("%d", int(modRunes[0])), nil
 							}
 						}
 					}
@@ -15312,10 +15384,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("ord: codegen folds only a constant string arg")
 		}
 		if len(sv) == 0 {
-			return "", fmt.Errorf("ord of empty string")
+			g.constantTrap(b, "TypeError", ordSentence(0), c.Span())
+			return "0", nil
 		}
 		// the first code point, not the first byte (ADR 0225)
-		return fmt.Sprintf("%d", int64([]rune(sv)[0])), nil
+		runes := []rune(sv)
+		if len(runes) != 1 {
+			// A constant text of two characters is the same TypeError as an empty one, quoting the length
+			// the author has to fix; reading the first code point and answering it was the fold inventing an
+			// answer the reference declines (roadmap Gap R.37, ADR 0326).
+			g.constantTrap(b, "TypeError", ordSentence(len(runes)), c.Span())
+			return "0", nil
+		}
+		return fmt.Sprintf("%d", int64(runes[0])), nil
 	case "round":
 		// round(x) folds a constant integer literal to itself (mirroring the
 		// interpreter's int case; the AOT backend has no float representation).
@@ -15393,12 +15474,29 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
 		}
+		if bl, ok := c.Args[0].(*BoolLit); ok {
+			// A verdict IS a number to the reference: `float(True)` is 1.0 and the i32 road below answers the
+			// word 1 for it, exactly as the `int` fold beside it does (roadmap Gap R.213, ADR 0326).
+			if bl.Value {
+				return "1", nil
+			}
+			return "0", nil
+		}
 		if sv, ok := stringConst(c.Args[0], g.builtinShadowed); ok {
-			f, err := strconv.ParseFloat(sv, 64)
-			if err != nil {
-				return "", fmt.Errorf("float: cannot parse %q", sv)
+			f, okNum := floatFromText(sv)
+			if !okNum {
+				g.constantTrap(b, "ValueError", floatLiteralSentence(sv), c.Span())
+				return "0", nil
 			}
 			return fmt.Sprintf("%d", int64(f)), nil
+		}
+		if kind := g.unconvertibleArg(c.Args[0]); kind != "" {
+			// `float(None)` and `float([1, 2])` answered `0.0` and an empty line: the general road below
+			// widens whatever word the operand lowers to, and for a text, a None or a container that word is
+			// an interned index, a singleton or a handle. The reference names the operand's type and stops the
+			// program (roadmap Gap R.37, ADR 0326).
+			g.constantTrap(b, "TypeError", convertArgumentSentence("float", kind), c.Span())
+			return "0", nil
 		}
 		// General arg: emit a real double value. floatValue already converts
 		// ints to doubles (sitofp) and passes through float values, so
@@ -16355,7 +16453,7 @@ func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) strin
 	badL, okL := g.newLabel("ix.bad"), g.newLabel("ix.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", sp)
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", listIndexOutOfRange(), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 	g.heapUsed = true
 	return ix
@@ -16439,7 +16537,7 @@ func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", sp)
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", listIndexOutOfRange(), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
@@ -16582,17 +16680,6 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
 	g.raiseTo(b, exnCode("KeyError"), "KeyError", g.keyNotFoundMessage(keyExpr), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
-}
-
-// outOfRangeRead words the refusal a constant out-of-range read produces. The reference does not
-// refuse: it runs the program and raises IndexError when the position is reached, so a program that
-// catches the read (`try: xs[9] except IndexError:`) is a legal program the reference answers. This
-// backend decides at the compile door instead, because the position is a literal it can see — and that
-// is roadmap Gap R.37's asymmetry, which asks for the runtime trap rather than this refusal. Until
-// then the honest thing is to say which door stopped the program, what the reference does there, and
-// who owes the change (ADR 0166's rule: a refusal names the half it lacks).
-func outOfRangeRead(kind string) string {
-	return fmt.Sprintf("codegen: the %s position this program asks for is out of range, and this backend refuses to build the read rather than answer it wrongly: the reference runs the program and raises IndexError when that position is reached, so a `try:`/`except IndexError:` around it is legal and answered there — making this a runtime trap instead of a compile-time stop is roadmap Gap R.37 (see also L11.1 for a position whose kind is a run-time fact)", kind)
 }
 
 // callableSurfaceName turns a compiled function's internal name back into the name the reference

@@ -9495,3 +9495,82 @@ arms now consult the same kind question before either road can turn a TypeError 
 its gate only asked `literalNeedsHeap`. After the instance tag arrived, the same object could print and refuse to be
 measured. The lesson is to make the literal question explicit at every consumer: does this container need the heap,
 can its elements label themselves, or did the pair road bind one? A gate copied for one builder is not the rule.
+
+## The fold had no door to the raise (L11.1/L11.3, Gap R.37, ADR 0326)
+
+**Feature (roadmap Gap R.37, owner `aot`).** A constant read whose position, key or text could not be honoured
+was a compile-time refusal at exit 1, and the conversions that had been widened instead of refused answered:
+`float("x")` and `float(None)` printed `0.0`, `ord("ab")` printed `97`. `pkg/lang/constant_trap.go` is the new
+door (`constantTrap`, the sentence table, `intFromText`/`floatFromText`, `unconvertibleArg`); the constant list,
+text, dict and comprehension reads, the `int`/`float`/`ord`/`chr` folds and `print`'s unbounded `chr` arm all
+route through it. Tests: `pkg/lang/constant_trap_test.go` (17 record-leg, 5 reference-leg, 10 answering, 5
+catchable, 3 block-shape, 2 refusal rows), `integration/constant_trap_test.go` (11 exit-code rows, 4 catchable
+rows, the matrix-row assertion), the `ord("hello")` module row in `ircheck_test.go`, the method-body and ternary
+rows moved from refusal to raise in `method_unwind_test.go`/`string_subscript_test.go`, the CLI's exit-1 list
+rebuilt in `builtin_trap_classes_test.go`. Record 6095 → 6130 through `tools/recmerge`; the `pkg/lang` drift
+ledger 337 → 332, five rows out as paid; `integration/programs/constant_trap.gy` is the 191st program. Rows:
+Gap R.37 ✅ DONE; Gap R.213 ✅ DONE (paid in this door); Gap R.214 and Gap R.215 ⏳ OPEN (measured here).
+Docs: `docs/adr/0326-constant-trap.md`, `docs/language.md`, `docs/operations.md`, `README.md`, `AGENTS.md`,
+`roadmap.md`, `docs/roadmap-details.md`.
+
+### A raise is a terminator, so the door owns the block after it
+
+The first build of `constantTrap` failed the verifier. `raiseTo` ends the current basic block — it emits the
+branch to the function's unwind exit — and the fold, being an *expression*, returned a value to a caller that
+immediately emitted more instructions into a block that had already ended. A fold that raises has to open a
+fresh block on the far side of the raise and hand that back. It is the same shape `normalizeIndex` already
+carries for the dynamic read (`ix.bad` / `ix.ok`), which is the tell that the two roads had never been asked to
+share anything.
+
+### "It refuses" and "it raises" are different capabilities, not two settings of one knob
+
+The trap machinery is years old: ADR 0211 gave traps classes, ADR 0181 gave the raise a frame-closing unwind,
+ADR 0166 fixed the exit codes. None of that reached a fold, because a fold never had a *route* to it — the code
+that decided `[][0]` was a builder, not a program point. Deleting a refusal does not install a raise; the
+evidence is that the refusal had been there since the constant reads were written and the raise had been
+reachable from every *other* call site the whole time.
+
+### Reusing the dynamic sentence table is what kept the ledger from growing
+
+The tempting version wrote CPython's words (`list index out of range`) into the new raise. That would have made
+one error have two wordings — the constant road saying one thing and the dynamic road another — and turned a
+paid row into two divergences. The sentences come from `listIndexOutOfRange()` and friends, so Gap R.90 still
+owns exactly one rename, for both roads at once. The corollary showed up immediately: `tools/recmerge`
+*refused* to record `print([][0])` because the compiled leg and the reference disagree on the wording, and the
+right answer was to leave those three sources out of the record and assert both sentences in the test, not to
+push a record through. A recorder that will not write an entry the two legs disagree on is the ledger's immune
+system; a test that asserts both wordings side by side is what makes paying Gap R.90 break something.
+
+### A widening without a raise is how a wrong answer ships
+
+`float("x")` → `0.0` is not a missing feature, it is a lie at exit 0, and it arrived by the most ordinary
+route: the error was swallowed, the empty string went to the parser, the parser returned zero. Two entries in
+one file — `int("abc")` (refused) and `float("x")` (answered) — were the same missing check, and only one of
+them looked like a gap. When a fold grows an arm, the arm list is the checklist: `int` grew a `bool` arm this
+cycle for exactly that reason (Gap R.213), and `print`'s `chr` folding arm had no bound at all.
+
+### Refusing stays correct where nothing is correct
+
+`int("99999999999999999999999999")` is kept as a refusal rather than routed through the new door. The reference
+has an unbounded `int`; this backend has a 64-bit slot; a trap there would name the program for a fault of the
+representation, and an answer would be the substituted value this contract forbids. Naming the word, and naming
+L12.12 as the decision that has to happen first, is the honest third option — and pinning it as
+`TestANumberWiderThanTheWordIsStillAnHonestRefusal` means the day the bounded-versus-arbitrary question is
+answered, a test has to be edited to answer it.
+
+### A row's neighbour is where the next rows are
+
+Two shapes fell out of probing the door and both are filed rather than bundled: a subscript on a call result
+still refuses (`Gap R.214`) though the same position into a literal now raises, and a text key into a dict
+literal still refuses (`Gap R.215`) though the same key into a dict *variable* traps. Both are container-source
+gaps, not trap-door gaps — which is the useful distinction: this cycle built a door four roads were standing in
+front of, and those two roads are still carrying their own missing half.
+
+### Every number a document quotes has to be re-grepped, not recalled
+
+The artifact guards did their job — 6095, 337, 190/179/126 all failed loudly until recomputed — and the same
+reflex caught a worse error mid-cycle: two claims about `roadmap.md` (a "Gap R.168 family table" with a
+`literal out-of-range index/key` row, and a `Gap R.184` row about `len`) had been carried along as though
+measured, and do not exist in the file at all. `grep -c` over the file is the difference between a claim with an
+owner and a fabrication wearing a row number; from here, a number or a row name goes into a document only after
+a command has printed it in this session.

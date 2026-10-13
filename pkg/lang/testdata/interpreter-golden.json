@@ -1,5 +1,195 @@
 {
  "entries": {
+"# The constant fold raises what the reference raises (roadmap Gap R.37, ADR 0326).\n#\n# Every read below has a literal underneath it and a position, key or text that cannot be honoured. The\n# compiler used to stop the program at the compile door for them — exit 1, `codegen: index of a literal\n# X is out of range` — which is the exit code the contract reserves for *the program being wrong*, and it\n# took the `except` away with it: nobody wraps an index in a try to find out what the index should have\n# been. They are ordinary raises now, so this program runs, catches each one by its class, and prints an\n# answer CPython prints, in the same order, for the same reasons.\n#\n# The last two lines are the other half of the door. A literal that does spell a number answers,\n# including the spellings a naive parser drops — surrounding spaces, a sign, an underscore between digits,\n# a bool, and the no-argument forms — and a fold that trapped on those would be as wrong as the silent\n# 0.0 `float(\"x\")` used to hand back.\n\ntry:\n    print([][0])\nexcept IndexError:\n    print(\"list index\")\n\ntry:\n    print(\"abc\"[7])\nexcept IndexError:\n    print(\"string index\")\n\ntry:\n    print({1: 2}[3])\nexcept KeyError:\n    print(\"missing key\")\n\ntry:\n    print(int(\"12 x\"))\nexcept ValueError:\n    print(\"not a number\")\n\ntry:\n    print(float(None))\nexcept TypeError:\n    print(\"not a number at all\")\n\ntry:\n    print(ord(\"ab\"))\nexcept TypeError:\n    print(\"not one character\")\n\ntry:\n    print(chr(1114112))\nexcept ValueError:\n    print(\"no such character\")\n\nxs = [x for x in [1, 2]]\ntry:\n    print(xs[9])\nexcept IndexError:\n    print(\"below the comprehension\")\n\nprint(int(\" 12 \"), int(\"1_0\"), int(True), float(\"1_0.5\"), float(True), int(), float())\n\ntotal = 0\nfor x in [1, 2, 3]:\n    total = total + x\nprint(total)\n": {
+    "stdout": "list index\nstring index\nmissing key\nnot a number\nnot a number at all\nnot one character\nno such character\nbelow the comprehension\n12 10 1 10.5 1.0 0 0.0\n6\n",
+    "hasStdout": true
+   },
+"print(float(\" \"))": {
+    "err": "ValueError: could not convert string to float: ' '",
+    "exnType": "ValueError",
+    "exnMsg": "could not convert string to float: ' '"
+   },
+"print(float({1}))": {
+    "err": "TypeError: float() argument must be a string or a real number, not 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "float() argument must be a string or a real number, not 'set'"
+   },
+
+"print(int(\"+42\"))": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+
+"print(int(\"-7\"))": {
+    "stdout": "-7\n",
+    "hasStdout": true
+   },
+
+"print(int(\"0x10\"))": {
+    "err": "ValueError: invalid literal for int() with base 10: '0x10'",
+    "exnType": "ValueError",
+    "exnMsg": "invalid literal for int() with base 10: '0x10'"
+   },
+
+"print(int(\"1 0\"))": {
+    "err": "ValueError: invalid literal for int() with base 10: '1 0'",
+    "exnType": "ValueError",
+    "exnMsg": "invalid literal for int() with base 10: '1 0'"
+   },
+
+"print(int(\"1__0\"))": {
+    "err": "ValueError: invalid literal for int() with base 10: '1__0'",
+    "exnType": "ValueError",
+    "exnMsg": "invalid literal for int() with base 10: '1__0'"
+   },
+
+"try:\n    print(\"abc\"[7])\nexcept IndexError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([][0])\nexcept IndexError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(int(\"x\"))\nexcept ValueError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(ord(\"ab\"))\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({1:2}[3])\nexcept KeyError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+"print(\"abc\"[-4])": {
+    "err": "IndexError: string index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "string index out of range"
+   },
+
+"print(\"abc\"[7])": {
+    "err": "IndexError: string index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "string index out of range"
+   },
+
+"print(chr(-1))": {
+    "err": "ValueError: chr() arg not in range(0x110000)",
+    "exnType": "ValueError",
+    "exnMsg": "chr() arg not in range(0x110000)"
+   },
+
+"print(chr(1114112))": {
+    "err": "ValueError: chr() arg not in range(0x110000)",
+    "exnType": "ValueError",
+    "exnMsg": "chr() arg not in range(0x110000)"
+   },
+
+"print(float(\"1_0.5\"))": {
+    "stdout": "10.5\n",
+    "hasStdout": true
+   },
+
+"print(float(\"x\"))": {
+    "err": "ValueError: could not convert string to float: 'x'",
+    "exnType": "ValueError",
+    "exnMsg": "could not convert string to float: 'x'"
+   },
+
+"print(float())": {
+    "stdout": "0.0\n",
+    "hasStdout": true
+   },
+
+"print(float(None))": {
+    "err": "TypeError: float() argument must be a string or a real number, not 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "float() argument must be a string or a real number, not 'NoneType'"
+   },
+
+"print(float(True))": {
+    "stdout": "1.0\n",
+    "hasStdout": true
+   },
+
+"print(float([1,2]))": {
+    "err": "TypeError: float() argument must be a string or a real number, not 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "float() argument must be a string or a real number, not 'list'"
+   },
+
+"print(float({\"a\":1}))": {
+    "err": "TypeError: float() argument must be a string or a real number, not 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "float() argument must be a string or a real number, not 'dict'"
+   },
+
+"print(int(\" 12 \"))": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"print(int(\"1_0\"))": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"print(int(\"x\"))": {
+    "err": "ValueError: invalid literal for int() with base 10: 'x'",
+    "exnType": "ValueError",
+    "exnMsg": "invalid literal for int() with base 10: 'x'"
+   },
+
+"print(int('abc'))": {
+    "err": "ValueError: invalid literal for int() with base 10: 'abc'",
+    "exnType": "ValueError",
+    "exnMsg": "invalid literal for int() with base 10: 'abc'"
+   },
+
+"print(int())": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(int(False))": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(int(True))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(int([1]))": {
+    "err": "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "int() argument must be a string, a bytes-like object or a real number, not 'list'"
+   },
+
+"print(ord(\"\"))": {
+    "err": "TypeError: ord() expected a character, but string of length 0 found",
+    "exnType": "TypeError",
+    "exnMsg": "ord() expected a character, but string of length 0 found"
+   },
+
+"print(ord(\"ab\"))": {
+    "err": "TypeError: ord() expected a character, but string of length 2 found",
+    "exnType": "TypeError",
+    "exnMsg": "ord() expected a character, but string of length 2 found"
+   },
+
+"print({1:2}[3])": {
+    "err": "KeyError: 3",
+    "exnType": "KeyError",
+    "exnMsg": "3"
+   },
 "class C:\n    pass\n\nclass D:\n    pass\n\nc = C()\nd = D()\nxs = []\nxs.append(c)\nxs.append(d)\nprint(xs[0] == xs[0])\nprint(xs[0] == xs[1])\nprint(len({c}))\nprint(len({d}))\nd1 = {}\nd1[c] = 1\nprint(d1[c])\ntry:\n    print(len(xs[0]))\nexcept TypeError:\n    print(\"len named the class, not the handle\")\ntry:\n    print(1 in xs[0])\nexcept TypeError:\n    print(\"membership named the class, not int\")\ntry:\n    for v in xs[0]:\n        print(v)\nexcept TypeError:\n    print(\"iteration named the class, not int\")\ntry:\n    print(c in \"abc\")\nexcept TypeError:\n    print(\"text asked for a text needle\")\ntry:\n    print(\"abc\" in c)\nexcept TypeError:\n    print(\"instance is not iterable\")\n": {
     "stdout": "True\nFalse\n1\n1\n1\nlen named the class, not the handle\nmembership named the class, not int\niteration named the class, not int\ntext asked for a text needle\ninstance is not iterable\n",
     "hasStdout": true

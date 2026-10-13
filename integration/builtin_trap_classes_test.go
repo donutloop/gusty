@@ -82,8 +82,14 @@ func TestCompiledBackendRefusesOrTrapsEveryBuiltInTrap(t *testing.T) {
 	// The machine-visible half of an honest refusal: the CLI reports a *compile* failure for
 	// these shapes, not a runtime one, so a caller can tell "we could not lower this" from
 	// "your program crashed".
+	//
+	// `print(int("abc"))` used to be in this list. It is a trap now — the fold emits the ValueError the
+	// reference raises (roadmap Gap R.37, ADR 0326) — and lives in the `shapes` table above, where the
+	// assertion is "refuse OR trap" and the CLI-side assertion is exit 3. In its place is the one text
+	// conversion the door still declines: a number wider than the word, which would be answered wrongly
+	// rather than refused, so the compiler keeps its mouth shut about the value and says why.
 	dir := t.TempDir()
-	for _, src := range []string{"print(int(\"abc\"))\n", "print(len(5))\n", "x = 5\nprint(x[0])\n"} {
+	for _, src := range []string{"print(int(\"99999999999999999999999999\"))\n", "print(len(5))\n", "x = 5\nprint(x[0])\n"} {
 		file := writeTrapCase(t, dir, "refuse.gy", src)
 		if code := runCode(t, bin, "--aot", file); code != 1 {
 			t.Errorf("gustyc --aot on %q: exit = %d, want 1 (a refusal is the compile class)", src, code)
