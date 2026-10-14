@@ -13,12 +13,14 @@ package integration
 // in tools/parify, where the sources are synthetic and the assertions are about verdicts. (ADR 0343, ADR 0343.)
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestTheSuiteIsMarkedToRunBesideItself is the build's guarantee about the suite itself: no case may quietly
@@ -39,13 +41,6 @@ func TestTheSuiteIsMarkedToRunBesideItself(t *testing.T) {
 	// no packages would exit 0 with an empty report, which is how a guard becomes decoration.
 	if !strings.Contains(out, "test(s)") {
 		t.Fatalf("the guard reported no census, so it cannot have read the suite:\n%s", out)
-	}
-	for _, pkg := range []string{"lang", "integration", "gustyc", "parify"} {
-		if !strings.Contains(out, pkg) && strings.Contains(out, " — ") {
-			// The census line names the totals only; the per-reason lines name packages. Checking that the
-			// tree's own package names appear somewhere keeps a pattern typo from emptying the check.
-			t.Logf("guard note: no line mentions %q", pkg)
-		}
 	}
 	t.Logf("guard: %s", strings.TrimSpace(out))
 }
@@ -96,4 +91,89 @@ func parifyEnv() []string {
 		out = append(out, kv)
 	}
 	return append(out, "GOFLAGS=-tags=llvm20")
+}
+
+// overlapParents names the families the overlap measurement runs: four cases in pkg/lang whose every subtest
+// compiles a program, links it and runs it as a child process (ADR 0343's execution model), so each one is
+// tens of seconds of subprocess work spread over tens of subtests. They are named rather than counted because
+// the measurement is worth nothing if the cases it picked are `if x != 42` — and they are named as a fixed
+// list, and checked to have run, so a rename cannot quietly turn the measurement into a run of zero cases
+// that passes by vacuity.
+var overlapParents = []string{
+	"TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs",
+	"TestRenderPairWritesWhatCPythonWrites",
+	"TestAReboundContainerAnswersWhatTheLatestBindingGaveIt",
+	"TestAFoldAnswersWithTheWinnersOwnKind",
+}
+
+// TestTheParallelCasesActuallyOverlap measures the claim the whole change is about. `tools/testshards` has long
+// insisted that its shards overlap — "the sum of shard durations must exceed twice the wall clock, or the run
+// failed; that is the difference between a parallel harness and a serial one that prints nicely" — and the
+// same suspicion applies to `t.Parallel()`: a suite where every case is marked parallel but each one blocks on
+// a global lock, or on an fd capture, or on a mutex around the toolchain, prints the same census line and takes
+// the same 12 minutes. So the property is measured rather than asserted: run these cases through the toolchain
+// with `-parallel 20`, add up what each subtest says it took, and require that the sum clearly exceeds the wall
+// clock the run occupied.
+func TestTheParallelCasesActuallyOverlap(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("the overlap measurement runs a second `go test`; -short is the way to skip it")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("the measurement shells out to `go test`, which is spelled differently there")
+	}
+	root := repoRootForParify(t)
+	anchored := "^(" + strings.Join(overlapParents, "|") + ")$"
+	cmd := exec.Command("go", "test", "-tags=llvm20", "-count=1", "-timeout", "15m",
+		"-parallel", "20", "-json", "-run", anchored, "./pkg/lang/")
+	cmd.Dir = root
+	cmd.Env = parifyEnv()
+	start := time.Now()
+	out, err := cmd.Output()
+	wall := time.Since(start)
+	if err != nil {
+		t.Fatalf("the overlap measurement could not run its subset: %v", err)
+	}
+
+	// `-json` reports the parent's own elapsed as ~0 when its time is in its subtests, so the sum is taken
+	// over the leaves — which are also the units that actually hold a subprocess each.
+	var sum float64
+	leaves := 0
+	saw := map[string]int{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var e struct {
+			Action  string
+			Test    string
+			Package string
+			Elapsed float64
+		}
+		if json.Unmarshal([]byte(line), &e) != nil || e.Package != "github.com/donutloop/gusty/pkg/lang" {
+			continue
+		}
+		if e.Action != "pass" || e.Test == "" || !strings.Contains(e.Test, "/") {
+			continue
+		}
+		sum += e.Elapsed
+		leaves++
+		saw[strings.SplitN(e.Test, "/", 2)[0]]++
+	}
+	for _, name := range overlapParents {
+		if saw[name] == 0 {
+			t.Fatalf("the case %s reported no subtest at all, so the measurement measured nothing — the "+
+				"list has been renamed or deleted; fix the list, do not delete the case", name)
+		}
+	}
+	if leaves < 30 {
+		t.Fatalf("only %d leaf cases reported: the subset is too small to measure overlap with", leaves)
+	}
+	t.Logf("overlap: %d cases, %.1fs of case time against %.1fs of wall clock (x%.1f)",
+		leaves, sum, wall.Seconds(), sum/wall.Seconds())
+	if sum < 2*wall.Seconds() {
+		t.Errorf("the cases did not overlap: %d of them account for %.1fs of test time in %.1fs of wall clock "+
+			"— a suite whose cases are marked parallel and still queue is indistinguishable from a serial one "+
+			"from the outside, which is why this is measured (ADR 0343)", leaves, sum, wall.Seconds())
+	}
 }

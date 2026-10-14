@@ -22,8 +22,10 @@ package lang
 // the record's is 64-bit, so `2 ** 31` refuses compiled and answers interpreted. Neither wraps.
 
 import (
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -306,5 +308,118 @@ func TestPowerLastDigitGapIsFiled(t *testing.T) {
 	// It must differ only in the last digit: same significant-figure count, same prefix, one ULP.
 	if !strings.HasPrefix(strings.TrimSpace(got), strings.TrimSpace(want)[:len(strings.TrimSpace(want))-2]) {
 		t.Errorf("the interpreter printed %q, which differs from the reference's %q by MORE than one ULP — this is no longer Gap R.178, it is a new defect", got, want)
+	}
+}
+
+// TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven pins the shape of the power rule's inputs,
+// which is the difference between a rule that can be asked by two compiles at once and one that cannot.
+//
+// The predicates read a NAME the program bound to a literal int (`z = 0` / `print(z ** -1)` is the same
+// program to the reference as `print(0 ** -1)`, and a predicate that sees only literals answers `inf` for one
+// and raises for the other). That reader used to be a package-level function variable that a generator filled
+// in with a closure over its own module constants. Under ADR 0343's suite, where the cases run beside each
+// other, the race detector caught two generators doing that at the same time — and even one at a time the
+// storage was global, so a compile could be answered from whichever module installed its closure last while the
+// comment promised it was scoped to the asking generator.
+//
+// The rule is therefore asserted as a *signature*: the facts travel as a value the caller builds. Grep-style
+// assertions are how this file already checks the power rule (it fails if the print road stops asking
+// `g.powerAnswersDouble(n)`), and here they are the only thing that can see the difference between a parameter
+// and a global that behaves like one.
+func TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven(t *testing.T) {
+	t.Parallel()
+	ruleSrc, err := os.ReadFile("power_kind.go")
+	if err != nil {
+		t.Fatalf("read power_kind.go: %v", err)
+	}
+	rule := string(ruleSrc)
+	if strings.Contains(rule, "var kindOfIntValue") {
+		t.Error("the shared name-reader hook is back: a package-level function variable that each generator overwrites is a data race between two compiles and last-writer-wins within one (ADR 0343)")
+	}
+	for _, fn := range []string{"powerAnswerIsFloat", "powerKindOf", "powerRaisesZeroDivisionForExpr", "powerComplexIsAsked", "powerNumericLiteral"} {
+		if !strings.Contains(rule, "func "+fn) {
+			t.Errorf("the power rule lost %s — the roads must share one question (ADR 0279)", fn)
+			continue
+		}
+		if !strings.Contains(rule, "f powerFacts") {
+			t.Errorf("%s no longer takes its facts as a value: the power predicates must be handed the reader, not reach for one", fn)
+			break
+		}
+	}
+	cg, err := os.ReadFile("codegen.go")
+	if err != nil {
+		t.Fatalf("read codegen.go: %v", err)
+	}
+	codegen := string(cg)
+	if !strings.Contains(codegen, "g.powerReaders()") {
+		t.Error("codegen no longer builds the power facts per ask, so there is nothing scoping the reader to the module being compiled")
+	}
+	if strings.Contains(codegen, "installPowerReaders") {
+		t.Error("installPowerReaders is back — installing a reader is the act this rule removes")
+	}
+}
+
+// TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap is the same rule asked as behaviour, and it is the form
+// that runs under `-race`: a batch of power programs is compiled once on its own, then the whole batch again
+// concurrently, and every answer must be the answer it gave alone. A reader that is shared rather than handed
+// over makes this a race the detector sees and, on a schedule it does not, a module answered from another
+// module's constants.
+func TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap(t *testing.T) {
+	t.Parallel()
+	srcs := []string{
+		"print(4 ** 0.5)\n",
+		"print(2 ** 10)\n",
+		"print(2 ** -1)\n",
+		"print(0 ** -1)\n",
+		"print(2 ** 1.5)\n",
+		"print((-8) ** (1/3))\n",
+		"print(True ** 0)\n",
+		"print(2 ** 3 == 8)\n",
+		"x = 2\nprint(x ** 3)\n",
+		"z = 0\nprint(z ** -1)\n",
+	}
+	solo := make([]string, len(srcs))
+	for i, src := range srcs {
+		solo[i] = powerAnswerOf(src)
+	}
+	var wg sync.WaitGroup
+	diffs := make(chan string, len(srcs)*4)
+	for round := 0; round < 4; round++ {
+		for i, src := range srcs {
+			wg.Add(1)
+			go func(i int, src string) {
+				defer wg.Done()
+				if got := powerAnswerOf(src); got != solo[i] {
+					diffs <- fmt.Sprintf("%q: alone %s, overlapped %s", src, solo[i], got)
+				}
+			}(i, src)
+		}
+	}
+	wg.Wait()
+	close(diffs)
+	for d := range diffs {
+		t.Errorf("a compile answered a different question when it ran beside the others: %s", d)
+	}
+}
+
+// powerAnswerOf compiles and runs a snippet and reduces the outcome to a comparable key: the error class (so a
+// refusal and an answer are never confused), the exit code the artifact returned, and what it printed. It is
+// the whole observable answer, which is what has to survive being compiled next to other compiles.
+func powerAnswerOf(src string) string {
+	out, err := RunSnippet(src)
+	if out == nil {
+		return errKind(err) + "|<no artifact>"
+	}
+	return fmt.Sprintf("%s|%d|%s", errKind(err), out.Code, out.Output)
+}
+
+// errKind names an error by its class rather than its message, so the comparison above is about which answer
+// the program got (answered / refused / trapped) and not about the text of a diagnostic.
+func errKind(err error) string {
+	switch {
+	case err == nil:
+		return "answered"
+	default:
+		return "error:" + err.Error()
 	}
 }

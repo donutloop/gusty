@@ -38,6 +38,12 @@ PARALLEL ?= $(shell nproc 2>/dev/null || echo 8)
 testparallel:
 	go test -tags=llvm20 -count=1 -parallel $(PARALLEL) -timeout 90m ./...
 
+# The same suite with the race detector on. It is the check the analysis cannot replace: a shared cache that
+# parify's walk did not see shows up here rather than being decided by a lucky schedule. The tree is clean on
+# ./pkg/... ./cmd/... ./integration/... ./tools/... (ADR 0343).
+testrace:
+	go test -tags=llvm20 -race -count=1 -parallel $(PARALLEL) -timeout 90m ./...
+
 # The parallelism guard, on its own: the same command the suite runs internally.
 parallelism:
 	go run ./tools/parify -check ./pkg/... ./cmd/... ./integration/... ./tools/...
@@ -53,7 +59,7 @@ SOURCES := $(wildcard $(SOURCEDIR)/*.ll)
 OBJECTS := $(patsubst %.ll,%.o,$(SOURCES))
 EXECUTABLES := $(patsubst %.ll,%,$(SOURCES))
 
-.PHONY: all clean test testparallel testshards showshards parallelism build
+.PHONY: all clean test testparallel testrace testshards showshards parallelism build
 
 all: $(EXECUTABLES)
 

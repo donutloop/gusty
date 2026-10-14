@@ -104,6 +104,20 @@ speed is:
   It is a real codegen bug, the artifact crashes standalone (`gustyc --file`, `--build` + execute), and it is now
   a drift row and a roadmap row rather than a flake.
 
+**A shared hook in the compiler, found by `-race` and fixed by making it a value.** The first
+`go test -race -parallel 20 ./...` came back with four reports on one address: `(*irGen).installPowerReaders`
+writing the package-level `kindOfIntValue` function variable while another goroutine's
+`readIntLiteral` read it. The power predicates read a NAME the program bound to a literal int (`z = 0` /
+`print(z ** -1)` is the same program to the reference as `print(0 ** -1)`), and the reader was installed —
+a closure over the asking generator's module constants, guarded by a "wired once per generator" bit. With two
+generators alive that is a data race on a function pointer; with one it is still last-writer-wins, so a compile
+could be answered from another module's constants while its own comment promised the reader was scoped to it.
+It is now `powerFacts{kindOf, readInt}`, a value `(*irGen).powerReaders()` builds per ask and the predicates
+take as a parameter. `TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven` fails if the hook or the
+installer returns, and `TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap` compiles a batch of power programs
+alone and then concurrently and requires every answer to be the answer it gave alone. The tree is
+**race-detector-clean** across `./pkg/... ./cmd/... ./integration/... ./tools/...` (`make testrace`, 4m35s).
+
 The change also caught a regression of its own making, which is worth recording: lifting `pairClosedOut` into
 `pairCallScan`'s return value initially dropped the closed-position set on the exit where no function ends up
 paired. `TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses` failed immediately — `z = twice(y)` printed
@@ -131,6 +145,15 @@ halves of the scan's answer, and fails when the fix is reverted.
   reverting the fix and watching it fail on the closed-set row.
 - `pkg/lang/testdata/interpreter-golden-drift.json` — 341 rows, the last being Gap R.258 with the record's answer
   (`result "[3, 2, 1]"`) beside the compiled one (`trapped: exit 139`).
+- `integration/parallelism_guard_test.go::TestTheParallelCasesActuallyOverlap` — the claim that belongs to this ADR
+  and not to a census line: four heavy `pkg/lang` families (each subtest compiling, linking and running a program
+  as a child) are run through `go test -parallel 20 -json`, their subtest durations are summed from the JSON, and
+  the sum must exceed twice the wall clock the run occupied. On the machine this was written, **207 cases, 45.6 s of
+  case time in 3.0 s of wall — 15×**. A suite that is marked parallel and still queues behind a lock prints the same
+  census and takes the same twelve minutes; only the measurement tells them apart, which is the rule
+  `tools/testshards` has always applied to its shards and now applies to the cases too. The four case names are a
+  fixed list, and the test fails if any of them reports no subtest, so a rename cannot turn the measurement into a
+  run of nothing that passes by vacuity.
 
 ## Alternatives rejected
 

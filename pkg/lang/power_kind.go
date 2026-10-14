@@ -32,8 +32,8 @@ import (
 // "this might be a float", because a `**` that prints through `%d` when its answer is a double is the
 // wrong number this row exists to remove, while a double printed where an int was due is caught by the
 // module verifier.
-func powerAnswerIsFloat(l, r Expr, kindOf func(Expr) string) bool {
-	lk, rk := powerKindOf(l, kindOf), powerKindOf(r, kindOf)
+func powerAnswerIsFloat(l, r Expr, f powerFacts) bool {
+	lk, rk := powerKindOf(l, f), powerKindOf(r, f)
 	if lk == "float" || rk == "float" {
 		return true
 	}
@@ -52,28 +52,28 @@ func powerAnswerIsFloat(l, r Expr, kindOf func(Expr) string) bool {
 		// means the reference answers an int. `(2 and 3) ** 2` is `9`, not `9.0` — the first draft of this
 		// rule answered "float" for any unnamed side and turned that answer into `9.0`, which is a working
 		// answer becoming a wrong number (the ladder's forbidden direction, Gap R.176).
-		return powerExponentIsNegativeKnown(r, kindOf)
+		return powerExponentIsNegativeKnown(r, f)
 	}
 	if lk == "int" && rk == "int" {
-		return powerExponentIsNegative(r, kindOf)
+		return powerExponentIsNegative(r, f)
 	}
 	// bool behaves as int everywhere else in this front end.
 	if powerIsBoolKind(lk) || powerIsBoolKind(rk) {
-		return rk == "bool" && powerExponentIsNegative(r, kindOf)
+		return rk == "bool" && powerExponentIsNegative(r, f)
 	}
 	return true
 }
 
 // powerRaisesZeroDivisionForExpr is the raise test for the codegen roads, which see AST nodes rather than
 // evaluated operands.
-func powerRaisesZeroDivisionForExpr(l, r Expr, kindOf func(Expr) string) bool {
-	if !powerExponentIsNegativeKnown(r, kindOf) {
+func powerRaisesZeroDivisionForExpr(l, r Expr, f powerFacts) bool {
+	if !powerExponentIsNegativeKnown(r, f) {
 		return false
 	}
 	// The base may be a literal, a negated literal, or a NAME the records resolve to zero — `z = 0` /
 	// `print(z ** -1)` is the same program to the reference and the same ZeroDivisionError, but the
 	// compiled leg answered `inf` until the read could see a binding as well as a literal.
-	base, ok := powerNumericLiteral(l, kindOf)
+	base, ok := powerNumericLiteral(l, f)
 	if !ok {
 		return false
 	}
@@ -82,9 +82,9 @@ func powerRaisesZeroDivisionForExpr(l, r Expr, kindOf func(Expr) string) bool {
 
 // powerNumericLiteral reads a numeric literal, through a name the caller's reader can resolve. It reports
 // false rather than guessing, so the roads that use it never raise on an operand they cannot see.
-func powerNumericLiteral(e Expr, kindOf func(Expr) string) (float64, bool) {
+func powerNumericLiteral(e Expr, f powerFacts) (float64, bool) {
 	if u, ok := e.(*UnOp); ok && (u.Op == "-" || u.Op == "+") {
-		v, ok := powerNumericLiteral(u.X, kindOf)
+		v, ok := powerNumericLiteral(u.X, f)
 		if !ok {
 			return 0, false
 		}
@@ -99,14 +99,14 @@ func powerNumericLiteral(e Expr, kindOf func(Expr) string) (float64, bool) {
 	case *FloatLit:
 		return v.Value, true
 	case *Name:
-		if kindOf == nil {
+		if f.kindOf == nil {
 			return 0, false
 		}
 		// A name the reader calls "int" or "float" is only answerable when an int value is on record;
 		// anything else stays unknown, and an unknown base never raises.
-		switch kindOf(e) {
+		switch f.kindOf(e) {
 		case "int", "float":
-			if iv, ok := readIntLiteral(e); ok {
+			if iv, ok := f.readIntValue(e); ok {
 				return float64(iv), true
 			}
 		}
@@ -117,7 +117,7 @@ func powerNumericLiteral(e Expr, kindOf func(Expr) string) (float64, bool) {
 
 // powerKindOf names an operand's numeric family, asking the caller-supplied reader for anything the node
 // itself cannot say.
-func powerKindOf(e Expr, kindOf func(Expr) string) string {
+func powerKindOf(e Expr, f powerFacts) string {
 	switch v := e.(type) {
 	case *IntLit:
 		return "int"
@@ -131,7 +131,7 @@ func powerKindOf(e Expr, kindOf func(Expr) string) string {
 		return "None"
 	case *UnOp:
 		if v.Op == "-" || v.Op == "+" {
-			return powerKindOf(v.X, kindOf)
+			return powerKindOf(v.X, f)
 		}
 		return ""
 	case *BinOp:
@@ -147,13 +147,13 @@ func powerKindOf(e Expr, kindOf func(Expr) string) string {
 		// double, so `print(2 ** 3 ** 2)` printed `512.0` where the reference prints `512` — a working
 		// answer turned into a wrong number by the rule meant to fix one.
 		if v.Op == "**" {
-			if powerAnswerIsFloat(v.L, v.R, kindOf) {
+			if powerAnswerIsFloat(v.L, v.R, f) {
 				return "float"
 			}
 			return "int"
 		}
 		// The other arithmetic operators answer a number whose family is its operands' families.
-		lk, rk := powerKindOf(v.L, kindOf), powerKindOf(v.R, kindOf)
+		lk, rk := powerKindOf(v.L, f), powerKindOf(v.R, f)
 		if lk == "" || rk == "" {
 			return ""
 		}
@@ -165,8 +165,8 @@ func powerKindOf(e Expr, kindOf func(Expr) string) string {
 		}
 		return ""
 	}
-	if kindOf != nil {
-		return kindOf(e)
+	if f.kindOf != nil {
+		return f.kindOf(e)
 	}
 	return ""
 }
@@ -175,7 +175,7 @@ func powerIsBoolKind(k string) bool { return k == "bool" }
 
 // powerExponentIsNegative decides `int ** -n` -> float. A literal answers directly; a negated literal is
 // read through the UnOp; anything else is unknown and the CALLER must not call this for it.
-func powerExponentIsNegative(r Expr, kindOf func(Expr) string) bool {
+func powerExponentIsNegative(r Expr, f powerFacts) bool {
 	neg := false
 	if u, ok := r.(*UnOp); ok && u.Op == "-" {
 		neg = true
@@ -187,7 +187,7 @@ func powerExponentIsNegative(r Expr, kindOf func(Expr) string) bool {
 		}
 		return neg
 	}
-	if v, ok := readIntLiteral(r); ok {
+	if v, ok := f.readIntValue(r); ok {
 		if v < 0 {
 			return true
 		}
@@ -198,7 +198,7 @@ func powerExponentIsNegative(r Expr, kindOf func(Expr) string) bool {
 
 // powerIsLiteralZero reports a literal 0 base (or a name the records say holds 0), which is what turns a
 // negative exponent into ZeroDivisionError.
-func powerIsLiteralZero(e Expr, kindOf func(Expr) string) (bool, bool) {
+func powerIsLiteralZero(e Expr, f powerFacts) (bool, bool) {
 	if u, ok := e.(*UnOp); ok && u.Op == "-" {
 		e = u.X
 	}
@@ -208,33 +208,44 @@ func powerIsLiteralZero(e Expr, kindOf func(Expr) string) (bool, bool) {
 	if lit, ok := e.(*FloatLit); ok {
 		return lit.Value == 0, true
 	}
-	if v, ok := readIntLiteral(e); ok {
+	if v, ok := f.readIntValue(e); ok {
 		return v == 0, true
 	}
 	return false, false
 }
 
-// kindOfIntValue is the hook a codegen pass fills in to let these predicates read a NAME the program
-// bound to a literal int. Left nil in the parser/tests, where only literals are visible — which is exactly
-// why every read goes through readIntLiteral: calling a nil hook is a segfault in the middle of a
-// diagnostic, not a declined guess.
-var kindOfIntValue func(Expr) (int64, bool)
+// powerFacts is what the power predicates are allowed to know about a program: the family an operand belongs
+// to, and how to read a NAME the program bound to a literal int. It is a VALUE the asking pass builds, not a
+// hook the pass installs.
+//
+// It used to be a hook — a package-level `kindOfIntValue` function variable that a generator filled in with a
+// closure over its own module constants, guarded by a "wired once" bit. Two generators running at once, which
+// is what ADR 0343's suite now does, made that a data race on a function pointer; and even one at a time it
+// was last-writer-wins, so a compile could be answered from another module's constants while its own comment
+// promised the reader was "scoped to this generator". A predicate that reads the program through a value the
+// caller supplies cannot leak that way, and cannot race either.
+type powerFacts struct {
+	kindOf  func(Expr) string
+	readInt func(Expr) (int64, bool)
+}
 
-// readIntLiteral asks the hook when one is installed and declines otherwise.
-func readIntLiteral(e Expr) (int64, bool) {
-	if kindOfIntValue == nil {
+// readIntValue asks the asking pass's own reader, and declines when it has none — which is what the parser
+// path and every test that only has literals sees. A nil hook is a declined guess, not a nil dereference in
+// the middle of a diagnostic.
+func (f powerFacts) readIntValue(e Expr) (int64, bool) {
+	if f.readInt == nil {
 		return 0, false
 	}
-	return kindOfIntValue(e)
+	return f.readInt(e)
 }
 
 // powerRaisesZeroDivision is `0 ** -n`, which the reference refuses with ZeroDivisionError — a sentence of
 // its own, not the divide-by-zero one: `0.0 cannot be raised to a negative power`.
-func powerRaisesZeroDivision(l, r Expr, kindOf func(Expr) string) (bool, string) {
-	if !powerExponentIsNegativeKnown(r, kindOf) {
+func powerRaisesZeroDivision(l, r Expr, f powerFacts) (bool, string) {
+	if !powerExponentIsNegativeKnown(r, f) {
 		return false, ""
 	}
-	isZero, known := powerIsLiteralZero(l, kindOf)
+	isZero, known := powerIsLiteralZero(l, f)
 	if !known || !isZero {
 		return false, ""
 	}
@@ -244,8 +255,8 @@ func powerRaisesZeroDivision(l, r Expr, kindOf func(Expr) string) (bool, string)
 
 // powerExponentIsNegativeKnown is powerExponentIsNegative for a pair whose exponent kind is settled: an
 // int or float NEGATIVE exponent raises off a zero base, and an unknown kind is not claimed.
-func powerExponentIsNegativeKnown(r Expr, kindOf func(Expr) string) bool {
-	k := powerKindOf(r, kindOf)
+func powerExponentIsNegativeKnown(r Expr, f powerFacts) bool {
+	k := powerKindOf(r, f)
 	if k != "int" && k != "float" && k != "bool" {
 		return false
 	}
@@ -258,7 +269,7 @@ func powerExponentIsNegativeKnown(r Expr, kindOf func(Expr) string) bool {
 	if lit, ok := r.(*FloatLit); ok {
 		return lit.Value < 0
 	}
-	if v, ok := readIntLiteral(r); ok {
+	if v, ok := f.readIntValue(r); ok {
 		return v < 0
 	}
 	return false
@@ -267,19 +278,19 @@ func powerExponentIsNegativeKnown(r Expr, kindOf func(Expr) string) bool {
 // powerComplexIsAsked reports a negative base raised to a fractional exponent, which in the reference
 // produces a COMPLEX number. This language has no complex value, so the roads refuse it in words rather
 // than printing `nan` — which is what the compiled backend did before, at exit 0.
-func powerComplexIsAsked(l, r Expr, kindOf func(Expr) string) bool {
-	if powerKindOf(r, kindOf) != "float" {
+func powerComplexIsAsked(l, r Expr, f powerFacts) bool {
+	if powerKindOf(r, f) != "float" {
 		return false
 	}
-	if !powerExponentIsFractional(r, kindOf) {
+	if !powerExponentIsFractional(r, f) {
 		return false
 	}
-	return powerBaseIsProvablyNegative(l, kindOf)
+	return powerBaseIsProvablyNegative(l, f)
 }
 
 // powerExponentIsFractional says the exponent has a part the integer road cannot carry: 0.5 is fractional,
 // 2.0 is not — `(-8) ** 2.0` is `64.0` in the reference and answers here too.
-func powerExponentIsFractional(r Expr, kindOf func(Expr) string) bool {
+func powerExponentIsFractional(r Expr, f powerFacts) bool {
 	if u, ok := r.(*UnOp); ok && (u.Op == "-" || u.Op == "+") {
 		r = u.X
 	}
@@ -324,7 +335,7 @@ func intLiteralOfAny(e Expr) (int64, bool) {
 // powerBaseIsProvablyNegative reads the base's sign where it can: a literal, a negated literal, or a name
 // the caller's reader resolves. An unresolved name is NOT claimed — refusing an answer the compiler cannot
 // prove wrong is the ladder's forbidden direction.
-func powerBaseIsProvablyNegative(l Expr, kindOf func(Expr) string) bool {
+func powerBaseIsProvablyNegative(l Expr, f powerFacts) bool {
 	switch v := l.(type) {
 	case *IntLit:
 		return v.Value < 0
@@ -335,7 +346,7 @@ func powerBaseIsProvablyNegative(l Expr, kindOf func(Expr) string) bool {
 			return true
 		}
 	}
-	if v, ok := readIntLiteral(l); ok {
+	if v, ok := f.readIntValue(l); ok {
 		return v < 0
 	}
 	return false

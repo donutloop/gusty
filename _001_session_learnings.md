@@ -10559,3 +10559,28 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
 - **`go test`'s ordering note is a fact about the harness**: parallel tests run *beside* the serial ones, not
   after them, so marking the offenders serial does not protect them. That is why the answer had to be removing
   the sharing, not scheduling around it.
+
+## What `-race` found once the cases were allowed to overlap (ADR 0343, continued)
+
+- **A parallel suite is a race detector's whole point, and it paid for itself on the first run.** Four
+  `WARNING: DATA RACE` reports, one address: `(*irGen).installPowerReaders` writing the package-level
+  `kindOfIntValue` function variable while another goroutine's `readIntLiteral` read it. The compiler's power
+  predicates read a NAME the program bound to a literal int, and the reader was *installed* — a closure over the
+  asking generator's module constants, behind a "wired once per generator" bit. Two generators at once made that
+  a race on a function pointer; one at a time made it last-writer-wins, so a compile could be answered from
+  another module's constants while the comment above it promised "scoped to this generator's module constants".
+  **A hook is a global with a story told about it**; `powerFacts{kindOf, readInt}`, built per ask by
+  `(*irGen).powerReaders()` and passed as a value, is the same information with nowhere to leak.
+- **The serial suite could not have seen the second half of that bug at all.** The race is the visible half; the
+  invisible half is a compile answered from the wrong module's constants, which needs an interleaving that a
+  one-case-per-process suite never produces. Fixing a race by adding a mutex would have kept the wrong answer.
+- **Assert the shape, then assert the behaviour.** `TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven`
+  fails if the hook or its installer returns (grepping the two files, which is how this file already checks that
+  the print road asks `g.powerAnswersDouble(n)`);
+  `TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap` compiles a batch of power programs alone, then the same
+  batch concurrently, and requires each answer to be the answer it gave alone. The first cannot be fooled by a
+  mutex; the second cannot be fooled by a comment.
+- **`make testrace` is now a shipped target and the tree is clean under it** (`./pkg/... ./cmd/...
+  ./integration/... ./tools/...`, 4m35s). The static check (`parify -check`) and the dynamic one (the detector)
+  are not redundant: one finds a case that claims parallelism while touching process state, the other finds the
+  cache nobody wrote down.

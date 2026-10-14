@@ -4805,9 +4805,6 @@ type irGen struct {
 	// floatUnlowerable records that a float arm reached an operand it could not lift, which the caller
 	// turns into a front-end refusal instead of an instruction with an empty operand (Gap R.88).
 	floatUnlowerable string
-	// powerReadersInstalled keeps the shared power predicates' name-reader wired once per generator
-	// (installPowerReaders), so a second call cannot leave a stale closure over the previous module.
-	powerReadersInstalled bool
 	// doubleDomain counts the emissions that asked for a double. The numeric door answers a slot read
 	// of a container the program built with one, and only a caller that can hold a double may take it:
 	// an int-domain sink — a call argument, an augmented assignment, str()'s argument, a container
@@ -7036,7 +7033,7 @@ func (g *irGen) powerAnswersDouble(n *BinOp) bool {
 		// already refusing something; do not compound it with a guess
 		return true
 	}
-	return powerAnswerIsFloat(n.L, n.R, g.powerOperandKind)
+	return powerAnswerIsFloat(n.L, n.R, g.powerReaders())
 }
 
 // intPowerOverflow asks whether a literal `a ** b` would leave the 64-bit word, so the compiled leg can
@@ -7086,39 +7083,41 @@ func intLiteralOf(e Expr) (int64, bool) {
 func (g *irGen) floatPowerNeedsZeroGuard(n *BinOp) bool {
 	// A pair that is provably safe skips the guard: a base literal known to be non-zero, or an exponent
 	// literal known to be non-negative. Anything else pays two fcmps.
-	if lb, ok := powerNumericLiteral(n.L, g.powerOperandKind); ok && lb != 0 {
+	if lb, ok := powerNumericLiteral(n.L, g.powerReaders()); ok && lb != 0 {
 		return false
 	}
-	if eb, ok := powerNumericLiteral(n.R, g.powerOperandKind); ok && eb >= 0 {
+	if eb, ok := powerNumericLiteral(n.R, g.powerReaders()); ok && eb >= 0 {
 		return false
 	}
 	return true
 }
 
-// installPowerReaders gives the shared power predicates a way to read a NAME: `z = 0` / `print(z ** -1)`
-// is the same program to the reference as `print(0 ** -1)`, and a predicate that can only see literals
-// answers `inf` for one and raises for the other. The reader is scoped to this generator's module
-// constants, so a name it cannot resolve stays unknown rather than becoming a guess.
-func (g *irGen) installPowerReaders() {
-	if g.powerReadersInstalled {
-		return
-	}
-	g.powerReadersInstalled = true
+// powerReaders is the facts the power predicates are given for this module: the family an operand belongs to,
+// and a way to read a NAME — `z = 0` / `print(z ** -1)` is the same program to the reference as
+// `print(0 ** -1)`, and a predicate that can only see literals answers `inf` for one and raises for the other.
+// The reader closes over *this* generator's module constants and travels to the predicates as a value, so a
+// name it cannot resolve stays unknown rather than becoming a guess, and so no second compile can be answered
+// from a first module's constants (ADR 0343: the hook this replaces was a shared function pointer, and the
+// suite now has two compiles reaching for it at once).
+func (g *irGen) powerReaders() powerFacts {
 	consts := g.moduleConsts
-	kindOfIntValue = func(e Expr) (int64, bool) {
-		nm, ok := e.(*Name)
-		if !ok || consts == nil {
-			return 0, false
-		}
-		v, ok := consts[nm.Value]
-		if !ok {
-			return 0, false
-		}
-		return intLiteralOfAny(v)
+	return powerFacts{
+		kindOf: g.powerOperandKind,
+		readInt: func(e Expr) (int64, bool) {
+			nm, ok := e.(*Name)
+			if !ok || consts == nil {
+				return 0, false
+			}
+			v, ok := consts[nm.Value]
+			if !ok {
+				return 0, false
+			}
+			return intLiteralOfAny(v)
+		},
 	}
 }
 
-// powerOperandKind names an operand's numeric family for the power rule// powerOperandKind names an operand's numeric family for the power rule: a float variable, an int variable,
+// powerOperandKind names an operand's numeric family for the power rule: a float variable, an int variable,
 // or "" when this pass cannot say — and "" means the caller treats it as possibly-a-float.
 func (g *irGen) powerOperandKind(e Expr) string {
 	switch e.(type) {
@@ -8573,13 +8572,12 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 	// first is the reference's own ZeroDivisionError, catchable and worded as it words it; the second is
 	// refused in words, because this language has no complex value to answer with (Gap R.176, ADR 0293).
 	if n.Op == "**" {
-		g.installPowerReaders()
 		// The zero-base raise is emitted as a RUNTIME guard in the `**` case below, which is what lets a
 		// base the compiler cannot see at compile time — a parameter, a slot, a name bound in a `try:`
 		// arm — raise the same way a literal does. Doing it here instead left the frame's `ret` naming a
 		// temporary that was allocated but never written: `use of undefined value ’%t3’`, llc rejecting
 		// OUR module, which ADR 0166 counts as exit 2.
-		if powerComplexIsAsked(n.L, n.R, g.powerOperandKind) {
+		if powerComplexIsAsked(n.L, n.R, g.powerReaders()) {
 			g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("`%s` is a negative base raised to a fractional power, which the reference answers with a complex number", exprSurface(n))
 			g.noteUnlowered(n, fmt.Errorf("`%s` is a negative base raised to a fractional power: the reference answers a complex number ((1.0000000000000002+1.7320508075688772j) for `(-8) ** (1/3)`), and this language has no complex value — the compiled leg declines rather than print NaN (roadmap Gap R.176, ADR 0166)", exprSurface(n)))
 			return ""
@@ -9838,7 +9836,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// (`(-8) ** (1/3)` is `(1.0000000000000002+1.7320508075688772j`). This language has no complex
 		// value, so the shape is refused in words rather than answered with `nan`, which is what
 		// `llvm.pow.f64` returns and what both backends printed at exit 0 (Gap R.176, ADR 0293).
-		if n.Op == "**" && powerComplexIsAsked(n.L, n.R, g.powerOperandKind) {
+		if n.Op == "**" && powerComplexIsAsked(n.L, n.R, g.powerReaders()) {
 			return "", fmt.Errorf("`%s` is a negative base raised to a fractional power, which the reference answers with a complex number; this language has no complex value, and `llvm.pow.f64` would answer NaN (roadmap Gap R.176, ADR 0166)", exprSurface(n))
 		}
 		if g.taggedNumberUseApplies(n) {
