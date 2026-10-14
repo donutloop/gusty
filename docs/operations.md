@@ -1033,7 +1033,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 | Artifact | What it holds | Who checks it |
 |---|---|---|
 | `pkg/lang/testdata/interpreter-golden.json` | 6877 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (341 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -1166,9 +1166,11 @@ prose: `integration/parallelism_guard_test.go::TestTheSuiteIsMarkedToRunBesideIt
 command inside the suite and fails on it, so the check a person can type is the check that breaks the build.
 
 What the change found is the argument for it: two table rows sharing one source file, a ledger row pinned to
-unstable bytes, and **Gap R.258** — `x = sorted([3, 1, 2], reverse=True)` dying by `SIGSEGV` in `@rt_alloc`
-under a heap index the binding wrote as a tag word, which the in-process engine had been absorbing as an empty
-answer. A serial suite cannot see a case that only misbehaves beside its neighbours.
+unstable bytes, a data race on a package-level reader the last compile had installed (**Gap R.259**, paid by the
+same ADR), a run's toolchain being a package fact rather than a run's own (**Gap R.260**, ditto), and **Gap
+R.258** — `x = sorted([3, 1, 2], reverse=True)` dying by `SIGSEGV` in `@rt_alloc` because the variable's hoisted
+slot was read before its binding had run (paid too: the hoisting pass now defines the slots it moves). A serial
+suite cannot see a case that only misbehaves beside its neighbours.
 
 Measured on this tree, both runs pinned to four CPUs so they describe the CI runner — the same command
 line the workflow used to run, and the same one it runs now:

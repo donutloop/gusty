@@ -11431,43 +11431,57 @@ release once (the heap block already owns `rt_alloc`/`rt_free`), or the shape is
 Filed from this row's own probe table, reproduced identically on the commit before ADR 0341, and pinned as a
 debt row (not a promise) in `pkg/lang/rebind_kind_test.go` and `integration/rebind_kind_test.go`.
 
-### Gap R.258 — a list bound from a call is stored with the wrong word, and the next allocation dies (FILED by ADR 0343)
+### Gap R.258 — a variable whose binding had not run was read, and the allocator died for it (PAID by ADR 0343)
 
 ```python
 x = sorted([3, 1, 2], reverse=True)
 x                       # the record: [3, 2, 1]   this backend: killed by SIGSEGV in @rt_alloc (exit 139)
 
-print(sorted([3, 1, 2]))          # answers   [1, 2, 3]
+print(sorted([3, 1, 2]))   # answers   [1, 2, 3]
 xs = [3, 1, 2]
-print(sorted(xs))                  # answers   [1, 2, 3]
+print(sorted(xs))          # answers   [1, 2, 3]
 xs = [3, 1, 2]
 y = sorted(xs)
-print(y)                           # answers   [1, 2, 3]
+print(y)                   # answers   [1, 2, 3]
 ```
 
-The three programs that answer and the one that dies differ in exactly one respect: whether the call's answer is
-**bound to a name** before anything else runs. That is the shape ADR 0267 paid for an arithmetic answer — the
-binding asks the same door the print dispatch asks, and binds the payload *and* the tag — and the shape this row
-says is still unpaid for a container answer. The call returns a (payload, tag) pair; the one-word slot that holds
-a list bound from a call is written with the **tag** half of it; `@heap`'s next `rt_alloc` reads its index back as
-`0xffff`, and the bump allocator walks off the end of its arena. Under `gdb` the fault is the store into the arena
-with `%w10 = 0xffff` — the artefact, not the program, which is exactly the sentence ADR 0302's contract makes the
-compiler say when its own artifact dies by a signal.
+The programs that answer and the one that die differ in one respect: whether a name is **bound** and then read
+again. That was the observation filed with the row, and it was right. The mechanism written beside it was not:
+the filing said the one-word slot takes the **tag** half of a (payload, tag) call answer, and that `@heap`'s next
+`rt_alloc` reads its index back as `0xffff`. Corrected here because the wrong half of a record is worse than a
+missing one — nothing in the emitted module writes a tag into a variable slot, and the fault is not in the store
+into the arena but in the allocator's free list, which had already been fed a value nobody allocated.
 
-It is not a `sorted` bug: `print(sorted(...))` and `sorted(<variable>)` both answer, and the crash reproduces
-through `gustyc --file` and through `--build` + execute, so nothing about the process running the program is
-implicated. What is implicated is the binding road a call answer takes when the compiler has decided that call
-answers with a pair.
+**What it was.** `hoistAllocas` (ADR 0181) moves every `%_x = alloca i32` to the top of its function so a variable
+owns exactly one slot per call — the root stack identifies a variable by slot *address*, and an alloca inside a
+loop body hands the same variable a new address every iteration, which is how a 2000-instance loop once filled the
+1024-word heap. The pass guarantees *one* slot. It never guaranteed a *value*. The release-the-old-binding
+prologue (`emitFreeOld`) loads the slot to decide whether to `rt_free` it, and for a binding whose store had not
+run yet, that load read whatever the previous call had left in that frame word. A garbage handle reached
+`rt_free`, entered the free list, and the next `rt_alloc` followed it off the end of the arena — the artifact
+dying, not the program, which is the class the CLI reports with its Gap R.203 sentence and no traceback.
 
-The row was invisible for as long as the suite ran one case per process. `sorted([3, 1, 2])[0]` already sits in the
-drift ledger with a different symptom, and the same family — a pair answer bound to a name, then used — is what
-Gap R.146 and Gap R.154 describe as the remaining one-word positions; this is the first member of that family that
-crashes instead of answering wrongly, and the crash was previously absorbed as an empty answer by the in-process
-engine that shared its heap with the program it ran.
+**Why it hid.** Run alone, that frame word happened to hold 0, and `emitFreeOld` skips `rt_free` on 0, so the
+program answered `[3, 2, 1]`. Run beside another case whose compile had dirtied the same frame, it died. A serial
+suite could not see this; the overlap ADR 0343 created is what made it reproduce on command.
 
-Filed with the record's answer beside the compiled one in `pkg/lang/testdata/interpreter-golden-drift.json`, so the
-suite is green while the row is open and the row cannot be quietly deleted. The row's Definition of Done is that
-drift row's disappearance.
+**The fix is where the slot is born, not at the forty places a road allocates one.** The hoisting pass now emits
+`store i32 0, i32* %_x` for every hoisted variable slot that no road has written. Three properties it had to keep,
+each with a test that failed while it was broken: the stores go **after** the entire alloca run, because rooting
+needs every allocation to precede the block's first instruction (`TestNoAllocaBelowTheFirstInstruction`); the pass
+stays **idempotent**, because a road that already cleared its slot is left alone
+(`TestHoistAllocasIsIdempotentAndPreservesOrder`); and each store **carries the slot's own `!dbg`**, because the
+line table's contract is that every instruction of a program function has a location
+(`TestDebugInfoRecordsProgramFunctions`, `TestBuildDebugReportsDWARF`). Zero is not a new convention invented for
+the crash — it is already what "this variable holds no object yet" means on this path, which is exactly what the
+container-binding road stores when it creates a slot.
+
+**Legs.** `pkg/lang/hoisted_slot_init_test.go`: `TestEveryVariableSlotIsDefinedBeforeItIsReleased` states the
+invariant over the roads that allocate — list, dict, set, function answer, loop body — and
+`TestAContainerBindingAnswersBesideEverythingElse` runs the five programs that died, asserting the compiled
+program's stdout and snippet echo with the record's answer for the same source. The drift-ledger row is
+**deleted, not updated**: the program answers what the record says, so there is no divergence to own, and the
+ledger said so itself — *PAID debt still on the ledger… Remove the row*.
 
 ### Gap R.259 — the power predicates' name-reader was a hook, and the last compile to install it won (PAID by ADR 0343)
 

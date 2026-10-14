@@ -1760,8 +1760,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   toolchain became a per-run `ToolOverride` value (Gap R.260) and the environment knobs became functions of an
   environment they are handed (`tools/envprobe` is how a case asks the process-wide ones without `t.Setenv`).
   The guard runs inside the suite, so the command a person can type is the command that breaks the build. What the change found: two table rows sharing one source file, a ledger row
-  pinned to unstable bytes, and **Gap R.258**, a `sorted(...)` binding that dies by `SIGSEGV` in `@rt_alloc` —
-  invisible while one case at a time was allowed to run.
+  pinned to unstable bytes, a data race on a package-level reader, a run's toolchain kept as package state, and
+  **Gap R.258** — a `sorted(...)` binding that died by `SIGSEGV` in `@rt_alloc` because the variable's hoisted
+  slot was read before its binding had run. All three are paid; none was visible while one case at a time was
+  allowed to run.
 - **The suite runs sharded** — `make testshards` (and CI) runs the cases in **one process per core**
   through `tools/testshards`. The reason is arithmetic rather than taste: nearly every case ends inside a
   subprocess — `llc-20` lowering the module (58 ms), `cc` linking it (13 ms), `lli-20` running it (57 ms),

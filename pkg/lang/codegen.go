@@ -4578,12 +4578,73 @@ func hoistAllocas(module string) string {
 			}
 		}
 		out = append(out, lead...)
+		// A hoisted variable slot also gets the one thing a road that forgets to initialise its slot
+		// cannot supply from where it sits: a defined value. `%_x = alloca i32` with nothing written to
+		// it is read by the release-the-old-binding prologue (`load i32, i32* %_x` / `rt_free`), and the
+		// frame's previous contents are whatever the last call left on the stack — a garbage handle fed
+		// to rt_free corrupts the allocator's free list, the next rt_alloc walks off the arena, and the
+		// program dies by SIGSEGV with the artifact, not the source, at fault (roadmap Gap R.258, found
+		// by ADR 0343's overlapping cases). Zero is what "this variable holds no object yet" already
+		// means everywhere else: the container-binding road stores 0 when it creates a slot, and
+		// emitFreeOld skips rt_free on 0. Asking here is the rule, rather than the forty-site hope.
+		//
+		// The stores go *after* the whole alloca run, not beside their slots: a root stack identifies a
+		// variable by slot address, so every allocation must still precede every instruction of the block
+		// (TestNoAllocaBelowTheFirstInstruction), and a slot is only read below this prologue anyway.
+		// A slot whose road already cleared it is left alone — that is also what makes the pass
+		// idempotent, which gc_roots_ir_test checks by running it twice.
+		have := make(map[string]bool, len(body))
+		for _, bl := range body {
+			have[stripDbgSuffix(strings.TrimSpace(bl))] = true
+		}
+		var inits []string
+		for _, al := range allocas {
+			zero, ok := zeroInitForAlloca(al)
+			if !ok || have[zero] {
+				continue
+			}
+			// The store inherits its slot's location: the line table's rule is that every instruction of
+			// a program function carries a location, and an unlabelled instruction among labelled ones
+			// reads as a hole in the source correspondence (ADR 0231, ADR 0181).
+			if i := strings.Index(al, ", !dbg !"); i >= 0 {
+				zero += strings.TrimSpace(al[i:])
+			}
+			inits = append(inits, "  "+zero)
+		}
 		out = append(out, allocas...)
+		out = append(out, inits...)
 		out = append(out, rest...)
 		out = append(out, "}")
 		i = end + 1
 	}
 	return strings.Join(out, "\n")
+}
+
+// zeroInitForAlloca decides whether a hoisted allocation line needs the defined-value store with it, and
+// spells it. Only a variable slot — `%_x`, or a tag slot `%_x_tag`, both `i32` — gets one: the runtime's own
+// temporaries (`%ps`, `%ci`) belong to hand-written code that initialises them, and a `%bnd_x` written-flag
+// is an `i8` its own emitter already clears.
+func zeroInitForAlloca(line string) (string, bool) {
+	trimmed := stripDbgSuffix(strings.TrimSpace(line))
+	if !strings.HasSuffix(trimmed, "= alloca i32") {
+		return "", false
+	}
+	name := strings.TrimSpace(strings.TrimSuffix(trimmed, "= alloca i32"))
+	name = strings.TrimSpace(strings.TrimSuffix(name, "="))
+	if !strings.HasPrefix(name, "%_") {
+		return "", false
+	}
+	return "store i32 0, i32* " + name, true
+}
+
+// stripDbgSuffix removes a trailing `!dbg !N` so the same instruction compares equal whether or not the
+// module carries the line table — the plain and the debug module must get the very same stores, or the
+// debug test's line-by-line comparison against the plain one stops being a comparison.
+func stripDbgSuffix(line string) string {
+	if i := strings.Index(line, ", !dbg !"); i >= 0 {
+		return strings.TrimSpace(line[:i])
+	}
+	return line
 }
 
 type irGen struct {

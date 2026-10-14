@@ -99,12 +99,19 @@ speed is:
 - **A ledger row pinned to unstable bytes.** `match` with an unbound value-pattern prints an object address,
   and the compiled address differs from the reference's; the `unstable` flag now says "pin the shape of the
   answer, not the answer", so a row that prints heap garbage per run stops being a coin flip.
-- **Gap R.258.** `x = sorted([3, 1, 2], reverse=True)` followed by `x` **dies by SIGSEGV in `@rt_alloc`**. The
-  one-word slot holding a list bound from a call is written with the *tag* word of a (payload, tag) pair, so the
-  heap index the next allocation reads back is `0xffff` and the bump allocator walks off its arena. Under the
-  in-process engine the same crash was invisible: the record leg's answer came back empty and the run went on.
-  It is a real codegen bug, the artifact crashes standalone (`gustyc --file`, `--build` + execute), and it is now
-  a drift row and a roadmap row rather than a flake.
+- **Gap R.258.** `x = sorted([3, 1, 2], reverse=True)` followed by `x` **dies by SIGSEGV in `@rt_alloc`**, while
+  `print(sorted([3, 1, 2]))` answers. Under the in-process engine the crash was invisible: the record leg's answer
+  came back empty and the run went on. It is a real codegen bug — the artifact crashes standalone (`gustyc
+  --file`, `--build` + execute) — and it became a drift row and a roadmap row rather than a flake.
+  *What was written here first, and corrected the same cycle:* "the slot holding a list bound from a call is
+  written with the tag word of a pair". Nothing emits such a store. The slot was never written at all —
+  `hoistAllocas` (ADR 0181) moves each variable's `alloca` to the top of its function so the root stack sees one
+  address per call, and the release-the-old-binding prologue reads that slot before the binding has run, taking
+  the previous call's frame word as a handle, feeding it to `rt_free`, and letting the next `rt_alloc` walk off
+  the arena. Alone the frame word was 0 and a release of 0 is skipped, which is the entire reason a serial suite
+  could not reproduce it. The pass now gives the slots it moves a defined value
+  (`pkg/lang/hoisted_slot_init_test.go`), the drift row was deleted rather than updated, and the correction is in
+  the roadmap record too — a wrong diagnosis in a record is worse than a missing one.
 
 **A shared hook in the compiler, found by `-race` and fixed by making it a value.** The first
 `go test -race -parallel 20 ./...` came back with four reports on one address: `(*irGen).installPowerReaders`
