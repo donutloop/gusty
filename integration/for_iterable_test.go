@@ -91,7 +91,7 @@ var forIterableRefusalRows = []struct {
 	{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "its argument is a DICT", "a\nb", "Gap R.247"},
 	{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "comparator", "a\nb", "Gap R.247"},
 	{"xs = [1.5, 0.5]\nfor v in sorted(xs):\n    print(v)", "ELEMENT kind", "0.5\n1.5", "Gap R.248"},
-	{"for v in sorted([3, 1, 2], key=abs):\n    print(v)", "key=", "1\n2\n3", "Gap R.249"},
+	// Gap R.249's `key=` half was paid by ADR 0340 — its CLI rows live in integration/call_key_test.go.
 	{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "not a container this backend can name", "1\n2\n3", "Gap R.250"},
 	{"for v in reversed({1: 2}):\n    print(v)", "`for` over reversed({1: 2})", "1", "Gap R.247"},
 	// a second POSITIONAL argument is the reference's `key`, and the reference itself stops the program

@@ -4382,7 +4382,14 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// (Emitting the data half in the preamble, where `rooted` was still false while the
 	// function half emitted later referenced it, produced modules whose @gc.kinds was
 	// missing — the verifier caught it, the tests did not until this round.)
-	if g.rooted || g.heapUsed || GCReportEnabled() {
+	//
+	// The gate reads `needHeap` and not the flag alone: a body that calls a heap helper
+	// without the flag being set (a keyed `min` compares its winners with @rt_elem_gt, which
+	// lives in that block, and allocates nothing of its own) pulls the whole heap block in
+	// textually — including rt_gc, which reads @gc.kinds — and a data half gated on the flag
+	// alone then stays home. That asymmetry is the same undefined-symbol class ADR 0173 made
+	// the whole rule about (found by ADR 0340).
+	if g.rooted || needHeap || GCReportEnabled() {
 		g.globals.WriteString(renderedRootGlobals())
 	}
 	if g.rooted || GCReportEnabled() {
@@ -5670,6 +5677,13 @@ type loopInfo struct {
 // anything that is not plain integers, and print(sorted(xs)) reaches it directly so the handle it
 // yields is rendered by the runtime printer rather than printf'd (roadmap L11.7, ADR 0191).
 func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
+	// The key question is asked here, at the top and before a single instruction, because three doors
+	// lower a `sorted` call through this one (the expression road, print's container path, and the
+	// `for` loop's materialisation) and an option read by position at any of them is the same defect
+	// wearing a different hat (Gap R.249, ADR 0340; ADR 0273's purity: the question emits nothing).
+	if kc := g.keyedSortedCall(b, c, true); kc.done {
+		return kc.handle, kc.err
+	}
 	// A literal argument is freshly allocated by containerOperand, so sorting it in place is
 	// correct; a variable must be copied first, because sorted(xs) leaves xs in its own order.
 	argIsFresh := true
@@ -7668,14 +7682,18 @@ func (g *irGen) emitTextMinMax(b *strings.Builder, args []Expr, wantMin bool) (s
 // number in, number out. Printing the returned index through %d was how min(["b", "a"]) answered
 // the intern table rather than "a" (roadmap Gap R.73).
 func (g *irGen) minMaxCallReturnsText(c *Call) bool {
-	if len(c.Args) == 0 {
+	// The question is about the candidates, never about the options: `min(["a", "bb"], key=len)` hands
+	// back one of the texts, and reading `key=` as a second candidate made this answer "not text" and
+	// printed the intern table's position instead (Gap R.249, ADR 0340).
+	pos, _, _, _ := g.callOptions(c)
+	if len(pos) == 0 {
 		return false
 	}
-	if len(c.Args) > 1 {
-		return g.minMaxVarargsAreText(c.Args)
+	if len(pos) > 1 {
+		return g.minMaxVarargsAreText(pos)
 	}
 	var elems []Expr
-	switch n := c.Args[0].(type) {
+	switch n := pos[0].(type) {
 	case *ListLit:
 		elems = n.Elems
 	case *SetLit:
@@ -7683,7 +7701,7 @@ func (g *irGen) minMaxCallReturnsText(c *Call) bool {
 	case *DictLit:
 		elems = n.Keys
 	default:
-		return g.exprIsString(c.Args[0]) || g.printsAsInternedStr(c.Args[0])
+		return g.exprIsString(pos[0]) || g.printsAsInternedStr(pos[0])
 	}
 	return len(elems) > 0 && g.minMaxVarargsAreText(elems)
 }
@@ -15163,6 +15181,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	case "min", "max":
 		// `min(a, b, ...)` is a value chosen from values, not an error about not having written a
 		// list. The fold returns the winner, which means its kind is the winner's kind too.
+		//
+		// A `key=` is answered here, not by the fold: the door asks the option what it is, calls it on
+		// each candidate through the ordinary call road, and compares the answers with the comparator the
+		// unkeyed choice already uses (Gap R.249, ADR 0340).
+		if picked := g.keyedMinMaxCall(b, c); picked.done {
+			return picked.handle, picked.err
+		}
 		if len(c.Args) != 1 {
 			return g.emitScalarMinMax(b, c.Args, fnName == "min", c.Span())
 		}
@@ -15565,6 +15590,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// so sorted folds only over an inline list literal of integer literals,
 		// mirroring the interpreter's ascending-by-value default and the
 		// descending reverse=True keyword / truthy positional second arg.
+		//
+		// The options are read by NAME first (Gap R.249, ADR 0340): until this row the second argument
+		// was the reverse flag wherever it stood, which is how `sorted([3,1,2], key=abs, reverse=True)`
+		// printed ascending at exit 0 and `sorted([3,1,2], key=3)` printed descending at exit 0 — a
+		// non-callable tested for truthiness — while `sorted([3,1,2], key=abs)` refused with a sentence
+		// about `reverse=`. An option the builtin does not take raises what the reference raises.
+		if sortedKey := g.keyedSortedCall(b, c, false); sortedKey.done {
+			return sortedKey.handle, sortedKey.err
+		}
 		if len(c.Args) < 1 || len(c.Args) > 2 {
 			return "", fmt.Errorf("sorted expects 1 or 2 arguments")
 		}
@@ -19130,6 +19164,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// road, which read the iterable's word as a repeat count — `%t1 = icmp slt i32 %_ctr1.ld1, @.lst1`,
 		// which `llc` rejects (exit 2, the code ADR 0166 reserves for a compiler bug), or succeeded and
 		// printed the counter, or printed nothing at all.
+		// `key=None` is the reference's identity key rather than a callable argument, and an option that
+		// means "no key" has to be gone BEFORE the questions below: the fold asks the shape of the
+		// builtin's argument list, and a no-op option sitting in it would decline a program the builtin
+		// itself answers (roadmap Gap R.249, ADR 0340).
+		n.Iter = normaliseIdentityKey(n.Iter)
 		if folded, okFold := g.foldedForIterable(n.Iter); okFold {
 			n.Iter = folded
 		} else if named, okNamed := g.materializeSortedReversedForLoop(b, n.Iter); okNamed {

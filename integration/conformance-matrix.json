@@ -3298,6 +3298,27 @@
     },
     {
       "case": {
+        "id": "programs/key_argument",
+        "name": "key_argument.gy",
+        "source": "# The ordering builtins read their options by name, and a `key=` the compiler can call is called\n# through the ordinary call road (roadmap L11.7; Gap R.249; ADR 0340).\n#\n# The expectations are CPython's.  The old backend read the second positional argument as a reverse\n# flag, so `key=abs` silently became \"sort ascending\" or, for a non-callable key, printed a list at\n# exit 0 where the reference raises TypeError.\n\nprint(sorted([3, 1, 2], key=abs))\nprint(sorted([-3, 1, 2], key=abs))\nprint(sorted([3, 1, -2], key=abs, reverse=True))\nprint(sorted([3, 1, 2], key=abs, reverse=False))\nprint(sorted([3, 1, 2], key=None))\nprint(sorted([2, 1, 2, 1], key=abs))\nprint(sorted([3, 3, 1], key=abs))\nprint(sorted([], key=abs))\n\ndef flip(x):\n    return 0 - x\n\nprint(sorted([3, 1, 2], key=flip))\nprint(min(3, 1, -2, key=abs))\nprint(max(3, 1, -2, key=abs))\nprint(min([3, 1, 2], key=abs))\nprint(max([3, 1, 2], key=abs))\nprint(min([3, 1, -2], key=flip))\nprint(max([3, 1, -2], key=flip))\n\ndef half_or_self(x, bias=0):\n    return x + bias\n\nprint(sorted([3, 1, 2], key=half_or_self))\n\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=len))\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=len, reverse=True))\nprint(min([\"aaa\", \"b\", \"cc\"], key=len))\nprint(max([\"aaa\", \"b\", \"cc\"], key=len))\nprint(sorted([10, 9, 1], key=str))\n\nxs = sorted([3, 1, 2], key=abs)\nprint(xs)\nprint(len(xs))\nprint(xs[1])\nprint(xs[0] + 1)\n\nfor v in sorted([3, 1, -2], key=abs, reverse=True):\n    print(v)\n\nfor v in sorted([\"bbb\", \"a\", \"cc\"], key=len):\n    print(v)\n\nfor v in sorted([2, 1, 2, 1], key=abs):\n    print(v)\n\ntry:\n    print(sorted([3, 1, 2], key=3))\nexcept TypeError:\n    print(\"key_int\")\n\ntry:\n    print(sorted([3, 1, 2], key=\"abs\"))\nexcept TypeError:\n    print(\"key_str\")\n\ntry:\n    print(min([3, 1], reverse=True))\nexcept TypeError:\n    print(\"bad_reverse\")\n\ntry:\n    print(sorted([1], cmp=3))\nexcept TypeError:\n    print(\"bad_cmp\")\n\ndef no_args():\n    return 1\n\ntry:\n    print(sorted([1, 2], key=no_args))\nexcept TypeError:\n    print(\"bad_arity_zero\")\n\ndef needs_two(a, b):\n    return a\n\ntry:\n    print(sorted([1, 2], key=needs_two))\nexcept TypeError:\n    print(\"bad_arity_two\")\n\ntry:\n    print(min([], key=abs))\nexcept ValueError:\n    print(\"empty_min\")\n\ntry:\n    print(max([], key=abs))\nexcept ValueError:\n    print(\"empty_max\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2, 3]\n[1, 2, -3]\n[3, -2, 1]\n[1, 2, 3]\n[1, 2, 3]\n[1, 1, 2, 2]\n[1, 3, 3]\n[]\n[3, 2, 1]\n1\n3\n1\n3\n3\n-2\n[1, 2, 3]\n['a', 'cc', 'bbb']\n['bbb', 'cc', 'a']\nb\naaa\n[1, 10, 9]\n[1, 2, 3]\n3\n2\n2\n3\n-2\n1\na\ncc\nbbb\n1\n1\n2\n2\nkey_int\nkey_str\nbad_reverse\nbad_cmp\nbad_arity_zero\nbad_arity_two\nempty_min\nempty_max\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2, 3]\n[1, 2, -3]\n[3, -2, 1]\n[1, 2, 3]\n[1, 2, 3]\n[1, 1, 2, 2]\n[1, 3, 3]\n[]\n[3, 2, 1]\n1\n3\n1\n3\n3\n-2\n[1, 2, 3]\n['a', 'cc', 'bbb']\n['bbb', 'cc', 'a']\nb\naaa\n[1, 10, 9]\n[1, 2, 3]\n3\n2\n2\n3\n-2\n1\na\ncc\nbbb\n1\n1\n2\n2\nkey_int\nkey_str\nbad_reverse\nbad_cmp\nbad_arity_zero\nbad_arity_two\nempty_min\nempty_max\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4048,7 +4069,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/163/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/164/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4062,7 +4083,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/163/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/164/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4772,11 +4793,11 @@
       ]
     }
   ],
-  "rows": 191,
+  "rows": 192,
   "skipped": 38,
-  "pass": 153,
+  "pass": 154,
   "fail": 0,
-  "oracle_match": 138,
+  "oracle_match": 139,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

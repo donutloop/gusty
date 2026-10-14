@@ -299,8 +299,9 @@ func TestWhatTheLoopRowLeavesOwed(t *testing.T) {
 		{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "comparator", "a\nb", "Gap R.247"},
 		// Gap R.248 — a FLOAT list is refused with a sentence that blames a mix of kinds it does not have.
 		{"xs = [1.5, 0.5]\nfor v in sorted(xs):\n    print(v)", "ELEMENT kind", "0.5\n1.5", "Gap R.248"},
-		// Gap R.249 — `key=`/a positional key need a callable, which is the value word's door.
-		{"for v in sorted([3, 1, 2], key=abs):\n    print(v)", "key=", "1\n2\n3", "Gap R.249"},
+		// Gap R.249 — a positional key is still the reference's TypeError the language does not answer;
+		// the `key=` half of that row was paid by ADR 0340 and its loop rows now live in
+		// call_key_test.go's answered table.
 		// Gap R.250 — a `sorted` of a call that is not itself a builtin the pair can prove.
 		{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "not a container this backend can name", "1\n2\n3", "Gap R.250"},
 		// Gap R.251 — `reversed` standing where an EXPRESSION goes answers its argument UNREVERSED; the loop

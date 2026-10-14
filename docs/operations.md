@@ -703,11 +703,12 @@ one:
 | decorators (`@dec def f`) | works — `f = dec(f)` at def time, and the decorated body is the one that runs | ADR 0301's method/table work |
 | closures over a captured scope, at module level | works | — |
 | a **nested** `def` capturing the enclosing scope (`m = make_counter(10); m(2)`) | **refused**: the returned function is a value, and calling a value whose kind is only known at run time needs the tagged word | `L11.1`, function-as-value |
-| higher-order calls (`apply(f, x)`, `sorted(xs, key=f)`, lambdas as arguments) | **refused**, by name | `L11.1` |
+| higher-order calls (`apply(f, x)`, `lambda` as an argument) | **refused**, by name | `L11.1`, `L11.7` |
+| ordering options on `sorted`/`min`/`max` (`key=`, `reverse=`) | **partial**: options are read by name; declared `def` keys and allowed builtin keys over literal elements/arguments work through the ordinary call road, while run-time containers, lambda keys, call-expression keys, and unsupported builtin keys refuse by name (roadmap L11.7, Gap R.249, ADR 0340) | `L11.7`, `Gap R.254`, `Gap R.255` |
 | gradual runtime type checking (`def adopt(a: Animal)` rejecting a `Rock`) | enforced — by the shared front end, at check time, on every path (`--eval`, `--file`, `--verify`, `--check`) | `L6.6` |
 | iteration/comprehension over a *run-time* container or text | literal containers fold; a slot of a container the program built is walked by asking the object (`for v in xs[0]`, `7 in xs[0]` — `ADR 0323`), and any chain depth asks the object at its end (`for v in d["a"]["k"]`, `7 in xs[0][0]` — `ADR 0324`) | `Gap I.2`, `L11.1` |
 | `in` and `for` over a **slot** of a container built at run time | works for one slot deep: a list slot, a dict slot (its keys), a set slot and a text slot each get their own arm, and a slot holding a number, a verdict or `None` raises the reference's own sentence; two slots deep refuses | `L11.1`, `Gap R.95` (paid), `Gap R.210` |
-| `sorted`/`len`/indexing of a container built at run time | partially: the tagged read answers what it was taught, `sorted` over a non-literal is refused | `L11.1`, `Gap I.2` |
+| `sorted`/`len`/indexing of a container built at run time | partially: the tagged read answers what it was taught, `sorted` over a non-literal is refused; unkeyed `sorted(xs)` works through `@rt_sort`, while `sorted(xs, key=...)` is **Gap R.254** | `L11.1`, `Gap I.2` |
 | a **dict literal** read by a key the compiler cannot fold — `{"a": 1}["a"]`, `{1: None}[1]`, `{"a": [1,2]}["a"]` | works: the literal is built on the heap and read through the same tagged doors a dict *variable*'s read uses, so the entry carries its kind, and a key the dict does not hold raises the reference's `KeyError` (catchable by `except KeyError`). A key the tag rules cannot type (a tuple) still refuses by name, and handing such an entry to a `return` or a call parameter refuses too — those positions keep one word for a whole value | `L11.1`, `Gap R.215` (paid, `ADR 0327`), `Gap R.212` (the untypable key), `Gap R.146`/`Gap R.220` (the one-word positions) |
 | a **list literal** read by a position the compiler cannot fold — `["a", "b"][0]`, `[1.5, 2][0]`, `[None, 2][0]`, `["a", "b"][-1]`, `[[1,2],[3,4]][0][1]` | works: the literal is built on the heap and read by the same call a list *variable*'s element is read by (`rt_get_elem` beside `rt_tag_of`), so the element carries its kind instead of being printed as whatever its payload is; a condition over such an element (`if [0.0, 1][0]:`, `if [[]][0]:`) asks `@rt_pair_truth`, and a position the literal does not hold raises the catchable `IndexError: list index out of range`. The all-integer shape stays a compile-time constant, and a `return`, a call argument or an arithmetic operand of such an element refuses by name rather than print a handle | `L11.1`, `L11.4`, `Gap R.218` (paid, `ADR 0331`), `Gap R.222` (`ADR 0329` — the index gate now stands at this door too), `Gap R.146` (the one-word positions), `Gap R.224` (the same read as an element of another literal) |
 
@@ -760,7 +761,9 @@ They are fully represented in the JSON AST dump (`--emit-ast`) with no schema ch
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
 - `--lang`: self-describing feature list for agents — one line per aspect of the surface, including
   `patterns:` (every `match` case form: literal, `_`, capture, or-pattern, guard, sequence, mapping,
-  and the class pattern with its aliasing rule; ADR 0235)
+  and the class pattern with its aliasing rule; ADR 0235) and `ordering:` (`sorted`/`min`/`max` read
+  `key=` and `reverse=` by name, and a callable key is called through the ordinary call road; roadmap
+  L11.7, Gap R.249, ADR 0340)
 - REPL (interactive): accumulates input line by line so multi-line suites (functions, classes, `if`/`for`/`while` bodies) can be entered; shows `> ` primary and `... ` continuation prompts on a terminal; recovers from parser/eval panics so a bug never kills the session.
 
 Exit codes are the table above — `--repl` has no per-session status to report, and the rest of
@@ -1002,7 +1005,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6591 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 6665 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1751,10 +1754,9 @@ forgot fails a test instead of appearing as a heisenbug.
 read, minimised, and filed. Most compiler bugs in this project are *llc rejected this
 module* failures, and the module was previously deleted with the temp directory: a
 compiler whose IR failures cannot be inspected cannot be debugged, and an agent driving
-it needs the artifact rather than a guess (ADR 0191). Note that `--emit-llvm <file>` is
-a separate codegen entry point from the JIT and still refuses some shapes the JIT
-compiles (`print(sorted([10, 2, 33]))` → `unsupported attr expression`); when the two
-disagree, `GUSTY_KEEP_LLVM=1` is the way to see what the JIT actually built.
+it needs the artifact rather than a guess (ADR 0191). Note that `--emit-llvm <src>` is
+a separate codegen entry point from the JIT; when the two disagree, `GUSTY_KEEP_LLVM=1`
+is the way to see what the JIT actually built.
 
 The compiled backend gets the same treatment from the other side: its roots are a stack
 (`@gc.roots` + `@gc.kinds`, with `rt_root_put`/`rt_root_clear`/`rt_frame_open`/

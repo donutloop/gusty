@@ -611,6 +611,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// loop variable makes from its OWN iterable are in this one program, whose expectation is what
 		// CPython printed for it (roadmap Gap R.246, Gap R.252, ADR 0339).
 		"for_iterables",
+		// The ordering builtins read their options by name. A `key=` is handed to the ordinary call road,
+		// so arity, returns and raises inside the key are that road's business; an invalid keyword is the
+		// reference's TypeError and not a positional option that silently meant something else (roadmap
+		// L11.7, Gap R.249, ADR 0340).
+		"key_argument",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

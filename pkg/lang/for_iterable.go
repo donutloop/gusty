@@ -267,14 +267,26 @@ func (g *irGen) sortedReversedOverWalkableList(e Expr) (arg Expr, ok bool) {
 	if fn == "reversed" && len(c.Args) != 1 {
 		return nil, false // reversed() takes one argument; the extra is the program's, not this road's
 	}
-	if fn == "sorted" && len(c.Args) > 2 {
-		return nil, false
+	pos, key, _, badKw := g.callOptions(c)
+	if badKw != "" {
+		return nil, false // an option the builtin does not take raises at the builtin's own door
 	}
-	if fn == "sorted" && len(c.Args) == 2 {
-		// A second POSITIONAL argument is the reference's `key`, which the reference itself
-		// refuses; `key=`/`cmp=` need a callable, which is the value word's door (Gap R.247).
-		if _, isKw := c.Args[1].(*KeywordArg); !isKw {
+	if fn == "sorted" {
+		if len(pos) > 2 {
 			return nil, false
+		}
+		if len(pos) == 2 {
+			// A second POSITIONAL argument is this language's constant repeat flag; the reference's
+			// key in that seat is the reference's TypeError, and neither is walked here (Gap R.247).
+			return nil, false
+		}
+		if key != nil {
+			// A `key=` is answered by the builtin's door beside this one (ADR 0340): the loop walks
+			// whatever that door builds, so the only question here is whether the key can be called —
+			// and `key=None`, which the reference reads as no key at all, is not a missing half.
+			if kd := g.keyDoorOf(key); kd.pos != keyCallable && kd.pos != keyAbsent {
+				return nil, false
+			}
 		}
 	}
 	kind, known := g.staticContainerKind(a)
@@ -489,10 +501,16 @@ func (g *irGen) forIterableMissingHalf(e Expr) string {
 		return "its iterable is not a container this backend can build"
 	}
 	c, _ := e.(*Call)
-	// The argument the builtin does not take: `key=`/`cmp=` need a callable, which is the value
-	// word's door (roadmap Gap R.249).
+	// The argument the builtin does not take: a `key=` whose callable this backend cannot call,
+	// and the reference's positional key, which the reference itself stops (roadmap Gap R.249,
+	// paid for the callable half by ADR 0340 — a key the door CAN call is not the missing half).
 	for _, a := range c.Args[1:] {
 		if kw, isKw := a.(*KeywordArg); isKw && kw.Name != "reverse" {
+			if kw.Name == "key" {
+				if kd := g.keyDoorOf(kw.Value); kd.pos == keyCallable {
+					continue // the key is callable; the half that is missing is asked about below
+				}
+			}
 			return "its " + kw.Name + "= argument names a callable this backend cannot build a call to, which is the value word's door (roadmap Gap R.249)"
 		}
 		if _, isPos := c.Args[1].(*KeywordArg); !isPos && len(c.Args) > 1 {

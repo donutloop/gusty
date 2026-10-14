@@ -1,0 +1,98 @@
+# The ordering builtins read their options by name, and a `key=` the compiler can call is called
+# through the ordinary call road (roadmap L11.7; Gap R.249; ADR 0340).
+#
+# The expectations are CPython's.  The old backend read the second positional argument as a reverse
+# flag, so `key=abs` silently became "sort ascending" or, for a non-callable key, printed a list at
+# exit 0 where the reference raises TypeError.
+
+print(sorted([3, 1, 2], key=abs))
+print(sorted([-3, 1, 2], key=abs))
+print(sorted([3, 1, -2], key=abs, reverse=True))
+print(sorted([3, 1, 2], key=abs, reverse=False))
+print(sorted([3, 1, 2], key=None))
+print(sorted([2, 1, 2, 1], key=abs))
+print(sorted([3, 3, 1], key=abs))
+print(sorted([], key=abs))
+
+def flip(x):
+    return 0 - x
+
+print(sorted([3, 1, 2], key=flip))
+print(min(3, 1, -2, key=abs))
+print(max(3, 1, -2, key=abs))
+print(min([3, 1, 2], key=abs))
+print(max([3, 1, 2], key=abs))
+print(min([3, 1, -2], key=flip))
+print(max([3, 1, -2], key=flip))
+
+def half_or_self(x, bias=0):
+    return x + bias
+
+print(sorted([3, 1, 2], key=half_or_self))
+
+print(sorted(["bbb", "a", "cc"], key=len))
+print(sorted(["bbb", "a", "cc"], key=len, reverse=True))
+print(min(["aaa", "b", "cc"], key=len))
+print(max(["aaa", "b", "cc"], key=len))
+print(sorted([10, 9, 1], key=str))
+
+xs = sorted([3, 1, 2], key=abs)
+print(xs)
+print(len(xs))
+print(xs[1])
+print(xs[0] + 1)
+
+for v in sorted([3, 1, -2], key=abs, reverse=True):
+    print(v)
+
+for v in sorted(["bbb", "a", "cc"], key=len):
+    print(v)
+
+for v in sorted([2, 1, 2, 1], key=abs):
+    print(v)
+
+try:
+    print(sorted([3, 1, 2], key=3))
+except TypeError:
+    print("key_int")
+
+try:
+    print(sorted([3, 1, 2], key="abs"))
+except TypeError:
+    print("key_str")
+
+try:
+    print(min([3, 1], reverse=True))
+except TypeError:
+    print("bad_reverse")
+
+try:
+    print(sorted([1], cmp=3))
+except TypeError:
+    print("bad_cmp")
+
+def no_args():
+    return 1
+
+try:
+    print(sorted([1, 2], key=no_args))
+except TypeError:
+    print("bad_arity_zero")
+
+def needs_two(a, b):
+    return a
+
+try:
+    print(sorted([1, 2], key=needs_two))
+except TypeError:
+    print("bad_arity_two")
+
+try:
+    print(min([], key=abs))
+except ValueError:
+    print("empty_min")
+
+try:
+    print(max([], key=abs))
+except ValueError:
+    print("empty_max")

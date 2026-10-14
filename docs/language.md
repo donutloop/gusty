@@ -2571,8 +2571,10 @@ it stops:
 * a **container written among the folded values** (`sum([n, [1]])`) — refused by the operand lowering in the
   ordinary `sum` road's own sentence, `sum adds numbers, and a list literal is a container`, which names what
   the element is rather than the tag it lacks;
-* a **keyword argument or `key=`** (`sum(xs, start=1)`, `min(a, b, key=f)`) and a **shadowed** `min`, `max` or
-  `sum` — the program's own function is asked first, and the call surface is roadmap L11.7's row.
+* a **keyword argument** (`sum(xs, start=1)`) — and a **shadowed** `min`, `max` or
+  `sum`, where the program's own function is asked first; the rest of the call surface is roadmap L11.7's row.
+  `min(a, b, key=f)` over literal candidates is no longer in this refusal list: the ordering door calls the key
+  through the ordinary call road (ADR 0340), while unsupported key shapes remain named refusals (Gaps R.254/R.255).
 
 ### Containers order element by element, and a set that is not a subset orders neither way
 
@@ -4189,12 +4191,15 @@ non-empty), else 0, in **both** paths: the record checks
 (`print("   ".isspace())` emits `i32 1`).
 
 The `sorted(list)` builtin returns a new sorted list; the argument keeps its own
-order, because `sorted` sorts a copy. `sorted(iter, reverse=True)` (or a truthy
-positional second arg) returns descending order; `reverse=False` keeps ascending
-order. `list.sort()` sorts in place and returns `None`; `list.reverse()` reverses
-in place and returns `None`. All four take no `key=`/`reverse=` argument on the
-method yet — `sort(key=...)` needs first-class functions and refuses, naming that
-reason (roadmap L11.7, ADR 0191).
+order, because `sorted` sorts a copy. `sorted(iter, reverse=True)` returns descending
+order; `reverse=False` keeps ascending order. (With no `key=`, this language also
+accepts a documented constant truthy second positional argument as its repeat flag.)
+`list.sort()` sorts in place and returns `None`; `list.reverse()` reverses
+in place and returns `None`. The two **methods** still take no `key=`/`reverse=`
+argument — `sort(key=...)` needs the method's own first-class call road and refuses,
+naming that reason (roadmap L11.7, ADR 0191). The **builtin** `sorted` now reads
+`key=` and `reverse=` by name and calls an allowed key through the ordinary call road
+(roadmap L11.7; Gap R.249; ADR 0340).
 
 Ordering is defined per element kind, and the compiled backend implement the same rules:
 numbers compare numerically (an int and a float mix fine, as Python's `<` does),
@@ -4211,8 +4216,10 @@ is content-addressed (ADR 0173).
 A list whose elements are of more than one kind cannot be ordered: Python raises
 `TypeError: '<' not supported between instances of 'str' and 'int'`, the
 interpreter raises the same, and the compiled backend refuses with a message that
-names Python's answer. Sorting is a stable insertion sort on both paths, which is
-what a future `sorted(key=)` (decorate–sort–undecorate) will be built on.
+names Python's answer. Sorting is stable: the unkeyed runtime sort is a stable insertion
+sort, and the keyed ordering ranks each element by the keys that come before it, with earlier
+equal keys held ahead. The keyed door answers the reference's stable order, so `sorted([2, 1, 2, 1], key=abs)`
+is `[1, 1, 2, 2]` (roadmap L11.7; Gap R.249; ADR 0340).
 
 In the AOT codegen, `sorted` of an all-integer inline list literal is still
 constant-folded to a sorted list global; anything else — a variable, a list of
@@ -4274,11 +4281,13 @@ What neither door reaches is **refused in words**, naming the half that is missi
 falling through to the counter (`for v in sorted([3,1,2])` used to print `3 1 2` at exit 0,
 `for v in sorted(xs)` used to emit `icmp slt i32 %_ctr1.ld1, @.lst1` and die in `llc` at exit
 2): a dict (`sorted(d)` would order its **keys**, stored as `[key, value]` pairs), a text
-through `sorted`, a `range`, a float or mixed list, a `key=`/positional key callable, and a
-non-builtin call nested inside the argument. The loop's sentence always carries `roadmap L11.1,
-ADR 0339` and the words `repeat count`, and names the row that owns the missing half (`roadmap
-Gap R.247`–`R.251`), so an agent can tell the loop's refusal from the builtin's own
-(`roadmap L11.7` for `key=`/`reverse=`).
+through `sorted`, a `range`, a float or mixed list, a heap-list `key=` whose elements only the run
+time can hand to the call (**Gap R.254**), a `key=` this backend cannot call (**Gap R.255**), a
+reference-style positional key, and a non-builtin call nested inside the argument. The loop's sentence always
+carries `roadmap L11.1, ADR 0339` and the words `repeat count`, and names the row that owns the missing half
+(`roadmap Gap R.247`–`R.251`, `R.254`, `R.255`), so an agent can tell the loop's refusal from the builtin's own
+(`roadmap L11.7` for `key=`/`reverse=`). A callable key over literal elements is no longer one of these refusals
+— it is answered by the builtin's own door, and the loop walks what that door builds (ADR 0340).
 
 A loop variable's kind belongs to the loop that bound it: `for v in words` over a text list
 claims `v` as interned text **for that loop only**, and the numeric and counter roads take the
@@ -4290,6 +4299,52 @@ This does not change the language's own reading of `for x in <integer>` as a rep
 slice, a dict's keys, a set's elements, a user function's container answer and a generator are
 asserted unchanged, on both witness legs, in `pkg/lang/for_iterable_test.go` and
 `integration/programs/for_iterables.gy`.
+
+### The ordering builtins ask their options by name (L11.7, Gap R.249, ADR 0340)
+
+`sorted`, `min` and `max` now read `key=` and `reverse=` as **named options**, not as another candidate
+or as the old positional reverse flag:
+
+```python
+print(sorted([3, 1, 2], key=abs))                  # [1, 2, 3]
+print(sorted([3, 1, -2], key=abs, reverse=True))   # [3, -2, 1]
+print(sorted(["bbb", "a", "cc"], key=len))         # ['a', 'cc', 'bbb']
+print(min([3, 1, -2], key=abs))                    # 1
+print(max([3, 1, -2], key=abs))                    # 3
+
+def flip(x):
+    return 0 - x
+print(sorted([3, 1, 2], key=flip))                 # [3, 2, 1]
+```
+
+A callable key is called by the **ordinary call road**: the door synthesises `key(element)` and lowers it
+exactly as it lowers that call anywhere else. A declared `def` that can receive one positional argument is
+allowed, including optional parameters (`def bump(x, bias=0): return x + bias`), and allowed builtin keys
+include `abs`, `len`, `ord`, `int`, `str` and `repr`. A non-callable key raises CPython's own TypeError, not
+a compile refusal, so `except TypeError:` catches it:
+
+```python
+try:
+    print(sorted([3, 1, 2], key=3))
+except TypeError:
+    print("caught")       # caught
+```
+
+`key=None` is the reference's identity key — the option is removed and the unkeyed road answers. An unknown
+keyword is also the reference's raise: `sorted([1], cmp=3)` says `'cmp' is an invalid keyword argument for
+sort()`, `min([3, 1], reverse=True)` says `'reverse' is an invalid keyword argument for min()`, and
+`max([3, 1], key=abs, reverse=True)` says the same for `max()`. Empty keyed `min`/`max` raise `ValueError:
+min() iterable argument is empty` / `max() iterable argument is empty`.
+
+The keyed order is stable because each element's rank counts the keys that come before it and the **earlier**
+equal keys, using the same comparator (`@rt_elem_gt`) the unkeyed sorter already had. Placement uses
+`@rt_put_elem`; `@rt_set_elem` would bump the length again and print phantom zeros.
+
+What still refuses is named, not guessed: `sorted(xs, key=...)` over a heap list built by the program needs
+the value word to carry each element to the call (**Gap R.254**; the same call without `key=` is answered by
+`@rt_sort`), a `lambda` key or call-expression key needs function values (**Gap R.255**, roadmap L11.7), and
+a key returning a float needs the comparator the tagged value word owns (**Gap R.248**). The ordinary call
+road's existing parameter-kind refusals are not widened by this row.
 
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,

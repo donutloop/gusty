@@ -370,6 +370,19 @@ CPython's `b`, `a`, `1`, `2` — each road now claims from its own iterable and 
 half of **Gap R.252**. 198 cases, `programs/for_iterables.gy` `match` on both legs, and the counter-vs-container-global
 instruction is now banned *by shape* from every module the suite compiles.
 
+**`sorted`, `min` and `max` now read their ordering options by name, and ADR 0340 pays Gap R.249** — the
+builtin's second positional argument used to mean "reverse", whatever it spelled. That made `key=` a wrong
+answer at exit 0, a refusal blaming `reverse=`, or a crash: `print(sorted([3,1,-2], key=abs, reverse=True))`
+printed ascending nonsense, `print(sorted([3,1,2], key=3))` printed a descending list where CPython raises
+`TypeError: 'int' object is not callable`, and `print(min(3,1,-2,key=abs))` made `llc` reject a `%_abs` load
+that should never have existed. The door now reads `key=` and `reverse=` by name, treats `key=None` as the
+reference's identity key, and lets the ordinary call road answer `key(element)` for declared functions and
+allowed builtins. Stable keyed order comes from ranks over `@rt_elem_gt` and placement through `@rt_put_elem`;
+keyed `min`/`max` use the same comparator. Non-callable keys and invalid keywords are real catchable Python
+`TypeError`s, while lambda keys, call-expression keys and heap-list element keys remain honest refusals with
+their own rows (**Gap R.254**, **Gap R.255**). The conformance program `programs/key_argument.gy` is `match`
+on both legs.
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

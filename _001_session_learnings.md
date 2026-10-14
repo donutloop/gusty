@@ -10349,3 +10349,57 @@ A container's word is a global's address. Given a literal, the comparison succee
   door and the loop refuses an unwalkable iterable at its own; the CLI test therefore always requires `roadmap
   L11.1` and requires the loop's own markers (`ADR 0339`, `repeat count`) only when the sentence speaks as the loop.
   An agent that cannot tell which door refused cannot plan a workaround.
+
+## The ordering builtins were reading options by position, not by name (L11.7, Gap R.249; ADR 0340; Gaps R.254–R.255 filed)
+
+`print(sorted([3, 1, 2], key=abs))`, `print(sorted([3, 1, -2], key=abs, reverse=True))`,
+`print(sorted([3, 1, 2], key=3))`, `print(min(3, 1, -2, key=abs))`, and
+`print(min([3, 1, 2], key=abs))` were five faces of one parser: the ordering builtins took their *second slot*
+as the reverse flag. The measured outcomes were not all refusals — some were the worst kind. The first refused
+with a sentence about `reverse=`. The second printed a wrong order at exit 0. The third printed a descending
+list where CPython raises `TypeError: 'int' object is not callable`. The fourth made `llc` reject the module
+because `key=abs` had been lowered as if it were a candidate (`use of undefined value '%_abs'`). The fifth
+refused because `key=abs` had been added to `min`'s candidate list and then read as a container.
+
+- **Named options are not positional candidates.** `key=` and `reverse=` have to be read by name before any
+  road lowers an argument. A positional parser turns the reference's TypeError into an answer, and it turns an
+  option into an operand. The fix reads `pos, key, reverse, badKw` first; only then does the unkeyed road get
+  its old documented repeat flag. The reference's `min` and `max` reject `reverse=` outright, and now the
+  compiled backend does the same — as a raise, not a guess.
+- **A callable argument should travel the ordinary call road, not a new builtin callback.** A key is just
+  `key(element)`. Synthesising `Call{Fn: key, Args: [element]}` and lowering it with `g.value` reuses arity,
+  default parameters, raises inside the callee, builtin behaviour, and the same IR the program could have
+  written by hand. A separate ordering callback would have duplicated all of that and disagreed with ordinary
+  calls the first time a callee raised.
+- **A compile-time TypeError can be a wrong answer when the expression has effects.** `key=3` has no effect,
+  so emitting the reference's raise is correct. `key=print(1)` is not — CPython must run `print(1)` first, then
+  try to call `None`. The first draft inferred call-expression key results and statically raised, skipping the
+  side effect. The honest answer is a refusal naming call-expression keys until the value word can carry and
+  call their answers; it is filed as **Gap R.255**.
+- **A tag is not the same question as a container's kind.** `key=xs` had to say `'list' object is not callable`,
+  not `'int' object is not callable`. Asking only the element tag answered the list's element kind; asking only
+  the notebooks missed constants. `keyWordKind` asks the same pair door other positions use, so the TypeError
+  names the value the program actually wrote.
+- **Stable order needs a rank, and rank placement needs the slot writer that does not own length.** The keyed
+  road counts `#{ keys before mine } + #{ earlier equal keys }`, using `@rt_elem_gt` and flipping the two sides
+  of the comparator for descending. The first placement used `@rt_set_elem`; that call bumps length, so sorting
+  three elements produced six slots and `print` wrote `[1, 2, 3, 0, 0, 0]`. The append call owns length;
+  placement should use `@rt_put_elem`. Structural tests now assert `@rt_alloc`/`@rt_append_tagged`/`@rt_put_elem`
+  and that a keyed module never *calls* `@rt_sort` (the runtime text may still define it for unkeyed roads).
+- **Runtime gates must ask the same question from both halves.** Keyed `min` emits calls into heap-runtime
+  helpers but allocates no heap object of its own, so `heapUsed` alone left the root globals data half out while
+  the pulled runtime block referenced `@gc.kinds`. The emitted module failed with an undefined `@gc.kinds`. The
+  gate now reads `needHeap` as well as `heapUsed`/`rooted`; this was found by a JIT run, not by a unit-only test.
+- **A test that greps for a helper name must distinguish a definition from a call.** `strings.Contains(mod,
+  "@rt_sort(")` failed because the runtime block legitimately defines `@rt_sort` even when the keyed road does
+  not call it. The structural witness now matches a call instruction (`call ... @rt_sort(`), not the definition.
+- **Table tests must not accidentally pin pre-existing debts as this row's promises.** Two rows thought to be
+  unkeyed negative controls were old unrelated refusals/wrongs: `min(xs)` over a heap list is **Gap R.107**, and
+  `print(reversed([1,2,3]))` answering its argument unreversed is **Gap R.251**. They were removed from the new
+  row's answered tables and left in their own rows. A new feature commit may measure neighbors, but it may not
+  inherit their promises.
+- **Record what the reference answers, not what the table wants.** `tools/recmerge` refused the documented
+  gusty-only positional repeat flag because CPython itself rejects a second positional argument to `sorted`;
+  that row belongs to a CLI leg comparing compiled legs only. The keyed sources the reference answers moved to
+  the record (6591 → 6665 for the family), while the refused key shapes remain in the refusal tables and cannot
+  acquire records.

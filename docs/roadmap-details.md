@@ -975,19 +975,26 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   `3` compiled today, because on-disk data-only modules fold to `int`. Settle the
   `--bench`/golden expectations in the same commit.
 <a id="l11-7"></a>
-- **L11.7 — Functions are values that compile** ⏳ PLANNED — `def apply(f, xs):
+- **L11.7 — Functions are values that compile** 🟨 PARTIAL — `def apply(f, xs):
   … f(x)` and `lambda` through a parameter are `unsupported call "f"` in AOT, so
-  `Callable[[P…],R]` (L6.6) is checker-only and `map`/`filter`/`sorted(key=)` are
-  unreachable. Ship the fnptr/indirect-call lowering, then make `sorted`,
-  `enumerate`, `zip`, `reversed`, `min/max(key=)` real language surface instead of
-  `unsupported call "enumerate"`, and list them in `--lang`.
+  `Callable[[P…],R]` (L6.6) is checker-only and `map`/`filter` remain unreachable.
+  Ship the fnptr/indirect-call lowering, then make the remaining function-value shapes real
+  language surface instead of `unsupported call "enumerate"`, and list them in `--lang`.
+  The ordering builtins' `key=` option paid its own half in 2026-10-14 (ADR 0340).
   - **Sorting is surface now (ADR 0191).** `xs.sort()`, `xs.reverse()` and `sorted(xs)` compile
     and match CPython, and the two probes the sweep pinned for them (`probe_sort_methods`,
     `probe_sorted`) were promoted to the parity programs `sorting.gy` / `sorting_literals.gy` —
     deleting the pin is how a paid debt gets recorded. One comparator (`rt_elem_gt`) orders slot
     pairs, mode 0 numerically and mode 1 by the **text** behind an interned index; the sort is a
-    stable insertion sort on both paths, because `sorted(key=)` will be decorate–sort–undecorate
-    over a stable sort.
+    stable insertion sort on both paths.
+  - **`key=` is surface for `sorted`/`min`/`max` (ADR 0340).** The options are read by **name**,
+    not position: `key=` and `reverse=` are never lowered as candidates, unknown keywords are
+    catchable `TypeError`s, `key=None` is the reference's identity key, and a callable key is
+    lowered as `key(element)` through the **ordinary call road**. Literal keyed `sorted` ranks
+    elements with `@rt_elem_gt` and places them with `@rt_put_elem`; keyed `min`/`max` pick with
+    the same comparator. The remaining callable shapes — lambda keys, call-expression keys,
+    heap-list element keys, and keys whose comparator needs the tag — are Gaps R.254/R.255 (and
+    Gap R.248 where a float comparator is the blocker).
   - **Comprehensions build their lists now (ADR 0192).** `[f(x) for x in range(5)]`,
     `[abs(x) for x in [...]]`, and a filter that calls a function all compile — the AOT path had
     made its constant folder the *meaning* of a comprehension and refused everything else with
@@ -1006,7 +1013,7 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     strings.
   - **What the next container method owes:** `xs.insert` / `xs.index` / `xs.remove` / `xs.extend` /
     `xs.clear` share this dispatch table and each needs ADR 0187's pairing rule (write the tag with
-    the payload); `sorted(key=)`, `min/max(key=)` need the fnptr lowering; and a runtime helper
+    the payload); `list.sort(key=)` and the remaining callable values need the fnptr lowering; and a runtime helper
     emitted in the prelude changes any module-wide call-site count, so count in user code.
 <a id="l11-8"></a>
 - **L11.8 — Refusal is part of the model, and so is its exit code** 🔷 PARTIAL —
@@ -9146,10 +9153,10 @@ operators to the same door in this cycle (that is the fix Gap R.97 owns — Gap 
 and deliberately left open).
 
 
-### Gap R.198 — the fold door's four untaggable shapes stay refusals in words (OPEN, filed measuring ADR 0316, owner `codegen`)
+### Gap R.198 — the fold door's three remaining untaggable shapes stay refusals in words (OPEN, filed measuring ADR 0316, key half paid by ADR 0340, owner `codegen`)
 
 A door that answers 23 previously-refused programs has to say what it still will not do, in sentences an
-agent can act on. Four shapes remain, each pinned in `pkg/lang` and at the CLI:
+agent can act on. Three shapes remain, each pinned in `pkg/lang` and at the CLI:
 
 * **a fold over a set literal** — `print(min({n, 3}))`, `print(sum({n, 3}))`. CPython dedups by value and
   iterates in hash order, so the incumbent and the step count are not written in the line: a source-order fold
@@ -9161,8 +9168,8 @@ agent can act on. Four shapes remain, each pinned in `pkg/lang` and at the CLI:
   literal is a container: there is no numeric answer to give (Python raises TypeError for this program)*. It
   names what the element **is**, not the tag it lacks — because on that road the element's kind *is* a fact
   the compiler can see.
-* **a keyword or `key=` argument** — `sum(xs, start=1)`, `min(a, b, key=f)`: L11.7's call surface, not this
-  door.
+* **a keyword argument** — `sum(xs, start=1)`: L11.7's call surface, not this door. The old fourth shape,
+  `min(a, b, key=f)` over literal candidates, is paid by ADR 0340; unsupported callable keys are Gaps R.254/R.255.
 * **a shadowed `min`/`max`/`sum`** — the program's own function is asked first and the door stands down.
 
 Each is asserted to name the value's origin, the missing half and the roadmap row, and never to spend exit 2,
@@ -11196,7 +11203,9 @@ argument (`key=`), and a call inside the builtin whose answer the scan cannot se
 iterable *and* the half that is missing (`its argument is a DICT: sorted() would order its KEYS, which the
 runtime stores as [key, value] pairs the sort does not walk`), and each has a row: **Gap R.247**, **R.248**,
 **R.249**, **R.250**. Before the row these shapes were exit-2 modules or silent exit-0 answers; a refusal is
-not a regression against that.
+not a regression against that. **Updated by ADR 0340:** the literal `key=` half of that refusal is paid — a
+callable key on a literal list is lowered through the ordinary call road; the heap-list key became **Gap R.254**,
+and lambda/call-expression/unsupported builtin keys became **Gap R.255**.
 
 **What the row paid on the way (Gap R.252's first half).** Asking the iterable per loop also meant un-learning a
 claim: the container road *set* `g.internedVars[loopVar]` when its iterable held text and nothing ever took it
@@ -11241,13 +11250,23 @@ sentence can name the kinds it actually means.
 
 <a id="gap-r-249"></a>
 
-### Gap R.249 — `sorted`'s callable arguments (PLANNED, found by ADR 0339)
+### Gap R.249 — `sorted`'s callable arguments (DONE — closed by ADR 0340; the remaining halves are R.254/R.255)
 
-`sorted(xs, key=f)` and `sorted(xs, cmp=f)` need a callable the runtime can call per element — the door
-`min`/`max(key=)` and `list.sort(key=)` already stand at. A second *positional* argument is the reference's
-`key`, and the reference itself stops that program (`sorted([3,1,2], True)` → `TypeError: 'bool' object is not
-callable`), so this backend's refusal there is not owed an answer; it is owed the honesty that the reference
-stops it too, which its sentence now says.
+Before ADR 0340, `sorted(xs, key=f)` and `print(sorted([3,1,2], key=abs))` stood at the same door as
+`min`/`max(key=)` and `list.sort(key=)`: the ordering builtin had parsed the option by position and either
+blamed `reverse=` or ignored the key. The paid half is the builtin ordering itself. `key=` and `reverse=` are
+read by name; a callable key is lowered as `key(element)` through the ordinary call road; `key=None` is the
+identity key; unknown keywords and arity mistakes are the reference's catchable `TypeError`s; and keyed
+`min`/`max` use the same comparator as keyed `sorted`. The loop road from ADR 0339 asks that option before it
+classifies its iterable, so `for v in sorted([3,1,2], key=abs): print(v)` no longer refuses.
+
+A second *positional* argument remains a gusty extension only when no `key=` is present. The reference's key
+in that seat stops its own program (`sorted([3,1,2], True)` → `TypeError: 'bool' object is not callable`),
+and this backend does not silently reinterpret it: with a key present it refuses and says the reference takes
+the iterable alone positionally. The parts ADR 0340 did not pay are not called this row's answer — they are
+filed beside it as **Gap R.254** (a heap list's elements cannot be carried to the key) and **Gap R.255**
+(lambda keys, call-expression keys, and builtin keys this backend cannot call). The **methods** `xs.sort(key=)`
+and `xs.reverse()` remain the older ADR 0191 door.
 
 <a id="gap-r-250"></a>
 
@@ -11299,3 +11318,43 @@ and it is the measurement that kept this row honest: the first attempt at the ro
 — which answers `True` today — became a refusal, because the membership road asks the pair one question and then
 reaches for `containerOperand`, whose arm these builtins do not have. The arms were withdrawn from the row and
 filed here instead: the pair is only widen-able together with `containerOperand`, or not at all.
+
+<a id="gap-r-254"></a>
+
+### Gap R.254 — a keyed sort cannot carry a run-time list's elements to the key (PLANNED, found by ADR 0340)
+
+`xs = [3, 1, 2]` / `print(sorted(xs, key=abs))` refuses:
+
+```text
+sorted(xs, key=abs) is refused: the order comes from calling abs on every element, and the elements of
+that container exist only at run time — the call would have to carry an element to the key, which is the
+value word's job (roadmap L11.1, L11.7)
+```
+
+The unkeyed form answers today: `print(sorted(xs))` builds a rooted copy and `@rt_sort` orders it. The keyed
+form cannot stop at the list handle; it has to call `abs(elem)` once per slot and compare the answers. With
+literal elements ADR 0340 lowers each element and synthesises the call through `g.value`. With a heap list,
+the element's pair would have to leave the slot, cross the call, come back as a key, and then feed the same
+comparator. That is L11.1's tagged value word, not a missing arm in `call_key.go`. The row is deliberately
+narrow: closing it should teach the keyed road to iterate the runtime list's `(payload, tag)` slots and reuse
+the literal rank machinery, not invent a runtime callback that bypasses the ordinary call road.
+
+<a id="gap-r-255"></a>
+
+### Gap R.255 — a key this backend cannot call is refused by name (PLANNED, found by ADR 0340)
+
+ADR 0340 pays the key option for declared `def`s and a small set of ordinary builtin keys whose one-argument
+call already answers. It does not pay every expression that has the syntax of a key:
+
+```python
+sorted([3, 1, 2], key=lambda x: 0 - x)   # lambda is a function value; L11.7
+sorted([3, 1, 2], key=f(1))              # evaluate the call first; its answer may print before TypeError
+sorted([3, 1, 2], key=print)             # print is callable but returns None
+sorted([3, 1, 2], key=hash)              # hash's answer needs the tag this backend cannot carry from that road
+max([3, 1, 2], key=round)                # float answer, and no comparator for it from one word (R.248)
+```
+
+These are refusals at exit 1, not wrong answers at exit 0 and not `llc` rejections. Each sentence names `key=`,
+the shape the door cannot call, and `roadmap L11.7` (or Gap R.248 for the float comparator). A lambda or a
+call-expression key belongs to the function-value road, not to a special ordering helper. The row stays open
+until `gustyc` can turn those callables into the same ordinary call shape that `f = def name` already uses.
