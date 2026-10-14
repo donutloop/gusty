@@ -184,7 +184,12 @@ halves of the scan's answer, and fails when the fix is reverted.
   as a child) are run through `go test -parallel 20 -json`, their subtest durations are summed from the JSON, and
   the sum must exceed twice the wall clock the run occupied. On the machine this was written, **207 cases, 45.6 s of
   case time in 3.0 s of wall — 15×**. A suite that is marked parallel and still queues behind a lock prints the same
-  census and takes the same twelve minutes; only the measurement tells them apart, which is the rule
+  census and takes the same twelve minutes; only the measurement tells them apart.
+- The same test then runs that **identical subset again with `-parallel 1`** and compares the two wall clocks:
+  **the same 207 cases took 36.3 s one at a time and 3.0 s beside each other — 11.9× on 20 cores**. Overlap is
+  the mechanism; speedup is the point, and a suite can overlap its cases and still buy nothing if the overlap is
+  spent queueing on something. The comparison is skipped below four cores, where there is nothing to gain and a
+  failure would be noise. Which is the rule
   `tools/testshards` has always applied to its shards and now applies to the cases too. The four case names are a
   fixed list, and the test fails if any of them reports no subtest, so a rename cannot turn the measurement into a
   run of nothing that passes by vacuity.

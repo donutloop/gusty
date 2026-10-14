@@ -176,4 +176,31 @@ func TestTheParallelCasesActuallyOverlap(t *testing.T) {
 			"— a suite whose cases are marked parallel and still queue is indistinguishable from a serial one "+
 			"from the outside, which is why this is measured (ADR 0343)", leaves, sum, wall.Seconds())
 	}
+
+	// The ratio says the cases were *in flight* together; the question the harness actually owes is whether
+	// running them beside each other was worth anything. So the same subset is run again with the cases kept
+	// one at a time, and the two wall clocks are compared on the machine doing the measuring — no remembered
+	// baseline, no CI-runner folklore, and no failure on a box too small to gain anything by overlapping.
+	cores := runtime.NumCPU()
+	if cores < 4 {
+		t.Logf("overlap speedup not checked: %d cores is not a machine worth measuring it on", cores)
+		return
+	}
+	serial := time.Now()
+	scmd := exec.Command("go", "test", "-tags=llvm20", "-count=1", "-timeout", "15m",
+		"-parallel", "1", "-run", anchored, "./pkg/lang/")
+	scmd.Dir = root
+	scmd.Env = parifyEnv()
+	if _, err := scmd.Output(); err != nil {
+		t.Fatalf("the serial control run of the same subset failed: %v", err)
+	}
+	serialWall := time.Since(serial)
+	speedup := serialWall.Seconds() / wall.Seconds()
+	t.Logf("speedup: the same %d cases took %.1fs one at a time and %.1fs beside each other (x%.1f on %d cores)",
+		leaves, serialWall.Seconds(), wall.Seconds(), speedup, cores)
+	if speedup < 2 {
+		t.Errorf("running the cases beside each other bought %.1fx over running them one at a time — the "+
+			"`t.Parallel()` marks are there and the toolchain calls are not: something is still queueing them "+
+			"(a lock, a shared fixture, a governor) (ADR 0343)", speedup)
+	}
 }

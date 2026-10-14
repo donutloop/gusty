@@ -1164,6 +1164,13 @@ The knobs stay process-wide by design — that is what makes them tunable from a
 test asks the real entry points the question without taking the environment away from anyone. The census line above is not
 prose: `integration/parallelism_guard_test.go::TestTheSuiteIsMarkedToRunBesideItself` runs the documented
 command inside the suite and fails on it, so the check a person can type is the check that breaks the build.
+Nor is the speed a remembered number: `TestTheParallelCasesActuallyOverlap` runs four heavy `pkg/lang` families
+through `go test -parallel 20 -json`, sums the leaf durations, and fails unless the cases were genuinely in
+flight together (here: 207 cases, 46.0 s of case time in 3.0 s of wall — **15×**); it then runs the *same subset
+again* with `-parallel 1` and fails unless running them beside each other was actually faster (the same 207
+cases: **36.3 s one at a time, 3.0 s together — 11.9×** on 20 cores). Overlap is the mechanism; the speedup is
+the promise. Both are measured on the machine doing the measuring, and the comparison is skipped below four
+cores, where there is nothing to gain.
 
 What the change found is the argument for it: two table rows sharing one source file, a ledger row pinned to
 unstable bytes, a data race on a package-level reader the last compile had installed (**Gap R.259**, paid by the
