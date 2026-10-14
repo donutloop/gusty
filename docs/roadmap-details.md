@@ -1774,7 +1774,7 @@ the reader calls a rebound name makes in its own `@main` must be *identical* to 
 makes with the name bound once.
 
 <a id="gap-q-2"></a>
-### Gap Q.2 — the runtime heap is a fixed 1024 objects, and exhaustion is silent (OPEN)
+### Gap Q.2 — the runtime heap is a fixed 1024 objects, and exhaustion is silent (diagnostic done, growth owed)
 `@heap` is `[1024 x {i32, i32, [256 x i32]}]`; when it fills, `rt_alloc` returns **-1**
 and the program carries on with an invalid handle. Before ADR 0181 the collector kept
 everything alive, so a heap-stress program reached the ceiling and died; the root stack
@@ -1783,6 +1783,103 @@ an out-of-memory **diagnostic** (raise `MemoryError`-style and exit non-zero lik
 other runtime failure, instead of returning -1), and a heap that grows — either larger or
 segmented — with the capacity reported in `--gc-stats` so a workload's headroom is
 visible (the interpreter's `--gc-stats` already has `live`; the AOT has `live` and `top`).
+
+**Half closed by ADR 0347 (2026-10-15): the diagnostic. The growing half is still owed.**
+
+### What the silence actually cost, measured
+
+The row said "the program carries on with an invalid handle" and stopped there. The measurement is
+worse than a crash, because a crash is at least honest. A retention loop —
+
+```gusty
+def push_n(grown, n):
+    i = 0
+    while i < n:
+        grown.append([1, 2, 3])
+        i = i + 1
+    return i
+
+bucket = []
+push_n(bucket, 4000)
+print(len(bucket))
+```
+
+— ran to exit 0. Its sibling, a churn loop printing `lst[0]` on each of 2000 trips, printed **2120
+lines where CPython prints 2060**, and the extra lines were `[7]` and `[13]`: objects the program had
+never constructed. `print` was not confused. `rt_alloc` had answered `-1`, the handle went into a root
+slot, the collector's element walk had marked whatever word the slot happened to hold, and the printer
+faithfully rendered the container that lived at the index the stale handle named. Two independent
+failures were required for that to be possible, and both were fixed:
+
+- **Nobody asked the allocator whether it had room.** `rt_alloc`'s `full:` arm returned `-1` and every
+  one of ~380 call sites stored it. The guard now lives at the call sites (`pkg/lang/heap_guard.go`),
+  not inside `rt_alloc`, for the reason ADR 0337 states about every other helper: the call site knows
+  its source span and the caller's intent, and a raise needs both. `emitHeapCall` emits
+  `%h = call @rt_…` / `icmp eq %h, -1` / `br i1 …, label %heapfull`, and the `heapfull` block runs the
+  program's own `rt_raise` with `MemoryError`'s code and takes the uncaught edge, which is ADR 0214's
+  requirement (innermost handler or `raiseexit`) rather than a new invention.
+- **The collector marked words, not values.** The element pass called `rt_gc_mark` on every payload
+  word of every rooted container, so `lst = [7]` kept slot 7 alive. `rt_gc_tag_is_obj` asks the tag —
+  the same word the printers and the comparisons read (ADR 0184, ADR 0187) — and declines for the four
+  immediate kinds. An unrecognised tag is treated as an object: a leak is a leak, a bad sweep is
+  corruption. This is also why `dispatch_gc_stress.gy` and `gc_precise.gy` had begun to regress once
+  the loop safe points existed: they were the corpus's two programs whose retention was propped up by
+  the accidental marking.
+
+### Why the loop body, and not only the call sites
+
+Guarding the allocation nodes was necessary and not sufficient, and the reason is the shape of the
+language. A `while` body contains no allocation node in its source; ADR 0333's back-edge and ADR 0335's
+counter road decide per trip whether the heap gets a new container, and ADR 0334's root slots are
+per-frame. A program can therefore outlive its arena without ever naming an allocation. `loopSafePoint`
+emits `rt_gc_collect` + `rt_gc_check_roots` and the same `heapfull` guard at the top of every body, and
+`loopMayAllocate` — a conservative AST question, defaulting to *yes* so that a construct this pass does
+not understand cannot quietly opt out of the check — keeps the sweep out of `while i < n: i = i + 1`,
+which is the loop that would have paid for it most often.
+
+Two placements were wrong before they were right, and both are the kind of thing a later cycle will be
+tempted to undo:
+
+- The counter road registered `_%loopvar` as a root. A counter is a number; registering its word made
+  the sweep treat `@heap[counter]` as live, which is the slot-pinning bug again from the other side.
+- The iterable road called `gcRootIterable` inside the body. `rt_root_put` dedups by slot *address*, so
+  an `alloca` in the body is a fresh address each trip and the root stack fills at 4096 entries per
+  loop. It belongs in the preheader.
+
+### The status roads are a second door
+
+`rt_num_arith` does not return a handle: it returns a status and writes the pair through out-params, so
+there is nothing for `emitHeapCall` to compare. Its float arms call `rt_float_new`, which can answer -1.
+It now answers a fourth status — `4`, "the answer exists and has nowhere to live" — and the arithmetic
+call sites in `pkg/lang/heapargs.go` and `pkg/lang/pairfold.go` raise on it. The collector stays on the
+unchecked path: it has no program counter to die at, so an unchecked helper is correct *there* and
+negligent everywhere else, which is why the unchecked variants are named `*_unchecked` and the guard
+helper refuses to emit for them.
+
+### What the run reports
+
+`--gc-stats` gained `capacity=`, `headroom=` and `exhausted=`, and `rt_gc_report` moved ahead of
+`rt_die` on `main.raiseexit`, so the numbers arrive even when the program dies on a traceback:
+
+```
+gc: backend=aot collections=1028 roots=5 skipped=0 marked=1024 freed=0 total_freed=0     live=1024 top=5 capacity=1024 headroom=0 exhausted=1
+```
+
+`capacity` is generated from `HeapCapacity` rather than written as a literal in the format string, and
+`TestTheArenaSpellsItsCapacityOnce` fails if the arena's declared array type, the allocator's bound or
+the trap's sentence disagree with it. That test is the reason the diagnostic came before the growth: a
+heap that gets bigger has to report itself getting bigger, and if the capacity had been spelled four
+times the growth would have silently kept reporting 1024.
+
+### Still owed
+
+1025 live containers is still fatal. `programs/gc_heap_exhaustion.gy` catches the condition and prints
+the right words, but the program cannot *finish* the work — which is the difference between a diagnostic
+and a fix. Growing `@heap` (larger, or segmented with a page table of slots) is the remaining half, with
+`capacity=` becoming a measured value rather than a constant. Three neighbouring limits are L11.1's and
+are named in ADR 0347 so they are not mistaken for regressions from this change: the fixed 4096-entry
+`@gc_roots`, the un-rooted container element handle, and the fact that a body's mid-trip garbage waits
+for the next trip's safe point.
 
 <a id="gap-r"></a>
 ## Gap R — async code that could not mean what it said (found while starting L7.6)

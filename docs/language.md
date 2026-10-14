@@ -1894,7 +1894,10 @@ for i in range(n):
   `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`,
   `UnboundLocalError` (ADR 0228) and `OverflowError` (ADR 0264 — the class CPython uses for
   `int(inf)`, which is what makes `except OverflowError:` around a `floor`/`ceil` of a huge double mean
-  the same thing on both legs). A bare
+  the same thing on both legs). `MemoryError` (ADR 0347) is the compiled arena saying no: the
+  backend's heap holds `lang.HeapCapacity` (1024) containers, and the container-taking door that finds
+  it full raises this class rather than handing the program a slot number that does not exist — see
+  § The compiled arena. A bare
   `raise` raises `Exception`. `raise IndexError` (the class itself, no call) raises that
   class with no message, and a class derived from an exception is raisable too:
   `class MyError(Exception):` then `raise MyError("x")` / `except MyError:`.
@@ -5061,3 +5064,49 @@ span-keyed parse tree:
 The LSP uses incremental text sync (kind 2): `textDocument/didChange`
 converts each change range into a `lang.Edit` and calls `Update`, falling
 back to a full re-parse only for whole-document replacements.
+
+## The compiled arena (Gap Q.2, ADR 0347)
+
+The compiled backend allocates containers out of one fixed arena, `@heap`, which holds
+`lang.HeapCapacity` — 1024 — objects. A list, a dict, a set, a tuple, an instance, a class, a
+closure, a runtime-built string and a boxed float each take a slot. A program that asks for a
+1025th live container is telling you something about its live set, and the backend answers with a
+trap rather than an invention:
+
+```py
+def push_n(grown, n):
+    i = 0
+    while i < n:
+        grown.append([1, 2, 3])   # one container per trip, all of them retained
+        i = i + 1
+    return i
+
+bucket = []
+push_n(bucket, 4000)              # MemoryError, exit 3
+```
+
+`MemoryError` is a class like the others (`docs/operations.md` § Exit codes): `except MemoryError:`
+reaches it, `except Exception:` covers it, an uncaught one prints a traceback and exits 3, and
+`--gc-stats` reports `capacity=`, `headroom=` and `exhausted=` so the condition is visible to a
+caller who was not looking for it.
+
+Three things about it are worth knowing before you write against it:
+
+- **The trap fires where the memory was asked for, not where the wrong answer appeared.** The
+  allocation door that found the arena full is the statement that raises, so the traceback points at
+  the `append`, not at the later `print` that would have rendered nonsense. Before this rule existed
+  the arena's answer was the handle `-1`, which the readers painted as whatever lived at that index:
+  a churn loop printed another iteration's list and exited 0.
+- **A loop body is an allocation point even when its source contains no literal.** `while` and `for`
+  bodies run a collection at their top, and that safe point is also where a full arena is noticed.
+  A loop whose body cannot take a slot — `while i < n: i = i + 1` — gets neither the collection nor
+  the guard, so the promise costs nothing where it cannot be needed.
+- **Handling it does not create capacity.** The containers you hold are still held, so the next
+  container raises again; recover by dropping data, not by retrying. This matches CPython closely
+  enough to be the same habit and is the reason `integration/programs/gc_heap_exhaustion.gy` ends at
+  its two caught arms.
+
+The arena's size is spelled once (`HeapCapacity` in `pkg/lang/heap_guard.go`), and the array types,
+the allocator's bound, the report's `capacity=` and the trap's sentence are all generated from it. The
+roadmap's second half for this row — a heap that grows instead of trapping — is still open; the
+diagnostic came first because an arena that grows invisibly has the same bug with a longer fuse.

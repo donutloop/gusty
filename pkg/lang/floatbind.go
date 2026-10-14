@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -87,7 +86,7 @@ func (g *irGen) bindFloatRebinding(b *strings.Builder, name, v string) bool {
 	// lifts back to a double on the way into an operation.
 	g.heapUsed = true
 	h := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_float_new(double %s)\n", h, v))
+	g.emitRtFloatNew(b, h, v, Span{})
 	g.bindTaggedVar(b, name, h, "1")
 	// The slot now holds a heap handle — the float box — where it used to hold an `i32`.
 	// Unrooted, the collector cannot see the box, recycles its handle, and the next

@@ -413,7 +413,7 @@ func (g *irGen) containerSortHandle(b *strings.Builder, e Expr) (string, bool) {
 	// %t<N> name reads as an ordinary value to the print and call lowerings, which would then
 	// printf a handle as a number (the bug that comment was written for).
 	slot := fmt.Sprintf("%%h%d", g.heapSeq)
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_copy(i32 %s)\n", slot, sv))
+	g.emitHeapHelperCall(b, slot, "rt_list_copy", "i32 "+sv, Span{})
 	b.WriteString(fmt.Sprintf("  call void @rt_reverse(i32 %s)\n", slot))
 	return slot, true
 }

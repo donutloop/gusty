@@ -1975,6 +1975,9 @@ the payload as `"gc": { … }` — see `definitions.gcStats` in `--schema`:
 | `frames` | call frames in the root set at the last collection (0 = a top-level boundary) |
 | `protected` | objects the watermark kept alive without tracing |
 | `generational` | true for a young (nursery) pass, false for a full sweep |
+| `capacity` | how many containers the compiled arena holds (`lang.HeapCapacity`, 1024 today) — the denominator `headroom` is measured against; 0 on a backend with no arena (roadmap Gap Q.2, ADR 0347) |
+| `headroom` | `capacity − live`, clamped at zero; how much room is left before the next container traps (Gap Q.2) |
+| `exhausted` | how many times this run asked the arena for a slot and was refused; non-zero means a `MemoryError` was raised somewhere in the program, whether or not an arm caught it (Gap Q.2) |
 | `backend` | `interpreter` or `aot` |
 
 ### The compiled backend's report
@@ -1984,7 +1987,7 @@ The counters live inside the compiled program, so its own runtime prints the lin
 
 ```
 $ gustyc --aot --gc-stats --file integration/programs/gc_precise.gy
-gc: backend=aot collections=102 roots=3 skipped=0 marked=51 freed=0 total_freed=4243 live=51 top=17
+gc: backend=aot collections=4607 roots=2 skipped=0 marked=1 freed=1 total_freed=4520 live=1 top=16 capacity=1024 headroom=1023 exhausted=0
 130
 56850
 719400
@@ -1996,6 +1999,38 @@ program that exhausts it stops itself rather than run with an unrooted handle). 
 `--json` — parses that line into the same `gc` member, so neither humans nor agents have
 to scrape it. `lang.ParseGCStatsLine` and `GCStats.String` are one documented shape read
 both ways, tested for round-tripping.
+
+#### When the arena runs out
+
+The compiled heap is a fixed arena of `lang.HeapCapacity` (1024) containers. When a program asks for
+one more, it is a trap and not a wrong answer (roadmap Gap Q.2, ADR 0347):
+
+```
+$ gustyc --file integration/programs/gc_heap_uncaught.gy --gc-stats
+gc: backend=aot collections=1028 roots=5 skipped=0 marked=1024 freed=0 total_freed=0 live=1024 top=5 capacity=1024 headroom=0 exhausted=1
+Traceback (most recent call last):
+MemoryError: out of memory: the compiled heap holds 1024 live containers (roadmap Gap Q.2)
+$
+```
+
+Exit code 3, like any other uncaught trap (ADR 0211) — the report is emitted first, so a program that
+dies on a traceback still says how full the arena was. The class is `MemoryError`, a subclass of
+`Exception`, so both of these arms reach it and the program finishes at exit 0
+(`integration/programs/gc_heap_exhaustion.gy`, `integration/gc_heap_trap_test.go`):
+
+```python
+try:
+    bucket = []
+    push_n(bucket, 4000)
+except MemoryError:
+    print("the arena is full")
+```
+
+Catching it does not create capacity: the containers you were holding are still held, so the next
+container the program builds raises again. `exhausted=` is the field that tells an agent which of the
+two situations it is in — a program that never touched the ceiling, and one that hit it and recovered.
+The row's second half (a heap that grows) is still open in `roadmap.md`; the capacity is a
+compile-time constant spelled once, so growing it grows the report and the trap's sentence with it.
 
 `GUSTY_GC_STRESS=1` forces a collection at every statement boundary: the conformance
 corpus is run that way in `integration/gc_stress_test.go`, so a root the record

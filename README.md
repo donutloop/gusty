@@ -1798,7 +1798,7 @@ gustyc --variance                             # JSON variance table (list/dict i
 gustyc --capabilities                         # JSON refusal registry: every lower.unsupported.<shape> code, its suggestion, and the roadmap rows that own it (L11.8, ADR 0346)
 gustyc --effects <src> | effects file1.gy ...  # per-function effect signatures: effects performed, return shape, termination (--json for the document)
 gustyc --jit "..."                           # in-process dlopen JIT path
-gustyc --gc-stats --file prog.gy             # report what the collector did (stderr; --json adds a gc member)
+gustyc --gc-stats --file prog.gy             # report what the collector did, and the compiled arena: capacity, headroom, exhausted (stderr; --json adds a gc member) — Gap Q.2, ADR 0347
 gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark
 gustyc --fmt <src> | --fmt-check <src> | --fmt-file <path>  # canonical formatter
 gustyc --lsp                                  # stdio language server (hover, completion, diagnostics)

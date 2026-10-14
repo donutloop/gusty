@@ -158,7 +158,7 @@ func run() int {
 	aot := fs.Bool("aot", false, "accepted for compatibility: the compiled LLVM backend is the only backend (ADR 0302)")
 	interp := fs.Bool("interp", false, "retired: the AST interpreter left with ADR 0302; passing it is a usage error")
 	showBackend := fs.Bool("show-backend", false, "print which backend executed the program (stderr; --json reports it in the payload) — there is one answer, and the payload still names it")
-	gcStats := fs.Bool("gc-stats", false, "report what the garbage collector did while the program ran (collections, roots traced, roots skipped as immediates, objects freed) on stderr; --json adds a gc object to the payload")
+	gcStats := fs.Bool("gc-stats", false, "report what the garbage collector did while the program ran (collections, roots traced, roots skipped as immediates, objects freed, live) and, for the compiled backend, the arena (capacity, headroom, exhausted — roadmap Gap Q.2, ADR 0347) on stderr; --json adds a gc object to the payload")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	lsp := fs.Bool("lsp", false, "run the language server over stdio (LSP)")

@@ -645,7 +645,7 @@ func (g *irGen) logicFormOf(b *strings.Builder, e Expr, bud *logicBudget) (logic
 		g.heapUsed = true
 		bud.builds++
 		h := g.newTmp()
-		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", h, d)
+		g.emitRtFloatNew(b, h, d, Span{})
 		return logicForm{payload: h, tag: logicTagWord(k), floaty: true}, nil
 	case logicKindList, logicKindDict, logicKindSet:
 		h, err := g.containerOperand(b, e)

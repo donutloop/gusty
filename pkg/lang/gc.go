@@ -89,6 +89,20 @@ type GCStats struct {
 	// the point where a handle could not be rooted.
 	Top          int  `json:"top"`
 	Generational bool `json:"generational"`
+	// Capacity is how many objects the compiled heap can hold at once — the arena's size. A program
+	// that needs more than this of them *live at the same time* does not get an answer, it gets
+	// `MemoryError`; knowing the number is what lets a caller tell "this program is too big for this
+	// backend" from "this program is wrong" (roadmap Gap Q.2, ADR 0347).
+	Capacity int `json:"capacity"`
+	// Headroom is how many more objects the run could have allocated at the moment of the report:
+	// capacity minus the slots the arena has handed out, plus the ones the collector has already
+	// recycled through the free list. It is the number a caller acts on — capacity alone says what the
+	// ceiling is, headroom says how close this program came to it.
+	Headroom int `json:"headroom"`
+	// Exhausted is how many times the arena ran out during the run. Zero on every run that answered the
+	// program; non-zero means a guard raised MemoryError (or would have, had the allocation been
+	// reachable) — the count is why the trap is diagnosable after the fact.
+	Exhausted int `json:"exhausted"`
 	// Backend names the collector that produced these numbers.
 	Backend string `json:"backend"`
 }
@@ -128,6 +142,18 @@ func (s GCStats) String() string {
 		// conditional leaves the interpreter's line byte-for-byte stable.
 		b.WriteString(" top=")
 		b.WriteString(strconv.Itoa(s.Top))
+	}
+	// The arena facts are the compiled backend's too, and conditional for the same reason: a line from
+	// a collector with no fixed arena does not grow fields it has no numbers for. Capacity is printed
+	// whenever it is known — including by a run that never came near it, which is the case a reader
+	// needs the number for exactly as much as the run that ran out.
+	if s.Capacity != 0 {
+		b.WriteString(" capacity=")
+		b.WriteString(strconv.Itoa(s.Capacity))
+		b.WriteString(" headroom=")
+		b.WriteString(strconv.Itoa(s.Headroom))
+		b.WriteString(" exhausted=")
+		b.WriteString(strconv.Itoa(s.Exhausted))
 	}
 	return b.String()
 }
@@ -184,6 +210,12 @@ func ParseGCStatsLine(line string) (GCStats, bool) {
 			st.Generational = v == "young"
 		case "top":
 			st.Top = num(v)
+		case "capacity":
+			st.Capacity = num(v)
+		case "headroom":
+			st.Headroom = num(v)
+		case "exhausted":
+			st.Exhausted = num(v)
 		}
 	}
 	// A report always names its backend and always counts its collections: both are

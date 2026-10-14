@@ -1,0 +1,53 @@
+# integration/programs/gc_heap_exhaustion.gy — roadmap Gap Q.2, ADR 0347.
+#
+# The compiled arena holds heapCapacity containers. This program asks for more than
+# that, twice, and the two halves of the promise are both visible here:
+#
+#   * the condition is a trap the program can NAME, so `except MemoryError:` catches
+#     it and `except Exception:` covers it too — the program carries on and exits 0;
+#   * `--gc-stats` says how full the arena was when it happened (`capacity=`,
+#     `headroom=`, `exhausted=1`), so the condition is not a silent fact.
+#
+# The shape that exhausts the arena honestly is a growing container that is never
+# dropped: every element stays reachable, so no collection can give a slot back. The
+# churn loop of ADR 0337's footnote is the same shape with the retention removed, which
+# is why it reaches the ceiling while a loop that drops each value does not.
+#
+# `integration/programs/gc_heap_uncaught.gy` is the other half: the same condition,
+# nobody catching it, exit code 3 with a MemoryError traceback.
+
+def push_n(grown, n):
+    i = 0
+    while i < n:
+        grown.append([1, 2, 3])
+        i = i + 1
+    return i
+
+# Act one — the arena is gone, and the program was told in words it can match on.
+first = "not raised"
+try:
+    bucket = []
+    push_n(bucket, 4000)
+    first = "no trap"
+except MemoryError:
+    first = "MemoryError caught"
+print(first)
+
+# Act two — the same condition through the base class, so an existing
+# `except Exception:` arm covers it. (`except T as e` is a separate gap, so no arm
+# binds the exception value here.)
+second = "not raised"
+try:
+    bucket2 = []
+    push_n(bucket2, 4000)
+    second = "no trap"
+except Exception:
+    second = "Exception caught"
+print(second)
+
+# There is deliberately no third act that allocates: the two buckets are still live, so
+# the arena is still full, and the next container the program builds raises again —
+# which is the right semantics for an exhausted arena (handling the condition does not
+# create capacity) and the reason this file cannot demonstrate "the program carried on
+# normally" without first dropping its data. `gc_heap_uncaught.gy` is the exit-3 half;
+# integration/gc_heap_trap_test.go drives both and checks the exit codes.

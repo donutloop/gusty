@@ -10851,3 +10851,57 @@ suggestion, owning roadmap rows — read by `--json`'s `capability` member, by `
 - **Snapshot tables are lies until something recomputes them** (Gap R.204 again): adding the ADR and closing the
   queue row moved `ADRs` to 337/0346 and `Rows owed` to 139/185, and
   `TestTheRoadmapSnapshotIsMeasuredNotRemembered` reported both before I did.
+
+## Gap Q.2 — the compiled arena tells the program when it is full (`MemoryError`, ADR 0347)
+
+- **A wrong answer at exit 0 is worse than a crash, and only a witness legs test catches it.** The
+  churn loop printed 2120 lines where CPython prints 2060, and the two extra lines were `[7]` and
+  `[13]` — objects nobody built. Nothing in the suite was red. `rt_alloc` answered `-1`, the handle went
+  into a root slot, and `print` faithfully rendered whatever container lived at the index the dead handle
+  named. The fix is not "check the allocator": it is that every door which takes a slot must be asked
+  whether it can say no.
+- **Guard the call sites, not the allocator** (ADR 0337 one door earlier). A helper that raises for its
+  caller owns exception state codegen cannot see, has no source span to print, and still hands `-1` to a
+  store that runs anyway. `emitHeapCall` emits the compare/branch/raise-block around each handle-taking
+  call, and the four allocation *helpers* (`rt_list_copy`, `rt_dict_copy`, `rt_float_new`, `rt_slice`,
+  `rt_none`) are guarded too — guarding `rt_alloc` alone leaves four roads smuggling `-1` out through a
+  helper's return value. `needsHeapGuard` declines for interned text, the cached `@none_h`, and the
+  `*_unchecked` variants: a guard is a second edge to a raise block, and paying it where the condition
+  cannot occur buys nothing.
+- **A loop body is an allocation point even when its source contains no allocation.** This is the reason
+  the gap survived the root stack: ADR 0333's back-edge and ADR 0335's counter road allocate per trip.
+  `loopSafePoint` is now at the top of every `while`/`for`/generator body; `loopMayAllocate` is a
+  conservative AST question that defaults to *yes*, so a construct the pass does not understand cannot
+  quietly opt out of the check — and `while i < n: i = i + 1` still pays nothing.
+- **Two placements were wrong before they were right, and both are tempting to undo.** (a) The counter
+  road registered `_%loopvar` as a root: a counter is a number, so the sweep treated `@heap[counter]` as
+  live — the slot-pinning bug from the other side. (b) The iterable road called `gcRootIterable` inside
+  the body; `rt_root_put` dedups by slot *address*, so a body-`alloca` is a fresh address per trip and the
+  4096-entry root stack fills by iteration count. Roots belong in the preheader.
+- **The collector marked words, not values.** The element pass called `rt_gc_mark` on every payload word,
+  so `lst = [7]` kept slot 7 alive forever. `rt_gc_tag_is_obj` asks the tag — the same word the printers
+  and comparisons read — and declines for the four immediate kinds; an unrecognised tag is an object,
+  because a leak is a leak and a bad sweep is corruption. Two corpus programs (`dispatch_gc_stress.gy`,
+  `gc_precise.gy`) had been leaning on the accidental marking: they went red the moment the loop safe
+  points started collecting, which is the sound order for discovering a dependency like that.
+- **A status road needs a status, not a handle compare.** `rt_num_arith` returns a status and writes the
+  pair through out-params, so there is nothing to compare against -1; it gained status `4` ("the answer
+  exists and has nowhere to live") and the arithmetic sites raise on it. The collector keeps the unchecked
+  path — it has no program counter to die at.
+- **Put the report before the death.** `rt_gc_report` was after `rt_die` on `main.raiseexit`, so the
+  programs that most needed `exhausted=1` never printed it. Globals moved to `rootGlobalsIR` beside `@heap`
+  for the same reason as ADR 0173: `rt_gc_report` is emitted for any program that prints a float, and a
+  report reading an undefined global is a verifier failure waiting for the one program that asks for both.
+- **Spell the capacity once and let the tests enforce it.** `HeapCapacity` now generates the array types,
+  the allocator's bound, `capacity=` and the trap's sentence; `TestTheArenaSpellsItsCapacityOnce` reads the
+  emitted module and fails on a second spelling. This is why the diagnostic precedes the growth: with the
+  literal written four times, a bigger heap would have gone on reporting 1024.
+- **Reference legs have a ceiling, and saying so is part of the test.** `TestAOTGuardDoesNotDisturbAHeapThatFits`
+  is the CPython leg for the guarded roads — the same doors at a size that fits. Four of its rows had to be
+  rewritten because the backend refuses shapes the row assumed (`join` on a non-constant list, a function
+  returning a float-bound name, printing a nested container element). A reference-leg row that trips an
+  unrelated gap is not testing your change; it is testing your patience.
+- **A concurrent agent that force-resets the tree is a test-infrastructure fact, not a footnote.** Files
+  created and then vanished; a stale binary at a fixed path answered a `--run` flag the CLI has never had,
+  which briefly looked like a regression in `cmd/gustyc`. Two habits follow: verify with a binary built in
+  the same command, and commit the moment a cycle's tests are green instead of batching docs behind them.

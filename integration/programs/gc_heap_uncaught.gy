@@ -1,0 +1,18 @@
+# integration/programs/gc_heap_uncaught.gy — roadmap Gap Q.2, ADR 0347.
+#
+# The same condition as gc_heap_exhaustion.gy with nobody catching it: the arena is
+# full, the guard raises, no arm covers it, so the program dies on the uncaught path
+# with a MemoryError traceback and exit code 3 (ADR 0211) — and rt_gc_report still
+# runs first, so `--gc-stats` prints capacity=1024 headroom=0 exhausted=1 on the way
+# out. Before this cycle this program printed `[]` at exit 0.
+
+def push_n(grown, n):
+    i = 0
+    while i < n:
+        grown.append([1, 2, 3])
+        i = i + 1
+    return i
+
+bucket = []
+push_n(bucket, 4000)
+print(len(bucket))

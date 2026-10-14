@@ -1488,8 +1488,8 @@ const astIRSchemaTemplate = `{
     },
     "gcStats": {
       "type": "object",
-      "required": ["collections", "roots", "skipped", "marked", "freed", "live", "backend"],
-      "description": "What the garbage collector actually did while the program ran (gustyc --gc-stats; the \"gc\" member of an --eval/--file --json payload). Emitted by the compiled runtime's rt_gc_report line from inside the target program (gc: backend=aot collections=3 roots=4 ... top=17) and forwarded by the CLI, which parses it back into this object; there is one backend since ADR 0302, so the line's backend is always aot. Counts except collections and total_freed describe the most recent collection. The human form is the same numbers as one key=value line on stderr (the tool channel, never the program's stdout).",
+      "required": ["collections", "roots", "skipped", "marked", "freed", "live", "backend", "capacity", "headroom", "exhausted"],
+      "description": "What the garbage collector actually did while the program ran (gustyc --gc-stats; the \"gc\" member of an --eval/--file --json payload). Emitted by the compiled runtime's rt_gc_report line from inside the target program (gc: backend=aot collections=3 roots=4 ... top=17 capacity=1024 headroom=1018 exhausted=0) and forwarded by the CLI, which parses it back into this object; there is one backend since ADR 0302, so the line's backend is always aot. Counts except collections and total_freed describe the most recent collection. The three arena fields (capacity, headroom, exhausted) are the compiled heap's own facts and are what lets a caller tell \"this program is too big for this backend\" from \"this program is wrong\" (roadmap Gap Q.2, ADR 0347). The human form is the same numbers as one key=value line on stderr (the tool channel, never the program's stdout).",
       "properties": {
         "collections": { "type": "integer", "description": "Mark-and-sweep passes run so far (cumulative)." },
         "roots": { "type": "integer", "description": "Root handles the last collection traced: entries of the precise root set that really name a heap object (frame locals, declared root groups, permanent roots)." },
@@ -1502,6 +1502,9 @@ const astIRSchemaTemplate = `{
         "protected": { "type": "integer", "description": "Objects the allocation watermark kept alive without tracing: they were minted after the last safe point, so a register may still hold them." },
         "generational": { "type": "boolean", "description": "true when the last collection was a young (nursery) pass; false for a full sweep." },
         "top": { "type": "integer", "description": "High-water mark of the root stack: the most simultaneous rooted handle slots in any call tree. A program that exhausts the 4096-entry capacity stops itself rather than run with an unrooted handle." },
+        "capacity": { "type": "integer", "description": "How many objects the compiled heap can hold at once — the arena's size (roadmap Gap Q.2, ADR 0347). It is a fact about the backend, so a run that never came near the ceiling reports it too; 0 means the line came from a collector with no fixed arena." },
+        "headroom": { "type": "integer", "description": "How many more objects the arena could have handed out at the moment of the report: capacity minus the slots it holds, clamped at zero. This is the number a caller acts on — capacity says what the ceiling is, headroom says how close this program came to it." },
+        "exhausted": { "type": "integer", "description": "How many times the arena ran out during the run. Zero on every run that answered the program; non-zero means an allocation guard had something to raise MemoryError for, which is what makes the trap diagnosable after the fact instead of only at the traceback." },
         "backend": { "type": "string", "description": "Which collector reported; the compiled runtime is the only one (ADR 0302).", "enum": ["aot"] }
       }
     },

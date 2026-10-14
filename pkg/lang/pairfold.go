@@ -301,9 +301,20 @@ func (g *irGen) emitFoldStep(b *strings.Builder, door int, incumbent, candidate 
 		badOvf := g.newLabel("foldovf")
 		fmt.Fprintf(b, "  %s = icmp eq i32 %s, 2\n", isOvf, st)
 		g.markI1(isOvf)
-		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isOvf, badOvf, done)
+		// …nor can it allocate, so the arena's fourth status belongs to this arm alone: `sum` folding a
+		// double through `+` boxes the answer inside `rt_num_arith`, and a fold that answered with the
+		// handle below the arena would print a number the program never wrote (roadmap Gap Q.2, ADR 0347).
+		isMem := g.newTmp()
+		memChk, memRaise := g.newLabel("foldmemchk"), g.newLabel("foldmemraise")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isOvf, badOvf, memChk)
 		fmt.Fprintf(b, "%s:\n", badOvf)
 		g.raiseRuntimeMsg(b, "OverflowError", outm, sp)
+		fmt.Fprintf(b, "%s:\n", memChk)
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, 4\n", isMem, st)
+		g.markI1(isMem)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isMem, memRaise, done)
+		fmt.Fprintf(b, "%s:\n", memRaise)
+		g.raiseHeapExhausted(b, sp)
 	}
 	fmt.Fprintf(b, "%s:\n", done)
 	v, t := g.newTmp(), g.newTmp()

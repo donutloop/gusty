@@ -642,7 +642,7 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 			return "", false, g.floatOperandRefusal(e)
 		}
 		bh := g.newTmp()
-		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
+		g.emitRtFloatNew(b, bh, inner, Span{})
 		return bh, false, nil
 	}
 	v, err := g.value(b, e)
@@ -665,7 +665,7 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
-	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
+	g.emitRtAllocKind(b, h, HeapList, Span{})
 	for i, el := range ln.Elems {
 		// A pair-bound element writes its own two words; the tag is a register, not a constant.
 		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
@@ -691,7 +691,7 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
-	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
+	g.emitRtAllocKind(b, h, HeapList, Span{})
 	bits := 0
 	for i, el := range ln.Elems {
 		// A pair-bound element (`[n]` with `n = xs[0]`) is the element the static layout has no
@@ -757,7 +757,7 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 	}
 	g.heapUsed = true
 	h := g.newTmp()
-	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapDict)
+	g.emitRtAllocKind(b, h, HeapDict, Span{})
 	bits := 0
 	// A dict whose keys or values mix kinds has no kind to record on the object or on the
 	// variable: each slot carries its own tag, and bit 8 tells the printer and the lookup to
@@ -830,7 +830,7 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
-	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapSet)
+	g.emitRtAllocKind(b, h, HeapSet, Span{})
 	bits := 0
 	idx := 0
 	// A member the pair road bound carries its own tag register, and a set dedups by the pair, so a
@@ -1748,7 +1748,7 @@ func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok b
 			return "", "", false
 		}
 		bh := g.newTmp()
-		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
+		g.emitRtFloatNew(b, bh, inner, Span{})
 		return bh, strconv.FormatInt(int64(TagFloat), 10), true
 	}
 	if t == int32(TagList) || t == int32(TagDict) || t == int32(TagSet) {
@@ -6000,6 +6000,8 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	// rather than letting `fptosi` answer poison — the rule Gap R.133 established the day it was filed).
 	// A third says the divisor of `//` or `%` was zero, and the sentence is the runtime's, because which
 	// of the reference's three it is depends on the tags, which are the run time's fact (Gap R.162).
+	// A fourth says the answer was a double and the arena had no box for it — `MemoryError`, whose
+	// sentence the compiler owns because no runtime buffer carries it (roadmap Gap Q.2, ADR 0347).
 	isType, isOvf, isZero := g.newTmp(), g.newTmp(), g.newTmp()
 	next, badType, badOvf, badZero, done := g.newLabel("numnext"), g.newLabel("numtype"), g.newLabel("numovf"), g.newLabel("numzero"), g.newLabel("numok")
 	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 1\n", isType, st)
@@ -6017,9 +6019,21 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 3\n", isZero, st)
 	g.markI1(isZero)
 	zeroRaise := g.newLabel("numzeroraise")
-	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isZero, zeroRaise, done)
+	memChk := g.newLabel("nummemchk")
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isZero, zeroRaise, memChk)
 	fmt.Fprintf(b, "%s:\n", zeroRaise)
 	g.raiseRuntimeMsg(b, "ZeroDivisionError", outm, sp)
+	// The fourth status is the arena's: the answer was a double and the box for it could not be had
+	// (ADR 0347). It is read here rather than beside the call because this door's return value is a
+	// status, not a handle — there is nothing for `emitHeapCall` to compare against.
+	fmt.Fprintf(b, "%s:\n", memChk)
+	isMem := g.newTmp()
+	memRaise := g.newLabel("nummemraise")
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 4\n", isMem, st)
+	g.markI1(isMem)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isMem, memRaise, done)
+	fmt.Fprintf(b, "%s:\n", memRaise)
+	g.raiseHeapExhausted(b, sp)
 	fmt.Fprintf(b, "%s:\n", done)
 	v, t := g.newTmp(), g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", v, outp)
@@ -6410,7 +6424,7 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 	case *FloatLit:
 		g.heapUsed = true
 		h := g.newTmp()
-		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", h, floatConst(n.Value))
+		g.emitRtFloatNew(b, h, floatConst(n.Value), n.Span())
 		return h, "1", true, nil
 	case *NoneLit:
 		return "0", "3", true, nil
@@ -6432,7 +6446,7 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 		case *FloatLit:
 			g.heapUsed = true
 			hn := g.newTmp()
-			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", hn, floatConst(-v.Value))
+			g.emitRtFloatNew(b, hn, floatConst(-v.Value), Span{})
 			return hn, "1", true, nil
 		}
 		return "", "", false, nil
@@ -6450,7 +6464,7 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 			}
 			g.heapUsed = true
 			h := g.newTmp()
-			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", h, d)
+			g.emitRtFloatNew(b, h, d, Span{})
 			return h, "1", true, nil
 		}
 		v, verr := g.value(b, e)
@@ -6475,7 +6489,7 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 			}
 			g.heapUsed = true
 			hb := g.newTmp()
-			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", hb, d)
+			g.emitRtFloatNew(b, hb, d, Span{})
 			return hb, "1", true, nil
 		}
 		if v, verr := g.value(b, e); verr == nil && v != "" && !g.isFloat(e) {

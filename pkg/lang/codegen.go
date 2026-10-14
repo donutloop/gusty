@@ -23,6 +23,12 @@ const heapRuntimeIR = `@heap_count = internal global i32 0
 @free_head = internal global i32 -1
 @free_next = internal global [1024 x i32] zeroinitializer
 @heap = internal global [1024 x {i32, i32, [256 x i32]}] zeroinitializer
+; The two facts about the arena that a run reports — how many slots it is holding, and how many times
+; it ran out — are deliberately NOT declared here. They live with the collector's other self-report
+; numbers in rootGlobalsIR, because rt_gc_report reports capacity and headroom for a module that never
+; touched the arena either (they are the backend's facts, not this module's), and an internal global the
+; report reads while this block owns it is the undefined-symbol class ADR 0173 made the whole rule about
+; (roadmap Gap Q.2, ADR 0347).
 
 define internal i32 @rt_alloc(i32 %kind) {
 entry:
@@ -34,6 +40,16 @@ alloc_new:
   %oob = icmp sge i32 %c, 1024
   br i1 %oob, label %full, label %newok
 full:
+  ; Exhaustion is counted here and raised by the caller's guard, not here: rt_alloc is called from
+  ; inside the other helpers too (rt_list_copy, rt_float_new, rt_slice, rt_none), and a helper that
+  ; raised would leave each of them returning -1 into a store that runs anyway. The caller is the one
+  ; place that knows which handler the raise belongs to (ADR 0337's argument, applied one door earlier;
+  ; roadmap Gap Q.2, ADR 0347). A helper that cannot report a handle at all — rt_num_arith, which
+  ; returns a status and hands the box back through an out-param — answers a status of its own instead;
+  ; see the fourth status at the end of the door.
+  %e = load i32, i32* @heap_exhausted
+  %e1 = add i32 %e, 1
+  store i32 %e1, i32* @heap_exhausted
   ret i32 -1
 newok:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
@@ -51,6 +67,12 @@ newok:
   store i32 0, i32* %eslot
   %c1 = add i32 %c, 1
   store i32 %c1, i32* @heap_count
+  ; The occupancy the self-report prints is kept beside the high-water mark, not computed from the free
+  ; list at report time: the list is the truth about *reuse*, and a report that walked it would need the
+  ; arena's own capacity bound in the reporting block (roadmap Gap Q.2, ADR 0347).
+  %lv = load i32, i32* @heap_live
+  %lv1 = add i32 %lv, 1
+  store i32 %lv1, i32* @heap_live
   ret i32 %c
 alloc_reuse:
   %rn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %fh
@@ -63,6 +85,9 @@ alloc_reuse:
   store i32 0, i32* %lp2
   %eslot2 = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %fh
   store i32 0, i32* %eslot2
+  %lv2 = load i32, i32* @heap_live
+  %lv21 = add i32 %lv2, 1
+  store i32 %lv21, i32* @heap_live
   ret i32 %fh
 }
 
@@ -72,6 +97,15 @@ entry:
   %fn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %h
   store i32 %fh, i32* %fn
   store i32 %h, i32* @free_head
+  ; One slot less in use. Clamped, because rt_free has never owned a double-free contract: freeing the
+  ; same handle twice already corrupts the free list, and an occupancy that went negative would turn the
+  ; report's headroom= into a number larger than the capacity — a second lie where the first one is
+  ; already being debugged (roadmap Gap Q.2, ADR 0347).
+  %lv = load i32, i32* @heap_live
+  %lvm = sub i32 %lv, 1
+  %lown = icmp slt i32 %lvm, 0
+  %lvc = select i1 %lown, i32 0, i32 %lvm
+  store i32 %lvc, i32* @heap_live
   ret void
 }
 define internal void @rt_set_elem(i32 %h, i32 %i, i32 %v) {
@@ -1338,8 +1372,7 @@ entry:
   ret void
 }
 
-define internal i32 @rt_tag_of(i32 %h, i32 %i) {
-entry:
+define internal i32 @rt_tag_of(i32 %h, i32 %i) {entry:
   %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %v = load i32, i32* %p
   ret i32 %v
@@ -2722,6 +2755,27 @@ ret0:
   ret i32 0
 }
 
+define internal i32 @rt_gc_tag_is_obj(i32 %t) {
+entry:
+  ; Does a container slot whose tag is %t hold a slot number the arena has to keep alive? The four
+  ; immediate kinds answer no: an int, a bool and None hold a number, and an interned text holds an index
+  ; into @str_tab, not a heap handle (ADR 0174). Treating those as handles retains whatever object happens
+  ; to live at the index the number names — the reason lst = [i] in a loop pinned a dead object every
+  ; iteration and walked the arena to its ceiling (roadmap Gap Q.2, ADR 0347). Every other tag the table
+  ; can carry — a float box, a nested container, an instance — is an object the sweep must not take.
+  ; An unrecognised tag answers "object": keeping a dead object is a leak, sweeping a live one is a crash.
+  %isint = icmp eq i32 %t, 0
+  %isbool = icmp eq i32 %t, 2
+  %isnone = icmp eq i32 %t, 3
+  %isstr = icmp eq i32 %t, 4
+  %ab = or i1 %isint, %isbool
+  %cd = or i1 %isnone, %isstr
+  %imm = or i1 %ab, %cd
+  %obj = xor i1 %imm, true
+  %r = zext i1 %obj to i32
+  ret i32 %r
+}
+
 define internal void @rt_gc([4096 x i32*]* %roots, i32 %nroots) {
 entry:
   %c0 = load i32, i32* @gc.stat_collections
@@ -2833,6 +2887,17 @@ e.loop:
 e.body:
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %e
   %ev = load i32, i32* %ep
+  ; The payload is only a handle when the tag says it is. Marking every word the slot holds treats the
+  ; 7 in [7] as an index and retains whatever object happens to live at slot 7, which is why a churn loop
+  ; over lst = [i] pinned one dead object per iteration and walked the arena to its 1024th slot
+  ; (roadmap Gap Q.2, ADR 0347). The tag is the same word the printers and the comparisons read (ADR
+  ; 0184, ADR 0187), so the collector and the program cannot disagree about what a slot holds.
+  %etp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %k, i32 %e
+  %etg = load i32, i32* %etp
+  %eobj = call i32 @rt_gc_tag_is_obj(i32 %etg)
+  %emust = icmp ne i32 %eobj, 0
+  br i1 %emust, label %e.mark, label %e.inc
+e.mark:
   call void @rt_gc_mark(i32 %ev)
   br label %e.inc
 e.inc:
@@ -2875,6 +2940,14 @@ sw.free:
   %fhc = load i32, i32* @free_head
   store i32 %fhc, i32* %fhp
   store i32 %w, i32* @free_head
+  ; The slot is back on the free list, so the arena is holding one object fewer — and the report's
+  ; headroom= has to follow, because the sweep is the road that usually frees (rt_free is the other).
+  ; An occupant released twice is already a corrupted free list, hence the clamp (roadmap Gap Q.2, ADR 0347).
+  %hl0 = load i32, i32* @heap_live
+  %hl1 = sub i32 %hl0, 1
+  %hlneg = icmp slt i32 %hl1, 0
+  %hlc = select i1 %hlneg, i32 0, i32 %hl1
+  store i32 %hlc, i32* @heap_live
   br label %sw.inc
 sw.inc:
   %w.nxt = add i32 %w, 1
@@ -3420,11 +3493,22 @@ ovf:
 fin:
   %ip = fptosi double %r to i32
   %fp = call i32 @rt_float_new(double %r)
+  ; An int answer needs no slot, so a negative box is only a failure when the answer is the double.
+  ; This is the road the guard beside a call cannot stand on: rt_num_arith hands the handle back
+  ; through an out-param and its return value is a status, so there is no handle for emitHeapCall to
+  ; compare. The door therefore reports exhaustion as a fourth status and the caller — which is the one
+  ; place that knows the nearest handler — raises it, exactly as it already raises this door's TypeError,
+  ; OverflowError and ZeroDivisionError. Branch-free, because a check on the answer that fits costs three
+  ; instructions and no new block (roadmap Gap Q.2, ADR 0347).
+  %isflt = icmp eq i1 %bothint, false
+  %ispoison = icmp slt i32 %fp, 0
+  %oom = and i1 %isflt, %ispoison
+  %stat = select i1 %oom, i32 4, i32 0
   %pl = select i1 %bothint, i32 %ip, i32 %fp
   store i32 %pl, i32* %outp
   %tg = select i1 %bothint, i32 0, i32 1
   store i32 %tg, i32* %outt
-  ret i32 0
+  ret i32 %stat
 }
 
 `
@@ -3824,6 +3908,12 @@ const rootGlobalsIR = `
 @gc.stat_live = internal global i32 0
 @gc.stat_topmax = internal global i32 0
 @gc.root_overflow = internal global i32 0
+; The arena's two reportable facts, kept beside the collector's counters rather than in the heap block:
+; rt_gc_report prints capacity, headroom and the exhaustion count for every module it reports on,
+; including one that never allocated, and the heap block is emitted on a narrower condition than the
+; report is (roadmap Gap Q.2, ADR 0347).
+@heap_live = internal global i32 0
+@heap_exhausted = internal global i32 0
 @.gcrootmsg = private unnamed_addr constant [@MSGLEN@ x i8] c@MSG@
 @.gcreport = private unnamed_addr constant [@FMTLEN@ x i8] c@FMT@
 `
@@ -3927,7 +4017,7 @@ entry:
   %topmax = load i32, i32* @gc.stat_topmax
   ; The report describes the run, not the program, so it goes to fd 2 like every
   ; other tool-level line this compiler emits (ADR 0179).
-  %buf = alloca [192 x i8]
+  %buf = alloca [256 x i8]
   %c = load i32, i32* @gc.stat_collections
   %r = load i32, i32* @gc.stat_roots
   %s = load i32, i32* @gc.stat_skipped
@@ -3935,8 +4025,17 @@ entry:
   %f = load i32, i32* @gc.stat_freed
   %t = load i32, i32* @gc.stat_total_freed
   %l = load i32, i32* @gc.stat_live
+  ; The arena half: how big the ceiling is, how much of it this run has left, and how many times it hit
+  ; the wall. Headroom is capacity minus the slots held, clamped at zero — a negative headroom would mean
+  ; the occupancy counter drifted, and the honest reading of that is "none left", not a negative number
+  ; of objects (roadmap Gap Q.2, ADR 0347).
+  %hlive = load i32, i32* @heap_live
+  %hr0 = sub i32 @HEAPCAP@, %hlive
+  %hrneg = icmp slt i32 %hr0, 0
+  %hr = select i1 %hrneg, i32 0, i32 %hr0
+  %hex = load i32, i32* @heap_exhausted
   %fmt = getelementptr [@FMTLEN@ x i8], [@FMTLEN@ x i8]* @.gcreport, i32 0, i32 0
-  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 192, i8* %fmt, i32 %c, i32 %r, i32 %s, i32 %m, i32 %f, i32 %t, i32 %l, i32 %topmax)
+  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 256, i8* %fmt, i32 %c, i32 %r, i32 %s, i32 %m, i32 %f, i32 %t, i32 %l, i32 %topmax, i32 @HEAPCAP@, i32 %hr, i32 %hex)
   %bad = icmp slt i32 %n, 0
   br i1 %bad, label %rdone, label %rwrite
 rwrite:
@@ -3976,7 +4075,7 @@ func llvmCString(s string) string {
 
 // gcRootReportLine is what the compiled backend prints for --gc-stats, mirroring the
 // record's report so one assertion can read either backend.
-const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d\n"
+const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d capacity=%d headroom=%d exhausted=%d\n"
 
 // gcRootOverflowMessage is the loud failure for a root stack that ran out. A handle
 // that cannot be pushed may be swept while still live, so the alternative to
@@ -4005,6 +4104,10 @@ func fillRootTemplate(t string) string {
 	t = strings.ReplaceAll(t, "@MSG@", llvmCString(gcRootOverflowMessage))
 	t = strings.ReplaceAll(t, "@FMTLEN@", strconv.Itoa(len(gcRootReportLine)+1))
 	t = strings.ReplaceAll(t, "@FMT@", llvmCString(gcRootReportLine))
+	// One spelling of the ceiling: the allocator's bound, the report's `capacity=` and the trap's sentence
+	// all read `HeapCapacity`, so a run cannot report a headroom against a different arena than the one
+	// that raised (roadmap Gap Q.2, ADR 0347).
+	t = strings.ReplaceAll(t, "@HEAPCAP@", strconv.Itoa(HeapCapacity))
 	return t
 }
 
@@ -4293,6 +4396,12 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// not the CLI's: `gustyc --aot prog.gy` and `./prog` must not disagree about whether the
 	// program trapped, and 1 belongs to a compile error, so leaving 1 here made a trap look
 	// like a compiler bug to any script running the binary directly.
+	if g.gcReport {
+		// A run that died of exhaustion is precisely the run whose numbers a reader needs: the report
+		// goes out before the death line, so `exhausted=` is non-zero on the traceback run and the trap
+		// is diagnosable after the fact instead of only from its sentence (roadmap Gap Q.2, ADR 0347).
+		b.WriteString("  call void @rt_gc_report()\n")
+	}
 	if g.raiseUsed {
 		b.WriteString("  %exn.m = load i8*, i8** @exn_msg\n")
 		b.WriteString("  call void @rt_die(i8* %exn.m)\n")
@@ -5801,7 +5910,7 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %s, i32 %d)\n", sv, mode))
 		slot = sv
 	} else {
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_copy(i32 %s)\n", slot, sv))
+		g.emitHeapHelperCall(b, slot, "rt_list_copy", "i32 "+sv, Span{})
 		b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %s, i32 %d)\n", slot, mode))
 	}
 	if len(c.Args) == 2 {
@@ -5929,6 +6038,178 @@ func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
 	b.WriteString("  call void @rt_root_put(i32* @" + name + "_slot)\n")
 	g.rooted = true
 	g.gcRootIdx++
+}
+
+// loopSafePoint emits the collection at the top of a loop body — the safe point a loop otherwise never
+// has. A function body collects before each of its statements (gcCall), but a loop is *one* statement,
+// and its body can mint an object per iteration: the arena therefore had to hold every container a
+// `while` or a `for ... in range(...)` ever produced, because nothing between the loop's first iteration
+// and its last was allowed to reclaim one. Roadmap Gap Q.2 measured the consequence — a churn loop of
+// 2000 short-lived lists filled the 1024-slot arena, rt_alloc answered -1, and the run went on walking
+// the words below the objects (integration/programs/gc_precise.gy, which says in its own header that
+// "thousands of short-lived containers must be reclaimed while the program is still running", and could
+// only ever answer that by luck).
+//
+// A loop body is a safe point on the same argument a function-body statement is (ADR 0181): the call
+// stands before the body's first instruction, so nothing the body computed is in flight in a register,
+// and everything the loop carries across the back edge lives in a rooted slot — the counter, the loop
+// variable — or is parked by gcRootIterable for the roads that walk a container by handle. A road that
+// cannot make that argument keeps no safe point and says so where it stands.
+func (g *irGen) loopSafePoint(b *strings.Builder, body []Stmt) {
+	if !loopMayAllocate(body) {
+		// A loop that cannot ask for an object — `while i < n: total = total + i` — is not made to sweep
+		// 1024 slots per iteration for nothing.
+		return
+	}
+	// Asking for a collection means the module references the collector and the arena, so both blocks
+	// have to be emitted even if no other site in this module turns out to allocate (ADR 0173).
+	g.heapUsed = true
+	g.rooted = true
+	g.gcCall(b)
+}
+
+// nonAllocatingBuiltins are the calls whose answer is never a fresh object: a count, a verdict, a
+// rendering into the text table, or one of the operands the program already holds. Anything else a loop
+// body may call — a user function, `list(xs)`, `sorted(xs)`, `sum(…)` folding to a double — can mint a
+// container or a box, and the loop that calls it needs its safe point.
+var nonAllocatingBuiltins = map[string]bool{
+	"len": true, "print": true, "type": true, "id": true, "abs": true, "ord": true, "chr": true,
+	"int": true, "float": true, "bool": true, "str": true, "repr": true, "range": true,
+	"min": true, "max": true, "all": true, "any": true, "hash": true, "divmod": true,
+}
+
+// loopMayAllocate answers whether a loop body can ask the arena for an object, which is what decides
+// whether the body is worth a collection. Unknown shapes answer true: a false positive costs a sweep
+// that finds nothing, and a false negative is the silent heap exhaustion this file exists to end
+// (roadmap Gap Q.2, ADR 0347).
+func loopMayAllocate(sts []Stmt) bool {
+	for _, s := range sts {
+		if stmtMayAllocate(s) {
+			return true
+		}
+	}
+	return false
+}
+
+func stmtMayAllocate(s Stmt) bool {
+	switch n := s.(type) {
+	case *AssignStmt:
+		return exprMayAllocate(n.Target) || exprMayAllocate(n.Value)
+	case *AugAssignStmt:
+		return exprMayAllocate(n.Target) || exprMayAllocate(n.Value)
+	case *ExprStmt:
+		return exprMayAllocate(n.Expr)
+	case *ReturnStmt:
+		return exprMayAllocate(n.Expr)
+	case *IfStmt:
+		if exprMayAllocate(n.Cond) || loopMayAllocate(n.Then) || loopMayAllocate(n.Else) {
+			return true
+		}
+		for _, el := range n.Elifs {
+			if stmtMayAllocate(el) {
+				return true
+			}
+		}
+		return false
+	case *WhileStmt:
+		return exprMayAllocate(n.Cond) || loopMayAllocate(n.Body) || loopMayAllocate(n.Else)
+	case *ForStmt:
+		return exprMayAllocate(n.Iter) || loopMayAllocate(n.Body) || loopMayAllocate(n.Else)
+	case *TryStmt:
+		if loopMayAllocate(n.Body) || loopMayAllocate(n.Finally) {
+			return true
+		}
+		for _, h := range n.Excepts {
+			if h != nil && loopMayAllocate(h.Body) {
+				return true
+			}
+		}
+		return false
+	case *WithStmt:
+		return exprMayAllocate(n.Expr) || loopMayAllocate(n.Body)
+	case *MatchStmt:
+		if exprMayAllocate(n.Subject) {
+			return true
+		}
+		for _, c := range n.Cases {
+			if c != nil && (exprMayAllocate(c.Pattern) || exprMayAllocate(c.Guard) || loopMayAllocate(c.Body)) {
+				return true
+			}
+		}
+		return false
+	case *BreakStmt, *ContinueStmt, *PassStmt, *ImportStmt, *ExternDecl, *TypeAliasStmt:
+		return false
+	default:
+		// A statement a future cycle adds to the set is treated as able to allocate, which is the
+		// direction that cannot lose a program (roadmap Gap Q.2, ADR 0347).
+		return true
+	}
+}
+
+func exprMayAllocate(e Expr) bool {
+	switch n := e.(type) {
+	case nil:
+		return false
+	case *Name, *IntLit, *StrLit, *BoolLit, *NoneLit:
+		return false
+	case *FloatLit:
+		// A double the compiler cannot keep as an immediate is a box, and a box is a slot.
+		return true
+	case *ListLit, *DictLit, *SetLit, *Tuple, *Comp, *Generator, *Lambda, *Slice, *AwaitExpr, *FString:
+		return true
+	case *BinOp:
+		return exprMayAllocate(n.L) || exprMayAllocate(n.R)
+	case *UnOp:
+		return exprMayAllocate(n.X)
+	case *Index:
+		// A subscript reads a word out of an object the program already holds.
+		return exprMayAllocate(n.Obj) || exprMayAllocate(n.Idx)
+	case *Attr:
+		return exprMayAllocate(n.Obj)
+	case *Call:
+		if fn, ok := n.Fn.(*Name); ok && nonAllocatingBuiltins[fn.Value] && !isExnClass(fn.Value) {
+			for _, a := range n.Args {
+				if exprMayAllocate(a) {
+					return true
+				}
+			}
+			return false
+		}
+		// A call — a user function most of all — can allocate behind the call site's back.
+		for _, a := range n.Args {
+			if exprMayAllocate(a) {
+				return true
+			}
+		}
+		return true
+	case *CondExpr:
+		return exprMayAllocate(n.Cond) || exprMayAllocate(n.If) || exprMayAllocate(n.Else)
+	case *ChainCompare:
+		for _, part := range n.Operands {
+			if exprMayAllocate(part) {
+				return true
+			}
+		}
+		return false
+	case *KeywordArg:
+		return exprMayAllocate(n.Value)
+	default:
+		return true
+	}
+}
+
+// gcRootIterable parks the container handle a loop road walks into a frame slot and registers that slot
+// as a root. The road reads the handle from a register on every iteration, which is the one shape
+// ADR 0181 forbids at a collection: live, and reachable from nowhere the collector can see. Without it,
+// the loop safe point would recycle the container the loop is still walking.
+func (g *irGen) gcRootIterable(b *strings.Builder, h string) {
+	// The slot is spelled `%_<tmp>` — the same shape a variable's alloca has — because that is the name
+	// `rt_root_put` is pushed with (gcReg), and a root entry for a slot that was never allocated is the
+	// module `llc` rejects, not a warning.
+	name := fmt.Sprintf("it%d", g.gcRootIdx) // gcReg bumps the counter, so each loop's slot is distinct
+	b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", h, "_"+name))
+	g.gcReg(b, name) // pushes `%_<name>`, the spelling every variable slot uses
 }
 
 func (g *irGen) gcCall(b *strings.Builder) {
@@ -10950,7 +11231,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		r := g.heapSeq
 		g.heapSeq++
-		fmt.Fprintf(b, "  %%sl%d = call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", r, objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep)
+		// The copy is built inside rt_slice, which allocates through rt_alloc — so a full arena reaches
+		// this caller as a negative handle too, and the store that follows the call would be the write
+		// below the arena (roadmap Gap Q.2, ADR 0347). The guard stands after every bound has been
+		// evaluated and after ADR 0337's zero-step question, which is the order the reference raises in.
+		g.emitHeapCall(b, fmt.Sprintf("%%sl%d", r), fmt.Sprintf("call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)", objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep), n.Span())
 		return fmt.Sprintf("%%sl%d", r), nil
 
 	case *Index:
@@ -12186,7 +12471,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	} else if c.Kind == CompSet {
 		allocKind = HeapKindSet
 	}
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, allocKind))
+	g.emitRtAllocKind(b, h, allocKind, c.Span())
 	nlen := g.newTmp()
 	dictLenFn := "rt_list_len"
 	if iterIsDict {
@@ -12448,7 +12733,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	}
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
+	g.emitRtAllocKind(b, h, HeapList, c.Span())
 	// Whether the elements are interned text is asked of the element itself, once per write, by the
 	// door below — a pre-scan here emitted an intern call the loop never used.
 	// appendElem writes the payload and the tag together, through the same door `xs.append(v)` uses
@@ -12899,7 +13184,7 @@ func (g *irGen) genExpr(b *strings.Builder, gen *Generator) (string, error) {
 	g.genExprIdx++
 	h := fmt.Sprintf("%%gx%d", g.genExprIdx)
 	g.heapUsed = true
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindList))
+	g.emitRtAllocKind(b, h, HeapKindList, gen.Span())
 	if g.constBindings == nil {
 		g.constBindings = map[string]int64{}
 	}
@@ -13792,7 +14077,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	if _, isClass := g.classInfos[fnName]; isClass {
 		g.heapUsed = true
 		h := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindInstance))
+		g.emitRtAllocKind(b, h, HeapKindInstance, c.Span())
 		// A heap slot is reused, and an instance inherits nothing from whoever held it last — not
 		// even which attributes exist. The clear zeroes the presence row; the slot count is final
 		// because every name the program can write was interned before emission (ADR 0235).
@@ -14915,7 +15200,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			kind = 2
 		}
 		g.heapUsed = true
-		b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, kind))
+		g.emitRtAllocKind(b, fmt.Sprintf("%%h%d", hs), kind, c.Span())
 		return fmt.Sprintf("%%h%d", hs), nil
 	case "len":
 		// len(string-constant) -> compile-time character count; otherwise
@@ -17848,7 +18133,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
 		g.genFuncs[g.fnName(fd)] = true
 		g.heapUsed = true
-		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", g.genHandle, HeapKindList)
+		g.emitRtAllocKind(b, g.genHandle, HeapKindList, Span{})
 		// Keep the generator's accumulator list alive across the GC emitted
 		// before the first body statement; otherwise it is collected and every
 		// yield appends into a stale/freed slot.
@@ -18573,7 +18858,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindList))
+				g.emitRtAllocKind(b, fmt.Sprintf("%%h%d", hs), HeapKindList, n.Span())
 				// A literal that mixes numbers with interned strings or None is no longer a
 				// refusal: each slot carries a canonical ValueTag (heap_tags), and the
 				// container prints through rt_print_list_mixed. Everything else that would
@@ -18688,7 +18973,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.heapSeq++
 				hs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindSet))
+				g.emitRtAllocKind(b, fmt.Sprintf("%%h%d", hs), HeapKindSet, n.Span())
 				si := 0
 				for _, el := range sl.Elems {
 					if mixedSet {
@@ -18795,7 +19080,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.heapSeq++
 				hs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
+				g.emitRtAllocKind(b, fmt.Sprintf("%%h%d", hs), HeapKindDict, n.Span())
 				for i := range dl.Keys {
 					if mixedDict {
 						// Put and tag in one call: an entry stored without its key tag would match
@@ -19234,6 +19519,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, bodyL, normalL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+		// A `while` allocates in its body, so its body is where the collector gets a turn.
+		g.loopSafePoint(b, n.Body)
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: condL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {
@@ -19354,6 +19641,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, loopVarName(n.Var)))
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
 				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+				// An unrolled loop mints no container for the elements it walks, but its body allocates every
+				// iteration exactly as a `while`'s does, and nothing else collects inside it.
+				g.loopSafePoint(b, n.Body)
 				g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: contL})
 				for _, s := range n.Body {
 					if err := g.stmt(b, s); err != nil {
@@ -19584,6 +19874,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+loopVar))
 			}
 			g.allocd[loopVar] = true
+			// The handle the loop walks never changes across the back edge, and the body now collects: park
+			// it in a rooted slot here, in the block that branches into the loop, where the `alloca` is minted
+			// once. A slot the collector has never been told about is invisible to the mark phase, and the
+			// sweep would recycle the very container the loop is still indexing (ADR 0181; roadmap Gap Q.2).
+			g.gcRootIterable(b, hVal)
 			condL := g.newLabel("for.list.cond")
 			bodyL := g.newLabel("for.list.body")
 			incL := g.newLabel("for.list.inc")
@@ -19635,6 +19930,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// (roadmap Gap R.38, L11.1).
 				g.taggedOrigin[loopVar] = taggedOriginLoop
 			}
+			// The container is walked by handle from a register and the element is bound to a slot neither of
+			// them rooted, so both are parked before the body's collection can reach them: an object whose only
+			// remaining reference is a register — or an untagged slot — is invisible to the mark phase, and the
+			// sweep would recycle the list the loop is still indexing and the element it just bound (ADR 0181's
+			// rule, applied one construct later; roadmap Gap Q.2, ADR 0347).
+			// The element the road just bound lives in a slot nobody rooted, and container elements are not
+			// marked transitively (L11.1), so the slot is registered before the body's collection can sweep
+			// what the loop has in hand. Pushing on every iteration is the established shape — the runtime
+			// dedups by slot address — while the loop-invariant container handle is parked in the preheader
+			// below, where its `alloca` is minted once and not once per iteration (ADR 0181; roadmap Gap Q.2,
+			// ADR 0347).
+			g.gcReg(b, loopVar)
+			g.loopSafePoint(b, n.Body)
 			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 			for _, s := range n.Body {
 				if err := g.stmt(b, s); err != nil {
@@ -19701,7 +20009,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		if !g.allocd[loopVarName(n.Var)] {
 			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
-			g.gcReg(b, loopVarName(n.Var))
+			// A counter loop's variable holds a NUMBER, so its slot is tagged not-a-handle rather than
+			// pushed as one: a root entry whose value is the integer 409 keeps alive whatever object lives at
+			// slot 409, and the 409th list of a churn loop is exactly what the collector was meant to take
+			// (roadmap Gap Q.2, ADR 0347 — the same tag-blindness the collector's element pass just fixed).
+			g.gcClearRoot(b, loopVarName(n.Var))
 			g.allocd[loopVarName(n.Var)] = true
 		}
 		// A counter is a number, so the loop variable holds a number: the text claim a PREVIOUS loop
@@ -19748,9 +20060,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", cbd, ctr))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", cbd, loopVarName(n.Var)))
+		// The name now holds the counter, a number: whatever the slot carried before — including a root
+		// entry this loop registered on an earlier shape — stops being a handle the collector may follow
+		// (ADR 0181's root/tag pairing; roadmap Gap Q.2, ADR 0347).
+		g.gcClearRoot(b, loopVarName(n.Var))
 		// The counter the iterator produced is what the name holds for this pass, verdict
 		// status included: it is a number however the name began (ADR 0172, ADR 0257).
 		g.forgetVarBool(loopVarName(n.Var))
+		// A counter loop's back edge carries numbers only — the counter slot and the loop variable, both
+		// rooted — so its body is a safe point with nothing further to park.
+		g.loopSafePoint(b, n.Body)
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {
@@ -19820,7 +20139,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			g.heapUsed = true
 			t := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_none()\n", t))
+			g.emitHeapHelperCall(b, t, "rt_none", "", Span{})
 			if err := g.runDeferred(b); err != nil {
 				return err
 			}
@@ -20025,6 +20344,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		fmt.Fprintf(b, "%s = icmp slt i32 %s, %s\n", cmp, ivc, ln)
 		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", cmp, ilp, end)
 		fmt.Fprintf(b, "%s:\n", ilp)
+		// The generator's answer is already parked in a rooted slot above (it keeps the list alive across
+		// the append loop), so the body can collect: each element is appended straight into that container,
+		// which roots it transitively from the sweep's own walk of the payload. The loop itself is
+		// the compiler's, not the program's: it fetches a word and appends it, minting no object, so it
+		// asks for no collection (loopSafePoint's `nil` body).
+		g.loopSafePoint(b, nil)
 		el := g.newTmp()
 		fmt.Fprintf(b, "%s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", el, hv, ivc)
 		fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, el)

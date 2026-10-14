@@ -322,7 +322,7 @@ func (g *irGen) keyedOrderInto(b *strings.Builder, elems []Expr, key Expr, ans k
 		g.heapSeq++
 		h := fmt.Sprintf("%%h%d", g.heapSeq)
 		g.heapUsed = true
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindList))
+		g.emitRtAllocKind(b, h, HeapKindList, Span{})
 		g.listOperands[h] = true
 		return h, nil
 	}
@@ -342,7 +342,7 @@ func (g *irGen) keyedOrderInto(b *strings.Builder, elems []Expr, key Expr, ans k
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.heapUsed = true
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindList))
+	g.emitRtAllocKind(b, h, HeapKindList, Span{})
 	interned := ans.mode == 1
 	for i, el := range elems {
 		b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %s)\n", h, vals[i], g.elemTagOperand(b, el, interned)))

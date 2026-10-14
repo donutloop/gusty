@@ -32,6 +32,13 @@ var exnClasses = []struct {
 	// class the compiled guard raises is the one a program's `except` can already match on the other
 	// two engines (roadmap Gap R.51, ADR 0264).
 	{"OverflowError", 9},
+	// The compiled heap is a fixed arena of `HeapCapacity` objects, and `rt_alloc` used to answer -1
+	// when it ran out. Callers stored that -1 as a handle, and the object arithmetic that followed read
+	// and wrote the words *before* the arena: `v0 … v1029 = […]` printed a number the program never
+	// wrote, at exit 0 (roadmap Gap Q.2). Exhaustion is now a trap, and it is the class CPython raises
+	// for the same condition, so a program's `except MemoryError:` matches on either machine. The
+	// ceiling itself is the half still owed — see the row that owns growing the arena.
+	{"MemoryError", 10},
 }
 
 // isExnClass reports whether name is a built-in exception constructor. `except E:`
