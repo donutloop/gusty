@@ -11468,3 +11468,43 @@ engine that shared its heap with the program it ran.
 Filed with the record's answer beside the compiled one in `pkg/lang/testdata/interpreter-golden-drift.json`, so the
 suite is green while the row is open and the row cannot be quietly deleted. The row's Definition of Done is that
 drift row's disappearance.
+
+### Gap R.259 — the power predicates' name-reader was a hook, and the last compile to install it won (PAID by ADR 0343)
+
+```console
+$ go test -tags=llvm20 -race -count=1 -parallel 20 ./pkg/... ./cmd/... ./integration/... ./tools/...
+WARNING: DATA RACE
+Write at 0x000000ebdad8 by goroutine 1533:
+  pkg/lang.(*irGen).installPowerReaders()   pkg/lang/codegen.go:7108
+  pkg/lang.(*irGen).floatBinOp()            pkg/lang/codegen.go:8576
+  …
+Previous write at 0x000000ebdad8 by goroutine 2066:   …
+```
+
+One address, four reports, and the variable was `kindOfIntValue`: the hook that lets the shared power predicates
+read a NAME the program bound to a literal int, so that `z = 0` / `print(z ** -1)` is the same program to the
+reference as `print(0 ** -1)` instead of answering `inf`. A generator "installed" it — a closure over its own
+`moduleConsts` — behind a `powerReadersInstalled` bit whose comment said the wiring happens "once per generator".
+That could not be true while the storage was one package-level function pointer: the second generator to compile
+overwrote the first, and any reader in between — `readIntLiteral` is reached from `powerAnswerIsFloat`, which the
+print road, the double road and the constant fold all ask — read whichever closure was installed last.
+
+Two defects in one line, and only one of them is a race. Under ADR 0302's single backend the suite had never run
+two compiles at once, so neither had a witness: the interleaving the detector caught was impossible, and the
+wrong-module answer needed an interleaving too — a program whose exponent is a stdlib constant was answered by
+whatever other module had most recently been compiled. **A mutex around the old design would have made the race
+go away and left the wrong answer standing.**
+
+The fix removes the act rather than guarding it: `powerFacts{kindOf, readInt}` is a value that
+`(*irGen).powerReaders()` builds for the ask, and every predicate in `power_kind.go` takes it as a parameter
+(`f.kindOf(e)`, `f.readIntValue(e)`, the latter declining when the asking pass has no reader — which is what the
+parser path and every literal-only question see). `kindOfIntValue`, `readIntLiteral` and `installPowerReaders` are
+gone, and `powerReadersInstalled` with them.
+
+Witnessed twice over, because the shape and the behaviour can disagree. `power_test.go` already asserts the power
+rule structurally (it fails if the print road stops asking `g.powerAnswersDouble(n)`), so
+`TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven` fails if the hook or its installer comes back.
+`TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap` asks behaviourally: ten programs of every `**` shape
+compiled once on their own, then the same ten in four concurrent rounds, each answer compared to the answer that
+program gave alone — the form that fails under `-race` if the shared storage returns, and that a lock around the
+old design would not pass today.
