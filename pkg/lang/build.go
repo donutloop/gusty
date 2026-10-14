@@ -36,13 +36,78 @@ type BuildResult struct {
 	DWARF *DWARFReport `json:"dwarf,omitempty"`
 }
 
-// Toolchain binaries used by Build. They are package-level so tests can point
-// at alternate installs (e.g. a locally built llc).
+// Toolchain binaries. These are the DEFAULTS a run gets when it does not say otherwise; a run that wants a
+// different one asks with ToolOverride rather than by writing here (see below).
 var (
 	llcCmd = "llc-20"
 	ccCmd  = "cc"
 	optCmd = "opt-20"
 )
+
+// ToolOverride names alternate toolchain binaries for ONE compile, link, optimise, verify or report call.
+//
+// The toolchain used to be only the three variables above, and the sole way to point a build at a different
+// `llc` was to write them — which put every other compile in the process at the mercy of whoever last
+// replaced one. It is the same shape ADR 0343 removed from the power predicates' name-reader, and it failed
+// the same two ways: two cases overlapping raced on the variable (a stub `llc` installed by a toolchain-error
+// case was read by an unrelated case mid-compile, which is how a refused program came to report "my favourite
+// complaint" as its own error), and one case at a time was answered by whatever the last case left behind.
+// An override is a value now, and the defaults above stay defaults.
+type ToolOverride struct {
+	LLC       string `json:"llc,omitempty"`
+	CC        string `json:"cc,omitempty"`
+	Opt       string `json:"opt,omitempty"`
+	DWARFDump string `json:"dwarfDump,omitempty"`
+}
+
+// toolNames is a resolved toolchain: the binary every step of one run will exec, defaults filled in.
+type toolNames struct {
+	llc, cc, opt, dwarfdump string
+}
+
+func defaultToolNames() toolNames {
+	return toolNames{llc: llcCmd, cc: ccCmd, opt: optCmd, dwarfdump: dwarfdumpCmd}
+}
+
+// toolNamesWithoutOpt is the toolchain with the LLVM optimizer taken away — the shape that asks what a build
+// does when `opt` was never discovered. It cannot be spelled with a ToolOverride because an empty field there
+// means "keep the default", and absence is a different question.
+func toolNamesWithoutOpt() toolNames {
+	t := defaultToolNames()
+	t.opt = ""
+	return t
+}
+
+// toolNamesFor resolves an override against the defaults. An empty field means "the default", which is what
+// lets a case replace only the tool its question is about.
+func toolNamesFor(o *ToolOverride) toolNames {
+	t := defaultToolNames()
+	if o == nil {
+		return t
+	}
+	if o.LLC != "" {
+		t.llc = o.LLC
+	}
+	if o.CC != "" {
+		t.cc = o.CC
+	}
+	if o.Opt != "" {
+		t.opt = o.Opt
+	}
+	if o.DWARFDump != "" {
+		t.dwarfdump = o.DWARFDump
+	}
+	return t
+}
+
+// tools answers "which toolchain did this build ask for?", nil-safe so a caller that passed no options at all
+// gets the process defaults.
+func (o *BuildOptions) tools() *ToolOverride {
+	if o == nil {
+		return nil
+	}
+	return o.Tools
+}
 
 // Build compiles a set of source files into a single native executable.
 //
@@ -55,6 +120,8 @@ var (
 // BuildOptions controls optional debug-symbol / source-map emission and the
 // AOT build mode (executable vs position-independent shared library).
 type BuildOptions struct {
+	// Tools points this build at alternate toolchain binaries without editing the process's defaults.
+	Tools        *ToolOverride
 	Debug        bool   // emit DWARF line records into the module so the binary carries a .debug_line table (L8.5)
 	SourceMapOut string // write a JSON source map (source fn -> IR symbol+line)
 	Shared       bool   // emit a position-independent shared object (.so/.dylib) with the stable extern-fn ABI
@@ -90,6 +157,9 @@ func BuildShared(files []string, out string, optLevel int) (*BuildResult, error)
 // IR-line-to-source-line table), and Shared emits a `.so`/`.dylib` carrying the
 // stable gusty extern-fn ABI (see docs/abi.md).
 func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptions) (*BuildResult, error) {
+	// The toolchain is resolved once for the build and carried by it, so two builds in one process can
+	// name different tools (ToolOverride).
+	tools := toolNamesFor(opts.tools())
 	prog := &Program{}
 	for _, f := range files {
 		b, err := os.ReadFile(f)
@@ -126,7 +196,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		// rather than repeating the stage twice.
 		return &BuildResult{Output: out, Diagnostics: diags}, fmt.Errorf("build: %w", err)
 	}
-	ir, optRep := OptimizeIRReport(ir, optLevel)
+	ir, optRep := optimizeIRReportWith(ir, optLevel, tools)
 
 	// L8.2: verify the module that is about to be linked with LLVM's own module
 	// verifier (opt -passes=verify, falling back to llc -filetype=null). Doing it
@@ -134,7 +204,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	// codegen, and the verdict travels with the build result for tooling.
 	var verification *IRVerification
 	if opts == nil || !opts.NoVerify {
-		v, verr := VerifyModuleIR(ir, optLevel)
+		v, verr := verifyModuleIRWith(ir, optLevel, tools)
 		verification = v
 		if verr != nil {
 			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Verification: v, Optimization: optRep},
@@ -166,26 +236,26 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
 
-	if outLL, err := runToolStage(ToolBudget, "llc", llcCmd, llcCmdline...); err != nil {
+	if outLL, err := runToolStage(ToolBudget, "llc", tools.llc, llcCmdline...); err != nil {
 		return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep},
 			fmt.Errorf("build: llc: %w\n%s", err, outLL)
 	}
 
 	ccCmdline := []string{objPath, "-o", out, "-lm"}
-	ccLabel := ccCmd + " " + objPath + " -o " + out
+	ccLabel := tools.cc + " " + objPath + " -o " + out
 	if opts != nil && opts.Shared {
 		// Position-independent shared library: -fPIC + -shared. The object is
 		// already PIC (llc -relocation-model=pic); -fPIC at link is belt-and-
 		// suspenders so the .so/.dylib can be loaded at any address.
 		ccCmdline = []string{"-shared", "-fPIC", objPath, "-o", out, "-lm"}
-		ccLabel = ccCmd + " -shared -fPIC " + objPath + " -o " + out
+		ccLabel = tools.cc + " -shared -fPIC " + objPath + " -o " + out
 	}
 	if opts != nil && opts.Debug {
 		// Harmless at the link, and honest about intent: the DWARF is already in the
 		// object, because llc wrote it out of the module's !dbg records.
 		ccCmdline = append(ccCmdline, "-g")
 	}
-	if outCC, err := runToolStage(ToolBudget, "cc", ccCmd, ccCmdline...); err != nil {
+	if outCC, err := runToolStage(ToolBudget, "cc", tools.cc, ccCmdline...); err != nil {
 		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}, Debug: dbgInfo, Optimization: optRep},
 			fmt.Errorf("build: cc: %w\n%s", err, outCC)
 	}
@@ -197,7 +267,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	// that nothing had ever read (L8.5, ADR 0231).
 	var dwarfRep *DWARFReport
 	if opts != nil && opts.Debug {
-		dwarfRep, _ = DwarfLineTable(objPath)
+		dwarfRep, _ = dwarfLineTableWith(objPath, tools)
 	}
 
 	return &BuildResult{

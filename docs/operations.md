@@ -901,6 +901,31 @@ When CI's version of any of these differs from yours, the fix is not to reason a
 it is to eliminate it, either by removing the discrepancy or by running CI's toolchain locally (the
 `golang.org/dl/go1.XX` SDKs make that a one-liner: `go1.20 build -tags=llvm20 ./...`).
 
+### One run's toolchain is a value: `ToolOverride`
+
+The pinned binaries above are the **defaults**, and a run that needs a different one now *says so* rather than
+editing what the whole process will use:
+
+```go
+lang.JITWithOptions(src, 0, &lang.JITOptions{Tools: &lang.ToolOverride{LLC: "/tmp/stub-llc"}})
+lang.BuildWithOptions([]string{src}, out, 0, &lang.BuildOptions{Tools: &lang.ToolOverride{CC: "/usr/bin/clang"}})
+```
+
+`ToolOverride` names any of `LLC`, `CC`, `Opt`, `DWARFDump`; an empty field means "the default", so a run
+replaces exactly the tool its question is about, and `nil` means "the whole pinned set" (the ordinary path).
+The same override reaches every step that execs a binary — the optimizer, the verifier, `llc`, the link, and
+the `llvm-dwarfdump` read behind `--debug` — and each is resolved once for the run.
+
+This is a correctness rule, not a convenience. Until ADR 0343's suite let cases overlap, the only way to point
+a build at another `llc` was to write the package variable, so a toolchain-error case that installed a stub
+was read by whatever else was compiling: `import math` reported the stub's sentence — `invalid module: my
+favourite complaint` — as its own compile error, and a program in the golden record "could not be run". Two
+compiles racing on the variable was the visible half; the invisible half was last-writer-wins with one compile
+at a time. `TestARunUnderAFailingStubDoesNotTakeTheNextRunDownWithIt` and
+`TestTheToolchainNamedByOneRunIsNotTheOneAnotherRunReads` (in `pkg/lang/tool_override_test.go`) pin it from
+both sides — the last one asserts how many times a stub `cc` actually executed, which is a claim about which
+binary ran, not about which one a report mentions.
+
 ### The oracle is a versioned toolchain, and the pin is enforced
 
 The oracle is pinned the way LLVM is: **CPython >= 3.12** (`lang.OracleMinPython`, recorded in the

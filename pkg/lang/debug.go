@@ -1115,11 +1115,18 @@ var dwarfFileRe = regexp.MustCompile(`^\s*name:\s*"(.*)"\s*$`)
 // rule ADR 0164 set for verification, applied here so a build cannot claim a line
 // table that nobody read.
 func DwarfLineTable(path string) (*DWARFReport, error) {
-	rep := &DWARFReport{Tool: dwarfdumpCmd, Toolchain: "LLVM " + PinnedLLVMVersion}
-	tool := availableTool(dwarfdumpCmd)
+	return dwarfLineTableWith(path, defaultToolNames())
+}
+
+// dwarfLineTableWith reads the line table with a toolchain the caller chose, which is what lets a build (or a
+// case) point the read at an `llvm-dwarfdump` that is not the process default without anyone else's report
+// being read through that binary too (ToolOverride).
+func dwarfLineTableWith(path string, tools toolNames) (*DWARFReport, error) {
+	rep := &DWARFReport{Tool: tools.dwarfdump, Toolchain: "LLVM " + PinnedLLVMVersion}
+	tool := availableTool(tools.dwarfdump)
 	if tool == "" {
 		rep.Skipped = true
-		rep.Note = fmt.Sprintf("%s not found; the line table was not read from the artifact", dwarfdumpCmd)
+		rep.Note = fmt.Sprintf("%s not found; the line table was not read from the artifact", tools.dwarfdump)
 		return rep, nil
 	}
 	rep.Tool = tool

@@ -120,6 +120,19 @@ installer returns, and `TestCompilesAnswerTheirOwnPowerQuestionsUnderOverlap` co
 alone and then concurrently and requires every answer to be the answer it gave alone. The tree is
 **race-detector-clean** across `./pkg/... ./cmd/... ./integration/... ./tools/...` (`make testrace`, 4m35s).
 
+**The toolchain was process state too, and it was lying in the same way.** `llcCmd`, `ccCmd`, `optCmd` and
+`dwarfdumpCmd` were package variables, and the only way to run a build against a different binary was to write
+them — which is how, in the first overlapping runs of this suite, `import math` came to report
+`invalid module: my favourite complaint`: the sentence belonging to a stub `llc` that a toolchain-error case had
+installed while an unrelated case was compiling. The same mechanism made a golden-record program "could not be
+run". The override is a value now: `ToolOverride{LLC, CC, Opt, DWARFDump}` on `JITOptions` and `BuildOptions`,
+resolved once per run by `toolNamesFor` and carried by every step that execs a binary — the optimizer
+(`optimizeIRReportWith`), the verifier (`verifyModuleIRWith`), `llc`, `cc`, and the `llvm-dwarfdump` behind
+`--debug`. An empty field means "the default", and absence (the optimizer that was never discovered) is a
+separate, explicit question: `toolNamesWithoutOpt`. Nine cases that had to own the process stopped needing to,
+which the census says: **2878 parallel / 12 marked serial became 2892 parallel / 4**, and the four that remain
+are the ones that genuinely cannot share — three `t.Setenv` cases and the in-process engine.
+
 The change also caught a regression of its own making, which is worth recording: lifting `pairClosedOut` into
 `pairCallScan`'s return value initially dropped the closed-position set on the exit where no function ends up
 paired. `TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses` failed immediately — `z = twice(y)` printed
@@ -145,6 +158,14 @@ halves of the scan's answer, and fails when the fix is reverted.
   marked serial because it is the case that takes the process.
 - `pkg/lang/pair_call_test.go` — `TestTheClosedPositionSetSurvivesAnEmptySpecMap`, whose teeth were checked by
   reverting the fix and watching it fail on the closed-set row.
+- `pkg/lang/tool_override_test.go` — the toolchain as a value, from both sides: `TestAnOverrideReplacesOnlyTheToolItNames`
+  (resolution: one field named changes one binary, `nil` is the whole pinned set, an empty field is the default
+  and not an absence), `TestARunUnderAFailingStubDoesNotTakeTheNextRunDownWithIt` (a run under a failing stub
+  beside a run on the real toolchain, six rounds, asserted concurrently so `-race` is the witness),
+  `TestTheToolchainNamedByOneRunIsNotTheOneAnotherRunReads` (a stub `cc` that logs its own invocation to a shared
+  file: **one** line means only the run that named it used it — a claim about which binary executed, not about
+  which one a report mentions), and `TestTheBuildCarriesItsOwnToolchain` (the `--build` path, where the failure of
+  a build under a bad `cc` must not be the build beside it).
 - `pkg/lang/testdata/interpreter-golden-drift.json` — 341 rows, the last being Gap R.258 with the record's answer
   (`result "[3, 2, 1]"`) beside the compiled one (`trapped: exit 139`).
 - `integration/parallelism_guard_test.go::TestTheParallelCasesActuallyOverlap` — the claim that belongs to this ADR

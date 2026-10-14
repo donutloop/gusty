@@ -92,7 +92,7 @@ func Benchmark(src string, runs, optLevel int) (*BenchResult, error) {
 	ir = OptimizeIR(ir, optLevel)
 
 	t0 = time.Now()
-	a, err := benchBuild(ir)
+	a, err := benchBuild(ir, defaultToolNames())
 	buildMs := msSince(t0)
 	if err != nil {
 		res.Profile = phaseRow(parseMs, analyzeMs, codegenMs)
@@ -130,7 +130,7 @@ type benchArtifact struct {
 // llc -> cc). It is the compiler's own cost, reported separately from execution so a
 // regression in codegen or in the toolchain leg is attributable (L11.8's diagnosability
 // rule, applied to the benchmark).
-func benchBuild(ir string) (benchArtifact, error) {
+func benchBuild(ir string, tools toolNames) (benchArtifact, error) {
 	dir, err := os.MkdirTemp("", "gusty-bench-")
 	if err != nil {
 		return benchArtifact{}, fmt.Errorf("bench: temp dir: %w", err)
@@ -144,11 +144,11 @@ func benchBuild(ir string) (benchArtifact, error) {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: write IR: %w", err)
 	}
-	if out, err := runToolStage(ToolBudget, "llc", llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
+	if out, err := runToolStage(ToolBudget, "llc", tools.llc, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: llc: %v\n%s", err, out)
 	}
-	if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath); err != nil {
+	if out, err := runToolStage(ToolBudget, "cc", tools.cc, "-shared", "-fPIC", objPath, "-o", soPath); err != nil {
 		os.RemoveAll(dir)
 		return benchArtifact{}, fmt.Errorf("bench: cc: %v\n%s", err, out)
 	}
@@ -173,7 +173,7 @@ func benchAOT(prog *Program, optLevel, runs int) (BenchReport, error) {
 		return BenchReport{}, fmt.Errorf("bench: codegen: %w", err)
 	}
 	ir = OptimizeIR(ir, optLevel)
-	a, err := benchBuild(ir)
+	a, err := benchBuild(ir, defaultToolNames())
 	if err != nil {
 		return BenchReport{}, err
 	}

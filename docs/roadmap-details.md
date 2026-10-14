@@ -11508,3 +11508,35 @@ rule structurally (it fails if the print road stops asking `g.powerAnswersDouble
 compiled once on their own, then the same ten in four concurrent rounds, each answer compared to the answer that
 program gave alone — the form that fails under `-race` if the shared storage returns, and that a lock around the
 old design would not pass today.
+
+### Gap R.260 — the toolchain was process state, so one case's stub answered another case's program (PAID by ADR 0343)
+
+Two of the suite's earliest overlapping runs came back with diagnostics no program could have produced:
+
+```text
+NEW divergence … "import math\nprint(math.PI)" — owed "jit: codegen: …", got "jit: codegen: invalid module: my favourite complaint"
+NEW divergence … "x = 5\nprint(x + 1)"          — owed "…", got "cannot open …/stub-llc: No such file or directory"
+```
+
+`my favourite complaint` is a string that exists in exactly one place: the stub `llc` that
+`pkg/lang/toolchain_error_test.go` writes to ask how a rejection is classified. The stub gets there by way of the
+package variable `llcCmd`, which is the only way to point a compile at a different binary, and which every
+compile in the process reads. A case that installs a fake toolchain therefore does not ask its own question — it
+changes what every other program in flight answers, and does so while those programs are mid-`llc`.
+
+That is the visible half. The half a detector cannot show is one case at a time: writing the switch leaves it
+written, so a later compile is served by a toolchain it never asked for, and the order the suite happens to run
+in decides which program gets which compiler. This is the same defect shape Gap R.259 turned up in the power
+predicates — a run-scoped fact stored as process state behind a story ("tests can point it elsewhere", the
+comment said, which is a use, not a safety argument) — and the same fix: make the fact a value.
+
+`ToolOverride{LLC, CC, Opt, DWARFDump}` hangs off `JITOptions` and `BuildOptions`; `toolNamesFor` resolves it
+against the pinned defaults once per run; and every step that execs a binary takes the resolved value —
+`optimizeIRReportWith`, `verifyModuleIRWith`, the `llc` lowering, both `cc` links, and the `llvm-dwarfdump`
+behind `--debug`. An empty field means "the default" (so a case replaces only the tool it is asking about) and
+absence is a different question with its own name, `toolNamesWithoutOpt`, because "no `opt` was discovered" is
+not "nobody said which `opt`".
+
+Nine cases that had to own the process no longer do. `parify`'s census is the record of that: from
+**2878 parallel / 12 marked serial** to **2892 parallel / 4**, the survivors being the three `t.Setenv` cases and
+the in-process engine — both of which take the process by definition.

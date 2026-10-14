@@ -1508,11 +1508,24 @@ func OptimizeIR(ir string, level int) string {
 	return out
 }
 
+// optimizeIRWith is OptimizeIR for a run that named its own toolchain (ToolOverride).
+func optimizeIRWith(ir string, level int, tools toolNames) string {
+	out, _ := optimizeIRReportWith(ir, level, tools)
+	return out
+}
+
 // OptimizeIRReport is OptimizeIR plus an honest account of whether the *real* LLVM
 // optimizer ran. A build that fell back to the textual pass used to be indistinguishable
 // from an optimized one (roadmap Gap J.4); callers put this report on BuildResult and in
 // --json output.
 func OptimizeIRReport(ir string, level int) (string, *Optimization) {
+	return optimizeIRReportWith(ir, level, defaultToolNames())
+}
+
+// optimizeIRReportWith is OptimizeIRReport with the toolchain the caller resolved. The optimizer is a step
+// every compile takes, and the binary it runs used to be process state — see ToolOverride for what that cost
+// two overlapping compiles.
+func optimizeIRReportWith(ir string, level int, tools toolNames) (string, *Optimization) {
 	if level <= 0 || ir == "" {
 		return ir, nil
 	}
@@ -1523,7 +1536,7 @@ func OptimizeIRReport(ir string, level int) (string, *Optimization) {
 	// way that breaks the LLVM verifier. GC roots live in module-global
 	// arrays (@gc.roots), which rt_gc reads/writes, so the real optimizer
 	// keeps every live root registered.
-	optimized, rep := runLLVMopt(ir, level)
+	optimized, rep := runLLVMopt(ir, level, tools)
 	if rep != nil && rep.Applied {
 		// opt ran and succeeded: return its output directly. The textual
 		// front-end pass must NOT run afterwards: its dce treats calls like

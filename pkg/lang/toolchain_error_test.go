@@ -24,17 +24,15 @@ func writeStubLLC(t *testing.T, dir, message string) string {
 	return path
 }
 
-//parify:serial it writes the package switch for `llc` with a stub that always fails. The switch is read
-//parify:serial by every compile in the process, so the case has to own it — the same reason the budget
-//parify:serial cases beside these use t.Setenv and run alone (ADR 0343).
 func TestJITClassifiesAnLLVMRejection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	stub := writeStubLLC(t, dir, "invalid module: my favourite complaint")
-	oldLLC := llcCmd
-	llcCmd = stub
-	defer func() { llcCmd = oldLLC }()
 
-	_, err := JIT("print(1 + 1)\n", 0)
+	// The stub is this run's `llc` and nobody else's (ToolOverride). The case used to write the package
+	// switch, which made it the one compile in the process that could turn an unrelated program's
+	// diagnostics into "invalid module: my favourite complaint".
+	_, err := JITWithOptions("print(1 + 1)\n", 0, &JITOptions{Tools: &ToolOverride{LLC: stub}})
 	if err == nil {
 		t.Fatal("JIT succeeded with an llc that always fails")
 	}
@@ -61,14 +59,9 @@ func TestJITClassifiesAnLLVMRejection(t *testing.T) {
 // A toolchain that is simply not installed is not a compiler bug, and saying so is the
 // difference between a reader debugging their language build and debugging a bug that does
 // not exist.
-//
-//parify:serial the same `llc` switch, pointed at a name that does not resolve.
 func TestAMissingToolchainIsNotReportedAsARejection(t *testing.T) {
-	oldLLC := llcCmd
-	llcCmd = "gusty-no-such-tool-anything"
-	defer func() { llcCmd = oldLLC }()
-
-	_, err := JIT("print(1 + 1)\n", 0)
+	t.Parallel()
+	_, err := JITWithOptions("print(1 + 1)\n", 0, &JITOptions{Tools: &ToolOverride{LLC: "gusty-no-such-tool-anything"}})
 	if err == nil {
 		t.Fatal("JIT succeeded with no llc at all")
 	}

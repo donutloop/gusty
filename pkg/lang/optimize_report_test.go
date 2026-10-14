@@ -10,20 +10,16 @@ import (
 // now part of BuildResult / --json, so a script can tell an optimized build from one that
 // quietly fell back to the textual pass.
 
-//parify:serial it points the package switch for `opt` at a path that does not exist, which is the only
-//parify:serial way to ask what the report says when the tool is missing — and the only way to make
-//parify:serial every other compile in the process ask it too.
 func TestOptimizationReportWhenOptToolIsMissing(t *testing.T) {
-	saved := optCmd
-	defer func() { optCmd = saved }()
-
-	optCmd = "/nonexistent/opt-20"
+	t.Parallel()
 	src := "def add(a, b):\n    return a + b\n\nprint(add(2, 3))\n"
 	res, err := Compile(src)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	ir, rep := OptimizeIRReport(res.IR, 2)
+	// The missing `opt` is this optimisation's, not the process's (ToolOverride): the case asks what the
+	// report says when the tool is not there, and no other compile in flight should hear about it.
+	ir, rep := optimizeIRReportWith(res.IR, 2, toolNamesFor(&ToolOverride{Opt: "/nonexistent/opt-20"}))
 	if rep == nil {
 		t.Fatalf("a level>0 build must report what the optimizer did")
 	}
@@ -41,17 +37,14 @@ func TestOptimizationReportWhenOptToolIsMissing(t *testing.T) {
 	}
 }
 
-//parify:serial the other spelling of the missing-`opt` question, same package switch.
 func TestOptimizationReportWhenOptToolIsAbsent(t *testing.T) {
-	saved := optCmd
-	defer func() { optCmd = saved }()
-
-	optCmd = "" // no toolchain discovered at all
+	t.Parallel()
 	res, err := Compile("print(1)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	_, rep := OptimizeIRReport(res.IR, 2)
+	// The other spelling: not a bad path, no tool named at all.
+	_, rep := optimizeIRReportWith(res.IR, 2, toolNamesWithoutOpt())
 	if rep == nil || rep.Applied || rep.Fallback != "textual" {
 		t.Errorf("missing toolchain must report applied=false fallback=textual, got %+v", rep)
 	}

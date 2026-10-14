@@ -90,18 +90,15 @@ func TestVerifyModuleIREmptyModule(t *testing.T) {
 
 // TestVerifyModuleIRSkipsWithoutToolchain: no toolchain is a *known-unknown*,
 // never a pass — an unverified build must not look verified.
-//
-//parify:serial same `llc` switch as toolchain_error_test.go: the case is about the tool being absent.
 func TestVerifyModuleIRSkipsWithoutToolchain(t *testing.T) {
-	oldOpt, oldLLC := optCmd, llcCmd
-	defer func() { optCmd, llcCmd = oldOpt, oldLLC }()
-	optCmd, llcCmd = "gusty-no-such-tool", "gusty-no-such-tool-either"
-
+	t.Parallel()
 	res, err := Compile("print(1)")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	ver, verr := VerifyModuleIR(res.IR, 0)
+	// Both verifier tools are named as absent for THIS verification (ToolOverride). Writing the package
+	// switches to ask the question made every other verification in the process answer it too.
+	ver, verr := verifyModuleIRWith(res.IR, 0, toolNamesFor(&ToolOverride{Opt: "gusty-no-such-tool", LLC: "gusty-no-such-tool-either"}))
 	if verr != nil {
 		t.Fatalf("missing toolchain must not fail the build: %v", verr)
 	}

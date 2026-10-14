@@ -41,18 +41,18 @@ type Optimization struct {
 	Err      string `json:"error,omitempty"`
 }
 
-func runLLVMopt(ir string, level int) (string, *Optimization) {
+func runLLVMopt(ir string, level int, tools toolNames) (string, *Optimization) {
 	if level <= 0 || ir == "" {
 		return ir, nil // nothing asked for: not a skipped step, an absent one
 	}
-	if optCmd == "" {
+	if tools.opt == "" {
 		return ir, &Optimization{
 			Tool: "opt", Level: level, Pipeline: "none", Applied: false,
 			Fallback: "textual",
 			Note:     "no LLVM opt toolchain found; the textual pass ran instead, so this module is NOT LLVM-optimized",
 		}
 	}
-	rep := &Optimization{Tool: optCmd, Level: level, Pipeline: "none", Applied: false}
+	rep := &Optimization{Tool: tools.opt, Level: level, Pipeline: "none", Applied: false}
 	dir, err := os.MkdirTemp("", "gusty-opt-")
 	if err != nil {
 		rep.Err = err.Error()
@@ -81,7 +81,7 @@ func runLLVMopt(ir string, level int) (string, *Optimization) {
 	}
 	rep.Pipeline = pipeline
 
-	out, err := runToolStage(ToolBudget, "opt", optCmd, pipeline, "-S", inPath, "-o", outPath)
+	out, err := runToolStage(ToolBudget, "opt", tools.opt, pipeline, "-S", inPath, "-o", outPath)
 	if err != nil {
 		// Never fail the build because opt is unavailable — but say so. When the tool
 		// exists and still rejects our module, that is a compiler bug worth reading about.

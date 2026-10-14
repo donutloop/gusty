@@ -291,13 +291,11 @@ func TestAttachLeavesRuntimeFunctionsAlone(t *testing.T) {
 	}
 }
 
-//parify:serial it swaps the package switch for the objdump command out from under every other case:
-//parify:serial the point of the case is what the report says when the tool is not there at all.
 func TestDwarfReportWithoutAToolchainIsSkippedNotOk(t *testing.T) {
-	saved := dwarfdumpCmd
-	dwarfdumpCmd = "llvm-dwarfdump-that-does-not-exist"
-	defer func() { dwarfdumpCmd = saved }()
-	rep, err := DwarfLineTable("nope.o")
+	t.Parallel()
+	// The missing `llvm-dwarfdump` belongs to this report (ToolOverride), so no other case's line table is
+	// read through a binary that does not exist while this one asks its question.
+	rep, err := dwarfLineTableWith("nope.o", toolNamesFor(&ToolOverride{DWARFDump: "llvm-dwarfdump-that-does-not-exist"}))
 	if err != nil {
 		t.Fatalf("a missing toolchain is not an error: %v", err)
 	}
@@ -494,19 +492,15 @@ func TestDebugLocationIsInternedOncePerPosition(t *testing.T) {
 // The textual pass is what runs when there is no LLVM `opt`; it used to rebuild the
 // module from parsed globals and defines, which silently discarded the whole metadata
 // block — the line table included. Debug info has to survive it.
-//
-//parify:serial it retargets the package switch for `opt` to run the real optimizer over a module of
-//parify:serial its own; every other compile in flight would read the override too.
 func TestTextualOptimizerKeepsTheLineTable(t *testing.T) {
+	t.Parallel()
 	ir, before := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "keep.gy"})
 	if before.Tagged == 0 {
 		t.Fatal("no instructions tagged, nothing to test")
 	}
-	saved := optCmd
-	optCmd = "" // no LLVM opt: the build falls back to the textual pass
-	defer func() { optCmd = saved }()
-
-	out, rep := OptimizeIRReport(ir, 2)
+	// No LLVM opt for THIS optimisation: the build must fall back to the textual pass, and the line table
+	// has to survive it.
+	out, rep := optimizeIRReportWith(ir, 2, toolNamesWithoutOpt())
 	if rep != nil && rep.Applied {
 		t.Fatal("the LLVM opt ran; the textual pass was not exercised")
 	}
@@ -534,9 +528,8 @@ func TestTextualOptimizerKeepsTheLineTable(t *testing.T) {
 
 // A module with no debug info must not grow any through the textual pass either: the
 // metadata block is carried through because it was there, not invented.
-//
-//parify:serial the same `opt` override as TestTextualOptimizerKeepsTheLineTable, for its twin.
 func TestTextualOptimizerInventsNoDebugInfo(t *testing.T) {
+	t.Parallel()
 	_, _ = debugModuleOf(t, "print(1)\n", nil) // warm the generator, prove the opt-in path above
 	prog, err := Parse("print(1)\n")
 	if err != nil {
@@ -547,10 +540,7 @@ func TestTextualOptimizerInventsNoDebugInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := optCmd
-	optCmd = ""
-	defer func() { optCmd = saved }()
-	out := OptimizeIR(plain, 2)
+	out := optimizeIRWith(plain, 2, toolNamesWithoutOpt())
 	if strings.Contains(out, "!dbg") || strings.Contains(out, "!DISubprogram") {
 		t.Error("a module built without --debug grew debug info")
 	}

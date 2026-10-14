@@ -184,6 +184,10 @@ func RunSnippetIn(dir, src string) (*JITResult, error) {
 // .so on disk that a debugger can read (L8.5, ADR 0231).
 type JITOptions struct {
 	Debug *DebugOptions
+	// Tools points THIS run at alternate toolchain binaries. The toolchain used to be three package
+	// variables and the only way to run a build against a different `llc` was to write them, which put
+	// every other compile in the process at the mercy of whoever last did (ToolOverride).
+	Tools *ToolOverride
 	// EchoResult asks the module to report the value of the program's final bare expression on
 	// the tool channel, which is what turns the in-process runner into a REPL: an interactive
 	// caller that typed `1 + 1` wants `2` back, not silence. Only a snippet caller sets it; a
@@ -254,7 +258,17 @@ func (o *JITOptions) childOptions(src string) *runChildOptions {
 // JITWithOptions compiles the program, lowers it to an object and a shared library, loads
 // it in-process and runs it. The Debug member of the result is read back from the module
 // that was actually handed to `llc`, not from the request.
+// toolOverride answers "which toolchain did this run ask for?", nil-safe so a caller passing no options at
+// all gets the process defaults.
+func (o *JITOptions) toolOverride() *ToolOverride {
+	if o == nil {
+		return nil
+	}
+	return o.Tools
+}
+
 func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, error) {
+	tools := toolNamesFor(opts.toolOverride())
 	res := &JITResult{}
 	prog, err := parseProgram(src)
 	if err != nil {
@@ -300,7 +314,7 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 		}
 		return nil, fmt.Errorf("jit: codegen: %w", derr)
 	}
-	ir = OptimizeIR(ir, optLevel)
+	ir = optimizeIRWith(ir, optLevel, tools)
 	res.IR = ir
 
 	dir, err := os.MkdirTemp("", "gusty-jit-")
@@ -325,10 +339,10 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 
 	// Both toolchain calls carry a budget (tool_budget.go): a stuck `llc` is the one failure this
 	// pipeline could not report, because waiting on it forever is not an error anyone can read.
-	if out, err := runToolStage(ToolBudget, "llc", llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
-		return nil, toolchainFailure("llc", llcCmd, err, out)
+	if out, err := runToolStage(ToolBudget, "llc", tools.llc, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath); err != nil {
+		return nil, toolchainFailure("llc", tools.llc, err, out)
 	}
-	res.Commands = append(res.Commands, llcCmd+" -relocation-model=pic -filetype=obj "+irPath+" -o "+objPath)
+	res.Commands = append(res.Commands, tools.llc+" -relocation-model=pic -filetype=obj "+irPath+" -o "+objPath)
 
 	// Two entries into the same machine code, chosen by what the caller needs rather than by which
 	// code path it happens to be on.
@@ -344,10 +358,10 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	// exactly why it is no longer the default.
 	if opts != nil && opts.InProcess {
 		soPath := filepath.Join(dir, "jit.so")
-		if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm"); err != nil {
-			return nil, toolchainFailure("cc", ccCmd, err, out)
+		if out, err := runToolStage(ToolBudget, "cc", tools.cc, "-shared", "-fPIC", objPath, "-o", soPath, "-lm"); err != nil {
+			return nil, toolchainFailure("cc", tools.cc, err, out)
 		}
-		res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
+		res.Commands = append(res.Commands, tools.cc+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
 
 		out, errOut, code, err := dlopenRun(soPath)
 		if err != nil {
@@ -358,10 +372,10 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 		res.Code = code
 	} else {
 		exePath := filepath.Join(dir, "jit.prog")
-		if out, err := runToolStage(ToolBudget, "cc", ccCmd, objPath, "-o", exePath, "-lm"); err != nil {
-			return nil, toolchainFailure("cc", ccCmd, err, out)
+		if out, err := runToolStage(ToolBudget, "cc", tools.cc, objPath, "-o", exePath, "-lm"); err != nil {
+			return nil, toolchainFailure("cc", tools.cc, err, out)
 		}
-		ccLine := ccCmd + " " + objPath + " -o " + exePath + " -lm"
+		ccLine := tools.cc + " " + objPath + " -o " + exePath + " -lm"
 
 		child := opts.childOptions(src)
 		run, runErr := runChildProcess(exePath, child)

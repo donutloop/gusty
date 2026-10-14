@@ -64,6 +64,13 @@ const PinnedLLVMVersion = "20"
 // optimization pipeline so `--opt-level` is verified too), falling back to
 // `llc -filetype=null` which runs the same module verifier as part of lowering.
 func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
+	return verifyModuleIRWith(ir, optLevel, defaultToolNames())
+}
+
+// verifyModuleIRWith verifies with a toolchain the caller resolved (ToolOverride), which is what lets the
+// "what happens when the tool is missing" cases say so about their own run instead of taking the toolchain
+// away from every compile in the process.
+func verifyModuleIRWith(ir string, optLevel int, tools toolNames) (*IRVerification, error) {
 	if strings.TrimSpace(ir) == "" {
 		return &IRVerification{Toolchain: "LLVM " + PinnedLLVMVersion, Skipped: true, Note: "no module to verify"}, nil
 	}
@@ -80,7 +87,7 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 	ver := &IRVerification{Toolchain: "LLVM " + PinnedLLVMVersion}
 
 	// Preferred: opt -passes=verify (plus the requested -O pipeline).
-	if tool := availableTool(optCmd); tool != "" {
+	if tool := availableTool(tools.opt); tool != "" {
 		args := []string{"-passes=verify", "-disable-output"}
 		pipelines := []string{"verify"}
 		if optLevel > 0 {
@@ -112,7 +119,7 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 		}
 		// A missing opt (raced away, not executable) falls through to llc.
 		if !toolUsableOutput(string(out)) {
-			return ver.verifyWithLLC(dir, ir, err, string(out))
+			return ver.verifyWithLLC(dir, ir, err, string(out), tools)
 		}
 		ver.Errors = verifierLines(string(out))
 		if len(ver.Errors) == 0 {
@@ -122,7 +129,7 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 		return ver, fmt.Errorf("verify: %s rejected the module: %s", tool, strings.Join(ver.Errors, "\n"))
 	}
 
-	if tool := availableTool(llcCmd); tool != "" {
+	if tool := availableTool(tools.llc); tool != "" {
 		ver.Tool = tool
 		ver.Pipeline = []string{"filetype=null"}
 		out, err := runToolStage(ToolBudget, "verify", tool, "-filetype=null", "-relocation-model=pic", irPath)
@@ -144,16 +151,16 @@ func VerifyModuleIR(ir string, optLevel int) (*IRVerification, error) {
 	}
 
 	ver.Skipped = true
-	ver.Note = fmt.Sprintf("no LLVM toolchain found (looked for %s, %s); the module was not verified", optCmd, llcCmd)
+	ver.Note = fmt.Sprintf("no LLVM toolchain found (looked for %s, %s); the module was not verified", tools.opt, tools.llc)
 	return ver, nil
 }
 
 // verifyWithLLC is the fallback verifier when `opt` is unusable.
-func (ver *IRVerification) verifyWithLLC(dir, ir string, err error, out string) (*IRVerification, error) {
-	tool := availableTool(llcCmd)
+func (ver *IRVerification) verifyWithLLC(dir, ir string, err error, out string, tools toolNames) (*IRVerification, error) {
+	tool := availableTool(tools.llc)
 	if tool == "" {
 		ver.Skipped = true
-		ver.Note = fmt.Sprintf("opt unusable and %s unavailable; the module was not verified", llcCmd)
+		ver.Note = fmt.Sprintf("opt unusable and %s unavailable; the module was not verified", tools.llc)
 		return ver, nil
 	}
 	ver.Tool = tool

@@ -10584,3 +10584,35 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
   ./integration/... ./tools/...`, 4m35s). The static check (`parify -check`) and the dynamic one (the detector)
   are not redundant: one finds a case that claims parallelism while touching process state, the other finds the
   cache nobody wrote down.
+
+## The toolchain was process state, and one case's stub answered another case's program (ADR 0343, Gap R.260)
+
+- **The first overlapping runs produced diagnostics that belonged to a test, not to a program.** `import math`
+  reported `invalid module: my favourite complaint` — a string that exists only inside the stub `llc` written by
+  a toolchain-error case — and a golden-record program came back `cannot open …/stub-llc`. Both are reads of a
+  package variable (`llcCmd`) that a case had written to ask its own question. A serial suite has always run the
+  cases in one order, so the only symptom was the rare cross-shaped failure; the moment the cases overlapped it
+  became two ledger rows and a lie in a report.
+- **"Package-level so tests can point at alternate installs" is a use case, not a safety argument.** The comment
+  above those variables explained why the design is convenient and never asked who else was reading it. Gap
+  R.259's power hook had the same structure ("wired once per generator", about shared storage). The rule that
+  falls out: **a run-scoped fact is a value the run carries**; if only one caller can set it and every other
+  caller reads it, it is process state with a story attached.
+- **Absence is not the same question as "not named".** `ToolOverride`'s empty field means *keep the default* —
+  which is what lets a case replace only the tool it is asking about. The optimizer case that needs *no `opt` at
+  all* (to exercise the textual fallback) cannot spell that with an empty string, so it has its own name,
+  `toolNamesWithoutOpt`. A single sentinel overloaded across "unset" and "deliberately none" would have made one
+  of the two tests silently wrong.
+- **Assert which binary ran, not which one the report mentions.** `TestTheToolchainNamedByOneRunIsNotTheOneAnotherRunReads`
+  uses a stub `cc` that appends to one shared log before execing the real compiler, and asserts the log holds
+  **exactly one** line after a run that named it executes beside a run that did not. A report can name the right
+  tool while a different one executed; an invocation count cannot lie about that.
+- **Check the new test has teeth by breaking the fix, not by reading it.** Setting `toolNamesFor` to ignore its
+  argument turned all four override tests red (one of them by panic, in the classification path); restoring it
+  turned them green. The same trick caught a second thing here: the first version of the override missed the `cc`
+  link in `BuildWithOptions` because a `grep` for the old variable had been filtered too aggressively — the test
+  that a bad `cc` must fail its own build is what noticed the missed call site.
+- **The census is the deliverable.** `parify`'s line went from `2878 parallel, 2 serial, 12 marked serial` to
+  `2892 parallel, 2 serial, 4 marked serial`: nine cases released from owning the process, four left, each of
+  which (three `t.Setenv`, the in-process engine) takes the process by definition. A serial-marked case is fine
+  when it is honest; the goal was never zero, it was *named*.
