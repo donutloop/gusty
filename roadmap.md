@@ -81,7 +81,7 @@ restating happens when a row is touched, not in a single sweep that would quietl
 | ADRs | 338 records, highest `0347` | `docs/adr/` |
 | Execution backends | **1** — LLVM AOT codegen. The AST interpreter is retired (ADR 0302): no `Evaluator`, no `EvalExpr`, no `--interp`, one `backend` in every machine payload | `pkg/lang/codegen.go`, `docs/adr/0302-…`, `gustyc --json` |
 | Witness claims | 0 present-tense claims name the retired engine, in the tests, the CLI, the conformance case registry **and** the ten agent-read documents (Gap R.193) — the vocabulary is `record leg` / `reference leg` / `both legs`, and a guard fails any line that claims an engine ran without saying it is reporting history | `pkg/lang/witness_claim_test.go`, `pkg/lang/testdata/witness-banned-phrases.txt`, `pkg/lang/testdata/witness-history-markers.txt`, ADR 0308 |
-| Conformance programs | 204 in `integration/programs/*.gy`; the rest are inputs to merged rows rather than rows of their own, which the artifact counts under `skipped` | that directory, `conformanceProbes()`, the artifact's `skipped` |
+| Conformance programs | 206 in `integration/programs/*.gy`; the rest are inputs to merged rows rather than rows of their own, which the artifact counts under `skipped` | that directory, `conformanceProbes()`, the artifact's `skipped` |
 | Matrix rows | 193 → 157 parity-asserted + 36 recorded divergences | `integration/conformance-matrix.json` |
 | Parity failures / oracle drift | 0 / 0 | same artifact |
 | Oracle verdicts | 142 `match` · 30 `debt` · 21 `not_applicable` | same artifact |
