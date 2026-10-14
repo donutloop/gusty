@@ -27,6 +27,7 @@ const numFloatSlotCLI = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestCLIDoubleDomainOfASlotBoundNameAgreesWithCPython is the row: the reference and the compiled artifact
 // run the same program in the same case, and a disagreement becomes a debt row rather than an expectation.
 func TestCLIDoubleDomainOfASlotBoundNameAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"true division", numFloatSlotCLI + "print(n / 4)\n"},
@@ -59,6 +60,7 @@ func TestCLIDoubleDomainOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 		{"the answer bound and used again", numFloatSlotCLI + "h = n / 2\nprint(h)\nprint(h + 1)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfloat.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -87,6 +89,7 @@ func TestCLIDoubleDomainOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 // the interned index of "a" as a number, at exit 0. Class and message are compared against the reference, and
 // the ordering rows check BOTH types in source order — the sentence is what an `except` matches on.
 func TestCLIDoubleDomainOfASlotBoundNameRaisesTheKindItHolds(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ src, trap string }{
 		{"xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n / 4)\n", "TypeError: unsupported operand type(s) for /: 'str' and 'int'"},
@@ -115,6 +118,7 @@ func TestCLIDoubleDomainOfASlotBoundNameRaisesTheKindItHolds(t *testing.T) {
 // TestCLIDoubleDomainTrapOfASlotBoundNameIsCatchable: the raise is inside the arm that knows what it lifted and
 // leaves through the open handler, so the program's own `except` runs (ADR 0228).
 func TestCLIDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -134,6 +138,7 @@ func TestCLIDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfloat_catch.gy", tc.src)
 			got, code := cliRunMerged(t, "--file", path)
 			if code != 0 || !strings.Contains(got, tc.want) {
@@ -147,6 +152,7 @@ func TestCLIDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
 // route — storing a double into a tagged name's i32 slot — is exactly the module llc rejects. None of these
 // shapes may reach the toolchain-rejection class, answered, trapped or refused.
 func TestCLIDoubleDomainOfASlotBoundNameNeverEscapesAsAnExitTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		numFloatSlotCLI + "print(n / 4)\n",
@@ -172,6 +178,7 @@ func TestCLIDoubleDomainOfASlotBoundNameNeverEscapesAsAnExitTwo(t *testing.T) {
 // arms the tag selects, the float arm unboxes through the one reader of a float box, and no empty-operand
 // float instruction — ADR 0253's blacklist — stands in for an operand the compiler never read.
 func TestCompiledDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		numFloatSlotCLI + "print(n / 4)\n",
 		numFloatSlotCLI + "print(n > 7)\n",
@@ -198,6 +205,7 @@ func TestCompiledDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
 // door opened (ADR 0316) — those two are pinned as answers in `pair_fold_test.go`, because a row that stops
 // refusing moves, it does not disappear.
 func TestTheDoubleDomainStillRefusesTheOneWordPositions(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		numFloatSlotCLI + "print(float(n))\n",

@@ -32,6 +32,7 @@ const pairDictCLISlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // the same program: a dict entry on either side of the pair, a set member, and every position that reads the
 // container back.
 func TestCLIAgentPairBoundNameInADictOrSetAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		// the dict entry
@@ -88,6 +89,7 @@ func TestCLIAgentPairBoundNameInADictOrSetAgreesWithCPython(t *testing.T) {
 		{"a set rendered by str", "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(str({n}))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairdict.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -115,6 +117,7 @@ func TestCLIAgentPairBoundNameInADictOrSetAgreesWithCPython(t *testing.T) {
 // raises for a key or a member that cannot be one, and the compiled leg raises the same sentence, at the
 // trap exit, never at the exit code of success and never as the compiler's own exit 2.
 func TestCLIAgentPairBoundKeyOrMemberRaisesWhatCPythonRaises(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, sentence string }{
 		{
@@ -159,6 +162,7 @@ func TestCLIAgentPairBoundKeyOrMemberRaisesWhatCPythonRaises(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairdict_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok {
 				t.Fatalf("the reference answered %q, expected the trap\nsrc: %s", py, tc.src)
@@ -181,6 +185,7 @@ func TestCLIAgentPairBoundKeyOrMemberRaisesWhatCPythonRaises(t *testing.T) {
 // 3 and a caught one runs the program's arm at exit 0, which is the difference between a typed raise and a
 // message printed on the way to an arbitrary exit.
 func TestCLIAgentUnhashablePairRaiseIsCaughtAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -195,6 +200,7 @@ func TestCLIAgentUnhashablePairRaiseIsCaughtAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairdict_catch.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok || ref != tc.want {
@@ -219,6 +225,7 @@ func TestCLIAgentUnhashablePairRaiseIsCaughtAtTheCLI(t *testing.T) {
 // CPython's, and the row's `oracle: match` plus the ledger are what keep that from being a self-certifying
 // recording (ADR 0310, ADR 0306's precedent).
 func TestThePairBoundDictAndSetProbeIsOnRecord(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_pair_bound_dict_entry_and_set_member.gy")
 	want := "{'v': 7}\n{'v': 'a'}\n{'v': 2.5}\n{'v': None}\n{'v': True}\n{'v': [1, 2]}\n{7: 'k'}\n{'a': 1}\n{2.5: 1}\n{None: 1}\n{7: 7}\n{'a': 7, 'b': 2}\n{'k': 7}\n1\n7\n8\nTrue\nv\n7\n{7}\n{'a'}\n{2.5}\n{None}\n{True}\n1\nTrue\nTrue\n{'pair': [7, 'a', 2.5], 'nested': {'inner': 'a'}}\ncaught-the-list-key\ncaught-the-list-member\n"
 	if !lang.HasGoldenAnswer(src) {
@@ -247,6 +254,7 @@ func TestThePairBoundDictAndSetProbeIsOnRecord(t *testing.T) {
 // `d[k] = v` — are paid by ADR 0311 and compared with the reference in `pair_mutation_test.go`.
 // Each refusal names the value's origin, the missing half and the roadmap row; exit 2 stays forbidden.
 func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct {
 		name, src string
@@ -261,6 +269,7 @@ func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testi
 			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairdict_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {

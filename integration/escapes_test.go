@@ -79,6 +79,7 @@ var escapeCases = []struct {
 }
 
 func TestStringEscapesMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range escapeCases {
 		// The expected value must be what Python itself prints, not what we
 		// remember Python printing.
@@ -112,6 +113,7 @@ func TestStringEscapesMatchPython(t *testing.T) {
 // because they are two code paths and they were not always both right: the fold measured bytes while
 // everything else counted code points, so only one of these lines can fail today.
 func TestStringLengthCountsCodePoints(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(len(\"héllo\"))\n", "5\n"},
 		{"print(len(\"日本語\"))\n", "3\n"},
@@ -135,6 +137,7 @@ func TestStringLengthCountsCodePoints(t *testing.T) {
 // code point or failing the build — a typo in a string is a warning-level
 // surprise, not a broken program.
 func TestMalformedEscapesKeepTheirText(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(\"\\xZZ\")\n", "\\xZZ\n"},
 		{"print(\"\\u00\")\n", "\\u00\n"},
@@ -151,6 +154,7 @@ func TestMalformedEscapesKeepTheirText(t *testing.T) {
 // An unterminated string must still be an error with a span, not a hang: the
 // scanner that replaced the inline loop is a different code path.
 func TestUnterminatedStringIsADiagnostic(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{"x = \"abc\n", "x = 'abc\n"} {
 		prog, err := lang.Parse(src)
 		if err == nil && (prog == nil || len(prog.Diags) == 0) {
@@ -175,6 +179,7 @@ func TestUnterminatedStringIsADiagnostic(t *testing.T) {
 // i32 slot — so the module was rejected by llc and a plain Python program looked
 // like a compiler bug. Both sides are @str_tab indices now (rt_str_contains).
 func TestStringMembershipMatchesPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -219,6 +224,7 @@ func TestStringMembershipMatchesPython(t *testing.T) {
 // right answer for a program whose compiled form printed the interned index
 // instead of the text. Every case here goes through llc + cc.
 func TestAOTStringPrintsMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string

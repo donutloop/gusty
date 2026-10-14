@@ -37,6 +37,7 @@ func cliStreams(t *testing.T, args ...string) (stdout, stderr string, code int) 
 }
 
 func TestAnUnhashableKeyExitsAsATrapThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -54,6 +55,7 @@ func TestAnUnhashableKeyExitsAsATrapThroughTheCLI(t *testing.T) {
 		{"a set key on the store road", "d = {}\nd[{1}] = 2", "TypeError: unhashable type: 'set'"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code != 3 {
 				t.Fatalf("exit %d, want 3 (the uncaught-exception exit)\nstdout %q\nstderr %q", code, stdout, stderr)
@@ -71,6 +73,7 @@ func TestAnUnhashableKeyExitsAsATrapThroughTheCLI(t *testing.T) {
 // The soundness half at the same altitude: a list haystack answers membership by walking, so an
 // unhashable needle is legal and the program must run.
 func TestMembershipOfAnUnhashableNeedleInAListRunsThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -82,6 +85,7 @@ func TestMembershipOfAnUnhashableNeedleInAListRunsThroughTheCLI(t *testing.T) {
 		{`print("a" in ["a"])`, "True"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code != 0 {
 				t.Fatalf("exit %d, want 0: the reference answers this test\nstderr %q", code, stderr)
@@ -97,6 +101,7 @@ func TestMembershipOfAnUnhashableNeedleInAListRunsThroughTheCLI(t *testing.T) {
 // its own golden file — line for line, because a program that prints fifteen lines and gets one of
 // them wrong is a program that prints fourteen right answers and a lie.
 func TestTheUnhashableKeyProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/unhashable_key.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -127,6 +132,7 @@ func TestTheUnhashableKeyProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 // The row that owns the program, and the claim the harness runs it under: an asserted match, not
 // a probe. A program that only runs unasserted is a program nobody is watching.
 func TestTheUnhashableKeyProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

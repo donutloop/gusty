@@ -22,6 +22,7 @@ import (
 )
 
 func TestTernaryWithTextArmsPrintsTheArm(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -66,6 +67,7 @@ func TestTernaryWithTextArmsPrintsTheArm(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -81,6 +83,7 @@ func TestTernaryWithTextArmsPrintsTheArm(t *testing.T) {
 // leg has to earn this — a `select` evaluates both operands, which is why the arms are lowered only when the
 // test is not a constant, and folded to the running arm when it is.
 func TestATernaryEvaluatesOnlyTheArmItsTestChooses(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct {
 		name string
 		src  string
@@ -91,6 +94,7 @@ func TestATernaryEvaluatesOnlyTheArmItsTestChooses(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -104,12 +108,14 @@ func TestATernaryEvaluatesOnlyTheArmItsTestChooses(t *testing.T) {
 // TestTernaryArmsThatDisagreeStillRefuse keeps the refusals that ADR 0262 owed, so opening the text road
 // cannot have quietly answered a shape whose answer has no word.
 func TestTernaryArmsThatDisagreeStillRefuse(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		// One arm a double, the other an int, and which runs is a run-time fact: no word.
 		"x = 1\nprint(1 if x else 2.5)\n",
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, src)
 			if refused {
 				if strings.Contains(out, "global variable reference") || strings.Contains(out, "store i32 @") {
@@ -129,6 +135,7 @@ func TestTernaryArmsThatDisagreeStillRefuse(t *testing.T) {
 // `strFuncs` is filled before any call site is lowered, and a body whose only return is a ternary said
 // "not text", so the CALLER printed the index. A body whose arms disagree must not be registered.
 func TestAFunctionReturningTextOnlyUnderARunTimeTestIsStillATextFunction(t *testing.T) {
+	t.Parallel()
 	src := "def pick(x):\n    return \"yes\" if x > 0 else \"no\"\n\n\nprint(pick(1))\nprint(pick(-1))\n"
 	if got := compiledOut(t, src); got != "yes\nno\n" {
 		t.Errorf("--aot printed %q, want yes/no — the callee's arms were never asked (Gap R.173)", got)
@@ -148,6 +155,7 @@ func TestAFunctionReturningTextOnlyUnderARunTimeTestIsStillATextFunction(t *test
 // the same missing tag that makes print(["abc".upper()]) print [0]. Both belong to L11.1's tagged value
 // word, not to the print road this cycle taught. Measured byte-identical on the pre-cycle binary.
 func TestATextInAContainerSlotStillOwesItsTag(t *testing.T) {
+	t.Parallel()
 	src := "c = 0\nprint([\"y\" if c else \"n\"])\n"
 	if got := captureStdout(t, src); got != "['n']\n" {
 		t.Errorf("interpreter printed %q, want ['n'] — the interpreter's slots carry kinds, so this leg has no excuse", got)
@@ -166,6 +174,7 @@ func TestATextInAContainerSlotStillOwesItsTag(t *testing.T) {
 // GLOBAL, so handing one to the new select would reproduce Gap R.128's `global variable reference must have
 // pointer type` — the module-level failure ADR 0234 counts as this compiler's bug.
 func TestAContainerArmTernaryIsNotAnsweredByTheTextRoad(t *testing.T) {
+	t.Parallel()
 	src := "c = 1\nprint([1, 2] if c > 0 else [3])\n"
 	res, err := Compile(src)
 	if err != nil {

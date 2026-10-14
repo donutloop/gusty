@@ -32,6 +32,7 @@ import (
 // against CPython itself.
 
 func TestRunTimeBuiltNestedSlotReadsAnswerOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the shape that started the cycle: a list built by append, read one level down.
 		{"first slot of an appended list", "xs = []\nxs.append([7, 8])\nprint(xs[0][0])\n", "7\n"},
@@ -82,6 +83,7 @@ func TestRunTimeBuiltNestedSlotReadsAnswerOnBothLegs(t *testing.T) {
 		{"three levels of a literal", "t = [[[1]]]\nprint(t[0][0][0])\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -101,6 +103,7 @@ func TestRunTimeBuiltNestedSlotReadsAnswerOnBothLegs(t *testing.T) {
 // raises, and the compiled arm the tag dispatches to raises the same sentence — it may not refuse
 // these, because refusing is what the row below (the numeric use) still legitimately does.
 func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{"number slot subscripted", "xs = []\nxs.append([7, 8])\nxs.append(5)\nprint(xs[1][0])\n",
 			"TypeError", "'int' object is not subscriptable"},
@@ -135,6 +138,7 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			"IndexError", "string index out of range"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -174,6 +178,7 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 // still owed is a haystack two slots deep: the read below it is answered, the test and the loop over it
 // are not, and each is a refusal with a name — never an exit 2 and never a verdict (roadmap L11.1).
 func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// A set *variable* is read by the untagged path, which this backend declines as an unsupported
@@ -208,6 +213,7 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s (%q): compiled; want a refusal", tc.name, tc.src)
@@ -234,6 +240,7 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 //
 // Every row is judged against the record and, in the sibling integration file, against CPython.
 func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the two shapes the roadmap row is written with.
 		{"membership in a container the program built", "xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n", "1\n"},
@@ -439,6 +446,7 @@ func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -460,6 +468,7 @@ func TestRunTimeBuiltSlotMembershipAndLoopAnswerOnBothLegs(t *testing.T) {
 // (`'int' object is not iterable`). Before this table both shapes were answered: the test read the
 // payload as a heap handle and said False, and the loop stepped over nothing at all, each at exit 0.
 func TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message, catch string }{
 		// ---- the same failures one slot deeper (Gap R.210): the chain is longer, the sentence is not.
 		{
@@ -608,6 +617,7 @@ func TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused with %v; a trap the reference raises must be emitted, not refused (Gap R.37)", tc.name, tc.src, err)
@@ -652,6 +662,7 @@ func TestRunTimeBuiltSlotMembershipAndLoopTrapLikeCPython(t *testing.T) {
 // a bug rather than a gap out of the module: a compile-time global in a value position (exit 2, ADR 0166)
 // and a loop that walked the outer container's words instead of the slot's object.
 func TestRunTimeBuiltSlotMembershipAndLoopAsksTheObjectInTheModule(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append([7, 8])\nxs.append({\"k\": 1})\nxs.append({5})\nxs.append(\"abc\")\n"
 	src += "print(7 in xs[0], \"k\" in xs[1], 5 in xs[2], \"b\" in xs[3])\n"
 	src += "for v in xs[0]:\n    print(v)\n"
@@ -714,6 +725,7 @@ func TestRunTimeBuiltSlotMembershipAndLoopAsksTheObjectInTheModule(t *testing.T)
 // out of the module — a global in a value position, and the retired helper that compared slots by
 // payload alone.
 func TestRunTimeBuiltNestedSlotReadAsksTheObjectInTheModule(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append([7, 8])\nxs.append({\"k\": 5})\nxs.append(\"abc\")\nprint(xs[0][0], xs[1][\"k\"], xs[2][1])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -754,6 +766,7 @@ func TestRunTimeBuiltNestedSlotReadAsksTheObjectInTheModule(t *testing.T) {
 // `int`; one right writer makes all four answer about `C` without any of the doors learning the name.
 // The reference is asked for each source, not paraphrased.
 func TestAnInstanceSlotNamesItsClassForEveryTagQuestion(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"membership", "class C:\n    pass\nxs = []\nxs.append(C())\nprint(1 in xs[0])\n",
 			"TypeError: argument of type 'C' is not iterable"},
@@ -765,6 +778,7 @@ func TestAnInstanceSlotNamesItsClassForEveryTagQuestion(t *testing.T) {
 			"TypeError: 'in <string>' requires string as left operand, not C"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused what the reference traps on: %v", err)
@@ -790,6 +804,7 @@ func TestAnInstanceSlotNamesItsClassForEveryTagQuestion(t *testing.T) {
 // printf as a slot number. The address is intentionally not compared — the reference's is a process
 // address and has no business being byte-identical to ours — but the class inside the brackets is.
 func TestAnInstanceSlotPrintsItsIdentityForm(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"bare construction", "class C:\n    pass\nprint(C())\n", "<__main__.C object at 0x"},
 		{"bound name", "class C:\n    pass\nc = C()\nprint(c)\n", "<__main__.C object at 0x"},
@@ -799,6 +814,7 @@ func TestAnInstanceSlotPrintsItsIdentityForm(t *testing.T) {
 		{"set member", "class C:\n    pass\nc = C()\nprint({c})\n", "{<__main__.C object at 0x"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused: %v", err)
@@ -818,6 +834,7 @@ func TestAnInstanceSlotPrintsItsIdentityForm(t *testing.T) {
 // run-time-built doors now know instances, and a container slot must not start paying the class table or
 // the instance raise. The IR assertion is the point; the answers keep the old doors honest.
 func TestTheInstanceTagDoesNotDisturbTheOrdinaryContainerQuestions(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append([1, 2])\nxs.append(\"abc\")\nprint(1 in xs[0], \"b\" in xs[1])\nfor v in xs[0]:\n    print(v)\n"
 	res, err := Compile(src)
 	if err != nil {

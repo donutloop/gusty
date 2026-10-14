@@ -25,6 +25,7 @@ import (
 // something on all three legs, and the compiled leg must print the SAME thing. Before ADR 0286 the
 // compiled answers were `0`, `0`, `0`, `2`, `0` — every one of them a plausible number at exit 0.
 func TestARenderingBoundToANameIsAStringReturn(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -49,6 +50,7 @@ func TestARenderingBoundToANameIsAStringReturn(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, r.src)
 			if got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
@@ -66,6 +68,7 @@ func TestARenderingBoundToANameIsAStringReturn(t *testing.T) {
 // word it is handed — correct for an int, and a fabricated number for a handle. A shape the renderer
 // cannot name must exit 1 naming the missing rendering, never exit 0 with digits.
 func TestTheRenderingRefusalIsNotAWrongNumber(t *testing.T) {
+	t.Parallel()
 	// Each row: the reference's answer is NOT reachable by the digits road, so either the renderer
 	// answers it correctly (checked above) or the compiler refuses. What is forbidden is exit 0 with
 	// a number the reference never prints.
@@ -80,6 +83,7 @@ func TestTheRenderingRefusalIsNotAWrongNumber(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(r.src)
 			if err == nil && res != nil {
 				// Answering is allowed, but not with a digit the reference does not print; the
@@ -102,6 +106,7 @@ func TestTheRenderingRefusalIsNotAWrongNumber(t *testing.T) {
 // "was this name EVER a number" and refused a program the reference prints, which the ladder forbids —
 // a working answer may not become a refusal. The road reads what the name holds now.
 func TestTheDigitsRoadFollowsTheLatestBinding(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -115,6 +120,7 @@ func TestTheDigitsRoadFollowsTheLatestBinding(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, r.src)
 			if got != r.want {
 				t.Fatalf("interpreter printed %q, want %q", got, r.want)
@@ -131,6 +137,7 @@ func TestTheDigitsRoadFollowsTheLatestBinding(t *testing.T) {
 // program bound to a text or a container is not assumed to be a number, and the answer must not be the
 // digits of a handle.
 func TestTheDigitsRoadStillRefusesWhatItCannotSee(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -141,6 +148,7 @@ func TestTheDigitsRoadStillRefusesWhatItCannotSee(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, r.src)
 			// Whatever the compiled leg does, it may not print a bare integer where the reference
 			// prints a container: that is Gap R.170's shape arriving from the other direction.

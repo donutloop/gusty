@@ -59,6 +59,7 @@ func hasDiag(t *testing.T, res *lang.CheckResult, level lang.Level, substr strin
 }
 
 func TestCheckNonExhaustiveMatchWarns(t *testing.T) {
+	t.Parallel()
 	// Two literal cases and no wildcard / bare-name case: the match cannot
 	// cover all possible subjects, so the checker warns (mypy-style).
 	src := `def f(x):
@@ -82,6 +83,7 @@ func TestCheckNonExhaustiveMatchWarns(t *testing.T) {
 }
 
 func TestCheckExhaustiveWildcardNoWarning(t *testing.T) {
+	t.Parallel()
 	// `case _:` is a wildcard that matches any subject: exhaustive.
 	src := `def f(x):
     match x:
@@ -101,6 +103,7 @@ func TestCheckExhaustiveWildcardNoWarning(t *testing.T) {
 }
 
 func TestCheckExhaustiveBareNameNoWarning(t *testing.T) {
+	t.Parallel()
 	// `case y:` is an always-matching bare-name binding: exhaustive.
 	src := `def f(x):
     match x:
@@ -120,6 +123,7 @@ func TestCheckExhaustiveBareNameNoWarning(t *testing.T) {
 }
 
 func TestCheckDefiniteAssignmentEveryBranch(t *testing.T) {
+	t.Parallel()
 	// `y` is bound by the irrefutable `case y:` on every path, so reading it
 	// after the match is definitely-assigned: no `undefined name` error.
 	src := `def f(x):
@@ -138,6 +142,7 @@ func TestCheckDefiniteAssignmentEveryBranch(t *testing.T) {
 }
 
 func TestCheckNoDefiniteAssignmentPartialBranch(t *testing.T) {
+	t.Parallel()
 	// `y` is only bound by `case y:`, which fires only when x does not match the earlier
 	// literal case; on the literal path y is unbound, so reading it after the match is not
 	// certain.
@@ -172,6 +177,7 @@ func TestCheckNoDefiniteAssignmentPartialBranch(t *testing.T) {
 }
 
 func TestCheckMatchRuntimeParity(t *testing.T) {
+	t.Parallel()
 	// The exhaustive-match path must still lower and run: a wildcard case
 	// executes the fallback body, so the compiled program prints 9 for x=7.
 	assertOutput(t, "x = 7\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)\n", "9\n")

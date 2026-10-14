@@ -61,6 +61,7 @@ print(d)`, "{}"},
 // implementation agreeing with it, only the reference is left, so the check moved onto the reference
 // and got stricter rather than disappearing.
 func TestTheReferenceRunsTheMethodsTheTableClaimsItDoes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range containerMethodFamily {
 		ref, ok := cpythonPlainOut(t, dir, c.src)
@@ -79,6 +80,7 @@ func TestTheReferenceRunsTheMethodsTheTableClaimsItDoes(t *testing.T) {
 // compiled path answers each one, and whether a refusal names its missing half, is the sibling
 // case's business; this one only holds the line at 2.
 func TestCLIContainerMethodsNeverExitTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range containerMethodFamily {
 		src := writeSrc(t, dir, "cm.gy", c.src)
@@ -92,6 +94,7 @@ func TestCLIContainerMethodsNeverExitTwo(t *testing.T) {
 }
 
 func TestCLICompiledContainerMethodAnswersOrNamesItsRefusal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range containerMethodFamily {
 		src := writeSrc(t, dir, "cm.gy", c.src)
@@ -114,6 +117,7 @@ func TestCLICompiledContainerMethodAnswersOrNamesItsRefusal(t *testing.T) {
 // The raises are the reference's sentences, at the reference's exit class (3 = a trap the reference
 // traps on, ADR 0166), on the leg that runs the program at all.
 func TestCLIContainerMethodRaisesAtTheReferenceExitClass(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cases := []struct {
 		src  string
@@ -151,6 +155,7 @@ xs.remove(9)`, "ValueError: list.remove(x): x not in list"},
 // because its raise is a compile-time string and naming the key needs the key rendered at run time.
 // When the tagged word lifts, this test is the one that says so.
 func TestCLIKeyErrorNamesTheKeyOnTheLegThatCan(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := writeSrc(t, dir, "ke.gy", "d = {}\nprint(d[\"a\"])")
 	got, code := cliRunMerged(t, "--aot", "--file", f)

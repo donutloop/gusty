@@ -17,6 +17,7 @@ func compiledPrints(t *testing.T, src string) string {
 }
 
 func TestStringSubscriptIsTextOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"s = \"abc\"\nprint(s[1])\n", "b\n"},
 		{"s = \"abc\"\nprint(s[-1])\n", "c\n"},
@@ -39,6 +40,7 @@ func TestStringSubscriptIsTextOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestStringSubscriptIsTextInCompiledCode(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"s = \"abc\"\nprint(s[1])\n",
 		"s = \"abc\"\nprint(s[-1])\n",
@@ -61,6 +63,7 @@ func TestStringSubscriptIsTextInCompiledCode(t *testing.T) {
 // TestStringSubscriptTrapIsTyped: an out-of-range character subscript is the program's mistake, and
 // the record says so with the class CPython uses, not an untyped message.
 func TestStringSubscriptTrapIsTyped(t *testing.T) {
+	t.Parallel()
 	_, _, err := evalGolden(t, "s = \"abc\"\nprint(s[9])\n")
 	ee, ok := err.(*TrapError)
 	if !ok || ee.ExnType != "IndexError" {
@@ -80,6 +83,7 @@ func TestStringSubscriptTrapIsTyped(t *testing.T) {
 // below, where the claim is that the condition *traps* rather than answering. What stays here is a
 // condition this backend still cannot build at all.
 func TestUnlowerableConditionIsAnErrorNotAFalseBranch(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		// `len` of a number has no lowering here, and a ternary whose condition cannot be built must
 		// say so — the shape this test exists for, since ADR 0229 took the run-time subscript off the
@@ -106,6 +110,7 @@ func TestUnlowerableConditionIsAnErrorNotAFalseBranch(t *testing.T) {
 // condition's own source position, catchable by the program's `except IndexError:`
 // (roadmap Gap R.37, ADR 0326).
 func TestOutOfRangeConstantConditionRaisesBelowTheTernary(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, class, want string }{
 		{"s = \"abc\"\nprint(1 if s[9] == \"b\" else 0)\n", "IndexError", "string index out of range"},
 		{"print(1 if [1, 2][5] < 2 else 0)\n", "IndexError", "list index out of range"},

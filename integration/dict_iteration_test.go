@@ -124,8 +124,10 @@ var containerIterCases = []struct {
 }
 
 func TestContainerIterationMatchesPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range containerIterCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			aot, aerr := runAOTConformance(t, tc.src)
 			if aerr != nil {
 				t.Fatalf("the compiled backend rejected a valid program: %v\n%s", aerr, tc.src)
@@ -143,6 +145,7 @@ func TestContainerIterationMatchesPython(t *testing.T) {
 // stores dict entries as [key, value] pairs. Comparing the index against the handle is
 // what made every dict loop exit immediately.
 func TestDictIterationUsesTheRuntimeLength(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("d = {1: 2, 3: 4}\nt = 0\nfor k in d:\n    t = t + k\n\nprint(t)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -164,6 +167,7 @@ func TestDictIterationUsesTheRuntimeLength(t *testing.T) {
 // TestDictIterationIRHasNoTruthyShortcut: an empty dict must produce zero iterations
 // because the *length* is 0 — not because a null handle happened to compare false.
 func TestDictIterationIRHasNoTruthyShortcut(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("d = {}\nn = 0\nfor k in d:\n    n = n + 1\n\nprint(n)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)

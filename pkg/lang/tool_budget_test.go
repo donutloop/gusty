@@ -32,6 +32,7 @@ func stubTool(t *testing.T, name, body string) string {
 }
 
 func TestAToolThatNeverReturnsIsKilledAtItsBudget(t *testing.T) {
+	t.Parallel()
 	stub := stubTool(t, "stub-never-answers", `echo "thinking"; while true; do :; done`)
 	const budget = 300 * time.Millisecond
 	start := time.Now()
@@ -61,6 +62,7 @@ func TestAToolThatNeverReturnsIsKilledAtItsBudget(t *testing.T) {
 }
 
 func TestTheKillTakesTheToolsChildrenWithIt(t *testing.T) {
+	t.Parallel()
 	// The hung-call-that-wont-die shape: the tool backgrounds a child, the child inherits the write end
 	// of stdout, and the tool itself then stops answering. Killing only the tool would leave Wait
 	// blocked on a pipe whose writer is still alive — the same hang, one layer down. This asserts the
@@ -83,6 +85,7 @@ func TestTheKillTakesTheToolsChildrenWithIt(t *testing.T) {
 }
 
 func TestAMissingToolIsStillNotATimeout(t *testing.T) {
+	t.Parallel()
 	// The other half of the contract. A tool that is not installed never had a budget to run out of,
 	// and reporting it as one would tell the reader to raise GUSTY_TOOL_TIMEOUT instead of installing
 	// LLVM 20 — ADR 0211's refusal to blame the machine's setup on the compiler, applied here.
@@ -100,6 +103,7 @@ func TestAMissingToolIsStillNotATimeout(t *testing.T) {
 }
 
 func TestASlowToolThatAnswersIsUntouched(t *testing.T) {
+	t.Parallel()
 	// The false-alarm guard: the budget must never fire on a call that finished. A tool that takes a
 	// moment and exits 0 is the ordinary case — every single case in this suite — and a budget that
 	// turned those into failures would be worse than no budget at all.
@@ -113,6 +117,8 @@ func TestASlowToolThatAnswersIsUntouched(t *testing.T) {
 	}
 }
 
+//parify:serial t.Setenv again, for the same reason as TestPythonBinaryIsOverridable: the budget knobs are
+//parify:serial read from the environment, so the case has to own the process to change one.
 func TestTheBudgetsAreTunableAndSaySo(t *testing.T) {
 	// A setting that is ignored is a worse setting than one that does not exist.
 	if got := envBudget("GUSTY_TEST_BUDGET_ABSENT", 7*time.Second); got != 7*time.Second {
@@ -139,6 +145,7 @@ func TestTheBudgetsAreTunableAndSaySo(t *testing.T) {
 }
 
 func TestTheCompiledLegStillRunsWithItsBudgets(t *testing.T) {
+	t.Parallel()
 	// End to end: the budgets are in the path every program takes through llc and cc, so this is the
 	// case that says "nothing about running a program changed".
 	out, err := RunSource("print(1 + 2)\nprint(\"ok\")\n")

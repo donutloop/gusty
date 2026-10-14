@@ -17,6 +17,7 @@ import (
 
 // The void-answer table, read line by line off the pinned reference.
 func TestInPlaceMutationAnswersTheVoid(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`xs = [1]
 print(xs.append(2))`, "None"},
@@ -56,6 +57,7 @@ print(d.get("zzz"))`, "None"},
 // value, and feeding it to something that wants one is the reference's TypeError, not a number.
 // `sum([1,2,3].append(4))` used to answer 10 here; the reference cannot get that far.
 func TestAMutatorIsNotAValueInThePlacesAValueIsWanted(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`sum([1, 2, 3].append(4))`,
 		`len([1].append(2))`,
@@ -71,6 +73,7 @@ func TestAMutatorIsNotAValueInThePlacesAValueIsWanted(t *testing.T) {
 // genuinely expressions, and `while xs: x = xs.pop()` is why. If the void table swept them in, this
 // is the test that says so.
 func TestPopStillAnswersWithWhatItTook(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`xs = [1, 2]
 print(xs.pop())`, "2"},
@@ -92,6 +95,7 @@ print(xs)`, "2\n[1]"},
 // The compiled leg must never emit the operand-less printf again, and must never reach exit 2 for
 // any member of the family. A refusal is legal; an invalid module is not.
 func TestCompiledMutationPrintsNoneOrRefusesButNeverTraps(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ src, want string }{
 		{`xs = [1]
 print(xs.append(2))`, "None"},
@@ -120,6 +124,7 @@ print(xs.pop())`, "2"},
 // A program that defines its own method called `append` answers whatever ITS body returns; the void
 // table belongs to the language's container methods, not to every name spelled `append`.
 func TestAUserMethodNamedAppendKeepsItsOwnAnswer(t *testing.T) {
+	t.Parallel()
 	got := captureStdout(t, `class Bag:
     def append(self, x):
         return 7

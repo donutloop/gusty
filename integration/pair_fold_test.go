@@ -38,6 +38,7 @@ const (
 // varargs spelling, the container-literal spelling, `sum` as the left fold over `+` seeded with the integer
 // 0, and the answer bound to a name and read back by the positions that ask the tag.
 func TestCLIAgentTheFoldBuiltinsAnswerThePairAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		// the varargs spelling, an int slot
@@ -94,6 +95,7 @@ func TestCLIAgentTheFoldBuiltinsAnswerThePairAgreesWithCPython(t *testing.T) {
 		{"a bound sum of a float slot", foldCLIFloatSlot + "m = sum([n, 1])\nprint(m)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfold.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -121,6 +123,7 @@ func TestCLIAgentTheFoldBuiltinsAnswerThePairAgreesWithCPython(t *testing.T) {
 // decide it, the exit is the trap exit, and the sentence is the reference's with the candidate named first
 // and the incumbent second.
 func TestCLIAgentAFoldOfValuesWithNoOrderingRaisesWhatCPythonRaises(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, sentence string }{
 		{"a number folded against a text (min)", foldCLIIntSlot + "print(min(n, \"a\"))\n", "TypeError: '<' not supported between instances of 'str' and 'int'"},
@@ -145,6 +148,7 @@ func TestCLIAgentAFoldOfValuesWithNoOrderingRaisesWhatCPythonRaises(t *testing.T
 		{"a mixed container's fold raises on the kind that has no ordering", "xs = []\nxs.append(3)\nxs.append(\"a\")\nprint(min(xs[0], xs[1]))\n", "TypeError: '<' not supported between instances of 'str' and 'int'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfold_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok {
 				t.Fatalf("the reference answered %q, expected the trap\nsrc: %s", py, tc.src)
@@ -166,6 +170,7 @@ func TestCLIAgentAFoldOfValuesWithNoOrderingRaisesWhatCPythonRaises(t *testing.T
 // TestCLIAgentAFoldTrapReachesTheProgramsOwnArm is the half that makes a compiled raise a raise: through the
 // CLI, in a linked binary, the handler runs, the program continues, and the exit code is success.
 func TestCLIAgentAFoldTrapReachesTheProgramsOwnArm(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"min caught", foldCLIIntSlot + "try:\n    print(min(n, \"a\"))\nexcept TypeError:\n    print(\"caught-the-ordering\")\n", "caught-the-ordering\n"},
@@ -174,6 +179,7 @@ func TestCLIAgentAFoldTrapReachesTheProgramsOwnArm(t *testing.T) {
 		{"a caught fold leaves the name usable", foldCLIIntSlot + "ok = 0\ntry:\n    ok = max(n, 3)\nexcept TypeError:\n    ok = 1\nprint(ok)\n", "7\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfold_catch.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -197,6 +203,7 @@ func TestCLIAgentAFoldTrapReachesTheProgramsOwnArm(t *testing.T) {
 // that keep ONE word for a fold's answer, the fold over a set literal, and a container literal as a fold
 // operand each stay refusals that name the missing half — at exit 1, never at the compiler's exit 2.
 func TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a fold answer as an arithmetic operand", foldCLIIntSlot + "print(min(n, 3) + 1)\n", "one word"},
@@ -207,6 +214,7 @@ func TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) 
 		{"a container literal as a fold operand", foldCLIIntSlot + "print(sum([n, [1]]))\n", "sum adds numbers"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfold_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -235,6 +243,7 @@ func TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) 
 // conformance matrix registers: a deleted record fails a test instead of skipping the row (ADR 0311's
 // precedent, ADR 0306's), and the compiled leg must print the reference's bytes and not merely its own.
 func TestTheFoldProbeIsOnRecord(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_the_fold_builtins_answer_the_pair.gy")
 	if !lang.HasGoldenAnswer(src) {
 		t.Fatal("the probe the matrix registers has no record — every corpus case that reads expectations " +
@@ -257,6 +266,7 @@ func TestTheFoldProbeIsOnRecord(t *testing.T) {
 // but literals, and a fold over a container of nothing but literals, are answered by the constant road, and
 // landing this door must not have rerouted one of them.
 func TestTheFoldDoorDoesNotRouteAProgramThatWasAlreadyAnswered(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a literal min", "print(min(2.5, 3))\n", "2.5\n"},
@@ -266,6 +276,7 @@ func TestTheFoldDoorDoesNotRouteAProgramThatWasAlreadyAnswered(t *testing.T) {
 		{"a literal min over a list", "print(min([3, 1, 2]))\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairfold_const.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code != 0 {

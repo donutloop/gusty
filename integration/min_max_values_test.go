@@ -29,6 +29,7 @@ import (
 // (ADR 0166); and the gusty-only scalar form pinned with both legs against each other.
 
 func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"one float one int", "print(min(1.0, 2), max(1, 2.5))\n", "1.0 2.5\n"},
 		{"the int wins and stays an int", "print(min(2.5, 1), max(1, 2.5))\n", "1 2.5\n"},
@@ -47,6 +48,7 @@ func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
 		{"bound and reused", "lo = min(2.5, 1)\nprint(lo, lo + 0.5)\n", "1 1.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_values.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -76,6 +78,7 @@ func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
 // and the incumbent in the fold's own order rather than sorted. A row that prints a number, or that is
 // refused where the oracle raises, fails.
 func TestMinMaxAtTheCLIRaiseWhatTheyCannotCompare(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, msg string }{
 		{"text candidate in min", "print(min(1, \"a\"))\n", "TypeError: '<' not supported between instances of 'str' and 'int'"},
 		{"text candidate in max", "print(max(1, \"a\"))\n", "TypeError: '>' not supported between instances of 'str' and 'int'"},
@@ -88,6 +91,7 @@ func TestMinMaxAtTheCLIRaiseWhatTheyCannotCompare(t *testing.T) {
 		{"mixed container", "print(min([1, \"a\"]))\n", "TypeError: '<' not supported between instances of 'str' and 'int'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {
@@ -113,6 +117,7 @@ func TestMinMaxAtTheCLIRaiseWhatTheyCannotCompare(t *testing.T) {
 // TestMinMaxTrapsAreCatchableAtTheCLI pins the difference between exit 3 and exit 1: a handler reaches
 // these raises on both legs, including the ones the compiler settles before the module is written.
 func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"typeerror_is_caught",
@@ -131,6 +136,7 @@ func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_catch.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -147,12 +153,14 @@ func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
 // oracle rejects the shape, so the row is both legs against each other — the convention ADR 0246
 // set for the set-subscript extension — and both must agree.
 func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"one int", "print(min(7), max(7))\n", "7 7\n"},
 		{"one float", "print(min(1.5), max(1.5))\n", "1.5 1.5\n"},
 		{"one negative int", "print(min(-3), max(-3))\n", "-3 -3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_scalar.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -177,6 +185,7 @@ func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
 // `owed`, this case fails and the row has to be deleted — which is the point of writing the wrong
 // answer down.
 func TestMinMaxDivergencesPinned(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		src       string
@@ -196,6 +205,7 @@ func TestMinMaxDivergencesPinned(t *testing.T) {
 		// `programs/probe_bool_chosen_by_an_operator.gy` carrying it through the oracle as parity surface.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_divergence.gy", tc.src)
 			if tc.owed == tc.got {
 				t.Fatalf("the row for %s pins the same answer twice; either the debt is paid (delete the row) or it is not (name the answer the compiler still gets wrong)", tc.gap)
@@ -237,6 +247,7 @@ func TestMinMaxDivergencesPinned(t *testing.T) {
 // own class and fails the row (ADR 0166), and the record's answer is pinned so the divergence cannot
 // be silently "fixed" by moving the row into the parity table.
 func TestMinMaxShapesStillRefuseHonestlyAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		src       string
@@ -290,6 +301,7 @@ func TestMinMaxShapesStillRefuseHonestlyAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "min_max_refusal.gy", tc.src)
 
 			out, code := cliRunCode(t, "--aot", path)

@@ -20,6 +20,7 @@ import (
 // the other direction (roadmap L11.1, L11.6; ADR 0221's float rules).
 
 func TestNumericFoldsAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(sum([1.5, 2.5]))\n", "4.0\n"},
 		{"print(sum([1, 2.5]))\n", "3.5\n"},
@@ -51,6 +52,7 @@ func TestNumericFoldsAnswersOnTheCompiledBackend(t *testing.T) {
 // forbidden alternative is what used to happen: an int printed for a list handle, or a truncated
 // float, both of which are exit 0 with an answer nobody asked for (ADR 0166).
 func TestNumericFoldsRefuseWhatTheyCannotAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(sum([[1], [2]]))\n", "sum adds numbers"},
 		{"print(sum([\"a\"]))\n", "is text"},

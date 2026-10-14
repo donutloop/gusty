@@ -17,6 +17,7 @@ func evalOnly(t *testing.T, src string) (string, error) {
 }
 
 func TestListPopMatchesPython(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string
@@ -44,6 +45,7 @@ func TestListPopMatchesPython(t *testing.T) {
 }
 
 func TestListPopErrorsAreTypedAndCatchable(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src     string
 		exnType string
@@ -77,6 +79,7 @@ func TestListPopErrorsAreTypedAndCatchable(t *testing.T) {
 }
 
 func TestContainerConstructorsMatchPython(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string
@@ -104,6 +107,7 @@ func TestContainerConstructorsMatchPython(t *testing.T) {
 }
 
 func TestSetRemoveRaisesKeyErrorLikePython(t *testing.T) {
+	t.Parallel()
 	_, err := evalOnly(t, "s = {1, 2}\ns.remove(9)\n")
 	ee, ok := err.(*TrapError)
 	if !ok {
@@ -118,6 +122,7 @@ func TestSetRemoveRaisesKeyErrorLikePython(t *testing.T) {
 // for the constructors (not a compile-time global), rt_pop for the removal, and the
 // runtime set helpers.
 func TestContainerMethodsAndConstructorsInIR(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = list()\nxs.append(1)\nprint(xs.pop())\n")
 	if err != nil {
 		t.Fatalf("compile list(): %v", err)
@@ -166,6 +171,7 @@ func TestContainerMethodsAndConstructorsInIR(t *testing.T) {
 // TestPopBoundsCheckRaisesInIR: an out-of-range pop must take the exception path rather
 // than reading/writing outside the element array.
 func TestPopBoundsCheckRaisesInIR(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, 2, 3]\ni = 9\nprint(xs.pop(i))\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -184,6 +190,7 @@ func TestPopBoundsCheckRaisesInIR(t *testing.T) {
 // `list(xs)`/`set(xs)` copies, so it must refuse with a message that names the construct
 // and the backend that works.
 func TestContainerCopyIsADiagnosticNotMiscompile(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{"xs = [1, 2]\nys = list(xs)\nprint(ys)\n", "xs = [1, 2]\ns = set(xs)\nprint(len(s))\n"} {
 		_, err := Compile(src)
 		if err == nil {
@@ -200,6 +207,7 @@ func TestContainerCopyIsADiagnosticNotMiscompile(t *testing.T) {
 // literal early, and the module failed to verify with a nonsense array length. Traceback
 // frames (which contain quotes) hit it first, but any program string with a quote did.
 func TestStringConstantsEscapeQuotes(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(\"say \\\"hi\\\"\")\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)

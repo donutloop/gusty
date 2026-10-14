@@ -50,6 +50,7 @@ print(f"{n + 1:04d}")`, "0008"},
 // in specFamily are the ones the retired engine used to get wrong; what runs here is the one backend,
 // and what it is compared to is CPython run live, below.)
 func TestCLIFormatsLikeTheReference(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range specFamily {
 		src := writeSrc(t, dir, "spec.gy", c.src)
@@ -77,6 +78,7 @@ func TestCLIFormatsLikeTheReference(t *testing.T) {
 // the right answer or refuse; both are legal, a silent plain value is not. This test would have
 // failed on every row before the spec reached the AST.
 func TestCLICompiledLegNeverAnswersAPlainNumberForASpec(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range specFamily {
 		src := writeSrc(t, dir, "spec.gy", c.src)
@@ -103,6 +105,7 @@ func TestCLICompiledLegNeverAnswersAPlainNumberForASpec(t *testing.T) {
 // belongs — and llc rejected the module, which is exit 2, the forbidden class. The interpreted leg
 // answers the reference; the compiled leg refuses. Neither may reach exit 2.
 func TestCLIContainerFieldHasNoExitTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		`print(f"{[1,2]}")`,
@@ -131,6 +134,7 @@ print(f"{xs}")`,
 // refuse with the reference's own sentence — not silently answer the plain value, which is exactly
 // what every one of these did before.
 func TestCLIUnhonourableSpecRaisesRatherThanAnswersPlainly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cases := []struct {
 		src    string
@@ -160,6 +164,7 @@ func TestCLIUnhonourableSpecRaisesRatherThanAnswersPlainly(t *testing.T) {
 // answers what the record answers. (Where it refuses, that is recorded debt to L12.8/L11.1,
 // not a divergence to fix by making the record refuse too — ADR 0298's rule, restated.)
 func TestCLIEnginesAgreeWhereBothAnswer(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range specFamily {
 		src := writeSrc(t, dir, "spec.gy", c.src)

@@ -7,6 +7,7 @@ import "testing"
 // them via objKindTag; both read from the same table, so the dynamic type
 // model is shared by construction. Renumbering here changes the wire format.
 func TestValueTagTableIsCanonical(t *testing.T) {
+	t.Parallel()
 	want := map[string]ValueTag{
 		"str":      TagStr,
 		"list":     TagList,
@@ -39,6 +40,7 @@ func TestValueTagTableIsCanonical(t *testing.T) {
 // tag names the kind back. A container that round-tripped to the wrong name would print a dict as a
 // set, which is exactly the class of defect this table exists to make impossible.
 func TestKindTagRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"str", "list", "dict", "set", "tuple", "class", "instance", "method", "closure", "exn", "module"} {
 		tag := objKindTag(kind)
 		if tag == 0 {

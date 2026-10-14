@@ -42,8 +42,7 @@ func allocatesHeuristically(src string) bool {
 // corpus so a runtime that never collects cannot pass, is that the collector ran at all; and the
 // bounded-heap property that makes collection worth having is TestGCStressKeepsTheHeapBounded's.
 func TestGCCorpusCollectsAndAgrees(t *testing.T) {
-	lang.SetGCReport(true)
-	defer lang.SetGCReport(false)
+	t.Parallel()
 	var collections, allocating, freed int
 	for _, c := range conformanceCases() {
 		if !c.Asserted {
@@ -58,7 +57,7 @@ func TestGCCorpusCollectsAndAgrees(t *testing.T) {
 			continue
 		}
 		want := runCompiled(t, src) // the recorded answer, checked against the compiled run
-		res, err := lang.JIT(src, 0)
+		res, err := runReportingGC(src)
 		if err != nil {
 			// A program the backend refuses is a ledger row elsewhere, not a GC finding.
 			t.Logf("%s: not run (compiled backend refused it): %v", c.ID, err)
@@ -101,10 +100,23 @@ func firstLine(s string) string {
 	return s
 }
 
+// runReportingGC compiles and runs one program with the collector's self-report asked for on the run
+// itself.
+//
+// The alternative was `lang.SetGCReport(true)` before the run, which is what `gustyc --gc-stats` does once
+// in a process that compiles one program. In a suite that runs these cases beside each other the switch is
+// a race with every compile in flight — codegen reads it while it is emitting, so a case could ask for the
+// report and get a module without one, or the reverse. Asking on the run is what makes the five collector
+// cases parallel-safe, and the 34 seconds they cost is the whole reason it was worth doing (ADR 0343).
+func runReportingGC(src string) (*lang.JITResult, error) {
+	return lang.JITWithOptions(src, 0, &lang.JITOptions{GCReport: true})
+}
+
 // TestGCStressKeepsTheHeapBounded is the property that makes collection worth having: a long-running
 // program's heap is bounded by live data, not by everything it ever allocated. The compiled runtime
 // reports its own counters, so the claim is read from the run rather than argued.
 func TestGCStressKeepsTheHeapBounded(t *testing.T) {
+	t.Parallel()
 	src := strings.Join([]string{
 		"def churn(n):",
 		"    total = 0",
@@ -120,9 +132,7 @@ func TestGCStressKeepsTheHeapBounded(t *testing.T) {
 		"    acc = acc + row[0] + churn(8)",
 		"print(acc)",
 	}, "\n")
-	lang.SetGCReport(true)
-	defer lang.SetGCReport(false)
-	res, err := lang.JIT(src, 0)
+	res, err := runReportingGC(src)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -138,10 +148,9 @@ func TestGCStressKeepsTheHeapBounded(t *testing.T) {
 // TestGCAgentMachinePath is the machine consumption path for the collector: the numbers must arrive as
 // data, not as prose an agent would have to scrape.
 func TestGCAgentMachinePath(t *testing.T) {
+	t.Parallel()
 	src := "acc = 0\nfor k in range(300):\n    row = [k, k]\n    acc = acc + row[1]\nprint(acc)\n"
-	lang.SetGCReport(true)
-	defer lang.SetGCReport(false)
-	res, err := lang.JIT(src, 0)
+	res, err := runReportingGC(src)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -171,8 +180,7 @@ func TestGCAgentMachinePath(t *testing.T) {
 //     pushes roots without popping its frame, or a slot whose address changes every
 //     iteration, drove top to 2002 and filled the heap.
 func TestAOTCollectorReportsAndReclaims(t *testing.T) {
-	lang.SetGCReport(true)
-	defer lang.SetGCReport(false)
+	t.Parallel()
 
 	// (1) The loop program: its live root set is a handful of variables, so the root
 	// stack must stay small. It does not: before codegen allocated every variable's slot
@@ -181,7 +189,7 @@ func TestAOTCollectorReportsAndReclaims(t *testing.T) {
 	// while the heap filled and the program died.
 	src := readProgramSrc("gc_precise")
 	want := runCompiled(t, src) // the answer on record, from the engine that used to check this one
-	res, err := lang.JIT(src, 0)
+	res, err := runReportingGC(src)
 	if err != nil {
 		t.Fatalf("jit: %v", err)
 	}
@@ -208,7 +216,7 @@ func TestAOTCollectorReportsAndReclaims(t *testing.T) {
 	// frame-discipline assertion.
 	deep := "def deep(n):\n    keep = [n, n * 2]\n    junk = [n, n, n]\n    if n > 0:\n        deep(n - 1)\n    return keep[0] + junk[2]\n\nt = 0\nfor i in range(400):\n    t = t + deep(12)\nprint(t)\n"
 	wantDeep := runCompiled(t, deep)
-	resDeep, err := lang.JIT(deep, 0)
+	resDeep, err := runReportingGC(deep)
 	if err != nil {
 		t.Fatalf("jit deep: %v", err)
 	}
@@ -269,6 +277,7 @@ func statTop(line string) int {
 // --json must put them in the payload, not only in a line an agent would have to
 // scrape.
 func TestAOTGCStatsJSON(t *testing.T) {
+	t.Parallel()
 	bin := filepath.Join(t.TempDir(), "gustyc")
 	buildCLI(t, bin)
 	cmd := exec.Command(bin, "--aot", "--gc-stats", "--json", "--eval", "total = 0\nfor k in range(600):\n    row = [k, k]\n    total = total + row[1]\nprint(total)\n")

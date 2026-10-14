@@ -5,6 +5,7 @@ import "testing"
 // TestParseAsyncDef verifies `async def` parses as a first-class FuncDef with
 // the Async flag set (L5.6 parser phase).
 func TestParseAsyncDef(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("async def f(x):\n    return x + 1")
 	if err != nil {
 		t.Fatalf("parse async def: %v", err)
@@ -26,6 +27,7 @@ func TestParseAsyncDef(t *testing.T) {
 
 // TestParseAsyncFor verifies `async for` parses with the Async flag set.
 func TestParseAsyncFor(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("async for i in xs:\n    print(i)")
 	if err != nil {
 		t.Fatalf("parse async for: %v", err)
@@ -41,6 +43,7 @@ func TestParseAsyncFor(t *testing.T) {
 
 // TestParseAsyncWith verifies `async with` parses with the Async flag set.
 func TestParseAsyncWith(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("async with m as x:\n    print(x)")
 	if err != nil {
 		t.Fatalf("parse async with: %v", err)
@@ -57,6 +60,7 @@ func TestParseAsyncWith(t *testing.T) {
 // TestParseAwait verifies `await expr` is accepted as first-class syntax and,
 // under the minimal synchronous-coroutine model, reduces to its operand.
 func TestParseAwait(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("x = await f(2)")
 	if err != nil {
 		t.Fatalf("parse await: %v", err)
@@ -77,12 +81,14 @@ func TestParseAwait(t *testing.T) {
 
 // TestParseAsyncBad verifies `async` must be followed by def/for/with.
 func TestParseAsyncBad(t *testing.T) {
+	t.Parallel()
 	if _, err := Parse("async return 1"); err == nil {
 		t.Errorf("expected error for 'async return 1'")
 	}
 }
 
 func TestAsyncCoroAwait(t *testing.T) {
+	t.Parallel()
 	src := `async def f(x):
     return x + 1
 v = await f(2)
@@ -97,6 +103,7 @@ v`
 }
 
 func TestAsyncAwaitPlain(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "await 5")
 	if err != nil {
 		t.Fatalf("the compiled run failed: %v", err)
@@ -107,6 +114,7 @@ func TestAsyncAwaitPlain(t *testing.T) {
 }
 
 func TestAsyncCoroDeferred(t *testing.T) {
+	t.Parallel()
 	// Calling an async def does NOT run the body — the body runs at the await. The
 	// observation is the body's own effect: called eagerly, `raise ValueError` fires
 	// while evaluating `c = f()` — outside the try — and the program dies there
@@ -141,6 +149,7 @@ n`
 // TestEffectsNeverAwaited: the dropped coroutine is now a checked error, not a
 // handle the compiled backend prints differently ("<coro>" vs the eager result).
 func TestEffectsNeverAwaited(t *testing.T) {
+	t.Parallel()
 	src := `async def f():
     return 7
 c = f()
@@ -155,6 +164,7 @@ c`
 }
 
 func TestAsyncForCoro(t *testing.T) {
+	t.Parallel()
 	src := `async def f(x):
     return x * 2
 async for v in [f(1), f(2), f(3)]:

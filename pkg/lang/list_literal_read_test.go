@@ -19,6 +19,7 @@ import (
 // than a missing feature.
 
 func TestAListLiteralAnswersTheElementThePositionNames(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -52,6 +53,7 @@ func TestAListLiteralAnswersTheElementThePositionNames(t *testing.T) {
 		{`print([True, False][False])`, "True"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, want %q", out, tt.want)
 			}
@@ -63,6 +65,7 @@ func TestAListLiteralAnswersTheElementThePositionNames(t *testing.T) {
 // the compiler already knew the answer to. `print([1, 2][0])` has always emitted a constant; the assertion
 // is that the widened door did not take that away.
 func TestTheListFoldStillAnswersWhatItCanRead(t *testing.T) {
+	t.Parallel()
 	ir := emittedModuleIR(t, `print([1, 2][0])`)
 	if strings.Contains(ir, "rt_print_mixed_value") {
 		t.Fatal("the all-integer literal went to the pair door; the fold owns this shape and emits no allocation")
@@ -78,6 +81,7 @@ func TestTheListFoldStillAnswersWhatItCanRead(t *testing.T) {
 // element's kind lives in, and the dict road refused the same shape when ADR 0327 landed — so the list road
 // refuses it too, naming the missing half, instead of printing a handle at exit 0.
 func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def f():\n    return [\"a\",\"b\"][0]\nprint(f())",
 		"def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))",
@@ -86,6 +90,7 @@ func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
 		`print(f"{[None, 1.5][1]}")`,
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, src)
 			if !refused {
 				t.Fatalf("%q answered %q; a one-word position cannot carry the element's kind, and printing the payload is the wrong answer this row had", src, out)
@@ -102,6 +107,7 @@ func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
 // wrong for the shapes whose payload means nothing on its own, which is why the retired engine's own record
 // of `if [True][0]: print("yes")` had to stay runnable rather than become a new divergence.
 func TestAListLiteralElementDecidesAConditionTheWayTheReferenceDecides(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -131,6 +137,7 @@ func TestAListLiteralElementDecidesAConditionTheWayTheReferenceDecides(t *testin
 		{`xs = ["", "a"]` + "\n" + `if xs[0]:` + "\n" + `    print("yes")`, ""},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, printed %q, want %q", tt.src, out, tt.want)
 			}
@@ -144,6 +151,7 @@ func TestAListLiteralElementDecidesAConditionTheWayTheReferenceDecides(t *testin
 // bounds check as a `@.lstN` global — the `llc` rejection Gap R.222 measured. The dict half of the same door
 // has always asked its own version of the question (`checkKeyReadTagged`); now the list half does too.
 func TestAnIndexThatIsNotAPositionIsRefusedAtTheLiteralDoor(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src     string
 		class   string
@@ -160,6 +168,7 @@ func TestAnIndexThatIsNotAPositionIsRefusedAtTheLiteralDoor(t *testing.T) {
 		{`print(["a", "b"][True])`, "", ""},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			if tt.class == "" {
 				// A bool is an int, and a legal position must not be accused along with the illegal ones.
 				if out, refused := compiledOutOrRefusal(t, tt.src); refused {
@@ -187,6 +196,7 @@ func TestAnIndexThatIsNotAPositionIsRefusedAtTheLiteralDoor(t *testing.T) {
 // the literal road must answer too. A future change that breaks the literal road while leaving the variable
 // road green fails here.
 func TestTheLiteralListRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ literal, variable string }{
 		{`print(["a", "b"][0])`, "xs = [\"a\", \"b\"]\nprint(xs[0])"},
 		{`print([1.5, 2][0])`, "xs = [1.5, 2]\nprint(xs[0])"},
@@ -198,6 +208,7 @@ func TestTheLiteralListRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
 		{`print(1 in [1, 2])`, "xs = [1, 2]\nprint(1 in xs)"},
 	} {
 		t.Run(tt.literal, func(t *testing.T) {
+			t.Parallel()
 			litOut, litRefused := compiledOutOrRefusal(t, tt.literal)
 			varOut, varRefused := compiledOutOrRefusal(t, tt.variable)
 			if varRefused {
@@ -216,6 +227,7 @@ func TestTheLiteralListRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
 // A position past the end is the reference's IndexError, catchable — the door the widened read reaches
 // through, and the sentence ADR 0330 pinned.
 func TestAPositionPastTheEndOfAListLiteralRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	class, message := jitTrap(t, `print([1, 2][5])`)
 	if class != "IndexError" || message != "list index out of range" {
 		t.Fatalf("raised %s: %s, want IndexError: list index out of range", class, message)
@@ -227,6 +239,7 @@ func TestAPositionPastTheEndOfAListLiteralRaisesWhatTheReferenceRaises(t *testin
 
 // The classifier and the door's own decisions, asked away from codegen.
 func TestTheListFoldGateAnswersTheShapeItCanRead(t *testing.T) {
+	t.Parallel()
 	g := &irGen{}
 	ints := &ListLit{Elems: []Expr{&IntLit{Value: 1}, &IntLit{Value: 2}}}
 	strs := &ListLit{Elems: []Expr{&StrLit{Value: "a"}, &StrLit{Value: "b"}}}
@@ -258,11 +271,13 @@ func TestTheListFoldGateAnswersTheShapeItCanRead(t *testing.T) {
 // The record leg: the retired engine's answer for every answered row, so a later cycle cannot delete the
 // gate without deleting the evidence.
 func TestTheListLiteralRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print(["a", "b"][0])`, `print([1.5, 2][0])`, `print([None, 2][0])`, `print([True, 2][0])`,
 		`print(["a", "b"][-1])`, `print([1, 2, 3][0])`, `print([1, 2][5])`,
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that reads it", src)

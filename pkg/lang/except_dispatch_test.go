@@ -76,8 +76,10 @@ var edCases = []struct {
 }
 
 func TestExceptArmsDispatchInOrderWhenCompiled(t *testing.T) {
+	t.Parallel()
 	for _, tc := range edCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			code, stdout, stderr := edBuild(t, "arms_"+strings.ReplaceAll(tc.name, " ", "_"), tc.src)
 			if code != 0 {
 				t.Fatalf("exit %d (stdout %q stderr %q), want a handled program to exit 0", code, stdout, stderr)
@@ -94,8 +96,10 @@ func TestExceptArmsDispatchInOrderWhenCompiled(t *testing.T) {
 // compiler from agreeing with itself — and with one backend, CPython's leg in the conformance matrix
 // is what stops the record and the compiler from agreeing on the wrong answer.
 func TestExceptArmsDispatchInOrderAgainstTheRecord(t *testing.T) {
+	t.Parallel()
 	for _, tc := range edCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := edRun(t, tc.src)
 			if err != nil {
 				t.Fatalf("interpreter: %v (out %q)", err, got)
@@ -111,6 +115,7 @@ func TestExceptArmsDispatchInOrderAgainstTheRecord(t *testing.T) {
 // be able to lose an exception, so this asserts the trap fires, names its class, and prints
 // nothing on stdout.
 func TestAnUnhandledExceptionIsNotSwallowedWhenCompiled(t *testing.T) {
+	t.Parallel()
 	src := "try:\n    xs = [1]\n    print(xs[5])\nexcept KeyError:\n    print(\"wrong arm\")\nprint(\"after\")\n"
 	code, stdout, stderr := edBuild(t, "unhandled_propagates", src)
 	if code == 0 {
@@ -127,6 +132,7 @@ func TestAnUnhandledExceptionIsNotSwallowedWhenCompiled(t *testing.T) {
 // A raise inside a handler is a new exception in the enclosing scope — it must not be captured
 // by the same try, and it must not vanish either.
 func TestRaisingInsideAHandlerEscapesTheSameTry(t *testing.T) {
+	t.Parallel()
 	src := "try:\n    xs = [1]\n    print(xs[5])\nexcept IndexError:\n    raise ValueError(\"from the handler\")\nprint(\"after\")\n"
 	code, stdout, stderr := edBuild(t, "handler_raises", src)
 	if code == 0 {
@@ -146,6 +152,7 @@ func TestRaisingInsideAHandlerEscapesTheSameTry(t *testing.T) {
 // The IR-level statement, so a regression in the emitter is visible without running anything:
 // two typed arms must produce two comparisons against @exn_code, not one.
 func TestEveryArmGetsItsOwnTest(t *testing.T) {
+	t.Parallel()
 	src := "try:\n    xs = [1]\n    print(xs[5])\nexcept KeyError:\n    print(\"a\")\nexcept IndexError:\n    print(\"b\")\nexcept ValueError:\n    print(\"c\")\n"
 	res, err := Compile(src)
 	if err != nil {

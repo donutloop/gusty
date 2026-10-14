@@ -36,6 +36,7 @@ import (
 // branching on the tag.
 
 func TestSlotOrderOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the container `append` built, against a number the compiler read.
 		{"appended int above a number", "xs = []\nxs.append(3)\nprint(1 if xs[0] > 1 else 0)\n", "1\n"},
@@ -110,6 +111,7 @@ func TestSlotOrderOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 		{"comprehension-built container orders", "xs = [x for x in [3, 4]]\nprint(1 if xs[0] > 2 else 0)\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -130,6 +132,7 @@ func TestSlotOrderOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 // compiled leg printed a verdict for these programs (Gap R.93's measurement), which is the one answer
 // worse than a refusal: the program looks like it worked.
 func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"an int slot ordered against a text",
@@ -199,6 +202,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -231,6 +235,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 // program can catch it, which is the difference between exit 3 and exit 1 and the reason the arm may
 // not be a refusal (roadmap ADR 0166's exit-class contract, Gap R.37's rule).
 func TestSlotOrderOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\ntry:\n    print(1 if xs[0] > \"a\" else 0)\nexcept TypeError:\n    print(\"caught\")\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -250,6 +255,7 @@ func TestSlotOrderOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 // taggedOrderApplies: the raise sentence names *two* types, so the door takes one side whose kind the
 // object reports only against an operand the compiler read itself.
 func TestSlotOrderOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// Gap R.83's shape one door over: the kind of the *other* operand is what cannot be
@@ -260,6 +266,7 @@ func TestSlotOrderOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s (%q): compiled; want a refusal", tc.name, tc.src)
@@ -280,6 +287,7 @@ func TestSlotOrderOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) {
 // of them starts matching the oracle this test fails and points at the row (Gap R.37's rule — a known
 // wrong answer has to be a failing check somewhere, not a comment).
 func TestSlotOrderOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, aotWant, oracle string
 		gap                        string
@@ -304,6 +312,7 @@ func TestSlotOrderOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType == "" {
 				t.Errorf("the interpreter answered %q where the oracle traps; the oracle says %s",
@@ -328,6 +337,7 @@ func TestSlotOrderOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 // two shapes that used to live in this path out of the module: a global in a value position (`llc`
 // rejecting it is exit 2, ADR 0166's own class) and a comparison of two payloads with no tag in sight.
 func TestSlotOrderOfAnUnliteralisedSlotBranchesOnTheTag(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\nxs.append(\"a\")\nxs.append(1.5)\nxs.append(None)\nxs.append([1])\nprint(1 if xs[0] > \"z\" else 0)\nprint(1 if xs[1] > \"A\" else 0)\nprint(1 if xs[2] > 1 else 0)\n"
 	res, err := Compile(src)
 	if err != nil {

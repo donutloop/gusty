@@ -27,6 +27,7 @@ const pairNumberBuiltInt = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestCLIArithmeticOfASlotBoundNameAgreesWithCPython is the row: the reference and the compiled artifact
 // run in the same case, and a disagreement becomes a debt row rather than an expectation.
 func TestCLIArithmeticOfASlotBoundNameAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"subtraction", pairNumberBuiltInt + "print(n - 1)\n"},
@@ -52,6 +53,7 @@ func TestCLIArithmeticOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 		{"the number reaches a builtin", pairNumberBuiltInt + "print(len(str(n - 1)))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairnum.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -79,6 +81,7 @@ func TestCLIArithmeticOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 // a slot that holds a text, a None or a container has to RAISE the reference's class and message, because
 // the alternative is summing the payload's bits — a number where the reference has a string, at exit 0.
 func TestCLIArithmeticOfASlotBoundNameRaisesRatherThanAnswersWrongly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ src, trap string }{
 		{"xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n - 1)\n", "TypeError: unsupported operand type(s) for -: 'str' and 'int'"},
@@ -103,6 +106,7 @@ func TestCLIArithmeticOfASlotBoundNameRaisesRatherThanAnswersWrongly(t *testing.
 // TestCLIArithmeticOfASlotBoundNameIsCatchable: the raise leaves through the door the program can reach, so
 // the `except` arm the programmer wrote runs (ADR 0228's rule for every trap this compiler emits).
 func TestCLIArithmeticOfASlotBoundNameIsCatchable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -117,6 +121,7 @@ func TestCLIArithmeticOfASlotBoundNameIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairnum_catch.gy", tc.src)
 			got, code := cliRunMerged(t, "--file", path)
 			if code != 0 || !strings.Contains(got, tc.want) {
@@ -129,6 +134,7 @@ func TestCLIArithmeticOfASlotBoundNameIsCatchable(t *testing.T) {
 // TestCLIArithmeticOfASlotBoundNameNeverEscapesAsAnExitTwo: none of these shapes — answered, trapped or
 // refused — may reach the toolchain-rejection class.
 func TestCLIArithmeticOfASlotBoundNameNeverEscapesAsAnExitTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		pairNumberBuiltInt + "print(n - 1)\n",
@@ -153,6 +159,7 @@ func TestCLIArithmeticOfASlotBoundNameNeverEscapesAsAnExitTwo(t *testing.T) {
 // is done by the door that branches on the tag, and the raise leaves through the emitted door rather than a
 // helper that called `abort` for itself (ADR 0265's IR contract).
 func TestCompiledArithmeticOfASlotBoundNameAsksTheTaggedDoor(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile(pairNumberBuiltInt + "print(n - 1)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -181,6 +188,7 @@ func head(s string, lines int) string {
 // positions this cycle did not open still answer with a sentence naming the missing half and its owner, and
 // never with a story about a loop the program does not contain (Gap R.38).
 func TestTheOneWordPositionsStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		pairNumberBuiltInt + "print(n + 1)\n",

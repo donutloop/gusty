@@ -12,6 +12,7 @@ import (
 )
 
 func TestTextPredicatesPrintAVerdictAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -44,6 +45,7 @@ func TestTextPredicatesPrintAVerdictAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")
@@ -73,6 +75,7 @@ func TestTextPredicatesPrintAVerdictAtTheCLI(t *testing.T) {
 // is pre-existing behaviour, byte-identical on the pre-cycle binary; it is pinned so a verdict-rendering
 // change cannot have quietly turned a refusal into a number, and so that it stays WORDS naming the method.
 func TestTheParamReceiverPredicateStillRefusesInWords(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := "def check(s):\n    return s.startswith(\"x\")\n\n\nprint(check(\"xyz\"))\n"
 

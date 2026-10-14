@@ -22,6 +22,7 @@ print(c.m())
 `
 
 func TestMethodGetsItsOwnRaiseExit(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(methodTrySrc)
 	if err != nil {
 		t.Fatalf("a method containing a `try` must compile now (Gap R.41): %v", err)
@@ -42,6 +43,7 @@ func TestMethodGetsItsOwnRaiseExit(t *testing.T) {
 }
 
 func TestMethodRaiseDoesNotLandInMainsHandler(t *testing.T) {
+	t.Parallel()
 	src := `class C:
     def m(self) -> int:
         raise ValueError("boom")
@@ -65,6 +67,7 @@ print(C().m())
 }
 
 func TestMethodCallSiteChecksTheExceptionFlag(t *testing.T) {
+	t.Parallel()
 	src := `class C:
     def bad(self) -> int:
         raise ValueError("boom")
@@ -105,6 +108,7 @@ except:
 // the method-body half of that claim is asserted by
 // TestConstantTrapInsideMethodBodyIsARuntimeTrap beside this one.
 func TestRefusalInsideMethodBodyIsACompileError(t *testing.T) {
+	t.Parallel()
 	src := `class C:
     def m(self) -> int:
         return len(5)
@@ -129,6 +133,7 @@ print(C().m())
 // compile error at all, it is an IndexError that travels out of the method's frame and into the caller's
 // `except`. The retired engine answered this exact program the same way (roadmap Gap R.37, ADR 0326).
 func TestConstantTrapInsideMethodBodyIsARuntimeTrap(t *testing.T) {
+	t.Parallel()
 	src := `class C:
     def m(self) -> int:
         return [][0]
@@ -151,6 +156,7 @@ except IndexError:
 // return like any other and has to pop the root frame the prologue pushed, or every raise out of
 // a method leaks a frame (ADR 0181).
 func TestMethodUnwindClosesItsFrame(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(methodTrySrc)
 	if err != nil {
 		t.Fatalf("compile: %v", err)

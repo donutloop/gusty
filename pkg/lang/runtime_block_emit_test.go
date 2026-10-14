@@ -61,6 +61,7 @@ func definesOrDeclares(ir, name string) bool {
 // body, a container write, a raise, an index read — because the bug was that only some shapes set the
 // flag.
 func TestEveryCalledHelperIsDefined(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		// R.2's repro, stripped of the await and the `while True` that were both red herrings:
 		// a function returning a string interns its result, and that path never marked the
@@ -74,6 +75,7 @@ func TestEveryCalledHelperIsDefined(t *testing.T) {
 		{"container iteration", "xs = [1, 2, 3]\nfor x in xs:\n    print(x)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ir := emittedModuleIR(t, tc.src)
 			called := calledRuntimeHelpers(ir)
 			if len(called) == 0 {
@@ -91,6 +93,7 @@ func TestEveryCalledHelperIsDefined(t *testing.T) {
 // TestStringReturningFunctionModuleVerifies states R.2 as the artifact fact that failed: the emitted
 // module had to verify, not merely be produced.
 func TestStringReturningFunctionModuleVerifies(t *testing.T) {
+	t.Parallel()
 	src := "def txt():\n    return \"hi\"\n\nprint(txt())\n"
 	ir := emittedModuleIR(t, src)
 	if !strings.Contains(ir, "call i32 @rt_str_intern2(") {
@@ -105,6 +108,7 @@ func TestStringReturningFunctionModuleVerifies(t *testing.T) {
 // shapes that would fool a flag-based scheme: a call that appears only inside a function body, and a
 // mention that is only prose.
 func TestRuntimeBlockReferencedIsATestOfTheCodeNotAFlag(t *testing.T) {
+	t.Parallel()
 	if !runtimeBlockReferenced(heapRuntimeIR, "  %x = call i32 @rt_str_intern2(i8* @.s1, i8* @.s2)\n") {
 		t.Errorf("a call to a helper defined by the heap block was not detected — the derived rule would not fire")
 	}
@@ -125,6 +129,7 @@ func TestRuntimeBlockReferencedIsATestOfTheCodeNotAFlag(t *testing.T) {
 // while, and ADR 0230 gave it an answer: the loop runs over code points through the string table.
 // What must never come back is the silent version, so the assertions are about the answer.
 func TestRuntimeStringIterableIsRefusedRatherThanSilent(t *testing.T) {
+	t.Parallel()
 	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
 	if got := captureStdout(t, src); got != "h\ni\n" {
 		t.Fatalf("the record leg output = %q, want h i", got)

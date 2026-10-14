@@ -29,6 +29,7 @@ func writeProgram(t *testing.T, name, src string) string {
 // TestProgramFileDoesNotEchoLastValue is the fix, stated as the difference between a program and a
 // prompt: the same source run as a file owes no bytes, and typed as a snippet owes its value.
 func TestProgramFileDoesNotEchoLastValue(t *testing.T) {
+	t.Parallel()
 	const src = "x = 21\nprint(0)\nx * 2\n"
 	path := writeProgram(t, "echo.gy", src)
 
@@ -59,6 +60,7 @@ func TestProgramFileDoesNotEchoLastValue(t *testing.T) {
 // This is an assertion about today, not an acceptance of it: the day the pair can name a form for a
 // call's result, the golden record's `10` outranks this row and the case that pins the silence fails.
 func TestEchoIsSilentForAValueWhoseKindTheCompilerCannotSee(t *testing.T) {
+	t.Parallel()
 	const src = "def f(x):\n    return x * 2\n\nf(5)\n"
 	if got := cli(t, "--eval", src); got != "" {
 		t.Errorf("the echo answered a value the pair cannot name (%q); if the tagged value word landed, delete this row and let the record's `10` be the expectation", got)
@@ -74,6 +76,7 @@ func TestEchoIsSilentForAValueWhoseKindTheCompilerCannotSee(t *testing.T) {
 // prints something and happens to end on a value-returning expression must emit exactly its own
 // output, with nothing appended.
 func TestProgramOutputIsNotAffixed(t *testing.T) {
+	t.Parallel()
 	src := "def label(n):\n    return n * 10\n\nprint(1)\nlabel(2)\nprint(3)\n"
 	path := writeProgram(t, "affix.gy", src)
 
@@ -96,6 +99,7 @@ func TestProgramOutputIsNotAffixed(t *testing.T) {
 // TestSnippetStillEchoes is the courtesy the fix must not break: `--eval` is a prompt, and a prompt
 // that swallows the value you asked for is worse than the bug being fixed.
 func TestSnippetStillEchoes(t *testing.T) {
+	t.Parallel()
 	if got := cli(t, "--eval", "x = 1 + 2\nx"); got != "3\n" {
 		t.Errorf("a snippet stopped echoing its final expression: %q, want 3", got)
 	}
@@ -112,6 +116,7 @@ func TestSnippetStillEchoes(t *testing.T) {
 // about the *program's* stdout, not about hiding information from an agent, so `--json` still reports
 // the evaluated result — labelled as what it is, not as program output.
 func TestFileJSONStillReportsTheValueAsMetadata(t *testing.T) {
+	t.Parallel()
 	path := writeProgram(t, "json_echo.gy", "x = 5\nx * 2\n")
 	out := cli(t, "--json", "--file", path)
 	var doc struct {

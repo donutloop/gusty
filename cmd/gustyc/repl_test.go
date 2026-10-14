@@ -22,6 +22,7 @@ func repl(t *testing.T, input string) string {
 
 // TestREPLSingleLine verifies a single-line input is evaluated immediately.
 func TestREPLSingleLine(t *testing.T) {
+	t.Parallel()
 	out := repl(t, "x = 2\nx\n")
 	if !strings.Contains(out, "2") {
 		t.Fatalf("expected 2, got %q", out)
@@ -38,6 +39,7 @@ func TestREPLSingleLine(t *testing.T) {
 // StillSilent pins that, with the roadmap row that owes it), so a REPL test that asked for the bare
 // form would be testing the tagged value word, not the REPL.
 func TestREPLMultiLineFunction(t *testing.T) {
+	t.Parallel()
 	input := "def f(x):\n    return x * 2\n\nprint(f(21))\n"
 	out := repl(t, input)
 	if !strings.Contains(out, "42") {
@@ -52,6 +54,7 @@ func TestREPLMultiLineFunction(t *testing.T) {
 // silence is a filed gap rather than a quiet behaviour, and fails the day the tagged value word (the
 // same one roadmap L11.1 names for print, str() and the calling side) makes the echo answer.
 func TestREPLEchoOfACallResultIsStillSilent(t *testing.T) {
+	t.Parallel()
 	out := repl(t, "def f(x):\n    return x * 2\n\nf(21)\n")
 	if strings.Contains(out, "42") {
 		t.Fatalf("the echo now answers a call's result — delete this row and move the assertion into TestREPLMultiLineFunction's bare form: %q", out)
@@ -60,6 +63,7 @@ func TestREPLEchoOfACallResultIsStillSilent(t *testing.T) {
 
 // TestREPLMultiLineClass verifies multi-line class + method definition.
 func TestREPLMultiLineClass(t *testing.T) {
+	t.Parallel()
 	input := "class C:\n    def m(self):\n        return 7\n\nc = C()\nprint(c.m())\n"
 	out := repl(t, input)
 	if !strings.Contains(out, "7") {
@@ -70,6 +74,7 @@ func TestREPLMultiLineClass(t *testing.T) {
 // TestREPLBlockBodyNotPremature verifies a block with two indented body lines
 // is not evaluated after the first body line (it waits for the blank line).
 func TestREPLBlockBodyNotPremature(t *testing.T) {
+	t.Parallel()
 	// The body's second line must not trigger evaluation on its own; the subject is accumulation,
 	// so the call is printed rather than echoed (see TestREPLEchoOfACallResultIsStillSilent).
 	input := "def g():\n    a = 1\n    return a + 1\n\nprint(g())\n"
@@ -82,6 +87,7 @@ func TestREPLBlockBodyNotPremature(t *testing.T) {
 // TestREPLContinuesAfterError verifies a bad input reports an error but the
 // session continues evaluating the next line.
 func TestREPLContinuesAfterError(t *testing.T) {
+	t.Parallel()
 	input := "1 + )\n1 + 1\n"
 	out := repl(t, input)
 	if !strings.Contains(out, "2") {
@@ -91,6 +97,7 @@ func TestREPLContinuesAfterError(t *testing.T) {
 
 // TestREPLIfBlock verifies an if block entered interactively is accumulated.
 func TestREPLIfBlock(t *testing.T) {
+	t.Parallel()
 	input := "if 1 > 0:\n    x = 9\n\nx\n"
 	out := repl(t, input)
 	if !strings.Contains(out, "9") {

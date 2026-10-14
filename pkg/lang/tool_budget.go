@@ -105,6 +105,9 @@ type toolCall struct {
 	budget time.Duration
 	cancel context.CancelFunc
 	ctx    context.Context // the budget itself, so the call can ask who ended it
+	// releaseSlot hands back the concurrency governor's permit this call's process was admitted with
+	// (tool_slots.go). It is never nil: with no limit in force it is a no-op.
+	releaseSlot func()
 }
 
 // toolCommand builds a call that cannot outlive budget: on expiry the whole process *group* is killed
@@ -114,18 +117,34 @@ type toolCall struct {
 // Callers that need Env, Stdin or separate Stdout/Stderr writers use this and must call finish when
 // they are done. Everything else wants runTool.
 func toolCommand(budget time.Duration, stage, name string, args ...string) *toolCall {
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	// A budget of zero or less means the call is not timed at all: the caller said "wait as long as it
+	// takes", and handing that to context.WithTimeout would kill it instantly, which is the opposite
+	// answer. Every harness-shaped caller passes a positive number.
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if budget > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), budget)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
 	c := &toolCall{budget: budget, stage: stage, cancel: cancel, ctx: ctx}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.SysProcAttr = toolProcAttr()
 	cmd.Cancel = func() error { return killToolGroup(cmd) }
 	cmd.WaitDelay = waitGrace
 	c.Cmd = cmd
+	// One governor permit per external process, held for the process's whole life (tool_slots.go).
+	// Taking it here rather than at each call site is what makes the limit the toolchain's guarantee
+	// instead of each caller's courtesy — and this is the one place every toolcall is born.
+	c.releaseSlot = acquireToolSlot()
 	return c
 }
 
-// finish releases the call's timer; every caller defers it.
-func (c *toolCall) finish() { c.cancel() }
+// finish releases the call's timer and its governor slot; every caller defers it.
+func (c *toolCall) finish() {
+	c.releaseSlot()
+	c.cancel()
+}
 
 // timedOut reports whether the call's clock, and not the tool, is what ended it.
 //
@@ -163,6 +182,18 @@ func runToolStage(budget time.Duration, stage, name string, args ...string) ([]b
 		return out, c.failure(err)
 	}
 	return out, nil
+}
+
+// RunTool is runToolStage for a caller outside this package — a harness, mostly, that drives the pinned
+// toolchain itself rather than going through Build or the runner.
+//
+// It is exported for one reason: the concurrency governor (tool_slots.go) only means something if every
+// external process asks it first. A test that spawns `llc-20` with os/exec directly is not lying about
+// anything except how many processes the machine is being asked to run at once, and on a suite whose
+// cases now run beside each other that is the difference between a core each and a queue nobody can see.
+// The budget the toolchain gives its own tools is the budget a harness's tool gets too.
+func RunTool(stage, name string, args ...string) ([]byte, error) {
+	return runToolStage(ToolBudget, stage, name, args...)
 }
 
 // runTool is runToolStage for a caller with nothing to add: the stage is the tool.

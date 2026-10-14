@@ -15,6 +15,7 @@ import (
 )
 
 func TestARenderingBoundToANameAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -34,6 +35,7 @@ func TestARenderingBoundToANameAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			// The reference first: a row whose oracle answer drifted is a stale row, not a bug.
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
@@ -63,6 +65,7 @@ func TestARenderingBoundToANameAtTheCLI(t *testing.T) {
 // a shape the renderer cannot name exits 1 with a sentence, and under no circumstance exits 0 with the
 // digits of a heap handle.
 func TestACompilationThatCannotRenderRefusesRatherThanCounting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -75,6 +78,7 @@ func TestACompilationThatCannotRenderRefusesRatherThanCounting(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")

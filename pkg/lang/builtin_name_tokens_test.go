@@ -12,6 +12,7 @@ import (
 // ADR 0203).
 
 func TestBuiltInNamesMayBeDefined(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"def print", "def print(x):\n    return x + 1\n\nz = print(2)\n"},
 		{"def range", "def range(a):\n    return a * 2\n\nz = range(3)\n"},
@@ -22,6 +23,7 @@ func TestBuiltInNamesMayBeDefined(t *testing.T) {
 		{"a method named print", "class C:\n    def print(self, n):\n        return n\n\nz = C().print(2)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := Parse(tc.src); err != nil {
 				t.Errorf("%s did not parse: %v", tc.name, err)
 			}
@@ -30,6 +32,7 @@ func TestBuiltInNamesMayBeDefined(t *testing.T) {
 }
 
 func TestBuiltInNamesStillWorkAsBuiltIns(t *testing.T) {
+	t.Parallel()
 	// Removing them from the keyword table must not remove the built-ins themselves: everything
 	// downstream already resolves them by name.
 	for _, src := range []string{
@@ -56,6 +59,7 @@ func TestBuiltInNamesStillWorkAsBuiltIns(t *testing.T) {
 // TestKeywordArgumentNamesMayBeBuiltInNames pins the call-site half: `f(print=7)` is a keyword
 // argument called `print`, not the built-in being passed a name.
 func TestKeywordArgumentNamesMayBeBuiltInNames(t *testing.T) {
+	t.Parallel()
 	src := "def use_both(print, range):\n    return print + range\n\nz = use_both(print=7, range=8)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -71,6 +75,7 @@ func TestKeywordArgumentNamesMayBeBuiltInNames(t *testing.T) {
 // TestGrammarWordsRemainReserved is the other side of the rule: the words that really change
 // grammar are still not names, so the keyword table was narrowed rather than dropped.
 func TestGrammarWordsRemainReserved(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"def", "if", "else", "while", "for", "in", "class", "return", "match", "case", "try", "except", "finally", "yield", "lambda", "import", "with", "as", "not", "and", "or", "is", "None", "True", "False"} {
 		if _, err := Parse("def " + name + "(x):\n    return x\n"); err == nil {
 			t.Errorf("%q was accepted as a function name; it is a keyword", name)
@@ -83,6 +88,7 @@ func TestGrammarWordsRemainReserved(t *testing.T) {
 // TestBuiltInNamesLexAsIdentifiers states the mechanism directly, so a future change that re-adds a
 // built-in to the keyword table fails here rather than in someone's parser error.
 func TestBuiltInNamesLexAsIdentifiers(t *testing.T) {
+	t.Parallel()
 	for _, word := range []string{"print", "range", "len", "str", "int", "float", "abs", "min", "max", "sum", "printf"} {
 		toks, err := Lex(word + "\n")
 		if err != nil {

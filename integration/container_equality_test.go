@@ -17,6 +17,7 @@ import (
 // referee was the compiled backend agreeing with each other (roadmap L11.1, ADR 0189).
 
 func TestContainerEqualityMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -75,6 +76,7 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 // answers since the container-answer table read the kind off the callee's own `return` (roadmap Gap R.67,
 // ADR 0333); it moved up to the answering test, which is where a row that stops refusing goes.
 func TestContainerEqualityWithUnknownKindRefuses(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def echo(v):\n    return v\n\nxs = [1]\nprint(xs == echo(1))\n",
 	} {

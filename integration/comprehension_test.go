@@ -13,6 +13,7 @@ import (
 // one-language situation the corpus had never exercised, because every comprehension in it had a
 // constant element. Expectations are CPython's, transcribed from running the same source.
 func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -26,6 +27,7 @@ func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
 		{"materialised_iterable", "xs = [1, 2, 3]\nxs.append(9)\nprint([x * 2 for x in xs])\n", "[2, 4, 6, 18]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
@@ -48,6 +50,7 @@ func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
 // ternary that demanded an `else`. Set members are listed ascending so CPython's hash-ordered
 // rendering and the insertion order the compiled path keep say the same line.
 func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -63,6 +66,7 @@ func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
 		{"printed_directly", "print({k: k * 2 for k in [3]})\n", "{3: 6}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
@@ -87,6 +91,7 @@ func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
 // match. Both are fixed (Gap R.42, ADR 0224) and asserted positively in TestStringElementFilterCompiles.
 
 func TestComprehensionRefusalsAreHonest(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src, want string
 	}{

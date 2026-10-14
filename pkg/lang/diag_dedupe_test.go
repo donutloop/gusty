@@ -42,6 +42,7 @@ func dedupeAnalyze(t *testing.T, src string) []Diagnostic {
 
 // TestOneReportRegardlessOfCallSites is the measured scaling law, made an assertion.
 func TestOneReportRegardlessOfCallSites(t *testing.T) {
+	t.Parallel()
 	body := "def f(x):\n    match x:\n        case 1:\n            return \"one\"\n\n"
 	calls := map[string]int{"never called": 0, "called once": 1, "called twice": 2, "called three times": 3}
 	sources := map[string]string{}
@@ -64,6 +65,7 @@ func TestOneReportRegardlessOfCallSites(t *testing.T) {
 // TestDistinctFactsAtOnePositionAllSurvive guards the obvious over-correction: collapsing
 // *identical* diagnostics must not collapse *different* ones that happen to share a line.
 func TestDistinctFactsAtOnePositionAllSurvive(t *testing.T) {
+	t.Parallel()
 	diags := dedupeAnalyze(t, "def take(n: int) -> int:\n    return n\n\nx = take(1) + \"text\"\ny = take(\"wrong\")\n")
 	var mismatch, arithmetic bool
 	for _, d := range diags {
@@ -82,6 +84,7 @@ func TestDistinctFactsAtOnePositionAllSurvive(t *testing.T) {
 // TestLevelsAreNotCollapsed: the same sentence said as an error and as a warning is two facts —
 // one of them decides whether the program can run at all.
 func TestLevelsAreNotCollapsed(t *testing.T) {
+	t.Parallel()
 	// `x` is unbound (error) and the operand of the addition is therefore not numeric (warning),
 	// both at the same place. The warning may be suppressed as derived, but if both are reported
 	// neither may be silently deduplicated into the other.
@@ -99,6 +102,7 @@ func TestLevelsAreNotCollapsed(t *testing.T) {
 // position, so a repeated mistake in two places is still two diagnostics — a count an agent can
 // act on.
 func TestSameMessageDifferentPositionsBothSurvive(t *testing.T) {
+	t.Parallel()
 	diags := dedupeAnalyze(t, "def take(n: int) -> int:\n    return n\n\ntake(1)\ntake(\"a\")\ntake(\"b\")\n")
 	n := 0
 	for _, d := range diags {
@@ -114,6 +118,7 @@ func TestSameMessageDifferentPositionsBothSurvive(t *testing.T) {
 // TestWholeCorpusReportsNoDiagnosticTwice is the corpus-wide form of the invariant, checked the way
 // it was measured: walk every program and assert none of them emits a repeated line.
 func TestWholeCorpusReportsNoDiagnosticTwice(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join("..", "..", "integration", "programs")
 	matches, err := filepath.Glob(filepath.Join(dir, "*.gy"))
 	if err != nil || len(matches) == 0 {

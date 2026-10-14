@@ -22,6 +22,7 @@ var _ = lang.Compile
 // had reference semantics) and the native AOT pipeline.
 
 func TestAOTHeapContainerArguments(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -188,6 +189,7 @@ print(len(nums))
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			recordOut := runCompiled(t, tt.src)
 			if recordOut != tt.want {
 				t.Errorf("the record leg output mismatch\n got: %q\nwant: %q", recordOut, tt.want)
@@ -206,6 +208,7 @@ print(len(nums))
 // TestAOTHeapContainerVerifier asserts the emitted modules verify cleanly: the
 // original failure was a *verifier* error, not a wrong answer.
 func TestAOTHeapContainerVerifier(t *testing.T) {
+	t.Parallel()
 	progs := []string{
 		"def total(xs) -> int:\n    n = 0\n    for x in xs:\n        n = n + x\n    return n\n\nprint(total([1, 2, 3]))\n",
 		"def head(xs) -> int:\n    return xs[0]\n\nprint(head([7, 8, 9]))\n",
@@ -223,6 +226,7 @@ func TestAOTHeapContainerVerifier(t *testing.T) {
 // failure (an @.strN global in an i32 parameter). Strings now live in the runtime interned
 // table, so a list of strings can be built and passed to a function (roadmap Gap I.2).
 func TestAOTHeapContainerStringElement(t *testing.T) {
+	t.Parallel()
 	src := "def f(xs) -> int:\n    return len(xs)\n\nprint(f([\"a\", \"b\"]))\n"
 	res, err := lang.Compile(src)
 	if err != nil {
@@ -241,6 +245,7 @@ func TestAOTHeapContainerStringElement(t *testing.T) {
 
 // TestHeapContainerConformanceProgram runs the checked-in conformance program.
 func TestHeapContainerConformanceProgram(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "heap_containers.gy")
 	checkBackendParityWant(t, runCompiled(t, src), runAOT(t, src), "heap_containers.want")
 }
@@ -251,6 +256,7 @@ func TestHeapContainerConformanceProgram(t *testing.T) {
 // module's `xs = []` / `xs.append(i)` was lowered against a slot that only
 // existed inside the callee (`llc: use of undefined value '%_xs'`).
 func TestAOTHeapContainerParamScopeDoesNotLeak(t *testing.T) {
+	t.Parallel()
 	src := `def total(xs) -> int:
     n = 0
     for x in xs:

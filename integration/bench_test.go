@@ -19,6 +19,7 @@ const benchSrc = "s = 0\nfor i in range(20000):\n    s = s + i\nprint(s)\n"
 // TestBenchmarkCompiledBackend runs a compute-heavy program through the compiled backend and checks
 // the report is a complete one: warm timings, the one-off build timing, and the pipeline profile.
 func TestBenchmarkCompiledBackend(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Benchmark(benchSrc, 3, 2)
 	if err != nil {
 		t.Fatalf("Benchmark failed: %v", err)
@@ -43,6 +44,7 @@ func TestBenchmarkCompiledBackend(t *testing.T) {
 // many times over. If the run ever approaches the build, the optimisation pipeline has stopped
 // earning its keep and this case says so.
 func TestBenchmarkSteadyStateCheaperThanCompiling(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Benchmark(benchSrc, 3, 2)
 	if err != nil {
 		t.Fatalf("Benchmark failed: %v", err)
@@ -57,6 +59,7 @@ func TestBenchmarkSteadyStateCheaperThanCompiling(t *testing.T) {
 // on the same machine produces the same module, so a regression report means the code changed and
 // not that the harness drifted.
 func TestBenchmarkIsDeterministic(t *testing.T) {
+	t.Parallel()
 	first, err := lang.Benchmark(benchSrc, 2, 2)
 	if err != nil {
 		t.Fatalf("Benchmark failed: %v", err)

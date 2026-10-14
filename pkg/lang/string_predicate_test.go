@@ -23,6 +23,7 @@ import (
 // TestTextPredicatesPrintAVerdict is the table. Every row asks a question whose answer differs between the
 // two arms, so a fold that stopped answering at all cannot hide behind the rows that pass.
 func TestTextPredicatesPrintAVerdict(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -76,6 +77,7 @@ func TestTextPredicatesPrintAVerdict(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -91,6 +93,7 @@ func TestTextPredicatesPrintAVerdict(t *testing.T) {
 // `replace` answer a TEXT, and a text must never be handed to the bool printer: making the predicate
 // program-wide rather than a list of the eight methods would print True for `"abc".upper()`.
 func TestAPredicateIsNotConfusedWithAValueMethod(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct {
 		src  string
 		want string
@@ -104,6 +107,7 @@ func TestAPredicateIsNotConfusedWithAValueMethod(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -119,6 +123,7 @@ func TestAPredicateIsNotConfusedWithAValueMethod(t *testing.T) {
 // fact about that class body, not about the table — the same dunder evidence that keeps `print(a < 4)`
 // printing 1 for dunder.gy (ADR 0257).
 func TestAPredicateOnAnInstanceIsNotAssumedAVerdict(t *testing.T) {
+	t.Parallel()
 	src := "class Box:\n    def isdigit(self):\n        return 1\n\n\nprint(Box().isdigit())\n"
 	// CPython prints 1: `Box().isdigit()` runs the CLASS's method, which returns the integer 1, and an
 	// integer prints as a number. If the eight names were matched on the attribute alone, with no
@@ -134,12 +139,14 @@ func TestAPredicateOnAnInstanceIsNotAssumedAVerdict(t *testing.T) {
 // That refusal is pre-existing and byte-identical on the pre-cycle binary; it is pinned so that this
 // verdict-rendering change cannot have quietly turned it into a number, and so that it stays WORDS.
 func TestThePredicateRefusalIsStillHonest(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def check(s):\n    return s.startswith(\"x\")\n\n\nprint(check(\"xyz\"))\n",
 		"def check(s):\n    return s.isdigit()\n\n\nprint(check(\"123\"))\n",
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, src)
 			if !refused {
 				return // answered: fine, an answer is never worse than a refusal
@@ -158,6 +165,7 @@ func TestThePredicateRefusalIsStillHonest(t *testing.T) {
 // print road may change how a verdict behaves as a NUMBER. `True + 1` is 2, `[True] == [1]` is True, and a
 // predicate's 0/1 must keep feeding arithmetic exactly as before (ADR 0259's int/bool/float family).
 func TestThePredicateAnswerStillCountsAsANumber(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct {
 		src  string
 		want string
@@ -169,6 +177,7 @@ func TestThePredicateAnswerStillCountsAsANumber(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}

@@ -15,6 +15,7 @@ import (
 // it is roadmap Gap J.6 item (3) and Gap K.3, and all of it is pinned here (ADR 0188).
 
 func TestContainerLiteralsPrintThroughTheRuntimePrinters(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src     string
 		printer string
@@ -52,6 +53,7 @@ func TestContainerLiteralsPrintThroughTheRuntimePrinters(t *testing.T) {
 // matrix could not see: the record said set(), the compiled binary said 0, and parity was
 // green because the legs were never compared to anything outside the project.
 func TestEmptyContainersPrintAsContainers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(set())\n", "set()\n"},
 		{"print(list())\n", "[]\n"},
@@ -78,6 +80,7 @@ func TestEmptyContainersPrintAsContainers(t *testing.T) {
 // the previous occupant rendered a numeric set through the string table as {(null), (null)}.
 // rt_alloc clears kind and length on both paths today — the flag has to join them.
 func TestAllocClearsTheStringElementFlag(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print([1])\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -120,6 +123,7 @@ func runtimeFnBody(ir, header string) string {
 // the inner object what its own elements are (roadmap L11.1). The old failure modes stay forbidden —
 // a global in a value position, and an answer that is really a handle.
 func TestNestedContainersPrintTheirOwnContents(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src     string
 		printer string
@@ -159,6 +163,7 @@ func TestNestedContainersPrintTheirOwnContents(t *testing.T) {
 // one of those shapes — passing a literal to a function, returning one, appending one, printing
 // one — has been a wrong answer or a refused module at some point.
 func TestNoContainerGlobalInAValuePosition(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = [1, 2]\nprint(xs)\n",
 		"print([1, 2])\n",

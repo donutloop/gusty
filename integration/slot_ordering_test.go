@@ -23,6 +23,7 @@ import (
 //     failure — including on a row whose answer is still owed.
 
 func TestSlotOrderingMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			"two_text_slots_of_a_container_that_also_holds_numbers",
@@ -74,6 +75,7 @@ func TestSlotOrderingMatchesCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_ordering.gy", tc.src)
 			want, ok := cpythonOut(t, path)
 			if !ok {
@@ -99,6 +101,7 @@ func TestSlotOrderingMatchesCPython(t *testing.T) {
 // answer this feature can give — it looks like a result — so the compiled path have to raise the same
 // sentence, naming the left operand's type first.
 func TestSlotOrderingTrapsAreRaisedNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -146,6 +149,7 @@ func TestSlotOrderingTrapsAreRaisedNotRefused(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_ordering_trap.gy", tc.src)
 			want, code := oracleTrap(t, path)
 			if !strings.Contains(want, tc.msg) {
@@ -175,6 +179,7 @@ func TestSlotOrderingTrapsAreRaisedNotRefused(t *testing.T) {
 // roadmap carries: the elementwise order of two containers (Gap R.86, Gap R.87) and the ordering across
 // kinds the compiler can see but has no arm for (Gap R.85).
 func TestSlotOrderingRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			"two_containers_ordered_against_each_other",
@@ -190,6 +195,7 @@ func TestSlotOrderingRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_ordering_refuse.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -217,6 +223,7 @@ func refusalOf(out string) (string, bool) {
 // The bounds check survives the tagged read: a slot that is not there traps with IndexError before any
 // arm runs, in the compiled path. The wording of that sentence is a separate measured debt (Gap R.90).
 func TestSlotOrderingKeepsTheBoundsCheck(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = [1, \"a\"]\nprint(1 if xs[7] > \"a\" else 0)\n",
 		"xs = [1, \"a\"]\nprint(1 if xs[7] < 5 else 0)\n",

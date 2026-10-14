@@ -1,6 +1,9 @@
 package lang
 
-import "sort"
+import (
+	"sort"
+	"sync"
+)
 
 // String parameters in the AOT backend (roadmap Gap J.5).
 //
@@ -338,12 +341,26 @@ func strReturningFuncs(prog *Program) map[string]bool {
 // question so a returned name can be traced back to what wrote it. `scanRebinds` is the same table ADR
 // 0274's return convention and ADR 0285's number half read; caching it keeps a `y = y + 1` body from
 // rebuilding it on every hop.
-var bodyBindingCache = map[*FuncDef]map[string][]Expr{}
+// var bodyBindingCache — guarded, because it is shared by every compile in flight.
+//
+// A plain map here was harmless while one process compiled one program at a time, which is all the CLI ever
+// did and all the suite ever was. It is not harmless with a compile running beside another: two `go test`
+// cases emitting IR at the same instant write the same map, which Go treats as a fatal error at best and a
+// torn read at worst — and a torn read here is not a crash, it is the wrong answer to *what kind is this
+// variable*, which codegen then writes into the module and the program pays for at run time. The lock is
+// the whole fix: the values are a pure function of the key (a parsed body), every caller only reads what it
+// hands back, and a memo that cannot be trusted is worth less than the scan it saves. (ADR 0343.)
+var (
+	bodyBindingMu    sync.Mutex
+	bodyBindingCache = map[*FuncDef]map[string][]Expr{}
+)
 
 func bodyBindings(fd *FuncDef) map[string][]Expr {
 	if fd == nil {
 		return map[string][]Expr{}
 	}
+	bodyBindingMu.Lock()
+	defer bodyBindingMu.Unlock()
 	if m, ok := bodyBindingCache[fd]; ok {
 		return m
 	}

@@ -11,6 +11,7 @@ import (
 // {"result": "True", "type": "bool"} rather than the 1 the verdict is stored as.
 
 func TestCLIEvalWritesTheVerdict(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`True`, "True\n"},
 		{`False`, "False\n"},
@@ -29,6 +30,7 @@ func TestCLIEvalWritesTheVerdict(t *testing.T) {
 }
 
 func TestCLIJSONNamesTheBoolType(t *testing.T) {
+	t.Parallel()
 	out, code := cliRunCode(t, "--json", "--eval", "1 == 1")
 	if code != 0 {
 		t.Fatalf("--json --eval exit = %d\n%s", code, out)
@@ -50,6 +52,7 @@ func TestCLIJSONNamesTheBoolType(t *testing.T) {
 }
 
 func TestCLIFileWritesTheVerdictOnTheCompiledPath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := writeSrc(t, dir, "bools.gy",
 		"print(True)\nprint(False)\nprint(1 == 1)\nprint(0 == None)\nprint(\"yes\" == \"yes\")\n")
@@ -65,6 +68,7 @@ func TestCLIFileWritesTheVerdictOnTheCompiledPath(t *testing.T) {
 // The promoted row: the program that opened this cycle prints CPython's answer on both
 // backends, so the oracle agrees with it.
 func TestOracleAgreesOnBoolValues(t *testing.T) {
+	t.Parallel()
 	src := writeSrc(t, t.TempDir(), "probe_bool_value.gy", boolValueProbeSrc)
 	py, ok := cpythonOut(t, src)
 	if !ok {
@@ -93,6 +97,7 @@ const boolValueProbeSrc = "print(True)\n" +
 // container shape used to be here too — ADR 0259 gave a slot its bool tag, and
 // programs/probe_bool_in_a_container.gy left the ledger for the parity corpus with it.
 func TestOracleStillCallsTheBoolThroughACallADivergence(t *testing.T) {
+	t.Parallel()
 	out, code := cliRunCode(t, "--oracle", "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n")
 	if code != 6 {
 		t.Errorf("a bool through a call still diverges, but --oracle exited %d, want the divergence code\n%s", code, out)

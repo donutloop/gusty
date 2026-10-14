@@ -18,6 +18,7 @@ import (
 // cannot see.
 
 func TestExceptArmDispatchAgreesOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "except_arm_order.gy")
 	want := "second arm\nthird arm\nbare arm\nouter arm\nexception base\n"
 
@@ -41,6 +42,7 @@ func TestExceptArmDispatchAgreesOnEveryPath(t *testing.T) {
 // The promoted program is an ordinary parity case now; a ledger row would be a claim of
 // divergence the harness must be able to falsify.
 func TestExceptArmOrderCarriesNoOracleDebt(t *testing.T) {
+	t.Parallel()
 	found := false
 	for _, c := range conformanceCases() {
 		if strings.HasSuffix(c.ID, "/except_arm_order") {
@@ -58,6 +60,7 @@ func TestExceptArmOrderCarriesNoOracleDebt(t *testing.T) {
 // An exception that no arm matches has to behave like the uncaught exception it is: reported,
 // non-zero, and nothing printed after the try. This is the case that used to exit 0.
 func TestUnhandledExceptionEscapingATryIsTheRuntimeClass(t *testing.T) {
+	t.Parallel()
 	src := "try:\n    xs = [1]\n    print(xs[5])\nexcept KeyError:\n    print(\"wrong arm\")\nprint(\"after\")\n"
 	_, pyErr, perr := lang.PythonRun(src)
 	if perr == nil {
@@ -91,6 +94,7 @@ func TestUnhandledExceptionEscapingATryIsTheRuntimeClass(t *testing.T) {
 // A raise inside a handler is a fresh exception in the enclosing scope: the try that dispatched
 // to that handler must not capture it.
 func TestRaiseInsideAHandlerEscapes(t *testing.T) {
+	t.Parallel()
 	src := "try:\n    xs = [1]\n    print(xs[5])\nexcept IndexError:\n    raise ValueError(\"from the handler\")\nprint(\"after\")\n"
 	bin := cliBin(t)
 	file := writeTrapCase(t, t.TempDir(), "handler_raises.gy", src)

@@ -55,6 +55,7 @@ func assertNoForbiddenIR(t *testing.T, src, ir string) {
 // now expected to compile and print CPython's answer. What still has to refuse stays in
 // TestMixedListElementUsesStillRefuse: a nested container, which the collector cannot mark yet.
 func TestFloatElementsRefuseRatherThanBreakTheModule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(1 if [1] == [1.0] else 0)\n", "1\n"},
 		{"print(1 if [1.0] == [1] else 0)\n", "1\n"},
@@ -87,6 +88,7 @@ func TestFloatElementsRefuseRatherThanBreakTheModule(t *testing.T) {
 // invented-operand shapes and verifies. A blacklist test like this is what makes the fix
 // unfalsifiable-proof rather than anecdote-proof.
 func TestNoProgramInTheFloatFamilyShipsForbiddenIR(t *testing.T) {
+	t.Parallel()
 	sources := []string{
 		"print(1 if 2.0 == 2 else 0)\n",
 		"print(1 if 1.0 == \"a\" else 0)\n",
@@ -116,6 +118,7 @@ func TestNoProgramInTheFloatFamilyShipsForbiddenIR(t *testing.T) {
 // False without converting the list, and so must this backend — via the operand-kind gate, not by
 // coercing a container through a float conversion (which is what emitted the rejected module).
 func TestMismatchedKindEqualityIsAnsweredByKind(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(1 if 1.0 == [1] else 0)\n", "0\n"},
 		{"print(1 if [1] == 1.0 else 0)\n", "0\n"},
@@ -142,6 +145,7 @@ func TestMismatchedKindEqualityIsAnsweredByKind(t *testing.T) {
 // an unterminated definition that everything downstream shipped. The emitter now validates first and
 // writes once; a refusal must leave no half-line behind.
 func TestPartialGlobalIsNeverShipped(t *testing.T) {
+	t.Parallel()
 	// A shape that still refuses — a dict keyed by a container has no hashing rule — checked for
 	// the failure mode rather than the message: the refusal must be a clean stop, not a
 	// half-written global left in the module (roadmap Gap R.40, ADR 0166).

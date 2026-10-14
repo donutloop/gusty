@@ -229,6 +229,7 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 // the compiled path shared, which is the hole L11.9's oracle leg was built to close (ADR 0186). The
 // artifact goes to integration/conformance-matrix.json for agent and script consumption.
 func TestConformanceMatrix(t *testing.T) {
+	t.Parallel()
 	requirePinnedOracle(t)
 	matrix := conformanceMatrix(t)
 
@@ -262,6 +263,7 @@ func TestConformanceMatrix(t *testing.T) {
 // programs: a matrix that silently stopped recording the third leg would keep
 // every parity assertion green while the oracle went away.
 func TestConformanceMatrixRecordsTheOracleLeg(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("conformance-matrix.json")
 	if err != nil {
 		t.Fatalf("read artifact: %v", err)
@@ -304,6 +306,7 @@ func TestConformanceMatrixRecordsTheOracleLeg(t *testing.T) {
 // that keeps it there — a committed matrix that quotes a scratch directory fails, whoever generated it.
 // Roadmap L11.9 owns the artifact (ADR 0175).
 func TestMatrixArtifactCarriesNoRunDirectory(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("conformance-matrix.json")
 	if err != nil {
 		t.Fatalf("read the matrix artifact: %v", err)

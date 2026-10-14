@@ -22,6 +22,7 @@ func compileSrcIR(t *testing.T, src string) string {
 }
 
 func TestRuntimeComprehensionBindsTheLoopVariable(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "def sq(n):\n    return n * n\n\nprint([sq(n) for n in range(4)])\n")
 	for _, want := range []string{"call i32 @rt_alloc(i32 1)", "call void @rt_append_tagged(", "call i32 @gy_sq("} {
 		if !strings.Contains(mod, want) {
@@ -36,6 +37,7 @@ func TestRuntimeComprehensionBindsTheLoopVariable(t *testing.T) {
 }
 
 func TestComprehensionOverContainerVariableIsARealLoop(t *testing.T) {
+	t.Parallel()
 	// The append is not decoration: a list the escape analysis folds away has no runtime object to
 	// walk, so the loop needs a materialised container (the folded case is probe_comp_folded_iter).
 	mod := compileSrcIR(t, "xs = [1, 2, 3]\nxs.append(9)\nys = [x * 2 for x in xs]\nprint(ys)\n")
@@ -52,6 +54,7 @@ func TestComprehensionOverContainerVariableIsARealLoop(t *testing.T) {
 }
 
 func TestComprehensionFilterBranchesPerItem(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "def even(n):\n    return n % 2 == 0\n\nprint([x for x in range(6) if even(x)])\n")
 	for _, want := range []string{"comp.cond", "comp.item", "comp.skip", "call i32 @gy_even("} {
 		if !strings.Contains(mod, want) {
@@ -67,6 +70,7 @@ func TestComprehensionFilterBranchesPerItem(t *testing.T) {
 // element set, so taking the runtime path for a literal iterable would make them refuse. The
 // ordering (fold first, runtime second) is load-bearing, not style.
 func TestConstantFoldKeepsPriorityForFoldableComprehensions(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(sum([x for x in range(5)]))\n",
 		"print(max([x * 3 for x in [1, 2, 3]]))\n",
@@ -86,6 +90,7 @@ func TestConstantFoldKeepsPriorityForFoldableComprehensions(t *testing.T) {
 // the compile-time element set, which is empty for a runtime comprehension, so sum([...]) printed
 // 0 for a list with elements in it.
 func TestRuntimeReductionRefusesRatherThanAnswerZero(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n",
 		"def sq(n):\n    return n * n\n\nprint(max([sq(x) for x in range(4)]))\n",
@@ -112,6 +117,7 @@ func TestRuntimeReductionRefusesRatherThanAnswerZero(t *testing.T) {
 // when the skips actually came from the skip block. Both are fixed; the shape compiles, verifies,
 // and the loop header's back edge is the block that really branches to it (Gap R.42, ADR 0224).
 func TestStringElementFilterCompiles(t *testing.T) {
+	t.Parallel()
 	src := "names = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -134,6 +140,7 @@ func TestStringElementFilterCompiles(t *testing.T) {
 // TestNestedContainerElementStillRefuses keeps ADR 0188's rule in force for the new path: an
 // element that is a container is a handle nobody would mark.
 func TestNestedContainerElementStillRefuses(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, 2]\nprint([[x, x] for x in xs])\n")
 	if err == nil && res != nil {
 		// A folded [[0,0],[1,1]] is fine; only the runtime path needs the refusal, so accept
@@ -150,6 +157,7 @@ func TestNestedContainerElementStillRefuses(t *testing.T) {
 // comprehension can be the only allocation in a program — which produced a module calling an
 // undefined @rt_alloc.
 func TestRuntimeComprehensionRequestsTheHeapRuntime(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "def sq(n):\n    return n * n\n\nys = [sq(x) for x in range(3)]\nprint(ys)\n")
 	if !strings.Contains(mod, "define internal i32 @rt_alloc(") {
 		t.Fatalf("the comprehension is the only heap user, so it must request the runtime:\n%s", mod)
@@ -159,6 +167,7 @@ func TestRuntimeComprehensionRequestsTheHeapRuntime(t *testing.T) {
 // TestComprehensionBehaviourOnTheCompiledBackend is the record side of the same table, so the two
 // backends cannot drift on what a comprehension means.
 func TestComprehensionBehaviourOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"def sq(n):\n    return n * n\n\nprint([sq(x) for x in range(4)])\n", "[0, 1, 4, 9]\n"},
 		{"print([abs(x) for x in [-1, 2, -3]])\n", "[1, 2, 3]\n"},

@@ -24,6 +24,7 @@ const (
 )
 
 func TestCompiledHandlesEveryBuiltInTrapLikePython(t *testing.T) {
+	t.Parallel()
 	got := runCompiled(t, btcSource)
 	if got != btcWant {
 		t.Errorf("the record leg output =\n%q\nwant\n%q", got, btcWant)
@@ -45,6 +46,7 @@ func TestCompiledHandlesEveryBuiltInTrapLikePython(t *testing.T) {
 // failure mode this asserts against — a shape that silently *answers* is the bug, whether it
 // refuses at compile time or traps at run time.
 func TestCompiledBackendRefusesOrTrapsEveryBuiltInTrap(t *testing.T) {
+	t.Parallel()
 	shapes := []struct {
 		name string
 		src  string
@@ -101,6 +103,7 @@ func TestCompiledBackendRefusesOrTrapsEveryBuiltInTrap(t *testing.T) {
 // trap yet, so the handler does not run and `print` receives a value. If that ever starts agreeing
 // with the record this test stops being a warning and should be deleted along with the gap.
 func TestCompiledMissingAttributeIsStillAGap(t *testing.T) {
+	t.Parallel()
 	src := "class P:\n    pass\n\np = P()\ntry:\n    print(p.nope)\nexcept AttributeError:\n    print(\"caught\")\n"
 	got, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {

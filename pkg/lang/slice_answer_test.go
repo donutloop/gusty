@@ -95,8 +95,10 @@ var slicePrograms = []struct {
 // TestASliceOfATaggedListAnswersACopyNotATruncation is the row's own claim, asked of the compiler rather than
 // of the reference: the copy carries the base's slots as the base prints them.
 func TestASliceOfATaggedListAnswersACopyNotATruncation(t *testing.T) {
+	t.Parallel()
 	for _, tt := range slicePrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); the reference answers %q and this toolchain owes an answer, not a refusal",
@@ -112,8 +114,10 @@ func TestASliceOfATaggedListAnswersACopyNotATruncation(t *testing.T) {
 // TestTheSliceDoorIsParityWithTheReference asks the same programs of the reference leg: the answer below is
 // the one `python3` prints, and a row that moved is a row this file's table got wrong.
 func TestTheSliceDoorIsParityWithTheReference(t *testing.T) {
+	t.Parallel()
 	for _, tt := range slicePrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := tt.want
 			if want == "" {
 				want = ""
@@ -136,6 +140,7 @@ func TestTheSliceDoorIsParityWithTheReference(t *testing.T) {
 // allowed to take the raise. Exit 2 — the code the contract reserves for a compiler bug — is forbidden on
 // every row (ADR 0166, ADR 0211).
 func TestASlicePastTheEndRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src     string
 		class   string
@@ -147,6 +152,7 @@ func TestASlicePastTheEndRaisesWhatTheReferenceRaises(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class || message != tt.message {
 				t.Fatalf("%q raised %s: %s; the reference raises %s: %s", tt.src, class, message, tt.class, tt.message)
@@ -158,6 +164,7 @@ func TestASlicePastTheEndRaisesWhatTheReferenceRaises(t *testing.T) {
 // TestATrapInsideASliceReadIsCatchable is the same raise asked of the program: a trap that ends the run is a
 // crash, and a trap the program can take is a value the language has.
 func TestATrapInsideASliceReadIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -172,6 +179,7 @@ func TestATrapInsideASliceReadIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
 				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
 			}
@@ -183,6 +191,7 @@ func TestATrapInsideASliceReadIsCatchable(t *testing.T) {
 // missing feature: `ys = xs[0:2]` and `xs[0:2]` are one program written two ways, and both spellings are the
 // shape the untagged list has always answered.
 func TestTheBoundFormAndTheDirectFormAnswerTheSameThing(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ direct, bound string }{
 		{
 			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2])",
@@ -206,6 +215,7 @@ func TestTheBoundFormAndTheDirectFormAnswerTheSameThing(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.direct, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			directOut, directTrap := runForParity(t, tc.direct)
 			boundOut, boundTrap := runForParity(t, tc.bound)
 			if directTrap != boundTrap || directOut != boundOut {
@@ -226,6 +236,7 @@ func TestTheBoundFormAndTheDirectFormAnswerTheSameThing(t *testing.T) {
 // shape that must keep its compile-time fold: a list of ints sliced is a list of ints, and a row that starts
 // allocating for it is a row that got the predicate wrong.
 func TestTheSlicedSourceIsBuiltByTheSamePredicateAsTheLiteralRoad(t *testing.T) {
+	t.Parallel()
 	tagged := mainBodyOf(emittedModuleIR(t, "xs = [1.5, \"a\", [7]]\nprint(xs[0:2])"))
 	if !strings.Contains(tagged, "@rt_slice") {
 		t.Fatalf("a slice of a literal no longer copies an object at all:\n%s", tagged)
@@ -249,8 +260,10 @@ func TestTheSlicedSourceIsBuiltByTheSamePredicateAsTheLiteralRoad(t *testing.T) 
 // TestEverySliceModuleVerifies is the exit-2 guard: the row began as a wrong number, and a row that ends as
 // an `llc` rejection has only changed class, not been fixed.
 func TestEverySliceModuleVerifies(t *testing.T) {
+	t.Parallel()
 	for _, tt := range slicePrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			mustVerifyWithLLC(t, emittedModuleIR(t, tt.src))
 		})
 	}
@@ -260,6 +273,7 @@ func TestEverySliceModuleVerifies(t *testing.T) {
 // the reference's answer beside what this backend says today. A row that stops refusing moves into the
 // tables above; it does not disappear.
 func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -345,6 +359,7 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, trap, refused := sliceFiledRow(t, tc.src)
 			if tc.compiled == "" {
 				if !refused {
@@ -387,8 +402,10 @@ func sliceFiledRow(t *testing.T, src string) (stdout, trap string, refused bool)
 // cannot be deleted without deleting the evidence the suite reads (ADR 0302's rule that a missing record
 // fails the case).
 func TestTheSliceRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tt := range slicePrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, tt.src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that reads it", tt.src)

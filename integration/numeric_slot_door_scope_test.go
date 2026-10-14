@@ -24,6 +24,7 @@ const textElsewhere = "w = []\nw.append(\"a text\")\n"
 // TestCLIAgentATextInOneContainerLeavesAnotherNumberDoorOpen is the answering family against CPython: the
 // same programs print, on the compiled leg, what the reference prints.
 func TestCLIAgentATextInOneContainerLeavesAnotherNumberDoorOpen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"the row's own shape", textElsewhere + "nested = []\nnested.append([7, 8])\nd = nested[0][0] * 2\nprint([d])\n"},
@@ -40,6 +41,7 @@ func TestCLIAgentATextInOneContainerLeavesAnotherNumberDoorOpen(t *testing.T) {
 		{"the answer bound, printed, and asked again", textElsewhere + "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\nprint(n + 1)\nprint(f\"{n}\")\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "door_scope.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -69,6 +71,7 @@ func TestCLIAgentATextInOneContainerLeavesAnotherNumberDoorOpen(t *testing.T) {
 // the reference's answer is written into the row so a future cycle that lands the real fix breaks this
 // table rather than quietly passing.
 func TestCLIAgentTheDoorScopeRowsThatBelongToAnotherRowAreFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct {
 		name, src, owner, wantReference, wantCompiled string
@@ -89,6 +92,7 @@ func TestCLIAgentTheDoorScopeRowsThatBelongToAnotherRowAreFiledNotFixed(t *testi
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "door_scope_filed.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok || ref != tc.wantReference {
@@ -114,6 +118,7 @@ func TestCLIAgentTheDoorScopeRowsThatBelongToAnotherRowAreFiledNotFixed(t *testi
 // raises. Each row is a program the reference answers with a TEXT (a joined string, a repeated container),
 // which is exactly what this backend cannot build from a slot (Gap R.82).
 func TestCLIAgentTheNumberDoorStaysShutWhereAnAliasCanReachTheText(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -138,6 +143,7 @@ func TestCLIAgentTheNumberDoorStaysShutWhereAnAliasCanReachTheText(t *testing.T)
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "door_scope_shut.gy", tc.src)
 			out, code := cliReport(t, "--aot", "--file", path)
 			if code == 2 {
@@ -157,6 +163,7 @@ func TestCLIAgentTheNumberDoorStaysShutWhereAnAliasCanReachTheText(t *testing.T)
 // matrix registers. `oracle: match` for that file is a claim about the compiled leg and the reference, and
 // this is where it is checked rather than asserted.
 func TestCLIAgentTheRegisteredDoorScopeProbePrintsWhatTheReferencePrints(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_a_text_in_one_container_leaves_another_number_door_open.gy")
 	want := "[14]\n8\n5\n15.0\n-7\n42\n5\n2\n"
 	dir := t.TempDir()

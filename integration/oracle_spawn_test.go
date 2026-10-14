@@ -69,6 +69,7 @@ func oracleCommand(t *testing.T, args ...string) *exec.Cmd {
 // different table. Twenty runs is above the measured flipping rate with the pin off (3 in 20), so this
 // case fails essentially always without the pin and never with it.
 func TestTheReferenceLegsSetOrderIsPinned(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	const src = "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n"
 	answers := map[string]int{}
@@ -104,6 +105,7 @@ func TestTheReferenceLegsSetOrderIsPinned(t *testing.T) {
 // TestTheReferenceLegRunsTheFileItIsGiven keeps oracleCommand honest about argv: a helper that ran the
 // wrong path would make every reference answer in this package wrong in the same direction, quietly.
 func TestTheReferenceLegRunsTheFileItIsGiven(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := writeSrc(t, dir, "argv_probe.py", "print(\"from the file\")\n")
 	out, err := oracleCommand(t, path).CombinedOutput()

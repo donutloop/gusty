@@ -13,6 +13,7 @@ import (
 // global in a value position, which llc rejects (ADR 0183).
 
 func TestStrFoldAgreesBetweenTheTwoFolders(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		src  string
 		want string
@@ -68,6 +69,7 @@ func TestStrFoldAgreesBetweenTheTwoFolders(t *testing.T) {
 }
 
 func TestStrNoneCompilesAndStoresAValue(t *testing.T) {
+	t.Parallel()
 	// The regression in one line: `s = str(None)` used to emit
 	// `store i32 @.str1, i32* %_s`, which llc rejects with "global variable reference
 	// must have pointer type" — turning a print statement into exit code 2.

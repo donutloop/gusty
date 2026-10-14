@@ -33,6 +33,7 @@ const numFloatSlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestASlotBoundNameEntersTheDoubleDomain is the row Gap R.148 named. Every shape is a name the pair road
 // bound, asked for a double; each was refused before this cycle.
 func TestASlotBoundNameEntersTheDoubleDomain(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"true division", numFloatSlot + "print(n / 4)\n", "1.75\n"},
 		{"division by a float literal", numFloatSlot + "print(n / 2.5)\n", "2.8\n"},
@@ -143,6 +144,7 @@ func TestASlotBoundNameEntersTheDoubleDomain(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -161,6 +163,7 @@ func TestASlotBoundNameEntersTheDoubleDomain(t *testing.T) {
 // a door that raised `TypeError: x` would pass a weaker test and still be a language whose `except` cannot
 // match anything.
 func TestADoubleDomainUseOfASlotBoundNameRaisesTheKindItHolds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text slot divided",
@@ -242,6 +245,7 @@ func TestADoubleDomainUseOfASlotBoundNameRaisesTheKindItHolds(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("class = %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -256,6 +260,7 @@ func TestADoubleDomainUseOfASlotBoundNameRaisesTheKindItHolds(t *testing.T) {
 // TestTheDoubleDomainTrapOfASlotBoundNameIsCatchable: the raise is emitted inside the arm that knows what it
 // lifted, and it leaves through the open handler — so the program's own `except` runs (ADR 0228).
 func TestTheDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a TypeError arm runs on a slot's division",
@@ -269,6 +274,7 @@ func TestTheDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("the compiled backend refused this program: %v", err)
@@ -284,6 +290,7 @@ func TestTheDoubleDomainTrapOfASlotBoundNameIsCatchable(t *testing.T) {
 // instruction ADR 0253 blacklisted module-wide — it substituted silence for an operand the compiler never
 // read — and a module that answers these shapes without testing the tag has quietly gone back to guessing.
 func TestTheDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(numFloatSlot + "print(n / 4)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -309,12 +316,14 @@ func TestTheDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
 // ask the tag (ADR 0306, ADR 0307), and the `sum` element and the `min` argument left it when the fold
 // door opened (ADR 0316; they are pinned as answers in `pair_fold_test.go`).
 func TestTheDoubleDomainStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"float(n)", numFloatSlot + "print(float(n))\n"},
 		// `print(f"{n - 1}")` was on this table and answers since ADR 0307: an f-string field asks the
 		// module's one tag-reading printer, so it is pinned in pair_fstring_test.go's answer table.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("the compiler answered a position that keeps one word for its operand, emitting:\n%s",

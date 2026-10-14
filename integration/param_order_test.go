@@ -14,6 +14,7 @@ import (
 // which rule applies.
 
 func TestDefaultedParameterInAnyPositionAgreesOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("param_default_order")
 	want := "6\n16\n6\n123\n923\n129\n9\n"
 
@@ -37,6 +38,7 @@ func TestDefaultedParameterInAnyPositionAgreesOnEveryPath(t *testing.T) {
 // fills a mid-signature default by keyword has to bind identically in the record and in
 // machine code, or one of them is quietly wrong.
 func TestTheCompiledBackendBindsTheSameParameters(t *testing.T) {
+	t.Parallel()
 	src := `def offset(base, step=10, bonus):
     return base + step + bonus
 

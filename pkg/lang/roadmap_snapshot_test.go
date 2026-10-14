@@ -244,6 +244,7 @@ func snapshotQueueRows(t *testing.T, root string) []int {
 
 // TestTheRoadmapSnapshotIsMeasuredNotRemembered is the guard.
 func TestTheRoadmapSnapshotIsMeasuredNotRemembered(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
 	digits := regexp.MustCompile(`[0-9]+`)
@@ -278,6 +279,7 @@ func TestTheRoadmapSnapshotIsMeasuredNotRemembered(t *testing.T) {
 // `-count=1`, and the roadmap's own description of the gate must not advertise the cached command an agent
 // would otherwise copy out of the tracker.
 func TestTheRoadmapSnapshotNamesTheSerialGateWithoutTheCache(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
 	cell := snapshotCell(t, text, "Test suite")
@@ -295,6 +297,7 @@ func TestTheRoadmapSnapshotNamesTheSerialGateWithoutTheCache(t *testing.T) {
 // out of the published count that way. Splitting the real file's table in a string must move `hidden` and must
 // not move `owed`, which is the pair of facts that makes this a check rather than a comment.
 func TestTheQueueCounterSeesWhatASplitTableHides(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
 	total, owed, hidden, err := countQueueRows(text)

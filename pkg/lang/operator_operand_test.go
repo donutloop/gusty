@@ -44,8 +44,10 @@ var operandRefusals = []struct {
 }
 
 func TestOperatorRefusesOperandsItCannotApply(t *testing.T) {
+	t.Parallel()
 	for _, tc := range operandRefusals {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != "TypeError" {
 				t.Errorf("class = %q, want TypeError (msg %q)", ee.ExnType, ee.ExnMsg)
@@ -60,6 +62,7 @@ func TestOperatorRefusesOperandsItCannotApply(t *testing.T) {
 // Equality and membership are total: they compare, they do not compute, so the gate must not
 // refuse them. A rule that traps everything mistyped is wrong in the other direction.
 func TestTotalOperatorsStillAcceptAnything(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`print(1 == "a")`, "False\n"},
 		{`print("a" == 1)`, "False\n"},
@@ -80,6 +83,7 @@ func TestTotalOperatorsStillAcceptAnything(t *testing.T) {
 // right value, not merely be allowed through. These are the operations whose absence made the
 // gate refuse legal programs — `[1] + [2]` and `"ab" * 2` were handle arithmetic.
 func TestSequenceOperationsCompute(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`print([1] + [2])`, "[1, 2]\n"},
 		{`print([1] + [2] + [3])`, "[1, 2, 3]\n"},
@@ -122,6 +126,7 @@ func TestSequenceOperationsCompute(t *testing.T) {
 // Go, independently of the language, so the test fails if a future change lets a computed integer
 // be read as an object again.
 func TestComputedIntegerIsNotMistakenForAHeapObject(t *testing.T) {
+	t.Parallel()
 	const n = 2000
 	src := "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n" +
 		"    def norm(self) -> int:\n        return self.x * self.x + self.y * self.y\n\n" +
@@ -138,6 +143,7 @@ func TestComputedIntegerIsNotMistakenForAHeapObject(t *testing.T) {
 // The same collision, forced from the other side: an integer that equals a live object's id must
 // still behave as the number the program wrote, and the object's own members must still work.
 func TestIntegerEqualToALiveHandleIsStillAnInteger(t *testing.T) {
+	t.Parallel()
 	src := "class P:\n    def f(self) -> int:\n        return 5\n\np = P()\nbig = 2 ** 40\n" +
 		"s = big + p.f()\nprint(s)\nprint(big - 5)\n"
 	handles := int64(1 << 40)

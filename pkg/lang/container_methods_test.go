@@ -15,6 +15,7 @@ import (
 )
 
 func TestListHasItsReferenceMethods(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`xs = [1]
 xs.extend([2, 3])
@@ -62,6 +63,7 @@ print(xs)`, "[1, 2]"},
 }
 
 func TestDictHasItsReferenceMethods(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`d = {"a": 1}
 d.update({"b": 2})
@@ -106,6 +108,7 @@ print(d)`, "a\nb\n{}"},
 // The raises keep the reference's sentences, character for character: a program that catches one and
 // prints it, and every conformance ledger that matches on text, sees the difference (ADR 0215).
 func TestTheNewMethodsRaiseWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`print([1, 2].index(5))`, "ValueError: 5 is not in list"},
 		{`print([1, 2].index(1, 5))`, "ValueError: 1 is not in list"},
@@ -132,6 +135,7 @@ xs.extend(5)`, "TypeError: extend() argument must be a list or a set"},
 // refuses with a sentence naming the missing representation -- rather than answering a list-shaped
 // lie that print would render `[k, v]` where the reference renders `(k, v)`.
 func TestPopitemRefusesUntilThereIsAPairValue(t *testing.T) {
+	t.Parallel()
 	ee := trapRun(t, `print({1: 2}.popitem())`)
 	got := ee.ExnType + ": " + ee.ExnMsg
 	if !strings.Contains(got, "popitem") || !strings.Contains(got, "pair") {
@@ -143,6 +147,7 @@ func TestPopitemRefusesUntilThereIsAPairValue(t *testing.T) {
 // `KeyError: 'a'`, quoted because the key is a text and a KeyError carries its repr. The compiled
 // leg still prints the module's constant and is Gap R.189's remaining half.
 func TestKeyErrorNamesTheKey(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ src, want string }{
 		{`d = {}
 print(d["a"])`, "KeyError: 'a'"},
@@ -161,6 +166,7 @@ print(d[9])`, "KeyError: 9"},
 // A dict is two parallel slices; a removal that shrinks one and not the other misaligns every later
 // key against the wrong value, and the failure looks like a mystery three lines later.
 func TestDictRemovalKeepsTheParallelSlicesAligned(t *testing.T) {
+	t.Parallel()
 	got := captureStdout(t, `d = {1: "a", 2: "b", 3: "c"}
 print(d.pop(2))
 print(d)

@@ -41,8 +41,10 @@ var unhashableKeyRows = []struct {
 }
 
 func TestAKeyTheLanguageCannotHashNamesItsType(t *testing.T) {
+	t.Parallel()
 	for _, tt := range unhashableKeyRows {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class || message != tt.message {
 				t.Fatalf("%q raised %s: %s, want %s: %s", tt.src, class, message, tt.class, tt.message)
@@ -54,6 +56,7 @@ func TestAKeyTheLanguageCannotHashNamesItsType(t *testing.T) {
 // The uncaught trap must not also answer: the doors that used to print `False` or `{[1]: 2}` are
 // the defect, and a raise that leaves a line behind is a different answer from the reference's.
 func TestTheUnhashableKeyRefusalDoesNotAnswerAsWell(t *testing.T) {
+	t.Parallel()
 	for _, tt := range unhashableKeyRows {
 		res, err := JIT(tt.src, 0)
 		if err != nil {
@@ -73,6 +76,7 @@ func TestTheUnhashableKeyRefusalDoesNotAnswerAsWell(t *testing.T) {
 // door must not follow the needle into a list haystack — that would turn a working program into a
 // raise, which is the worse direction of wrong.
 func TestMembershipOfAnUnhashableNeedleInAListStaysATest(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -86,6 +90,7 @@ func TestMembershipOfAnUnhashableNeedleInAListStaysATest(t *testing.T) {
 		{`print("a" in ["a"])`, "True"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, want %q", out, tt.want)
 			}
@@ -96,6 +101,7 @@ func TestMembershipOfAnUnhashableNeedleInAListStaysATest(t *testing.T) {
 // The doors that answer must keep answering: a hashable key, a missing key, a legal store. These
 // are the rows a gate that fires too eagerly would break.
 func TestTheDictDoorsStillAnswerWhatTheyAnswered(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -111,6 +117,7 @@ func TestTheDictDoorsStillAnswerWhatTheyAnswered(t *testing.T) {
 		{`print(len({"a": 1, "b": 2}))`, "2"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, want %q", out, tt.want)
 			}
@@ -119,12 +126,14 @@ func TestTheDictDoorsStillAnswerWhatTheyAnswered(t *testing.T) {
 }
 
 func TestTheUnhashableKeyTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"try:\n    print({\"a\": 1}[[1]])\nexcept TypeError:\n    print(\"caught\")",
 		"try:\n    print([1] in {\"a\": 1})\nexcept TypeError:\n    print(\"caught\")",
 		"try:\n    d = {}\n    d[[1]] = 2\n    print(\"stored\")\nexcept TypeError:\n    print(\"caught\")",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, src), "\n"); out != "caught" {
 				t.Fatalf("%q printed %q, want the handler's line", src, out)
 			}
@@ -135,6 +144,7 @@ func TestTheUnhashableKeyTrapIsCatchable(t *testing.T) {
 // The classifier itself, away from codegen: what the front end reads from the source, including
 // the tuple case where the reference names the inner type it choked on rather than the tuple.
 func TestTheUnhashableKeyQuestionIsAskedOfTheProgram(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		listVars:     map[string]bool{"xs": true},
 		runtimeDicts: map[string]bool{"dd": true},
@@ -172,6 +182,7 @@ func TestTheUnhashableKeyQuestionIsAskedOfTheProgram(t *testing.T) {
 // The haystack half of the gate, also asked directly: only a dict's keys and a set's elements are
 // hashed, and a haystack the compiler cannot name stays out of the gate's way.
 func TestOnlyADictOrASetNeedlesByHash(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		listVars:     map[string]bool{"xs": true},
 		runtimeDicts: map[string]bool{"dd": true},
@@ -203,6 +214,7 @@ func TestOnlyADictOrASetNeedlesByHash(t *testing.T) {
 
 // The runtime sentence, so the words are pinned where the reference's are.
 func TestTheUnhashableKeySentence(t *testing.T) {
+	t.Parallel()
 	if got := unhashableKeyMessage("list"); got != "unhashable type: 'list'" {
 		t.Fatalf("the sentence is %q; CPython's is \"unhashable type: 'list'\"", got)
 	}
@@ -214,8 +226,10 @@ func TestTheUnhashableKeySentence(t *testing.T) {
 // The record leg: the retired engine's own answer for each trap source, so a later cycle that
 // deletes the gate cannot delete the evidence with it.
 func TestTheUnhashableKeyRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tt := range unhashableKeyRows {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, tt.src)
 			if rec.ExnType != tt.class || rec.ExnMsg != tt.message {
 				t.Fatalf("the record says %q raises %s: %s, the gate raises %s: %s — the reference is the referee",
@@ -230,6 +244,7 @@ func TestTheUnhashableKeyRowsAreRecorded(t *testing.T) {
 // that no longer stores what it used to store, and a module that does not verify at all. `Compile` runs
 // the module past LLVM's verifier, so the assertion below is about both.
 func TestTheStoreGateKeepsAModuleThatStoresAndVerifies(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -241,6 +256,7 @@ func TestTheStoreGateKeepsAModuleThatStoresAndVerifies(t *testing.T) {
 		{"a refused membership keeps the needle lowering", "print([1] in {\"a\": 1})", "@rt_dict_has", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ir := emittedModuleIR(t, tt.src)
 			if !strings.Contains(ir, tt.want) {
 				t.Fatalf("the module no longer contains %s", tt.want)

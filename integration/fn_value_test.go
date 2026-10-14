@@ -58,6 +58,7 @@ func cpython283(t *testing.T, dir, src string) (string, int) {
 
 // TestADeclaredNameAsAValueNeverExitsTwo is the exit-2 table at the CLI.
 func TestADeclaredNameAsAValueNeverExitsTwo(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src string }{
 		{"a function name in arithmetic", head + "print(f + 1)\n"},
@@ -71,6 +72,7 @@ func TestADeclaredNameAsAValueNeverExitsTwo(t *testing.T) {
 		{"a lambda in arithmetic", "print((lambda x: x) + 1)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "fnvalue.gy", tc.src)
 			py, pyCode := cpython283(t, dir, tc.src)
@@ -97,6 +99,7 @@ func TestADeclaredNameAsAValueNeverExitsTwo(t *testing.T) {
 // TestAFunctionOperandTrapsWithTheReferencesClassIsTheParityTable: the numeric door raises rather than
 // refusing, so the compiled path print CPython's sentence with CPython's word and the program can catch it.
 func TestAFunctionOperandTrapsWithTheReferencesClass(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src, want string }{
 		{"negation of a def'd name", head + "print(-f)\n", "TypeError: bad operand type for unary -: 'function'"},
@@ -107,6 +110,7 @@ func TestAFunctionOperandTrapsWithTheReferencesClass(t *testing.T) {
 		{"abs of a module", "import math\n\nprint(abs(math))\n", "TypeError: bad operand type for abs(): 'module'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "fnvalue.gy", tc.src)
 			py, pyCode := cpython283(t, dir, tc.src)
@@ -135,6 +139,7 @@ func TestAFunctionOperandTrapsWithTheReferencesClass(t *testing.T) {
 // TestAFunctionStillFlowsThroughAParameterIsTheNarrowing: the guards name a *declaration*, so the
 // programs that pass functions around keep their answers — and one of them is the promoted probe.
 func TestAFunctionStillFlowsThroughAParameter(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a lambda called through a parameter", "def twice(fn, v):\n    return fn(v) + fn(v)\n\nprint(twice(lambda x: x * 3, 2))\n", "12\n"},
 		{"a lambda bound then called", "g = lambda x: x * 3\nprint(g(4))\n", "12\n"},
@@ -165,12 +170,14 @@ func TestAFunctionStillFlowsThroughAParameter(t *testing.T) {
 // value road, and the value road does not count arguments — `print(f(1, 2))` printed `2` and
 // `print(f())` printed `0`, both at exit 0. Silence is the failure; any refusal is the contract.
 func TestArityIsStillAnswered(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src string }{
 		{"too many arguments", head + "print(f(1, 2))\n"},
 		{"too few arguments", head + "print(f())\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "fnvalue.gy", tc.src)
 			for _, engine := range cliEngines {

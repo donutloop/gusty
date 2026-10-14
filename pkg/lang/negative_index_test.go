@@ -48,6 +48,7 @@ func negBuildRun(t *testing.T, name, src string) (int, string) {
 }
 
 func TestNegativeReadCountsFromTheEndOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	src := "xs = [1, 2, 3]\nprint(xs[-1])\nprint(xs[-3])\nn = -2\nprint(xs[n])\n"
 	const want = "3\n1\n2\n"
 	if got, err := negRun(t, src); err != nil || got != want {
@@ -63,6 +64,7 @@ func TestNegativeReadCountsFromTheEndOnTheCompiledBackend(t *testing.T) {
 // `panic: runtime error: index out of range [-1]`. A tested shape may leave the compiler as
 // a diagnostic or as working code — never as a panic (the L11.8 contract).
 func TestLiteralListWithNegativeIndexDoesNotTakeTheCompilerDown(t *testing.T) {
+	t.Parallel()
 	src := "print([1, 2, 3][-1])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -95,6 +97,7 @@ func TestLiteralListWithNegativeIndexDoesNotTakeTheCompilerDown(t *testing.T) {
 // code normalises it against the list's *run-time* length, so the rule holds for a list
 // whose length the compiler never sees.
 func TestNegativeWriteNormalisesAgainstTheLength(t *testing.T) {
+	t.Parallel()
 	src := "xs = [1, 2, 3]\nxs[-1] = 30\nprint(xs[2])\nprint(xs[-2])\n"
 	const want = "30\n2\n"
 	if got, err := negRun(t, src); err != nil || got != want {
@@ -124,6 +127,7 @@ func TestNegativeWriteNormalisesAgainstTheLength(t *testing.T) {
 // it would quietly turn `d[-1]` into the last entry. That asymmetry is the part of "one
 // rule" a shared helper could easily get wrong, so it is pinned on both legs.
 func TestNegativeDictKeysStayKeys(t *testing.T) {
+	t.Parallel()
 	src := "d = {-1: \"minus\", 0: \"zero\"}\nprint(d[-1])\nprint(d[0])\n"
 	const want = "minus\nzero\n"
 	if got, err := negRun(t, src); err != nil || got != want {
@@ -144,6 +148,7 @@ func TestNegativeDictKeysStayKeys(t *testing.T) {
 // Normalisation does not dissolve the bounds check: past either end is still IndexError,
 // in the record, in the compiled binary and in the reference implementation.
 func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
+	t.Parallel()
 	src := "xs = [1, 2, 3]\nprint(xs[-4])\n"
 	pyOut, pyErr, pyRunErr := PythonRun(src)
 	if pyRunErr == nil {
@@ -174,6 +179,7 @@ func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 // codes ("99\n97\n") and to require the compiled leg to refuse the shape; both halves were the bug
 // this cycle fixed, and the expectations are now CPython's.
 func TestNegativeStringSubscriptFollowsTheSameRule(t *testing.T) {
+	t.Parallel()
 	src := "s = \"abc\"\nprint(s[-1])\nprint(s[-3])\n"
 	const want = "c\na\n" // CPython prints exactly this
 	if got, err := negRun(t, src); err != nil || got != want {

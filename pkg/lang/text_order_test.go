@@ -19,6 +19,7 @@ import (
 // written with "a" first would have passed the old code, which is how this survived.
 
 func TestTextOrderingMatchesCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -94,6 +95,7 @@ func TestTextOrderingMatchesCPythonOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused: %v", tc.src, err)
@@ -111,6 +113,7 @@ func TestTextOrderingMatchesCPythonOnBothLegs(t *testing.T) {
 // One helper answers the question, in both the value position and the condition position. Two doors
 // is how the sorter got it right and the operators got it wrong.
 func TestTextOrderingAsksStrcmp(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"a = \"b\"\nb = \"a\"\nprint(1 if a > b else 0)\n",        // value position
 		"a = \"b\"\nif a > \"a\":\n    print(\"y\")\n",            // condition position
@@ -132,6 +135,7 @@ func TestTextOrderingAsksStrcmp(t *testing.T) {
 // (ADR 0173), and routing == through strcmp as well would pay for a call to learn something the
 // representation already guarantees.
 func TestTextEqualityIsStillAnIndexComparison(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "a = \"b\"\nb = \"a\"\nprint(1 if a == b else 0)\n")
 	if strings.Contains(ir, "call i32 @rt_str_order(") {
 		t.Errorf("an equality went to strcmp:\n%s", strings.Join(irLinesContaining(ir, "rt_str_order"), "\n"))

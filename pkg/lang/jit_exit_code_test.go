@@ -11,6 +11,7 @@ import (
 // direction that matters most, that a *caught* exception is still a clean run.
 
 func TestJITReportsAStatusOfItsOwn(t *testing.T) {
+	t.Parallel()
 	res, err := JIT("print(1 + 1)\n", 0)
 	if err != nil {
 		t.Fatalf("JIT: %v", err)
@@ -24,6 +25,7 @@ func TestJITReportsAStatusOfItsOwn(t *testing.T) {
 }
 
 func TestJITReportsANonZeroStatusForAnUncaughtRaise(t *testing.T) {
+	t.Parallel()
 	res, err := JIT("raise ValueError(\"boom\")\n", 0)
 	if err != nil {
 		t.Fatalf("JIT: %v", err)
@@ -40,6 +42,7 @@ func TestJITReportsANonZeroStatusForAnUncaughtRaise(t *testing.T) {
 }
 
 func TestJITReportsANonZeroStatusForATrapInsideABuiltin(t *testing.T) {
+	t.Parallel()
 	// The trap is raised by emitted bounds code rather than an explicit `raise`, which is
 	// the path most likely to forget the exit status: it goes through the same exception
 	// machinery, so it must reach the same status.
@@ -58,6 +61,7 @@ func TestJITReportsANonZeroStatusForATrapInsideABuiltin(t *testing.T) {
 // The other direction, which is the one a naive "make traps non-zero" would break: a
 // program that raises and handles it ran to completion and says so.
 func TestJITStillReportsZeroWhenTheExceptionIsCaught(t *testing.T) {
+	t.Parallel()
 	res, err := JIT("try:\n    xs = [1, 2, 3]\n    print(xs[-4])\nexcept IndexError:\n    print(\"caught\")\n", 0)
 	if err != nil {
 		t.Fatalf("JIT: %v", err)

@@ -108,6 +108,7 @@ func firstNumberInRow(t *testing.T, text, artifact, file string) (int, string) {
 // TestTheArtifactTableCountsAreTheFilesOwn is the guard: the four counts docs/operations.md quotes are the
 // files' own, recomputed on every run that is not served from the test cache.
 func TestTheArtifactTableCountsAreTheFilesOwn(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	const doc = "docs/operations.md"
 	text := string(mustReadArtifact(t, filepath.Join(root, doc)))
@@ -131,6 +132,7 @@ var sourcesClaim = regexp.MustCompile(`([0-9][0-9,]*)\s+sources\b`)
 // AGENTS.md is the loop's contract, and an agent reads the record's coverage out of it before it decides
 // what a suite may certify. Every "N sources" in the two files is the file's own.
 func TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	want := countArtifact(t, root, countedArtifacts[0])
 	for _, doc := range []string{"AGENTS.md", filepath.Join("docs", "operations.md")} {
@@ -158,6 +160,7 @@ func TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn(t *testing.T) {
 // case can reach and a number the table over-reports by however many pairs there are. The keys are read
 // through the token stream, which is the only place the repetition is still visible.
 func TestTheRecordHasNoSourceSpelledTwice(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, countedArtifacts[0].path))
 	if err != nil {
@@ -259,6 +262,7 @@ func expectToken(t *testing.T, dec *json.Decoder, want rune) error {
 // conformance ledger's `a stubbed pin must produce drift`): the row locator is handed the real table with one
 // digit of one count changed and must report the disagreement rather than nod.
 func TestTheCountGuardCanFail(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	text := string(mustReadArtifact(t, filepath.Join(root, "docs", "operations.md")))
 	number := regexp.MustCompile(`[0-9][0-9,]*`)

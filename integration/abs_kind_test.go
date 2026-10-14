@@ -58,8 +58,10 @@ func absTraps() []struct{ name, src, kind string } {
 
 // TestTheReferenceAndBothLegsAnswerAbsWithTheNumber is the parity table for the shapes with an answer.
 func TestTheReferenceAndBothLegsAnswerAbsWithTheNumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range absNumbers() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "abs_parity.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -85,8 +87,10 @@ func TestTheReferenceAndBothLegsAnswerAbsWithTheNumber(t *testing.T) {
 // TestTheReferenceAndBothLegsTrapAbsTheSameWay is the trap table: the reference's sentence, on both
 // engines, at the trap exit — never a printed operand, never the number zero, never the compiler's own exit.
 func TestTheReferenceAndBothLegsTrapAbsTheSameWay(t *testing.T) {
+	t.Parallel()
 	for _, tc := range absTraps() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "abs_trap.gy", tc.src)
 			sentence := "TypeError: bad operand type for abs(): '" + tc.kind + "'"
@@ -117,6 +121,7 @@ func TestTheReferenceAndBothLegsTrapAbsTheSameWay(t *testing.T) {
 // contract's exit 1 (ADR 0166) is a compile-time verdict and escapes the handler, so a source the reference
 // can catch must be catchable on the compiled path.
 func TestAnAbsTrapIsCaughtByAnExceptTypeError(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"text", "try:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 		{"nothing", "try:\n    print(abs(None))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -125,6 +130,7 @@ func TestAnAbsTrapIsCaughtByAnExceptTypeError(t *testing.T) {
 		{"a loop of them", "for s in [\"a\", 1, \"b\"]:\n    try:\n        print(abs(s))\n    except TypeError:\n        print(\"nope\")\n", "nope\n1\nnope\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "abs_catch.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -152,6 +158,7 @@ func TestAnAbsTrapIsCaughtByAnExceptTypeError(t *testing.T) {
 // program never reached the trap it was owed. The module must verify (the CLI's own `--verify-llvm-file`
 // path, ADR 0166's exit-2 prohibition) and the run must leave through the trap.
 func TestTheAbsTrapDoesNotAskTheHostForArithmeticOnAPointer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, kind string }{
 		{"a list", "print(abs([1, 2]))\n", "list"},
 		{"a dict", "print(abs({\"a\": 1}))\n", "dict"},
@@ -160,6 +167,7 @@ func TestTheAbsTrapDoesNotAskTheHostForArithmeticOnAPointer(t *testing.T) {
 		{"an instance of a named class", "class Thing:\n    pass\n\nt = Thing()\nprint(abs(t))\n", "Thing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "abs_verify.gy", tc.src)
 			out, code := cliReport(t, "--verify-llvm-file", gy)

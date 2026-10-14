@@ -25,6 +25,7 @@ import (
 // language has decided it does not ship.
 
 func TestContainerSlotReadsMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"len_of_element", "xs = [[1, 2], [3, 4]]\nprint(len(xs[0]))\n", "2\n"},
 		// A container the program built instead of spelled out: the answer comes from the object's own
@@ -80,6 +81,7 @@ func TestContainerSlotReadsMatchCPython(t *testing.T) {
 		{"float_element_two_slots", "t = [[1.5, \"x\"], 2]\nprint(t[0][0] + 1)\n", "2.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "read.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -106,6 +108,7 @@ func TestContainerSlotReadsMatchCPython(t *testing.T) {
 // interpreter raises too; the compiled backend either raises the same way or refuses to build a
 // module that would answer with the wrong thing. What none of them may do is exit 0 with a value.
 func TestContainerSlotReadTrapsMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"subscript_a_number_element",
@@ -160,6 +163,7 @@ func TestContainerSlotReadTrapsMatchCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "read_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 ||

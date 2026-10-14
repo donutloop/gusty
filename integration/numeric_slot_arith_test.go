@@ -36,6 +36,7 @@ func cpythonPlainOut(t *testing.T, dir, src string) (string, bool) {
 }
 
 func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the row's own shape: a list built by append, a number out of the inner one",
@@ -60,6 +61,7 @@ func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T)
 			"xs = []\nxs.append([7, 8])\nprint(xs[0][0] / 2)\n", "3.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "numeric_slot.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -83,6 +85,7 @@ func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T)
 // and must be catchable, because a raise the program cannot reach is a different thing wearing the same
 // words (ADR 0228).
 func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the negation of a slot that holds text",
@@ -98,6 +101,7 @@ func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "numeric_slot_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
@@ -128,6 +132,7 @@ func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) 
 // file asserts the exact sentence on the compiled leg, and the reason the helper fills a buffer and
 // returns a status instead of raising inside itself.
 func TestTheNumberUseOfARunTimeSlotIsCatchableAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"typeError caught",
@@ -141,6 +146,7 @@ func TestTheNumberUseOfARunTimeSlotIsCatchableAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "numeric_slot_catch.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", "--file", gy)
@@ -159,6 +165,7 @@ func TestTheNumberUseOfARunTimeSlotIsCatchableAtTheCLI(t *testing.T) {
 // slot (Gap R.82), so the door must not open: the program keeps the compile-time refusal it always had
 // (exit 1, named) rather than get a TypeError the reference never raises.
 func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"text stored in a container, used with +",
@@ -190,6 +197,7 @@ func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *t
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "numeric_slot_gate.gy", tc.src)
 			out, code := cliReport(t, "--aot", "--file", gy)
@@ -210,6 +218,7 @@ func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *t
 // and checks it against the reference: programs/numeric_slot_arith.gy is `oracle: match`, which is a
 // claim about both legs, and this is where it is checked rather than asserted.
 func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/numeric_slot_arith.gy")
 	if err != nil {
 		t.Fatalf("the registered corpus file is missing: %v", err)
@@ -239,6 +248,7 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 // with the missing half named, and the record answers the reference in their place, so they are
 // filed rows (roadmap Gap R.146) rather than parity claims.
 func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
+	t.Parallel()
 	// The answer bound to a name first is parity surface now (Gap R.138, ADR 0267): it runs beside
 	// the reference in the parity table above and in programs/probe_arith_result_bound_to_a_name.gy.
 	// The answer handed to a function is answered too (Gap R.139, ADR 0273) — its own three-engine rows
@@ -262,6 +272,7 @@ func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "numeric_slot_edge.gy", tc.src)
 			want, ok := cpythonPlainOut(t, dir, tc.src)
@@ -289,6 +300,7 @@ func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 // word `fptosi` is poison rather than a wrong number (ADR 0264's lesson, applied at this door by ADR
 // 0265). The decision that would make the two agree — a wider int word — is roadmap L12.12's to make.
 func TestTheWholeNumberAnswerBeyondTheCompiledIntWordRaisesAndIsCatchable(t *testing.T) {
+	t.Parallel()
 	const src = "xs = []\nxs.append([7, 8])\nprint(xs[0][0] * 1000000000)\n"
 	const sentence = "OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)"
 	dir := t.TempDir()

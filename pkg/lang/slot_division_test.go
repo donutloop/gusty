@@ -37,6 +37,7 @@ import (
 // IR row that fails if the module stops branching on the tag or starts inventing an operand again.
 
 func TestTrueDivisionOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the program Gap R.96 measured, and its float twin.
 		{"an appended int slot divided", "xs = []\nxs.append(3)\nprint(xs[0] / 4)\n", "0.75\n"},
@@ -102,6 +103,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 		{"a loop variable over a built container divides", "xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 4)\n", "1.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -123,6 +125,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 // actually lifted. Before this door the compiled leg printed `0.0` for the numeric shapes and a
 // truncated number for the rest; a printed lie is what these rows exist to catch.
 func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		// ---- the kinds with no number in them: one raise each, naming the kind the slot really holds.
 		{
@@ -214,6 +217,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -248,6 +252,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 // program can catch it, which is the difference between exit 3 and exit 1 and the reason the arm may
 // not be a refusal (ADR 0166's exit-class contract, Gap R.37's rule).
 func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a text slot's TypeError",
@@ -266,6 +271,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused: %v", err)
@@ -289,6 +295,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 // binding, a comparison and a condition can, a call argument, `str()`'s argument and a container slot
 // written by key cannot. Those refusals are the tagged value word's, and each row says so.
 func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"two built slots divided by each other",
@@ -334,6 +341,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s (%q): compiled; want a refusal", tc.name, tc.src)
@@ -362,6 +370,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 // is the row whose guard's blocks land between the loop header and the increment the induction `phi`
 // names as its back edge, which `llc` rejects (roadmap Gap R.100 — ADR 0224's lesson, one door over).
 func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, aotWant, oracle string
 		gap                        string
@@ -375,6 +384,7 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if tc.aotExit == 2 {
 				if err != nil {
@@ -418,6 +428,7 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 // it is pinned as an answer and not as a divergence: the row out of the filed table above, kept where it
 // was written so the day it came back is visible next to the row that recorded it going.
 func TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow(t *testing.T) {
+	t.Parallel()
 	const src = "xs = []\nxs.append(6)\nprint([xs[0] / 2])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -445,6 +456,7 @@ func TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow(t *testing.T
 // program in this file with `PHI node entries do not match predecessors` and exit 2, where the oracle prints
 // `[3.0]`: the ADR 0138 lesson, one door over.
 func TestTrueDivisionOfARuntimeComprehensionLoopVariableAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the shape the row was named for",
@@ -484,6 +496,7 @@ func TestTrueDivisionOfARuntimeComprehensionLoopVariableAnswers(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused a program the oracle prints: %v", err)
@@ -504,6 +517,7 @@ func TestTrueDivisionOfARuntimeComprehensionLoopVariableAnswers(t *testing.T) {
 // emitting it. The wording is the pair's, chosen inside the arm that knows the operand kinds (ADR 0253),
 // and a `for` body's raise is catchable — the merge block is a block, not an exit.
 func TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"the zero literal divisor inside the loop",
@@ -527,6 +541,7 @@ func TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -555,6 +570,7 @@ func TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused: %v", err)
@@ -575,6 +591,7 @@ func TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps(t *testing.T) {
 // block whose terminator branches back to the block the `phi` lives in; before the merge block it named
 // the body block while the element's guard was the real back edge.
 func TestARuntimeComprehensionInductionPhiNamesTheBlockThatActuallyLoops(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(6)\nxs.append(3)\nprint([v / 2 for v in xs])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -657,6 +674,7 @@ func blockTerminator(ir string, lines []string, block string) (string, bool) {
 }
 
 func TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, aotWant, oracle, gap string }{
 		{
 			"two built slots",
@@ -670,6 +688,7 @@ func TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, tc.src); got != tc.oracle {
 				t.Errorf("%s: the record leg prints %q, want the oracle's %q", tc.name, got, tc.oracle)
 			}
@@ -690,6 +709,7 @@ func TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 // invented `0.0`, so the assertion is not only about `llc` rejecting the module: a substituted operand
 // that *does* verify is the bug that printed `0.0` with exit 0.
 func TestTrueDivisionOfAnUnliteralisedSlotBranchesOnTheTag(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\nxs.append(1.5)\nxs.append(\"a\")\nxs.append(None)\nxs.append([1])\nprint(xs[0] / 2)\nprint(xs[1] / 2)\nprint(6 / xs[0])\n"
 	res, err := Compile(src)
 	if err != nil {

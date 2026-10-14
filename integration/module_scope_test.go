@@ -13,6 +13,7 @@ import (
 // for what it does today by TestModuleScopeIsStillOutOfReachForCompiledCode below.
 
 func TestModuleScopeRunsLikeCPython(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"module constant", "v = 1\n\ndef g() -> int:\n    return v\n\nprint(g())\n", "1\n"},
 		{"defined below the def", "def g() -> int:\n    return v\n\nv = 40\nprint(g())\n", "40\n"},
@@ -27,6 +28,7 @@ func TestModuleScopeRunsLikeCPython(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q\nsource:\n%s", iout, tc.want, tc.src)
@@ -47,6 +49,7 @@ func TestModuleScopeRunsLikeCPython(t *testing.T) {
 // module rebinds lives in a module global, so a body reads what the module had assigned when the call
 // ran (ADR 0220). A container is still refused, and refused with the true reason.
 func TestModuleScalarsReachCompiledFunctionBodies(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"module constant in a function", "MAX = 40\n\ndef twice() -> int:\n    return MAX * 2\n\nprint(twice())\n", "80"},
 		{"constant read by a method", "k = 5\n\nclass C:\n    def get(self) -> int:\n        return k\n\nprint(C().get())\n", "5"},
@@ -56,6 +59,7 @@ func TestModuleScalarsReachCompiledFunctionBodies(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			want, perrText, perr := lang.PythonRun(tc.src)
 			if perr != nil {
 				t.Fatalf("CPython disagreed with the expectation %q: %v\n%s", tc.want, perr, perrText)

@@ -3,6 +3,7 @@ package lang
 import "testing"
 
 func TestBreakOutsideLoop(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"break",
 		"continue",

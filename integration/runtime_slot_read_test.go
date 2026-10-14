@@ -33,6 +33,7 @@ import (
 // that has to be written down rather than assumed).
 
 func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// The shape the roadmap names as L11.1's remaining clause.
 		{"appended_list_read_below", "xs = []\nxs.append([7, 8])\nprint(xs[0][0])\n", "7\n"},
@@ -162,6 +163,7 @@ func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
 		{"four_slots_deep_stepped_and_tested", "xs = []\nxs.append([[[[1, 2]]]])\nfor v in xs[0][0][0][0]:\n    print(v)\nprint(1 in xs[0][0][0][0])\n", "1\n2\nTrue\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_read.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -189,6 +191,7 @@ func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
 // (`codegen: …`) would be exit 1, the contract's "your program is wrong" class, issued for a program
 // whose only crime is a wrong index, and a silent 0 would be worse.
 func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, msg string
 		// oracle is what CPython has to say. It is written separately where the two differ, which is
@@ -336,6 +339,7 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_trap.gy", tc.src)
 			want, pyCode := oracleTrap(t, path)
 			oracleWant := tc.msg
@@ -382,6 +386,7 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 // is an operand rather than an object. Each row says which half is missing rather than answering with a
 // verdict, and CPython's answer is written into the roadmap row beside it.
 func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// The **number** use of the same slot, and its negation, were in this table until ADR 0265 answered
 		// them: the pair (payload, tag) goes to the target, which does the sum and answers a pair back, so
@@ -403,6 +408,7 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 		{"a_needle_whose_kind_cannot_be_proven", "def pick(v):\n    if v:\n        return v\n    return \"a\"\n\nxs = []\nxs.append([7, 8])\nprint(1 if pick(0) in xs[0] else 0)\n", "more than one kind"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_refuse.gy", tc.src)
 			if _, pyCode := oracleTrap(t, path); pyCode != 0 {
 				t.Fatalf("the oracle does not run this program; the row claims a refusal, not a trap")
@@ -438,12 +444,14 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 // is the same question, so it gets the same answer and the same KeyError when the member is absent;
 // both legs may diverge from CPython here, but never from each other.
 func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"set_slot_answers_its_member", "xs = []\nxs.append({5, 6, 7})\nprint(xs[0][6])\n", "6\n"},
 		{"set_slot_under_a_dict_key", "d = {}\nd[\"a\"] = {5, 6, 7}\nprint(d[\"a\"][7])\n", "7\n"},
 		{"set_literal_answers_its_member", "print({5, 6, 7}[6])\n", "6\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_set.gy", tc.src)
 			_, pyCode := oracleTrap(t, path)
 			if pyCode == 0 {
@@ -474,6 +482,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_set_trap.gy", tc.src)
 			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
@@ -495,6 +504,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 // class id; the module's class table is what turns it back into `C` (in the TypeError) and `__main__.C`
 // (in the identity form). This is the bool-in-a-slot precedent, ADR 0259, applied one object further out.
 func TestASlotHoldingAnInstanceNamesItsOwnClass(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"membership of an instance slot",
@@ -528,6 +538,7 @@ func TestASlotHoldingAnInstanceNamesItsOwnClass(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_inst.gy", tc.src)
 			want, pyCode := oracleTrap(t, path)
 			if !strings.Contains(want, tc.want) {
@@ -564,6 +575,7 @@ func TestASlotHoldingAnInstanceNamesItsOwnClass(t *testing.T) {
 // address is attached to is the claim under test. The same handle printed by the old TagInt came out as the
 // slot number, so the two assertions below are not satisfied by the same output.
 func TestAnInstanceSlotPrintsItselfRatherThanItsHandle(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a bare construction",
@@ -597,6 +609,7 @@ func TestAnInstanceSlotPrintsItselfRatherThanItsHandle(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rt_inst_print.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok {
 				if !strings.HasPrefix(strings.TrimSpace(py), tc.want) {

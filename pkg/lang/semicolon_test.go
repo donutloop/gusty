@@ -22,6 +22,7 @@ import (
 // entry point enforces and another ignores.
 
 func TestSemicolonSeparatesStatementsOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"two_statements", "x = 5; print(x + 1)\n", "6\n"},
 		{"three_statements", "a = 1; b = 2; print(a + b)\n", "3\n"},
@@ -38,6 +39,7 @@ func TestSemicolonSeparatesStatementsOnTheCompiledBackend(t *testing.T) {
 		{"semicolon_does_not_end_the_block", "if True:\n    print(1); print(2)\nprint(3)\n", "1\n2\n3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused: %v", tc.src, err)
@@ -56,6 +58,7 @@ func TestSemicolonSeparatesStatementsOnTheCompiledBackend(t *testing.T) {
 // is a program that some entry points run and others refuse. Any error-level diagnostic here would put
 // `--jit`/`--aot` back on the refusal side while `--interp` kept answering.
 func TestSemicolonIsNotADiagnostic(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"x = 5; print(x + 1)\n",
 		"a = 1; b = 2; print(a + b)\n",
@@ -81,6 +84,7 @@ func TestSemicolonIsNotADiagnostic(t *testing.T) {
 // them are not two statements. It is a parse error rather than a lexer diagnostic so that every entry
 // point — interpreter, JIT, AOT, --emit-llvm, the REPL — gives the same verdict.
 func TestEmptyStatementIsAParseError(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -93,6 +97,7 @@ func TestEmptyStatementIsAParseError(t *testing.T) {
 		{"separator_inside_brackets", "a = (1; 2)\n", "expected \")\""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := parseProgram(tc.src)
 			if err == nil {
 				t.Fatalf("%q parsed; want a parse error", tc.src)
@@ -113,6 +118,7 @@ func TestEmptyStatementIsAParseError(t *testing.T) {
 // ';' is emitted mid-line, so the indent tracker must still see one INDENT/DEDENT pair per physical
 // line and must not treat the separator as the start of a block.
 func TestSemicolonDoesNotDisturbIndentation(t *testing.T) {
+	t.Parallel()
 	src := "def f():\n    a = 1; b = 2\n    return a + b\n\nprint(f())\nif True:\n    x = 1; print(x)\nprint(0)\n"
 	res, err := Compile(src)
 	if err != nil {

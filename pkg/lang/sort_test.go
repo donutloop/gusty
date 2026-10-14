@@ -24,6 +24,7 @@ func compileSrc(t *testing.T, src string) string {
 // TestSortAndReverseCallTheRuntimeHelpers is the call-site contract: the method lowers to the
 // runtime helper over the variable's handle, and nothing else.
 func TestSortAndReverseCallTheRuntimeHelpers(t *testing.T) {
+	t.Parallel()
 	sortMod := compileSrc(t, "xs = [3, 1, 2]\nxs.sort()\nprint(xs)\n")
 	for _, want := range []string{"@rt_sort(", "call void @rt_sort(i32 %h", "rt_print_list"} {
 		if !strings.Contains(sortMod, want) {
@@ -43,6 +44,7 @@ func TestSortAndReverseCallTheRuntimeHelpers(t *testing.T) {
 // index into @str_tab, so ordering by payload orders by the order strings first appeared in the
 // program, which agrees with alphabetical order often enough to survive a spot check.
 func TestStringSortComparesTextNotInternedIndex(t *testing.T) {
+	t.Parallel()
 	mod := compileSrc(t, "ys = [\"pear\", \"apple\", \"fig\"]\nys.sort()\nprint(ys)\n")
 	i := strings.Index(mod, "define internal i32 @rt_elem_gt")
 	if i < 0 {
@@ -61,6 +63,7 @@ func TestStringSortComparesTextNotInternedIndex(t *testing.T) {
 // TestSortMovesTagsWithPayloads applies the ADR 0187 pairing rule to the sort itself: an exchange
 // that moves payloads and leaves tags behind mislabels the list it sorted.
 func TestSortMovesTagsWithPayloads(t *testing.T) {
+	t.Parallel()
 	mod := compileSrc(t, "xs = [3, 1, 2]\nxs.sort()\nprint(xs)\n")
 	i := strings.Index(mod, "define internal void @rt_sort")
 	if i < 0 {
@@ -82,6 +85,7 @@ func TestSortMovesTagsWithPayloads(t *testing.T) {
 
 // TestSortedCopiesAndSortsTheCopy is the visible difference between the builtin and the method.
 func TestSortedCopiesAndSortsTheCopy(t *testing.T) {
+	t.Parallel()
 	mod := compileSrc(t, "ws = [3, 1, 2]\nprint(sorted(ws))\nprint(ws)\n")
 	if !strings.Contains(mod, "  %h") || !strings.Contains(mod, " = call i32 @rt_list_copy(i32 %") {
 		t.Fatalf("sorted(xs) on a variable must sort a copy:\n%s", mod)
@@ -101,6 +105,7 @@ func TestSortedCopiesAndSortsTheCopy(t *testing.T) {
 // TestSortedOfStringsIsNotFoldedByTheIntPath: the fold handles constant ints only, so a string
 // literal list must reach the runtime path rather than refuse.
 func TestSortedOfStringsIsNotFoldedByTheIntPath(t *testing.T) {
+	t.Parallel()
 	mod := compileSrc(t, "print(sorted([\"pear\", \"apple\"]))\n")
 	if !strings.Contains(mod, "call void @rt_sort(i32 %") {
 		t.Fatalf("sorted() over strings must reach the runtime sort:\n%s", mod)
@@ -110,6 +115,7 @@ func TestSortedOfStringsIsNotFoldedByTheIntPath(t *testing.T) {
 // TestMixedKindSortRefusesNamesTheRule: Python raises TypeError for a str/int mix instead of
 // inventing an order, and the compiled backend reports it rather than answering by payload.
 func TestMixedKindSortRefusesNamesTheRule(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = [1, \"a\"]\nxs.sort()\nprint(xs)\n",
 		"print(sorted([1, \"a\"]))\n",
@@ -133,6 +139,7 @@ func TestMixedKindSortRefusesNamesTheRule(t *testing.T) {
 // TestSortRejectsKeyAndReverseArgs: key= and reverse= need first-class functions (L11.7's other
 // half), so the refusal has to say that rather than pretend the argument was a count.
 func TestSortRejectsKeyAndReverseArgs(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, 2]\nxs.sort(key=len)\nprint(xs)\n")
 	if err == nil {
 		t.Fatal("sort(key=...) must not compile yet")
@@ -152,6 +159,7 @@ func TestSortRejectsKeyAndReverseArgs(t *testing.T) {
 // and the builtin does not, which is the property a program can see. (print(xs.sort()) rendering
 // as None is the bool/None repr debt pinned by probe_bool_value, so these check the list.)
 func TestSortingBehaviourOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [3, 1, 2]\nxs.sort()\nprint(xs)\n", "[1, 2, 3]\n"},
 		{"xs = [1, 2, 3]\nxs.reverse()\nprint(xs)\n", "[3, 2, 1]\n"},

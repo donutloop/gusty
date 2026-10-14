@@ -19,6 +19,7 @@ import (
 // the reference prints, what the compiled leg prints through the CLI, and what the `--aot` pipeline prints
 // after `llc`/`opt` have had their say about the module.
 func TestADictLiteralReadsItsEntryThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			name: "a_text_key",
@@ -87,6 +88,7 @@ func TestADictLiteralReadsItsEntryThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "dict_literal_key.gy", tc.src)
 			refOut, refCode := oracleTrap(t, path)
 			if refCode != 0 {
@@ -120,6 +122,7 @@ func TestADictLiteralReadsItsEntryThroughTheCLI(t *testing.T) {
 // about the program's execution, so it belongs in the runtime-error class with a traceback and a reachable
 // `except` — not in the compile door, which is where it had been since the constant read was written.
 func TestAMissingKeyOfADictLiteralExitsAsATrapThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, msg string }{
 		{
 			name: "a_text_key_the_literal_does_not_hold",
@@ -145,6 +148,7 @@ func TestAMissingKeyOfADictLiteralExitsAsATrapThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "dict_literal_trap.gy", tc.src)
 			refOut, refCode := oracleTrap(t, path)
 			if refCode == 0 {
@@ -183,6 +187,7 @@ func TestAMissingKeyOfADictLiteralExitsAsATrapThroughTheCLI(t *testing.T) {
 // program, wrapped, prints its handler's line and the line after it, and leaves at 0. That is the debugging
 // move a compile stop takes away, which is why these rows are the point of the change rather than a bonus.
 func TestTheLiteralDictsKeyErrorIsCaughtThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			name: "a_key_that_isnt_there",
@@ -196,6 +201,7 @@ func TestTheLiteralDictsKeyErrorIsCaughtThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "dict_literal_catch.gy", tc.src)
 			refOut, refCode := oracleTrap(t, path)
 			if refCode != 0 {
@@ -220,6 +226,7 @@ func TestTheLiteralDictsKeyErrorIsCaughtThroughTheCLI(t *testing.T) {
 // contract: the position this row does not cover leaves at 1 with a sentence naming the missing half, never
 // at 2 (a toolchain failure) and never at 0 with the payload printed as though it were the value.
 func TestTheOneWordPositionsOfALiteralDictReadRefuseAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			name: "an_entry_handed_back_by_a_return",
@@ -231,6 +238,7 @@ func TestTheOneWordPositionsOfALiteralDictReadRefuseAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "dict_literal_refuse.gy", tc.src)
 			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
@@ -253,6 +261,7 @@ func TestTheOneWordPositionsOfALiteralDictReadRefuseAtTheCLI(t *testing.T) {
 // TestTheDictLiteralKeyProgramIsAnAssertedMatrixRow keeps the corpus honest: the program this cycle added
 // has to be a row that asserts and matches on both legs, not one the matrix shrugs at.
 func TestTheDictLiteralKeyProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	matrix, err := os.ReadFile(filepath.Join(recordRoot, "integration", "conformance-matrix.json"))
 	if err != nil {
 		t.Fatalf("read the matrix (run `go test ./integration` once to write it): %v", err)

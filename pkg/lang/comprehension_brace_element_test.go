@@ -26,6 +26,7 @@ import (
 // from the display, because there the display *is* the whole expression the `for` completes.
 
 func TestBraceDisplayDoesNotStealTheEnclosingFor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		expr string
@@ -138,6 +139,7 @@ func shape(e Expr) string {
 // than hidden. The marks were re-measured for ADR 0247: `print(1 if d[0] == d[1] else 0)` over a
 // comprehension of set literals answers on both engines now, so it is no longer skipped.
 func TestBraceElementComprehensionRunsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -179,6 +181,7 @@ func TestBraceElementComprehensionRunsLikeCPython(t *testing.T) {
 // TestMisParsedShapeIsNotAcceptedAnymore pins the AST the old branch produced, so a regression that
 // quietly reintroduces it fails here even if some future printer makes the output look right again.
 func TestMisParsedShapeIsNotAcceptedAnymore(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("[{1, 2} for x in [1]]\n")
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +205,7 @@ func TestMisParsedShapeIsNotAcceptedAnymore(t *testing.T) {
 // ['a']; `print(out[0])` asked the compiler and printed 0. Every row here therefore prints the
 // container and reads a slot of it, because a half-set pair is exactly what the table cannot see.
 func TestComprehensionOverAOneKindContainerTagsItsElement(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"grown_text_list", "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out)\nprint(out[0])\n", "['a', 'b', 'c']\na\n"},
 		{"grown_text_list_every_slot", "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out[0])\nprint(out[1])\nprint(out[2])\n", "a\nb\nc\n"},
@@ -245,6 +249,7 @@ func TestComprehensionOverAOneKindContainerTagsItsElement(t *testing.T) {
 // dict by its entries, and marks the container it fills self-describing, because nothing static says
 // what its slots hold.
 func TestComprehensionOverAMixedContainerTagsItsLoopVariable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"mixed_list", "xs = []\nxs.append(1)\nxs.append(\"a\")\nxs.append(None)\nout = [x for x in xs]\nprint(out)\n", "[1, 'a', None]\n"},
 		{"mixed_list_every_slot", "xs = []\nxs.append(1)\nxs.append(\"a\")\nxs.append(None)\nout = [x for x in xs]\nprint(out[0])\nprint(out[1])\nprint(out[2])\n", "1\na\nNone\n"},
@@ -281,6 +286,7 @@ func TestComprehensionOverAMixedContainerTagsItsLoopVariable(t *testing.T) {
 // Gap R.78: a dict walked at the stride its entries really have, and an entry written with the tag its
 // key really carries (an interned index is text, not the integer it happens to equal).
 func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"text_key_is_findable_by_its_text", "d = {}\nd[\"a\"] = 1\nout = {k: 1 for k in d}\nprint(len(out))\nprint(out[\"a\"])\n", "1\n1\n"},
 		{"text_key_prints_as_text", "d = {}\nd[\"a\"] = 1\nout = {k: 1 for k in d}\nprint(out)\n", "{'a': 1}\n"},

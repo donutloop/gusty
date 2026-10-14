@@ -14,6 +14,7 @@ import (
 // out the second backend and left CPython as the only opinion that is not the compiler's own.
 
 func TestOracleLedgerOnlyDescribesRegisteredCases(t *testing.T) {
+	t.Parallel()
 	registered := map[string]bool{}
 	for _, c := range conformanceCases() {
 		registered[c.ID] = true
@@ -26,6 +27,7 @@ func TestOracleLedgerOnlyDescribesRegisteredCases(t *testing.T) {
 }
 
 func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
+	t.Parallel()
 	for _, c := range conformanceCases() {
 		switch c.Oracle {
 		case lang.OracleMatch:
@@ -79,6 +81,7 @@ func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
 // the call boundary. (It used to be probe_bool_in_a_container, whose disagreement ADR 0259 paid —
 // a stub check has to be pointed at a debt that is still open, or it proves nothing.)
 func TestOracleThirdLegIsNotAStub(t *testing.T) {
+	t.Parallel()
 	c := lang.ConformanceCase{ID: "programs/probe_bool_through_a_call", Name: "probe_bool_through_a_call.gy", Source: readProgramSrc("probe_bool_through_a_call")}
 	row := runLegs(t, c)
 
@@ -106,6 +109,7 @@ func TestOracleThirdLegIsNotAStub(t *testing.T) {
 // pin changed, the same real observation must be reported as drift. A harness that
 // cannot fail is not a harness.
 func TestOracleHarnessCanFail(t *testing.T) {
+	t.Parallel()
 	c := conformanceCaseByID(t, "programs/probe_print_atomic")
 	row := runLegs(t, c)
 	if len(row.OracleDrift) != 0 {
@@ -132,6 +136,7 @@ func TestOracleHarnessCanFail(t *testing.T) {
 }
 
 func TestOracleProbeRowsAreRecordedAsDebt(t *testing.T) {
+	t.Parallel()
 	m := conformanceMatrix(t)
 	seen := map[string]lang.ConformanceResult{}
 	for _, r := range m.Results {
@@ -159,6 +164,7 @@ func TestOracleProbeRowsAreRecordedAsDebt(t *testing.T) {
 // program in the parity corpus that stops matching CPython fails the build with a
 // message that says what to do, instead of waiting for someone to notice.
 func TestOracleCorpusHasNoUndocumentedDivergence(t *testing.T) {
+	t.Parallel()
 	m := conformanceMatrix(t)
 	for _, r := range m.Results {
 		if r.Case.Oracle == lang.OracleNA {

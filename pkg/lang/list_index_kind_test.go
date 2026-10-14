@@ -43,8 +43,10 @@ var badIndexRows = []struct {
 }
 
 func TestAnIndexThatIsNotAPositionNamesItsType(t *testing.T) {
+	t.Parallel()
 	for _, tt := range badIndexRows {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != "TypeError" || message != tt.message {
 				t.Fatalf("%q raised %s: %s, want TypeError: %s", tt.src, class, message, tt.message)
@@ -56,6 +58,7 @@ func TestAnIndexThatIsNotAPositionNamesItsType(t *testing.T) {
 // The trap must be the program's only output: the doors that used to print an element are the defect,
 // and a raise that leaves a line behind is a different answer from the reference's.
 func TestTheBadIndexRefusalDoesNotAnswerAsWell(t *testing.T) {
+	t.Parallel()
 	for _, tt := range badIndexRows {
 		res, err := JIT(tt.src, 0)
 		if err != nil {
@@ -75,6 +78,7 @@ func TestTheBadIndexRefusalDoesNotAnswerAsWell(t *testing.T) {
 // runs before the index is lowered, so the bad instruction is never emitted. This is the row that pins
 // the toolchain did not merely answer differently: it compiled.
 func TestTheListValuedIndexBuildsAModuleInsteadOfBreakingOne(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = [1, 2]\nprint(xs[[0]])",
 		"xs = [1, 2]\nprint(xs[{1: 2}])",
@@ -82,6 +86,7 @@ func TestTheListValuedIndexBuildsAModuleInsteadOfBreakingOne(t *testing.T) {
 		"xs = [1, 2]\nxs[[0]] = 1",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(src, 0)
 			if err != nil {
 				t.Fatalf("the toolchain failed on %q: %v", src, err)
@@ -99,6 +104,7 @@ func TestTheListValuedIndexBuildsAModuleInsteadOfBreakingOne(t *testing.T) {
 // The containers that still answer: a position is a position, a bool is an int, a slice is a slice,
 // and a dict or a set is subscripted by key — the door beside this one (Gap R.217, ADR 0328).
 func TestAPositionStillIndexesWhatItNamed(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -120,6 +126,7 @@ func TestAPositionStillIndexesWhatItNamed(t *testing.T) {
 			continue // the store rows are traps, asserted above
 		}
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, want %q", out, tt.want)
 			}
@@ -128,12 +135,14 @@ func TestAPositionStillIndexesWhatItNamed(t *testing.T) {
 }
 
 func TestTheBadIndexTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"try:\n    xs = [1, 2]\n    print(xs[\"a\"])\nexcept TypeError:\n    print(\"caught\")",
 		"try:\n    s = \"ab\"\n    print(s[1.5])\nexcept TypeError:\n    print(\"caught\")",
 		"try:\n    xs = [1, 2]\n    xs[\"a\"] = 1\n    print(\"stored\")\nexcept TypeError:\n    print(\"caught\")",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, src), "\n"); out != "caught" {
 				t.Fatalf("%q printed %q, want the handler's line", src, out)
 			}
@@ -145,6 +154,7 @@ func TestTheBadIndexTrapIsCatchable(t *testing.T) {
 // IS an integer (so `xs[True]` is a position), and nothing is invented for a name whose kind is only a
 // run-time fact.
 func TestThePositionQuestionIsAskedOfTheProgram(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		floatVars:    map[string]bool{"f": true},
 		listVars:     map[string]bool{"xs": true},
@@ -186,6 +196,7 @@ func TestThePositionQuestionIsAskedOfTheProgram(t *testing.T) {
 // The two sentences are the reference's, and they are not the same sentence: a list names the type
 // bare and a string quotes it.
 func TestTheTwoIndexSentences(t *testing.T) {
+	t.Parallel()
 	if got := badIndexMessage("str", false); got != "list indices must be integers or slices, not str" {
 		t.Fatalf("the list sentence is %q", got)
 	}
@@ -200,6 +211,7 @@ func TestTheTwoIndexSentences(t *testing.T) {
 // Which container the door is standing in decides the sentence, and a dict or a set is not this
 // door's at all.
 func TestOnlyTheContainersThatCountAsksThisQuestion(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		listVars:     map[string]bool{"xs": true},
 		mixedLists:   map[string]bool{"ml": true},
@@ -230,8 +242,10 @@ func TestOnlyTheContainersThatCountAsksThisQuestion(t *testing.T) {
 // The record leg: the retired engine's answer for each trap source, so the gate cannot be deleted
 // without deleting evidence the suite reads.
 func TestTheBadIndexRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tt := range badIndexRows {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, tt.src)
 			if rec.ExnType != "TypeError" || rec.ExnMsg != tt.message {
 				t.Fatalf("the record says %q raises %s: %s; the gate raises TypeError: %s — the reference is the referee",

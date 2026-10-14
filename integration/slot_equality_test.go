@@ -22,6 +22,7 @@ import (
 // today, so a compiled refusal is a divergence, not a limitation the program deserves.
 
 func TestSlotEqualityMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"mixed_slot_against_text", "xs = [1, \"a\"]\nprint(1 if xs[1] == \"a\" else 0)\n", "1\n"},
 		{"mixed_slot_the_other_answer", "xs = [1, \"a\"]\nprint(1 if xs[0] == \"a\" else 0)\n", "0\n"},
@@ -43,6 +44,7 @@ func TestSlotEqualityMatchesCPython(t *testing.T) {
 		{"nested_dict_of_lists", "d = {\"a\": [1, 2], \"b\": [3]}\nprint(1 if d[\"a\"] == [1, 2] else 0)\nprint(1 if d[\"b\"] == [1, 2] else 0)\n", "1\n0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "eq.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -66,6 +68,7 @@ func TestSlotEqualityMatchesCPython(t *testing.T) {
 // The comparison keeps the traps the read already had: an out-of-range position and a missing key
 // are the same failures they were for `print(xs[i])`, and they arrive as exceptions, not as exit 0.
 func TestSlotEqualityTrapsMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"position_out_of_range",
@@ -87,6 +90,7 @@ func TestSlotEqualityTrapsMatchCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "eq_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 ||
@@ -116,6 +120,7 @@ func TestSlotEqualityTrapsMatchCPython(t *testing.T) {
 // happened to be the number in the slot. It is refused now, in exit class 1, and the message names
 // the missing kind rather than blaming the shape of the program.
 func TestSlotEqualityRefusesAnUnprovableKind(t *testing.T) {
+	t.Parallel()
 	src := "def pick(c):\n    return \"z\"\n    return 7\n\nxs = [1, \"a\"]\nprint(1 if xs[0] == pick(1) else 0)\n"
 	path := writeSrc(t, t.TempDir(), "eq_refuse.gy", src)
 	if py, ok := cpythonOut(t, path); !ok || py != "0\n" {

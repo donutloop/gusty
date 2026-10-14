@@ -18,6 +18,7 @@ func cliTextOut(t *testing.T, backend, src string) (string, int) {
 // `not` and `if` are the same question about the same value; the compiled leg answered them
 // differently, which is the whole defect.
 func TestCLITextTruthAgreesWithTheReference(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print(not "x")`,
 		`print(not "")`,
@@ -50,6 +51,7 @@ func TestCLITextTruthAgreesWithTheReference(t *testing.T) {
 // A text-returning string method answers TEXT; before this the print road knew three of them and nine
 // printed their intern INDEX.
 func TestCLIStringMethodsAnswerText(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print("ab".zfill(5))`,
 		`print("42".zfill(5))`,
@@ -88,6 +90,7 @@ func TestCLIStringMethodsAnswerText(t *testing.T) {
 // cannot see, and the reason this row keeps its own test rather than a matrix entry (ADR 0302 retired
 // the second engine; the reference is what the compiled path is checked against now).
 func TestCLIZfillPadsAfterTheSignAgainstTheReference(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print("-42".zfill(5))`,
 		`print("+42".zfill(5))`,

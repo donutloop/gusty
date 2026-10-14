@@ -47,8 +47,10 @@ var pairForms = []struct {
 // TestCLIPairWritesWhatCPythonWrites drives each form through the human legs and, where a Python is
 // installed, through CPython itself.
 func TestCLIPairWritesWhatCPythonWrites(t *testing.T) {
+	t.Parallel()
 	for _, tc := range pairForms {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "pair.gy", tc.src)
 			if out := cliRun(t, "--aot", "--file", path); out != tc.want {
 				t.Errorf("interpreter leg wrote %q, want CPython's %q\nsource: %s", out, tc.want, tc.src)
@@ -75,6 +77,7 @@ func TestCLIPairWritesWhatCPythonWrites(t *testing.T) {
 // an i32; the pair pointed the same float renderer print uses at a capture buffer, so the double
 // arrives as the text a str() argument is anyway. CPython writes 3.0, and so do both legs.
 func TestDoubleIntoThePairIsRendered(t *testing.T) {
+	t.Parallel()
 	const src = "xs = []\nxs.append(6)\nprint(str(xs[0] / 2))\n"
 	path := writeSrc(t, t.TempDir(), "pair_double.gy", src)
 	if out := cliRun(t, "--aot", "--file", path); out != "3.0\n" {
@@ -92,6 +95,7 @@ func TestDoubleIntoThePairIsRendered(t *testing.T) {
 // TestJSONReportsThePair is the machine leg: an agent rendering a value asks for it as JSON and gets
 // the text and the type it renders as, from either backend, without scraping stdout.
 func TestJSONReportsThePair(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		expr, result, typ string
 	}{
@@ -124,6 +128,7 @@ func TestJSONReportsThePair(t *testing.T) {
 // job is that question. A program the pair renders correctly is a match (exit 0); a form the pair
 // cannot name yet is still reported, not swallowed.
 func TestPairAgreesWithTheOracle(t *testing.T) {
+	t.Parallel()
 	const agreeSrc = "xs = [1, 2]\nprint(str(xs))\nprint(repr(xs))\nprint(str([]))\nprint(repr(\"hi\"))\nprint(str(set()))\nprint(str(None))\nprint(repr(True))\nprint(str(1.5))\nprint(str([True, 1]))\nprint(repr([True, False]))\nprint(str({\"k\": True}))\n"
 	out, code := cliRunCode(t, "--oracle", agreeSrc)
 	if code == 2 {
@@ -148,6 +153,7 @@ func TestPairAgreesWithTheOracle(t *testing.T) {
 // be named, the CLI refuses with exit 1 and says which half is missing, on stderr, in the same
 // words for both halves. Exit 2 — the compiler rejecting its own module — is never acceptable here.
 func TestPairRefusalIsWrittenForTheAgent(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(str((1, 2)))\n",
 		"print(repr((1, 2)))\n",

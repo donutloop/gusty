@@ -3,6 +3,7 @@ package lang
 import "testing"
 
 func TestRawStringLiteral(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`print(r"a\nb")`)
 	if err != nil {
 		t.Fatalf("parse raw string: %v", err)
@@ -21,6 +22,7 @@ func TestRawStringLiteral(t *testing.T) {
 }
 
 func TestTripleQuotedString(t *testing.T) {
+	t.Parallel()
 	src := "print(\"\"\"line1\nline2\"\"\")\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -32,6 +34,7 @@ func TestTripleQuotedString(t *testing.T) {
 }
 
 func TestTripleDocstring(t *testing.T) {
+	t.Parallel()
 	src := "def f():\n    \"\"\"docs\"\"\"\n    return 1\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -49,6 +52,7 @@ func TestTripleDocstring(t *testing.T) {
 }
 
 func TestRawTripleString(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("print(r\"\"\"a\\nb\"\"\")\n")
 	if err != nil {
 		t.Fatalf("parse raw triple: %v", err)

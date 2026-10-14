@@ -7,6 +7,7 @@ import (
 )
 
 func TestGenerateSourceMap(t *testing.T) {
+	t.Parallel()
 	src := `def f():
     return 1
 class C:
@@ -59,6 +60,7 @@ def g():
 }
 
 func TestEmitSourceMap(t *testing.T) {
+	t.Parallel()
 	src := "def twice(x):\n    return x + x\ntwice(4)"
 	sm, err := EmitSourceMap(src)
 	if err != nil {
@@ -99,6 +101,7 @@ func TestEmitSourceMap(t *testing.T) {
 // line really carries the !dbg record the row claims, in the module the same map
 // describes — so a table nobody could verify against the artifact cannot ship.
 func TestSourceMapLineTableMatchesTheModule(t *testing.T) {
+	t.Parallel()
 	src := "def twice(x):\n    y = x + x\n    return y\ntwice(4)\nprint(1)"
 	sm, err := EmitSourceMap(src)
 	if err != nil {

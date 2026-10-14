@@ -101,6 +101,7 @@ func constantTrapBothLegs(t *testing.T, src, ourMsg, refMsg string) {
 // classes, each one a program the compiled backend used to refuse at compile time. The rows are in the
 // record, so a deletion is a test failure rather than a coverage loss.
 func TestAConstantTrapRaisesWhatTheRecordRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -191,7 +192,10 @@ func TestAConstantTrapRaisesWhatTheRecordRaises(t *testing.T) {
 			want: `TypeError: float() argument must be a string or a real number, not 'NoneType'`,
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) { constantTrapRecordLeg(t, tc.src, tc.want) })
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			constantTrapRecordLeg(t, tc.src, tc.want)
+		})
 	}
 }
 
@@ -201,6 +205,7 @@ func TestAConstantTrapRaisesWhatTheRecordRaises(t *testing.T) {
 // two columns are equal now, which IS the assertion: the compiled raise and CPython's raise are the same
 // sentence, at the same class, at the same exit code (roadmap Gap R.223).
 func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, ours, theirs string
 	}{
@@ -238,7 +243,10 @@ func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
 			theirs: "IndexError: list index out of range",
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) { constantTrapBothLegs(t, tc.src, tc.ours, tc.theirs) })
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			constantTrapBothLegs(t, tc.src, tc.ours, tc.theirs)
+		})
 	}
 }
 
@@ -249,6 +257,7 @@ func TestAConstantTrapRaisesWhatTheReferenceRaises(t *testing.T) {
 // it is made the compiler names the limit instead of either trapping (which would be the wrong error —
 // the number is fine, the slot is not) or answering it.
 func TestANumberWiderThanTheWordIsStillAnHonestRefusal(t *testing.T) {
+	t.Parallel()
 	const src = `print(int("99999999999999999999999999"))`
 	_, err := JIT(src, 0)
 	if err == nil {
@@ -272,6 +281,7 @@ func TestANumberWiderThanTheWordIsStillAnHonestRefusal(t *testing.T) {
 // no-argument forms answer 0 and 0.0. A trap that fires on a good literal is as wrong as a silent 0 on
 // a bad one.
 func TestTheConversionFoldsAnswerRatherThanTrap(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{src: `print(int(" 12 "))`, want: "12"},
 		{src: `print(int("+42"))`, want: "42"},
@@ -285,6 +295,7 @@ func TestTheConversionFoldsAnswerRatherThanTrap(t *testing.T) {
 		{src: `print(float())`, want: "0.0"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			got := strings.TrimSpace(captureStdout(t, tc.src))
 			if got != tc.want {
 				t.Fatalf("%q printed %q, want %q", tc.src, got, tc.want)
@@ -298,6 +309,7 @@ func TestTheConversionFoldsAnswerRatherThanTrap(t *testing.T) {
 // A compile error has no such second chance — and a program that dies at compile time cannot be
 // debugged by wrapping its reads, which is how people fix an index.
 func TestAConstantTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			name: "index_error_is_catchable",
@@ -326,6 +338,7 @@ func TestAConstantTrapIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := strings.TrimRight(captureStdout(t, tc.src), "\n")
 			if got != tc.want {
 				t.Fatalf("%q printed %q, want %q", tc.src, got, tc.want)
@@ -347,6 +360,7 @@ func TestAConstantTrapIsCatchable(t *testing.T) {
 // caller emits next lands after a terminator and the module never verifies (ADR 0166's exit 2). These
 // programs keep using values after the trap, in the same block.
 func TestAConstantTrapEndsItsBlockCleanly(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`x = 1
 y = [1,2][5]
@@ -365,6 +379,7 @@ except IndexError:
 print("done")`,
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			// JIT is the verifier's customer: it refuses a module the verifier rejects, and the
 			// toolchain test suite additionally checks every emitted module passes `opt -passes=verify`.
 			if _, err := JIT(src, 0); err != nil {
@@ -379,6 +394,7 @@ print("done")`,
 // second phrasing of its own — the failure mode the row had was a refusal, and a fold that raised with
 // a sentence only it used would have traded a refusal for a divergence.
 func TestTheTrapDoorSpeaksTheSharedSentenceTable(t *testing.T) {
+	t.Parallel()
 	if got, want := listIndexOutOfRange(), "list index out of range"; got != want {
 		t.Fatalf("listIndexOutOfRange() = %q, want %q", got, want)
 	}

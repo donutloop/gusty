@@ -70,10 +70,12 @@ var theMathQuestions = []struct{ name, src, want string }{
 // of CPython and of the compiled backend. The upper-case spelling is answered by the compiled leg only — the
 // reference has no `math.PI` to compare it with, which is the reason the lower-case names exist.
 func TestTheReferenceSpellsItsMathConstantsAndTheCompiledLegAnswers(t *testing.T) {
+	t.Parallel()
 	for _, c := range theMathConstants {
 		for _, spelling := range []string{c.ref, c.own} {
 			src := "import math\nprint(math." + spelling + ")\n"
 			t.Run(c.want+"as math."+spelling, func(t *testing.T) {
+				t.Parallel()
 				compiled := compiledMathAnswer(t, src)
 				if compiled != c.want {
 					t.Errorf("compiled printed %q, want %q", compiled, c.want)
@@ -94,8 +96,10 @@ func TestTheReferenceSpellsItsMathConstantsAndTheCompiledLegAnswers(t *testing.T
 // TestAModuleConstantAnswersTheQuestionsL116Owned is the same reference leg through the positions that used to
 // pour the double into an `i32`.
 func TestAModuleConstantAnswersTheQuestionsL116Owned(t *testing.T) {
+	t.Parallel()
 	for _, q := range theMathQuestions {
 		t.Run(q.name, func(t *testing.T) {
+			t.Parallel()
 			compiled := compiledMathAnswer(t, q.src)
 			if compiled != q.want {
 				t.Errorf("compiled printed %q, want %q", compiled, q.want)
@@ -111,10 +115,12 @@ func TestAModuleConstantAnswersTheQuestionsL116Owned(t *testing.T) {
 // TestTheExtensionsAnswerForBothSpellingsWithNoReferenceToAsk covers the four names the reference's module
 // does not carry, on the leg that can answer them.
 func TestTheExtensionsAnswerForBothSpellingsWithNoReferenceToAsk(t *testing.T) {
+	t.Parallel()
 	for _, c := range theMathExtensions {
 		for _, spelling := range []string{c.lower, c.upper} {
 			src := "import math\nprint(math." + spelling + ")\n"
 			t.Run(c.upper+" as math."+spelling, func(t *testing.T) {
+				t.Parallel()
 				if got := compiledMathAnswer(t, src); got != c.want {
 					t.Errorf("printed %q, want %q", got, c.want)
 				}
@@ -127,6 +133,7 @@ func TestTheExtensionsAnswerForBothSpellingsWithNoReferenceToAsk(t *testing.T) {
 // and not a second literal, so the two names cannot drift and the value is written in one place. A stdlib edit
 // that copies the number under both names passes every answer test and is exactly the shape that rots.
 func TestTheTwoSpellingsOfAModuleConstantAreOneDeclaration(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, "stdlib", "math.gy"))
 	if err != nil {
@@ -195,8 +202,10 @@ var theRecordedMathSources = []struct{ src, want string }{
 // TestTheRecordStillAnswersForTheNamesTheCorpusHolds is the record leg: a missing entry FAILS the case, so the
 // names cannot be dropped from the stdlib without the suite noticing which answer went away.
 func TestTheRecordStillAnswersForTheNamesTheCorpusHolds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range theRecordedMathSources {
 		t.Run(strings.TrimRight(strings.TrimPrefix(tc.src, "import math\n"), "\n"), func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 		})
 	}
@@ -207,6 +216,7 @@ func TestTheRecordStillAnswersForTheNamesTheCorpusHolds(t *testing.T) {
 // the table. `math.inf` and `math.nan` are on this list because the reference's module DOES have them — that
 // absence is roadmap Gap R.207's row, and it stays a refusal in words until someone pays it.
 func TestAMathNameTheModuleDoesNotDeclareIsRefusedInWords(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"import math\nprint(math.PI2)\n",
 		"import math\nprint(math.pi_)\n",
@@ -214,6 +224,7 @@ func TestAMathNameTheModuleDoesNotDeclareIsRefusedInWords(t *testing.T) {
 		"import math\nprint(math.nan)\n",
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(src)
 			if err == nil {
 				t.Fatalf("the compiler accepted %q, which asks for a name the module does not declare", src)

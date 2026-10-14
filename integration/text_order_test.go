@@ -14,6 +14,7 @@ import (
 // index comparison got wrong.
 
 func TestTextOrderingMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			"literal_pair_arriving_backwards",
@@ -107,6 +108,7 @@ func TestTextOrderingMatchesCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "order.gy", tc.src)
 			py, ok := cpythonOut(t, path)
 			if !ok {
@@ -134,6 +136,7 @@ func TestTextOrderingMatchesCPython(t *testing.T) {
 // missing, stay in the refusal exit class (never 2, which ADR 0166 reserves for the compiler's own
 // mistake), and leave the record answering the program.
 func TestTextOrderingStillRefusedHonestly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// Arithmetic on a text stays refused: ADR 0248 answered orderings, not this.
@@ -143,6 +146,7 @@ func TestTextOrderingStillRefusedHonestly(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "order_refuse.gy", tc.src)
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")

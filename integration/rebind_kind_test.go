@@ -19,6 +19,7 @@ import (
 )
 
 func TestAReboundContainerAtTheCLIMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a dict rebound to a list prints the list", "d = {1: 10}\nd = [3, 4]\nprint(d)\n", "[3, 4]\n"},
 		{"its first slot", "d = {1: 10}\nd = [3, 4]\nprint(d[0])\n", "3\n"},
@@ -67,6 +68,7 @@ func TestAReboundContainerAtTheCLIMatchesCPython(t *testing.T) {
 		{"a text set rebound to a number set", "s = {\"a\"}\ns = {1}\nprint(s)\n", "{1}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rebind_kind.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -88,6 +90,7 @@ func TestAReboundContainerAtTheCLIMatchesCPython(t *testing.T) {
 }
 
 func TestAReboundContainerRaisesTheWordsTheLastBindingEarns(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, msg string
 	}{
@@ -108,6 +111,7 @@ func TestAReboundContainerRaisesTheWordsTheLastBindingEarns(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rebind_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {
@@ -131,6 +135,7 @@ func TestAReboundContainerRaisesTheWordsTheLastBindingEarns(t *testing.T) {
 }
 
 func TestAReboundContainersTrapsStayCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the bounds trap is caught",
@@ -149,6 +154,7 @@ func TestAReboundContainersTrapsStayCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rebind_catch.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -168,6 +174,7 @@ func TestAReboundContainersTrapsStayCatchable(t *testing.T) {
 // are both worse than the refusal this row is careful about — and because the fix belongs to the handle
 // copy, not to the kind claim ADR 0341 settled.
 func TestTheAliasedContainerIsADebtRowNotAnAnswer(t *testing.T) {
+	t.Parallel()
 	const src = "y = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\n"
 	path := writeSrc(t, t.TempDir(), "rebind_alias_debt.gy", src)
 	if py, ok := cpythonOut(t, path); ok && py != "7\n7\n2\n" {
@@ -186,6 +193,7 @@ func TestTheAliasedContainerIsADebtRowNotAnAnswer(t *testing.T) {
 // with the reference's answer written into the roadmap row that owns them (Gap R.107, Gap R.256), and
 // never as answers this row promised.
 func TestWhatAReboundContainerStillOwesAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, phrase string }{
 		{
 			"max over a container variable (Gap R.107)",
@@ -199,6 +207,7 @@ func TestWhatAReboundContainerStillOwesAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rebind_owed.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -220,6 +229,7 @@ func TestWhatAReboundContainerStillOwesAtTheCLI(t *testing.T) {
 // TestASingleBindingContainerIsNotMovedByTheDoor is the negative control: the programs that always answered
 // must not have moved, including the slot read ADR 0241 licenses from a literal the name was bound to once.
 func TestASingleBindingContainerIsNotMovedByTheDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a literal list's slot", "xs = [1, 2]\nprint(xs[0])\n", "1\n"},
 		{"a literal list printed", "xs = [1, 2]\nprint(xs)\n", "[1, 2]\n"},
@@ -233,6 +243,7 @@ func TestASingleBindingContainerIsNotMovedByTheDoor(t *testing.T) {
 		{"a sorted literal", "print(sorted([3, 1, 2]))\n", "[1, 2, 3]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "rebind_single.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)

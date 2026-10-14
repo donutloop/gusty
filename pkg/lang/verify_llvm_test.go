@@ -6,6 +6,7 @@ import (
 )
 
 func TestVerifyModuleIRAcceptsGeneratedModule(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("s = 0\nfor i in range(10):\n    s = s + i\nprint(s)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -26,6 +27,7 @@ func TestVerifyModuleIRAcceptsGeneratedModule(t *testing.T) {
 }
 
 func TestVerifyModuleIROptLevels(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def f(x) -> int:\n    return x * 3\n\nprint(f(14))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -46,6 +48,7 @@ func TestVerifyModuleIROptLevels(t *testing.T) {
 // in the result. This is the shape of the two codegen bugs found this session
 // (a global passed where an i32 handle is required).
 func TestVerifyModuleIRRejectsBrokenModule(t *testing.T) {
+	t.Parallel()
 	broken := `@.str1 = private global [3 x i8] c"hi\00"
 define internal void @rt_set_elem(i32 %h, i32 %i, i32 %v) {
   ret void
@@ -75,6 +78,7 @@ entry:
 }
 
 func TestVerifyModuleIREmptyModule(t *testing.T) {
+	t.Parallel()
 	ver, err := VerifyModuleIR("   ", 0)
 	if err != nil {
 		t.Fatalf("empty module should not error: %v", err)
@@ -86,6 +90,8 @@ func TestVerifyModuleIREmptyModule(t *testing.T) {
 
 // TestVerifyModuleIRSkipsWithoutToolchain: no toolchain is a *known-unknown*,
 // never a pass — an unverified build must not look verified.
+//
+//parify:serial same `llc` switch as toolchain_error_test.go: the case is about the tool being absent.
 func TestVerifyModuleIRSkipsWithoutToolchain(t *testing.T) {
 	oldOpt, oldLLC := optCmd, llcCmd
 	defer func() { optCmd, llcCmd = oldOpt, oldLLC }()
@@ -108,6 +114,7 @@ func TestVerifyModuleIRSkipsWithoutToolchain(t *testing.T) {
 }
 
 func TestBuildReportsVerification(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := dir + "/p.gy"
 	writeFile(t, src, "def add(a, b) -> int:\n    return a + b\n\nprint(add(2, 3))\n")
@@ -135,6 +142,7 @@ func TestBuildReportsVerification(t *testing.T) {
 // TestEveryGeneratedModuleVerifies is the L8.2 contract in one place: modules
 // produced across the surface of the language all pass LLVM's verifier.
 func TestEveryGeneratedModuleVerifies(t *testing.T) {
+	t.Parallel()
 	progs := []string{
 		"print(1)",
 		"x = [1, 2, 3]\nprint(len(x))",

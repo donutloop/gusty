@@ -17,6 +17,7 @@ import (
 // conversion (1.0 for a function returning x + 7), and `str(1)` / `chr(1)` were emitted as the
 // program's call and then *used* as the built-in's string result, so llc rejected the module.
 func TestShadowedBuiltinsAgreeOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("shadowed_builtins")
 	want := "8\n9\n8\n9.5\n3\n4\n9\n3\n10\n"
 
@@ -40,6 +41,7 @@ func TestShadowedBuiltinsAgreeOnEveryPath(t *testing.T) {
 // TestShadowedBuiltinsCheckClean: the front end must not be the last holdout — a program that
 // shadows a built-in is legal, so it earns no diagnostic.
 func TestShadowedBuiltinsCheckClean(t *testing.T) {
+	t.Parallel()
 	prog, err := lang.Parse(readProgramSrc("shadowed_builtins"))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -54,6 +56,7 @@ func TestShadowedBuiltinsCheckClean(t *testing.T) {
 // TestShadowedBuiltinBatteryCompiles runs the single-name shapes, one name per module, which is
 // where the fold paths were individually reachable — a fold in one helper does not imply another.
 func TestShadowedBuiltinBatteryCompiles(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"str", "float", "chr", "int", "ord", "round", "abs", "sum", "len", "min", "max", "sorted", "reversed", "sqrt", "floor", "ceil", "any", "all"} {
 		src := "def " + name + "(x):\n    return x + 7\n\nprint(" + name + "(1))\n"
 		built, err := runAOTWithTimeout(t, src, 60*time.Second)

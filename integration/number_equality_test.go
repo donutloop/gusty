@@ -74,6 +74,7 @@ func bool2int(b bool) int {
 }
 
 func TestNumericEqualityMatchesCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	src, want := numericEqualitySource()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "numeric_equality.gy")
@@ -126,6 +127,7 @@ func TestNumericEqualityMatchesCPythonOnBothLegs(t *testing.T) {
 // comparison of doubles and the malformed static initializer the gap was about cannot come back:
 // the emitted module must not contain a list global holding a float's bits, only rt_float_new calls.
 func TestMixedNumericListEqualityIsNotAnsweredByTruncation(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(1 if [1] == [1.0] else 0)\n", "1\n"}, // Python: [1] == [1.0]
 		{"xs = [1]\nys = [1.0]\nprint(1 if xs == ys else 0)\n", "1\n"},

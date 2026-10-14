@@ -27,6 +27,7 @@ import (
 
 // TestAPairBoundNameIsAppendedToAListByWayOfItsTag pays the append road: the statement that grows a list with a value whose kind the compiler cannot state.
 func TestAPairBoundNameIsAppendedToAListByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"a verdict slot — appended, and the list printed", "xs = []\nxs.append(True)\nn = xs[0]\n", "ys = []\nys.append(n)\nprint(ys)\n", "[True]\n"},
 		{"a verdict slot — appended beside a literal element", "xs = []\nxs.append(True)\nn = xs[0]\n", "ys = []\nys.append(n)\nys.append(1)\nprint(ys)\n", "[True, 1]\n"},
@@ -66,6 +67,7 @@ func TestAPairBoundNameIsAppendedToAListByWayOfItsTag(t *testing.T) {
 		{"a text slot — appended, and the list rendered by str", "xs = []\nxs.append(\"a\")\nn = xs[0]\n", "ys = []\nys.append(n)\nprint(str(ys))\n", "['a']\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -81,6 +83,7 @@ func TestAPairBoundNameIsAppendedToAListByWayOfItsTag(t *testing.T) {
 
 // TestAPairBoundNameIsWrittenIntoAListSlotByWayOfItsTag pays the element-assignment road: one slot written, the tag written with it (ADR 0187), and the list promoted because its elements no longer share a kind.
 func TestAPairBoundNameIsWrittenIntoAListSlotByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"a verdict slot — written over an element the literal spelled", "xs = []\nxs.append(True)\nn = xs[0]\n", "ys = [0]\nys[0] = n\nprint(ys)\n", "[True]\n"},
 		{"a verdict slot — written into a list that holds others", "xs = []\nxs.append(True)\nn = xs[0]\n", "ys = [1, 2]\nys[1] = n\nprint(ys)\n", "[1, True]\n"},
@@ -96,6 +99,7 @@ func TestAPairBoundNameIsWrittenIntoAListSlotByWayOfItsTag(t *testing.T) {
 		{"a text slot — written into a list that holds others", "xs = []\nxs.append(\"a\")\nn = xs[0]\n", "ys = [1, 2]\nys[1] = n\nprint(ys)\n", "[1, 'a']\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -111,6 +115,7 @@ func TestAPairBoundNameIsWrittenIntoAListSlotByWayOfItsTag(t *testing.T) {
 
 // TestAPairBoundNameIsAddedToASetByWayOfItsTag pays the set's mutator: adding and tagging are one call, because a member added without its tag dedups against the payload alone.
 func TestAPairBoundNameIsAddedToASetByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"a verdict slot — added, and the set asked for membership", "xs = []\nxs.append(True)\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nprint(7 in s2)\n", "False\n"},
 		{"a verdict slot — added, and the set asked for membership", "xs = []\nxs.append(True)\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n", "True\n"},
@@ -138,6 +143,7 @@ func TestAPairBoundNameIsAddedToASetByWayOfItsTag(t *testing.T) {
 		{"a text slot — added, and the set measured", "xs = []\nxs.append(\"a\")\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nprint(len(s2))\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -153,6 +159,7 @@ func TestAPairBoundNameIsAddedToASetByWayOfItsTag(t *testing.T) {
 
 // TestAPairBoundNameIsWrittenIntoADictEntryByWayOfItsTag pays the dict's setitem road on both sides of the entry: the key and the value each bring their own tag, and the lookup that reads them back compares tags, not payloads.
 func TestAPairBoundNameIsWrittenIntoADictEntryByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"a verdict slot — written, and the dict printed", "xs = []\nxs.append(True)\nn = xs[0]\n", "d2 = {}\nd2[\"k\"] = n\nprint(d2)\n", "{'k': True}\n"},
 		{"a verdict slot — written and read back by its literal key", "xs = []\nxs.append(True)\nn = xs[0]\n", "d2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n", "True\n"},
@@ -212,6 +219,7 @@ func TestAPairBoundNameIsWrittenIntoADictEntryByWayOfItsTag(t *testing.T) {
 		{"a text slot — written, and the dict rendered by str", "xs = []\nxs.append(\"a\")\nn = xs[0]\n", "d2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n", "{'k': 'a'}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -230,6 +238,7 @@ func TestAPairBoundNameIsWrittenIntoADictEntryByWayOfItsTag(t *testing.T) {
 // hashable" for every value in the language — a list's handle is an i32 like any other. The tag is what knows
 // (Gap R.81, ADR 0310's literal road, ADR 0271's rule about what a raise says).
 func TestAPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, class, message string }{
 		{"a container slot — added, and the set asked for membership", "xs = []\nxs.append([1, 2])\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nprint(7 in s2)\n", "TypeError", "unhashable type: 'list'"},
 		{"a container slot — added, and the set asked for membership", "xs = []\nxs.append([1, 2])\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n", "TypeError", "unhashable type: 'list'"},
@@ -241,6 +250,7 @@ func TestAPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatTheReferenceRaises(t *
 		{"a container slot — added, and the set printed", "xs = []\nxs.append([1, 2])\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nprint(s2)\n", "TypeError", "unhashable type: 'list'"},
 		{"a container slot — added, and the set measured", "xs = []\nxs.append([1, 2])\nn = xs[0]\n", "s2 = set()\ns2.add(n)\nprint(len(s2))\n", "TypeError", "unhashable type: 'list'"}} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			res, err := JIT(src, 0)
 			if err != nil {
@@ -265,6 +275,7 @@ func TestAPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatTheReferenceRaises(t *
 // themselves. The rows fail if a road grows a one-word helper of its own, or if the payload starts being
 // stored as a `double`, which is the module `llc` rejects (ADR 0305's lesson).
 func TestAMutatedContainerTakesItsWordsFromTheTaggedDoors(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, pre, body, wantCall string
 		guards                    bool
@@ -276,6 +287,7 @@ func TestAMutatedContainerTakesItsWordsFromTheTaggedDoors(t *testing.T) {
 		{"dict setitem key", pairDictIntSlot, "d2 = {}\nd2[n] = 1\nprint(d2)\n", "call void @rt_dict_put_tagged(", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.pre + tc.body)
 			if err != nil {
 				t.Fatalf("refused a program the reference prints: %v", err)
@@ -313,12 +325,14 @@ func TestAMutatedContainerTakesItsWordsFromTheTaggedDoors(t *testing.T) {
 // ADR 0316 and lives in `pair_fold_test.go`. Exit 2 stays forbidden, because a refusal this backend emits is
 // a diagnostic (ADR 0166).
 func TestWhatTheMutationRoadsStillRefuseIsStillRefusedInWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, wantPhrase string }{
 		{"a double written into a dict slot", pairDictIntSlot, "d2 = {}\nd2[\"k\"] = xs[0] / 2\nprint(d2)\n", "stores an i32 word"},
 		{"a double written into a list slot", pairDictIntSlot, "ys = [0]\nys[0] = xs[0] / 2\nprint(ys)\n", "stores an i32 word"},
 		{"a pair handed through a parameter into a dict", pairDictIntSlot, "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", "roadmap L11.1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			res, err := JIT(src, 0)
 			if err == nil {
@@ -336,11 +350,13 @@ func TestWhatTheMutationRoadsStillRefuseIsStillRefusedInWords(t *testing.T) {
 // payload and its tag together, so the list prints `[3.5]` where an untagged append would print the number
 // `3` — a row worth pinning, because it is the near-miss that shows what the tagged doors are for.
 func TestTheArithmeticAnswerOfASlotIsAppendedToo(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"the double a slot's half is", pairDictIntSlot, "ys = []\nys.append(xs[0] / 2)\nprint(ys)\n", "[3.5]\n"},
 		{"that double beside a literal", pairDictIntSlot, "ys = []\nys.append(xs[0] / 2)\nys.append(1)\nprint(ys)\n", "[3.5, 1]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)

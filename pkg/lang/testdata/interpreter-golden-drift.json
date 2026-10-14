@@ -1915,5 +1915,11 @@
     "reason": "the trap's class or message differs from the record",
     "expected": "IndexError: index out of range",
     "actual": "IndexError: list index out of range"
+  },
+  {
+    "source": "x = sorted([3, 1, 2], reverse=True)\nx",
+    "reason": "the program trapped where the record has an answer",
+    "expected": "result \"[3, 2, 1]\"",
+    "actual": "trapped: exit 139"
   }
 ]

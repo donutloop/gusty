@@ -10,6 +10,7 @@ import (
 // tests pin that they cannot drift apart.
 
 func TestExceptionTableIsConsistent(t *testing.T) {
+	t.Parallel()
 	seen := map[int]string{}
 	for _, c := range exnClasses {
 		if !isExnClass(c.name) {
@@ -54,6 +55,7 @@ func diagHas(diags []Diagnostic, sub string) bool {
 // declared and never populated, so the record's most ordinary raise was an AOT
 // compile error (`undefined name "ValueError"`).
 func TestBuiltinExceptionClassesResolveInChecker(t *testing.T) {
+	t.Parallel()
 	for _, c := range exnClasses {
 		src := "raise " + c.name + "(\"boom\")\n"
 		if diags := analyzeSrc(t, src); diagHas(diags, "undefined name") {
@@ -86,6 +88,7 @@ func evalCapture(t *testing.T, src string) (string, error) {
 // Runtime errors used to abort instead — while the AOT caught them, i.e. the fast
 // backend was more correct than the reference one.
 func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src     string
 		exnType string
@@ -137,6 +140,7 @@ func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
 
 // TestBareRaiseOfClassWorks: `raise IndexError` (the class, not a call) raises that class.
 func TestBareRaiseOfClassWorks(t *testing.T) {
+	t.Parallel()
 	_, err := evalCapture(t, "raise IndexError\n")
 	ee, ok := err.(*TrapError)
 	if !ok {
@@ -150,6 +154,7 @@ func TestBareRaiseOfClassWorks(t *testing.T) {
 // TestTracebackNamesTheClass: Python's last line is `ValueError: boom`; dropping the
 // class made the report less specific than the raise that produced it.
 func TestTracebackNamesTheClass(t *testing.T) {
+	t.Parallel()
 	_, err := evalCapture(t, "raise ValueError(\"boom\")\n")
 	ee, ok := err.(*TrapError)
 	if !ok {
@@ -178,6 +183,7 @@ func TestTracebackNamesTheClass(t *testing.T) {
 // TestRaiseCarriesTheMessageIntoCodegen: the report and the matched code come from one
 // site, so `@exn_msg` must say what `@exn_code` means.
 func TestRaiseCarriesTheMessageIntoCodegen(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("raise ValueError(\"boom\")\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -202,6 +208,7 @@ func TestRaiseCarriesTheMessageIntoCodegen(t *testing.T) {
 // TestNoRaiseRuntimeWithoutARaise: a program that cannot raise carries none of the raise
 // machinery, so clean programs' IR stays byte-identical.
 func TestNoRaiseRuntimeWithoutARaise(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(42)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -216,6 +223,7 @@ func TestNoRaiseRuntimeWithoutARaise(t *testing.T) {
 // TestContainerReadsAreCheckedInIR pins the read-site tests that turn a silent wrong
 // value into a raise (the AOT used to print 0 for xs[5] and for a missing dict key).
 func TestContainerReadsAreCheckedInIR(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, 2, 3]\ni = 5\nprint(xs[i])\n")
 	if err != nil {
 		t.Fatalf("compile list read: %v", err)
@@ -245,6 +253,7 @@ func TestContainerReadsAreCheckedInIR(t *testing.T) {
 // flat [key, value] array was bounded by the entry count and so never reached the later
 // keys: `3 in {1: 2, 3: 4}` was false in compiled binaries.
 func TestDictMembershipScansEveryKey(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("d = {1: 2, 3: 4, 5: 6}\nprint(5 in d)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -261,6 +270,7 @@ func TestDictMembershipScansEveryKey(t *testing.T) {
 // every traceback said `File "prog", line 0` — a report that answers "where" with nothing,
 // on the compiled backend.
 func TestRaiseStatementCarriesItsLine(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("print(1)\nraise ValueError(\"x\")\n")
 	if err != nil {
 		t.Fatalf("parse: %v", err)

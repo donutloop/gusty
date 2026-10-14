@@ -18,6 +18,7 @@ import (
 // the wrong thing (that is Gap R.1, compiled coroutines running eagerly), and this test says so
 // explicitly rather than pretending: what must be true now is that the module compiles and runs.
 func TestR2ReproCompilesAndRuns(t *testing.T) {
+	t.Parallel()
 	src := `async def f(x):
     return x + 1
 
@@ -49,6 +50,7 @@ print(await g())
 // TestStringReturningFunctionRunsEverywhere is the await-free repro that re-scoped the gap: the same
 // source printed `h i` on the record and in CPython while the compiled leg died in llc.
 func TestStringReturningFunctionRunsEverywhere(t *testing.T) {
+	t.Parallel()
 	src := `def txt():
     return "hi"
 
@@ -79,6 +81,7 @@ print(txt())
 // R.16); then it was an honest refusal. ADR 0229 gave the table a count and a character
 // operation, so the loop now runs — and it must run with the right output, not merely be accepted.
 func TestRuntimeStringIterableAnswersRatherThanFallingThrough(t *testing.T) {
+	t.Parallel()
 	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
 	want, _, perr := lang.PythonRun(src)
 	if perr != nil {

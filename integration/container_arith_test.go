@@ -24,6 +24,7 @@ import (
 // exit-code contract has no code for "the compiler produced a module the assembler dislikes", because
 // that outcome is a bug to fix rather than a result to report (ADR 0166).
 func TestContainerArithmeticExitCodesStayOnTheContract(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print([0] * 3)", "print(3 * [0])", "print([1, 2] + [3])", "print([1] - [2])",
 		"print([1] / 2)", "print([1] // 2)", "print([1] % 2)", "print([1] ** 2)",
@@ -35,6 +36,7 @@ func TestContainerArithmeticExitCodesStayOnTheContract(t *testing.T) {
 	} {
 		src := src
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			_, code := cliRunMerged(t, "--aot", "--eval", src)
 			if code == 2 {
 				t.Errorf("exit 2 for %s — the contract's code for OUR bug (Gap R.175, ADR 0166)", src)
@@ -50,6 +52,7 @@ func TestContainerArithmeticExitCodesStayOnTheContract(t *testing.T) {
 // runs prints NOTHING, so "the compiled path agree" would pass on a pair of silent programs — the arms have to
 // be seen firing, on both, and against a live reference rather than a remembered one.
 func TestContainerArithmeticRaiseArmsRunOnBothLegs(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_a_container_in_arithmetic.gy")
 	dir := t.TempDir()
 	want, wantOK := cpythonPlainOut(t, dir, src)
@@ -87,6 +90,7 @@ func TestContainerArithmeticRaiseArmsRunOnBothLegs(t *testing.T) {
 // arithmetic operand is not), a comparison over two names of the same kind still orders, and a text still
 // repeats where the backend can do it.
 func TestContainerArithmeticKeepsTheWorkingAnswers(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ src, want string }{
 		{"def half(xs):\n    return xs[0] / 2\n\n\nprint(half([1.5]))\n", "0.75\n"},
 		{"a = [1]\nb = [2]\nprint(a < b)\n", "True\n"},
@@ -95,6 +99,7 @@ func TestContainerArithmeticKeepsTheWorkingAnswers(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			if got, _ := cliRunMerged(t, "--aot", "--eval", r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)

@@ -38,6 +38,7 @@ const classPointSrc = `class Point:
 `
 
 func TestClassPatternTableResolvesAliasesAndChains(t *testing.T) {
+	t.Parallel()
 	src := classPointSrc + "class Special:\n    pass\nAlias = Point\nSecond = Alias\nnotAClass = 5\n"
 	info := classPatternsOf(mustParse(t, src))
 	for name, want := range map[string]string{
@@ -59,6 +60,7 @@ func TestClassPatternTableResolvesAliasesAndChains(t *testing.T) {
 }
 
 func TestClassPatternTableTerminatesOnACycle(t *testing.T) {
+	t.Parallel()
 	// `a = b; b = a` has no class at the end of it. The walk is bounded, not recursive, so the
 	// answer is "no class" rather than a hang — this test is the difference.
 	info := classPatternsOf(mustParse(t, "a = b\nb = a\nc = c\n"))
@@ -70,6 +72,7 @@ func TestClassPatternTableTerminatesOnACycle(t *testing.T) {
 }
 
 func TestClassPatternAttributeUniverseCoversEveryName(t *testing.T) {
+	t.Parallel()
 	// The presence bitmap is cleared over this list at instantiation; a name missing from the list
 	// is a slot whose stale bit survives a heap-slot reuse. Capture names have no dot in front of
 	// them, so they can only be collected by knowing they are attribute names.
@@ -94,6 +97,7 @@ match c:
 }
 
 func TestClassPatternAsksWhetherTheInstanceHasTheAttribute(t *testing.T) {
+	t.Parallel()
 	src := classPointSrc + "c = Point(1, 2)\nmatch c:\n    case Point(x, y):\n        print(x)\n    case _:\n        print(0)\n"
 	mod := compileSrcIR(t, src)
 	if n := strings.Count(mod, "call i32 @rt_inst_has("); n < 2 {
@@ -120,6 +124,7 @@ func TestClassPatternAsksWhetherTheInstanceHasTheAttribute(t *testing.T) {
 }
 
 func TestAliasClassPatternInAFunctionIsNotAnEmptyOperand(t *testing.T) {
+	t.Parallel()
 	// The program that exited 2. What it must produce instead is a chain check against the class
 	// the alias denotes — the same lowering `case Point(x, y):` uses.
 	src := classPointSrc + "Alias = Point\ndef go(p):\n    match p:\n        case Alias(x, y):\n            print(x)\n        case _:\n            print(0)\ngo(Point(2, 3))\n"
@@ -134,6 +139,7 @@ func TestAliasClassPatternInAFunctionIsNotAnEmptyOperand(t *testing.T) {
 }
 
 func TestCasePatternForACallIsNotReadAsAVariable(t *testing.T) {
+	t.Parallel()
 	// `case f():` is an expression-equality pattern. The old branch read `f` as a variable because
 	// it had already decided any non-class name must be one.
 	src := "def f():\n    return 3\nmatch 3:\n    case f():\n        print(1)\n    case _:\n        print(0)\n"
@@ -145,6 +151,7 @@ func TestCasePatternForACallIsNotReadAsAVariable(t *testing.T) {
 }
 
 func TestMatchPatternOperandsAreNeverFoldedToAnInteger(t *testing.T) {
+	t.Parallel()
 	// A pattern that always matches used to return the string "1", which is not an i1. It is legal
 	// only because the combinators fold it; a `br i1 1` or `or i1 %t, 0` would be a rejected module.
 	for _, src := range []string{
@@ -161,6 +168,7 @@ func TestMatchPatternOperandsAreNeverFoldedToAnInteger(t *testing.T) {
 }
 
 func TestMissingAttributeFailsTheClassPattern(t *testing.T) {
+	t.Parallel()
 	// The record's half of the parity the compiled half now keeps: the arm is not taken, and
 	// the capture variables are never bound.
 	src := classPointSrc + "p = Point(2, 3)\nmatch p:\n    case Point(a, b):\n        99\n    case _:\n        7\n"
@@ -170,6 +178,7 @@ func TestMissingAttributeFailsTheClassPattern(t *testing.T) {
 }
 
 func TestAliasClassPatternMatchesInsideAFunction(t *testing.T) {
+	t.Parallel()
 	src := classPointSrc + "Alias = Point\ndef go(p):\n    match p:\n        case Alias(x, y):\n            return x + y\n    return -1\n"
 	if v := evalStr(t, src+"go(Point(2, 3))\n"); v != 5 {
 		// The important part is that the arm ran at all: reaching -1 means the pattern was lost.
@@ -178,6 +187,7 @@ func TestAliasClassPatternMatchesInsideAFunction(t *testing.T) {
 }
 
 func TestClassInstantiationDoesNotInheritPresence(t *testing.T) {
+	t.Parallel()
 	// A heap slot is reused; an instance must not inherit which attributes existed last time. The
 	// `ghost` attribute is never written anywhere in the program, so no slot may claim it — and 40
 	// instantiations are what hand a later instance somebody else's slot.

@@ -26,6 +26,7 @@ import (
 // the compiled artifact in the same case, and a disagreement is not allowed to become an expectation —
 // it goes on the reference-debt ledger with the roadmap row that owns it.
 func TestCLIStrAndReprOfARuntimeValueAnswerLikeCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"int slot, str", "xs = []\nxs.append(3)\nprint(str(xs[0]))\n"},
@@ -51,6 +52,7 @@ func TestCLIStrAndReprOfARuntimeValueAnswerLikeCPython(t *testing.T) {
 		{"nested in a container", "xs = []\nxs.append(3)\nys = [str(xs[0])]\nprint(ys)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "strpair.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -80,6 +82,7 @@ func TestCLIStrAndReprOfARuntimeValueAnswerLikeCPython(t *testing.T) {
 // itself raises — an out-of-range position and a missing key — rather than turn them into a rendering
 // failure or an empty string.
 func TestCLIStrOfASlotInheritsTheTrapsTheReadCarries(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ src, trap string }{
 		{"xs = [1]\nprint(str(xs[5]))\n", "IndexError: list index out of range"},
@@ -96,6 +99,7 @@ func TestCLIStrOfASlotInheritsTheTrapsTheReadCarries(t *testing.T) {
 // TestCLIStrOfASlotNeverEscapesAsAnExitTwo is the ADR 0166 half: none of these shapes may spend the
 // toolchain-rejection class, which is the one class that blames the compiler for a program.
 func TestCLIStrOfASlotNeverEscapesAsAnExitTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		"xs = []\nxs.append(3)\nprint(str(xs[0]))\n",
@@ -115,6 +119,7 @@ func TestCLIStrOfASlotNeverEscapesAsAnExitTwo(t *testing.T) {
 // rendered by the tag-reading door. A module that answers these shapes while carrying a second renderer is
 // the shape ADR 0258 exists to keep dead.
 func TestCompiledStrOfASlotCarriesOnePrinterNotTwo(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\nxs.append(\"a\")\nprint(str(xs[1]), repr(xs[1]))\n"
 	res, err := lang.Compile(src)
 	if err != nil {

@@ -61,6 +61,7 @@ func runIRAllowingTrap(t *testing.T, ir string) (int, string) {
 
 // TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend is the row itself.
 func TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the row: a floor and a remainder over a parameter that carries a double",
@@ -124,6 +125,7 @@ func TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -144,6 +146,7 @@ func TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend(t *testing.T) {
 // written, and the flooring itself is the same `llvm.floor` / corrected-`frem` pair the statement-level road
 // uses — one pair of rules, so the two roads cannot drift into two different definitions of `//`.
 func TestTheFlooringDoorIsTheRuntimeThatFloors(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 		ops       []string
@@ -160,6 +163,7 @@ func TestTheFlooringDoorIsTheRuntimeThatFloors(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compiled leg refused a program the oracle prints (%v): %s", err, tc.src)
@@ -188,6 +192,7 @@ func TestTheFlooringDoorIsTheRuntimeThatFloors(t *testing.T) {
 // is the tag. One source line, two arguments, two different sentences — and both catchable, because a trap
 // that cannot be caught by name is a different bug with better output.
 func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the floor by zero, over a parameter that carries a double",
@@ -213,6 +218,7 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compiled leg refused a program the reference only raises (%v): %s", err, tc.src)
@@ -235,6 +241,7 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 		{"the remainder", "def f(v):\n    return v % 0\n\ntry:\n    print(f(5.0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n"},
 	} {
 		t.Run("caught: "+tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != "caught\n" {
 				t.Errorf("interpreter: the handler did not run, stdout %q\nsrc: %s", out, tc.src)
 			}
@@ -256,6 +263,7 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 // prints 7.5. The arm question now walks its leaves (`slotArithmeticIsProven` recurses through `BinOp`,
 // `UnOp` and `CondExpr`), so each arm is answered by the same door the whole is.
 func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// The acceptance row ADR 0216 named: floor and remainder reassemble the value they were given,
@@ -325,6 +333,7 @@ func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend(t 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -346,6 +355,7 @@ func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnTheCompiledBackend(t 
 // the box exists (Gap R.146's remaining half). Pinning these as refusals is what keeps the nested answers
 // above from being bought with a silently truncated digit.
 func TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a floored pair answer appended to a list",
@@ -387,6 +397,7 @@ func TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err == nil {
 				_, out := runIRAllowingTrap(t, res.IR)

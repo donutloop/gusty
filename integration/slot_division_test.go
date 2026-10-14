@@ -27,6 +27,7 @@ import (
 // exit 2, the contract's class for a compiler that broke its own module (ADR 0166).
 
 func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"appended_int_slot", "xs = []\nxs.append(3)\nprint(xs[0] / 4)\n", "0.75\n"},
 		{"appended_float_slot", "xs = []\nxs.append(1.5)\nprint(xs[0] / 2)\n", "0.75\n"},
@@ -85,6 +86,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 		{"loop_variable_of_a_built_container", "xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 4)\n", "1.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_division.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -112,6 +114,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 // why the guard is emitted inside the arm that knows. A row that prints a number, or that gets refused
 // (`codegen:`) instead of trapped, fails: the compiler is answering a question about the program's data.
 func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, msg, oracle string }{
 		{"text_slot", "xs = []\nxs.append(\"a\")\nprint(xs[0] / 2)\n", "TypeError: unsupported operand type(s) for /: 'str' and 'int'", ""},
 		{"none_slot", "xs = []\nxs.append(None)\nprint(xs[0] / 2)\n", "TypeError: unsupported operand type(s) for /: 'NoneType' and 'int'", ""},
@@ -131,6 +134,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{"missing_key_still_raises", "d = {}\nd[\"a\"] = 4\nprint(d[\"z\"] / 2)\n", "KeyError", "KeyError"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_division_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			// The class is what both legs owe; the wording is CPython's except where the roadmap already
@@ -170,6 +174,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 // both legs, which is the difference between exit 3 and a compile-time exit 1 and the reason the arm may
 // not quietly become a refusal.
 func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"typeerror_is_caught",
@@ -188,6 +193,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_division_catch.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -203,6 +209,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotIsCatchable(t *testing.T) {
 // `llc`: each one is refused at the front end, with exit 1 and the missing half named, and none of them
 // reaches the module with an operand the compiler invented (the failure Gap R.96 measured).
 func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"two_built_slots",
@@ -226,6 +233,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 		// (floatbind.go, ADR 0274). The program is pinned green above instead.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_division_refuse.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -256,6 +264,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 // The increment now lives in a merge block of its own, so the entry list and the predecessors agree and
 // the program prints `[3.0]` on both legs.
 func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the_shape_the_gap_was_named_for", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n", "[3.0]\n"},
 		{"two_elements", "xs = []\nxs.append(6)\nxs.append(3)\nprint([v / 2 for v in xs])\n", "[3.0, 1.5]\n"},
@@ -269,6 +278,7 @@ func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
 		{"a_for_body_that_catches_its_own_trap", "xs = []\nxs.append(6)\nfor v in xs:\n    try:\n        print(v / 0)\n    except ZeroDivisionError:\n        print(\"caught\")\n", "caught\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_division.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -294,6 +304,7 @@ func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
 // the raise: the guard is inside the loop, the loop still returns to its header from one block, and the
 // class and sentence are the pair's (ADR 0253's rule about which `ZeroDivisionError` wording is earned).
 func TestTrueDivisionOfAComprehensionLoopVariableTrapsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, msg string }{
 		{"zero_literal_divisor_in_the_loop", "xs = []\nxs.append(6)\nprint([v / 0 for v in xs])\n", "ZeroDivisionError: division by zero"},
 		{"float_zero_literal_divisor", "xs = []\nxs.append(6)\nprint([v / 0.0 for v in xs])\n", "ZeroDivisionError: float division by zero"},
@@ -301,6 +312,7 @@ func TestTrueDivisionOfAComprehensionLoopVariableTrapsLikeCPython(t *testing.T) 
 		{"the_trap_is_behind_a_filter_that_keeps_the_item", "xs = []\nxs.append(6)\nxs.append(0)\nprint([v / 0 for v in xs if v > 1])\n", "ZeroDivisionError: division by zero"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_division_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {

@@ -19,6 +19,7 @@ func cliSliceOut(t *testing.T, backend, src string) (string, int) {
 // `call i32 @rt_slice(i32 @.lst1, …)`, a global address where a heap handle belongs. Exit 2 is the
 // compiler's own bug and the CLI must never report it for a program the reference runs.
 func TestCLISliceOfAContainerNeverSpendsExit2(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([1, 2, 3][1:])`,
 		`print([1, 2, 3][:2])`,
@@ -40,6 +41,7 @@ func TestCLISliceOfAContainerNeverSpendsExit2(t *testing.T) {
 // The wrong-number half: printing the handle said `1`, and a tag-less copy rendered an interned
 // text's INDEX as a number. Both at exit 0, which is the class an agent cannot tell from success.
 func TestCLISliceOfAContainerPrintsWhatTheReferencePrints(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([1, 2, 3][1:])`,
 		`print([1, 2, 3][:2])`,
@@ -70,6 +72,7 @@ func TestCLISliceOfAContainerPrintsWhatTheReferencePrints(t *testing.T) {
 
 // The arms added beside the text and element roads must not steal work that already answered.
 func TestCLISliceKeepsTheAnswersItAlreadyHad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print("abcdef"[2:])`, `cdef`},
 		{`print("abcdef"[1:3])`, `bc`},

@@ -93,6 +93,7 @@ func gateChain(e Expr) (*Name, int) {
 // source contains no slot read fails rather than skipping: the extractor used to answer only of a bare
 // subscript, so every `print(xs[0][0] + 1)` row skipped and the table certified nothing.
 func TestNumericSlotChainGate(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -167,6 +168,7 @@ func TestNumericSlotChainGate(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog, err := parseProgram(tc.src)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
@@ -194,6 +196,7 @@ func TestNumericSlotChainGate(t *testing.T) {
 }
 
 func TestNumericSlotArithEmitsTheRuntimeDoor(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src string }{
 		{"addition", "xs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\n"},
 		{"multiplication keeps the float", "xs = []\nxs.append([7.5, 8])\nprint(xs[0][0] * 2)\n"},
@@ -203,6 +206,7 @@ func TestNumericSlotArithEmitsTheRuntimeDoor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ir := slotIR(t, tc.src)
 			for _, want := range []string{"@rt_num_arith", "@rt_lift_num", "@rt_print_mixed_value"} {
 				if !strings.Contains(ir, want) {
@@ -218,6 +222,7 @@ func TestNumericSlotArithEmitsTheRuntimeDoor(t *testing.T) {
 // question must not carry the door, and a program that never touches a heap slot must not carry the heap
 // either — the same rule the float and heap blocks are emitted under (ADR 0173, ADR 0192).
 func TestNumericSlotArithDoesNotRideAlongInOtherModules(t *testing.T) {
+	t.Parallel()
 	ir := slotIR(t, "print(2 + 3)\nprint(1.5 * 2.0)\n")
 	for _, absent := range []string{"@rt_num_arith", "@rt_num_bad", "@rt_lift_num"} {
 		if strings.Contains(ir, absent) {
@@ -230,6 +235,7 @@ func TestNumericSlotArithDoesNotRideAlongInOtherModules(t *testing.T) {
 // the reference answers, and the answer this backend gives is a compile-time refusal that says which
 // half is missing — never an exit 2, and never a verdict (ADR 0166).
 func TestNumericSlotArithRefusalsNameTheMissingHalf(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"text beside a slot under +",
@@ -252,6 +258,7 @@ func TestNumericSlotArithRefusalsNameTheMissingHalf(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if tc.want == "" {
 				ir := slotIR(t, tc.src)
 				if !strings.Contains(ir, "@rt_print_mixed_value") {
@@ -272,6 +279,7 @@ func TestNumericSlotArithRefusalsNameTheMissingHalf(t *testing.T) {
 // what makes `except TypeError:` reach it (ADR 0228). A runtime helper that raised itself would be
 // unreachable to the program.
 func TestNumericSlotArithRaisesThroughTheEmittedDoor(t *testing.T) {
+	t.Parallel()
 	ir := slotIR(t, "xs = []\nxs.append(\"hi\")\nprint(-xs[0])\n")
 	for _, want := range []string{"@rt_num_arith", "@rt_num_bad", "store i32 1, i32* @exn_flag", "i32* @exn_code", "@exn_msg"} {
 		if !strings.Contains(ir, want) {
@@ -288,6 +296,7 @@ func TestNumericSlotArithRaisesThroughTheEmittedDoor(t *testing.T) {
 // is written, and the program carries on. runIR is the same executor the memory tests use, so this row
 // goes all the way through `llc` and back rather than stopping at a string match.
 func TestNumericSlotArithCatchesItsOwnTrap(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = []\nxs.append([7, 8])\ntry:\n    print(xs[0][0] * 1000000000)\nexcept OverflowError:\n    print(\"caught\")\n",
 		"xs = []\nxs.append(\"hi\")\ntry:\n    print(-xs[0])\nexcept TypeError:\n    print(\"caught\")\n",

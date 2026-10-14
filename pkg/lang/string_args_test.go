@@ -15,6 +15,7 @@ import (
 
 // TestStringArgumentsCompile: the shapes that used to be refused, and what they must produce.
 func TestStringArgumentsCompile(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -51,6 +52,7 @@ func TestStringArgumentsCompile(t *testing.T) {
 // TestUnsupportedStringUsesStayDiagnostics: the cases the runtime cannot serve yet report
 // themselves, name the backend that works, and never reach the verifier.
 func TestUnsupportedStringUsesStayDiagnostics(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -88,6 +90,7 @@ func TestUnsupportedStringUsesStayDiagnostics(t *testing.T) {
 // have its parameter treated as a string — printing 7 through the string table produced
 // "(null)", which is worse than a diagnostic.
 func TestMixedCallSitesAreNotGuessedAt(t *testing.T) {
+	t.Parallel()
 	mixed := "def f(s):\n    print(s)\n\nf(\"str\")\nf(7)\n"
 	if _, err := Compile(mixed); err == nil {
 		t.Fatalf("a parameter used as both string and int must not be classified as a string")
@@ -118,6 +121,7 @@ func TestMixedCallSitesAreNotGuessedAt(t *testing.T) {
 // TestNonStringArgumentsStillCompile is the non-regression half: the string machinery must not
 // disturb ordinary numeric or container arguments.
 func TestNonStringArgumentsStillCompile(t *testing.T) {
+	t.Parallel()
 	progs := []string{
 		"def twice(v):\n    return v + v\n\nprint(twice(21))\n",
 		"def total(xs) -> int:\n    t = 0\n    for x in xs:\n        t = t + x\n    return t\n\nprint(total([1, 2, 3]))\n",
@@ -142,6 +146,7 @@ func TestNonStringArgumentsStillCompile(t *testing.T) {
 // TestStrArgKindsIsDeterministic: the inference runs to a fixed point over a map, so an
 // unordered walk would make compilation reproducible only by luck.
 func TestStrArgKindsIsDeterministic(t *testing.T) {
+	t.Parallel()
 	src := "def a(s):\n    b(s)\n\ndef b(t):\n    print(t)\n\na(\"x\")\n"
 	var first string
 	for i := 0; i < 8; i++ {

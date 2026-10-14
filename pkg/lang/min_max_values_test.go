@@ -23,6 +23,7 @@ import (
 // and stays filed below.
 
 func TestMinMaxTakeValuesSideBySideAndKeepTheWinnersKind(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the row Gap R.104 was named for, now on both legs.
 		{
@@ -129,6 +130,7 @@ func TestMinMaxTakeValuesSideBySideAndKeepTheWinnersKind(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -145,6 +147,7 @@ func TestMinMaxTakeValuesSideBySideAndKeepTheWinnersKind(t *testing.T) {
 }
 
 func TestMinMaxRaiseWhenCandidatesHaveNoOrder(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		// The operator is not decoration: `min` asks `<`, `max` asks `>`, and the reference
 		// implementation puts the failing one in the sentence.
@@ -236,6 +239,7 @@ func TestMinMaxRaiseWhenCandidatesHaveNoOrder(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -259,6 +263,7 @@ func TestMinMaxRaiseWhenCandidatesHaveNoOrder(t *testing.T) {
 }
 
 func TestMinMaxTrapsAreCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the text/number TypeError",
@@ -277,6 +282,7 @@ func TestMinMaxTrapsAreCatchable(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused a catchable raise: %v", err)
@@ -295,6 +301,7 @@ func TestMinMaxTrapsAreCatchable(t *testing.T) {
 // reach a runtime error for these literals and refuses at the front end; Gap R.37 owns turning that
 // class of constant trap into an emitted raise.
 func TestMinMaxArityAndEmptyRaiseTheirOwnClasses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"min with no argument",
@@ -318,6 +325,7 @@ func TestMinMaxArityAndEmptyRaiseTheirOwnClasses(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -330,6 +338,7 @@ func TestMinMaxArityAndEmptyRaiseTheirOwnClasses(t *testing.T) {
 }
 
 func TestMinMaxLowerTheOrderingEachDomainActuallyHas(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 		want      []string
@@ -361,6 +370,7 @@ func TestMinMaxLowerTheOrderingEachDomainActuallyHas(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused: %v\nsrc: %s", err, tc.src)
@@ -384,6 +394,7 @@ func TestMinMaxLowerTheOrderingEachDomainActuallyHas(t *testing.T) {
 // of a parameter's inferred kind, is pinned at the wrong answer the tagged value word owns. None
 // reaches llc, and exit 2 remains the compiler's bug.
 func TestMinMaxShapesStillFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, aotWant, oracle, gap string }{
 		{
 			"runtime int and double candidates have no untagged winner word",
@@ -417,6 +428,7 @@ func TestMinMaxShapesStillFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if tc.gap == "roadmap Gap R.37" {
 				class, msg, _ := strings.Cut(tc.oracle, ": ")
 				ee := trapRun(t, tc.src)
@@ -452,6 +464,7 @@ func TestMinMaxShapesStillFiledNotFixed(t *testing.T) {
 // `max(True, 1)` keeps the verdict because the comparison is strict and the first candidate stays, and
 // `max(1, True)` keeps the number — a rule no “are the elements bools?“ answer can produce.
 func TestBoolCandidatesPrintWhatTheChosenCandidateIs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(min(True, 0), max(True, 1))\n", "0 True\n"},                // CPython's own line
 		{"print(max(True, 1), max(1, True))\n", "True 1\n"},                // the tie, both ways round

@@ -35,6 +35,7 @@ const (
 // read back by every position that asks the tag. The rows that decide the kind are the ones that used to
 // truncate — `min(2.5, 3)` is the float, `max(2.5, 3)` is the integer, `max(True, 1)` is the verdict.
 func TestAFoldAnswersWithTheWinnersOwnKind(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the varargs spelling, an int slot -------------------------------------------
 		{"an int slot — min of the slot and a literal", foldIntSlot + "print(min(n, 3))\n", "3\n"},
@@ -91,6 +92,7 @@ func TestAFoldAnswersWithTheWinnersOwnKind(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -109,6 +111,7 @@ func TestAFoldAnswersWithTheWinnersOwnKind(t *testing.T) {
 // (ADR 0271's "a trap says what the program wrote", applied to a comparison the program never wrote out).
 // A compile-time refusal for these would be a compiler opinion, not a language answer (ADR 0166, ADR 0228).
 func TestAFoldRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{"a number folded against a text (min)", foldIntSlot + "print(min(n, \"a\"))\n", "TypeError", "'<' not supported between instances of 'str' and 'int'"},
 		{"a number folded against a text (max)", foldIntSlot + "print(max(n, \"a\"))\n", "TypeError", "'>' not supported between instances of 'str' and 'int'"},
@@ -136,6 +139,7 @@ func TestAFoldRaisesWhatTheReferenceRaises(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := RecordedRunError(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program answered where the reference raises")
@@ -171,6 +175,7 @@ func TestAFoldRaisesWhatTheReferenceRaises(t *testing.T) {
 // program continues, and the exit code is success — a trap the program cannot reach is a refusal with extra
 // steps, and a refusal for a shape the reference answers is this row's own defect class.
 func TestAFoldTrapIsCatchableByTheProgramsOwnArm(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"min caught", foldIntSlot + "try:\n    print(min(n, \"a\"))\nexcept TypeError:\n    print(\"caught-the-ordering\")\n", "caught-the-ordering\n"},
 		{"max caught", foldNoneSlot + "try:\n    print(max(n, 1))\nexcept TypeError:\n    print(\"caught-the-none-ordering\")\n", "caught-the-none-ordering\n"},
@@ -179,6 +184,7 @@ func TestAFoldTrapIsCatchableByTheProgramsOwnArm(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -218,6 +224,7 @@ func foldMainBody(ir string) string {
 // no business in carries neither. A fold that grows a second road of its own is how a "fixed" feature
 // silently re-acquires the one-word bug (ADR 0309's rule, asked of the fold).
 func TestAFoldRunsThroughThePairDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src   string
 		must        []string
@@ -279,6 +286,7 @@ func TestAFoldRunsThroughThePairDoor(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the compiled backend refused a program the reference answers: %v", err)
@@ -322,6 +330,7 @@ func TestAFoldRunsThroughThePairDoor(t *testing.T) {
 // keyword argument (`sum(xs, start=1)`, `min(a, b, key=f)` — L11.7's call surface), a name bound to a list
 // (a built container's elements are Gaps R.95/R.83's row), and a program that owns the name `min`.
 func TestTheFoldDoorIsAskedOnlyOfTheShapeItOwns(t *testing.T) {
+	t.Parallel()
 	g := &irGen{}
 	ask := func(src string) (door int, args int, ok bool) {
 		prog, err := parseProgram(src)
@@ -358,6 +367,7 @@ func TestTheFoldDoorIsAskedOnlyOfTheShapeItOwns(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, got, ok := ask(tc.src)
 			if ok != tc.ok {
 				t.Fatalf("foldCallShape = %v, want %v", ok, tc.ok)
@@ -404,6 +414,7 @@ func TestTheFoldDoorIsAskedOnlyOfTheShapeItOwns(t *testing.T) {
 //     (Gap R.198) — folding the source order would answer `sum({n, 3})` as 6 where the reference answers 3;
 //   - a container literal as a fold operand (Gap R.198), which the operand lowering will not label.
 func TestWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 		must      []string
@@ -423,6 +434,7 @@ func TestWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("answered where the door still does not reach\n%s", firstLines(res.IR, 12))

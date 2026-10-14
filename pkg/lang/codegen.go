@@ -4028,7 +4028,7 @@ func GenerateIRWithOptions(prog *Program, opts *IRGenOptions) (string, error) {
 // text that was produced, so what `--debug-info` prints is what the module says
 // and not what the emitter hoped for.
 func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, error) {
-	imports, err := resolveImports(prog)
+	imports, err := resolveImports(prog, moduleSearchFor(opts))
 	if err != nil {
 		return "", nil, err
 	}
@@ -4041,11 +4041,10 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
-	// One scan answers both questions: `pairClosedOut` is the set the call above just computed, read here rather
-	// than re-derived (pairCallSpecs is pure, but a second walk over the program for a lookup would be
-	// wasted work on every Compile).
-	g.pairSpecs = pairCallSpecs(prog)
-	g.pairClosed = pairClosedOut
+	// One scan answers both questions, and answers them *to the caller*: the closed-position set used to be
+	// left in a package variable for codegen to pick up, which two compiles in flight cannot share. ADR 0343.
+	g.gcReport = gcReportWanted(opts)
+	g.pairSpecs, g.pairClosed = pairCallScan(prog)
 	g.pairRetDone = map[string]bool{}
 	// Seeded from the scan, not from what has been emitted so far: `def f(v): return other(v)` written
 	// above `def other(w): return w` asks whether other answers a pair while other's own body is still
@@ -4270,7 +4269,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		return "", nil, g.emitErr
 	}
 	g.gcCall(&b)
-	if GCReportEnabled() {
+	if g.gcReport {
 		// The compiled backend's own collector self-report (--gc-stats). The numbers
 		// live in the program's globals, so only its runtime can read them out; the
 		// line goes to fd 2 like every other tool-level line (ADR 0179, ADR 0181).
@@ -4389,10 +4388,10 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// textually — including rt_gc, which reads @gc.kinds — and a data half gated on the flag
 	// alone then stays home. That asymmetry is the same undefined-symbol class ADR 0173 made
 	// the whole rule about (found by ADR 0340).
-	if g.rooted || needHeap || GCReportEnabled() {
+	if g.rooted || needHeap || g.gcReport {
 		g.globals.WriteString(renderedRootGlobals())
 	}
-	if g.rooted || GCReportEnabled() {
+	if g.rooted || g.gcReport {
 		g.globals.WriteString(renderedRootRuntime())
 	}
 	out.WriteString(g.moduleSlotDecls)
@@ -4588,6 +4587,10 @@ func hoistAllocas(module string) string {
 }
 
 type irGen struct {
+	// gcReport is this module's own copy of the collector self-report switch, taken from the run's options
+	// (or the process default, for a caller that has no options). Reading the package switch from three
+	// places during emission made the answer depend on what some other compile had set (ADR 0343).
+	gcReport   bool
 	globals    strings.Builder
 	strGlobals strings.Builder // string constants, emitted at top of IR
 	decls      string

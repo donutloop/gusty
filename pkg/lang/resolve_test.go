@@ -8,6 +8,7 @@ import (
 // TestResolveImportPathStdlib verifies that on-disk stdlib modules resolve
 // from the discovered stdlib root, and that unknown modules return "".
 func TestResolveImportPathStdlib(t *testing.T) {
+	t.Parallel()
 	for _, mod := range []string{"math", "string", "collections", "json"} {
 		path := ResolveImportPath(mod)
 		if path == "" {
@@ -28,6 +29,7 @@ func TestResolveImportPathStdlib(t *testing.T) {
 // TestCompiledStdlibImport verifies that the compiled backend can `import math`
 // from the standard library and read a module constant.
 func TestCompiledStdlibImport(t *testing.T) {
+	t.Parallel()
 	out, err := runGoldenStdout(t, "import math\nprint(math.PI)\n")
 	if err != nil {
 		t.Fatalf("the compiled run of `import math` failed: %v", err)

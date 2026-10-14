@@ -9,6 +9,7 @@ import (
 // TestFFIBuild compiles an `extern fn` (C FFI) program end-to-end and runs it:
 // extern abs calls the C stdlib abs(), and strlen reads a string literal.
 func TestFFIBuild(t *testing.T) {
+	t.Parallel()
 	bin := t.TempDir() + "/gustyc"
 	buildCLI(t, bin)
 

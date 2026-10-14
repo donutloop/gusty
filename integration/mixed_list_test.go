@@ -12,6 +12,7 @@ import (
 // Before @heap_tags, every row here failed to compile on the AOT path with "a compiled list
 // holds either strings or numbers, not both".
 func TestMixedListsMatchCPythonOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -40,10 +41,9 @@ func TestMixedListsMatchCPythonOnTheCompiledBackend(t *testing.T) {
 // 0184's elements). Asserting the output only would pass with a collector that never ran, so
 // the gc line is checked too.
 func TestMixedListsSurviveCollection(t *testing.T) {
+	t.Parallel()
 	src := "for i in range(150):\n    xs = [i, \"a\", None, i]\n    if i == 149:\n        print(xs)\n"
-	lang.SetGCReport(true)
-	defer lang.SetGCReport(false)
-	jit, err := lang.JIT(src, 0)
+	jit, err := runReportingGC(src)
 	if err != nil {
 		t.Fatalf("JIT: %v", err)
 	}
@@ -58,6 +58,7 @@ func TestMixedListsSurviveCollection(t *testing.T) {
 // The loop case, against CPython: `print(x)` over a mixed list shows str() (unquoted), while
 // `print(xs)` shows repr() (quoted) -- the same tag, two rendering contexts (ADR 0185).
 func TestLoopOverMixedListMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -83,6 +84,7 @@ func TestLoopOverMixedListMatchesCPython(t *testing.T) {
 // an element writes its tag together with its payload. Expectations are CPython's own output,
 // checked against both of our backends.
 func TestMixedElementAccessMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -118,6 +120,7 @@ func TestMixedElementAccessMatchesCPython(t *testing.T) {
 // a wrong render rather than a crash. These build and rewrite mixed lists across collection
 // cycles and read elements back on both sides of them (ADR 0181, ADR 0187).
 func TestMixedElementAccessSurvivesCollection(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string

@@ -23,6 +23,7 @@ import (
 //     The refusal rows below record the answer CPython prints beside them, which is what makes each one
 //     a gap rather than a limitation the program deserves.
 func TestSlotOrderingAnswersOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -100,6 +101,7 @@ func TestSlotOrderingAnswersOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused: %v", tc.src, err)
@@ -118,6 +120,7 @@ func TestSlotOrderingAnswersOnBothLegs(t *testing.T) {
 // operand's type first, which is why an ordering whose sides could each be either family asks the tags
 // before it writes either sentence.
 func TestSlotOrderingTrapsWherePythonTraps(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -171,6 +174,7 @@ func TestSlotOrderingTrapsWherePythonTraps(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter class = %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -199,6 +203,7 @@ func TestSlotOrderingTrapsWherePythonTraps(t *testing.T) {
 // Where the tags would have to be guessed the program is refused, in words, before any module is
 // written. Each row records what CPython prints so the refusal stays a debt rather than a claim.
 func TestSlotOrderingRefusesWhatItCannotProve(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -221,6 +226,7 @@ func TestSlotOrderingRefusesWhatItCannotProve(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				out := captureStdout(t, tc.src)
@@ -241,6 +247,7 @@ func TestSlotOrderingRefusesWhatItCannotProve(t *testing.T) {
 // with IndexError before any comparison runs. The door reads tags and payloads in the block the
 // comparison starts in, so the trap it inherits is the one the read always raised.
 func TestSlotOrderingKeepsTheBoundsCheck(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -258,6 +265,7 @@ func TestSlotOrderingKeepsTheBoundsCheck(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the compiled backend refused a program the oracle traps on: %v", err)

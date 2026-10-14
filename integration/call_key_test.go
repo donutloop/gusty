@@ -22,6 +22,7 @@ import (
 //     roadmap row that owns the missing half.
 
 func TestKeyedOrdersAtTheCLIMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"sorted by absolute value", "print(sorted([3, 1, 2], key=abs))\n", "[1, 2, 3]\n"},
 		{"absolute value with a negative winner", "print(sorted([-3, 1, 2], key=abs))\n", "[1, 2, -3]\n"},
@@ -49,6 +50,7 @@ func TestKeyedOrdersAtTheCLIMatchCPython(t *testing.T) {
 		{"a keyed loop over text", "for v in sorted([\"bbb\", \"a\", \"cc\"], key=len):\n    print(v)\n", "a\ncc\nbbb\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "key_argument.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -70,6 +72,7 @@ func TestKeyedOrdersAtTheCLIMatchCPython(t *testing.T) {
 }
 
 func TestKeyedOrdersRaiseWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, msg string
 	}{
@@ -88,6 +91,7 @@ func TestKeyedOrdersRaiseWhatTheReferenceRaises(t *testing.T) {
 		{"empty max", "print(max([], key=abs))\n", "ValueError: max() iterable argument is empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "key_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.msg) {
@@ -111,6 +115,7 @@ func TestKeyedOrdersRaiseWhatTheReferenceRaises(t *testing.T) {
 }
 
 func TestKeyedTrapsAreCatchableAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"non-callable key caught", "try:\n    print(sorted([3, 1, 2], key=3))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 		{"invalid keyword caught", "try:\n    print(min([3, 1], reverse=True))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -118,6 +123,7 @@ func TestKeyedTrapsAreCatchableAtTheCLI(t *testing.T) {
 		{"the next order still answers", "try:\n    print(sorted([3, 1, 2], key=3))\nexcept TypeError:\n    print(sorted([3, 1, 2], key=abs))\n", "[1, 2, 3]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "key_catch.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -130,6 +136,7 @@ func TestKeyedTrapsAreCatchableAtTheCLI(t *testing.T) {
 }
 
 func TestKeyedOrdersThatRemainRefusedStayRefusedAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, phrase string }{
 		{"heap list sorted by key", "xs = [3, 1, 2]\nprint(sorted(xs, key=abs))\n", "key=abs"},
 		{"float-returning user key", "def f(x):\n    return x / 2\nprint(sorted([3, 1, 2], key=f))\n", "key=f"},
@@ -138,6 +145,7 @@ func TestKeyedOrdersThatRemainRefusedStayRefusedAtTheCLI(t *testing.T) {
 		{"builtin that cannot be called by this door", "print(sorted([3, 1, 2], key=hash))\n", "key=hash"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "key_refusal.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -157,6 +165,7 @@ func TestKeyedOrdersThatRemainRefusedStayRefusedAtTheCLI(t *testing.T) {
 }
 
 func TestUnkeyedOrdersAreNotMovedByTheKeyDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"sorted", "print(sorted([3, 1, 2]))\n", "[1, 2, 3]\n"},
 		{"empty sorted", "print(sorted([]))\n", "[]\n"},
@@ -170,6 +179,7 @@ func TestUnkeyedOrdersAreNotMovedByTheKeyDoor(t *testing.T) {
 		{"heap sorted loop", "xs = [3, 1, 2]\nfor v in sorted(xs):\n    print(v)\n", "1\n2\n3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "unkeyed_order.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -185,6 +195,7 @@ func TestUnkeyedOrdersAreNotMovedByTheKeyDoor(t *testing.T) {
 }
 
 func TestDocumentedPositionalRepeatFlagStillAnswers(t *testing.T) {
+	t.Parallel()
 	// This is a gusty-only extension: CPython's `sorted` takes exactly one positional iterable. The
 	// second word is this backend's documented repeat flag, not a reference option, so the CLI row
 	// compares the compiled leg against its own pinned answer (roadmap L11.7, ADR 0340).
@@ -193,6 +204,7 @@ func TestDocumentedPositionalRepeatFlagStillAnswers(t *testing.T) {
 		{"positional flag on singleton", "print(sorted([7], True))\n", "[7]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "unkeyed_repeat.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)

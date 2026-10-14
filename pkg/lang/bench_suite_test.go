@@ -14,6 +14,7 @@ import (
 // backends can actually run: a corpus case that only one backend supports would
 // silently stop measuring anything.
 func TestBenchCorpusLowers(t *testing.T) {
+	t.Parallel()
 	corpus := BenchCorpus()
 	if len(corpus) < 5 {
 		t.Fatalf("corpus too small: %d cases", len(corpus))
@@ -43,6 +44,7 @@ func TestBenchCorpusLowers(t *testing.T) {
 }
 
 func TestBenchDirLoadsGyFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, n := range []string{"b.gy", "a.gy", "notes.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("print(1)\n"), 0o600); err != nil {
@@ -68,6 +70,7 @@ func TestBenchDirLoadsGyFiles(t *testing.T) {
 // --- suite ----------------------------------------------------------------
 
 func TestBenchmarkSuiteReportsEveryCase(t *testing.T) {
+	t.Parallel()
 	cases := []BenchCase{
 		{Name: "b_loop", Source: "s = 0\nfor i in range(2000):\n    s = s + i\nprint(s)\n"},
 		{Name: "a_loop", Source: "s = 0\nfor i in range(1000):\n    s = s + i\nprint(s)\n"},
@@ -127,6 +130,7 @@ func syntheticSuite() *BenchSuite {
 }
 
 func TestCompareBenchSuiteGate(t *testing.T) {
+	t.Parallel()
 	base := &BenchBaseline{Cases: []BenchBaselineCase{
 		{Name: "hot", AOTMs: 2, BuildMs: 20},
 		{Name: "tiny", AOTMs: 0.05, BuildMs: 5},
@@ -186,6 +190,7 @@ func TestCompareBenchSuiteGate(t *testing.T) {
 }
 
 func TestBenchBaselineRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := syntheticSuite()
 	b := BaselineFromSuite(s)
 	if len(b.Cases) != 2 {
@@ -218,6 +223,7 @@ func TestBenchBaselineRoundTrip(t *testing.T) {
 // on the compiled backend, and a baseline snapshotted from the same run passes its own
 // gate (self-consistency, so the test cannot be flaky on absolute timings).
 func TestBenchmarkCorpusRuns(t *testing.T) {
+	t.Parallel()
 	s := BenchmarkSuite(BenchCorpus(), 1, 1)
 	if s.Totals.Ran < len(BenchCorpus()) {
 		for _, c := range s.Cases {

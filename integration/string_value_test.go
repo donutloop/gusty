@@ -11,6 +11,7 @@ import (
 // back as exit 2, "LLVM rejected what we emitted", for an ordinary program.
 
 func TestStringValuesMatchCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"compare_variable_and_literal", "x = \"hi\"\nprint(1 if x == \"hi\" else 0)\n", "1\n"},
 		{"compare_two_variables", "a = \"hi\"\nb = \"hi\"\nprint(1 if a == b else 0)\n", "1\n"},
@@ -60,6 +61,7 @@ func TestStringValuesMatchCPythonOnBothLegs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "strings.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -79,6 +81,7 @@ func TestStringValuesMatchCPythonOnBothLegs(t *testing.T) {
 // because the compiled leg is covered in string_subscript_test.go, and a two-engine table would have
 // let one leg drift unnoticed again (ADR 0225).
 func TestStringSubscriptPrintsTextOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	path := writeSrc(t, t.TempDir(), "str_index.gy", "s = \"abc\"\nprint(s[1])\nprint(s[-1])\n")
 	out, code := cliRunCode(t, "--aot", path)
 	if code != 0 {
@@ -99,6 +102,7 @@ func TestStringSubscriptPrintsTextOnTheCompiledBackend(t *testing.T) {
 // in scope — the container being iterated — so the two reads agree. Pinned here on the compiled
 // engine, where the divergence lived, and cross-checked against CPython.
 func TestPrintingAnElementOfAFreshComprehensionListMatchesCPython(t *testing.T) {
+	t.Parallel()
 	src := "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names if n == \"a\"]\nprint(len(out))\nprint(out[0])\n"
 	path := writeSrc(t, t.TempDir(), "comp_elem.gy", src)
 	if py, ok := cpythonOut(t, path); ok && py != "1\na\n" {
@@ -116,6 +120,7 @@ func TestPrintingAnElementOfAFreshComprehensionListMatchesCPython(t *testing.T) 
 // TestCompiledStringHolesRefuseRatherThanReject keeps the ADR 0166 contract on the shapes that are
 // still out of reach: each is a refusal (exit 1, a message) rather than an `llc` rejection (exit 2).
 func TestCompiledStringHolesRefuseRatherThanReject(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"index_a_sorted_result", "xs = [\"b\", \"a\"]\nprint(sorted(xs)[0])\n"},
 		// str_of_a_number_compiled used to sit here as a hole: str(x) for a variable x refused.
@@ -123,6 +128,7 @@ func TestCompiledStringHolesRefuseRatherThanReject(t *testing.T) {
 		// TestCompiledStringWritesAnswerAtRuntime rather than pinned here.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "hole.gy", tc.src)
 			// stdout and the exit code come from one helper, the message from the other: the
 			// refusal is written to stderr, and a test that read only stdout would call every

@@ -12,6 +12,7 @@ import (
 // global and llc rejected the module -- exit 2, blaming the compiler for a source program.
 
 func TestStringLiteralInValueContextIsInterned(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = \"hi\"\nprint(1 if x == \"hi\" else 0)\n")
 	if err != nil {
 		t.Fatalf("comparing a string with a literal must compile: %v", err)
@@ -30,6 +31,7 @@ func TestStringLiteralInValueContextIsInterned(t *testing.T) {
 }
 
 func TestFoldedStringResultsAreInterned(t *testing.T) {
+	t.Parallel()
 	// Folded paths (concatenation of constants, a string-method fold) are string *values* too;
 	// they used to hand back the global, and `x.upper() == "HI"` was an invalid module.
 	for _, src := range []string{
@@ -48,6 +50,7 @@ func TestFoldedStringResultsAreInterned(t *testing.T) {
 }
 
 func TestFStringInterpolatesAStringThroughItsText(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("n = \"world\"\nprint(f\"hi {n}\")\n")
 	if err != nil {
 		t.Fatalf("an f-string over a string variable must compile: %v", err)
@@ -58,6 +61,7 @@ func TestFStringInterpolatesAStringThroughItsText(t *testing.T) {
 }
 
 func TestMethodStringResultIsKnownToItsCallers(t *testing.T) {
+	t.Parallel()
 	src := "class Dog:\n    def sound(self) -> str:\n        return \"woof\"\n\nprint(Dog().sound())\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -83,6 +87,7 @@ func TestMethodStringResultIsKnownToItsCallers(t *testing.T) {
 // TestMethodStringResultIsKnownToItsCallers' rule, one door earlier: the same index, reached through a
 // builtin call instead of a literal.
 func TestStrResultOfAFuncIsKnownToItsCallers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want, irWant string
 	}{
@@ -131,6 +136,7 @@ func TestStrResultOfAFuncIsKnownToItsCallers(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -152,6 +158,7 @@ func TestStrResultOfAFuncIsKnownToItsCallers(t *testing.T) {
 }
 
 func TestCallArgumentInterningDoesNotSplitAnInstruction(t *testing.T) {
+	t.Parallel()
 	// The interning call is an instruction of its own; it must be emitted before the call line it
 	// feeds, or the operand list is torn in half (`call i32 @f(i32 %x  %t = call ...`).
 	res, err := Compile("class G:\n    def greet(self, who: str) -> str:\n        return \"hi\"\n\nprint(G().greet(\"x\"))\n")
@@ -169,6 +176,7 @@ func TestCallArgumentInterningDoesNotSplitAnInstruction(t *testing.T) {
 }
 
 func TestStringAttrReadPrintsText(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def __init__(self):\n        self.w = \"hi\"\n\nprint(C().w)\n"
 	res, err := Compile(src)
 	if err != nil {

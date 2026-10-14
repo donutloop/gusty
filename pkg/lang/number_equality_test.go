@@ -13,6 +13,7 @@ import (
 // one nobody thought to test.
 
 func TestIntFloatEqualityIsSymmetric(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		left, op, right string
 		want            string
@@ -29,6 +30,7 @@ func TestIntFloatEqualityIsSymmetric(t *testing.T) {
 	for _, tc := range cases {
 		name := fmt.Sprintf("%s %s %s", tc.left, tc.op, tc.right)
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(tc.want) == "1"
 			got := captureStdout(t, fmt.Sprintf("print((%s %s %s))\n", tc.left, tc.op, tc.right))
 			// A verdict prints as a verdict. The two strings here used to be 1 and 0, which is
@@ -49,6 +51,7 @@ func TestIntFloatEqualityIsSymmetric(t *testing.T) {
 // operand orders, through the record. 300 comparisons, checked against values computed here
 // from the Python rules rather than from anything the implementation printed.
 func TestCrossTypeComparisonGrid(t *testing.T) {
+	t.Parallel()
 	ints := []string{"0", "1", "2", "-3", "7"}
 	floats := []string{"0.0", "1.0", "2.5", "-3.0", "-0.0"}
 	ops := []string{"==", "!=", "<", "<=", ">", ">="}
@@ -87,6 +90,7 @@ func TestCrossTypeComparisonGrid(t *testing.T) {
 // literal comparison can be answered by constant folding, and folding the same rule wrongly is a
 // third answer, so the variable path is asserted separately.
 func TestNumericEqualityThroughVariables(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 1.0\nprint((a == b))\nprint((b == a))\nprint((a != b))\nc = 2.5\nd = 2\nprint((c == d))\nprint((c < d))\nprint((d < c))\n"
 	got := captureStdout(t, src)
 	want := "True\nTrue\nFalse\nFalse\nFalse\nTrue\n"
@@ -99,6 +103,7 @@ func TestNumericEqualityThroughVariables(t *testing.T) {
 // between a number and a container or a string is False, not an error and not an accident of
 // handle comparison.
 func TestEqualityWithNonNumbersIsStillFalse(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print((1 == [1]))\n",
 		"print((1.0 == [1.0]))\n",
@@ -116,6 +121,7 @@ func TestEqualityWithNonNumbersIsStillFalse(t *testing.T) {
 // element equality inherits the numeric rule, so a list of ints equals the list of the same values
 // as floats.
 func TestContainerEqualityComparesElementsAcrossTypes(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{"print(([1] == [1.0]))\n", "True\n"},
 		{"print(([1, 2] == [1, 2.0]))\n", "True\n"},
@@ -134,6 +140,7 @@ func TestContainerEqualityComparesElementsAcrossTypes(t *testing.T) {
 // TestIdentityIsNotEquality guards the neighbouring rule: `is` asks about identity and must not
 // pick up the numeric coercion, or `x is y` would start answering a value question.
 func TestIdentityIsNotEquality(t *testing.T) {
+	t.Parallel()
 	if got := captureStdout(t, "x = 1\ny = 1.0\nprint((x is y))\n"); got != "False\n" {
 		t.Fatalf("`1 is 1.0` printed %q; identity must stay identity", got)
 	}

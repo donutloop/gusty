@@ -18,6 +18,7 @@ func cliIterOut(t *testing.T, backend, src string) (string, int) {
 // the record must answer these the way the reference does — they are exit-0 wrong numbers, not
 // refusals, which is the class an agent cannot distinguish from success.
 func TestCLIIteratesATextLikeTheReference(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([c for c in "abc"])`,
 		`print([c for c in "abc" if c != "b"])`,
@@ -55,6 +56,7 @@ func TestCLIIteratesATextLikeTheReference(t *testing.T) {
 // The compiled leg may refuse (exit 1) but must never answer wrongly at exit 0. A refusal here is a
 // road an earlier cycle has not lifted, so it is reported rather than pinned.
 func TestCLICompiledLegNeverInventsATextIteration(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([c for c in "abc"])`,
 		`print(max("abc"))`,
@@ -84,6 +86,7 @@ func TestCLICompiledLegNeverInventsATextIteration(t *testing.T) {
 
 // The three roads that ask "iterate this text" must give the same characters.
 func TestCLIForAndComprehensionAgreeOverAText(t *testing.T) {
+	t.Parallel()
 	forLoop := "for c in \"abc\":\n    print(c)\n"
 	comp := "print([c for c in \"abc\"])\n"
 	forWant, ok := cpythonPlainOut(t, t.TempDir(), forLoop)

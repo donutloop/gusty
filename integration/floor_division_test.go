@@ -40,6 +40,7 @@ func floorGridSource(t *testing.T) string {
 }
 
 func TestFloorDivisionMatchesCPythonOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	src := floorGridSource(t)
 	oracle, oracleErr, perr := lang.PythonRun(src)
 	if perr != nil {
@@ -59,6 +60,7 @@ func TestFloorDivisionMatchesCPythonOnTheCompiledBackend(t *testing.T) {
 // truncate, so this is the assertion that would fail if a future change floored `%` and left `//`
 // truncating (the state the record was in before Gap R.28).
 func TestCompiledFloorIdentity(t *testing.T) {
+	t.Parallel()
 	src := ""
 	for _, a := range []int64{9, -9, 7, -7, 1, -1} {
 		for _, b := range []int64{2, -2, 3, -3} {

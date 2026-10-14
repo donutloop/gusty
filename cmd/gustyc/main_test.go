@@ -35,12 +35,14 @@ func cli(t *testing.T, args ...string) string {
 }
 
 func TestCLIVersion(t *testing.T) {
+	t.Parallel()
 	if got := cli(t, "--version"); !strings.Contains(got, "gustyc") {
 		t.Fatalf("version output = %q", got)
 	}
 }
 
 func TestCLIEval(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--eval", "x = 2 + 3\nx")
 	if got != "5\n" {
 		t.Fatalf("eval got %q, want 5", got)
@@ -48,6 +50,7 @@ func TestCLIEval(t *testing.T) {
 }
 
 func TestCLIEvalString(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--eval", "s = \"hi\"\ns")
 	if got != "hi\n" {
 		t.Fatalf("string eval got %q, want hi", got)
@@ -55,6 +58,7 @@ func TestCLIEvalString(t *testing.T) {
 }
 
 func TestCLILang(t *testing.T) {
+	t.Parallel()
 	if got := cli(t, "--lang"); !strings.Contains(got, "statements:") {
 		t.Fatalf("--lang output = %q", got)
 	} else if !strings.Contains(got, "values: "+strings.Join(lang.ValueTagNames(), " ")) {
@@ -80,6 +84,7 @@ func TestCLILang(t *testing.T) {
 }
 
 func TestCLIVerify(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--verify", "def f(x):\n    return x * 2")
 	if got != "ok\n" {
 		t.Fatalf("verify got %q, want ok", got)
@@ -87,6 +92,7 @@ func TestCLIVerify(t *testing.T) {
 }
 
 func TestCLIJSON(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--json", "--eval", "x = 1 + 2\nx")
 	if !strings.Contains(got, `"result": "3"`) {
 		t.Fatalf("json eval got %q", got)
@@ -94,6 +100,7 @@ func TestCLIJSON(t *testing.T) {
 }
 
 func TestCLISchema(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--schema")
 	// The schema must be valid, self-describing JSON (draft-07).
 	var v map[string]any
@@ -109,6 +116,7 @@ func TestCLISchema(t *testing.T) {
 }
 
 func TestCLIEmitLLVMOptLevel(t *testing.T) {
+	t.Parallel()
 	// --opt-level must come before --emit-llvm (emit-llvm is a string flag
 	// that consumes the next argument as its value).
 	ir0 := cli(t, "--opt-level=0", "--emit-llvm=\"hi\"")
@@ -124,6 +132,7 @@ func TestCLIEmitLLVMOptLevel(t *testing.T) {
 }
 
 func TestCLIEmitLLVMIndexCallElems(t *testing.T) {
+	t.Parallel()
 	// Element access into list-producing call expressions in the AOT codegen:
 	// keys(), values(), sorted(...), reversed(...), split(...). The emitted IR
 	// must contain the exact element constant selected by the literal index.
@@ -144,6 +153,7 @@ func TestCLIEmitLLVMIndexCallElems(t *testing.T) {
 }
 
 func TestCLIEmitLLVMScalarMinMax(t *testing.T) {
+	t.Parallel()
 	// min/max accept a single scalar value (treated as a one-element
 	// collection); the emitted IR must contain the scalar itself.
 	for _, tc := range []struct{ src, want string }{
@@ -158,6 +168,7 @@ func TestCLIEmitLLVMScalarMinMax(t *testing.T) {
 }
 
 func TestCLIJSONType(t *testing.T) {
+	t.Parallel()
 	// --json --eval emits a structured result with a dynamic type field.
 	out := cli(t, "--json", "--eval=x = 42\nx")
 	var doc struct {
@@ -180,6 +191,7 @@ func TestCLIJSONType(t *testing.T) {
 // CLI: `--jit --eval` compiles, links, dlopen's, and runs the generated
 // native `main`, returning the same stdout as the AST interpreter.
 func TestCLIJIT(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--jit", "--eval", "x = 6\nprint(x * 7)\n")
 	if got != "42\n" {
 		t.Fatalf("jit eval output = %q, want 42", got)
@@ -190,6 +202,7 @@ func TestCLIJIT(t *testing.T) {
 // the backend that produced it (Gap M.2: an agent that asked for AOT must be able
 // to see that it got AOT rather than inferring it from the flag list).
 func TestCLIJITJSON(t *testing.T) {
+	t.Parallel()
 	got := cli(t, "--jit", "--json", "--eval", "print(2 + 3)\n")
 	const want = `{"output": "5\n", "backend": "aot", "exit": 0, "result": null, "type": "None"}` + "\n"
 	if got != want {
@@ -222,6 +235,7 @@ func cliExit(t *testing.T, args ...string) (string, int) {
 }
 
 func TestCheckModeExitCodes(t *testing.T) {
+	t.Parallel()
 	// clean source -> exit 0, "ok" printed
 	_, ec := cliExit(t, "--check", "def add(a: int, b: int) -> int:\n    return a + b\nx = add(1, 2)\n")
 	if ec != 0 {
@@ -241,6 +255,7 @@ func TestCheckModeExitCodes(t *testing.T) {
 }
 
 func TestCheckModeJSON(t *testing.T) {
+	t.Parallel()
 	out, ec := cliExit(t, "--json", "--check", "def f() -> int:\n    return \"bad\"\n")
 	if ec != 1 {
 		t.Fatalf("json check exit=%d, want 1", ec)
@@ -263,6 +278,7 @@ func TestCheckModeJSON(t *testing.T) {
 }
 
 func TestCheckFilesSubcommand(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bad := dir + "/bad.gy"
 	if err := os.WriteFile(bad, []byte("def greet(name: str) -> str:\n    return name + \"!\"\ny = greet(42)\n"), 0644); err != nil {
@@ -343,6 +359,7 @@ func benchCLICombined(t *testing.T, args ...string) (string, int) {
 // program also carries warnings used to print the warnings and exit 1 without ever
 // saying what failed — the error was only reachable through --json.
 func TestCLIBuildFailureStatesItsReason(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := dir + "/prog.gy"
 	// A warning (a non-exhaustive match) plus a codegen refusal (unsupported call). The
@@ -372,6 +389,7 @@ func TestCLIBuildFailureStatesItsReason(t *testing.T) {
 // BuildResult must travel with the error, so a script sees the diagnostics and the
 // reason together.
 func TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := dir + "/prog.gy"
 	if err := os.WriteFile(src, []byte("x = 1 + \"a\"\nprint(x)\nprint(enumerate([1, 2]))\n"), 0o600); err != nil {
@@ -399,6 +417,7 @@ func TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure(t *testing.T) {
 }
 
 func TestCLIBenchSuiteJSON(t *testing.T) {
+	t.Parallel()
 	out, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--json")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
@@ -451,6 +470,7 @@ func TestCLIBenchSuiteJSON(t *testing.T) {
 }
 
 func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	// Measure once and build a synthetic baseline from the observation: every
@@ -612,6 +632,7 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 }
 
 func TestCLIBenchDir(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	prog := dir + "/hot.gy"
 	if err := os.WriteFile(prog, []byte("s = 0\nfor i in range(2000):\n    s = s + (i * 7) % 101\nprint(s)\n"), 0o600); err != nil {
@@ -643,6 +664,7 @@ type irVerificationReport struct {
 }
 
 func TestCLIVerifyLLVMJSON(t *testing.T) {
+	t.Parallel()
 	out, code := benchCLI(t, "--json", "--verify-llvm", "def f(x) -> int:\n    return x * 2\n\nprint(f(3))\n")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
@@ -663,6 +685,7 @@ func TestCLIVerifyLLVMJSON(t *testing.T) {
 }
 
 func TestCLIVerifyLLVMHuman(t *testing.T) {
+	t.Parallel()
 	out, code := benchCLI(t, "--verify-llvm", "xs = [i * 2 for i in range(3)]\nprint(xs)\n")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
@@ -675,6 +698,7 @@ func TestCLIVerifyLLVMHuman(t *testing.T) {
 // TestCLIVerifyLLVMRejectsFlagAsSource: a value-taking flag followed by another
 // flag would otherwise compile the string "--json" as a program.
 func TestCLIVerifyLLVMRejectsFlagAsSource(t *testing.T) {
+	t.Parallel()
 	_, code := benchCLI(t, "--verify-llvm", "--json", "print(1)")
 	if code != exitUsage {
 		t.Errorf("exit = %d, want %d (usage)", code, exitUsage)
@@ -682,6 +706,7 @@ func TestCLIVerifyLLVMRejectsFlagAsSource(t *testing.T) {
 }
 
 func TestCLIBuildCarriesVerifierVerdict(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("def add(a, b) -> int:\n    return a + b\n\nprint(add(2, 3))\n"), 0o644); err != nil {
@@ -764,6 +789,7 @@ func cliCombined(t *testing.T, args ...string) (string, int) {
 // its alias, but a positional argument reached no branch at all: the CLI printed the usage
 // text and exited 0 without compiling anything.
 func TestCLIPositionalSourcePathRuns(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p1.gy")
 	if err := os.WriteFile(src, []byte("print(21 * 2)\n"), 0o644); err != nil {
@@ -784,6 +810,7 @@ func TestCLIPositionalSourcePathRuns(t *testing.T) {
 }
 
 func TestCLIPositionalSourceWithTrailingFlags(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p2.gy")
 	if err := os.WriteFile(src, []byte("x = 7\nprint(x)\n"), 0o644); err != nil {
@@ -802,6 +829,7 @@ func TestCLIPositionalSourceWithTrailingFlags(t *testing.T) {
 // A mistyped path must not be read as a program: `gustyc prog.gy` in the wrong directory used
 // to fail with a *runtime* "undefined name prog", blaming the user's code for a shell mistake.
 func TestCLIMissingSourceFileIsAUsageError(t *testing.T) {
+	t.Parallel()
 	out, code := cliCombined(t, filepath.Join(t.TempDir(), "absent.gy"))
 	if code != 4 {
 		t.Errorf("missing .gy path exit = %d, want 4 (output %q)", code, out)
@@ -813,6 +841,7 @@ func TestCLIMissingSourceFileIsAUsageError(t *testing.T) {
 
 // A positional that is not a path at all is source text, the way `--eval` is.
 func TestCLIPositionalSourceTextEvaluates(t *testing.T) {
+	t.Parallel()
 	out, code := cliCombined(t, "print(6 * 7)")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (output %q)", code, out)
@@ -826,6 +855,7 @@ func TestCLIPositionalSourceTextEvaluates(t *testing.T) {
 // interpreter, so "I ran this program compiled" could mean "I interpreted it", and AOT-only
 // bugs hid behind the default path.
 func TestCLIReportsWhichBackendRan(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("print(6 * 7)\n"), 0o644); err != nil {
@@ -861,6 +891,7 @@ func TestCLIReportsWhichBackendRan(t *testing.T) {
 // --show-backend is the human-visible form of the same fact, and it must not
 // contaminate program output: stdout stays the program's, per ADR 0169.
 func TestCLIShowBackendGoesToStderr(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("print(1 + 1)\n"), 0o644); err != nil {
@@ -901,6 +932,7 @@ func TestCLIShowBackendGoesToStderr(t *testing.T) {
 // lang.CompareBenchSuite watch nothing — a green gate that gated nothing is the failure ADR 0166
 // counts as ours, and a script left saying --bench-gate=interpreter must hear about it at the flag.
 func TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone(t *testing.T) {
+	t.Parallel()
 	for _, gate := range []string{"interpreter", "both", "interp"} {
 		got, code := cliCombined(t, "--bench-suite", "--bench-gate", gate, "--bench-runs", "1")
 		if code != 4 {
@@ -917,6 +949,7 @@ func TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone(t *testing.T) {
 }
 
 func TestCLIRetiredInterpFlagIsAUsageError(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("print(1)\n"), 0o644); err != nil {
@@ -944,6 +977,7 @@ func TestCLIRetiredInterpFlagIsAUsageError(t *testing.T) {
 // usage error is about the flag, not about the program. Keeping the two claims in one case is what
 // stops a future "just ignore unknown flags" convenience from turning the retirement into silence.
 func TestCLIRetiredFlagDoesNotCostAWorkingProgram(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
 	if err := os.WriteFile(src, []byte("xs = []\nxs.append(3)\nprint(xs[0])\n"), 0o644); err != nil {
@@ -961,6 +995,7 @@ func TestCLIRetiredFlagDoesNotCostAWorkingProgram(t *testing.T) {
 // TestCLIGCStats: --gc-stats reports the collector without polluting the
 // program's stdout, and carries the same numbers as data under --json (L7.2).
 func TestCLIGCStats(t *testing.T) {
+	t.Parallel()
 	prog := "acc = 0\nfor k in range(400):\n    row = [k, k]\n    acc = acc + row[1]\nprint(acc)\n"
 	got, code := cliCombined(t, "--eval", prog, "--gc-stats")
 	if code != 0 {
@@ -1026,6 +1061,7 @@ func TestCLIGCStats(t *testing.T) {
 // and the machine path have to say what it found.
 
 func TestCLIDebugInfoJSON(t *testing.T) {
+	t.Parallel()
 	out := cli(t, "--debug-info", "def total(n):\n    s = 0\n    return s\n\ntotal(2)\n", "--json")
 	var doc struct {
 		File      string `json:"file"`
@@ -1065,6 +1101,7 @@ func TestCLIDebugInfoJSON(t *testing.T) {
 }
 
 func TestCLIEmitLLVMHonoursDebug(t *testing.T) {
+	t.Parallel()
 	// The IR an agent inspects before linking has to be the IR a --debug build links:
 	// same module, line records and all. --emit-llvm prints the module itself (the
 	// artifact an agent pipes into llc), so the check is on the text.
@@ -1082,6 +1119,7 @@ func TestCLIEmitLLVMHonoursDebug(t *testing.T) {
 }
 
 func TestCLIDebugBuildReportsTheArtifact(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "line.gy")
 	if err := os.WriteFile(src, []byte("def total(n):\n    s = 0\n    s = s + n\n    return s\n\nprint(total(2))\n"), 0o644); err != nil {
@@ -1137,6 +1175,7 @@ func TestCLIDebugBuildReportsTheArtifact(t *testing.T) {
 }
 
 func TestCLIDebugIsOptIn(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "plain.gy")
 	if err := os.WriteFile(src, []byte("x = 1\nprint(x)\n"), 0o644); err != nil {

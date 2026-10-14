@@ -58,6 +58,7 @@ func pyArity(t *testing.T, dir, src string) (string, int) {
 
 // TestAWrongArityCallToAVariableHeldCallableNeverExitsZero is the wrong-number table at the CLI.
 func TestAWrongArityCallToAVariableHeldCallableNeverExitsZero(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, wantSub string }{
 		{"lambda handed an extra argument", "g = lambda x: x * 2\nprint(g(1, 2))\n", "too many arguments"},
 		{"lambda handed nothing", "g = lambda x: x * 2\nprint(g())\n", "missing argument"},
@@ -66,6 +67,7 @@ func TestAWrongArityCallToAVariableHeldCallableNeverExitsZero(t *testing.T) {
 		{"a def'd callee through a name", "def f(x):\n    return x * 2\n\nh = f\nprint(h(1, 2))\n", "too many arguments"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "arity.gy", tc.src)
 			py, pyCode := pyArity(t, dir, tc.src)
@@ -97,6 +99,7 @@ func TestAWrongArityCallToAVariableHeldCallableNeverExitsZero(t *testing.T) {
 // TestCallsThatShouldAnswerStillAnswerAtTheCLI is the guard against an over-broad count: defaults,
 // keywords, methods, recursion and a lambda through a parameter all keep working on the compiled path.
 func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"defaults filled", "def g(a, b=2, c=3):\n    return a + b + c\n\nprint(g(1))\nprint(g(1, 5))\nprint(g(1, 5, 6))\n", "6\n9\n12\n"},
 		{"keywords out of order", "def g(a, b=2, c=3):\n    return a + b + c\n\nprint(g(c=9, a=1))\n", "12\n"},
@@ -108,6 +111,7 @@ func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 		{"a nested def", "def outer(x):\n    def inner(y):\n        return y * 2\n\n    return inner(x) + 1\n\nprint(outer(5))\n", "11\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "arity_ok.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -154,6 +158,7 @@ func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 // TestTheAritySentenceNamesTheCalleeTheWayTheReferenceDoes is the CLI wording row: a reader is never
 // shown the compiler's generated `lambda_0`.
 func TestTheAritySentenceNamesTheCalleeTheWayTheReferenceDoes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "arity_name.gy", "g = lambda x: x\nprint(g(1, 2))\n")
 	out, _ := cliArity(t, "--aot", "--file", gy)

@@ -117,6 +117,7 @@ func citize(id, path, test, why string) string {
 
 // TestTheRoadmapsCitationsResolve is the guard: the tracker cites files and cases that exist.
 func TestTheRoadmapsCitationsResolve(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	text := string(mustReadArtifact(t, filepath.Join(root, "roadmap.md")))
 	if bad := checkRoadmapCitations(t, root, text); len(bad) > 0 {
@@ -131,6 +132,7 @@ func TestTheRoadmapsCitationsResolve(t *testing.T) {
 // not there, and a `::TestName` the file does not hold, must both be reported. Written as table cases rather
 // than by breaking the tracker, because the tracker must stay green.
 func TestTheCitationGuardCanFail(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for _, tc := range []struct {
 		name string
@@ -160,6 +162,7 @@ func TestTheCitationGuardCanFail(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			bad := checkRoadmapCitations(t, root, tc.row)
 			if tc.want == "" {
 				if len(bad) != 0 {

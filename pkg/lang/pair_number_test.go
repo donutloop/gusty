@@ -33,6 +33,7 @@ const builtIntSlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // a container the program built, used where the reference wants a number; each was refused with Gap R.146's
 // sentence before this cycle, and each answer is checked against the record — which is CPython's.
 func TestASlotBoundNameAnswersThePositionsThatNeedANumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"subtraction", builtIntSlot + "print(n - 1)\n", "6\n"},
 		{"the subtrahend is the slot", "xs = []\nxs.append(7)\nprint(10 - xs[0])\n", "3\n"},
@@ -85,6 +86,7 @@ func TestASlotBoundNameAnswersThePositionsThatNeedANumber(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -103,6 +105,7 @@ func TestASlotBoundNameAnswersThePositionsThatNeedANumber(t *testing.T) {
 // the payload's bits (which is the wrong-answer-at-exit-0 family Gap R.38 and Gap R.95 keep filing) or be
 // refused for being hard (Gap R.37).
 func TestASlotBoundNameRaisesTheOwnSentenceOfTheKindItHolds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text slot subtracted",
@@ -146,6 +149,7 @@ func TestASlotBoundNameRaisesTheOwnSentenceOfTheKindItHolds(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("class = %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -160,6 +164,7 @@ func TestASlotBoundNameRaisesTheOwnSentenceOfTheKindItHolds(t *testing.T) {
 // TestTheArithmeticOfASlotBoundNameIsCatchableWhereTheProgramWroteTheArm: a raise the helper performed for
 // itself is unreachable to the program, and the trap's whole value is that `except` reaches it (ADR 0228).
 func TestTheArithmeticOfASlotBoundNameIsCatchableWhereTheProgramWroteTheArm(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a TypeError arm runs",
@@ -180,6 +185,7 @@ func TestTheArithmeticOfASlotBoundNameIsCatchableWhereTheProgramWroteTheArm(t *t
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("the compiled backend refused this program: %v", err)
@@ -195,6 +201,7 @@ func TestTheArithmeticOfASlotBoundNameIsCatchableWhereTheProgramWroteTheArm(t *t
 // module that sums a slot-bound name carries the tagged arithmetic, and one that never asks for a number
 // carries neither the door nor its raise formatter (ADR 0265's gate, asserted from the outside).
 func TestTheNumberDoorIsInTheModuleOnlyWhenItIsAsked(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(builtIntSlot + "print(n - 1)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -225,6 +232,7 @@ func TestTheNumberDoorIsInTheModuleOnlyWhenItIsAsked(t *testing.T) {
 // those from a slot — so the door stays behind the number proof, and the refusal says so with the value's
 // real origin (Gap R.38: no blaming a loop a slot binding never stepped through).
 func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"addition", builtIntSlot + "print(n + 1)\n"},
 		{"repetition", builtIntSlot + "print(n * 2)\n"},
@@ -235,6 +243,7 @@ func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T
 		// `pair_fold_test.go`; a row that stops refusing moves, it does not disappear.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("the compiler answered a position that keeps one word for its operand, emitting:\n%s",
@@ -259,6 +268,7 @@ func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T
 // `+` fails a decision row rather than silently changing which programs compile: a container the literal
 // proves holds numbers opens `+`, and one that stores a text anywhere keeps the refusal.
 func TestTheWiderOperatorsOpenOnlyWhereTheSlotsAreProven(t *testing.T) {
+	t.Parallel()
 	proven := "xs = [0]\nxs[0] = 7\nn = xs[0]\nprint(n + 1)\n"
 	if _, err := Compile(proven); err != nil {
 		t.Logf("the literal-proven shape still refuses, which the row allows while the proof stays narrow: %v", err)

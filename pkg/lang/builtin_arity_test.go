@@ -22,6 +22,7 @@ import (
 // TestConstructorBuiltinsAnswerWithoutAnArgument is the exit-2 half: programs the reference runs, which
 // must exit 0 with the reference's answer on BOTH engines. Before ADR 0287 every row here panicked.
 func TestConstructorBuiltinsAnswerWithoutAnArgument(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -47,6 +48,7 @@ func TestConstructorBuiltinsAnswerWithoutAnArgument(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, r.src)
 			if got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
@@ -62,6 +64,7 @@ func TestConstructorBuiltinsAnswerWithoutAnArgument(t *testing.T) {
 // TestOneArgumentBuiltinsRaiseTheReferencesSentence is the other half of the same missing check. These are
 // programs the reference REJECTS, so the honest answer is a trap carrying the reference's own wording.
 func TestOneArgumentBuiltinsRaiseTheReferencesSentence(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -79,6 +82,7 @@ func TestOneArgumentBuiltinsRaiseTheReferencesSentence(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			err := trapRun(t, r.src)
 			if err == nil {
 				t.Fatalf("the program answered where the reference raises")
@@ -98,6 +102,7 @@ func TestOneArgumentBuiltinsRaiseTheReferencesSentence(t *testing.T) {
 // reachable from any of these spellings — including the ones the compiled backend still declines, which
 // decline in words.
 func TestBuiltinWithoutAnArgumentNeverPanics(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		"print(int())\n", "print(float())\n", "print(bool())\n", "print(str())\n",
 		"print(ord())\n", "print(chr())\n", "print(abs())\n", "print(repr())\n",
@@ -107,6 +112,7 @@ func TestBuiltinWithoutAnArgumentNeverPanics(t *testing.T) {
 	for _, src := range srcs {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			// The compiled run must not panic. A panic escapes as a Go runtime error; a trap is an answer.
 			func() {
 				defer func() {
@@ -138,6 +144,7 @@ func TestBuiltinWithoutAnArgumentNeverPanics(t *testing.T) {
 // repr() share one renderer, one table and one refusal message, so the natural implementation gives them
 // the same arity — and the reference does not.
 func TestReprIsNotStrWithNoArgument(t *testing.T) {
+	t.Parallel()
 	if got := captureStdout(t, "print(str())\n"); got != "\n" {
 		t.Fatalf("str() printed %q, want the empty text", got)
 	}
@@ -154,6 +161,7 @@ func TestReprIsNotStrWithNoArgument(t *testing.T) {
 // the way: selecting between the interned strings "True"/"False" and handing the index to rt_print_bool,
 // which asks only whether its word is zero. The pair of answers came out INVERTED.
 func TestCompiledBoolAnswersAVerdictNotAText(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		src  string
 		want string
@@ -168,6 +176,7 @@ func TestCompiledBoolAnswersAVerdictNotAText(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := compiledOut(t, r.src); got != r.want {
 				t.Errorf("--aot printed %q, want %q", got, r.want)
 			}
@@ -181,6 +190,7 @@ func TestCompiledBoolAnswersAVerdictNotAText(t *testing.T) {
 // rejected the module (`icmp ne i32 @.lst1, 0`), and for any allocated container the answer would have
 // been True whatever the contents — including bool([]).
 func TestBoolOfAContainerRefusesRatherThanComparingAHandle(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(bool([1]))\n",
 		"print(bool([]))\n",
@@ -189,6 +199,7 @@ func TestBoolOfAContainerRefusesRatherThanComparingAHandle(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			// The record answers the reference, which is the half that can be answered today.
 			want := captureStdout(t, src)
 			if want == "" {
@@ -218,6 +229,7 @@ func TestBoolOfAContainerRefusesRatherThanComparingAHandle(t *testing.T) {
 // call site with a textual double put `sitofp` on a value that was already one, and llc-20 rejected the
 // module. The fold is what makes the emitted shape indistinguishable from the literal.
 func TestFloatConstructorTravelsAsADouble(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(float())\n")
 	if err != nil {
 		t.Fatalf("float() refused: %v", err)
@@ -242,6 +254,7 @@ func TestFloatConstructorTravelsAsADouble(t *testing.T) {
 // caused by a missing argument must say which builtin, in the reference's words, rather than reaching
 // for an operand and letting the runtime describe the program.
 func TestBuiltinArityIsAskedBeforeTheOperandNamesTheProgram(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(abs())\n", "abs()"},
 		{"print(ord())\n", "ord()"},
@@ -250,6 +263,7 @@ func TestBuiltinArityIsAskedBeforeTheOperandNamesTheProgram(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			err := trapRun(t, tc.src)
 			if err == nil {
 				t.Fatalf("%s answered where the reference raises", tc.src)

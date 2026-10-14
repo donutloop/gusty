@@ -28,6 +28,7 @@ func compileOrFatal(t *testing.T, src string) string {
 // The element-kind gate for dicts and sets. It answers the same question taggableMixedList asks
 // of a list — can every slot describe itself? — and refuses the kinds no tag can carry yet.
 func TestTaggableMixedDictAndSetAskTheSameQuestion(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		dictKeyStr: map[string]bool{}, dictKeyInt: map[string]bool{},
 		dictValStr: map[string]bool{}, dictValInt: map[string]bool{},
@@ -78,6 +79,7 @@ func TestTaggableMixedDictAndSetAskTheSameQuestion(t *testing.T) {
 // A mixed dict writes both halves of every entry, and says so on the object: bit 8 is what tells
 // the printer and the runtime lookups that the slots describe themselves.
 func TestMixedDictLiteralTagsEverySlot(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "d = {\"a\": 1, \"b\": \"x\", \"c\": None, 7: 2}\nprint(d)\n")
 	for _, want := range []string{
 		"call void @rt_dict_put_tagged(",
@@ -94,6 +96,7 @@ func TestMixedDictLiteralTagsEverySlot(t *testing.T) {
 }
 
 func TestMixedSetLiteralTagsEveryMember(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "s = {1, \"a\", None}\nprint(s)\n")
 	for _, want := range []string{
 		"call void @rt_set_add_tagged(",
@@ -108,6 +111,7 @@ func TestMixedSetLiteralTagsEveryMember(t *testing.T) {
 // A read of a mixed dict produces the pair; printing dispatches on the tag, which is the only
 // thing that can tell the string "x" from whatever number its index happens to be.
 func TestMixedDictReadCarriesTheValueTag(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "d = {\"a\": 1, \"b\": \"x\"}\nprint(d[\"b\"])\nv = d[\"a\"]\nprint(v)\n")
 	for _, want := range []string{
 		"call i32 @rt_dict_get_tagged(",
@@ -129,6 +133,7 @@ func TestMixedDictReadCarriesTheValueTag(t *testing.T) {
 // different box handles. One equality now answers every slot question, the one the container
 // printers and lookups already ask: `rt_payload_eq` (roadmap L11.1, Gap R.79).
 func TestMixedContainerIterationComparesTheTag(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "s = {1, \"a\"}\nfor x in s:\n    print(x)\n    if x == \"a\":\n        print(\"hit\")\n")
 	for _, want := range []string{
 		"call i32 @rt_tag_of(",
@@ -148,6 +153,7 @@ func TestMixedContainerIterationComparesTheTag(t *testing.T) {
 // word, so a comparison that ignores the tag answers questions the program never asked:
 // {1: "one"} must not have an entry called "a", and 1 must not be a member of ["a"].
 func TestContainerLookupsCompareTheTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src   string
 		wants []string
@@ -168,6 +174,7 @@ func TestContainerLookupsCompareTheTag(t *testing.T) {
 
 // Growing a mixed container keeps the promise: the new member or entry travels with its tag.
 func TestMixedContainerMutationCarriesTags(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "s = {1, \"a\"}\ns.add(\"b\")\ns.discard(1)\nprint(s)\nd = {\"a\": 1}\nd[\"b\"] = \"x\"\nprint(d)\n")
 	for _, want := range []string{
 		"call void @rt_set_add_tagged(",
@@ -184,6 +191,7 @@ func TestMixedContainerMutationCarriesTags(t *testing.T) {
 // a word whose meaning nobody can recover; these programs would print a number where the
 // interpreter prints a float, or find an entry that was never put.
 func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src    string
 		wanted string
@@ -216,6 +224,7 @@ func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
 // says so, and rt_payload_eq compares the boxes by value rather than by handle — which is why
 // `1.5 in s` finds the member even though the test's needle is a different box.
 func TestFloatValuesInDictsAndSetsAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"d = {\"a\": 1, \"b\": 1.5}\nprint(d)\n", "{'a': 1, 'b': 1.5}\n"},
 		{"s = {1, 1.5}\nprint(s)\n", "{1, 1.5}\n"},
@@ -237,6 +246,7 @@ func TestFloatValuesInDictsAndSetsAnswer(t *testing.T) {
 // A missing key raises the KeyError the record raises — decided by the (payload, tag) pair,
 // which is the whole reason the check exists.
 func TestMixedDictMissingKeyRaises(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "d = {0: \"zero\", \"k\": 2}\nprint(d[\"0\"])\n")
 	if !strings.Contains(ir, "call i32 @rt_dict_has_tagged(") {
 		t.Errorf("the membership check did not consult the tag: %v", irLinesContaining(ir, "rt_dict_has"))
@@ -250,6 +260,7 @@ func TestMixedDictMissingKeyRaises(t *testing.T) {
 // through the plain runtime calls and prints through the static printers, so the programs that
 // worked before pay nothing for the ones that now work too.
 func TestUniformContainersKeepTheirStaticPaths(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "d = {\"a\": 1, \"b\": 2}\nprint(d)\ns = {1, 2}\nprint(s)\n")
 	if !strings.Contains(ir, "call void @rt_dict_put(i32") {
 		t.Errorf("a uniform dict lost its plain put: %v", irLinesContaining(ir, "rt_dict_put"))

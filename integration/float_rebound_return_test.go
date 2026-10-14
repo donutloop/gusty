@@ -27,6 +27,7 @@ import (
 // Exit 2 in any row here fails the file.
 
 func TestAFunctionReturningAReboundFloatAnswersLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"param_rebound_and_returned_bare",
 			"def addf(x):\n    x = x + 1.5\n    return x\n\nprint(addf(1.0))\n", "2.5\n"},
@@ -73,6 +74,7 @@ func TestAFunctionReturningAReboundFloatAnswersLikeCPython(t *testing.T) {
 			"def f(x):\n    return x * 2\n\nprint(f(3))\n", "6\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "float_return.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -99,6 +101,7 @@ func TestAFunctionReturningAReboundFloatAnswersLikeCPython(t *testing.T) {
 // container handle or an interned text cannot be promoted — and emitting it anyway is `sitofp i32
 // @.lst1 to double`, which `llc` rejects. Those are exit 1 with the missing word named, never exit 2.
 func TestAReboundFloatReturnIsRefusedWhereItCannotBeCarried(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"container_parameter_in_the_signature",
@@ -144,6 +147,7 @@ func TestAReboundFloatReturnIsRefusedWhereItCannotBeCarried(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "float_return_refuse.gy", tc.src)
 			// The reference answers all of these — that is what makes the compiled refusal a limit of
 			// this backend rather than a law of the language, and it is the reference that is asked here.
@@ -177,6 +181,7 @@ func TestAReboundFloatReturnIsRefusedWhereItCannotBeCarried(t *testing.T) {
 // been a debt row since ADR 0196 is parity surface now, and the matrix says so with a `match` verdict
 // rather than a pin that expects a failure.
 func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"probe_float_param_rebind"} {
 		path := writeSrc(t, t.TempDir(), name+".gy", readProgramSrc(name))
 		py, ok := cpythonOut(t, path)
@@ -197,6 +202,7 @@ func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
 // CPython's answer on the compiled path; the sibling refusal test below holds the one shape the compiled
 // backend may not answer. Roadmap L11.6, Gap R.102; ADR 0262.
 func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"gap_r102_ternary_arm_of_a_rebound_parameter",
 			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(1))\n", "2.5\n"},
@@ -226,6 +232,7 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 			"c = 1\nprint(True if c > 0 else False)\n", "True\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "ternary_word.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -256,6 +263,7 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 // source. Exit 2 in any row here fails the file, and a row that printed a truncated number would fail it
 // too — that is the answer this rule removed.
 func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"one_arm_a_double_at_the_top_level",
@@ -281,6 +289,7 @@ func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "ternary_refuse.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.recordWant {
 				t.Fatalf("the record's expectation is not CPython's: got %q want %q", py, tc.recordWant)

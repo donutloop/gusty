@@ -1008,7 +1008,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 | Artifact | What it holds | Who checks it |
 |---|---|---|
 | `pkg/lang/testdata/interpreter-golden.json` | 6877 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (341 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -1040,8 +1040,9 @@ the table above) is caught by `pkg/lang/golden_artifact_counts_test.go`'s token-
 ### Running the suite: budgets and shards (ADR 0312, ADR 0313)
 
 Almost every case in this suite ends inside a subprocess, because that is what the two witness legs are:
-the record leg compiles through `llc-20` and `cc` and runs the result in-process, the compiled leg runs the
-module under `lli-20`, and the reference leg asks `python3`. Measured per case: `llc` 58 ms, `cc` 13 ms,
+the record leg compiles through `llc-20` and `cc` and runs the resulting executable as a child process
+(ADR 0343 — the in-process engine is now the explicit `JITOptions{InProcess: true}` path and nothing else),
+the compiled leg runs the module under `lli-20`, and the reference leg asks `python3`. Measured per case: `llc` 58 ms, `cc` 13 ms,
 `lli` 57 ms, `llvm-as` 10 ms, the Go side of the case 1 ms. The toolchain is the suite, so the suite is
 only as fast as the number of cores it is allowed to use.
 
@@ -1049,6 +1050,8 @@ only as fast as the number of cores it is allowed to use.
 |---|---|
 | `make test` | `go test -tags=llvm20 -count=1 ./...` — the plain serial run, and **the only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file. The `-count=1` is load-bearing, not hygiene: a third of the suite are guards over files that live outside the package holding the test (`docs/*.md`, `roadmap.md`, `integration/programs/*.gy`, `testdata/*.json`), and those are not in `go test`'s cache key — on a warm cache an edited doc can be certified by a run that never opened it (ADR 0317; `tools/testshards` asserts the makefile keeps the flag) |
 | `make testshards` | `go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...` — the same cases in one process per core (what CI runs, split into two steps with a stated `-timeout 12m` each) |
+| `make testparallel` | `go test -tags=llvm20 -count=1 -parallel $(nproc) -timeout 90m ./...` — the suite with its cases overlapping (ADR 0343); `PARALLEL=N` overrides the fan-out |
+| `make parallelism` | `go run ./tools/parify -check ./pkg/... ./cmd/... ./integration/... ./tools/...` — the parallelism guard on its own; the suite also runs this same command as a case |
 | `make showshards` | prints the partition as JSON without running anything: which case is in which shard |
 | `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error, evidence}` per row, plus the run's `ok` and `elapsed`; `evidence` is the file that shard's golden evidence went to, so the merged verdict can be cross-read against it |
 | `-shards N` / `-timeout D` | how many processes per package (default `GOMAXPROCS`), and each shard's `go test -timeout` — one shard's budget, stated rather than implicit |
@@ -1085,12 +1088,34 @@ Four claims the harness makes, each pinned by `tools/testshards/main_test.go`:
   With `GUSTY_GOLDEN_UPDATE` or `GUSTY_GOLDEN_MISSING` set, the runner does not take the judgement over at
   all, so the artifact-writing modes keep their single-process semantics exactly.
 
-Why the cases are not simply `t.Parallel()`: the in-process runner dup2s fd 1 and fd 2 around the program
-it loads (`captureFD`), so two programs in one process would print into each other's pipes; 46 sites in
-four case files use `os.Chdir`/`t.Setenv`, which are process-wide; and Go runs a parallel test *beside*
-the serial ones, not after them, so marking the offenders non-parallel does not protect their neighbours.
-The process is already the unit of isolation the compiler has (its program-wide scan tables are plain
-maps), so it is the unit of parallelism too.
+### Running the cases beside each other (ADR 0343)
+
+The suite used to be serial by policy, and the policy was earned: the runner dup2'd fd 1 and fd 2 around a
+program it `dlopen`ed into the test process, so two cases running at once were two programs printing into
+each other's pipes and sharing one `@heap`. ADR 0343 moved that state out instead of working around it — a
+compiled program now links to an executable and runs as a **child process** with its own pipes, its own
+address space and its own heap; a run's directory, environment and standard-library root travel in
+`JITOptions`/`CompileRun`; the caches that stayed package-level are behind mutexes. The result:
+
+| Command | What it does |
+|---|---|
+| `go test -tags=llvm20 -count=1 -parallel 20 ./...` | the whole suite with the cases overlapping — **about 1 m 40 s** on 20 cores against 11 m 43 s serial |
+| `go run ./tools/parify -check -quiet ./pkg/... ./cmd/... ./integration/... ./tools/...` | the parallelism guard: fails (exit 1) on a case that calls `t.Parallel()` while its body — or any chain of calls it reaches, production files included — touches process state, and on a case left serial without a reason. Prints the census: `2246 test(s), 646 subtest(s) — 2878 parallel, 2 serial, 12 marked serial` |
+| `go run ./tools/parify -apply <patterns>` | inserts `t.Parallel()` into every case the analysis clears; refuses to write a file it cannot re-parse and gofmt, so a bad insertion is a non-zero exit and not a broken tree. Idempotent |
+| `go run ./tools/parify -json <patterns>` | one verdict per case: `{file, test, subtest, parent, parallel, markedSerial, justified, violation, reason, action}` — the `reason` names the process-wide act **and the call chain to it** |
+
+A case that must own the process says so with `//parify:serial <reason>` on the line above it, and the reason
+is mandatory: twelve cases carry it (three `t.Setenv` cases, the `JITOptions{InProcess: true}` case, and nine
+that retarget the package's `llc`/`opt`/`objdump` command or the CLI's standard-library root). `t.Setenv`
+cannot be called from a parallel test at all — Go 1.22 panics — so those cases are the ones the tool will
+never mark, and the marker is what stops their `t.Parallel()` from coming back. The census line above is not
+prose: `integration/parallelism_guard_test.go::TestTheSuiteIsMarkedToRunBesideItself` runs the documented
+command inside the suite and fails on it, so the check a person can type is the check that breaks the build.
+
+What the change found is the argument for it: two table rows sharing one source file, a ledger row pinned to
+unstable bytes, and **Gap R.258** — `x = sorted([3, 1, 2], reverse=True)` dying by `SIGSEGV` in `@rt_alloc`
+under a heap index the binding wrote as a tag word, which the in-process engine had been absorbing as an empty
+answer. A serial suite cannot see a case that only misbehaves beside its neighbours.
 
 Measured on this tree, both runs pinned to four CPUs so they describe the CI runner — the same command
 line the workflow used to run, and the same one it runs now:

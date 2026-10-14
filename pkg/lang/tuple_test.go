@@ -6,6 +6,7 @@ import (
 )
 
 func TestTupleTypeName(t *testing.T) {
+	t.Parallel()
 	tt := TTuple(TInt(), TStr())
 	if got := tt.Name(); got != "tuple[int, str]" {
 		t.Fatalf("TTuple Name = %q, want tuple[int, str]", got)
@@ -13,6 +14,7 @@ func TestTupleTypeName(t *testing.T) {
 }
 
 func TestTupleTypeSame(t *testing.T) {
+	t.Parallel()
 	a := TTuple(TInt(), TStr())
 	b := TTuple(TInt(), TStr())
 	c := TTuple(TInt(), TBool())
@@ -25,6 +27,7 @@ func TestTupleTypeSame(t *testing.T) {
 }
 
 func TestAnalyzeTupleLiteral(t *testing.T) {
+	t.Parallel()
 	// `x = (1, "a")` should infer x as tuple[int, str].
 	prog, err := Parse(`x = (1, "a")`)
 	if err != nil {
@@ -37,6 +40,7 @@ func TestAnalyzeTupleLiteral(t *testing.T) {
 }
 
 func TestAnalyzeTupleUnpack(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`a, b = (1, "a")`)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -48,6 +52,7 @@ func TestAnalyzeTupleUnpack(t *testing.T) {
 }
 
 func TestAnalyzeTupleUnpackMismatch(t *testing.T) {
+	t.Parallel()
 	// Unpacking a 2-tuple into 3 targets should report a diagnostic.
 	prog, err := Parse(`a, b, c = (1, "a")`)
 	if err != nil {

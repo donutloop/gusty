@@ -31,6 +31,7 @@ import (
 // TestAPairBoundNameFillsAnFStringField is the row this cycle exists for. Every shape is an f-string whose
 // field is a name the pair road bound, and every answer is the record's, which is CPython's.
 func TestAPairBoundNameFillsAnFStringField(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int slot", "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n}\")\n", "7\n"},
 		{"the field inside text", "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"[{n}]\")\n", "[7]\n"},
@@ -87,6 +88,7 @@ func TestAPairBoundNameFillsAnFStringField(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -105,6 +107,7 @@ func TestAPairBoundNameFillsAnFStringField(t *testing.T) {
 // emitted a format-string global `llc` rejected (Gap R.192). `!r` of a value is what `repr()` is, so the
 // field asks the same door with the quote flag.
 func TestAnFStringConversionAsksThePrinter(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"repr of a text variable", "s = \"a\"\nprint(f\"{s!r}\")\n", "'a'\n"},
 		{"str of a text variable", "s = \"a\"\nprint(f\"{s!s}\")\n", "a\n"},
@@ -139,6 +142,7 @@ func TestAnFStringConversionAsksThePrinter(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -156,6 +160,7 @@ func TestAnFStringConversionAsksThePrinter(t *testing.T) {
 // SPEC over a value the module cannot see, both keep the sentence they have always printed — they name the
 // missing half and who owes it, and the field never answers the payload alone.
 func TestAnFStringFieldStillRefusesWhatHasNoReading(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"a product the door will not prove", "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n + 1}\")\n"},
 		{"a modulo over a slot", "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n % 3}\")\n"},
@@ -165,6 +170,7 @@ func TestAnFStringFieldStillRefusesWhatHasNoReading(t *testing.T) {
 		{"a method on an f-string", "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"v={n}\".upper())\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			CompiledRefusal(t, tc.src, "roadmap")
 		})
 	}
@@ -173,6 +179,7 @@ func TestAnFStringFieldStillRefusesWhatHasNoReading(t *testing.T) {
 // TestTheFStringFieldRoutesThroughTheOnePrinter is the IR half of ADR 0303's rule as applied to a field: the
 // rendering must come from the module's single tag-reading printer, not a second renderer built for f-strings.
 func TestTheFStringFieldRoutesThroughTheOnePrinter(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(f\"[{n}]\")\n"
 	res, err := Compile(src)
 	if err != nil {

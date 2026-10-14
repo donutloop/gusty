@@ -101,6 +101,7 @@ func nearMiss(name string, have map[string]bool) string {
 }
 
 func TestRecordCitationsResolveToRealPrograms(t *testing.T) {
+	t.Parallel()
 	have := corpusNames(t)
 	checked, problems := 0, []string{}
 	for _, doc := range recordFiles(t) {

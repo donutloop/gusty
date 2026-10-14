@@ -13,6 +13,7 @@ import (
 // dropped inside a method. The expectations below are what CPython prints for the same source.
 
 func TestMethodExceptionsMatchCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		src      string
@@ -60,6 +61,7 @@ func TestMethodExceptionsMatchCPythonOnBothLegs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "method.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -82,6 +84,7 @@ func TestMethodExceptionsMatchCPythonOnBothLegs(t *testing.T) {
 // used to happen: the failure dropped on the floor, half a function emitted, and exit 2 blaming the
 // toolchain (ADR 0166, Gap R.41).
 func TestTrapInsideAMethodIsNotAToolchainRejection(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def m(self) -> int:\n        return [][0]\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_trap.gy", src)
 	out, code := cliRunMerged(t, "--aot", path)
@@ -104,6 +107,7 @@ func TestTrapInsideAMethodIsNotAToolchainRejection(t *testing.T) {
 // construct with no lowering at all stops the program at the compile door, in words, at exit 1 — never
 // at the toolchain's own exit 2 (ADR 0166, Gap R.41).
 func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def m(self) -> int:\n        return len(5)\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_refusal.gy", src)
 	if out, code := cliRunMerged(t, "--aot", path); code != 1 || !refusesHonestly(out) {
@@ -123,6 +127,7 @@ func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
 // number: an uncaught exception is the runtime-error class on the compiled path (ADR 0211), and a
 // method raising is no exception to that.
 func TestUncaughtRaiseFromMethodIsRuntimeClass(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def m(self) -> int:\n        raise ValueError(\"boom\")\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_raise.gy", src)
 	for _, engine := range cliEngines {

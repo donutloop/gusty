@@ -129,9 +129,11 @@ var deferredCases = []deferredCase{
 }
 
 func TestDeferredBodiesMatchCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range deferredCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := filepath.Join(dir, tc.name+".gy")
 			if err := os.WriteFile(path, []byte(tc.src), 0o644); err != nil {
 				t.Fatalf("write: %v", err)
@@ -150,6 +152,7 @@ func TestDeferredBodiesMatchCPythonOnBothLegs(t *testing.T) {
 }
 
 func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothLegs(t *testing.T) {
+	t.Parallel()
 	src := "def f() -> int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"fin\")\n    return 0\n\nprint(f())\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "trap_after_finally.gy")
@@ -178,6 +181,7 @@ func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothLegs(t *testing.T) {
 // path never set a raise-exit block (roadmap Gap R.41, ADR 0223). It runs on the compiled path now,
 // and `programs/method_try.gy` carries it into the parity corpus.
 func TestMethodWithTryCompiles(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def m(self) -> int:\n        try:\n            return 3\n        finally:\n            print(\"m fin\")\n\nc = C()\nprint(c.m())\n"
 	path := writeSrc(t, t.TempDir(), "method_try_run.gy", src)
 	for _, engine := range cliEngines {

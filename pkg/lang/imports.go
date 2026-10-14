@@ -21,7 +21,14 @@ type ImportInfo struct {
 //
 // A module may itself `import other` (nested imports); the nested module's
 // globals are folded too and resolved via `other.var` references.
-func resolveImports(prog *Program) (*ImportInfo, error) {
+//
+// paths is where one run looks: the directory a bare `import mod` resolves against — "" means this
+// process's working directory, which is what a person at a shell means by it — and the standard-library
+// root. Both used to be process state: a chdir for the first and an exported package variable for the
+// second, so a case that wanted either could only get it by changing it for every other case. A caller
+// names them per run instead, which is the difference between one case's compile and every case's compile
+// (ADR 0343).
+func resolveImports(prog *Program, paths moduleSearch) (*ImportInfo, error) {
 	info := &ImportInfo{Globals: map[string]map[string]Expr{}, Funcs: map[string]map[string]*FuncDef{}}
 	reg := map[string]map[string]Expr{}
 	freg := map[string]map[string]*FuncDef{}
@@ -30,7 +37,7 @@ func resolveImports(prog *Program) (*ImportInfo, error) {
 		if !ok {
 			continue
 		}
-		if err := resolveModule(im.Module, reg, freg); err != nil {
+		if err := resolveModule(im.Module, paths, reg, freg); err != nil {
 			return nil, err
 		}
 	}
@@ -41,11 +48,11 @@ func resolveImports(prog *Program) (*ImportInfo, error) {
 
 // resolveModule loads mod.gy, parses + analyzes it, and constant-folds its
 // top-level globals into the shared registry reg. Nested imports recurse.
-func resolveModule(mod string, reg map[string]map[string]Expr, freg map[string]map[string]*FuncDef) error {
+func resolveModule(mod string, paths moduleSearch, reg map[string]map[string]Expr, freg map[string]map[string]*FuncDef) error {
 	if _, dup := reg[mod]; dup {
 		return fmt.Errorf("import: duplicate module %q", mod)
 	}
-	path := ResolveImportPath(mod)
+	path := resolveImportPathWith(paths, mod)
 	if path == "" {
 		return fmt.Errorf("import %q: no such module (cwd and stdlib searched)", mod)
 	}
@@ -66,7 +73,7 @@ func resolveModule(mod string, reg map[string]map[string]Expr, freg map[string]m
 	for _, mst := range mp.Stmts {
 		switch s := mst.(type) {
 		case *ImportStmt:
-			if err := resolveModule(s.Module, reg, freg); err != nil {
+			if err := resolveModule(s.Module, paths, reg, freg); err != nil {
 				return err
 			}
 		case *AssignStmt:

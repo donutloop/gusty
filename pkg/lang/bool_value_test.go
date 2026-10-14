@@ -19,6 +19,7 @@ func boolRun(t *testing.T, src string) string {
 }
 
 func TestBoolWritesItsNameOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ src, want string }{
 		{"print(True)\n", "True\n"},
 		{"print(False)\n", "False\n"},
@@ -65,6 +66,7 @@ func TestBoolWritesItsNameOnTheCompiledBackend(t *testing.T) {
 // variable case is the one that can be got wrong by a name-keyed rule — a name re-bound by
 // a `for` holds elements, not the verdict it was created from.
 func TestBoolTruthinessIsUnchanged(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ src, want string }{
 		{"if 1 == 1:\n    print(\"yes\")\n", "yes\n"},
 		{"if not 0:\n    print(\"zero is falsey\")\n", "zero is falsey\n"},
@@ -86,6 +88,7 @@ func TestBoolTruthinessIsUnchanged(t *testing.T) {
 // `1 or 0` are the Python rule that a boolean operator yields an operand, not a verdict;
 // a ternary is a verdict only when both of its arms are; `len(x)` never answers a question.
 func TestBoolQuestionIsAskedOfTheAST(t *testing.T) {
+	t.Parallel()
 	yes := []string{
 		"True", "False", "1 == 1", "1 != 2", "3 < 4", "0 == None", `"a" in ["a"]`,
 		"a is None", "not x", "True and False", "True or False",
@@ -111,6 +114,7 @@ func TestBoolQuestionIsAskedOfTheAST(t *testing.T) {
 // A comparison that dispatches to a dunder is not a verdict the front end may name: the
 // program's own __lt__ ran and returned an int, and CPython prints that int.
 func TestDunderComparisonIsNotAVerdict(t *testing.T) {
+	t.Parallel()
 	src := "class A:\n    def __init__(self, x):\n        self.x = x\n\n    def __lt__(self, other):\n        if self.x < other:\n            return 1\n        return 0\n\na = A(3)\nprint(a < 4)\n"
 	if got, want := boolRun(t, src), "1\n"; got != want {
 		t.Errorf("interpreter dunder comparison = %q, want %q", got, want)
@@ -127,6 +131,7 @@ func TestDunderComparisonIsNotAVerdict(t *testing.T) {
 // carries a bool tag of its own, and programs/probe_bool_in_a_container.gy pins CPython's answer
 // on every engine (Gap R.112, ADR 0259).
 func TestBoolThroughACallIsStillANumber(t *testing.T) {
+	t.Parallel()
 	call := "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
 	if got, want := boolRun(t, call), "1\n1\n"; got != want {
 		t.Errorf("bool through a call = %q, want %q (Gap R.111)", got, want)

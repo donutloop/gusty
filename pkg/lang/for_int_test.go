@@ -16,6 +16,7 @@ func forIntDiags(t *testing.T, src string) []Diagnostic {
 }
 
 func TestIntegerIterableIsAccepted(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"literal count", "for i in 4:\n    print(i)\n"},
 		{"variable count", "n = 3\nfor j in n:\n    print(j)\n"},
@@ -26,6 +27,7 @@ func TestIntegerIterableIsAccepted(t *testing.T) {
 		{"count from a call", "def bound() -> int:\n    return 2\n\nfor i in bound():\n    print(i)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			for _, d := range forIntDiags(t, tc.src) {
 				if d.Level == LevelError {
 					t.Errorf("%s: an integer iterable was refused: %v", tc.name, d)
@@ -39,6 +41,7 @@ func TestIntegerIterableIsAccepted(t *testing.T) {
 // same name a `for ... in range(n)` loop would leave behind (docs/language.md § Control flow), so the
 // integer form must not become a second, weirder loop.
 func TestLoopVariableIsBoundInScopeAfterwards(t *testing.T) {
+	t.Parallel()
 	for _, d := range forIntDiags(t, "total = 0\nfor a in 5:\n    total = total + a\n\nprint(total)\n") {
 		if d.Level == LevelError {
 			t.Errorf("the loop variable or the accumulator was refused: %v", d)

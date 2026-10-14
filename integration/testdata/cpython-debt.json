@@ -1,15 +1,15 @@
 [
   {
-    "source": "def pick(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = []\nxs.append(3)\nprint(1 if xs[0] \u003e pick(1) else 0)\n",
-    "python": "raises TypeError: '\u003e' not supported between instances of 'int' and 'str'",
+    "source": "def pick(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = []\nxs.append(3)\nprint(1 if xs[0] > pick(1) else 0)\n",
+    "python": "raises TypeError: '>' not supported between instances of 'int' and 'str'",
     "compiled": "stdout \"1\\n\"",
     "roadmap": "roadmap Gap R.83",
     "why": "an ordering between two values whose kinds are run-time facts"
   },
   {
-    "source": "print(f\"{[1,2]:\u003e8}\")",
+    "source": "print(f\"{[1,2]:>8}\")",
     "python": "raises TypeError: unsupported format string passed to list.__format__",
-    "compiled": "refused: gustyc: jit: codegen: the format spec \"\u003e8\" needs a value this backend can read at compile time (AOT backend)",
+    "compiled": "refused: gustyc: jit: codegen: the format spec \">8\" needs a value this backend can read at compile time (AOT backend)",
     "roadmap": "roadmap L11.2 (f-string format specs over values the compiler cannot read)",
     "why": "the trap does not carry the reference's sentence"
   },
@@ -28,15 +28,15 @@
     "why": "the compiled backend reads the mutator's void result as the container's word"
   },
   {
-    "source": "s = {1, 2}\nprint(f\"{s:\u003e8}\")",
+    "source": "s = {1, 2}\nprint(f\"{s:>8}\")",
     "python": "raises TypeError: unsupported format string passed to set.__format__",
     "compiled": "stdout \"        \\n\"",
     "roadmap": "roadmap L11.2 (f-string format specs over values the compiler cannot read)",
     "why": "no __format__ for this value kind"
   },
   {
-    "source": "xs = []\nxs.append(\"a\")\nys = []\nys.append(1)\nprint(1 if xs[0] \u003e ys[0] else 0)\n",
-    "python": "raises TypeError: '\u003e' not supported between instances of 'str' and 'int'",
+    "source": "xs = []\nxs.append(\"a\")\nys = []\nys.append(1)\nprint(1 if xs[0] > ys[0] else 0)\n",
+    "python": "raises TypeError: '>' not supported between instances of 'str' and 'int'",
     "compiled": "stdout \"0\\n\"",
     "roadmap": "roadmap Gap R.97",
     "why": "an ordering between two values whose kinds are run-time facts"
@@ -46,6 +46,7 @@
     "python": "raises NameError: name 'y' is not defined",
     "compiled": "stdout \"16\\n\"",
     "roadmap": "roadmap Gap K.x (a match value pattern must evaluate its name in the enclosing scope)",
-    "why": "the compiled matcher binds the pattern name instead of evaluating it"
+    "why": "the compiled matcher binds the pattern name instead of evaluating it, and the slot it reads back is uninitialised — the number printed is heap garbage and differs run to run, so the row pins the shape (it answers at all) and not the digits",
+    "unstable": true
   }
 ]

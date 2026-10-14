@@ -14,6 +14,7 @@ import (
 // (roadmap Gap R.14, ADR 0207).
 
 func TestIntegerRepeatCountAgreesOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("for_int_count")
 	want := "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"
 
@@ -38,6 +39,7 @@ func TestIntegerRepeatCountAgreesOnEveryPath(t *testing.T) {
 // TestIntegerRepeatCountBoundaries pins the edges the documentation now promises: an expression count,
 // a count of zero, and a negative count, which behave the way an empty range does.
 func TestIntegerRepeatCountBoundaries(t *testing.T) {
+	t.Parallel()
 	src := `n = 3
 for j in n:
     print(j * 10)

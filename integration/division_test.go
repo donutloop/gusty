@@ -52,6 +52,7 @@ var knownAOTDivisionGaps = []struct {
 }
 
 func TestKnownAOTDivisionGaps(t *testing.T) {
+	t.Parallel()
 	for _, tc := range knownAOTDivisionGaps {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: expectation disagrees with CPython: %q", tc.name, py)
@@ -65,6 +66,7 @@ func TestKnownAOTDivisionGaps(t *testing.T) {
 }
 
 func TestDivisionAndFloatReprMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range divisionCases {
 		if tc.want == "" {
 			continue // documented separately (ZeroDivisionError)
@@ -89,6 +91,7 @@ func TestDivisionAndFloatReprMatchPython(t *testing.T) {
 
 // Division by zero is an error, not a silent 0 or an infinity.
 func TestDivisionByZeroMatchesPython(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nprint(a / 0)\n"
 	if _, err := lang.Parse(src); err != nil {
 		t.Fatalf("parse: %v", err)

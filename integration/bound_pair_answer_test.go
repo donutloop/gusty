@@ -16,6 +16,7 @@ import (
 )
 
 func TestABoundPairAnswerAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"add one, bind, return", "def f(x):\n    y = x + 1\n    return y\n\nprint(f(0.1))\n", "1.1\n"},
 		{"double it, bind, return", "def f(x):\n    y = x * 2\n    return y\n\nprint(f(0.1))\n", "0.2\n"},
@@ -28,6 +29,7 @@ func TestABoundPairAnswerAtTheCLI(t *testing.T) {
 		{"an int-only callee is untouched", "def f(x):\n    y = x + 1\n    return y\n\nprint(f(10))\n", "11\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "bound.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -56,6 +58,7 @@ func TestABoundPairAnswerAtTheCLI(t *testing.T) {
 // TestABoundPairAnswerRefusalIsHonestAtTheCLI pins what the row still owes: these shapes answered a wrong
 // number at exit 0 and now exit 1 with a sentence about the program the reader is actually holding.
 func TestABoundPairAnswerRefusalIsHonestAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 		not             []string
@@ -72,6 +75,7 @@ func TestABoundPairAnswerRefusalIsHonestAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "bound_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--aot", "--file", gy)

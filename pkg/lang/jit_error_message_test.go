@@ -13,6 +13,7 @@ import (
 // agent reading --json get one story, not two (the CLI's stderr rendering is Diagnostic.Error).
 
 func TestJITErrorCarriesTheCheckerMessages(t *testing.T) {
+	t.Parallel()
 	res, err := JIT("print(undefined_thing)\n", 0)
 	if err == nil {
 		t.Fatal("an undefined name must not compile")
@@ -39,6 +40,7 @@ func TestJITErrorCarriesTheCheckerMessages(t *testing.T) {
 // Every error rides along, not just the first: a program with two bad statements gets both
 // sentences, in source order, each with its span.
 func TestJITErrorListsEveryMessage(t *testing.T) {
+	t.Parallel()
 	_, err := JIT("print(undefined_thing)\nprint(nope_too)\n", 0)
 	if err == nil {
 		t.Fatal("two undefined names must not compile")
@@ -59,6 +61,7 @@ func TestJITErrorListsEveryMessage(t *testing.T) {
 // `x = 5; print(x+1)` while the compiled path refused it, and the only thing missing was the
 // sentence naming the character.
 func TestJITErrorNamesTheSpanOfWhatItRejected(t *testing.T) {
+	t.Parallel()
 	_, err := JIT("x = 5\nprint(undefined_thing)\n", 0)
 	if err == nil {
 		t.Fatal("an undefined name must not compile")

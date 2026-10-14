@@ -21,6 +21,7 @@ import (
 // pinning a rendering to itself is how this divergence survived three cycles.
 
 func TestABoolSlotNamesItselfOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print([True, 1])\n", "[True, 1]\n"},
 		{"print([True])\n", "[True]\n"},
@@ -72,6 +73,7 @@ func TestABoolSlotNamesItselfOnTheCompiledBackend(t *testing.T) {
 // equality and membership read, and the compiled comparison's numeric family is int, float AND bool
 // (rt_payload_eq), which is why these answers are CPython's rather than True-vs-1 arguments.
 func TestABoolSlotIsStillTheNumberItBehavesLike(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"print(True + 1)\n", "2\n"},
 		{"xs = [True, 1]\nprint(xs[0] + 1)\n", "2\n"},
@@ -108,6 +110,7 @@ func TestABoolSlotIsStillTheNumberItBehavesLike(t *testing.T) {
 // reason `[True]` printed correctly while `{True}` and `{1: True}` were still refused. These three
 // rows are the drift test for that (roadmap Gap R.112).
 func TestEveryContainerShapeAsksTheOneTagTable(t *testing.T) {
+	t.Parallel()
 	g := &irGen{}
 	list := func(src string) bool {
 		prog, err := parseProgram(src)
@@ -163,6 +166,7 @@ func TestEveryContainerShapeAsksTheOneTagTable(t *testing.T) {
 // the wrong place for one: nothing beside the number says what it is. Every container shape has to
 // reach the tagged builder and the tag-aware printer, and say so on the object.
 func TestABoolSlotIsBuiltTaggedInEveryContainerShape(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"list", "print([True, 1])\n", "call void @rt_print_list_mixed("},
 		{"set", "print({True, 1})\n", "call void @rt_set_print_mixed("},
@@ -190,6 +194,7 @@ func TestABoolSlotIsBuiltTaggedInEveryContainerShape(t *testing.T) {
 // plain number; becoming a tagged container would have made that program a refusal, so the numeric
 // read got a second door (numericSlotUse) that asks only the tag list.
 func TestNumericUseOfABoolSlotUnderARuntimeIndexStillAnswers(t *testing.T) {
+	t.Parallel()
 	src := "xs = [True, 1]\ni = 0\nprint(xs[i] + 1)\n"
 	if got, want := captureStdout(t, src), "2\n"; got != want {
 		t.Errorf("the record leg = %q, want %q", got, want)
@@ -208,6 +213,7 @@ func TestNumericUseOfABoolSlotUnderARuntimeIndexStillAnswers(t *testing.T) {
 // ADR 0259). the record answers all three lines, which is what makes the compiled refusal the
 // honest answer rather than the same wrong one in different clothes.
 func TestAComprehensionOfVerdictsRefusesInWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, wantText, wantOut string }{
 		{"print({True for x in [1]})\n", "tagged set builder", "{True}\n"},
 		{"print({1: True for x in [1]})\n", "tagged dict builder", "{1: True}\n"},
@@ -231,6 +237,7 @@ func TestAComprehensionOfVerdictsRefusesInWords(t *testing.T) {
 // name is still refused in words with exit 1, never answered with the number underneath and never
 // reaching llc with a module it rejects (ADR 0166's exit-class rule).
 func TestABoolFormNothingCanNameIsStillRefused(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(str((1, 2)))\n",
 	} {

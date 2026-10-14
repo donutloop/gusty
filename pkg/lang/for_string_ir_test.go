@@ -22,12 +22,14 @@ func stringLoopIR(t *testing.T, src string) string {
 }
 
 func TestStringLoopStoresAnInternedIndex(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"a string iterable", "for c in \"ab\":\n    print(c)\n"},
 		{"a literal list of strings", "for w in [\"x\", \"y\"]:\n    print(w)\n"},
 		{"a mixed literal", "for m in [1, \"a\", 2]:\n    print(m)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ir := stringLoopIR(t, tc.src)
 			if strings.Contains(ir, "store i32 @.str") {
 				t.Errorf("%s: a string global was stored directly into an i32 slot; llc will reject the module\n%s", tc.name, ir)
@@ -45,6 +47,7 @@ func TestStringLoopStoresAnInternedIndex(t *testing.T) {
 // TestNumberLoopStillStoresAPlainNumber guards the other direction: routing elements through the heap
 // element lowering must not turn integers into heap values.
 func TestNumberLoopStillStoresAPlainNumber(t *testing.T) {
+	t.Parallel()
 	ir := stringLoopIR(t, "for x in [1, 2, 3]:\n    print(x)\n")
 	if strings.Contains(ir, "@rt_str_intern2(") {
 		t.Errorf("a numeric loop started interning strings:\n%s", ir)

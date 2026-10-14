@@ -14,6 +14,7 @@ import (
 
 // `not` is answered by the same road an `if` test asks, or the two disagree in the same file.
 func TestNotOfATextAnswersTheVerdictTheReferenceAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print(not "x")`, `False`},
 		{`print(not "abc")`, `False`},
@@ -29,6 +30,7 @@ func TestNotOfATextAnswersTheVerdictTheReferenceAnswers(t *testing.T) {
 		{`print(not False)`, `True`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -57,6 +59,7 @@ func TestNotOfATextAnswersTheVerdictTheReferenceAnswers(t *testing.T) {
 
 // Every text-returning string method answers TEXT; the print road used to list three of them.
 func TestStringMethodsAnswerTextNotTheirIndex(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print("ab".zfill(5))`, `000ab`},
 		{`print("42".zfill(5))`, `00042`},
@@ -81,6 +84,7 @@ func TestStringMethodsAnswerTextNotTheirIndex(t *testing.T) {
 		{`print("abc".startswith("a"))`, `True`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", "_"), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -99,6 +103,7 @@ func TestStringMethodsAnswerTextNotTheirIndex(t *testing.T) {
 
 // zfill pads AFTER the sign — the row both legs agreed on, which is what makes it invisible to parity.
 func TestZfillPadsAfterASign(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print("-42".zfill(5))`, `-0042`},
 		{`print("+42".zfill(5))`, `+0042`},
@@ -107,6 +112,7 @@ func TestZfillPadsAfterASign(t *testing.T) {
 		{`print("42".zfill(5))`, `00042`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want != tc.want {
 				t.Fatalf("this pin disagrees with the reference: %q vs %q", tc.want, want)
@@ -123,6 +129,7 @@ func TestZfillPadsAfterASign(t *testing.T) {
 // One table, asked once: a three-name list in the print road against fourteen methods in the fold is
 // how nine methods printed their index, and the same list existed TWICE in codegen.go.
 func TestTextMethodTableIsAskedOnce(t *testing.T) {
+	t.Parallel()
 	body, err := os.ReadFile("codegen.go")
 	if err != nil {
 		t.Fatal(err)

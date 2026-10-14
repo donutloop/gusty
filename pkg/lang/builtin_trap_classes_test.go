@@ -64,8 +64,10 @@ func trapRun(t *testing.T, src string) *TrapError {
 	return ee
 }
 func TestBuiltInTrapsCarryTheirClass(t *testing.T) {
+	t.Parallel()
 	for _, tc := range trapCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			// The class is the whole point: an empty ExnType is what made these
 			// uncatchable, so it is the first thing asserted.
@@ -82,8 +84,10 @@ func TestBuiltInTrapsCarryTheirClass(t *testing.T) {
 // The user-visible form: the traceback names the class, so a report reads like a language event
 // and greps like one. An untyped trap printed a bare sentence with no class to search for.
 func TestTrapTracebacksNameTheirClass(t *testing.T) {
+	t.Parallel()
 	for _, tc := range trapCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			report := ee.ExnType + ": " + ee.ExnMsg
 			if !strings.HasPrefix(report, tc.class+": ") {
@@ -94,8 +98,10 @@ func TestTrapTracebacksNameTheirClass(t *testing.T) {
 }
 
 func TestBuiltInTrapsAreCatchableByTheirClass(t *testing.T) {
+	t.Parallel()
 	for _, tc := range trapCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := "try:\n    " + strings.ReplaceAll(strings.TrimRight(tc.src, "\n"), "\n", "\n    ") +
 				"\nexcept " + tc.class + ":\n    print(\"handled\")\n"
 			out, evalErr := runGoldenStdout(t, src)
@@ -112,6 +118,7 @@ func TestBuiltInTrapsAreCatchableByTheirClass(t *testing.T) {
 // A handler for the wrong class must not collect the exception — the other half of "the class
 // means something".
 func TestWrongClassDoesNotCatchATrap(t *testing.T) {
+	t.Parallel()
 	src := "x = 5\ntry:\n    x()\nexcept ValueError:\n    print(\"wrong arm\")\n"
 	ee := trapRun(t, src)
 	if ee.ExnType != "TypeError" {

@@ -15,6 +15,7 @@ import (
 // needs no slot to be read from. Before this it was a refusal (`undefined name "MAX"`) whose message
 // blamed the reader for a name that is plainly bound three lines above.
 func TestModuleLiteralIsAValueForABody(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"int constant", "MAX = 40\n\n\ndef twice() -> int:\n    return MAX * 2\n\n\nprint(twice())\n", "80\n"},
 		{"string constant", "GREET = \"hi\"\n\n\ndef greet():\n    return GREET\n\n\nprint(greet())\n", "hi\n"},
@@ -22,6 +23,7 @@ func TestModuleLiteralIsAValueForABody(t *testing.T) {
 		{"constant through a method", "k = 5\n\n\nclass C:\n    def get(self) -> int:\n        return k\n\n\nprint(C().get())\n", "5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			cwant, perrText, perr := PythonRun(tc.src)
 			if perr != nil {
 				t.Fatalf("CPython disagreed with the expectation %q: %v\n%s", tc.want, perr, perrText)
@@ -84,6 +86,7 @@ func emptyFunctionBody(ir string) string {
 // alloca is gone by the time a callee runs. It lives in @gy_mod_<name>, read when the call happens —
 // which is ADR 0220's rule, and the reason a slot in main could never have answered it.
 func TestReboundModuleNameIsModuleState(t *testing.T) {
+	t.Parallel()
 	src := "LATE = 0\n\n\ndef read() -> int:\n    return LATE\n\n\nLATE = 3\nprint(read())\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -105,6 +108,7 @@ func TestReboundModuleNameIsModuleState(t *testing.T) {
 // next to a module K=5 must answer 1. Deciding this from which slots happen to exist already let the
 // compiled backend print `5 5` for this program.
 func TestBodyBindingBeatsModuleBinding(t *testing.T) {
+	t.Parallel()
 	src := "K = 5\n\n\ndef f() -> int:\n    K = 1\n    return K\n\n\nprint(f(), K)\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -121,11 +125,13 @@ func TestBodyBindingBeatsModuleBinding(t *testing.T) {
 // slot is a double and L11.6 owns floats. Both refusals must name module state, not misdescribe the
 // value — the old messages called a list a string (Gap R.38).
 func TestModuleContainersAndFloatsStillRefuse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"len of a module list", "xs = [1, 2]\n\n\ndef n() -> int:\n    return len(xs)\n\n\nprint(n())\n"},
 		{"append on a module list", "xs = [1]\n\n\ndef add() -> None:\n    xs.append(2)\n\n\nadd()\nprint(len(xs))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("the compiled backend accepted a body reaching module container state it cannot operate on")
@@ -146,6 +152,7 @@ func TestModuleContainersAndFloatsStillRefuse(t *testing.T) {
 // CPython printed 9. If a closure body cannot be lowered the compile must fail; it must not ship a
 // function that returns 0.
 func TestClosureBodyIsNotDroppedIntoAZeroReturn(t *testing.T) {
+	t.Parallel()
 	src := "G = 9\n\n\ndef outer() -> int:\n    def inner() -> int:\n        return G\n    return inner()\n\n\nprint(outer())\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -163,6 +170,7 @@ func TestClosureBodyIsNotDroppedIntoAZeroReturn(t *testing.T) {
 // inside a decorator definition may go unlowered, because a decorated call runs the trampoline. The
 // failure belongs in the module text, where --emit-llvm and a reader can both find it.
 func TestDecoratedClosureSaysSoIntheModule(t *testing.T) {
+	t.Parallel()
 	src := "def add1(g):\n    def wrap(x):\n        return g(x) + 1\n    return wrap\n\n\n@add1\ndef f(x):\n    return x * 2\n\n\nprint(f(3))\n"
 	res, err := Compile(src)
 	if err != nil {

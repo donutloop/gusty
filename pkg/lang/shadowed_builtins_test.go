@@ -23,6 +23,7 @@ func mustShadowIR(t *testing.T, src string) string {
 // TestProgramDefinitionWinsOverTheBuiltinName is the IR contract: for a name the program
 // defines, the module must call the program's function — not fold the call as the built-in.
 func TestProgramDefinitionWinsOverTheBuiltinName(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"float", "str", "chr", "int", "ord", "round", "abs", "sum", "len", "min", "max", "sqrt", "floor", "ceil"} {
 		src := "def " + name + "(x):\n    return x + 7\n\nprint(" + name + "(1))\n"
 		ir := mustShadowIR(t, src)
@@ -38,6 +39,7 @@ func TestProgramDefinitionWinsOverTheBuiltinName(t *testing.T) {
 // TestShadowedFloatCallIsNotFoldedAsConversion is the measured silent-wrong-answer: `float(1)`
 // folded to the conversion, so the program printed 1.0 while the record printed 8.
 func TestShadowedFloatCallIsNotFoldedAsConversion(t *testing.T) {
+	t.Parallel()
 	ir := mustShadowIR(t, "def float(x):\n    return x + 7\n\nprint(float(1) + 0.5)\n")
 	if !strings.Contains(ir, "call i32 @gy_float(") {
 		t.Errorf("the call to the program's own float is missing:\n%s", ir)
@@ -52,6 +54,7 @@ func TestShadowedFloatCallIsNotFoldedAsConversion(t *testing.T) {
 // TestShadowedStrIsPrintedAsWhatItReturns: `str` used to be emitted as the user's call and then
 // printed with the built-in's `%s`, which llc rejected.
 func TestShadowedStrIsPrintedAsWhatItReturns(t *testing.T) {
+	t.Parallel()
 	ir := mustShadowIR(t, "def str(x):\n    return x + 7\n\nprint(str(1))\n")
 	if !strings.Contains(ir, "call i32 @gy_str(") {
 		t.Errorf("the call to the program's own str is missing:\n%s", ir)
@@ -69,6 +72,7 @@ func TestShadowedStrIsPrintedAsWhatItReturns(t *testing.T) {
 // program defines that *does* return a float is a fact about the program, and must still be
 // treated as float — this is the regression that programs/floatfn.gy caught.
 func TestProgramFloatFunctionKeepsItsShape(t *testing.T) {
+	t.Parallel()
 	ir := mustShadowIR(t, "def half(x):\n    return x / 2.0\n\nprint(half(5.0))\n")
 	if !strings.Contains(ir, "fdiv double") {
 		t.Errorf("a program-defined float function must keep float arithmetic:\n%s", ir)
@@ -78,6 +82,7 @@ func TestProgramFloatFunctionKeepsItsShape(t *testing.T) {
 // TestBuiltinsStillFoldWhenNobodyShadowedThem: the guards must not cost the ordinary program
 // its constant folding — that would trade a rare bug for a common slowdown.
 func TestBuiltinsStillFoldWhenNobodyShadowedThem(t *testing.T) {
+	t.Parallel()
 	ir := mustShadowIR(t, "print(str(42))\n")
 	if strings.Contains(ir, "call i32 @gy_str(") {
 		t.Errorf("an unshadowed str() should still fold to its constant:\n%s", ir)
@@ -90,6 +95,7 @@ func TestBuiltinsStillFoldWhenNobodyShadowedThem(t *testing.T) {
 
 // TestShadowedBuiltinInsideAnotherExpression covers the fold paths that run on sub-expressions.
 func TestShadowedBuiltinInsideAnotherExpression(t *testing.T) {
+	t.Parallel()
 	ir := mustShadowIR(t, "def len(x):\n    return 3\n\nitems = [1, 2, 3, 4]\nprint(len(items))\n")
 	if !strings.Contains(ir, "call i32 @gy_len(") {
 		t.Errorf("a shadowed len used on a container must be the program's call:\n%s", ir)
@@ -104,6 +110,7 @@ func TestShadowedBuiltinInsideAnotherExpression(t *testing.T) {
 // TestShadowingIsPerProgramNotGlobal: shadowing in one program must not change another. The
 // guard is program state, so this checks that nothing leaked into a constant.
 func TestShadowingIsPerProgramNotGlobal(t *testing.T) {
+	t.Parallel()
 	first := mustShadowIR(t, "def float(x):\n    return x + 7\n\nprint(float(1))\n")
 	if !strings.Contains(first, "call i32 @gy_float(") {
 		t.Fatalf("shadowed float was not called:\n%s", first)

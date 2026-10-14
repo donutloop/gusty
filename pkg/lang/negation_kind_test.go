@@ -30,6 +30,7 @@ import (
 // negationParity is the family that must keep answering: a sign is a real operation on the kinds that
 // have one, and the raise below is worthless if it bought silence by breaking these.
 func TestNegationOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int literal", "print(-7)\n", "-7\n"},
 		{"a float literal", "print(-1.5)\n", "-1.5\n"},
@@ -49,6 +50,7 @@ func TestNegationOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 		{"an abs of a negation", "print(abs(-3))\n", "3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -70,6 +72,7 @@ func TestNegationOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 // — including the interpreted one, whose half of Gap R.89 the compiled path had been pinning alone
 // (`aotOnly` in tagged_numeric_test.go).
 func TestNegationOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text literal",
@@ -154,6 +157,7 @@ func TestNegationOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *t
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -190,6 +194,7 @@ func TestNegationOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *t
 // today, because a test that asserted the reference's word here would fail and a test that asserted
 // nothing would pass either way (roadmap Gap R.141, waiting on L11.3's tuple object).
 func TestTheNegationOfATupleNamesWhatTheReferenceNames(t *testing.T) {
+	t.Parallel()
 	const src = "print(-(\"a\", 1))\n"
 	ee := trapRun(t, src)
 	if ee.ExnType != "TypeError" {
@@ -213,6 +218,7 @@ func TestTheNegationOfATupleNamesWhatTheReferenceNames(t *testing.T) {
 // the arm the program wrote runs — the compiled half is the one that decides, because a raise a helper
 // performed for itself would be unreachable to the program (ADR 0228).
 func TestTheNegationTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a text literal", "try:\n    print(-\"hi\")\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")\n", "caught\nafter\n"},
 		{"None", "try:\n    print(-None)\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -228,6 +234,7 @@ func TestTheNegationTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -247,6 +254,7 @@ func TestTheNegationTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 // store-and-branch the emitted code owns; a module that never negates a non-number must not carry the
 // sentence at all (ADR 0173/0192's cost rule), and a module that negates two kinds carries two names.
 func TestTheNegationRaiseIsWrittenPerKindAndNotPerProgram(t *testing.T) {
+	t.Parallel()
 	ir := mustCompileIR(t, "print(-\"hi\")\n")
 	for _, want := range []string{
 		"TypeError: bad operand type for unary -: 'str'",
@@ -278,6 +286,7 @@ func TestTheNegationRaiseIsWrittenPerKindAndNotPerProgram(t *testing.T) {
 // TestTheNegationOfALiteralIsNotFoldedAway is Gap R.37's rule at this door: a constant the reference stops
 // on has to trap at run time, because the fold is what turns a TypeError back into a printed number.
 func TestTheNegationOfALiteralIsNotFoldedAway(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"n = -None\nprint(n)\n",
 		"n = -\"hi\"\nprint(n)\n",
@@ -301,6 +310,7 @@ func TestTheNegationOfALiteralIsNotFoldedAway(t *testing.T) {
 // folders must decline, and the ones they must keep folding (a fold that stopped working would quietly
 // cost every numeric program its constant).
 func TestNegationOperandIsLiterallyNotANumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want bool

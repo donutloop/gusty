@@ -11,6 +11,7 @@ import "testing"
 // holds the Python repr form so printing matches inside and outside a container.
 
 func TestStringElementsAreInternedNotStoredAsPointers(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -46,6 +47,7 @@ func TestStringElementsAreInternedNotStoredAsPointers(t *testing.T) {
 // TestReprTableIsEmittedAlongsideRawText pins both halves of the interning contract: the raw
 // text for print(x) and the repr form for print inside a container.
 func TestReprTableIsEmittedAlongsideRawText(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = []\nxs.append(\"a\")\nprint(len(xs))\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -61,6 +63,7 @@ func TestReprTableIsEmittedAlongsideRawText(t *testing.T) {
 // interned repr table share: prefer single quotes, fall back to double quotes when the text
 // contains a single quote and no double quote.
 func TestPyReprStringMatchesPythonQuoteChoice(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		`plain`:     `'plain'`,
 		`it's`:      `"it's"`,
@@ -79,6 +82,7 @@ func TestPyReprStringMatchesPythonQuoteChoice(t *testing.T) {
 // TestCompiledRendersContainersLikePython checks the shared printing rules on the
 // interpreter side, including the dict-key case that used to print a raw heap handle.
 func TestCompiledRendersContainersLikePython(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`xs = ["a", "b"]
 print(xs)
@@ -109,6 +113,7 @@ print(s)
 // Gap J.6 — dict/set literals with string contents build heap objects, and a container that
 // would hold both strings and numbers is reported instead of misprinted.
 func TestStringLiteralsBuildHeapContainers(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -142,6 +147,7 @@ func TestStringLiteralsBuildHeapContainers(t *testing.T) {
 // TestLiteralNeedsHeapAndMixedKinds pins the two predicates the lowering decides with, so a
 // future change to either is caught where the decision is made.
 func TestLiteralNeedsHeapAndMixedKinds(t *testing.T) {
+	t.Parallel()
 	mustHeap := []string{`xs = ["a"]`, `d = {"a": 1}`, `d = {1: "a"}`, `s = {"a"}`}
 	for _, src := range mustHeap {
 		e := parseExprForTest(t, src)

@@ -38,6 +38,7 @@ func powerRef(t *testing.T, src string) string {
 // TestPowerAnswerKindMatchesTheReference is the table. Every row is run through both legs and against a
 // live reference, and the reference is the only authority on the expected string.
 func TestPowerAnswerKindMatchesTheReference(t *testing.T) {
+	t.Parallel()
 	rows := []struct{ name, src string }{
 		{"int base int exponent", "print(2 ** 3)\n"},
 		{"zero exponent", "print(2 ** 0)\n"},
@@ -65,6 +66,7 @@ func TestPowerAnswerKindMatchesTheReference(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want := powerRef(t, strings.TrimRight(r.src, "\n"))
 			if got := captureStdout(t, r.src); got != want+"\n" {
 				t.Errorf("interpreter printed %q, reference prints %q", got, want+"\n")
@@ -80,6 +82,7 @@ func TestPowerAnswerKindMatchesTheReference(t *testing.T) {
 // reference says `0.0 cannot be raised to a negative power` for `0 ** -1` AND for `0.0 ** -1`, so a rule
 // that named the base's type in the message would get one of these two rows wrong.
 func TestPowerZeroDivisionIsTheReferencesTrap(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ name, src string }{
 		{"int zero base", "print(0 ** -1)\n"},
 		{"float zero base", "print(0.0 ** -1)\n"},
@@ -88,6 +91,7 @@ func TestPowerZeroDivisionIsTheReferencesTrap(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want := powerRef(t, strings.TrimRight(r.src, "\n"))
 			if !strings.Contains(want, "ZeroDivisionError") {
 				t.Fatalf("the row is stale: the reference prints %q", want)
@@ -119,6 +123,7 @@ func TestPowerZeroDivisionIsTheReferencesTrap(t *testing.T) {
 // integers; a bounded int is this language's defensible design, a SILENTLY WRAPPING one is not, and the
 // wrap is invisible to parity because the compiled backend wrap alike.
 func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
+	t.Parallel()
 	// Each pair is (source, the exact wrong number the backend used to print).
 	for _, r := range []struct{ name, src, wrapped string }{
 		{"compiled two to the 31st", "print(2 ** 31)\n", "-2147483648\n"},
@@ -128,6 +133,7 @@ func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(r.src)
 			if err == nil {
 				if out := runIR(t, res.IR); out == r.wrapped {
@@ -150,6 +156,7 @@ func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 	for _, src := range []string{"print(2 ** 100)\n", "print(2 ** 63)\n"} {
 		src := src
 		t.Run("interpreter "+strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			ex := trapRun(t, src)
 			if ex == nil {
 				t.Errorf("the interpreter answered a power past its word; the reference has bignums and this backend does not")
@@ -162,12 +169,14 @@ func TestPowerPastTheWordRefusesRatherThanWraps(t *testing.T) {
 // reference, `llvm.pow.f64` answers NaN, and the compiled backend printed `nan` at exit 0. No float rendering of
 // NaN is the right answer for a value the language does not have.
 func TestPowerComplexIsRefusedNotNan(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ name, src string }{
 		{"minus eight to a third", "print((-8) ** (1/3))\n"},
 		{"minus two to a quarter", "print((-2) ** (2/4))\n"},
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			// The record REFUSES with a TrapError, so `captureStdout` cannot be used here — it
 			// fails the test on a program that traps, which is the shape being pinned.
 			// The test looks for a printed NaN, not for the WORD "nan", which the refusal's own
@@ -197,6 +206,7 @@ func TestPowerComplexIsRefusedNotNan(t *testing.T) {
 // twice: the first draft answered "float" for any operand whose kind it could not name, and turned three
 // working answers into wrong numbers — `(2 and 3) ** 2` became `9.0`, and `2 ** 3 ** 2` became `512.0`.
 func TestPowerKeepsTheAnswersThatAlreadyWorked(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ src, want string }{
 		{"print(2 ** 3)\n", "8\n"},
 		{"print(2 ** 3 ** 2)\n", "512\n"},
@@ -208,6 +218,7 @@ func TestPowerKeepsTheAnswersThatAlreadyWorked(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -222,6 +233,7 @@ func TestPowerKeepsTheAnswersThatAlreadyWorked(t *testing.T) {
 // the double road and the constant fold must all get their answer from powerAnswerIsFloat: ADR 0279/0280's
 // rule, and the reason `print(4 ** 0.5)` could print `1` while the arithmetic underneath was correct.
 func TestPowerOperandKindIsAskedOnce(t *testing.T) {
+	t.Parallel()
 	src := "print(4 ** 0.5)\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -280,6 +292,7 @@ func wrapInZeroDivisionTry(src string) string {
 // what CPython calls — ends ...3bcd. The point of this test is that it FAILS the day someone fixes one
 // side without the other, and that a fix which quietly makes the record agree is recorded here.
 func TestPowerLastDigitGapIsFiled(t *testing.T) {
+	t.Parallel()
 	const src = "print(2 ** 1.5)\n"
 	want := powerRef(t, "print(2 ** 1.5)")
 	if got := compiledOut(t, src); got != want+"\n" {

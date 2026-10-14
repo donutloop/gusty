@@ -21,6 +21,7 @@ func methodKeyDiags(t *testing.T, src string) []Diagnostic {
 }
 
 func TestMethodDoesNotOverwriteTheModuleFunction(t *testing.T) {
+	t.Parallel()
 	src := `def time(x):
     return x + 5
 
@@ -46,6 +47,7 @@ print(Timer().run(2))
 // TestModuleCallIsCheckedAgainstTheModuleDefinition is the positive half: the name resolves to the
 // right definition, not merely to *a* definition.
 func TestModuleCallIsCheckedAgainstTheModuleDefinition(t *testing.T) {
+	t.Parallel()
 	src := `def time(x: int) -> int:
     return x
 
@@ -67,6 +69,7 @@ print(time("text"))
 // method must not silence the module function's checks either, and a call placed before the class
 // sees the same definition as one placed after it.
 func TestCallToAShadowingMethodIsNotReadAsTheModuleFunction(t *testing.T) {
+	t.Parallel()
 	before := `def area(w: int, h: int) -> int:
     return w * h
 
@@ -100,6 +103,7 @@ print(area(2, "three"))
 // TestTwoClassesMayShareAMethodName is the same defect one level in: with a single key, the second
 // class's method also overwrote the first's.
 func TestTwoClassesMayShareAMethodName(t *testing.T) {
+	t.Parallel()
 	src := `class A:
     def m(self, x):
         return x
@@ -122,6 +126,7 @@ print(B().m(4))
 
 // TestMethodBodiesAreStillAnalyzed guards against fixing the key by simply skipping methods.
 func TestMethodBodiesAreStillAnalyzed(t *testing.T) {
+	t.Parallel()
 	src := `class T:
     def bad(self):
         return nope
@@ -140,6 +145,7 @@ print(1)
 // names. (Missing arguments themselves are not yet reported for any function, annotated or not:
 // roadmap R.10.)
 func TestArityIsCheckedForTheRightDefinition(t *testing.T) {
+	t.Parallel()
 	src := `def time(x: int) -> int:
     return x
 

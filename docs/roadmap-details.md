@@ -11430,3 +11430,41 @@ here, not only the trap. The fix belongs to the handle copy, not to the notebook
 release once (the heap block already owns `rt_alloc`/`rt_free`), or the shape is refused by name until then.
 Filed from this row's own probe table, reproduced identically on the commit before ADR 0341, and pinned as a
 debt row (not a promise) in `pkg/lang/rebind_kind_test.go` and `integration/rebind_kind_test.go`.
+
+### Gap R.258 — a list bound from a call is stored with the wrong word, and the next allocation dies (FILED by ADR 0343)
+
+```python
+x = sorted([3, 1, 2], reverse=True)
+x                       # the record: [3, 2, 1]   this backend: killed by SIGSEGV in @rt_alloc (exit 139)
+
+print(sorted([3, 1, 2]))          # answers   [1, 2, 3]
+xs = [3, 1, 2]
+print(sorted(xs))                  # answers   [1, 2, 3]
+xs = [3, 1, 2]
+y = sorted(xs)
+print(y)                           # answers   [1, 2, 3]
+```
+
+The three programs that answer and the one that dies differ in exactly one respect: whether the call's answer is
+**bound to a name** before anything else runs. That is the shape ADR 0267 paid for an arithmetic answer — the
+binding asks the same door the print dispatch asks, and binds the payload *and* the tag — and the shape this row
+says is still unpaid for a container answer. The call returns a (payload, tag) pair; the one-word slot that holds
+a list bound from a call is written with the **tag** half of it; `@heap`'s next `rt_alloc` reads its index back as
+`0xffff`, and the bump allocator walks off the end of its arena. Under `gdb` the fault is the store into the arena
+with `%w10 = 0xffff` — the artefact, not the program, which is exactly the sentence ADR 0302's contract makes the
+compiler say when its own artifact dies by a signal.
+
+It is not a `sorted` bug: `print(sorted(...))` and `sorted(<variable>)` both answer, and the crash reproduces
+through `gustyc --file` and through `--build` + execute, so nothing about the process running the program is
+implicated. What is implicated is the binding road a call answer takes when the compiler has decided that call
+answers with a pair.
+
+The row was invisible for as long as the suite ran one case per process. `sorted([3, 1, 2])[0]` already sits in the
+drift ledger with a different symptom, and the same family — a pair answer bound to a name, then used — is what
+Gap R.146 and Gap R.154 describe as the remaining one-word positions; this is the first member of that family that
+crashes instead of answering wrongly, and the crash was previously absorbed as an empty answer by the in-process
+engine that shared its heap with the program it ran.
+
+Filed with the record's answer beside the compiled one in `pkg/lang/testdata/interpreter-golden-drift.json`, so the
+suite is green while the row is open and the row cannot be quietly deleted. The row's Definition of Done is that
+drift row's disappearance.

@@ -173,8 +173,10 @@ func floorParity() []struct{ name, src, want string } {
 }
 
 func TestTheFlooringOperatorsAnswerOnAllThreeLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range floorParity() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "floor_pair.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -196,6 +198,7 @@ func TestTheFlooringOperatorsAnswerOnAllThreeLegs(t *testing.T) {
 // rather than as a list of fragments: ten lines, three legs, the same bytes. The compiled leg printed `2`,
 // `1`, `1`, `1`, `-4`, `1`, `3`, `1`, `1`, `2` — truncated digits, every one of them, at exit 0.
 func TestThePromotedFlooringProbePrintsCPythonTenLines(t *testing.T) {
+	t.Parallel()
 	const want = "2.0\n1.0\n2\n1\n-4.0\n0.5\n3.0\n1.5\n1\n2.0\n"
 	src := readProgram(t, "probe_floor_a_pair.gy")
 	path := writeSrc(t, t.TempDir(), "probe_floor_a_pair.gy", src)
@@ -216,6 +219,7 @@ func TestThePromotedFlooringProbePrintsCPythonTenLines(t *testing.T) {
 // one `def`. Exit 0 fails the row: a trap that prints a number is not a trap (ADR 0216's finding, ADR 0278's
 // second half).
 func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the floor by zero over a parameter that carries a double",
@@ -237,6 +241,7 @@ func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "floor_trap.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunMerged(t, engine, "--file", path)
@@ -260,6 +265,7 @@ func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.
 // Before ADR 0278 the first of these answered a truncated digit at exit 0, so the assertion is the exit class
 // and the sentence, never a number: a refusal is where a wrong number is allowed to stand until it is fixed.
 func TestAPairAnswerHeldByAOneWordPositionRefusesRatherThanTruncates(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// The pair answer stored in a container rather than returned: ADR 0273's own sentence, Gap R.146's
 		// family — the position keeps one word, so the tag has nowhere to go. Before ADR 0278 this program
@@ -299,6 +305,7 @@ func TestAPairAnswerHeldByAOneWordPositionRefusesRatherThanTruncates(t *testing.
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "floor_nested.gy", tc.src)
 			out, code := cliRunMerged(t, "--aot", "--file", path)
 			if code == 0 {

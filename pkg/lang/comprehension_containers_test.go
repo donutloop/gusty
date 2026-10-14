@@ -38,6 +38,7 @@ func firstAssignValue(t *testing.T, src string) Expr {
 }
 
 func TestSetComprehensionFilterIsTheComprehensions(t *testing.T) {
+	t.Parallel()
 	// The shape that did not parse at all: `if` after the iterable belongs to the comprehension.
 	c, ok := firstAssignValue(t, "sa = {x for x in xs if x > 1}").(*Comp)
 	if !ok {
@@ -58,6 +59,7 @@ func TestSetComprehensionFilterIsTheComprehensions(t *testing.T) {
 }
 
 func TestDictComprehensionFilterIsTheComprehensions(t *testing.T) {
+	t.Parallel()
 	c, ok := firstAssignValue(t, "da = {k: k * 2 for k in ks if k > 1}").(*Comp)
 	if !ok {
 		t.Fatalf("{k: k*2 for k in ks if k > 1} did not parse as a comprehension")
@@ -77,6 +79,7 @@ func TestDictComprehensionFilterIsTheComprehensions(t *testing.T) {
 }
 
 func TestComprehensionIterableStillAdmitsATernaryFreeOr(t *testing.T) {
+	t.Parallel()
 	// Narrowing the iterable parse must not lose what an iterable could always say: `a or b` is
 	// still an iterable expression, and `x in xs` still reads as a membership test inside a filter.
 	c, ok := firstAssignValue(t, "sa = {x for x in a or b if x in keep}").(*Comp)
@@ -93,6 +96,7 @@ func TestComprehensionIterableStillAdmitsATernaryFreeOr(t *testing.T) {
 
 // The three positions a folded comprehension used to hand a global to a helper expecting an i32.
 func TestFoldedContainerComprehensionNeverSitsInAValuePosition(t *testing.T) {
+	t.Parallel()
 	// What is forbidden, spelled as a regex so the guard cannot be satisfied by luck: a folded
 	// container global (@.lstN / @.setN / @.dictN) as an *operand* — of a store, a call argument or
 	// a printf. Its definition (`private global`) is the only place the name may appear.
@@ -114,6 +118,7 @@ func TestFoldedContainerComprehensionNeverSitsInAValuePosition(t *testing.T) {
 }
 
 func TestSetComprehensionBindingBuildsAHeapSet(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "sa = {x for x in [1, 2, 3, 2, 1]}\nprint(sa)\n")
 	for _, want := range []string{
 		"call i32 @rt_alloc(i32 3)", // HeapKindSet
@@ -131,6 +136,7 @@ func TestSetComprehensionBindingBuildsAHeapSet(t *testing.T) {
 }
 
 func TestDictComprehensionBindingBuildsAHeapDict(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "da = {k: k * 2 for k in [1, 2]}\nprint(da)\n")
 	for _, want := range []string{
 		"call i32 @rt_alloc(i32 2)", // HeapKindDict
@@ -147,6 +153,7 @@ func TestDictComprehensionBindingBuildsAHeapDict(t *testing.T) {
 }
 
 func TestRuntimeContainerComprehensionRegistersItsKind(t *testing.T) {
+	t.Parallel()
 	// The iterable has a runtime length, so this is a real loop; the handle it builds only prints
 	// as a container if the variable's kind was recorded at the binding.
 	setMod := compileSrcIR(t, "xs = [1, 2, 3]\nxs.append(4)\nsa = {x for x in xs if x > 2}\nprint(sa)\n")
@@ -189,6 +196,7 @@ func TestRuntimeContainerComprehensionRegistersItsKind(t *testing.T) {
 }
 
 func TestMembershipInAFoldedComprehensionUsesAHandle(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "print(2 in {x for x in [1, 2]})\n")
 	if strings.Contains(mod, "rt_contains(i32 @.") {
 		t.Fatalf("`in` over a folded comprehension handed a global to rt_contains:\n%s", mod)
@@ -199,6 +207,7 @@ func TestMembershipInAFoldedComprehensionUsesAHandle(t *testing.T) {
 }
 
 func TestContainerComprehensionRefusalsStayHonest(t *testing.T) {
+	t.Parallel()
 	// A refusal is only honest when the same program on the other side of the language refuses the
 	// same way: a set comprehension over a non-integer iterable declines with the message its list
 	// twin has always used, rather than a new one invented for sets.

@@ -53,8 +53,10 @@ func negationTraps() []negationTrap {
 // CPython *stops* on, with the sentence pinned below. It runs first, because a row whose expectation is
 // not the reference's is a test that documents the bug as if it were the spec.
 func TestTheReferenceStopsOnEveryShapeThisFilePins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range negationTraps() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			writeSrc(t, dir, "negation_trap.py", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -68,8 +70,10 @@ func TestTheReferenceStopsOnEveryShapeThisFilePins(t *testing.T) {
 // TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap is the row: exit 3, the runtime-error class, and the
 // reference's own sentence in the traceback — on the reference and the compiled one.
 func TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap(t *testing.T) {
+	t.Parallel()
 	for _, tc := range negationTraps() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "negation_trap.gy", tc.src)
 			for _, engine := range cliEngines {
@@ -97,6 +101,7 @@ func TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap(t *testing.T) {
 // TestTheNegationTrapIsCatchableOnBothLegs: the reference's TypeError is an event a program can catch,
 // and so is this one — the arm runs, the trailer runs, and the exit class is the ordinary one.
 func TestTheNegationTrapIsCatchableOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a text literal",
@@ -125,6 +130,7 @@ func TestTheNegationTrapIsCatchableOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "negation_catch.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -146,6 +152,7 @@ func TestTheNegationTrapIsCatchableOnBothLegs(t *testing.T) {
 // TestNegationOfANumberAnswersOnEveryEngine is the half that must not regress: the raise cannot be bought
 // by breaking the negations the reference answers.
 func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int literal", "print(-7)\n", "-7\n"},
 		{"a float literal", "print(-1.5)\n", "-1.5\n"},
@@ -163,6 +170,7 @@ func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
 		{"a text measured rather than negated", "s = \"abc\"\nprint(len(s))\n", "3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "negation_ok.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -185,6 +193,7 @@ func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
 // and against the reference: programs/negation_names_the_kind.gy is `oracle: match`, which is a claim
 // about both legs, and this is where it is checked rather than asserted.
 func TestTheNegationCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "negation_names_the_kind.gy")
 	want := "-7\n-1.5\n-1\n-7\n-4\n" +
 		"a text has no sign\nnone has no sign\na list has no sign\na dict has no sign\na set has no sign\n" +

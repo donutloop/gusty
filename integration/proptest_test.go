@@ -55,6 +55,7 @@ func sprintAny(v any) string {
 // deterministic, so a program that answers differently on a second run has state the runtime is
 // reusing between calls — the class of bug the GC stress runs and the heap-reset work exist to catch.
 func TestPropCompiledDeterminism(t *testing.T) {
+	t.Parallel()
 	const seed = int64(20260704)
 	corpus := lang.PropSource(seed, 10, lang.DefaultPropGrammar())
 	drift, refused, ran := 0, 0, 0
@@ -85,6 +86,7 @@ func TestPropCompiledDeterminism(t *testing.T) {
 
 // TestPropCompiledDeterminismSeeds widens the covered surface across several seeds.
 func TestPropCompiledDeterminismSeeds(t *testing.T) {
+	t.Parallel()
 	drift, total, ran := 0, 0, 0
 	for _, seed := range []int64{1, 42, 12345, 54321, 999} {
 		for i, src := range lang.PropSource(seed, 6, lang.DefaultPropGrammar()) {

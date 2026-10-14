@@ -146,6 +146,7 @@ func witnessSurfaces(t *testing.T) []string {
 }
 
 func TestNoClaimNamesAnEngineNobodyRuns(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	patterns := witnessPatterns(t, filepath.Join(root, "pkg/lang", witnessBannedFile))
 	phrases := witnessListFile(t, filepath.Join(root, "pkg/lang", witnessBannedFile))
@@ -192,6 +193,7 @@ func TestNoClaimNamesAnEngineNobodyRuns(t *testing.T) {
 // its help text, so a description that promises an interpreter run is the most expensive form of the
 // stale claim. A description may mention the interpreter only to say it is gone.
 func TestTheCLINeverAdvertisesAnInterpreterLeg(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "cmd", "gustyc", "main.go"))
 	if err != nil {
 		t.Fatalf("read main.go: %v", err)
@@ -213,6 +215,7 @@ func TestTheCLINeverAdvertisesAnInterpreterLeg(t *testing.T) {
 // TestOneBackendIsWhatTheMachinePayloadNames closes the other half of the same contract: the deleted
 // engine stays deleted, and the machine surfaces name exactly one backend.
 func TestOneBackendIsWhatTheMachinePayloadNames(t *testing.T) {
+	t.Parallel()
 	if BackendName != "aot" {
 		t.Errorf("the one backend names itself %q; every machine payload says %q", BackendName, "aot")
 	}

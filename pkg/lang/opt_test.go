@@ -34,6 +34,7 @@ func hasLine(ir, want string) bool {
 // ---------------------------------------------------------------------------
 
 func TestOptimizeIRLevel0Identity(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = 5\nprint(x)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -45,6 +46,7 @@ func TestOptimizeIRLevel0Identity(t *testing.T) {
 }
 
 func TestOptimizeIRLevelNegativeIdentity(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(1)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -59,6 +61,7 @@ func TestOptimizeIRLevelNegativeIdentity(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeadGlobalElim(t *testing.T) {
+	t.Parallel()
 	ir := `@live = private unnamed_addr constant [1 x i8] c"x\00"
 @dead = private unnamed_addr constant [1 x i8] c"y\00"
 declare i32 @printf(i8*, ...)
@@ -85,6 +88,7 @@ entry:
 // ---------------------------------------------------------------------------
 
 func TestConstantFoldArithmetic(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %a = add i32 5, 3
@@ -112,6 +116,7 @@ else:
 }
 
 func TestConstantFoldZextSelect(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %c = icmp eq i1 true, true
@@ -133,6 +138,7 @@ entry:
 // ---------------------------------------------------------------------------
 
 func TestAllocaPromotion(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %x = alloca double
@@ -158,6 +164,7 @@ entry:
 }
 
 func TestAllocaDeadStoreElim(t *testing.T) {
+	t.Parallel()
 	// an alloca written but never read is dead.
 	ir := `define i32 @main() {
 entry:
@@ -173,6 +180,7 @@ entry:
 }
 
 func TestAllocaLoopFoldedByRealOpt(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath(optCmd); err != nil {
 		t.Skipf("opt-20 not installed: %v", err)
 	}
@@ -208,6 +216,7 @@ exit:
 // ---------------------------------------------------------------------------
 
 func TestDeadBlockElim(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   br label %keep
@@ -224,6 +233,7 @@ keep:
 }
 
 func TestCFGReachabilityKeepsReachable(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %c = icmp slt i32 1, 2
@@ -255,6 +265,7 @@ func findTool(name string) string {
 }
 
 func TestOptimizedIRValidForLLC(t *testing.T) {
+	t.Parallel()
 	llvmAs := findTool("llvm-as")
 	if llvmAs == "" {
 		t.Skip("llvm-as not installed")
@@ -290,6 +301,7 @@ func TestOptimizedIRValidForLLC(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOptimizeRealProgram(t *testing.T) {
+	t.Parallel()
 	src := "x = 5\nif x > 3:\n    print(1)\nelse:\n    print(2)\nprint(x + 2)\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -325,6 +337,7 @@ func TestOptimizeRealProgram(t *testing.T) {
 // function and is never read/printed is unobservable, so its allocation and
 // all of its mutating operations can be eliminated together.
 func TestDeadHeapElim(t *testing.T) {
+	t.Parallel()
 	// (1) an object allocated and written but never read/printed/escaped.
 	dead := `define i32 @main() {
 entry:
@@ -404,6 +417,7 @@ entry:
 }
 
 func TestScalarRepl(t *testing.T) {
+	t.Parallel()
 	// A heap list whose handle never escapes and whose accesses all use
 	// constant indices is promoted to registers: rt_alloc + rt_set_elem are
 	// deleted and each rt_get_elem is rewritten to the stored value.
@@ -466,6 +480,7 @@ entry:
 // referenced only by it (precise dead-global elimination; `__doc__` folding
 // becomes reachable-driven).
 func TestCallGraphReachabilityRemovesDeadFunc(t *testing.T) {
+	t.Parallel()
 	ir := `@keep = private unnamed_addr constant [1 x i8] c"k\00"
 @drop = private unnamed_addr constant [1 x i8] c"d\00"
 declare i32 @printf(i8*, ...)
@@ -502,6 +517,7 @@ entry:
 // Reachability is transitive through the call graph: a callee of a callee of
 // @main is kept, an unused sibling is dropped.
 func TestCallGraphReachabilityTransitiveCallees(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %a = call i32 @helper()
@@ -535,6 +551,7 @@ entry:
 // Direct recursion is handled: a function reachable from @main that calls
 // itself is kept (BFS must terminate).
 func TestCallGraphReachabilityRecursion(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %r = call i32 @rec()
@@ -564,6 +581,7 @@ entry:
 
 // Mutual recursion (a->b, b->a) is handled: both are reachable and kept.
 func TestCallGraphReachabilityMutualRecursion(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @main() {
 entry:
   %a = call i32 @even()
@@ -598,6 +616,7 @@ entry:
 // A library module with no @main entry is treated conservatively: no
 // function is eliminated.
 func TestCallGraphReachabilityNoEntryKeepsAll(t *testing.T) {
+	t.Parallel()
 	ir := `define i32 @a() {
 entry:
   ret i32 0

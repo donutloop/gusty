@@ -22,6 +22,7 @@ import (
 // TestComparisonChainsAnswerWhatPythonAnswers is the table. Every row is a chain whose nested reading
 // gives the OPPOSITE verdict, so a regression to left-associativity cannot hide behind the passing rows.
 func TestComparisonChainsAnswerWhatPythonAnswers(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -60,6 +61,7 @@ func TestComparisonChainsAnswerWhatPythonAnswers(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, r.src)
 			if got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
@@ -77,6 +79,7 @@ func TestComparisonChainsAnswerWhatPythonAnswers(t *testing.T) {
 // compiled backend does this by storing each operand into a slot and reading the slot; my first version
 // handed the ORIGINAL expression to every link and printed the call's output three times at exit 0.
 func TestTheMiddleOperandIsEvaluatedOnce(t *testing.T) {
+	t.Parallel()
 	countRuns := func(out string) int {
 		return strings.Count(out, "evaluated")
 	}
@@ -89,6 +92,7 @@ func TestTheMiddleOperandIsEvaluatedOnce(t *testing.T) {
 	} {
 		engine := engine
 		t.Run(engine.name+" middle call", func(t *testing.T) {
+			t.Parallel()
 			src := "def g():\n    print(\"evaluated\")\n\n    return 5\n\nprint(1 < g() < 10)\n"
 			out := engine.run(t, src)
 			if n := countRuns(out); n != 1 {
@@ -99,6 +103,7 @@ func TestTheMiddleOperandIsEvaluatedOnce(t *testing.T) {
 			}
 		})
 		t.Run(engine.name+" both ends counted", func(t *testing.T) {
+			t.Parallel()
 			// `g() < g() < g()` has three DISTINCT occurrences; each must run once, not twice for the
 			// middle one — which is what a nested BinOp reading the original nodes does.
 			src := "def g():\n    print(\"evaluated\")\n\n    return 5\n\nprint(1 < g() < 6)\nprint(g())\n"
@@ -115,6 +120,7 @@ func TestTheMiddleOperandIsEvaluatedOnce(t *testing.T) {
 // `print(1 < 2 < 3)` answered `1` — the same wrong number the chain itself fixes, arriving from the other
 // end (ADR 0257's rule that a verdict writes its own name).
 func TestChainVerdictsPrintTrueAndFalse(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ src, want string }{
 		{"print(1 < 2 < 3)\n", "True\n"},
 		{"print(3 < 2 < 1)\n", "False\n"},
@@ -122,6 +128,7 @@ func TestChainVerdictsPrintTrueAndFalse(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := compiledOut(t, r.src); got != r.want {
 				t.Errorf("--aot printed %q, want %q (a verdict printed through %%d is Gap R.53's answer from the print side)", got, r.want)
 			}
@@ -132,6 +139,7 @@ func TestChainVerdictsPrintTrueAndFalse(t *testing.T) {
 // TestChainParsesAsOneNode pins the shape rather than only the answer, because the shape is what makes
 // "each middle operand once" true: one node over n operands and n-1 operators, not nested BinOps.
 func TestChainParsesAsOneNode(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("print(1 < 2 < 3)")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -172,6 +180,7 @@ func TestChainParsesAsOneNode(t *testing.T) {
 // operator that is not itself a comparison, and a chain that ran through `and` would evaluate the right
 // hand side of the `and` unconditionally — the exact behaviour L12.1 rejects.
 func TestChainsDoNotSwallowBooleanOperators(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("x = 1\ny = 2\nz = 9\nprint(x < y and y < z)")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -191,6 +200,7 @@ func TestChainsDoNotSwallowBooleanOperators(t *testing.T) {
 // the two-token handling left `1 not in [1]` and `1 is not 2` unparseable, which is a worse bug than the
 // one being fixed.
 func TestChainWithTwoWordOperatorsStillParses(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(1 not in [2])",
 		"print(1 is not 2)",
@@ -200,6 +210,7 @@ func TestChainWithTwoWordOperatorsStillParses(t *testing.T) {
 	} {
 		src := src
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			if _, err := Compile(src + "\n"); err != nil {
 				t.Fatalf("refused a program the reference answers (%v): %s", err, src)
 			}
@@ -215,12 +226,14 @@ func TestChainWithTwoWordOperatorsStillParses(t *testing.T) {
 // tagged value word lets a container travel as a word. The test fails if the refusal silently becomes a
 // number, and also if it leaks the module it could not build.
 func TestChainWithAContainerOperandRefusesOnTheCompiledLeg(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(1 not in [2] == 1)\n",
 		"print(1 in [1, 2] == 1)\n",
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			want := captureStdout(t, src) // the record holds the reference answer here
 			res, err := Compile(src)
 			if err == nil {

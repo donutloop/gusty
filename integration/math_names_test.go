@@ -41,6 +41,7 @@ func cpythonMathOut(t *testing.T, dir, src string) (string, bool) {
 }
 
 func TestTheWholeNumberBuiltinsAnswerLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own pair", "print(floor(3.7))\nprint(ceil(-2.2))\n", "3\n-2\n"},
 		{"both directions, both signs",
@@ -59,6 +60,7 @@ func TestTheWholeNumberBuiltinsAnswerLikeTheReferenceAtTheCLI(t *testing.T) {
 			"def w(v):\n    return floor(v)\n\nprint(w(2.7) + 1)\n", "3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "math_names.gy", tc.src)
 			if py, ok := cpythonMathOut(t, dir, tc.src); !ok || py != tc.want {
@@ -82,6 +84,7 @@ func TestTheWholeNumberBuiltinsAnswerLikeTheReferenceAtTheCLI(t *testing.T) {
 // the reference's own sentence — and neither refuses to build the program (exit 1, which belongs to
 // programs the reference rejects) or crashes (exit 2).
 func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a negative constant under sqrt", "print(sqrt(-1))\n", "ValueError: math domain error"},
 		{"a negative the program computed", "n = 0 - 4\nprint(sqrt(n * 1.0))\n", "ValueError: math domain error"},
@@ -96,6 +99,7 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 		{"a negative infinity under sqrt", "n = float(\"-inf\")\nprint(sqrt(n))\n", "ValueError: math domain error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "math_trap.gy", tc.src)
 			// The reference stops on the same program, with the same sentence.
@@ -129,6 +133,7 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 		{"the kind caught", "try:\n    print(floor(\"a\"))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "math_catch.gy", tc.src)
 			if py, ok := cpythonMathOut(t, dir, tc.src); !ok || py != tc.want {
@@ -147,12 +152,14 @@ func TestTheWholeNumberBuiltinsTrapLikeTheReferenceAtTheCLI(t *testing.T) {
 // than programs the reference runs: one sentence, written once, exit 1 compiled and exit 3 interpreted,
 // exit 2 nowhere. `floor()` was a Go panic in the evaluator, which is Gap R.131's class.
 func TestTheWholeNumberBuiltinsSayTheirArityAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"no argument to floor", "print(floor())\n", "floor expects 1 argument, none given"},
 		{"two arguments to sqrt", "print(sqrt(1, 2))\n", "sqrt expects 1 argument, 2 given"},
 		{"no argument to ceil", "print(ceil())\n", "ceil expects 1 argument, none given"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "math_arity.gy", tc.src)
 			if py, ok := cpythonMathOut(t, dir, tc.src); ok || !strings.Contains(py, "takes exactly one argument") {
@@ -193,8 +200,10 @@ func TestTheWholeNumberBuiltinsSayTheirArityAtTheCLI(t *testing.T) {
 // twin is the same bytes with `from math import floor, ceil, sqrt` on the first line; the ledger row is
 // `not_applicable` only because of that one line, and this is where the oracle actually votes.
 func TestWholeNumberBuiltinsCorpusRowMatchesTheTwin(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"whole_number_builtins.gy", "non_finite_float_constant.gy"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			src := readProgram(t, name)
 			py, ok := cpythonMathOut(t, t.TempDir(), src)
 			if !ok {
@@ -221,6 +230,7 @@ func TestWholeNumberBuiltinsCorpusRowMatchesTheTwin(t *testing.T) {
 // are int64, so it answers the reference's number — and a wrong answer in silence is Gap R.64's shape,
 // which this row exists to avoid adding to.
 func TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent(t *testing.T) {
+	t.Parallel()
 	const src = "print(floor(3000000000.0))\n"
 	if py, ok := cpythonMathOut(t, t.TempDir(), src); !ok || py != "3000000000\n" {
 		t.Fatalf("the reference answers the number; said %q (ok %v)", py, ok)

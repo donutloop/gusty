@@ -12,6 +12,7 @@ import (
 // These tests pin the AST shape, the runtime semantics, and the emitted IR.
 
 func TestSubscriptAssignmentParsesAsAssignment(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("d = {}\nd[1] = 2\n")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -37,6 +38,7 @@ func TestSubscriptAssignmentParsesAsAssignment(t *testing.T) {
 }
 
 func TestNonAssignableTargetIsAnErrorNotADrop(t *testing.T) {
+	t.Parallel()
 	// `def f(): return 1` then `f() = 1` — this used to parse and silently do nothing.
 	_, err := Parse("def f():\n    return 1\n\nf() = 1\n")
 	if err == nil {
@@ -48,6 +50,7 @@ func TestNonAssignableTargetIsAnErrorNotADrop(t *testing.T) {
 }
 
 func TestEmptyBracesIsAnEmptyDict(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("d = {}\n")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -67,6 +70,7 @@ func TestEmptyBracesIsAnEmptyDict(t *testing.T) {
 }
 
 func TestCompiledSubscriptAssignment(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string // what print()s must show
@@ -90,6 +94,7 @@ func TestCompiledSubscriptAssignment(t *testing.T) {
 }
 
 func TestCompiledSubscriptAssignmentErrors(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{"xs = [1]\nxs[5] = 2\n", "list assignment index out of range"},
 		{"s = {1, 2}\ns[0] = 5\n", "cannot assign to a set element"},
@@ -107,6 +112,7 @@ func TestCompiledSubscriptAssignmentErrors(t *testing.T) {
 }
 
 func TestIRSubscriptAssignment(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("d = {}\nd[1] = 2\nprint(len(d))\n")
 	if err != nil {
 		t.Fatalf("Compile(dict): %v", err)
@@ -135,6 +141,7 @@ func TestIRSubscriptAssignment(t *testing.T) {
 }
 
 func TestIRSubscriptAssignmentDiagnostics(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{"s = {1, 2}\ns[0] = 5\nprint(1)\n", "sets do not support item assignment"},
 		{"def f(x):\n    return x\n\nf() = 1\n", "cannot assign"},

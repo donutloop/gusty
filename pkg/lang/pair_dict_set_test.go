@@ -56,6 +56,7 @@ const (
 // is no longer a position that keeps one word for its operand. Every answer is the record's, which is
 // CPython's; the pair is asked on both sides of the entry, beside literals, nested, and as the loop variable.
 func TestAPairBoundNameEntersADictEntryByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"an int slot answers the number", pairDictIntSlot, "print({\"k\": n})\n", "{'k': 7}\n"},
 		{"a text slot answers the text, not its interned index", pairDictTextSlot, "print({\"k\": n})\n", "{'k': 'a'}\n"},
@@ -81,6 +82,7 @@ func TestAPairBoundNameEntersADictEntryByWayOfItsTag(t *testing.T) {
 		{"a dict literal handed to a function", pairDictIntSlot, "def show(d):\n    print(d)\nshow({\"k\": n})\n", "{'k': 7}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -100,6 +102,7 @@ func TestAPairBoundNameEntersADictEntryByWayOfItsTag(t *testing.T) {
 // carried, or it reads a payload it cannot classify — which is how a text value prints its interned index
 // and a pair key stops being findable.
 func TestAPairBoundNameBoundIntoADictKeepsItsTagOnTheObject(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"bound and printed", pairDictIntSlot, "d2 = {\"k\": n}\nprint(d2)\n", "{'k': 7}\n"},
 		{"bound and measured", pairDictIntSlot, "d2 = {\"k\": n}\nprint(len(d2))\n", "1\n"},
@@ -117,6 +120,7 @@ func TestAPairBoundNameBoundIntoADictKeepsItsTagOnTheObject(t *testing.T) {
 		{"grown by a literal key after binding", pairDictIntSlot, "d2 = {\"k\": n}\nd2[\"j\"] = 2\nprint(d2)\n", "{'k': 7, 'j': 2}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -134,6 +138,7 @@ func TestAPairBoundNameBoundIntoADictKeepsItsTagOnTheObject(t *testing.T) {
 // position the runtime dedups, and a dedup that reads the payload alone makes `1` and a text whose interned
 // index happens to be 1 the same member — which is why the rows below keep an int and a text apart.
 func TestAPairBoundNameEntersASetMemberByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"an int slot answers the number", pairDictIntSlot, "print({n})\n", "{7}\n"},
 		{"a text slot answers the text", pairDictTextSlot, "print({n})\n", "{'a'}\n"},
@@ -144,6 +149,7 @@ func TestAPairBoundNameEntersASetMemberByWayOfItsTag(t *testing.T) {
 		{"two equal pairs are one member", pairDictIntSlot, "xs.append(7)\nm = xs[1]\nprint({n, m})\n", "{7}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -160,6 +166,7 @@ func TestAPairBoundNameEntersASetMemberByWayOfItsTag(t *testing.T) {
 // TestAPairBoundNameBoundIntoASetKeepsItsTagOnTheObject is the set's binding half — the same reads the
 // dict's binding table makes, asked of an object whose members are a payload-and-tag scan.
 func TestAPairBoundNameBoundIntoASetKeepsItsTagOnTheObject(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"bound and printed", pairDictIntSlot, "s2 = {n}\nprint(s2)\n", "{7}\n"},
 		{"bound and measured", pairDictIntSlot, "s2 = {n}\nprint(len(s2))\n", "1\n"},
@@ -170,6 +177,7 @@ func TestAPairBoundNameBoundIntoASetKeepsItsTagOnTheObject(t *testing.T) {
 		{"rendered by str", pairDictTextSlot, "print(str({n}))\n", "{'a'}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -189,6 +197,7 @@ func TestAPairBoundNameBoundIntoASetKeepsItsTagOnTheObject(t *testing.T) {
 // payload alone answers "yes" for every value in the language — a list's handle is an i32 like any other —
 // and the program then prints `{[1, 2]}` happily at exit 0 where CPython raises.
 func TestAPairBoundKeyOrMemberThatCannotBeAKeyRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, class, message string }{
 		{"a list slot cannot be a key", pairDictListSlot, "print({n: 1})\n", "TypeError", "unhashable type: 'list'"},
 		{"a dict slot cannot be a key", pairDictDictSlot, "print({n: 1})\n", "TypeError", "unhashable type: 'dict'"},
@@ -200,6 +209,7 @@ func TestAPairBoundKeyOrMemberThatCannotBeAKeyRaisesWhatTheReferenceRaises(t *te
 		{"a bound set refuses its unhashable member", pairDictListSlot, "s2 = {n}\nprint(s2)\n", "TypeError", "unhashable type: 'list'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			res, err := JIT(src, 0)
 			if err != nil {
@@ -221,11 +231,13 @@ func TestAPairBoundKeyOrMemberThatCannotBeAKeyRaisesWhatTheReferenceRaises(t *te
 // TestTheUnhashablePairRaiseReachesTheProgramsOwnArm is the trap's other half: a built-in failure that no
 // `except` can reach is a different program (ADR 0228's "a built-in trap is a typed raise").
 func TestTheUnhashablePairRaiseReachesTheProgramsOwnArm(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, pre, body, want string }{
 		{"the program's own arm runs for a key", pairDictListSlot, "try:\n    print({n: 1})\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 		{"the program's own arm runs for a member", pairDictListSlot, "try:\n    print({n})\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			RecordedStdoutIs(t, src, tc.want)
 			res, err := JIT(src, 0)
@@ -245,6 +257,7 @@ func TestTheUnhashablePairRaiseReachesTheProgramsOwnArm(t *testing.T) {
 // The rows fail if the road grows a second builder of its own, if a tag stops being written (ADR 0187), or
 // if the payload starts being stored as a `double`, which is the module `llc` rejects for a container slot.
 func TestAPairBoundDictAndSetRunThroughTheTaggedBuilders(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, wantCall string
 		guards              bool
@@ -256,6 +269,7 @@ func TestAPairBoundDictAndSetRunThroughTheTaggedBuilders(t *testing.T) {
 		{"a bound set", pairDictIntSlot + "s2 = {n}\nprint(s2)\n", "call void @rt_set_add_tagged(", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused a program the reference prints: %v", err)
@@ -293,6 +307,7 @@ func TestAPairBoundDictAndSetRunThroughTheTaggedBuilders(t *testing.T) {
 // needed it: an element whose tag is a constant has no register to carry and no unhashable surprise, and a
 // literal that reaches the tagged pair road anyway costs three guards per entry for nothing.
 func TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"an int dict", "print({\"k\": 1})\n"},
 		{"a text dict", "print({\"k\": \"v\"})\n"},
@@ -301,6 +316,7 @@ func TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad(t *testing.T) {
 		{"a text set", "print({\"a\"})\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused a program the reference prints: %v", err)
@@ -328,6 +344,7 @@ func TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad(t *testing.T) {
 // Each keeps the sentence that names the value's origin, the missing half and the roadmap row; exit 2 stays
 // forbidden, because a refusal this backend emits is a diagnostic and not a compiler bug (ADR 0166).
 func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, pre, body string
 		must            []string
@@ -341,6 +358,7 @@ func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T
 			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.pre + tc.body
 			res, err := JIT(src, 0)
 			if err == nil {

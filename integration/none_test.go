@@ -18,6 +18,7 @@ import (
 const noneExpected = "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n"
 
 func TestNoneValuesOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	out := runCompiled(t, readProgramSrc("none_values"))
 	if out != noneExpected {
 		t.Errorf("the record leg output =\n%s\nwant\n%s", out, noneExpected)
@@ -25,6 +26,7 @@ func TestNoneValuesOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestNoneValuesAOT(t *testing.T) {
+	t.Parallel()
 	out := compileAndRun(t, readProgramSrc("none_values"))
 	if out != noneExpected {
 		t.Errorf("AOT output =\n%s\nwant\n%s", out, noneExpected)
@@ -33,6 +35,7 @@ func TestNoneValuesAOT(t *testing.T) {
 
 // TestNoneIsNotZero is the specific lie: None and the integer 0 must not be interchangeable.
 func TestNoneIsNotZero(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{"print(None)\n", "None\n"},
 		{"x = None\nprint(x)\n", "None\n"},
@@ -57,6 +60,7 @@ func TestNoneIsNotZero(t *testing.T) {
 // TestVoidCallSideEffectsStay: deciding `f() == None` statically must not delete the call,
 // and printing a void call must still run it (output order is observable).
 func TestVoidCallSideEffectsStay(t *testing.T) {
+	t.Parallel()
 	src := "def emit():\n    print(\"side\")\n\nprint(emit())\nprint(emit() == None)\n"
 	want := "side\nNone\nside\nTrue\n"
 	got := runCompiled(t, src)
@@ -71,6 +75,7 @@ func TestVoidCallSideEffectsStay(t *testing.T) {
 // TestCLIEvalDoesNotEchoVoid: the CLI used to append the value print() returned (the int 0)
 // to every program's stdout. Snippets still echo their value; programs do not.
 func TestCLIEvalDoesNotEchoVoid(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	out, code := cliRunCode(t, "--file", writeSrc(t, filepath.Dir(bin), "prog.gy", "print(1)\n"))
 	if code != 0 {

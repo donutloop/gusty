@@ -17,6 +17,7 @@ import (
 // top-level statement boundaries, freeing unreachable heap objects so a
 // function with more allocations than the 1024-object heap cap completes.
 func TestIRGCFunctionLocalAllocGC(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("def f():\n")
 	for i := 0; i < 1200; i++ {
@@ -37,6 +38,7 @@ func TestIRGCFunctionLocalAllocGC(t *testing.T) {
 // TestIRGCParamRooting verifies that a heap-object parameter survives GC at
 // function-body statement boundaries (params are rooted).
 func TestIRGCFunctionLocalRooting(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("def f():\n")
 	b.WriteString("    a = [42]\n")

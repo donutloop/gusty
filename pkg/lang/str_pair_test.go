@@ -37,6 +37,7 @@ const strPairBuilt = "xs = []\nxs.append(3)\nxs.append(\"a\")\nxs.append([1, 2])
 // TestStrAndReprOfASlotReadAnswerLikePrintDoes is the row: every value the literal cannot describe, in
 // both halves of the rendering pair, checked against the answer the record holds — which is CPython's.
 func TestStrAndReprOfASlotReadAnswerLikePrintDoes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int slot, str", "xs = []\nxs.append(3)\nprint(str(xs[0]))\n", "3\n"},
 		{"a text slot, str", "xs = []\nxs.append(\"a\")\nprint(str(xs[0]))\n", "a\n"},
@@ -82,6 +83,7 @@ func TestStrAndReprOfASlotReadAnswerLikePrintDoes(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// The record is the witness for the value; `RecordedStdoutIs` also refuses to let the
 			// case's own expectation drift away from what was recorded.
 			RecordedStdoutIs(t, tc.src, tc.want)
@@ -101,6 +103,7 @@ func TestStrAndReprOfASlotReadAnswerLikePrintDoes(t *testing.T) {
 // a text is quoted. A module that answers these shapes without the capture door has quietly grown a
 // parallel renderer, which is how `str([1, 2])` came to answer `0` once (ADR 0258).
 func TestStrOfASlotIsTheSameDoorPrintUses(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(strPairBuilt + "print(str(xs[1]), repr(xs[1]))\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -116,6 +119,7 @@ func TestStrOfASlotIsTheSameDoorPrintUses(t *testing.T) {
 // the program built stores the payload AND its tag, because a payload alone is a number wearing another
 // object's bits (ADR 0185). A regression here is silent — the value prints as an unrelated small integer.
 func TestThePairBindingWritesBothWords(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(str(n))\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -134,6 +138,7 @@ func TestThePairBindingWritesBothWords(t *testing.T) {
 // it, which is Gap R.38's defect — a diagnostic describing a program the reader cannot find. The row
 // therefore fails if the refusal either ANSWERS (a payload read as a number) or blames a loop.
 func TestANumberPositionStillRefusesAndNamesTheTruth(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\nn = xs[0]\nprint(n + 1)\n"
 	if res, err := Compile(src); err == nil {
 		t.Fatalf("the compiler answered a position that keeps one word for its operand, emitting:\n%s", firstLines(res.IR, 20))
@@ -156,10 +161,12 @@ func TestANumberPositionStillRefusesAndNamesTheTruth(t *testing.T) {
 // TestAStrRefusalStillNamesItsMissingDoor keeps the ADR 0166 contract on the shapes this cycle did NOT
 // reach: a value with no pair at all must refuse in a sentence an agent can act on, not in three words.
 func TestAStrRefusalStillNamesItsMissingDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, need string }{
 		{"a parameter with no pair", "def f(v):\n    return str(v)\n\nprint(f(None))\n", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := JIT(tc.src, 0)
 			if err == nil {
 				return // answered; the answer is checked by the tables above

@@ -29,6 +29,7 @@ const clearLine = "store i32 0, i32* @exn_flag"
 const setLine = "store i32 1, i32* @exn_flag"
 
 func TestHandledExceptionEmitsAClear(t *testing.T) {
+	t.Parallel()
 	src := "def f() -> int:\n    try:\n        z = 1 // 0\n    except KeyError:\n        pass\n    except:\n        pass\n    return 1\n\nprint(f())\n"
 	ir := clearModule(t, src)
 	if n := strings.Count(ir, clearLine); n < 1 {
@@ -42,6 +43,7 @@ func TestHandledExceptionEmitsAClear(t *testing.T) {
 }
 
 func TestClearPrecedesTheReturnFromAnArm(t *testing.T) {
+	t.Parallel()
 	// The arm leaves by `return`, so the clear has to be on that edge — before the ret, not just
 	// somewhere in the function. Asserting the order is what distinguishes a real fix from a store
 	// that the optimizer will never reach.
@@ -68,6 +70,7 @@ func TestClearPrecedesTheReturnFromAnArm(t *testing.T) {
 }
 
 func TestRaiseInsideAnArmDoesNotGetCleared(t *testing.T) {
+	t.Parallel()
 	// `raise` in an arm is a *new* exception travelling outward, not a handled one. This arm can
 	// never complete normally, so the arm's normal-exit clear must not be emitted at all: a module
 	// for this program that clears the flag anywhere is a module that can swallow the raise.

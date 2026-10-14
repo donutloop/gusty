@@ -13,6 +13,7 @@ import (
 // that *runs* and then traps: exit 3, the class named as data, and the same sentence in the
 // traceback the payload also carries.
 func TestRuntimeTrapJSONReportsItsExceptionClass(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src   string
 		class string
@@ -65,6 +66,7 @@ func TestRuntimeTrapJSONReportsItsExceptionClass(t *testing.T) {
 // 0, the case fails, because an answer that arrived without the trap being implemented would be the
 // wrong answer at exit 0 — the class of bug this repo counts as worse than a refusal.
 func TestCompiledBackendRefusesWhereTheReferenceTraps(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string // what the refusal has to name
@@ -93,6 +95,7 @@ func TestCompiledBackendRefusesWhereTheReferenceTraps(t *testing.T) {
 // A front-end refusal is not a runtime trap: no class, exit 1, and the exception members absent —
 // so the field means "the program raised", never "the compiler complained".
 func TestFrontEndRejectionJSONCarriesNoExceptionClass(t *testing.T) {
+	t.Parallel()
 	out, code := cliExit(t, "--json", "--eval", "def f(: int) -> int:\n    return x + y\n")
 	if code == exitRuntime {
 		t.Fatalf("a front-end rejection reported a runtime exit: %s", out)

@@ -16,6 +16,7 @@ import (
 const dictKeyRuleWant = "{'a': 2}\n{1: 'b'}\n{1: 2}\n{1.0: 'b'}\n{'a': 3, 'b': 2}\n2\n1\na\n{'a': 2} 1\n{1: 2}\n1\n"
 
 func TestCLIDictKeyRulePrintsWhatCPythonPrints(t *testing.T) {
+	t.Parallel()
 	path := writeSrc(t, t.TempDir(), "dict_key_rule.gy", readProgramSrc("dict_key_rule"))
 	py, ok := cpythonOut(t, path)
 	if !ok {
@@ -47,6 +48,7 @@ func TestCLIDictKeyRulePrintsWhatCPythonPrints(t *testing.T) {
 // Both programs are `match` in the ledger, so an agent reading the artifact sees a conformant dictionary
 // rather than a pinned wrong answer, and the oracle's own exit class says the same thing.
 func TestOracleCallsADuplicateKeyPaid(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"dict_key_rule", "probe_dict_comprehension_duplicate_key"} {
 		src := readProgramSrc(name)
 		out, code := cliRunCode(t, "--oracle", src)
@@ -66,6 +68,7 @@ func TestOracleCallsADuplicateKeyPaid(t *testing.T) {
 // there, and the container reports one entry — the two questions a script asks when it is checking
 // whether its own program did what it meant.
 func TestJSONSeesOneEntryForARepeatedKey(t *testing.T) {
+	t.Parallel()
 	// The row's claim is about the dict: one entry, and the value the last write left. The reference
 	// is what says so, and it is asked live. Whether the *prompt* reports the value is a separate
 	// question that is not yet answered — the compiled echo renders through the one str/repr table, and

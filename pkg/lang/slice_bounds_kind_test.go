@@ -84,6 +84,7 @@ var sliceBoundsAnswered = []struct {
 // (ADR 0166, ADR 0211). The list-bound row is the one that used to reach `rt_slice`'s i32 argument as a
 // `@.lstN` global reference and have `llc` reject the module, exactly the shape Gap R.222 measured for an index.
 func TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	const message = "slice indices must be integers or None or have an __index__ method"
 	for _, tt := range []struct {
 		src string
@@ -128,6 +129,7 @@ func TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises(t *testing.T) {
 		{"def f(a):\n    xs = [1, 2]\n    return xs[a:2]\nprint(f(\"a\"))"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, msg := jitTrap(t, tt.src)
 			if class != "TypeError" || msg != message {
 				t.Fatalf("%q raised %s: %s; the reference raises TypeError: %s", tt.src, class, msg, message)
@@ -140,8 +142,10 @@ func TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises(t *testing.T) {
 // absence stays an absence. These are the rows a gate fails by refusing, so they are asked of the compiler and
 // of the reference in the same breath.
 func TestASliceAnswersWhatTheReferenceAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceBoundsAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); the reference answers %q", tt.src, got, tt.want+"\n")
@@ -160,6 +164,7 @@ func TestASliceAnswersWhatTheReferenceAnswers(t *testing.T) {
 // TestABadBoundIsTheProgramsExceptionNotTheCompilers: the raise is catchable, which is the difference between a
 // program result and a build failure.
 func TestABadBoundIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -182,6 +187,7 @@ func TestABadBoundIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
 				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
 			}
@@ -194,6 +200,7 @@ func TestABadBoundIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
 // a row that starts allocating for `print("abcdef"[1:3])` is a row that asked the wrong question (ADR 0249's
 // gate-and-door rule, asserted where a reader can see the IR).
 func TestTheFoldStillOwnsTheSliceThatFolds(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(\"abcdef\"[1:3])",
 		"print(\"abcdef\"[::-1])",
@@ -201,6 +208,7 @@ func TestTheFoldStillOwnsTheSliceThatFolds(t *testing.T) {
 		"xs = [1, 2, 3]\nprint(xs[None:2])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			mustVerifyWithLLC(t, emittedModuleIR(t, src))
 		})
 	}
@@ -211,6 +219,7 @@ func TestTheFoldStillOwnsTheSliceThatFolds(t *testing.T) {
 // gate runs before any bound is lowered, which is also what keeps a container-valued bound out of an i32
 // argument slot (the exit-2 shape this row retires).
 func TestTheBoundGateLeavesTheUntaggedCopyAlone(t *testing.T) {
+	t.Parallel()
 	plain := mainBodyOf(emittedModuleIR(t, "xs = [1, 2, 3]\nprint(xs[1:])"))
 	if !strings.Contains(plain, "@rt_slice(") || strings.Contains(plain, "rt_print_list_mixed") {
 		t.Fatalf("a slice with a good bound changed road or printer:\n%s", plain)
@@ -227,8 +236,10 @@ func TestTheBoundGateLeavesTheUntaggedCopyAlone(t *testing.T) {
 // TestEverySliceBoundsModuleVerifies is the exit-2 guard: the row began as three wrong answers and one `llc`
 // rejection, and a fix that ends with the verifier unhappy has only changed class.
 func TestEverySliceBoundsModuleVerifies(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceBoundsAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			mustVerifyWithLLC(t, emittedModuleIR(t, tt.src))
 		})
 	}
@@ -241,6 +252,7 @@ func TestEverySliceBoundsModuleVerifies(t *testing.T) {
 // what the answer should be, and the row asserts the class, the message, the silence on stdout and the absence of
 // the compiler's `codegen:` prefix on every position that reads a copy (roadmap Gap R.236, ADR 0337).
 func TestASliceStepOfZeroRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	const message = "slice step cannot be zero"
 	for _, tt := range []struct {
 		src string
@@ -270,6 +282,7 @@ func TestASliceStepOfZeroRaisesWhatTheReferenceRaises(t *testing.T) {
 		{"xs = [1, 2]\nprint(xs[::0][0:1])"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, msg := jitTrap(t, tt.src)
 			if class != "ValueError" || msg != message {
 				t.Fatalf("%q raised %s: %s; the reference raises ValueError: %s", tt.src, class, msg, message)
@@ -282,6 +295,7 @@ func TestASliceStepOfZeroRaisesWhatTheReferenceRaises(t *testing.T) {
 // handler still runs — which is the difference between the program's ValueError and the killed run this row
 // replaced (a killed run prints nothing, catches nothing, and exits 2).
 func TestASliceStepOfZeroIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -309,6 +323,7 @@ func TestASliceStepOfZeroIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
 				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
 			}
@@ -328,6 +343,7 @@ func TestASliceStepOfZeroIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
 //   - a step the compiler reads as anything else asks nothing: the ordinary `xs[::2]` module is no fatter than it
 //     was, which is the negative control a guard emitted unconditionally would fail.
 func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		src         string
@@ -348,6 +364,7 @@ func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -369,6 +386,7 @@ func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
 		"xs = [1, 2, 3, 4]\nprint(xs[0:4:2])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -403,6 +421,7 @@ func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
 // arm that calls a function is pinned one altitude out, in `integration/slice_bounds_test.go`, where the run's
 // exit code is the thing (Gap R.241).
 func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -506,6 +525,7 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, trap, refused := sliceFiledRow(t, tc.src)
 			if tc.compiled == "" {
 				if !refused {
@@ -527,8 +547,10 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 // cannot be deleted without deleting the evidence the suite reads (ADR 0302's rule that a missing record fails
 // the case).
 func TestTheBoundsRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceBoundsAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, tt.src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that reads it", tt.src)

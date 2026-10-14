@@ -13,6 +13,7 @@ import (
 )
 
 func TestDictGetAnswersNoneAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -33,6 +34,7 @@ func TestDictGetAnswersNoneAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")
@@ -61,6 +63,7 @@ func TestDictGetAnswersNoneAtTheCLI(t *testing.T) {
 // decline a container method over a NAME — a name's slots belong to the runtime — but it may not call the
 // dict a string while doing so.
 func TestARefusalAboutADictCallsItADict(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		"d = {\"a\": 1}\nprint(d.keys())\n",
@@ -68,6 +71,7 @@ func TestARefusalAboutADictCallsItADict(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			p := writeSrc(t, dir, "dictrefuse", src)
 			out, code := cliRunMerged(t, "--aot", "--file", p)
 			if code == 2 {

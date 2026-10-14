@@ -14,6 +14,7 @@ import (
 )
 
 func TestTextLeftPercentRefusesAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, refusal string }{
 		{"the row: %.2f over a double", "print(\"%.2f\" % 3.5)\n", "printf"},
 		{"%.1f over a double", "print(\"%.1f\" % 3.14159)\n", "printf"},
@@ -28,6 +29,7 @@ func TestTextLeftPercentRefusesAtTheCLI(t *testing.T) {
 		{"bound to a name first", "s = \"%.2f\" % 3.5\nprint(s)\n", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "percent.gy", tc.src)
 			// The reference is recorded in the failure text, so a row that stops being a refusal can
@@ -54,6 +56,7 @@ func TestTextLeftPercentRefusesAtTheCLI(t *testing.T) {
 }
 
 func TestRemainderAtTheCLIIsUntouchedByThePercentGuard(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"int remainder", "print(7 % 3)\nprint(-7 % 3)\n", "1\n2\n"},
 		{"float remainder", "print(7.5 % 2)\nprint(-7.5 % 2)\n", "1.5\n0.5\n"},
@@ -63,6 +66,7 @@ func TestRemainderAtTheCLIIsUntouchedByThePercentGuard(t *testing.T) {
 		{"a float still prints", "print(1.5 + 2)\nprint(7 / 2)\n", "3.5\n3.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "percent_control.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)

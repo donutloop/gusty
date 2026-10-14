@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Precise stack roots (roadmap L7.2, ADR 0181).
@@ -211,10 +212,35 @@ func gcEnvStress() bool {
 // collector report at the end of main — the AOT counterpart of the record's
 // --gc-stats. Codegen has no option object, so this follows the SetStdlibDir pattern:
 // one package switch, set once by the CLI before generating.
-var gcReport bool
+var (
+	gcReportMu sync.RWMutex
+	gcReport   bool
+)
 
-// SetGCReport turns the compiled backend's collector self-report on or off.
-func SetGCReport(on bool) { gcReport = on }
+// SetGCReport turns the compiled backend's collector self-report on or off *for the process*, which is what
+// `gustyc --gc-stats` does once at startup in a process that compiles one program. A caller that is running
+// several compiles at once — a test suite, an agent driving the library — sets IRGenOptions.GCReport /
+// CompileRun.GCReport on the run instead, so its own program reports without deciding what everyone else's
+// program prints (ADR 0343).
+func SetGCReport(on bool) {
+	gcReportMu.Lock()
+	defer gcReportMu.Unlock()
+	gcReport = on
+}
 
-// GCReportEnabled reports whether compiled programs print their collector report.
-func GCReportEnabled() bool { return gcReport }
+// GCReportEnabled reports whether compiled programs print their collector report: the process switch, read
+// under its lock.
+func GCReportEnabled() bool {
+	gcReportMu.RLock()
+	defer gcReportMu.RUnlock()
+	return gcReport
+}
+
+// gcReportWanted is the self-report switch of one run: what the run asked for, or the process default for
+// a caller that never built an options bundle.
+func gcReportWanted(opts *IRGenOptions) bool {
+	if opts != nil && opts.GCReport {
+		return true
+	}
+	return GCReportEnabled()
+}

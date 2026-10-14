@@ -11,6 +11,7 @@ import (
 // separate gap (the compiled backend says `index out of range` where CPython says `list index out of
 // range`), recorded as Gap R.89 rather than fixed under this feature.
 func TestTaggedNumericKeepsTheBoundsCheck(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"xs = [1.5, 2.5]\ni = 5\nprint(xs[i] + 1)\n",
 		"xs = [1.5, 2.5]\ni = -3\nprint(xs[i] * 2)\n",
@@ -47,6 +48,7 @@ func TestTaggedNumericKeepsTheBoundsCheck(t *testing.T) {
 //     any row here is a failure of this file, not a passing one.
 
 func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			// The program that used to exit 2: an empty operand in the fdiv.
@@ -130,6 +132,7 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "tagged_numeric.gy", tc.src)
 			pyOut, ok := cpythonOut(t, path)
 			if !ok {
@@ -153,6 +156,7 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 // way the interpreter does. The old build passed a test shaped like this by refusing to compile, so
 // each row asserts the sentence itself arrives, and not a `codegen:` line.
 func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 		// aotOnly marks the one row whose interpreter half is wrong for a reason of its own: the
@@ -215,6 +219,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "tagged_numeric_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 ||
@@ -250,6 +255,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 // never reaching `llc` with a half-built instruction (ADR 0166's exit-class rule, which is the whole
 // reason the float arm records an unlift-able operand instead of emitting `fdiv double , %t1`).
 func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			"a_container_the_literal_no_longer_describes",
@@ -275,6 +281,7 @@ func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "tagged_numeric_refusal.gy", tc.src)
 			// What used to be corroborated by the tag-carrying interpreter is corroborated by the
 			// reference now: the shape is legal Python and CPython answers it, so the compiled path owes

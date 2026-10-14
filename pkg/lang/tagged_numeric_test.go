@@ -26,6 +26,7 @@ import (
 // same shape `lenOfTaggedSlot` already uses to say `object of type 'int' has no len()`.
 
 func TestTaggedNumericUseMatchesCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -79,6 +80,7 @@ func TestTaggedNumericUseMatchesCPythonOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused: %v", tc.src, err)
@@ -97,6 +99,7 @@ func TestTaggedNumericUseMatchesCPythonOnBothLegs(t *testing.T) {
 // raises — the class, the sentence, and the per-operator difference between `"a" + 1` and `"a" - 1`,
 // which is the whole reason this is a door per operator rather than one helper for arithmetic.
 func TestTaggedNumericUseTrapsWherePythonTraps(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -157,6 +160,7 @@ func TestTaggedNumericUseTrapsWherePythonTraps(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if !tc.aotOnly {
 				ee := trapRun(t, tc.src)
 				if ee.ExnType != tc.class {
@@ -211,6 +215,7 @@ func runIRMayTrap(t *testing.T, ir string) string {
 // with a word that means something else — and none of them is allowed to be an exit 2, which the
 // integration table asserts against the CLI.
 func TestTaggedNumericUseRefusesWhatItCannotProve(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -274,6 +279,7 @@ func TestTaggedNumericUseRefusesWhatItCannotProve(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				out := captureStdout(t, tc.src)
@@ -292,6 +298,7 @@ func TestTaggedNumericUseRefusesWhatItCannotProve(t *testing.T) {
 // The read emits its bounds check before the arithmetic, so `xs[i]` out of range is still an
 // IndexError and not a phi that reads a word out of the object.
 func TestTaggedNumericUseKeepsTheBoundsCheck(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "xs = [1.5, 2.5]\ni = 0\nprint(xs[i] + 1)\n")
 	for _, want := range []string{
 		"call i32 @rt_get_elem(",

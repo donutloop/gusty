@@ -42,6 +42,7 @@ print(xs.pop(0))`, "1"},
 
 // The interpreted leg is pinned to CPython line for line, not "starts with".
 func TestCLIAnswersTheVoidLikeTheReference(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)
@@ -70,6 +71,7 @@ func TestCLIAnswersTheVoidLikeTheReference(t *testing.T) {
 // The compiled leg may answer or refuse, and may not do anything else. Exit 2 is called out
 // separately because that is the class this row actually eliminated.
 func TestCLICompiledMutationNeverExitsTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)
@@ -85,6 +87,7 @@ func TestCLICompiledMutationNeverExitsTwo(t *testing.T) {
 // Where the compiled leg answers, it answers the reference. Where it refuses, the sentence must say
 // which method and which receiver, so a reader can act on it (Gap R.38's rule for refusals).
 func TestCLICompiledMutationAgreesOrNamesItsRefusal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)
@@ -107,6 +110,7 @@ func TestCLICompiledMutationAgreesOrNamesItsRefusal(t *testing.T) {
 // A mutator's answer is the void, so the call is not a value: `sum([1,2,3].append(4))` is the
 // reference's TypeError, and an answer of 10 here means the container came back.
 func TestCLIMutatorCannotBeUsedAsAValue(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
 		`print(sum([1, 2, 3].append(4)))`,

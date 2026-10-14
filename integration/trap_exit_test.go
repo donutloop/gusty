@@ -29,6 +29,7 @@ func writeTrapCase(t *testing.T, dir, name, body string) string {
 }
 
 func TestTrapIsTheSameClassOnEveryRunPath(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	dir := t.TempDir()
 	trap := writeTrapCase(t, dir, "trap.gy", "xs = [1, 2, 3]\nprint(xs[-4])\n")
@@ -57,6 +58,7 @@ func TestTrapIsTheSameClassOnEveryRunPath(t *testing.T) {
 // TestTrapKeepsTheTracebackOffStdout is the half of the contract that outlives the exit
 // code: stdout is only what the program printed, and the diagnostic belongs to the tool.
 func TestTrapKeepsTheTracebackOffStdout(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	dir := t.TempDir()
 	trap := writeTrapCase(t, dir, "trap.gy", "xs = [1, 2, 3]\nprint(xs[-4])\n")
@@ -78,6 +80,7 @@ func TestTrapKeepsTheTracebackOffStdout(t *testing.T) {
 }
 
 func TestJITJSONExitAgreesWithTheProcessStatus(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	trap := writeTrapCase(t, dir, "trap.gy", "xs = [1, 2, 3]\nprint(xs[-4])\n")
 	clean := writeTrapCase(t, dir, "clean.gy", "print(1 + 1)\n")
@@ -122,6 +125,7 @@ func TestJITJSONExitAgreesWithTheProcessStatus(t *testing.T) {
 // legs now — the compiled program and CPython — and both are named in the payload, because "the program
 // crashed" and "the program crashed on both sides" are different verdicts for whoever is reading it.
 func TestOracleRecordsATrappingCompiledLegAsFailed(t *testing.T) {
+	t.Parallel()
 	out, code := cliRunCode(t, "--json", "--oracle", "xs = [1, 2, 3]\nprint(xs[-4])\n")
 	var payload struct {
 		Status string `json:"status"`
@@ -157,6 +161,7 @@ func TestOracleRecordsATrappingCompiledLegAsFailed(t *testing.T) {
 // event in a generic error and reported "your program does not compile" (1), so one bug was
 // described two ways depending on the flag in use (roadmap L11.8, ADR 0211).
 func TestCompiledPathClassifiesAnLLVMRejectionAsACompilerBug(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	dir := t.TempDir()
 	src := writeTrapCase(t, dir, "clean.gy", "print(1 + 1)\n")

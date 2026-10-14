@@ -27,6 +27,7 @@ import (
 // TestANumberBoundFromAParameterKeepsItsKind is the promoted family: each row is CPython-exact on both
 // engines, and every one of them printed a truncated integer at exit 0 before ADR 0285.
 func TestANumberBoundFromAParameterKeepsItsKind(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"add one, bind, return", "def f(x):\n    y = x + 1\n    return y\n\nprint(f(0.1))\n", "1.1\n"},
 		{"double it, bind, return", "def f(x):\n    y = x * 2\n    return y\n\nprint(f(0.1))\n", "0.2\n"},
@@ -40,6 +41,7 @@ func TestANumberBoundFromAParameterKeepsItsKind(t *testing.T) {
 		{"an int-only callee is untouched", "def f(x):\n    y = x + 1\n    return y\n\nprint(f(10))\n", "11\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -59,10 +61,12 @@ func TestANumberBoundFromAParameterKeepsItsKind(t *testing.T) {
 // missing word is L11.1's tagged value, and each row keeps its own line in Gap R.169's record until it
 // moves to the table above.
 func TestABoundAnswerStillRefusedIsTheHonestHalf(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"two bindings deep (CPython 3.0, this printed 3)", "def f(x):\n    y = x + 1\n    z = y * 2\n    return z\n\nprint(f(0.5))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Skipf("the shape now compiles — promote its row to the answering table and check it against python3")
@@ -86,6 +90,7 @@ func TestABoundAnswerStillRefusedIsTheHonestHalf(t *testing.T) {
 // for a container that is not in the file), and one claimed "another arm returns a plain integer" for a
 // body with no other arm.
 func TestTheBoundAnswerRefusalNamesWhatTheArithmeticWasOver(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 		not             []string
@@ -109,6 +114,7 @@ func TestTheBoundAnswerRefusalNamesWhatTheArithmeticWasOver(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Skipf("the shape now compiles — the refusal pin below is obsolete, and promoting it is the good outcome")
@@ -129,6 +135,7 @@ func TestTheBoundAnswerRefusalNamesWhatTheArithmeticWasOver(t *testing.T) {
 // TestASlotTheProgramBuiltStillNamesItself keeps the ORIGINAL sentence alive for the shape it describes,
 // so the new origins cannot swallow the one diagnosis that was already right.
 func TestASlotTheProgramBuiltStillNamesItself(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1]\nxs.append(2.5)\nprint(xs[0] / 2)\n")
 	if err != nil {
 		t.Fatalf("a true division over a runtime slot answers 1.5 today and must keep answering: %v", err)

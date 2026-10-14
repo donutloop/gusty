@@ -93,8 +93,10 @@ var minusOperatorCLIRows = []struct {
 // forbidden because it is the compiler's own bug (ADR 0166), and a non-zero exit is forbidden because a
 // refusal is the wrong answer to a program the reference runs (ADR 0249).
 func TestSubtractionAnswersWhatTheReferenceAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range minusOperatorCLIRows {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tt.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
@@ -117,6 +119,7 @@ func TestSubtractionAnswersWhatTheReferenceAnswersThroughTheCLI(t *testing.T) {
 // program with no subtraction earns no arithmetic, and a negated literal is still a constant, not a subtraction
 // from zero the compiler invented.
 func TestTheSubtractionIsInTheModule(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"x = 5\ny = x-1\nprint(y)",
 		"x = 5\nprint(x-1)",
@@ -124,6 +127,7 @@ func TestTheSubtractionIsInTheModule(t *testing.T) {
 		"xs = [1, 2, 3]\nprint(xs[len(xs)-1])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -144,6 +148,7 @@ func TestTheSubtractionIsInTheModule(t *testing.T) {
 		{"print(5*-1)", "-5\n"},                  // the sign is folded into the literal, not computed
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -191,6 +196,7 @@ func programFunctionBodies(t *testing.T, ir string) string {
 // R.244, filed by this row); a comprehension whose iterable is a list the compiler kept as a compile-time
 // constant is the tagged value word's own row (roadmap **L11.1**; the refusal's text cites `L11.2, ADR 0192`).
 func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -215,6 +221,7 @@ func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tc.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a program the reference runs: the code the contract reserves for a compiler bug (ADR 0166)\n%s", stderr)
@@ -242,6 +249,7 @@ func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 // TestTheMinusProgramMatchesTheReferenceThroughTheCLI is the whole row as one program, line for line against
 // the recorded reference answer.
 func TestTheMinusProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/minus_operator.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -275,6 +283,7 @@ func TestTheMinusProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 // TestTheMinusProgramIsOnTheRecord is ADR 0302's rule at this altitude: a program whose record disappeared
 // fails here rather than passing by having nothing to compare against.
 func TestTheMinusProgramIsOnTheRecord(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/minus_operator.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)

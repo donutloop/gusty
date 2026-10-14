@@ -14,6 +14,7 @@ import (
 // value and reserves `is` for identity, and that is what this pins (roadmap L11.1, ADR 0189).
 
 func TestContainersCompareByValueCompiled(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"def f(a, b):\n    return a == b\n\nxs = [1, 2]\nys = [1, 2]\nprint(f(xs, ys))\n", "True\n"},
 		{"def f(a, b):\n    return a == b\n\nprint(f([1, 2], [2, 1]))\n", "False\n"},
@@ -51,6 +52,7 @@ func TestContainersCompareByValueCompiled(t *testing.T) {
 // The same table through the record: the compiled backend share an expectation, and it is
 // CPython's (integration/container_equality_test.go checks the third leg).
 func TestContainersCompareByValueInterpreted(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [1, 2]\nys = [1, 2]\nprint(xs == ys)\n", "True\n"},
 		{"xs = [1, 2]\nys = [2, 1]\nprint(xs == ys)\n", "False\n"},
@@ -74,6 +76,7 @@ func TestContainersCompareByValueInterpreted(t *testing.T) {
 // The shape that used to be invalid IR: a container literal on one side of a comparison reached
 // the static path, and its elements-array global went into an icmp as an i32.
 func TestContainerComparisonNeverEmitsAGlobalInValuePosition(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"if [1] == 1:\n    print(\"y\")\n",
 		"if [1, 2] == [1, 2]:\n    print(\"y\")\n",
@@ -109,6 +112,7 @@ func TestContainerComparisonNeverEmitsAGlobalInValuePosition(t *testing.T) {
 // it lives in the answering table of container_return_test.go now, which is where a row that stops
 // refusing goes.
 func TestContainerCompareWithUnknownKindRefuses(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def probe(v):\n    return v\n\nxs = [1]\nprint(xs == probe(1))\n",
 	} {
@@ -130,6 +134,7 @@ func TestContainerCompareWithUnknownKindRefuses(t *testing.T) {
 // slot left behind. This is the assertion that catches a new builder forgetting the pair — the
 // bug lived here for a whole cycle as a *call argument* builder that hand-rolled its own loop.
 func TestEveryContainerBuilderWritesTags(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, builder string }{
 		{"xs = [1, \"a\"]\nprint(len(xs))\n", "list literal"},
 		{"xs = []\nxs.append(1)\nxs.append(2)\nprint(len(xs))\n", "append"},
@@ -159,6 +164,7 @@ func TestEveryContainerBuilderWritesTags(t *testing.T) {
 // rt_container_eq must be one helper with the three container shapes in it, and the element
 // comparison must read @heap_tags: without the tag half, [1] and ["1"] are the same i32.
 func TestContainerEqHelperReadsTags(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def f(a, b):\n    return a == b\n\nxs = [1]\nys = [\"1\"]\nprint(f(xs, ys))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -193,6 +199,7 @@ func TestContainerEqHelperReadsTags(t *testing.T) {
 // answers 1 (True) where CPython answers False, so the tag, not the payload, is what separates
 // a number from a word (ADR 0189).
 func TestTaggedElementsDistinguishPayloadCollisions(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"def f(a, b):\n    return a == b\n\nprint(f([0], [\"zero\"]))\n", "False\n"},
 		{"def f(a, b):\n    return a == b\n\nprint(f([\"zero\"], [0]))\n", "False\n"},

@@ -9,6 +9,7 @@ import (
 // binary, octal, and digit separators) lexes to correct token values and
 // preserves the original spelling in token.Text.
 func TestLexNumericLiterals(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want int64
@@ -61,6 +62,7 @@ func TestLexNumericLiterals(t *testing.T) {
 
 // TestLexFloatSeparators verifies underscores are accepted in float literals.
 func TestLexFloatSeparators(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("1_0.5")
 	if err != nil {
 		t.Fatalf("Lex: %v", err)
@@ -82,6 +84,7 @@ func TestLexFloatSeparators(t *testing.T) {
 
 // TestLexUnderscoreMisuse verifies misplaced '_' separators are rejected.
 func TestLexUnderscoreMisuse(t *testing.T) {
+	t.Parallel()
 	// L4.1 error-recovering lexer: numeric misuse no longer aborts; it emits a
 	// TokError token and resumes, so the parser can surface multiple diagnostics.
 	for _, src := range []string{"1__0", "1_", "0x_", "0b1_", "1_a"} {
@@ -105,6 +108,7 @@ func hasTokError(toks []Token) bool {
 }
 
 func TestLexRecoveryMultipleErrors(t *testing.T) {
+	t.Parallel()
 	// L4.1: the lexer recovers and emits one TokError token per bad site, so the
 	// parser can surface multiple diagnostics in a single pass.
 	src := "1__0; \"unterminated"
@@ -156,6 +160,7 @@ func lexKinds(src string) string {
 // newline joins the next physical line into one logical line (no NEWLINE token
 // in the middle), ignoring the continuation line's leading indentation.
 func TestLexLineContinuation(t *testing.T) {
+	t.Parallel()
 	// a long call argument list split with a continuation must lex as one line
 	src := "print(1 + \\\n    2)\nprint(3)\n"
 	got := lexKinds(src)
@@ -192,6 +197,7 @@ func TestLexLineContinuation(t *testing.T) {
 // TestParseLineContinuation verifies the parser consumes a continued logical
 // line as a single statement.
 func TestParseLineContinuation(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("total = 1 + \\\n    2 + \\\n    3\nprint(total)\n")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -217,6 +223,7 @@ func TestParseLineContinuation(t *testing.T) {
 // TestRichTokenSpans verifies L4.2: every token carries precise start/end byte
 // offsets, rune offsets, and a multi-line flag.
 func TestRichTokenSpans(t *testing.T) {
+	t.Parallel()
 	src := "foo bar\n\"hi\"\n"
 	toks, err := Lex(src)
 	if err != nil {
@@ -284,6 +291,7 @@ func TestRichTokenSpans(t *testing.T) {
 // non-ASCII characters from the Unicode XID_Start class and continue with
 // XID_Continue characters (letters, marks, digits, connector punctuation).
 func TestLexUnicodeIdentifiers(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{"café = 1", "café"}, // Latin-1 Supplement (U+00E9)
 		{"你好 = 2", "你好"},     // CJK ideographs (Lo)
@@ -314,6 +322,7 @@ func TestLexUnicodeIdentifiers(t *testing.T) {
 // so a decomposed spelling (e + U+0301 COMBINING ACUTE) and the precomposed
 // U+00E9 are the same canonical identifier.
 func TestLexNFCNormalization(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("e\u0301clair = 1")
 	if err != nil {
 		t.Fatalf("Lex: %v", err)
@@ -333,6 +342,7 @@ func TestLexNFCNormalization(t *testing.T) {
 // TestLexUnicodeContinuation verifies an ASCII start can continue through
 // non-ASCII runes (XID_Continue), which the old byte scanner rejected.
 func TestLexUnicodeContinuation(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("café")
 	if err != nil {
 		t.Fatalf("Lex: %v", err)
@@ -353,6 +363,7 @@ func TestLexUnicodeContinuation(t *testing.T) {
 // visually confusable with an ASCII character (U+039F GREEK CAPITAL OMICRON
 // vs Latin 'O') emits a TokWarning so the parser surfaces a LevelWarning.
 func TestLexConfusableWarning(t *testing.T) {
+	t.Parallel()
 	// "cafΟ" uses GREEK CAPITAL OMICRON U+039F, confusable with Latin 'O'.
 	toks, err := Lex("cafΟ = 1")
 	if err != nil {
@@ -375,6 +386,7 @@ func TestLexConfusableWarning(t *testing.T) {
 
 // TestLexNoConfusableASCII verifies plain ASCII identifiers produce no warning.
 func TestLexNoConfusableASCII(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("order = 1")
 	if err != nil {
 		t.Fatalf("Lex: %v", err)
@@ -457,6 +469,7 @@ func tokenStream(t *testing.T, src string) string {
 // reference's grammar forces; a lexer that drops the context question fails the `1-1`
 // rows, and a lexer that always splits fails the `-1` rows.
 func TestTheMinusBeforeADigitIsAskedWhatItFollows(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -499,6 +512,7 @@ func TestTheMinusBeforeADigitIsAskedWhatItFollows(t *testing.T) {
 		{"x = 5 # a-1", "IDENT:x OP:= INT:5"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			if got := tokenStream(t, tc.src); got != tc.want {
 				t.Errorf("Lex(%q) streamed\n  %s\nwant\n  %s", tc.src, got, tc.want)
 			}
@@ -509,6 +523,7 @@ func TestTheMinusBeforeADigitIsAskedWhatItFollows(t *testing.T) {
 // TestTheContextQuestionIsAskedOfThePreviousToken is the predicate on its own, so a
 // change to the rule cannot hide behind a token-stream row that happens to agree (ADR 0338).
 func TestTheContextQuestionIsAskedOfThePreviousToken(t *testing.T) {
+	t.Parallel()
 	tok := func(k TokenKind, text string) Token { return Token{Kind: k, Text: text} }
 	for _, tc := range []struct {
 		name string
@@ -536,6 +551,7 @@ func TestTheContextQuestionIsAskedOfThePreviousToken(t *testing.T) {
 		{"after the None keyword", []Token{tok(TokKeyword, "None")}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := minusBeginsLiteral(tc.toks); got != tc.want {
 				t.Errorf("minusBeginsLiteral(%+v) = %v, want %v", tc.toks, got, tc.want)
 			}
@@ -547,6 +563,7 @@ func TestTheContextQuestionIsAskedOfThePreviousToken(t *testing.T) {
 // used to be TWO statements — an assignment and an expression statement holding `-1` —
 // which is why the program printed `5` and why no diagnostic could have told the author.
 func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src   string
 		stmts int
@@ -611,6 +628,7 @@ func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			p, err := Parse(tc.src)
 			if err != nil {
 				t.Fatalf("Parse(%q): %v", tc.src, err)
@@ -633,6 +651,7 @@ func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
 // so a leading-`.` case that enters after a name would turn a refusal into a wrong answer — the previous token
 // decides, exactly as `minusBeginsLiteral` decides for `-`.
 func TestTheNumberRuleStillRefusesTheBareDot(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src    string
 		stream string
@@ -646,6 +665,7 @@ func TestTheNumberRuleStillRefusesTheBareDot(t *testing.T) {
 		{"obj.5", "IDENT:obj OP:. INT:5", "AttributeError — no attribute '5'"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			got := tokenStream(t, tc.src)
 			if got != tc.stream {
 				t.Fatalf("Lex(%q) streamed\n  %s\nwant\n  %s\n(the filed row roadmap Gap R.245 expects the dot to reach the operator path; the reference answers %q)",

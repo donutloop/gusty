@@ -22,6 +22,7 @@ func mustIR(t *testing.T, src string) string {
 }
 
 func TestReboundParamsDetectsEachWayANameIsBound(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -82,6 +83,7 @@ func TestReboundParamsDetectsEachWayANameIsBound(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog := parseOrFatal(t, tc.src)
 			fd := findFunc(t, prog, tc.fn)
 			got := reboundParams(fd, floatFromSyntax)
@@ -135,6 +137,7 @@ func findFunc(t *testing.T, prog *Program, name string) *FuncDef {
 // register — so every path through the body reads initialized storage, including a
 // read textually before the first assignment.
 func TestReboundParamGetsAnEntrySlot(t *testing.T) {
+	t.Parallel()
 	ir := mustIR(t, `def bump(n):
     n = n + 1
     return n
@@ -166,6 +169,7 @@ print(bump(0))
 // TestUnreboundParamKeepsItsRegister: the fix must not cost a slot per parameter. A
 // body that never assigns to one still reads the argument register directly.
 func TestUnreboundParamKeepsItsRegister(t *testing.T) {
+	t.Parallel()
 	ir := mustIR(t, `def add(a, b):
     return a + b
 print(add(1, 2))
@@ -184,6 +188,7 @@ print(add(1, 2))
 // TestMethodParamGetsAnEntrySlot is the same contract for a method, whose self is
 // register %self and whose parameters start at %p1.
 func TestMethodParamGetsAnEntrySlot(t *testing.T) {
+	t.Parallel()
 	ir := mustIR(t, `class C:
     def bumped(self, n):
         n = n + 1
@@ -212,6 +217,7 @@ print(C().bumped(3))
 // the *bound* after the loop (3 where Python answers 2), and an assignment to it in
 // the body moved the iteration — `for i in range(3): i = i * 100` ran twice.
 func TestRangeLoopHasItsOwnCounter(t *testing.T) {
+	t.Parallel()
 	ir := mustIR(t, `total = 0
 for i in range(3):
     total = total + i
@@ -235,6 +241,7 @@ print(i)
 // parameter into a double slot. The body assigning to one must reuse it — before the
 // registration it emitted a second alloca of the same name and llc refused the module.
 func TestFloatRetParamAllocatedOnce(t *testing.T) {
+	t.Parallel()
 	ir := mustIR(t, `def scale(x):
     x = x * 2.0
     return x + 0.0
@@ -253,6 +260,7 @@ print(scale(1.5))
 // directly: the record is the reference here, and every case below is one the
 // compiled backend used to get wrong without a diagnostic.
 func TestReboundParamSemantics(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want int64

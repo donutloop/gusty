@@ -78,8 +78,10 @@ var truthCases = []truthCase{
 }
 
 func TestTruthinessMatchesPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range truthCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// The compiled run is checked against the recorded answer first, so a case where the two
 			// have come apart is reported as that, rather than as a surprising CPython mismatch.
 			compiled, err := runAOTConformance(t, tc.src)
@@ -100,6 +102,7 @@ func trimWant(s string) string { return strings.TrimSuffix(s, "\n") }
 // TestTruthinessIRIsWellTyped is the verification half: the whole battery must
 // produce modules LLVM itself accepts, which is what catches an i1/i32 mix.
 func TestTruthinessIRIsWellTyped(t *testing.T) {
+	t.Parallel()
 	for _, tc := range truthCases {
 		res, err := lang.Compile(tc.src)
 		if err != nil {

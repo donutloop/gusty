@@ -21,6 +21,7 @@ import (
 const built = "xs = []\nxs.append([7, 8])\n"
 
 func TestABoundArithmeticAnswerAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", built + "n = xs[0][0] * 2\nprint(n)\n", "14\n"},
 		{"addition", built + "n = xs[0][0] + 1\nprint(n)\n", "8\n"},
@@ -41,6 +42,7 @@ func TestABoundArithmeticAnswerAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
 		{"the answer in a print's second argument", built + "n = xs[0][0] * 2\nprint(\"n\", n)\n", "n 14\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_binding.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -66,6 +68,7 @@ func TestABoundArithmeticAnswerAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
 // reference's answer and the third quietly printing digits, which is the class ADR 0166 counts as the
 // compiler's bug (roadmap Gap R.142).
 func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a plain number retires it", built + "n = xs[0][0] * 2\nn = 3\nprint(n)\n", "3\n"},
 		{"a float retires it", built + "n = xs[0][0] * 2\nn = 2.5\nprint(n)\n", "2.5\n"},
@@ -82,6 +85,7 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_rebind.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -106,6 +110,7 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 // printing `[1, 2]`. It now asserts the reference's answer on both legs, and fails the day a binding path
 // starts leaving a status behind again (roadmap Gap R.145, ADR 0270).
 func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a container over a text", "n = \"text\"\nn = [1, 2]\nprint(n)\n", "[1, 2]\n"},
 		{"a dict over a text", "n = \"text\"\nn = {\"a\": 1}\nprint(n)\n", "{'a': 1}\n"},
@@ -117,6 +122,7 @@ func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
 		{"the method asks the new value", "n = 5\nn = \"abc\"\nprint(n.upper())\n", "ABC\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "rebinding.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -138,6 +144,7 @@ func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
 // TestABoundAnswerTrapsLikeTheReferenceAtTheCLI: the arithmetic the binding performs raises the
 // reference's own sentence, at the reference's exit class, and the program can reach it with `except`.
 func TestABoundAnswerTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the negation of a text slot",
@@ -151,6 +158,7 @@ func TestABoundAnswerTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
@@ -176,6 +184,7 @@ func TestABoundAnswerTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 // fills a buffer and returns a status, and the *emitted* statement does the store-and-branch, which is
 // what makes `except TypeError:` and `except OverflowError:` reach it (ADR 0228).
 func TestABoundAnswerIsCatchableAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"typeError caught",
@@ -189,6 +198,7 @@ func TestABoundAnswerIsCatchableAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_catch.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", "--file", gy)
@@ -209,6 +219,7 @@ func TestABoundAnswerIsCatchableAtTheCLI(t *testing.T) {
 // answer, so the debt has a witness, and the compiled program's exit-3 guard, so the failure stays the
 // documented one instead of drifting into a wrong number. What would settle it is roadmap L12.12's.
 func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	const src = built + "n = xs[0][0] * 1000000000\nprint(n)\n"
 	const sentence = "OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)"
 	dir := t.TempDir()
@@ -229,6 +240,7 @@ func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
 // positions that ask for one static number — an operand, a condition's head, a format field, the target
 // of an augmented assignment — now ask the pair, on the compiled path, against the reference.
 func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an operand of a sum", built + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two pair-bound names", built + "a = xs[0][0] + 1\nb = xs[0][1] + 1\nprint(a + b)\n", "17\n"},
@@ -270,6 +282,7 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_number.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -300,6 +313,7 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 // double into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must
 // stay a refusal — not a broken module — until the pair reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a fold answer as an arithmetic operand", built + "n = xs[0][0] * 2\nprint(min(n, 3) + 1)\n", "one word"},
 		{"a fold answer as an abs operand", built + "n = xs[0][0] * 2\nprint(abs(min(n, 3)))\n", "one word"},
@@ -310,6 +324,7 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T)
 		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_value_position.gy", tc.src)
 			if _, ok := cpythonPlainOut(t, dir, tc.src); !ok {
@@ -333,6 +348,7 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T)
 // engines and the reference: programs/probe_arith_result_bound_to_a_name.gy left the debt ledger to
 // become parity surface, and this is where that claim is checked rather than asserted.
 func TestTheCorpusProgramStillPrintsWhatTheLedgerSays(t *testing.T) {
+	t.Parallel()
 	const want = "14\n8\n-7\n5\n15\n15.0\n42\n3\n[1, 2]\n{5, 6}\n"
 	raw, err := os.ReadFile("programs/probe_arith_result_bound_to_a_name.gy")
 	if err != nil {

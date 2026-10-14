@@ -145,13 +145,56 @@ func buildCLI(t *testing.T, bin string) {
 }
 
 // writeSrc writes a gusty source file and returns its path.
+//
+// The name is the caller's, but the directory is the *case's*: a leaf of `dir` named after whoever is asking.
+// Table cases run beside each other and share the directory their parent made, and every row in a table used
+// to write the same file in it — `dir/pred.gy`, `dir/plain_twin.py` — so one row compiled the program its
+// sibling had just overwritten and reported the disagreement as a compiler bug. That is the same fault as an
+// os.Chdir, one level down: a case's source is a fact about that case, not about the directory it happens to
+// share with its siblings (ADR 0343). The stem still says what the program is, so a failure is still readable.
 func writeSrc(t *testing.T, dir, name, src string) string {
 	t.Helper()
+	dir = caseLeaf(t, dir)
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
 		t.Fatalf("write %s: %v", p, err)
 	}
 	return p
+}
+
+// caseLeaf is the directory one case writes its own sources into: `under/<the test's name>`, made if needed.
+// Two subtests of one parent differ in the last component, which is the whole property; a case that asks
+// twice in a row gets the same path, which is what a rewrite means.
+func caseLeaf(t *testing.T, under string) string {
+	t.Helper()
+	// The readable part is a *label*, not the key: table names in this suite are long and share prefixes
+	// ("the a text slot written into a dict entry by a literal key" appears five times in one table), and the
+	// first version truncated at 60 characters — which folded siblings back onto one directory and put them
+	// back into the bug the directory exists to prevent. The hash of the whole name is the key; the label is
+	// for the person who reads the failure.
+	full := t.Name()
+	var h uint32 = 2166136261
+	for _, r := range full {
+		h ^= uint32(r)
+		h *= 16777619
+	}
+	tag := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, full)
+	if len(tag) > 40 {
+		tag = tag[:40]
+	}
+	tag = fmt.Sprintf("%s-%08x", tag, h)
+	leaf := filepath.Join(under, tag)
+	if err := os.MkdirAll(leaf, 0o755); err != nil {
+		t.Fatalf("make the case's own source directory: %v", err)
+	}
+	return leaf
 }
 
 // readProgram returns the contents of a gusty source program checked in under
@@ -227,6 +270,7 @@ func exitCode(t *testing.T, err error) int {
 }
 
 func TestCLIBuildWholeProgram(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -274,6 +318,7 @@ func TestCLIBuildWholeProgram(t *testing.T) {
 // TestCLIBuildDiagnostics verifies the whole CLI surfaces a compile error in
 // any source file and refuses to produce a binary.
 func TestCLIBuildDiagnostics(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -294,6 +339,7 @@ func TestCLIBuildDiagnostics(t *testing.T) {
 // TestCLIBuildRequiresSource verifies the usage error when --build has no
 // positional source files.
 func TestCLIBuildRequiresSource(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -307,6 +353,7 @@ func TestCLIBuildRequiresSource(t *testing.T) {
 // TestCLIBuildSingleFile verifies the build command works with exactly one
 // source file, not just a multi-file merge.
 func TestCLIBuildSingleFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -330,6 +377,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 // interpolation compile ahead-of-time and print a single combined line,
 // matching the record's one-string Repr.
 func TestCLIBuildFString(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -351,6 +399,7 @@ func TestCLIBuildFString(t *testing.T) {
 // (e.g. `return x / 2.0`) emits a `double` return and prints the exact value
 // in the AOT codegen path.
 func TestCLIBuildFloatFunction(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -370,6 +419,7 @@ func TestCLIBuildFloatFunction(t *testing.T) {
 // TestCLIBuildOptLevel verifies --opt-level is honored end-to-end: the CLI
 // passes it through to Build, and the produced binary still runs correctly.
 func TestCLIBuildOptLevel(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -393,6 +443,7 @@ func TestCLIBuildOptLevel(t *testing.T) {
 // non-zero exit and an error mentioning the missing path, without producing a
 // binary.
 func TestCLIBuildMissingFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -412,6 +463,7 @@ func TestCLIBuildMissingFile(t *testing.T) {
 // TestCLIBuildExitCodes asserts the whole CLI's exit-code contract: 0 on
 // success, 1 on compile/link error, 2 on usage error.
 func TestCLIBuildExitCodes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -444,6 +496,7 @@ func TestCLIBuildExitCodes(t *testing.T) {
 // is wrong" (1) from "my program crashed" (3) from "I invoked the CLI badly" (4) — the
 // distinction agents were told to rely on and could not (roadmap Gap J.3).
 func TestCLIExitCodeContract(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	dir := t.TempDir()
 	badSrc := filepath.Join(dir, "bad_semantics.gy")
@@ -518,6 +571,7 @@ func TestCLIExitCodeContract(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := exec.Command(bin, tc.args...).Run()
 			code := 0
 			if err != nil {
@@ -576,6 +630,7 @@ func TestCLIExitCodeContract(t *testing.T) {
 // positional, so `--build out src.gy --opt-level=2` used to fail on a file named
 // "--opt-level=2").
 func TestCLIBuildReportsOptimization(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -634,6 +689,7 @@ func TestCLIBuildReportsOptimization(t *testing.T) {
 // from a slot that does not exist, and be reported as "LLVM rejected the module we emitted"
 // (exit 2, a compiler bug) for what is an ordinary typo.
 func TestCLIBuildTypoIsACompileErrorNotACompilerBug(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -662,6 +718,7 @@ func TestCLIBuildTypoIsACompileErrorNotACompilerBug(t *testing.T) {
 // top-level function produce a build error (duplicate symbol) rather than a
 // silently broken binary.
 func TestCLIBuildDuplicateFunction(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -682,6 +739,7 @@ func TestCLIBuildDuplicateFunction(t *testing.T) {
 // TestCLIBuildJSONDiagnostics verifies that on a compile error, --json emits a
 // parseable BuildResult carrying the diagnostics, and stderr carries the error.
 func TestCLIBuildJSONDiagnostics(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -714,6 +772,7 @@ func TestCLIBuildJSONDiagnostics(t *testing.T) {
 // TestCLIBuildRebuildOverwrite verifies building a second time to the same
 // output path succeeds and the binary still runs.
 func TestCLIBuildRebuildOverwrite(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -739,6 +798,7 @@ func TestCLIBuildRebuildOverwrite(t *testing.T) {
 // two-file source covering every AOT-supported language feature, then runs the
 // produced native binary and asserts its entire stdout byte-for-byte.
 func TestCLIBuildAllFeatures(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -783,6 +843,7 @@ func buildWant(t *testing.T, bin string, files []string, wantName string) {
 // TestCLIBuildLargeMath builds a large 3-file math program (functions defined
 // in one file, called from the others) and checks the binary's exact stdout.
 func TestCLIBuildLargeMath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -796,6 +857,7 @@ func TestCLIBuildLargeMath(t *testing.T) {
 // TestCLIBuildLargeControl builds a large 3-file control-flow program (loops,
 // while, break/continue, if/elif/else, nested loops) and checks exact stdout.
 func TestCLIBuildLargeControl(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -809,6 +871,7 @@ func TestCLIBuildLargeControl(t *testing.T) {
 // TestCLIBuildLargeData builds a large 3-file data program (list/dict/set
 // literals, builtins, functions, loops) and checks exact stdout.
 func TestCLIBuildLargeData(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -822,6 +885,7 @@ func TestCLIBuildLargeData(t *testing.T) {
 // TestCLIEmitsExpectedIR drives the whole gustyc program's `--emit-llvm` path
 // and asserts the emitted LLVM IR matches the expected code byte-for-byte.
 func TestCLIEmitsExpectedIR(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)

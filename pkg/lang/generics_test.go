@@ -10,6 +10,7 @@ import (
 // annotations: list[int], dict[str, int], set[int], tuple[int, str],
 // Sequence[int], Callable[[int], bool], and nested generics.
 func TestParseGenericAnnotations(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`def f(x: list[int], y: dict[str, int], z: set[int], t: tuple[int, str], s: Sequence[int]) -> Callable[[int], bool]:
     return None`)
 	if err != nil {
@@ -42,6 +43,7 @@ func TestParseGenericAnnotations(t *testing.T) {
 // TestParseNestedGeneric verifies nested generic annotations like
 // list[list[int]].
 func TestParseNestedGeneric(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`def f(x: list[list[int]]) -> None:
     return None`)
 	if err != nil {
@@ -60,6 +62,7 @@ func TestParseNestedGeneric(t *testing.T) {
 // TestParseCallableMultiParam verifies a Callable with several parameters and
 // a heterogeneous return, e.g. Callable[[int, str], bool].
 func TestParseCallableMultiParam(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`def f(x: Callable[[int, str], bool]) -> None:
     return None`)
 	if err != nil {
@@ -81,6 +84,7 @@ func TestParseCallableMultiParam(t *testing.T) {
 // TestSequenceProtocolAssign verifies Sequence[T] accepts a matching concrete
 // sequence (list[int] -> Sequence[int]) and rejects mismatched element types.
 func TestSequenceProtocolAssign(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src      string
 		wantErrs bool
@@ -103,6 +107,7 @@ func TestSequenceProtocolAssign(t *testing.T) {
 // values and reject mismatched signatures, via the structural assignable()
 // relation (function-name arguments resolve to bare fn, so unit-test assignable).
 func TestCallableProtocolAssign(t *testing.T) {
+	t.Parallel()
 	bound := TCallable([]*Type{TInt()}, TBool())
 
 	// Matching signature: func(int)->bool is assignable.
@@ -131,6 +136,7 @@ func TestCallableProtocolAssign(t *testing.T) {
 
 // TestProtocolName verifies Name() rendering for protocol types.
 func TestProtocolName(t *testing.T) {
+	t.Parallel()
 	if got := TSequence(TInt()).Name(); got != "Sequence[int]" {
 		t.Errorf("Sequence Name: got %s", got)
 	}
@@ -142,6 +148,7 @@ func TestProtocolName(t *testing.T) {
 // TestProtocolTypeJSON verifies protocol types survive JSON round-trips
 // (the machine/CLI path: Type struct tags carry kind/elem/params/ret).
 func TestProtocolTypeJSON(t *testing.T) {
+	t.Parallel()
 	orig := TCallable([]*Type{TInt()}, TBool())
 	b, err := json.Marshal(orig)
 	if err != nil {

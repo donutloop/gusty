@@ -22,6 +22,7 @@ func hasMsg(diags []Diagnostic, want string) bool {
 }
 
 func TestMutualRecursionIsNotAnUndefinedName(t *testing.T) {
+	t.Parallel()
 	src := `def is_even(n):
     if n == 0:
         return True
@@ -44,6 +45,7 @@ print(is_even(4))
 }
 
 func TestForwardReferenceShapes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -83,6 +85,7 @@ func TestForwardReferenceShapes(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			diags := checkDiags(t, tc.src)
 			got := hasMsg(diags, "undefined name")
 			if tc.wantErr && !got {
@@ -99,6 +102,7 @@ func TestForwardReferenceShapes(t *testing.T) {
 // functions it hoists. The declared signature goes in with the name, so a call to a
 // function the walk has not reached still checks its argument against the annotation.
 func TestForwardCallStillChecksArguments(t *testing.T) {
+	t.Parallel()
 	src := `def use():
     return take("text")
 
@@ -115,6 +119,7 @@ def take(n: int) -> int:
 // refused, and a *variable* is still not visible above its assignment — only defs and
 // classes hoist, because only they are declarations.
 func TestHoistingIsNotAFreeForAll(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -126,6 +131,7 @@ func TestHoistingIsNotAFreeForAll(t *testing.T) {
 		{"a typo in a mutual partner's name", "def a(n):\n    return badd(n)\n\ndef b(n):\n    return n\n\nprint(a(1))\n", `undefined name "badd"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			diags := checkDiags(t, tc.src)
 			if !hasMsg(diags, tc.want) {
 				t.Errorf("want %q, got %v", tc.want, diags)

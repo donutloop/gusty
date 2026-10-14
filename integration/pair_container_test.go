@@ -24,6 +24,7 @@ const pairContainerBuilt = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // and the compiled artifact run the same program, and a disagreement becomes a debt row rather than an
 // expectation someone grows used to.
 func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"the element the pair road bound", pairContainerBuilt + "print([n])\n"},
@@ -55,6 +56,7 @@ func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
 		{"repr of the bound list", "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(repr([n]))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "paircont.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -86,6 +88,7 @@ func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
 // as an operand, and a fold answer used where one word is kept. Each refusal has to say so in the words that
 // name the missing capability rather than in three words a person cannot act on.
 func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct {
 		name, src string
@@ -99,6 +102,7 @@ func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *te
 			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "paircont_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {

@@ -19,6 +19,7 @@ import (
 // third engine is the only thing that could see that, and it is in the table.
 
 func TestRenderPairWritesWhatCPythonWrites(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -96,6 +97,7 @@ func TestRenderPairWritesWhatCPythonWrites(t *testing.T) {
 		{"a rendering is the text Python writes", "xs = [1, 2]\nprint(str(xs) == \"[1, 2]\")\n", "True\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, tc.src); got != tc.want {
 				t.Errorf("interpreter printed %q, want CPython's %q\nsource: %s", got, tc.want, tc.src)
 			}
@@ -117,6 +119,7 @@ func TestRenderPairWritesWhatCPythonWrites(t *testing.T) {
 // (exit 1, named in the row); an integer is not, because it is indistinguishable from an answer
 // and quietly wrong. The distinction is the whole defect Gap L.2 was.
 func TestRenderPairNeverAnswersTheNumberUnderneath(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 	}{
@@ -130,6 +133,7 @@ func TestRenderPairNeverAnswersTheNumberUnderneath(t *testing.T) {
 		{"repr of a verdict", "print(repr(True))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := Compile(tc.src); err != nil {
 				// A refusal is honest only when it says which half is missing.
 				if !strings.Contains(err.Error(), "is not implemented") {
@@ -152,6 +156,7 @@ func TestRenderPairNeverAnswersTheNumberUnderneath(t *testing.T) {
 // rows are written once and checked twice: print(x) and print(str(x)) must be the same line for a
 // value whose two halves agree, and differ only by the quoting for a text.
 func TestRenderPairAgreesWithPrint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, decl, want string
 	}{
@@ -163,6 +168,7 @@ func TestRenderPairAgreesWithPrint(t *testing.T) {
 		{"None", "x = None", "None\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := tc.decl + "\nprint(x_placeholder)\n"
 			printed := strings.Replace(src, "x_placeholder", strings.Fields(tc.decl)[0], 1)
 			strung := strings.Replace(src, "x_placeholder", "str("+strings.Fields(tc.decl)[0]+")", 1)
@@ -196,6 +202,7 @@ func TestRenderPairAgreesWithPrint(t *testing.T) {
 // backend stores at all — the pair refuses, and refuses the same way on both halves rather than
 // letting one answer and the other refuse.
 func TestStrOfAValueWhoseFormIsNotVisibleRefusesBothHalvesTogether(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(str((1, 2)))\n",
 		"print(repr((1, 2)))\n",
@@ -211,6 +218,7 @@ func TestStrOfAValueWhoseFormIsNotVisibleRefusesBothHalvesTogether(t *testing.T)
 // same printers print calls, so a form added for print is a form the pair has. Before this, print
 // had a renderer and str() had a number-formatter, and the two drifted (Gap L.2).
 func TestRenderPairIsOneTableNotTwo(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, \"a\", 2.5, None]\nprint(str(xs))\nprint(repr(xs))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)

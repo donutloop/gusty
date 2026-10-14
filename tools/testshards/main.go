@@ -9,14 +9,16 @@
 // the alarm went off (`TestTextPredicatesPrintAVerdict/not_verdict_false` is the one on record). Nothing
 // was wrong with that case. The suite did not fit, and the run could not say so.
 //
-// The obvious fix — `t.Parallel()` on the cases — is not available to this suite, and the reason is
-// worth writing down. The in-process runner takes fd 1 and fd 2 with dup2 for the duration of a run
-// (captureFD, pkg/lang/jit_llvm.go), so two programs cannot execute at once inside one process; and a
-// case that needs process-wide state of its own — os.Chdir for the import-from-cwd cases, t.Setenv for
-// the oracle override — cannot coexist with anything, because Go runs a parallel test *beside* the
-// serial ones rather than in a phase of its own. Sharding sidesteps all of it: every shard is its own
-// process, so descriptors, working directory, environment and the compiler's process-wide scan tables
-// are each shard's alone, and N shards use N cores.
+// `t.Parallel()` on the cases is available to this suite now, and is the reason the tree's wall clock went
+// from 11m43s to about 1m40s: ADR 0343 moved a compiled program out of the test process (it links an
+// executable and runs it as a child, with its own pipes, address space and heap), turned a run's directory,
+// environment and standard-library root into per-run options, put the last package-level caches behind mutexes,
+// and wired `tools/parify -check` into the suite so a case that claims parallelism while its body reaches
+// process state fails the build. What sharding still buys on top of that is a different axis: the cases in one
+// package overlap under `t.Parallel()`, but the *packages* run one after another, and a shard is one process per
+// core with its own descriptors, working directory, environment and toolchain budget — which is also what makes
+// the artifact-writing modes and the drift ledger a per-process question rather than a per-case one. Sharding
+// and parallel cases are complementary, and this command is not a different test suite: it runs the same cases.
 //
 // What makes splitting legal is determinism: a case's answer depends on its source and the pinned
 // toolchain, never on which cases ran before it, so a shard may be a subset. The partition is sort +

@@ -17,6 +17,7 @@ import (
 // refusal that names the promise, not a payload read back as a handle.
 
 func TestContainerSlotReadsAnswerOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -98,6 +99,7 @@ func TestContainerSlotReadsAnswerOnBothLegs(t *testing.T) {
 }
 
 func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
+	t.Parallel()
 	// The read is a compile-time promise: the literal the name was bound to is the object, unchanged.
 	// Every one of these breaks the promise, and the answer must be a refusal that says which — not a
 	// number wearing another object's bits, and not the generic "needs an inline literal", which sends
@@ -157,6 +159,7 @@ func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
 // through the object's own printers and comparisons, which carry the tag at runtime and stay correct
 // however the container was built.
 func TestMutatedContainerStillAnswersWhatNeedsNoPromise(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [[1, 2]]\nxs.append([9])\nprint(xs)\n", "[[1, 2], [9]]\n"},
 		{"xs = [[1, 2]]\nxs.append([9])\nprint(1 if xs == [[1, 2], [9]] else 0)\n", "1\n"},

@@ -12,6 +12,7 @@ import (
 // `len(s[1])` and `s[1].upper()` and `ord(s[1])` trapped.
 
 func TestStringSubscriptMatchesCPythonOnBothLegs(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"positive", "s = \"abc\"\nprint(s[1])\n", "b\n"},
 		{"negative", "s = \"abc\"\nprint(s[-1])\n", "c\n"},
@@ -26,6 +27,7 @@ func TestStringSubscriptMatchesCPythonOnBothLegs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "sub.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -44,6 +46,7 @@ func TestStringSubscriptMatchesCPythonOnBothLegs(t *testing.T) {
 // expectations are CPython's, asserted on the record alone, so the gap in the other leg stays
 // visible instead of being averaged away by a two-engine table.
 func TestCompiledStringSubscriptFollowsTheOracle(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n", "ac\n"},
 		{"len_of_a_char", "s = \"abc\"\nprint(len(s[1]))\n", "1\n"},
@@ -55,6 +58,7 @@ func TestCompiledStringSubscriptFollowsTheOracle(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "sub.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code != 0 {
@@ -73,6 +77,7 @@ func TestCompiledStringSubscriptFollowsTheOracle(t *testing.T) {
 // of roadmap Gap R.47 — a compiled string is a compile-time value, so anything that asks about a
 // character at runtime has no runtime string to ask about.
 func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		// Gap R.47 is closed: every shape this table used to hold now answers, so the rows
 		// live in TestCompiledStringSubscriptAnswersAtRuntime (checked against CPython) and
@@ -82,6 +87,7 @@ func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 		{"str_times_int", "print(\"ab\" * 2)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "hole.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -103,6 +109,7 @@ func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 // is a constant — that last one is roadmap Gap R.37, a compile-time-known trap that should be a
 // runtime trap, and the assertion says so instead of hiding it.
 func TestUncaughtTrapClassesOnAnOutOfRangeCharSubscript(t *testing.T) {
+	t.Parallel()
 	path := writeSrc(t, t.TempDir(), "oor.gy", "s = \"abc\"\nprint(s[9])\n")
 	// One program, three honest outcomes, and the classes are allowed to differ by *path*: CPython
 	// raises IndexError (its own exit 1), and gusty either traps with it (our class 3,
@@ -131,6 +138,7 @@ func TestUncaughtTrapClassesOnAnOutOfRangeCharSubscript(t *testing.T) {
 // interned index printed as a number. A wrong answer with exit 0 is what the suite must never
 // accept, which is why the refusal tests above and this one are kept as separate tables.
 func TestCompiledStringSubscriptAnswersAtRuntime(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"variable_index", "s = \"abc\"\ni = 0\nprint(s[i])\n", "a\n"},
 		{"len_of_a_char", "s = \"abc\"\nprint(len(s[1]))\n", "1\n"},
@@ -148,6 +156,7 @@ func TestCompiledStringSubscriptAnswersAtRuntime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			wantOut, _, perr := lang.PythonRun(tc.src)
 			if perr != nil {
 				t.Fatalf("CPython rejected a program this table says answers: %v\n%s", perr, tc.src)
@@ -174,6 +183,7 @@ func TestCompiledStringSubscriptAnswersAtRuntime(t *testing.T) {
 // printed over its head and not — the old behaviour — the last table entry reused, which made a
 // string print as some other string (ADR 0229).
 func TestStringTableOverflowIsACatchableTrap(t *testing.T) {
+	t.Parallel()
 	src := "def make(i):\n    return \"x\" + \"\" + str(i % 7) + \"_\" * (i % 3)\n\nn = 0\nwhile n < 200:\n    n = n + 1\nprint(\"still running\")\n"
 	res, err := lang.Compile(src)
 	if err != nil {
@@ -201,6 +211,7 @@ func TestStringTableOverflowIsACatchableTrap(t *testing.T) {
 // because the string's table index was read as a repeat count (roadmap Gap R.16). Expectations
 // come from CPython; the test refuses to run if CPython disagrees with the table.
 func TestCompiledStringWritesAnswerAtRuntime(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n", "ac\n"},
 		{"concat_with_a_call_result", "def get():\n    return \"b\"\nprint(\"a\" + get() + \"c\")\n", "abc\n"},
@@ -217,6 +228,7 @@ func TestCompiledStringWritesAnswerAtRuntime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			wantOut, _, perr := lang.PythonRun(tc.src)
 			if perr != nil {
 				t.Fatalf("CPython rejected a program this table says answers: %v\n%s", perr, tc.src)
@@ -243,6 +255,7 @@ func TestCompiledStringWritesAnswerAtRuntime(t *testing.T) {
 // was read as a repeat count (roadmap Gap R.16). The loop must produce exactly the characters, and
 // must not reach the table's empty entry.
 func TestCompiledStringLoopsAreNotSilentlyWrong(t *testing.T) {
+	t.Parallel()
 	src := "def txt():\n    return \"hi\"\nfor c in txt():\n    print(c)\n"
 	res, err := lang.Compile(src)
 	if err != nil {

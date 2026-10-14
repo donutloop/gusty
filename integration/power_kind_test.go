@@ -25,6 +25,7 @@ import (
 // for a bug of ours (ADR 0166). `2 ** 31` and `2 ** 100` refuse at 1; `0 ** -1` traps at 3, the code for a
 // trap the reference traps on.
 func TestPowerExitCodesStayOnTheContract(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(2 ** -1)", "print(2 ** -2)", "print(4 ** 0.5)", "print(2 ** 1.5)",
 		"print(2.0 ** -1)", "print(2.0 ** 10)", "print(0 ** -1)", "print(0.0 ** -1)",
@@ -34,6 +35,7 @@ func TestPowerExitCodesStayOnTheContract(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.ReplaceAll(strings.TrimSpace(src), "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if _, code := cliRunMerged(t, "--aot", "--eval", src); code == 2 {
 				t.Errorf("exit 2 — the contract's code for OUR bug (ADR 0166)")
 			}
@@ -44,6 +46,7 @@ func TestPowerExitCodesStayOnTheContract(t *testing.T) {
 // TestPowerMatchesTheReferenceOnBothLegs runs the promoted probe and a table of single expressions,
 // each against a live python3, on BOTH legs.
 func TestPowerMatchesTheReferenceOnBothLegs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// The probe's own output is the reference's output, line for line.
 	src := readProgram(t, "probe_a_power_answers_the_right_kind.gy")
@@ -66,6 +69,7 @@ func TestPowerMatchesTheReferenceOnBothLegs(t *testing.T) {
 	} {
 		expr := expr
 		t.Run(expr, func(t *testing.T) {
+			t.Parallel()
 			line := "print(" + expr + ")"
 			want, ok := cpythonPlainOut(t, t.TempDir(), line)
 			if !ok {
@@ -85,6 +89,7 @@ func TestPowerMatchesTheReferenceOnBothLegs(t *testing.T) {
 // non-answer: the reference's raise is catchable on BOTH legs (so a program that handles it runs), and the
 // shapes the language cannot answer are refused in WORDS rather than in an invalid module (ADR 0166).
 func TestPowerRaiseAndRefusalAreCatchableOrWords(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, r := range []struct{ name, src, marker string }{
 		{"zero base literal", "print(0 ** -1)", "ZeroDivisionError: 0.0 cannot be raised to a negative power"},
@@ -92,6 +97,7 @@ func TestPowerRaiseAndRefusalAreCatchableOrWords(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			wrapped := "try:\n    " + strings.ReplaceAll(r.src, "\n", "\n    ") + "\nexcept ZeroDivisionError:\n    print(\"caught\")\n"
 			for _, leg := range cliEngines {
 				leg := leg
@@ -123,6 +129,7 @@ func TestPowerRaiseAndRefusalAreCatchableOrWords(t *testing.T) {
 	} {
 		r := r
 		t.Run("refusal/"+r.name, func(t *testing.T) {
+			t.Parallel()
 			out, _ := cliRunMerged(t, "--aot", "--eval", r.src)
 			for _, banned := range []string{"global variable reference", "use of undefined value", "unexpected type", "integer constant must have integer type"} {
 				if strings.Contains(out, banned) {

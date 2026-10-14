@@ -40,6 +40,7 @@ func referenceOut(t *testing.T, src string) string {
 // TestContainerInArithmeticNeverExitsTwo is the contract. Every row must end at exit 1 (a refusal in
 // words) or exit 3 (the reference's own raise) — never 2, and never an answer the reference disagrees with.
 func TestContainerInArithmeticNeverExitsTwo(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -68,6 +69,7 @@ func TestContainerInArithmeticNeverExitsTwo(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(r.src)
 			if err != nil {
 				// A refusal must be words about the program, never the module it could not build.
@@ -99,6 +101,7 @@ func TestContainerInArithmeticNeverExitsTwo(t *testing.T) {
 // as wrong as a wrong number, because a program that catches `TypeError` and prints e.message reads it
 // (ADR 0215's rule, measured here operator by operator).
 func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -134,6 +137,7 @@ func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want := referenceOut(t, r.src)
 			if want != r.want {
 				t.Fatalf("the row is stale against the reference: it prints %q, row pins %q", want, r.want)
@@ -163,6 +167,7 @@ func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
 // helper to build either. A refusal is the deliverable; a number is not. These rows are written so that
 // the day someone emits rt_list_concat they FAIL and get promoted.
 func TestContainerConcatAndRepeatRefuseRatherThanAnswer(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ name, src, want string }{
 		{"list repeat", "print([0] * 3)\n", "[0, 0, 0]\n"},
 		{"int times list", "print(3 * [0])\n", "[0, 0, 0]\n"},
@@ -170,6 +175,7 @@ func TestContainerConcatAndRepeatRefuseRatherThanAnswer(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q — the interpreter has the sequence semantics", got, r.want)
 			}
@@ -193,6 +199,7 @@ func TestContainerConcatAndRepeatRefuseRatherThanAnswer(t *testing.T) {
 // that refused it would trade an exit-2 crash for a lost answer. The ladder's rule: an answer may not
 // become a refusal.
 func TestAContainerArgumentIsStillAValidArgument(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct {
 		src  string
 		want string
@@ -203,6 +210,7 @@ func TestAContainerArgumentIsStillAValidArgument(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}
@@ -218,6 +226,7 @@ func TestAContainerArgumentIsStillAValidArgument(t *testing.T) {
 // three lines above the guard owns a comparison over two same-kind containers; claiming it from here
 // turned True into a refusal.
 func TestTheArithmeticGuardLeavesTheOrderRoadItsQuestion(t *testing.T) {
+	t.Parallel()
 	src := "a = [1]\nb = [2]\nprint(a < b)\n"
 	if got := captureStdout(t, src); got != "True\n" {
 		t.Errorf("interpreter printed %q, want True", got)
@@ -234,6 +243,7 @@ func TestTheArithmeticGuardLeavesTheOrderRoadItsQuestion(t *testing.T) {
 // TestTextTimesAnIntStillAnswers guards the boundary on the other side: `"ab" * 2` is `abab`, and the
 // container guard must not swallow the sequence road that already works.
 func TestTextTimesAnIntStillAnswers(t *testing.T) {
+	t.Parallel()
 	src := "print(\"ab\" * 2)\n"
 	if got := captureStdout(t, src); got != "abab\n" {
 		t.Errorf("interpreter printed %q, want abab", got)

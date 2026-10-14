@@ -13,6 +13,7 @@ import (
 // compiler is responsible for is the two numbers below, both of which are now asserted directly
 // rather than inferred from a ratio.
 func TestBenchmarkCompiledBackend(t *testing.T) {
+	t.Parallel()
 	src := "s = 0\nfor i in range(5000):\n    s = s + i * 2\nprint(s)\n"
 	res, err := Benchmark(src, 3, 2)
 	if err != nil {
@@ -47,6 +48,7 @@ func TestBenchmarkCompiledBackend(t *testing.T) {
 // TestBenchmarkRunsClamp verifies runs < 1 is clamped to 1 and the harness
 // still produces a complete report.
 func TestBenchmarkRunsClamp(t *testing.T) {
+	t.Parallel()
 	src := "print(1 + 2)\n"
 	res, err := Benchmark(src, 0, 0)
 	if err != nil {
@@ -63,6 +65,7 @@ func TestBenchmarkRunsClamp(t *testing.T) {
 // TestBenchmarkCompileError verifies that a source with semantic errors is
 // rejected with diagnostics rather than benchmarked.
 func TestBenchmarkCompileError(t *testing.T) {
+	t.Parallel()
 	src := "def f() -> int:\n    return \"bad\"\n" // return type mismatch
 	res, err := Benchmark(src, 2, 0)
 	if err == nil {
@@ -76,6 +79,7 @@ func TestBenchmarkCompileError(t *testing.T) {
 // TestBenchmarkRuntimeError verifies that a program which raises at run time is still measured
 // (timing is wall-clock, not correctness), and the harness does not panic.
 func TestBenchmarkRuntimeError(t *testing.T) {
+	t.Parallel()
 	src := "raise Exception('boom')\n"
 	res, err := Benchmark(src, 2, 0)
 	if err != nil {

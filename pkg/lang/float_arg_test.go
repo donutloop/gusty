@@ -32,6 +32,7 @@ const floatArgTwice = "def twice(v):\n    return v * 2\n\n"
 // TestTheFloatArgumentAnswersOnTheCompiledBackend is the payoff: every row is a program the compiled leg
 // answered with a truncated number at exit 0, now CPython's answer on both legs.
 func TestTheFloatArgumentAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the row Gap P.1 filed",
@@ -102,6 +103,7 @@ func TestTheFloatArgumentAnswersOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the compiler refused a program the oracle answers: %v", err)
@@ -137,6 +139,7 @@ func defineLine(ir, symbol string) string {
 // pair cannot be built the program is refused by name, because the alternative is the number the ordinary
 // road truncates — Gap P.1's exit-0 `4`.
 func TestTheFloatArgumentDoorNamesTheTruncationItRefuses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// A container element is not a number to box: the element road owns it and this one declines.
@@ -146,6 +149,7 @@ func TestTheFloatArgumentDoorNamesTheTruncationItRefuses(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%q compiled; this shape is owed a refusal, not a truncated answer\nsrc: %s", tc.name, tc.src)
@@ -167,6 +171,7 @@ func TestTheFloatArgumentDoorNamesTheTruncationItRefuses(t *testing.T) {
 // return word owns its parameter words with it; taking the pair road over those printed a handle as a
 // number, which is worse than the refusal the program had.
 func TestTheFloatArgumentDoorLeavesTheRoadsThatAlreadyWorked(t *testing.T) {
+	t.Parallel()
 	// ADR 0274's float-return promotion: the define keeps its `(double %p0)` shape exactly, with no tag
 	// word beside it, because the double already carries the value.
 	res, err := Compile("def f(x):\n    x = x + 1.5\n    return -x\n\nprint(f(1.0))\n")
@@ -196,6 +201,7 @@ func TestTheFloatArgumentDoorLeavesTheRoadsThatAlreadyWorked(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q was refused; this shape already answered before the door opened: %v", tc.name, err)
@@ -223,6 +229,7 @@ func TestTheFloatArgumentDoorLeavesTheRoadsThatAlreadyWorked(t *testing.T) {
 // by the one door that boxes a double, and the arithmetic is the tagged door — while an integer-only
 // function in the same program keeps the one-word signature it always had.
 func TestTheFloatArgumentIsInTheModule(t *testing.T) {
+	t.Parallel()
 	const src = "def twice(v):\n    return v * 2\n\ndef plus1(v):\n    return v + 1\n\nprint(twice(2.5))\nprint(plus1(3))\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -254,6 +261,7 @@ func TestTheFloatArgumentIsInTheModule(t *testing.T) {
 // TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder is the gate's own question, one function
 // earlier than the emitter: the mark, the integer proof and the withheld road are all scan answers.
 func TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder(t *testing.T) {
+	t.Parallel()
 	parse := func(t *testing.T, src string) map[string]*pairFnSpec {
 		t.Helper()
 		prog, err := Parse(src)
@@ -263,6 +271,7 @@ func TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder(t *testing.T) {
 		return pairCallSpecs(prog)
 	}
 	t.Run("a float argument marks the parameter", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, floatArgTwice+"print(twice(2.5))\n")
 		spec := specs["twice"]
 		if spec == nil || !spec.params[0] {
@@ -270,12 +279,14 @@ func TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder(t *testing.T) {
 		}
 	})
 	t.Run("an integer-only call leaves the function out entirely", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, floatArgTwice+"print(twice(3))\n")
 		if spec, seen := specs["twice"]; seen {
 			t.Errorf("nothing in this program needs a tag, and the function took one anyway: %+v", spec)
 		}
 	})
 	t.Run("the provably-integer parameter is named", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def area(w, h):\n    return w * h\n\nprint(area(2.5, 2))\nprint(area(3, 4))\n")
 		spec := specs["area"]
 		if spec == nil || !spec.params[0] {
@@ -289,6 +300,7 @@ func TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder(t *testing.T) {
 		}
 	})
 	t.Run("a default marks the parameter no call site writes", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def greet(name, times=1.5):\n    return times\n\nprint(greet(\"a\"))\n")
 		spec := specs["greet"]
 		if spec == nil || !spec.params[1] {
@@ -296,24 +308,28 @@ func TestThePairCallScanIsAskedOfTheProgramNotTheEmissionOrder(t *testing.T) {
 		}
 	})
 	t.Run("the float-return road is left alone", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def f(x):\n    x = x + 1.5\n    return -x\n\nprint(f(1.0))\n")
 		if spec, seen := specs["f"]; seen {
 			t.Errorf("ADR 0274's road owns this body's words, and the scan opened a pair anyway: %+v", spec)
 		}
 	})
 	t.Run("the string-return road is left alone", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def fmt(v):\n    s = str(v)\n    return s\n\nprint(fmt(2.5))\n")
 		if spec, seen := specs["fmt"]; seen {
 			t.Errorf("ADR 0174's road owns this body's answer, and the scan opened a pair anyway: %+v", spec)
 		}
 	})
 	t.Run("a comparison read as a value leaves the parameter alone", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def cmpf(v):\n    return v > 1.5\n\nprint(cmpf(2.0))\n")
 		if spec, seen := specs["cmpf"]; seen {
 			t.Errorf("no door reads a comparison's pair operand, and the parameter was opened anyway: %+v", spec)
 		}
 	})
 	t.Run("the self-call keeps its ordinary answer", func(t *testing.T) {
+		t.Parallel()
 		specs := parse(t, "def fib(n):\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\nprint(fib(10))\n")
 		if spec, seen := specs["fib"]; seen && spec.returnsPair {
 			t.Errorf("a self-call would write the tag word its own caller has not read: %+v", spec)

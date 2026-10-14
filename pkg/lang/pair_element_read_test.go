@@ -27,6 +27,7 @@ import (
 // from this file).
 
 func TestALiteralElementThatIsAReadAnswersTheValueItDenotes(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ src, want string }{
 		// The row's own four shapes.
 		{`print([{"a": "x"}["a"], 2])`, "['x', 2]"},
@@ -78,6 +79,7 @@ func TestALiteralElementThatIsAReadAnswersTheValueItDenotes(t *testing.T) {
 		{`print([1, 2][0])`, "1"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, printed %q, want %q", tt.src, out, tt.want)
 			}
@@ -91,6 +93,7 @@ func TestALiteralElementThatIsAReadAnswersTheValueItDenotes(t *testing.T) {
 // the day someone "simplifies" the builder back to one word (roadmap L11.1's payload-never-without-tag rule,
 // ADR 0187).
 func TestAPairElementWritesTheTagTheObjectsWrote(t *testing.T) {
+	t.Parallel()
 	ir := emittedModuleIR(t, `print([{"a": "x"}["a"], 2])`)
 	for _, want := range []string{
 		"@rt_dict_get_tagged", // the read the dict variable takes — one door, not a second one
@@ -114,6 +117,7 @@ func TestAPairElementWritesTheTagTheObjectsWrote(t *testing.T) {
 // The fold's own shape must not have been dragged to the heap by the widened door: ADR 0249's gate-and-door
 // rule, asserted as a negative control beside the positive rows above.
 func TestTheFoldStillOwnsTheReadItCanAnswer(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{`print([[1, 2][0], 3])`, `print([{1: 2}[1], 3])`} {
 		ir := emittedModuleIR(t, src)
 		for _, forbidden := range []string{"@rt_get_elem", "@rt_dict_get_tagged", "@rt_tag_of"} {
@@ -132,6 +136,7 @@ func TestTheFoldStillOwnsTheReadItCanAnswer(t *testing.T) {
 // The gate asked directly, so a widening or narrowing of the door fails a decision row rather than silently
 // changing what every literal in the language does (ADR 0249: the gate and the door answer one question).
 func TestThePairElementGateDecidesTheReadTheDoorAnswers(t *testing.T) {
+	t.Parallel()
 	g := &irGen{}
 	intLit := func(v int64) Expr { return &IntLit{Value: v} }
 	strLit := func(v string) Expr { return &StrLit{Value: v} }
@@ -177,6 +182,7 @@ func TestThePairElementGateDecidesTheReadTheDoorAnswers(t *testing.T) {
 		{"an integer literal element", intLit(3), false, "not a subscript at all"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := g.subscriptIsPairElem(tc.ix); got != tc.want {
 				t.Fatalf("subscriptIsPairElem = %v, want %v — %s", got, tc.want, tc.why)
 			}
@@ -202,6 +208,7 @@ func TestThePairElementGateDecidesTheReadTheDoorAnswers(t *testing.T) {
 // print road answers (Gap N's rule that an expectation is derived, ADR 0331's literal-vs-variable parity
 // asked of the element instead of the subscript).
 func TestTheElementRoadIsNeverWorseThanThePrintRoad(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ read, element string }{
 		{`print({"a": "x"}["a"])`, `print([{"a": "x"}["a"], 2])`},
 		{`print(["a"][0])`, `print([["a"][0], 2])`},
@@ -213,6 +220,7 @@ func TestTheElementRoadIsNeverWorseThanThePrintRoad(t *testing.T) {
 		{"xs = []\nxs.append(\"s\")\nprint(xs[0])", "xs = []\nxs.append(\"s\")\nprint([xs[0], 2])"},
 	} {
 		t.Run(tt.element, func(t *testing.T) {
+			t.Parallel()
 			readOut, readRefused := compiledOutOrRefusal(t, tt.read)
 			if readRefused {
 				t.Skipf("the print road itself refuses: %s", readOut)
@@ -238,10 +246,12 @@ func TestTheElementRoadIsNeverWorseThanThePrintRoad(t *testing.T) {
 // for a whole value: the argument of a call hands the callee an `i32` and has nowhere to put a tag register,
 // and the answer for such an element is Gap R.146's sentence, not a payload at exit 0.
 func TestTheOneWordPositionsStillRefuseAPairElement(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def id(v):\n    return v\nprint([id({\"a\": \"x\"}[\"a\"]), 1])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, src)
 			if !refused {
 				t.Fatalf("%q answered %q; a one-word position cannot carry the element's kind, and printing the payload is the wrong answer this row had", src, out)
@@ -257,6 +267,7 @@ func TestTheOneWordPositionsStillRefuseAPairElement(t *testing.T) {
 // sentence and the catchability are the reference's, and exit 2 — the code the contract reserves for a
 // compiler bug — is forbidden on every one of them.
 func TestATrapInsideALiteralElementIsRaisedNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src            string
 		class, message string
@@ -270,6 +281,7 @@ func TestATrapInsideALiteralElementIsRaisedNotRefused(t *testing.T) {
 		{"xs = {\"a\": 1}\nprint([xs[\"a\"][\"b\"], 1])", "TypeError", "'int' object is not subscriptable", "TypeError"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class || message != tt.message {
 				t.Fatalf("raised %s: %s, want %s: %s", class, message, tt.class, tt.message)
@@ -287,6 +299,7 @@ func TestATrapInsideALiteralElementIsRaisedNotRefused(t *testing.T) {
 // literal binds the payload, and a container that crosses a `return` keeps Gap R.67's road. Each row fails
 // the day the door grows the pair, which is what makes it a ledger rather than a comment (roadmap L11.1).
 func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -331,6 +344,7 @@ func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// refusing moves; it does not disappear.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if tc.compiled == "" {
 				// The shape has no answer today: it refuses, and the row's job is to notice the day it
@@ -354,6 +368,7 @@ func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 // The record leg: every answered row has to have an answer on record, so a later cycle cannot take the
 // gate away without taking the evidence away with it (ADR 0302's rule that a missing record fails).
 func TestThePairElementRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([{"a": "x"}["a"], 2])`,
 		`print([["a"][0], 2])`,
@@ -369,6 +384,7 @@ func TestThePairElementRowsAreRecorded(t *testing.T) {
 		"try:\n    print([{\"a\": 1}[\"b\"], 2])\nexcept KeyError:\n    print(\"caught\")",
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that stores it", src)

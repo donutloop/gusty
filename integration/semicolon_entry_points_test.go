@@ -21,6 +21,7 @@ import (
 // from every door, and a program CPython rejects is rejected by every door too.
 
 func TestSemicolonProgramsGetOneVerdictFromEveryEntryPoint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -32,6 +33,7 @@ func TestSemicolonProgramsGetOneVerdictFromEveryEntryPoint(t *testing.T) {
 		{"control_without_semicolon", "x = 5\nprint(x + 1)\n", "6\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "semi.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -90,6 +92,7 @@ func TestSemicolonProgramsGetOneVerdictFromEveryEntryPoint(t *testing.T) {
 // (`x = 1;;y = 2`) is a syntax error CPython rejects, so no door may run it, and none may report a
 // different answer from its neighbour.
 func TestSemicolonRejectsTheEmptyStatementEverywhere(t *testing.T) {
+	t.Parallel()
 	const src = "a = 1;;b = 2\nprint(a)\n"
 	for _, args := range [][]string{
 		{"--aot", "--file"}, {"--aot", "--file"}, {"--jit", "--file"}, {"--eval"},

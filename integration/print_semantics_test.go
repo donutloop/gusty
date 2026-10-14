@@ -17,6 +17,7 @@ import (
 // *ordering* (an argument whose evaluation itself prints) is identical per backend.
 
 func TestPrintSeparationParity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -66,6 +67,7 @@ func TestPrintSeparationParity(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			recordOut := runCompiled(t, tc.src)
 			aot := runAOT(t, tc.src)
 			if recordOut != tc.want {
@@ -82,6 +84,7 @@ func TestPrintSeparationParity(t *testing.T) {
 // arguments, and the AOT backend must say so plainly when one is not a compile-time
 // string instead of emitting IR that only LLVM's verifier complains about.
 func TestPrintKeywordArgsStayChecked(t *testing.T) {
+	t.Parallel()
 	src := "print(\"a\", 1, sep=\"|\")\n"
 	prog, perr := lang.Parse(src)
 	if perr != nil {
@@ -106,6 +109,7 @@ func TestPrintKeywordArgsStayChecked(t *testing.T) {
 // kind of argument (int, float, string, container). If a format grew a \n again,
 // end="" would leave a stray line break and the backends would diverge.
 func TestPrintTerminatorIsNotBakedIntoArgumentFormats(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string

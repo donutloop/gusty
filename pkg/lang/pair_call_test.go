@@ -36,6 +36,7 @@ const builtTwice = "def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8]
 // TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend is the row itself: the expression the print door
 // answers (ADR 0265) is the same expression a call hands to a parameter.
 func TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", builtTwice + "print(twice(xs[0][0]))\n", "14\n"},
 		{
@@ -201,6 +202,7 @@ func TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -220,6 +222,7 @@ func TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend(t *testing.T) {
 // TestAPairCrossingACallWritesBothWordsIs the module half: the arity, the answer's word, and the roads
 // that must say None rather than leave the previous answer's kind standing in the word.
 func TestAPairCrossingACallWritesBothWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 		// want lists the fragments the module must carry; absent, the row asserts their absence.
@@ -257,6 +260,7 @@ func TestAPairCrossingACallWritesBothWords(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compiled leg refused a program the oracle prints (%v): %s", err, tc.src)
@@ -282,6 +286,7 @@ func TestAPairCrossingACallWritesBothWords(t *testing.T) {
 // pass cannot read (a call, a container, a text) closes it, and the program keeps the refusal the
 // ordinary road gave it. A refusal is fine; a digit that is not CPython's is not.
 func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// The three rows below are the gate's own words: one call site the scan cannot read as a
@@ -320,6 +325,7 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%q compiled; this shape is owed a refusal, not an answer\nsrc: %s", tc.name, tc.src)
@@ -341,6 +347,7 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 // is not given a tagged parameter — it keeps the convention it has always had, so a program that
 // compiled before still compiles (roadmap ADR 0273).
 func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
+	t.Parallel()
 	bodies := []struct{ name, body, other string }{
 		{"a power", "    return v ** 2\n", ""},
 		{"a true division", "    return v / 2\n", ""},
@@ -358,6 +365,7 @@ func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
 	}
 	for _, b := range bodies {
 		t.Run(b.name, func(t *testing.T) {
+			t.Parallel()
 			otherBody := b.other
 			if otherBody == "" {
 				otherBody = "    return w\n"
@@ -383,6 +391,7 @@ func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
 // arithmetic the callee performs over the caller's payload raises the reference's own sentence, and
 // `except` at the call site reaches it (ADR 0228's rule, one frame further out).
 func TestACalleeRaiseLeavesThroughTheEmittedDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a text slot under the callee's multiplication",
@@ -401,6 +410,7 @@ func TestACalleeRaiseLeavesThroughTheEmittedDoor(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compiled leg failed: %v", err)
@@ -419,6 +429,7 @@ func TestACalleeRaiseLeavesThroughTheEmittedDoor(t *testing.T) {
 // after its first call must agree with that call about the arity, or the module verifier reports
 // mismatched types at exit 2 — the contract's compiler-bug code, spent on a file layout.
 func TestThePairScanIsAskedOfTheProgramNotTheEmittingOrder(t *testing.T) {
+	t.Parallel()
 	// The call is written before the `def`. Whether a top-level program may do that at all is a
 	// name-binding question this row does not open (the record answers CPython's `NameError`, and
 	// so does the reference); what the row owns is that the *scan*, which decides the arity, is asked of
@@ -463,6 +474,7 @@ func TestThePairScanIsAskedOfTheProgramNotTheEmittingOrder(t *testing.T) {
 // that lets one shape through and closes its neighbour: each row states the *decision*, so a widening
 // or narrowing of the door fails a row rather than quietly changing what programs compile.
 func TestThePairSpecGateIsAskedDirectly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src string
 		pair      bool
@@ -487,6 +499,7 @@ func TestThePairSpecGateIsAskedDirectly(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog := mustParse(t, tc.src)
 			specs := pairCallSpecs(prog)
 			spec := specs["twice"]
@@ -510,6 +523,7 @@ func TestThePairSpecGateIsAskedDirectly(t *testing.T) {
 // the definition is written where the callee's `define` is emitted and read where the caller calls, so the
 // two cannot share the one-shot guard that writes it (roadmap L11.1, ADR 0277).
 func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) {
+	t.Parallel()
 	const fDef = "def f(v):\n    return other(v)\n\n"
 	const otherDef = "def other(w):\n    return w * 2\n\n"
 	const tail = "xs = []\nxs.append([1.5, 8])\nprint(f(xs[0][0]))\nprint(f(3))\n"
@@ -518,6 +532,7 @@ func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) 
 		{"the callee is written first", otherDef + fDef + tail},
 	} {
 		t.Run(order.name, func(t *testing.T) {
+			t.Parallel()
 			specs := pairCallSpecs(mustParse(t, order.src))
 			for _, fn := range []string{"f", "other"} {
 				if specs[fn] == nil || !specs[fn].returnsPair {
@@ -577,12 +592,14 @@ func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) 
 // It used to list a callee that floored its parameter as well: `//` and `%` became carriable with ADR 0278,
 // and that row moved to the parity side of this file (TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend).
 func TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, otherBody string }{
 		{"the callee takes a power of it", "    return w ** 2\n"},
 		{"the callee renders it a text", "    return str(w)\n"},
 		{"the callee indexes with it", "    out = [1, 2]\n    return out[w]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			src := "def f(v):\n    return other(v)\n\ndef other(w):\n" + tc.otherBody + "\nprint(f(2.5))\n"
 			specs := pairCallSpecs(mustParse(t, src))
 			for _, fn := range []string{"f", "other"} {
@@ -601,5 +618,39 @@ func TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair(t *testing.T) 
 				t.Fatalf("the module carries the pair door for a chain that cannot carry it\nsrc: %s", src)
 			}
 		})
+	}
+}
+
+// TestTheClosedPositionSetSurvivesAnEmptySpecMap pins the half of the scan that is easy to throw away.
+// The scan answers two questions in one walk: which functions carry the pair, and which (function,
+// parameter) positions it considered for the pair and then *closed*. codegen asks the second question
+// whenever a double is about to be handed to someone else's parameter — that is the refusal ADR 0280 made
+// Gap R.164 honest about — and it asks it whether or not the program ended up with any paired function at
+// all. An earlier form of this code carried the closed set out of the scan in a package variable and
+// returned it even on the "no specs" exit; carrying it as a second return value is the same promise, and
+// this is the case that notices the promise being broken. `def twice(v): return v * 2` /
+// `y = twice(x)` / `z = twice(y)` / `print(outer(2.5))` is the program that prints `8` instead of refusing
+// when the set goes missing.
+func TestTheClosedPositionSetSurvivesAnEmptySpecMap(t *testing.T) {
+	t.Parallel()
+	prog, err := Parse("def twice(v):\n    return v * 2\n\nfor k in range(1):\n    q = twice(1)\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	specs, closed := pairCallScan(prog)
+	if len(specs) != 0 {
+		t.Fatalf("this program is not one the pair serves, and the refusal case depends on that: %v", specs)
+	}
+	if closed == nil {
+		t.Fatal("the closed-position set vanished with the specs — codegen's refusal for a double handed to a closed position reads it, specs or no specs")
+	}
+	// The same walk over the program the refusal case uses must record a closed position for `twice`,
+	// which is what keeps `z = twice(y)` from silently truncating the double.
+	full, err := Parse("def twice(v):\n    return v * 2\n\nx = 2.5\ny = twice(x)\nz = twice(y)\nprint(z)\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, closedFull := pairCallScan(full); len(closedFull["twice"]) == 0 {
+		t.Error("the scan recorded no closed position for twice's parameter, so the arithmetic door has nothing to refuse from")
 	}
 }

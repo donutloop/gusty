@@ -23,6 +23,7 @@ import (
 //   - 1, True and 1.0 are one key, because a bool and a float compare to the number they are
 //     (ADR 0259's `dictKeyEq`), so `{1: 1, True: 2}` is one entry, not two.
 func TestADictWithARepeatedKeyIsOneEntry(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		// The plain literal, one key per type the language has.
 		{"print({\"a\": 1, \"a\": 2})\n", "{'a': 2}\n"},
@@ -64,6 +65,7 @@ func TestADictWithARepeatedKeyIsOneEntry(t *testing.T) {
 // The comprehension is the shape that started the row (roadmap Gap R.118): the loop writes the same
 // key on two iterations and the dict grew a second entry under it.
 func TestADictComprehensionPutsItsEntries(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"d = {1: 2 for x in [1, 2]}\nprint(d)\nprint(len(d))\n", "{1: 2}\n1\n"},
 		{"d = {1: 2 for x in [1, 2, 3]}\nprint(d)\n", "{1: 2}\n"},
@@ -94,6 +96,7 @@ func TestADictComprehensionPutsItsEntries(t *testing.T) {
 // is parity surface; the difference between the two is what the compiled builder can spell into a
 // compile-time global, not what a dict means.
 func TestADictComprehensionWithATextKeyIsRefusedByCodegenOnly(t *testing.T) {
+	t.Parallel()
 	const src = "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n"
 	const want = "{'k': 3}\n3 1\n"
 	if got := captureStdout(t, src); got != want {
@@ -111,6 +114,7 @@ func TestADictComprehensionWithATextKeyIsRefusedByCodegenOnly(t *testing.T) {
 // The copy is the third builder, and the reason the rule lives in one helper rather than three: a copy
 // that spliced two arrays could carry a duplicate entry out of a container that ever had one.
 func TestDictCopyIsBuiltByPuttingToo(t *testing.T) {
+	t.Parallel()
 	if got, want := captureStdout(t, "d = {\"a\": 1, \"b\": 2, \"a\": 3}\nc = dict(d)\nprint(c)\nprint(len(c))\n"), "{'a': 3, 'b': 2}\n2\n"; got != want {
 		t.Errorf("interpreter dict() copy = %q, want %q", got, want)
 	}
@@ -128,6 +132,7 @@ func TestDictCopyIsBuiltByPuttingToo(t *testing.T) {
 // item assignment, `dict()` copy — are all present in the one program below, so a builder that grew
 // its own array would show up here as a store the module cannot account for.
 func TestEveryDictBuilderWalksTheOneDoor(t *testing.T) {
+	t.Parallel()
 	const src = "d = {1: 2, 2: 3}\n" +
 		"d[3] = 4\n" +
 		"e = {x: x * 2 for x in [5, 6]}\n" +

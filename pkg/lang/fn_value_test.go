@@ -25,6 +25,7 @@ import (
 // front end (exit class 1), never through `llc`: an error naming the pass is the pass saying "I have no
 // value for this", while an `llc` rejection is the compiler's own bug (ADR 0166).
 func TestADeclaredNameUsedAsAValueNeverReachesLLVM(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src string }{
 		{"a function name in arithmetic", head + "print(f + 1)\n"},
@@ -43,6 +44,7 @@ func TestADeclaredNameUsedAsAValueNeverReachesLLVM(t *testing.T) {
 		{"a lambda in a list", "xs = [lambda x: x]\nprint(len(xs))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				if strings.Contains(err.Error(), "llc") || strings.Contains(err.Error(), "use of undefined value") {
@@ -85,6 +87,7 @@ func firstLines(ir string, n int) string {
 // `abs` roads raise CPython's sentence with CPython's word, on both legs, rather than reaching the
 // arithmetic the door exists to guard.
 func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src, class, message string }{
 		{"negation of a def'd name", head + "print(-f)\n", "TypeError", "bad operand type for unary -: 'function'"},
@@ -95,6 +98,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 		{"abs of a module", "import math\n\nprint(abs(math))\n", "TypeError", "bad operand type for abs(): 'module'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q) — the wrong class breaks `except %s:` (ADR 0211, ADR 0228)", ee.ExnType, tc.class, ee.ExnMsg, tc.class)
@@ -128,6 +132,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 // the catchability defect ADR 0211 and ADR 0228 count as a misclassing — `except TypeError:` matched
 // neither arm, because NameError matched neither either.
 func TestADeclaredNameReadIsNotANameErrorOnTheInterpreter(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src, want string }{
 		// The reference prints a function object; this language prints the object it has, and the point
@@ -145,6 +150,7 @@ func TestADeclaredNameReadIsNotANameErrorOnTheInterpreter(t *testing.T) {
 		// this one replaces expected a runtime NameError and the checker, correctly, got there first.)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -157,6 +163,7 @@ func TestADeclaredNameReadIsNotANameErrorOnTheInterpreter(t *testing.T) {
 // never counts arguments: `print(f(1, 2))` answered `2` and `print(f())` answered `0`, both at exit 0.
 // Those two wrong numbers are what this row fails on if the roads are ever reordered again.
 func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
+	t.Parallel()
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src, wantSub string }{
 		{"too many arguments is still an error", head + "print(f(1, 2))\n", "argument"},
@@ -165,6 +172,7 @@ func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
 		{"a function of two parameters called with one", "def g(a, b):\n    return a + b\n\nprint(g(1))\n", "argument"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// Arity is answered by the checker in this language (`verify: function "f" accepts 1
 			// argument, got more`), not by a run-time trap, so the contract to hold is that *some*
 			// stage refuses — the failure mode this row guards is silence: `2` and `0` at exit 0.
@@ -192,11 +200,13 @@ func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
 // body that receives a callable keeps the meaning the program gave it. Without this the fix would be a
 // ban on functions as arguments.
 func TestAParameterHoldingACallableIsNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a lambda called through a parameter", "def twice(fn, v):\n    return fn(v) + fn(v)\n\nprint(twice(lambda x: x * 3, 2))\n", "12\n"},
 		{"a lambda bound then called", "g = lambda x: x * 3\nprint(g(4))\n", "12\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}

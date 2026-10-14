@@ -56,6 +56,7 @@ func mustNotReport(t *testing.T, src, code string) {
 // --- never awaited ---------------------------------------------------------
 
 func TestEffectsNeverAwaitedBinding(t *testing.T) {
+	t.Parallel()
 	dropped := `async def f(x):
     return x + 1
 v = f(2)
@@ -88,6 +89,7 @@ print(len(tasks))
 }
 
 func TestEffectsNeverAwaitedBareCall(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `async def f(x):
     return x + 1
 f(2)
@@ -110,6 +112,7 @@ async for v in [f(1), f(2), f(3)]:
 }
 
 func TestEffectsNeverAwaitedRebound(t *testing.T) {
+	t.Parallel()
 	// The second assignment is the moment the first coroutine dies.
 	mustReport(t, `async def f(x):
     return x + 1
@@ -128,6 +131,7 @@ print(b)
 }
 
 func TestEffectsNeverAwaitedInBranch(t *testing.T) {
+	t.Parallel()
 	// A coroutine created inside a branch cannot be awaited after it, so the
 	// branch is where the drop is reported.
 	mustReport(t, `async def f(x):
@@ -150,6 +154,7 @@ print(2)
 // --- awaited twice --------------------------------------------------------
 
 func TestEffectsAwaitedTwice(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `async def f(x):
     return x + 1
 a = f(1)
@@ -170,6 +175,7 @@ print(await a)
 // --- await / async statements in the wrong place --------------------------
 
 func TestEffectsAwaitOutsideCoroutine(t *testing.T) {
+	t.Parallel()
 	// Level warning, not error: our model evaluates the operand instead of
 	// suspending, so the program still means something — it is CPython that
 	// rejects it outright.
@@ -198,6 +204,7 @@ print(await f(1))
 }
 
 func TestEffectsAsyncStmtOutsideCoroutine(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `async def f(x):
     return x
 def g():
@@ -227,6 +234,7 @@ print(1)
 }
 
 func TestEffectsAwaitNotCoroutine(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `def dbl(x):
     return x * 2
 print(await dbl(3))
@@ -252,6 +260,7 @@ print(await f(1))
 // --- async generators, missing returns ------------------------------------
 
 func TestEffectsAsyncGenerator(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `async def gen():
     yield 1
 `, CodeAsyncGeneratorUnsupported, "yields", LevelError)
@@ -272,6 +281,7 @@ print(await outer(1))
 }
 
 func TestEffectsMissingReturn(t *testing.T) {
+	t.Parallel()
 	mustReport(t, `async def f(x):
     if x > 0:
         return x
@@ -359,6 +369,7 @@ func summaryFor(t *testing.T, src, fn string) EffectSummary {
 }
 
 func TestEffectSummarySignature(t *testing.T) {
+	t.Parallel()
 	src := `async def fetch(n):
     total = 0
     for i in range(n):
@@ -419,6 +430,7 @@ class Box:
 }
 
 func TestEffectSummaryCountsCoroutineCalls(t *testing.T) {
+	t.Parallel()
 	src := `async def one(x):
     return x
 async def driver():
@@ -436,6 +448,7 @@ async def driver():
 }
 
 func TestEffectSummaryModuleRow(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("async def f():\n    return 1\nprint(await f())\n")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -453,6 +466,7 @@ func TestEffectSummaryModuleRow(t *testing.T) {
 }
 
 func TestEffectSummariesAreDeterministic(t *testing.T) {
+	t.Parallel()
 	src := `async def a():
     return 1
 def b():
@@ -480,6 +494,7 @@ func effectSummaryNames(rows []EffectSummary) []string {
 }
 
 func TestEffectsJSONShape(t *testing.T) {
+	t.Parallel()
 	prog := parseOrFatal(t, "async def f():\n    await g()\nasync def g():\n    return 1\n")
 	doc, err := EffectsJSON(prog, "t.gy", nil)
 	if err != nil {
@@ -499,6 +514,7 @@ func TestEffectsJSONShape(t *testing.T) {
 // TestEffectsTableNamesEveryFunction keeps the human view honest about the same
 // facts the JSON carries — the two views come from one table on purpose.
 func TestEffectsTableNamesEveryFunction(t *testing.T) {
+	t.Parallel()
 	prog := parseOrFatal(t, "async def f(x):\n    return x\ndef g():\n    print(1)\n")
 	tbl := EffectTable(prog, "t.gy")
 	for _, want := range []string{"effect signatures for t.gy", "<module>", "async def", "f", "g", "falls_through="} {
@@ -511,6 +527,7 @@ func TestEffectsTableNamesEveryFunction(t *testing.T) {
 // TestEffectsNoFalsePositivesOnCorpus is the noise gate: the conformance programs
 // that use async must stay silent, or every run of `gusty check` shouts.
 func TestEffectsNoFalsePositivesOnCorpusAsync(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`async def f(x):
     return x + 1
@@ -550,6 +567,7 @@ print(await b)
 // never mentions async — otherwise it is a new source of false errors on the
 // 74-program corpus.
 func TestEffectsNonAsyncProgramsAreUntouched(t *testing.T) {
+	t.Parallel()
 	src := `class Counter:
     def __init__(self, n):
         self.n = n

@@ -66,6 +66,7 @@ func integrationArtifactCount(t *testing.T, path string, slice bool) int {
 // TestTheCLISuitesArtifactCountsAreTheFilesOwn checks the table's rows for the files this package owns, from
 // this package's directory.
 func TestTheCLISuitesArtifactCountsAreTheFilesOwn(t *testing.T) {
+	t.Parallel()
 	const doc = "docs/operations.md"
 	text, err := os.ReadFile(filepath.Join(recordRoot, doc))
 	if err != nil {
@@ -105,6 +106,7 @@ func TestTheCLISuitesArtifactCountsAreTheFilesOwn(t *testing.T) {
 // TestTheRecordCountTheCLIKitQuotesIsTheFilesOwn covers the coverage claim in the two documents an agent
 // reads before it trusts the record: AGENTS.md (the loop's contract) and docs/operations.md.
 func TestTheRecordCountTheCLIKitQuotesIsTheFilesOwn(t *testing.T) {
+	t.Parallel()
 	want := integrationArtifactCount(t, "pkg/lang/testdata/interpreter-golden.json", false)
 	claim := regexp.MustCompile(`([0-9][0-9,]*)\s+sources\b`)
 	for _, doc := range []string{"AGENTS.md", filepath.Join("docs", "operations.md")} {

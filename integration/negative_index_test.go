@@ -16,6 +16,7 @@ import (
 // and the reference implementation now answer the same question the same way.
 
 func TestNegativeSubscriptsAgreeOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "negative_index.gy")
 	want := "3\n1\n2\n30\n2\nminus\nzero\n"
 
@@ -41,6 +42,7 @@ func TestNegativeSubscriptsAgreeOnEveryPath(t *testing.T) {
 // tool died with a Go panic. Under the exit-code contract (ADR 0168) no tested shape may
 // leave the compiler as a panic, so this drives the real binary and insists on IR.
 func TestNegativeLiteralSubscriptEmitsIRInsteadOfPanicking(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -62,6 +64,7 @@ func TestNegativeLiteralSubscriptEmitsIRInsteadOfPanicking(t *testing.T) {
 // ledger row — a row would be a claim of divergence the harness has to be able to falsify,
 // and these no longer diverge.
 func TestNegativeIndexProgramsCarryNoOracleDebt(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"negative_index", "negative_literal_index"} {
 		found := false
 		for _, c := range conformanceCases() {
@@ -93,6 +96,7 @@ func negRecordedTrap(t *testing.T, src string) error {
 // An index past either end is still an error, and the compiled binary has to say so the way CPython
 // and the recorded answer do — normalisation must not have swallowed the check.
 func TestNegativeIndexOutOfRangeIsSaidEverywhere(t *testing.T) {
+	t.Parallel()
 	src := "xs = [1, 2, 3]\nprint(xs[-4])\n"
 	_, pyErr, perr := lang.PythonRun(src)
 	if perr == nil {

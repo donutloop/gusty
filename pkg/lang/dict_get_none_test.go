@@ -23,6 +23,7 @@ import (
 )
 
 func TestDictGetWithNoDefaultAnswersNone(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		name string
 		src  string
@@ -46,6 +47,7 @@ func TestDictGetWithNoDefaultAnswersNone(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q — a void printed as its word is Gap R.174", got, r.want)
 			}
@@ -61,6 +63,7 @@ func TestDictGetWithNoDefaultAnswersNone(t *testing.T) {
 // through a word would be the wrong-number class ADR 0166 counts as our bug. the record answers
 // every row, which is what makes the compiled leg's answer a refusal rather than a crash.
 func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"d = {\"a\": 1}\nprint(d.get(\"a\"))\n",
 		"d = {\"a\": 1}\nprint(d.get(\"z\"))\n",
@@ -69,6 +72,7 @@ func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
+			t.Parallel()
 			want := captureStdout(t, src) // the record holds the reference answer on every row
 			res, err := Compile(src)
 			if err == nil {
@@ -98,6 +102,7 @@ func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
 // a TEXT receiver must still be called a receiver, and a CONTAINER receiver must be called a container.
 // One sentence cannot serve both, which is why the road asks the records before it speaks.
 func TestTheStringMethodRefusalDescribesItsReceiver(t *testing.T) {
+	t.Parallel()
 	container := "d = {\"a\": 1}\nprint(d.keys())\n"
 	_, err := Compile(container)
 	if err == nil {
@@ -128,6 +133,7 @@ func TestTheStringMethodRefusalDescribesItsReceiver(t *testing.T) {
 // L11.1's tagged value word (and the same wall as Gap R.171's void), not something the get road can fix
 // by itself.
 func TestADictAnswerThatIsATextStillOwesItsWord(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ src, want string }{
 		{"print({1: \"x\"}.get(1))\n", "x\n"},
 		{"print({\"a\": 1}.get(\"z\", \"none-ish\"))\n", "none-ish\n"},
@@ -135,6 +141,7 @@ func TestADictAnswerThatIsATextStillOwesItsWord(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q — the interpreter has no excuse for a kind it can see", got, r.want)
 			}
@@ -152,6 +159,7 @@ func TestADictAnswerThatIsATextStillOwesItsWord(t *testing.T) {
 // TestDictGetStillAnswersItsDefaultKeepsTheOtherHalf pins what already worked, so the None half cannot
 // have quietly taken the default half with it.
 func TestDictGetStillAnswersItsDefaultKeepsTheOtherHalf(t *testing.T) {
+	t.Parallel()
 	for _, r := range []struct{ src, want string }{
 		{"print({\"a\": 1}.get(\"a\", 9))\n", "1\n"},
 		{"print({\"a\": 1}.get(\"b\", 9))\n", "9\n"},
@@ -160,6 +168,7 @@ func TestDictGetStillAnswersItsDefaultKeepsTheOtherHalf(t *testing.T) {
 	} {
 		r := r
 		t.Run(strings.TrimSpace(r.src), func(t *testing.T) {
+			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
 				t.Errorf("interpreter printed %q, want %q", got, r.want)
 			}

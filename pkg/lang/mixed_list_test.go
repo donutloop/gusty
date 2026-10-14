@@ -13,6 +13,7 @@ import (
 // element out through one static kind still refuses instead of printing something wrong.
 
 func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
+	t.Parallel()
 	g := &irGen{} // nil maps read as empty; this decision needs no module state
 	for _, tc := range []struct {
 		src string
@@ -56,6 +57,7 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 }
 
 func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
+	t.Parallel()
 	g := &irGen{}
 	for _, tc := range []struct {
 		src  string
@@ -93,6 +95,7 @@ func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
 }
 
 func TestTaggedListEmitsTagsAndPrintsThroughTheTaggedPrinter(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, \"a\", None]\nprint(xs)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -118,6 +121,7 @@ func TestTaggedListEmitsTagsAndPrintsThroughTheTaggedPrinter(t *testing.T) {
 }
 
 func TestMixedListElementUsesStillRefuse(t *testing.T) {
+	t.Parallel()
 	// Printing an element, binding one, appending one and writing one all carry the tag now
 	// (see TestElementReadCarriesItsTag / TestElementWriteAndAppendTagTheSlot). What is left
 	// here is the set of uses that genuinely have no tag to carry: a context that demands one
@@ -174,6 +178,7 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 // `xs.append(1.5)`, `xs[0] = 2.5`, `xs = [1.5, "a"]` — are the ones ADR 0233 paid for: the float
 // goes into a box, the slot keeps the handle and the TagFloat tag, and the answer is CPython's.
 func TestFloatElementsInMixedListsNowAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "[1, 'a', 1.5]\n"},
 		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "[2.5, 'a']\n"},
@@ -200,6 +205,7 @@ func TestFloatElementsInMixedListsNowAnswer(t *testing.T) {
 // tag and `v = xs[i]` binds a tagged variable — the same pair a loop variable over a mixed
 // list already carried (ADR 0185), now available at an arbitrary read site (ADR 0187).
 func TestElementReadCarriesItsTag(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, \"a\", None]\nprint(xs[1])\nv = xs[2]\nprint(v)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -246,6 +252,7 @@ func TestElementReadCarriesItsTag(t *testing.T) {
 // the interned index through the slot's stale int tag and printed [1, 'a', None] — an answer,
 // from the interned table, that CPython does not give.
 func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, \"a\", None]\nxs[0] = \"z\"\nxs.append(None)\nprint(xs)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -267,6 +274,7 @@ func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
 // compiler can see in a slot is answered (ADR 0243); text in a slot is not, and neither is a loop
 // variable, whose tag is chosen per iteration.
 func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
+	t.Parallel()
 	_, err := Compile("xs = [1, \"a\"]\nprint(xs[1] + 1)\n")
 	if err == nil {
 		t.Fatal("arithmetic on a text element must refuse")
@@ -289,6 +297,7 @@ func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
 // element and its tag are bound together, print dispatches on the tag, and using the variable
 // as a number refuses (ADR 0185).
 func TestLoopOverMixedListBindsValueAndTag(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [1, \"a\", None]\nfor x in xs:\n    print(x)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -303,6 +312,7 @@ func TestLoopOverMixedListBindsValueAndTag(t *testing.T) {
 // print(x) at top level is str(); print(xs) is repr(). One tag, two contexts, decided by the
 // call site -- the distinction Python has and a single shared printer would not.
 func TestTagPrinterQuotesOnlyInsideContainers(t *testing.T) {
+	t.Parallel()
 	loop, err := Compile("xs = [1, \"a\"]\nfor x in xs:\n    print(x)\n")
 	if err != nil {
 		t.Fatalf("Compile loop: %v", err)

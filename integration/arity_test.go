@@ -20,6 +20,7 @@ import (
 // the compiled backend. the record already caught it at run time; the fix is that the *compiler*
 // now says so, at the call, naming the function.
 func TestMissingArgumentIsRefusedWhereItShouldBe(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc-test")
 	src := `def build(a, b):
@@ -35,6 +36,7 @@ print(build(1))
 	buildCLI(t, bin)
 
 	t.Run("check refuses at the call", func(t *testing.T) {
+		t.Parallel()
 		// `--check` takes source text (the same inline form an agent already uses); only the
 		// build paths take a filename.
 		out, _ := exec.Command(bin, "--check", src).CombinedOutput()
@@ -51,6 +53,7 @@ print(build(1))
 	})
 
 	t.Run("compile refuses to emit a module for it", func(t *testing.T) {
+		t.Parallel()
 		out, err := exec.Command(bin, "--aot", path).CombinedOutput()
 		if err == nil {
 			t.Fatalf("--aot accepted a call with a missing argument:\n%s", out)
@@ -65,6 +68,7 @@ print(build(1))
 	// `function "build" expects 2 arguments, got 1` — which names the callee, the expected count and
 	// the count it saw. Requiring one engine's phrasing from the other would be a test of vocabulary.
 	t.Run("the one backend refuses it too, on the file path", func(t *testing.T) {
+		t.Parallel()
 		out, err := exec.Command(bin, "--file", path).CombinedOutput()
 		text := string(out)
 		if err == nil {
@@ -79,6 +83,7 @@ print(build(1))
 // TestArgumentsAndDefaultsAgreeOnEveryPath runs the legitimate short-call shapes through all three
 // engines: the new rule must refuse mistakes, not defaults.
 func TestArgumentsAndDefaultsAgreeOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("arity_defaults")
 	want := "11\n6\n8\n13\n6\n33\n7\n31\n11\n14\n42\n"
 
@@ -102,6 +107,7 @@ func TestArgumentsAndDefaultsAgreeOnEveryPath(t *testing.T) {
 // TestKeywordArityShapesAgree covers the keyword half of the contract, where an unfilled parameter
 // is a skipped name rather than a short argument list.
 func TestKeywordArityShapesAgree(t *testing.T) {
+	t.Parallel()
 	src := `def label(a, b=2, c=3):
     return a * 100 + b * 10 + c
 

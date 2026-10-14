@@ -6,6 +6,7 @@ import (
 )
 
 func TestStaticAnnotMismatch(t *testing.T) {
+	t.Parallel()
 	// x: int = "hello" is a static gradual-typing mismatch caught by Analyze.
 	prog, err := Parse("x: int = \"hello\"")
 	if err != nil {
@@ -25,6 +26,7 @@ func TestStaticAnnotMismatch(t *testing.T) {
 }
 
 func TestArgTypeVsAnnotation(t *testing.T) {
+	t.Parallel()
 	// Static argument incompatible with a static parameter annotation.
 	diags := Analyze(parseOrFatal(t, `def add(a: int, b: int) -> int:
     return a + b
@@ -42,6 +44,7 @@ x = add(1, y)`))
 }
 
 func TestReturnTypeVsAnnotation(t *testing.T) {
+	t.Parallel()
 	// A return statement whose static type conflicts with -> int.
 	diags := Analyze(parseOrFatal(t, `def f() -> int:
     return "not an int"`))
@@ -86,6 +89,7 @@ func hasWarningMsg(diags []Diagnostic, substr string) bool {
 }
 
 func TestMatchExhaustiveness(t *testing.T) {
+	t.Parallel()
 	// A match with a wildcard `_` case is exhaustive: no non-exhaustive warning.
 	src := `
 def f(x):
@@ -130,6 +134,7 @@ def f(x):
 }
 
 func TestAnalyzeSurfacesLexRecoveryDiagnostics(t *testing.T) {
+	t.Parallel()
 	// L4.1: the parser collects TokError tokens (lexer recovery) into prog.Diags,
 	// and Analyze prepends them so the CLI/LSP report every lex error per run.
 	prog, err := Parse("1__0")
@@ -156,6 +161,7 @@ func TestAnalyzeSurfacesLexRecoveryDiagnostics(t *testing.T) {
 // parsed (it is a valid XID identifier) but surfaces a LevelWarning
 // diagnostic in prog.Diags, feeding the CLI/LSP warning path.
 func TestParseConfusableWarning(t *testing.T) {
+	t.Parallel()
 	// "cafΟ" uses GREEK CAPITAL OMICRON U+039F, visually confusable with Latin 'O'.
 	src := "cafΟ = 1\nprint(cafΟ)\n"
 	prog, err := Parse(src)
@@ -176,6 +182,7 @@ func TestParseConfusableWarning(t *testing.T) {
 
 // TestParseNoWarningAscii verifies plain identifiers produce no warning.
 func TestParseNoWarningAscii(t *testing.T) {
+	t.Parallel()
 	src := "order = 1\nprint(order)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -192,6 +199,7 @@ func TestParseNoWarningAscii(t *testing.T) {
 // drive gradual assignability: a value assignable to any member is accepted,
 // and a value outside every member is reported.
 func TestUnionTypeAnnotation(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src     string
 		wantErr string // if non-empty, an error diagnostic must contain this
@@ -229,6 +237,7 @@ print(x)`, ""},
 
 // TestUnionTypeName verifies the rendered union name is `int | str`.
 func TestUnionTypeName(t *testing.T) {
+	t.Parallel()
 	u := TUnion(TInt(), TStr())
 	if got := u.Name(); got != "int | str" {
 		t.Fatalf("union name: got %q, want %q", got, "int | str")
@@ -245,6 +254,7 @@ func TestUnionTypeName(t *testing.T) {
 // normalized union, so it is assignable to a union annotation but not to
 // either single member type.
 func TestUnionInferTernary(t *testing.T) {
+	t.Parallel()
 	// int branch vs str branch widen to int | str: accepted.
 	diags := Analyze(parseOrFatal(t, `c = 1
 x: int | str = (1 if c else "hi")
@@ -279,6 +289,7 @@ print(x)`))
 // every member is numeric widens without warning, a union mixing a
 // non-numeric member warns, and `+` over a string-only union concatenates.
 func TestUnionArithmetic(t *testing.T) {
+	t.Parallel()
 	// int | float union arithmetic widens: no non-numeric warning.
 	diags := Analyze(parseOrFatal(t, `c = 1
 x: int | float = (1 if c else 2.5)
@@ -300,6 +311,7 @@ print(y)`))
 // TestNarrowIsInstanceThen verifies L6.5 type narrowing: `if isinstance(x, T)`
 // narrows x to T inside the then branch, making an annotation assignment valid.
 func TestNarrowIsInstanceThen(t *testing.T) {
+	t.Parallel()
 	prog := parseOrFatal(t, `x: int | str = 3
 if isinstance(x, str):
     y: str = x
@@ -314,6 +326,7 @@ print(x)
 // TestNarrowIsInstanceElse verifies the else branch narrows x away from T:
 // after `isinstance(x, str)`, x is not str in the else branch.
 func TestNarrowIsInstanceElse(t *testing.T) {
+	t.Parallel()
 	prog := parseOrFatal(t, `x: int | str = 3
 if isinstance(x, str):
     pass
@@ -330,6 +343,7 @@ print(x)
 // TestNarrowNotIsInstance verifies `if not isinstance(x, T)` flips the
 // narrowing: the then branch excludes T, the else branch includes T.
 func TestNarrowNotIsInstance(t *testing.T) {
+	t.Parallel()
 	prog := parseOrFatal(t, `x: int | str = 3
 if not isinstance(x, str):
     y: str = x
@@ -342,6 +356,7 @@ print(x)
 }
 
 func TestDefiniteAssignment(t *testing.T) {
+	t.Parallel()
 	// A name assigned only on one path is possibly unbound.
 	src := "def f(flag):\n    if flag:\n        x = 1\n    return x\n"
 	prog := parseOrFatal(t, src)

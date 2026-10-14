@@ -62,6 +62,7 @@ func instanceTrapsLikeCPython(t *testing.T, src, wantMsg string) {
 }
 
 func TestAnInstanceSlotPrintsItsClassRatherThanItsHandle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		src        string
@@ -100,12 +101,14 @@ func TestAnInstanceSlotPrintsItsClassRatherThanItsHandle(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			instancePrintsLikeCPython(t, tc.src, tc.wantPrefix)
 		})
 	}
 }
 
 func TestAnInstanceSlotNamesItsClassWhereAPlainIntWould(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -134,12 +137,14 @@ func TestAnInstanceSlotNamesItsClassWhereAPlainIntWould(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			instanceTrapsLikeCPython(t, tc.src, tc.want)
 		})
 	}
 }
 
 func TestAnInstanceSlotIsStillAnObjectForIdentityAndContainment(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -173,6 +178,7 @@ func TestAnInstanceSlotIsStillAnObjectForIdentityAndContainment(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, tc.src)
 			if got != tc.want {
 				t.Fatalf("compiled stdout %q, want %q", got, tc.want)
@@ -189,6 +195,7 @@ func TestAnInstanceSlotIsStillAnObjectForIdentityAndContainment(t *testing.T) {
 }
 
 func TestTheClassRuntimeIsEmittedOnlyWhereTheObjectNeedsIt(t *testing.T) {
+	t.Parallel()
 	dynamic := compileSrcIR(t, "class C:\n    pass\nxs = []\nxs.append(C())\nprint(7 in xs[0])\n")
 	for _, want := range []string{
 		"@rt.inst.names =",
@@ -217,6 +224,7 @@ func TestTheClassRuntimeIsEmittedOnlyWhereTheObjectNeedsIt(t *testing.T) {
 }
 
 func TestAnInstanceSlotAsksForItsTagRatherThanTheNumberDoor(t *testing.T) {
+	t.Parallel()
 	ir := compileSrcIR(t, "class C:\n    pass\nxs = []\nxs.append(C())\nfor v in xs[0]:\n    print(v)\n")
 	for _, want := range []string{
 		"call i8* @rt_instance_msg_ptr(",

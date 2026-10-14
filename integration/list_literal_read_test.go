@@ -15,6 +15,7 @@ import (
 // widened.
 
 func TestAListLiteralElementAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -32,6 +33,7 @@ func TestAListLiteralElementAnswersThroughTheCLI(t *testing.T) {
 		{`print([1, 2, 3][1] + 10)`, "12"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code != 0 {
 				t.Fatalf("exit %d, want 0: the reference answers this program\nstderr %q", code, stderr)
@@ -46,12 +48,14 @@ func TestAListLiteralElementAnswersThroughTheCLI(t *testing.T) {
 // The residue, at the same altitude: a one-word position cannot carry the element's kind, and the road says
 // so by name instead of printing a payload at exit 0.
 func TestAOneWordPositionRefusesTheListLiteralReadThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def f():\n    return [\"a\",\"b\"][0]\nprint(f())",
 		"def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))",
 		`print([1.5, 2][0] + 1)`,
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", src)
 			if code == 0 {
 				t.Fatalf("exit 0 with stdout %q: a one-word position printed the element's payload", stdout)
@@ -67,6 +71,7 @@ func TestAOneWordPositionRefusesTheListLiteralReadThroughTheCLI(t *testing.T) {
 // CLI: an index that is not a position is the reference's TypeError, and a list-valued index still leaves a
 // module `llc` accepts (Gap R.222's exit-2 shape at Gap R.218's door).
 func TestAnIndexThatIsNotAPositionIsRefusedThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -77,6 +82,7 @@ func TestAnIndexThatIsNotAPositionIsRefusedThroughTheCLI(t *testing.T) {
 		{`print({1: ["a", "b"]}[1]["a"])`, "TypeError: list indices must be integers or slices, not str"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			// Two asks, one row: the reference's sentence out of the run, and the verifier's verdict on the
 			// module the raise leaves behind — Gap R.222's exit-2 shape excluded rather than assumed.
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
@@ -99,6 +105,7 @@ func TestAnIndexThatIsNotAPositionIsRefusedThroughTheCLI(t *testing.T) {
 
 // The whole matrix as one program, line for line against CPython.
 func TestTheListLiteralReadProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/list_literal_read.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -130,6 +137,7 @@ func TestTheListLiteralReadProgramMatchesTheReferenceThroughTheCLI(t *testing.T)
 }
 
 func TestTheListLiteralReadProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

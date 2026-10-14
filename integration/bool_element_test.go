@@ -16,6 +16,7 @@ import (
 // TestCLIBoolElementPrintsWhatCPythonPrints runs the promoted program on the compiled path and against
 // the oracle, from the file that is now parity corpus rather than a debt pin.
 func TestCLIBoolElementPrintsWhatCPythonPrints(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("probe_bool_in_a_container")
 	path := writeSrc(t, t.TempDir(), "bool_in_a_container.gy", src)
 	py, ok := cpythonOut(t, path)
@@ -52,6 +53,7 @@ func TestCLIBoolElementPrintsWhatCPythonPrints(t *testing.T) {
 // the backend is named, and either the value is reported or the silence is the filed gap, never a
 // *wrong* value — and keeps the reference's verdict as the live half.
 func TestJSONCallsABoolElementABool(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		expr, result, typ string
 	}{
@@ -98,6 +100,7 @@ func TestJSONCallsABoolElementABool(t *testing.T) {
 // ADR 0261: its program moved to the parity corpus, and a contract row left here expecting exit 6 for a
 // paid debt passes forever without asserting anything.
 func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		want int

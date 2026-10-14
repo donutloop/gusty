@@ -19,6 +19,7 @@ func mustParse(t *testing.T, src string) *Program {
 // TestParseCacheFullMatchesParse verifies NewParseCache reproduces Parse's
 // parse tree exactly.
 func TestParseCacheFullMatchesParse(t *testing.T) {
+	t.Parallel()
 	src := "x = 1\n\ny = x + 2\n\n# a comment\ndef f(a):\n    return a * 2\n\nz = f(3)\n"
 	want := mustParse(t, src)
 	c, err := NewParseCache(src)
@@ -37,6 +38,7 @@ func TestParseCacheFullMatchesParse(t *testing.T) {
 // checks the incremental result equals a full re-parse of the new source,
 // and that unaffected statements keep their AST node identity.
 func TestParseCacheUpdateEquivalentToParse(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\nc = 3\nd = 4\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -78,6 +80,7 @@ func TestParseCacheUpdateEquivalentToParse(t *testing.T) {
 // TestParseCacheInsertBetweenStatements verifies an insertion between two
 // statements re-parses the tail and keeps the leading statement identity.
 func TestParseCacheInsertBetweenStatements(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\nc = 3\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -106,6 +109,7 @@ func TestParseCacheInsertBetweenStatements(t *testing.T) {
 // TestParseCacheDeleteStatement verifies deleting a statement re-parses the
 // tail and the result equals a full parse.
 func TestParseCacheDeleteStatement(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\nc = 3\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -128,6 +132,7 @@ func TestParseCacheDeleteStatement(t *testing.T) {
 // TestParseCacheAppend verifies appending a statement at the end of the
 // document preserves all existing statements and parses the new tail.
 func TestParseCacheAppend(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -154,6 +159,7 @@ func TestParseCacheAppend(t *testing.T) {
 // TestParseCacheEditInsideNestedBlock verifies an edit inside a nested block
 // re-parses the containing top-level statement.
 func TestParseCacheEditInsideNestedBlock(t *testing.T) {
+	t.Parallel()
 	src := "def f(x):\n    return x + 1\n\ny = f(1)\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -173,6 +179,7 @@ func TestParseCacheEditInsideNestedBlock(t *testing.T) {
 // TestParseCacheWhitespaceOnlyEdit verifies a whitespace-only edit re-parses
 // nothing new and keeps all statement identities.
 func TestParseCacheWhitespaceOnlyEdit(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -196,6 +203,7 @@ func TestParseCacheWhitespaceOnlyEdit(t *testing.T) {
 
 // TestSpanToByte verifies line/col -> byte conversion for ASCII and UTF-8.
 func TestSpanToByte(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\n"
 	// "b = 2" starts at line 2, col 1 => byte offset 6.
 	pos, err := spanToByte(src, Span{Line: 2, Col: 1})
@@ -225,6 +233,7 @@ func manyStatements(n int) string {
 }
 
 func TestParseCacheReusesTailAfterLineEdit(t *testing.T) {
+	t.Parallel()
 	src := manyStatements(20)
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -258,6 +267,7 @@ func TestParseCacheReusesTailAfterLineEdit(t *testing.T) {
 // An edit that inserts (or removes) a line moves everything below it, and the cache must
 // fall back to re-parsing rather than hand back statements whose lines are stale.
 func TestParseCacheTailReuseStopsWhenLinesMove(t *testing.T) {
+	t.Parallel()
 	src := manyStatements(6)
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -284,6 +294,7 @@ func TestParseCacheTailReuseStopsWhenLinesMove(t *testing.T) {
 
 // Boundaries must shift with the text, or the next edit classifies the wrong statements.
 func TestParseCacheBoundariesShiftWithTheEdit(t *testing.T) {
+	t.Parallel()
 	src := "x = 1\ny = 2\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -310,6 +321,7 @@ func TestParseCacheBoundariesShiftWithTheEdit(t *testing.T) {
 
 // Deleting text is an edit with an empty replacement; the tail rule must apply to it too.
 func TestParseCacheTailReuseOnDeletion(t *testing.T) {
+	t.Parallel()
 	src := "x = 12345\ny = 2\nz = 3\n"
 	c, err := NewParseCache(src)
 	if err != nil {
@@ -334,6 +346,7 @@ func TestParseCacheTailReuseOnDeletion(t *testing.T) {
 // An edit that is not a single-line substitution (it introduces a newline) must not
 // reuse the tail.
 func TestParseCacheMultiLineEditReParsesTheTail(t *testing.T) {
+	t.Parallel()
 	src := "x = 1\ny = 2\nz = 3\n"
 	c, err := NewParseCache(src)
 	if err != nil {

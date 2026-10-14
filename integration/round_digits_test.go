@@ -41,6 +41,7 @@ func cliReport(t *testing.T, args ...string) (string, int) {
 }
 
 func TestADigitCountRoundAnswersAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the DoD pair", "print(round(2.345, 2))\nprint(round(3.5, 0))\n", "2.35\n4.0\n"},
 		{"the decimal value, not the scaled binary",
@@ -67,6 +68,7 @@ func TestADigitCountRoundAnswersAtTheCLI(t *testing.T) {
 			"print(round(2.5))\nprint(round(0.5), round(1.5), round(3.5))\nprint(round(7))\n", "2\n0 2 4\n7\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "round_digits.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -88,6 +90,7 @@ func TestADigitCountRoundAnswersAtTheCLI(t *testing.T) {
 // is a program CPython *stops on*, so the compiled path raise (exit 3, the runtime-error class) with the
 // reference's own sentence, and neither refuses to build it or crashes with exit 2.
 func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a float digit count", "print(round(2.345, 1.5))\n", "TypeError: 'float' object cannot be interpreted as an integer"},
 		{"a text digit count", "print(round(2.345, \"2\"))\n", "TypeError: 'str' object cannot be interpreted as an integer"},
@@ -95,6 +98,7 @@ func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
 		{"an integer value does not skip the check", "print(round(5, 1.5))\n", "TypeError: 'float' object cannot be interpreted as an integer"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "round_trap.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", path)
@@ -129,6 +133,7 @@ func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
 // covered only the one-argument form. One sentence, the compiled path; exit 1 compiled (the program is
 // wrong), exit 3 interpreted (the raise is a runtime event); exit 2 nowhere (roadmap Gap R.131).
 func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -136,6 +141,7 @@ func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
 		{"three arguments", "print(round(1.5, 1, 2))\n", "round expects 1 or 2 arguments, 3 given"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "round_arity.gy", tc.src)
 			out, code := cliReport(t, "--aot", "--file", path)
 			if code == 2 {
@@ -168,6 +174,7 @@ func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
 // compiled leg answers the number underneath where the record and the reference answer the
 // rounded value (roadmap Gaps R.129 and R.130 — the tagged value word's, not the rounding's).
 func TestTheDigitCountProbeStillOwesWhatTheRoadmapSays(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, compiledWant, aotWant string
 	}{
@@ -177,6 +184,7 @@ func TestTheDigitCountProbeStillOwesWhatTheRoadmapSays(t *testing.T) {
 			"for w in [2.345]:\n    print(round(w, 2))\n", "2.35\n", "0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "round_debt.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.compiledWant {
 				t.Fatalf("the pinned record answer is not CPython's: %q vs %q", py, tc.compiledWant)

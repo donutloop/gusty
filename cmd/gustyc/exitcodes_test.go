@@ -11,6 +11,7 @@ import (
 // real binary through the same table.
 
 func TestBuildExitCodeClassifiesVerifierRejection(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		res  *lang.BuildResult
@@ -52,6 +53,7 @@ func TestBuildExitCodeClassifiesVerifierRejection(t *testing.T) {
 // TestExitCodesAreDistinctAndDocumented guards against collapsing two classes back into
 // one code, which is exactly what made the table unusable (roadmap Gap J.3).
 func TestExitCodesAreDistinctAndDocumented(t *testing.T) {
+	t.Parallel()
 	seen := map[int]string{}
 	for code, name := range map[int]string{
 		exitOK:              "exitOK",

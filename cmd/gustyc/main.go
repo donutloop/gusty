@@ -90,6 +90,18 @@ const exitOracleNoVerdict = 7
 // sees 8 looks at the machine, or raises GUSTY_TOOL_TIMEOUT, instead of at its own source.
 const exitToolchainTimeout = 8
 
+// exitArtifactCrash is returned when the compiled program did not return from `main` at all: a signal
+// killed it (ran off the end of its stack, stored out of bounds). It shares the compiler-bug code with a
+// module LLVM will not lower, because it is the same claim about the same object — this compiler produced
+// an artifact that cannot run a program the language accepts — and it is not exitRuntime, which is the
+// program answering "this is not meaningful" with the reference's sentence.
+//
+// Before ADR 0343 the program ran on the tool's own descriptors, so a crash of this kind took the whole
+// CLI down with an unusable status and no message at all. Being able to name it is part of what isolation
+// bought: JITResult.Signaled says which of the two ways-to-stop happened, and the two now leave by
+// different doors.
+const exitArtifactCrash = exitIRVerify
+
 const exitNotCanonical = 1
 
 func main() {
@@ -544,8 +556,16 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 	}
 	// The artifact's own exit status is the answer to "did the program work?". One failure class,
 	// one code, whichever flag ran it (roadmap Gap R.17, ADR 0211).
+	//
+	// Two ways to stop are not one class: a program that returns non-zero reported a trap, and a program
+	// that never returned was killed doing something the compiler should not have made possible. Only the
+	// first is the program's fault (ADR 0343).
 	exitCode := exitOK
-	if res.Code != 0 {
+	switch {
+	case res.Signaled:
+		exitCode = exitArtifactCrash
+		fmt.Fprintf(os.Stderr, "gustyc: the compiled program was killed by %s — it never returned, so this is the artifact, not the program (roadmap Gap R.203)\n", res.Signal)
+	case res.Code != 0:
 		exitCode = exitRuntime
 	}
 	members := []string{

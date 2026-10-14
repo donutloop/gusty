@@ -18,6 +18,7 @@ import (
 // parameter was never bound, and the program was refused with an undefined-name error on the
 // callee's own parameter.
 func TestMethodAndModuleFunctionOfOneNameAgree(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("method_function_name_clash")
 	want := "6\n7\n6\n12\n"
 
@@ -42,6 +43,7 @@ func TestMethodAndModuleFunctionOfOneNameAgree(t *testing.T) {
 // no diagnostic at all — and the module call must still be checked against the *module's*
 // definition, which is the positive form of the same fact.
 func TestMethodAndModuleFunctionChecksClean(t *testing.T) {
+	t.Parallel()
 	clean := `def time(x):
     return x + 5
 
@@ -96,6 +98,7 @@ print(time("text"))
 // TestMethodBodyErrorsAreStillReported: keeping methods out of the bare-name table must not stop
 // the checker from looking inside them.
 func TestMethodBodyErrorsAreStillReported(t *testing.T) {
+	t.Parallel()
 	src := `class T:
     def bad(self):
         return nope

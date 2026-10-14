@@ -31,6 +31,7 @@ const builtList = "xs = []\nxs.append([7, 8])\n"
 // TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend is the row itself: the expression
 // ADR 0265 answers in a print argument is the same expression this statement binds to a name.
 func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", builtList + "n = xs[0][0] * 2\nprint(n)\n", "14\n"},
 		{"addition", builtList + "n = xs[0][0] + 1\nprint(n)\n", "8\n"},
@@ -70,6 +71,7 @@ func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend(t *tes
 		{"bound inside a while arm", builtList + "i = 0\nwhile i < 1:\n    n = xs[0][0] * 2\n    print(n)\n    i = 1\n", "14\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -89,6 +91,7 @@ func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend(t *tes
 // TestABoundArithmeticAnswerWritesBothSlots is the module half: a pair is two words, and a binding that
 // writes only the payload is the bug ADR 0187 closed for container slots.
 func TestABoundArithmeticAnswerWritesBothSlots(t *testing.T) {
+	t.Parallel()
 	src := builtList + "n = xs[0][0] * 2\nprint(n)\n"
 	ir := slotIR(t, src)
 	for _, want := range []string{
@@ -114,6 +117,7 @@ func TestABoundArithmeticAnswerWritesBothSlots(t *testing.T) {
 // for the float and heap blocks: a program that never asks the object a question must not carry the
 // door that asks it.
 func TestAPlainBindingDoesNotRideAlongWithTheDoor(t *testing.T) {
+	t.Parallel()
 	ir := slotIR(t, "xs = [1, 2]\nn = xs[0] * 2\nprint(n)\nm = 3 * 4\nprint(m)\n")
 	for _, absent := range []string{"@rt_num_arith", "@rt_lift_num", "@rt_num_bad"} {
 		if strings.Contains(ir, absent) {
@@ -128,6 +132,7 @@ func TestAPlainBindingDoesNotRideAlongWithTheDoor(t *testing.T) {
 // early. With the record left standing, `n = xs[0][0] * 2` then `n = [1, 2]` printed `2` — the heap
 // handle — and `n = 2.5` printed `0` (roadmap Gap R.142).
 func TestANonPairBindingRetiresTheTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a plain number retires it", builtList + "n = xs[0][0] * 2\nn = 3\nprint(n)\n", "3\n"},
 		{"a float retires it", builtList + "n = xs[0][0] * 2\nn = 2.5\nprint(n)\n", "2.5\n"},
@@ -140,6 +145,7 @@ func TestANonPairBindingRetiresTheTag(t *testing.T) {
 		{"a loop variable's tag retires the same way", "xs = [1.5, \"a\"]\nfor v in xs:\n    print(v)\n\nv = [1, 2]\nprint(v)\n", "1.5\na\n[1, 2]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -162,6 +168,7 @@ func TestANonPairBindingRetiresTheTag(t *testing.T) {
 // the binding and the print is what would notice, so the row runs one (roadmap L7.1/L7.2 own precise
 // rooting of every slot; this is the measurement that keeps it visible).
 func TestABoundAnswerSurvivesACollection(t *testing.T) {
+	t.Parallel()
 	stress := "xs = []\nxs.append([7.5, 8])\nn = xs[0][0] * 2\n" +
 		"for i in range(200):\n    ys = [i, [i, i], \"t\"]\nprint(n)\n"
 	if out := captureStdout(t, stress); out != "15.0\n" {
@@ -183,6 +190,7 @@ func TestABoundAnswerSurvivesACollection(t *testing.T) {
 // which is the same helper print and str already agree on. Reading the payload alone would still be a
 // number wearing another object's bits, which is what the refusal below is for.
 func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an operand of a sum", builtList + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two of them", builtList + "n = xs[0][0] * 2\nm = n + n\nprint(m)\n", "28\n"},
@@ -211,6 +219,7 @@ func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -229,6 +238,7 @@ func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
 // answered by two runtime doors and nothing else, and a program that binds no pair must not pay for
 // either (the same argument numeric_slot_arith_test.go makes about @rt_num_arith).
 func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
+	t.Parallel()
 	asked := builtList + "n = xs[0][0] * 2\nif n:\n    print(1)\nprint(f\"{n}\")\nprint(n > 1)\n"
 	res, err := Compile(asked)
 	if err != nil {
@@ -262,6 +272,7 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 // its own kind (ADR 0316) — which is why this table is now empty of fold rows and keeps only the shapes the
 // fold door declines on purpose.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		// The fold answer used where ONE word is kept. Widening these is the same one-word misread ADR 0309
 		// refused for `abs(n) + 1`, and the door is asked of a fold's ARGUMENT, never of the fold.
@@ -270,6 +281,7 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%q compiled; this position takes a value, not a pair (roadmap Gap R.146)", tc.src)
@@ -296,6 +308,7 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 // raise, the door stays shut — and the program keeps the refusal it always had instead of a TypeError
 // the reference never raises (Gap R.82).
 func TestThePairGateIsTheSameDoorInTheBindingAsInThePrint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"text beside a slot under +",
@@ -309,6 +322,7 @@ func TestThePairGateIsTheSameDoorInTheBindingAsInThePrint(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			slotRefusal(t, tc.src, tc.want)
 		})
 	}
@@ -318,6 +332,7 @@ func TestThePairGateIsTheSameDoorInTheBindingAsInThePrint(t *testing.T) {
 // the arithmetic the binding performs raises the reference's own sentence, and `except` reaches it,
 // because the raise is written by the emitted code at the statement (ADR 0228).
 func TestTheRaiseOfABoundAnswerLeavesThroughTheEmittedDoor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a text slot under the negation",
@@ -331,6 +346,7 @@ func TestTheRaiseOfABoundAnswerLeavesThroughTheEmittedDoor(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compiled leg failed: %v", err)

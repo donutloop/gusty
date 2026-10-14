@@ -16,6 +16,7 @@ import (
 // percentFormattingRefusals is the family that must refuse: a text on the left of `%`, whatever
 // conversion the literal spells. Before ADR 0282 only the ones *without* a float conversion refused.
 func TestTextLeftPercentRefusesRatherThanAnsweringANumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		// The row itself, and its sibling with a different precision: these two printed `0.0`.
 		{"the row: %.2f over a double", "print(\"%.2f\" % 3.5)\n"},
@@ -39,6 +40,7 @@ func TestTextLeftPercentRefusesRatherThanAnsweringANumber(t *testing.T) {
 		// refusal for a run-time trap.)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err == nil {
 				_, out := runIRAllowingTrap(t, res.IR)
@@ -55,6 +57,7 @@ func TestTextLeftPercentRefusesRatherThanAnsweringANumber(t *testing.T) {
 // remainder for numbers, on both legs, with both divide-by-zero sentences intact (ADR 0278's
 // four). A guard that banned the operator would pass the table above and fail this one.
 func TestRemainderStillAnswersIsTheOtherHalfOfGapR165(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"int remainder", "print(7 % 3)\n", "1\n"},
 		{"negative int remainder", "print(-7 % 3)\n", "2\n"},
@@ -73,6 +76,7 @@ func TestRemainderStillAnswersIsTheOtherHalfOfGapR165(t *testing.T) {
 		{"true division still answers", "print(7 / 2)\n", "3.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -92,6 +96,7 @@ func TestRemainderStillAnswersIsTheOtherHalfOfGapR165(t *testing.T) {
 // tag"), which is true of a container read and false of a literal: it sent a reader looking for a
 // container that was never in the program. The record now carries its own cause (ADR 0282).
 func TestThePercentRefusalNamesItsOwnCause(t *testing.T) {
+	t.Parallel()
 	_, err := Compile("print(\"%.2f\" % 3.5)\n")
 	if err == nil {
 		t.Fatal("expected the format string to be refused")

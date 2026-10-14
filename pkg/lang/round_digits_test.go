@@ -38,6 +38,7 @@ import (
 // TestADigitCountRoundMovesTheDecimalPoint is the parity table: every shape the rule can name, run
 // through the real compiler and the record, against what CPython prints.
 func TestADigitCountRoundMovesTheDecimalPoint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the pair the roadmap row names as its DoD.
 		{"the DoD pair, first half", "print(round(2.345, 2))\n", "2.35\n"},
@@ -94,6 +95,7 @@ func TestADigitCountRoundMovesTheDecimalPoint(t *testing.T) {
 			"def whole(v):\n    v = v * 1.0\n    return round(v)\n\nprint(whole(2.5))\n", "2\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -114,6 +116,7 @@ func TestADigitCountRoundMovesTheDecimalPoint(t *testing.T) {
 // count): the compiled module asks for it once per rounding, and where the compiler can hold both
 // operands it asks nothing at all.
 func TestTheDigitCountRoundNamesTheConversionAndFoldsOnce(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = 2.345\nn = 2\nprint(round(x, n))\n")
 	if err != nil {
 		t.Fatalf("the runtime digit-count round was refused: %v", err)
@@ -150,6 +153,7 @@ func TestTheDigitCountRoundNamesTheConversionAndFoldsOnce(t *testing.T) {
 // CPython's TypeError, raised on both legs, catchable on both, and not a refusal to build the
 // program (which would be exit 1 for a program the reference merely stops on).
 func TestTheDigitCountIsCheckedAsAnInteger(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a float digit count", "print(round(2.345, 1.5))\n", "TypeError: 'float' object cannot be interpreted as an integer"},
 		{"a text digit count", "print(round(2.345, \"2\"))\n", "TypeError: 'str' object cannot be interpreted as an integer"},
@@ -157,6 +161,7 @@ func TestTheDigitCountIsCheckedAsAnInteger(t *testing.T) {
 		{"an integer value with a float digit count", "print(round(5, 1.5))\n", "TypeError: 'float' object cannot be interpreted as an integer"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := trapRun(t, tc.src)
 			if err == nil {
 				t.Fatalf("the interpreter answered %q where CPython raises", tc.src)
@@ -207,12 +212,14 @@ func trapText(e *TrapError) string {
 // (index out of range, exit 2 — the contract's compiler-bug code) and `round(x, 1, 2)` was nothing at
 // all. Both legs now say what is missing, in words (roadmap Gap R.131 covers the other builtins).
 func TestRoundWithoutADigitCountKeepsItsOwnAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"one argument, a float", "print(round(2.5))\n", "2\n"},
 		{"one argument, ties to even", "print(round(0.5), round(1.5), round(2.5), round(3.5))\n", "0 2 2 4\n"},
 		{"one argument, an int", "print(round(7))\n", "7\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s: refused: %v", tc.name, err)
@@ -232,6 +239,7 @@ func TestRoundWithoutADigitCountKeepsItsOwnAnswer(t *testing.T) {
 		{"three arguments", "print(round(1.5, 1, 2))\n", "round expects 1 or 2 arguments, 3 given"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := Compile(tc.src); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("compiled: err = %v, want it to say %q", err, tc.want)
 			}
@@ -248,6 +256,7 @@ func TestRoundWithoutADigitCountKeepsItsOwnAnswer(t *testing.T) {
 // the two properties the clamps are supposed to give. A regression here changes both legs at once,
 // which is the point of keeping the rule in one function.
 func TestTheDigitCountRuleIsTheOnesWeSwept(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		v    float64
 		n    int
@@ -300,6 +309,7 @@ func TestTheDigitCountRuleIsTheOnesWeSwept(t *testing.T) {
 // prints what that road holds. Both are exit 0 with a number-shaped answer, which is why they are
 // pinned with each engine's number instead of being asserted (roadmap Gaps R.129 and R.130).
 func TestADigitCountOfAValueTheModuleCannotSeeIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, compiledWant, aotWant string
 	}{
@@ -320,6 +330,7 @@ func TestADigitCountOfAValueTheModuleCannotSeeIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.compiledWant {
 				t.Errorf("the record leg: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", tc.compiledWant, out)
 			}

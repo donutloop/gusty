@@ -18,6 +18,7 @@ func cliPairOut(t *testing.T, backend, src string) (string, int) {
 // A set with duplicates is the case that reveals the bug: `len({1, 2})` answers 2 on both legs
 // whatever the code does, so only a DUPLICATE distinguishes a set from a list wearing braces.
 func TestCLISetLiteralCountsDistinctMembers(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print(len({1, 2, 2, 3}))`,
 		`print(len({1, 1, 1}))`,
@@ -48,6 +49,7 @@ func TestCLISetLiteralCountsDistinctMembers(t *testing.T) {
 // The kind a `get` answers with belongs to the slot it read: a text, a void, a verdict or a number.
 // Each of the first three printed the machine's WORD for the value rather than the value.
 func TestCLIDictGetPrintsTheKindItsSlotHas(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print({1: "a"}.get(1))`,
 		`print({1: "a", 2: "b"}.get(1, "z"))`,

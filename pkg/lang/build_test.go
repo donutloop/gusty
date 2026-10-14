@@ -22,6 +22,7 @@ func writeTemp(t *testing.T, dir, name, src string) string {
 // merged, analyzed, codegen'd, lowered with llc, and linked with cc into a
 // native binary that actually runs.
 func TestBuildProducesExecutable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.gy", "def double(x):\n    return x * 2\n")
 	b := writeTemp(t, dir, "b.gy", "s = 0\nfor i in range(1, 4):\n    s = s + i\nprint(s + double(5))\n")
@@ -61,6 +62,7 @@ func TestBuildProducesExecutable(t *testing.T) {
 // surfaces as structured diagnostics on the (partial) BuildResult instead of
 // producing a binary.
 func TestBuildReportsDiagnostics(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bad := writeTemp(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
 	out := filepath.Join(dir, "prog")
@@ -83,6 +85,7 @@ func TestBuildReportsDiagnostics(t *testing.T) {
 // TestBuildMissingFile verifies a non-existent source file fails with a clear
 // error before any toolchain step runs.
 func TestBuildMissingFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	out := filepath.Join(dir, "prog")
 	if _, err := Build([]string{filepath.Join(dir, "nope.gy")}, out, 0); err == nil {
@@ -94,6 +97,7 @@ func TestBuildMissingFile(t *testing.T) {
 // `cc -shared -fPIC` into a position-independent shared library carrying the
 // stable gusty extern-fn ABI marker.
 func TestBuildSharedEmitsSharedObject(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.gy", "def add(a, b):\n    return a + b\n")
 	b := writeTemp(t, dir, "b.gy", "print(add(2, 3))\n")
@@ -131,6 +135,7 @@ func TestBuildSharedEmitsSharedObject(t *testing.T) {
 // the versioned gusty extern-fn ABI marker (the stable ABI prelude emitted by
 // the codegen), so extern exports stay ABI-stable across loads.
 func TestBuildSharedCarriesABIMarker(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.gy", "def double(x):\n    return x * 2\n")
 	b := writeTemp(t, dir, "b.gy", "print(double(21))\n")

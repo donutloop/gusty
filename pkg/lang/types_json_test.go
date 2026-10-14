@@ -10,6 +10,7 @@ import (
 // richer: every node carries a `span` and expression nodes carry the
 // `inferred` type computed by the semantic pass.
 func TestEmitASTIncludesSpanAndInferredType(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = 1 + 2\ny = [1, 2, 3]\nprint(y)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)

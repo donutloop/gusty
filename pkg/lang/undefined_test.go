@@ -19,6 +19,7 @@ import (
 //      produces a diagnostic instead of an invalid module.
 
 func TestUndefinedNameInBuiltinCallIsAFrontEndError(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -43,6 +44,7 @@ func TestUndefinedNameInBuiltinCallIsAFrontEndError(t *testing.T) {
 }
 
 func TestUndefinedNameBuildIsADiagnosticNotAnInvalidModule(t *testing.T) {
+	t.Parallel()
 	// ADR 0166: an unsupported/unlowerable construct is a compile diagnostic. The old
 	// behaviour emitted `%_undefined_thing` and let LLVM find it.
 	_, err := Compile("print(undefined_thing)\n")
@@ -62,6 +64,7 @@ func TestUndefinedNameBuildIsADiagnosticNotAnInvalidModule(t *testing.T) {
 // the compiled backend, so the checker must not call them undefined. This is the drift that
 // predeclared.go exists to prevent.
 func TestBuiltinsArePredeclaredInTheChecker(t *testing.T) {
+	t.Parallel()
 	for _, nm := range predeclaredCallables() {
 		switch nm {
 		case "True", "False", "None", "super":
@@ -85,6 +88,7 @@ func TestBuiltinsArePredeclaredInTheChecker(t *testing.T) {
 // TestPredeclaredTableCoversTheLSPList keeps the completion list and the semantic table
 // from drifting apart (they were separate before, which is how `sum` went missing).
 func TestPredeclaredTableCoversTheLSPList(t *testing.T) {
+	t.Parallel()
 	for _, n := range builtins {
 		if !isPredeclaredName(n) {
 			t.Errorf("LSP offers %q but the checker/codegen table does not know it", n)
@@ -96,6 +100,7 @@ func TestPredeclaredTableCoversTheLSPList(t *testing.T) {
 // so the new guard rejected `m.n` — an example of the guard finding bindings that were
 // registered inconsistently rather than of the guard being wrong.
 func TestWithAsTargetIsBound(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("class M:\n    def __init__(self):\n        self.n = 0\n\n    def __enter__(self):\n        return self\n\n    def __exit__(self, a, b, c):\n        return 0\n\ndef f():\n    x = 0\n    with M() as m:\n        x = m.n + 1\n\n    return x\n\nprint(f())\n")
 	if err != nil {
 		t.Fatalf("with-as must compile: %v", err)

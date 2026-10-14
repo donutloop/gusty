@@ -32,6 +32,7 @@ import (
 
 // TestAbsOfANumberStillAnswersOnTheCompiledBackend is the family that must keep answering.
 func TestAbsOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a negative literal", "print(abs(-3))\n", "3\n"},
 		{"a positive literal", "print(abs(4))\n", "4\n"},
@@ -55,6 +56,7 @@ func TestAbsOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 		{"abs of a length", "print(abs(len(\"abc\")))\n", "3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -75,6 +77,7 @@ func TestAbsOfANumberStillAnswersOnTheCompiledBackend(t *testing.T) {
 // matches and the message is what a user searches for, so both are compared exactly, on both legs —
 // including the interpreted one, whose half of the defect the compiled path had been pinning alone.
 func TestAbsOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, class, message string }{
 		{
 			"a text literal — the row's own shape",
@@ -160,6 +163,7 @@ func TestAbsOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testin
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != tc.class {
 				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
@@ -194,6 +198,7 @@ func TestAbsOfANonNumberRaisesTheReferenceSentenceOnTheCompiledBackend(t *testin
 // for itself would be unreachable to the program (ADR 0228, and the reason a raise is chosen over a
 // refusal in ADR 0266's argument).
 func TestTheAbsTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a text literal", "try:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")\n", "caught\nafter\n"},
 		{"None", "try:\n    print(abs(None))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -212,6 +217,7 @@ func TestTheAbsTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -232,6 +238,7 @@ func TestTheAbsTrapIsCatchableOnTheCompiledBackend(t *testing.T) {
 // sentence at all (ADR 0173/0192's cost rule), and a module that abses two kinds carries two names — which
 // is also what lets each raise name the kind the *slot* really holds rather than one word for all of them.
 func TestTheAbsRaiseIsWrittenPerKindAndNotPerProgram(t *testing.T) {
+	t.Parallel()
 	ir := mustCompileIR(t, "print(abs(\"hi\"))\n")
 	for _, want := range []string{
 		"TypeError: bad operand type for abs(): 'str'",
@@ -263,6 +270,7 @@ func TestTheAbsRaiseIsWrittenPerKindAndNotPerProgram(t *testing.T) {
 // fail here rather than drift silently into a second truthiness table (the class of bug ADR 0266/0269 both
 // exist to end).
 func TestAbsAsksTheSameQuestionTheNegationAsks(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print(abs(\"hi\"))\n",
 		"print(abs(None))\n",
@@ -270,6 +278,7 @@ func TestAbsAsksTheSameQuestionTheNegationAsks(t *testing.T) {
 		"x = \"hi\"\nprint(abs(x))\n",
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			absEE := trapRun(t, src)
 			negSrc := strings.Replace(src, "abs(", "-(", 1)
 			negEE := trapRun(t, negSrc)

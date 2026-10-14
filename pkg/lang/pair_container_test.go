@@ -33,6 +33,7 @@ const intSlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestAPairBoundNameEntersAContainerByWayOfItsTag is the row Gap R.146 named: an element of a list literal
 // is a position that used to keep one word for its operand, and no longer does.
 func TestAPairBoundNameEntersAContainerByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the element the pair road bound", intSlot + "print([n])\n", "[7]\n"},
 		{"the pair first, literal after", intSlot + "print([n, 1])\n", "[7, 1]\n"},
@@ -71,6 +72,7 @@ func TestAPairBoundNameEntersAContainerByWayOfItsTag(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -88,6 +90,7 @@ func TestAPairBoundNameEntersAContainerByWayOfItsTag(t *testing.T) {
 // element kinds. Every position that reads the list back has to see the tag the name carried, or it reads the
 // payload of a slot it cannot classify — which is how a text element prints its interned index.
 func TestAPairBoundNameBoundIntoAListKeepsItsTagOnTheObject(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"bound and printed", intSlot + "y = [n]\nprint(y)\n", "[7]\n"},
 		{"bound with a literal element", intSlot + "y = [n, 1]\nprint(y)\n", "[7, 1]\n"},
@@ -113,6 +116,7 @@ func TestAPairBoundNameBoundIntoAListKeepsItsTagOnTheObject(t *testing.T) {
 		{"repr of the bound list", "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(repr([n]))\n", "['a']\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {

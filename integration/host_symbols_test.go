@@ -17,6 +17,7 @@ import (
 // its own calls from libc. the record printed the program's values, the compiled binary
 // printed the C library's, and the toolchain reported success.
 func TestHostSymbolNamedProgramRuns(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("host_symbol_names")
 	want := "1\n2\n3\n4\n5\n6\n7\n28\n6\n7\n"
 
@@ -48,6 +49,7 @@ func TestHostSymbolNamedProgramRuns(t *testing.T) {
 // under the name libc already exports. That is the difference between "the program ran and
 // printed" and "the program is the thing that ran".
 func TestBuiltBinaryCarriesThePrefixedSymbols(t *testing.T) {
+	t.Parallel()
 	nm, err := exec.LookPath("nm")
 	if err != nil {
 		t.Skip("nm not installed; the symbol-table leg is skipped")

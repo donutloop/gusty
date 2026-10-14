@@ -69,9 +69,11 @@ var errProgramHung = errors.New("the compiled program did not terminate")
 // witnesses where there used to be an engine, a compiler and the reference; two of them are still
 // independent of the compiler, which is the arrangement that makes an agreement worth anything.
 func TestReboundParameterShapesAgree(t *testing.T) {
+	t.Parallel()
 	for _, tc := range reboundShapeCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			recorded := runCompiled(t, tc.src)
 			if recorded != tc.want {
 				t.Errorf("the compiled run printed %q, want %q", recorded, tc.want)
@@ -181,6 +183,7 @@ var reboundShapeCases = []struct {
 // looped forever: the condition compared the incoming register, and the body's
 // `n = n + 1` stored where nothing read.
 func TestReboundParameterLoopTerminates(t *testing.T) {
+	t.Parallel()
 	src := "def loop(n):\n    while n < 3:\n        n = n + 1\n    return n\nprint(loop(0))\n"
 	out, err := runAOTWithTimeout(t, src, 60*time.Second)
 	if err != nil {
@@ -199,6 +202,7 @@ func TestReboundParameterLoopTerminates(t *testing.T) {
 // is the program whose parameter rebinding the retired engine answered one way and the compiler
 // another, which is what the ledger row exists to keep honest.
 func TestParamRebindProgramPinsTheLedger(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("param_rebind")
 	const want = "10\n1\n0\n1\n42\n0\n7\n10\n0\n1\n2\n2\n0\n100\n200\n200\n8\n8\n10\n"
 	if got := runCompiled(t, src); got != want {

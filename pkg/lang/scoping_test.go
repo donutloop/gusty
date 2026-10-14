@@ -21,6 +21,7 @@ func scopeHasDiag(diags []Diagnostic, level Level, substr string) bool {
 }
 
 func TestBindingsInsideCompoundStatementsAreVisible(t *testing.T) {
+	t.Parallel()
 	// Each of these is ordinary Python that prints something; the checker used to call the
 	// printed name undefined, which failed `--check` and blocked `--aot` entirely.
 	cases := []struct{ name, src string }{
@@ -35,6 +36,7 @@ func TestBindingsInsideCompoundStatementsAreVisible(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if diags := checkDiags(t, tc.src); scopeHasDiag(diags, LevelError, "undefined name") {
 				t.Fatalf("the checker refused a program that runs:\n%s\ndiags=%v", tc.src, diags)
 			}
@@ -43,6 +45,7 @@ func TestBindingsInsideCompoundStatementsAreVisible(t *testing.T) {
 }
 
 func TestFinallyBodyIsAnalysedAtAll(t *testing.T) {
+	t.Parallel()
 	// Before this cycle the finally clause was never walked, so nothing inside it was checked:
 	// a call to a function that does not exist slid through. A skipped body cannot report
 	// anything, so the sharpest proof that it is analysed is that its own error appears.
@@ -54,6 +57,7 @@ func TestFinallyBodyIsAnalysedAtAll(t *testing.T) {
 }
 
 func TestTrulyUndefinedNameIsStillRefused(t *testing.T) {
+	t.Parallel()
 	// Widening visibility must not cost the checker its bite: a name no path binds is still
 	// an error, in each of the shapes that got their child scopes removed.
 	for _, tc := range []struct{ name, src string }{
@@ -62,6 +66,7 @@ func TestTrulyUndefinedNameIsStillRefused(t *testing.T) {
 		{"misspelled after a loop", "n = 0\nwhile n < 2:\n    k = n\n    n = n + 1\nprint(kk)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if diags := checkDiags(t, tc.src); !scopeHasDiag(diags, LevelError, "undefined name") {
 				t.Fatalf("a name nothing binds should still be an error, diags=%v", diags)
 			}
@@ -70,6 +75,7 @@ func TestTrulyUndefinedNameIsStillRefused(t *testing.T) {
 }
 
 func TestPartialBindingIsPossiblyUnboundNotUndefined(t *testing.T) {
+	t.Parallel()
 	// Inside a function, a name assigned on only some paths is visible but not certain; the
 	// honest diagnostic is `possibly unbound`, not `undefined name`.
 	src := "def f(x):\n    match x:\n        case 1:\n            pass\n        case y:\n            pass\n    return y\n"
@@ -83,6 +89,7 @@ func TestPartialBindingIsPossiblyUnboundNotUndefined(t *testing.T) {
 }
 
 func TestNameBoundInEveryArmIsCertain(t *testing.T) {
+	t.Parallel()
 	// The counterpart: with both arms binding it, the same use must produce no warning at all.
 	src := "def f(x):\n    match x:\n        case 1:\n            y = 1\n        case _:\n            y = 2\n    return y\n"
 	if diags := checkDiags(t, src); scopeHasDiag(diags, LevelWarning, "possibly unbound") {

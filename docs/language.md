@@ -4235,6 +4235,14 @@ naming that reason (roadmap L11.7, ADR 0191). The **builtin** `sorted` now reads
 `key=` and `reverse=` by name and calls an allowed key through the ordinary call road
 (roadmap L11.7; Gap R.249; ADR 0340).
 
+**What the compiled backend still gets wrong here** (roadmap **Gap R.258**, found by ADR 0343's first run of
+the cases side by side): binding a `sorted` answer to a name before using it crashes. `print(sorted([3, 1, 2]))`
+and `xs = [3, 1, 2]` / `print(sorted(xs))` answer, but `x = sorted([3, 1, 2], reverse=True)` followed by `x` is
+killed by `SIGSEGV` inside `@rt_alloc` (exit 139) — the call's (payload, tag) answer is split into the one-word
+slot the wrong way round, so the heap index the next allocation reads back is `0xffff`. It is the compiled
+artifact that dies, not the program, and it is not a `sorted` bug: any call the compiler decides answers with a
+pair, bound to a name and then used, takes the same road.
+
 Ordering is defined per element kind, and the compiled backend implement the same rules:
 numbers compare numerically (an int and a float mix fine, as Python's `<` does),
 and **strings compare by their text** — never by the interned index the value is

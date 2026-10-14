@@ -19,6 +19,7 @@ var _ = lang.Compile
 // the compiled path.
 
 func TestAssignedComprehensionParity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -65,6 +66,7 @@ print(total(ys))
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := runCompiled(t, tc.src)
 			if got != tc.want {
 				t.Errorf("the record leg = %q, want %q", got, tc.want)
@@ -84,6 +86,7 @@ print(total(ys))
 // above must pass LLVM's own module verifier (L8.2), which is how this bug was
 // found in the first place.
 func TestAssignedComprehensionModulesVerify(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		"ys = [x * 2 for x in [1, 2]]\nprint(ys)\n",
 		"ys = [i * i for i in range(5)]\nprint(len(ys))\nprint(ys[1])\n",
@@ -109,6 +112,7 @@ func TestAssignedComprehensionModulesVerify(t *testing.T) {
 // functions — including one whose parameter has the *same name* — must keep its
 // own slot in main, be GC-rooted, and be visible to print/len/index/iteration.
 func TestModuleContainersSharedWithFunctions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -162,6 +166,7 @@ print(xs[2])
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			got, err := runAOTConformance(t, tc.src)
 			if err != nil {

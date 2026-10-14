@@ -3,6 +3,7 @@ package integration
 import "testing"
 
 func TestUnionAOTLinear(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `x: int | float = 5
 print(x)`, "5\n")
 	assertOutput(t, `x: int | float = 5
@@ -14,6 +15,7 @@ print(y)`, "hi\n")
 }
 
 func TestUnionAOTControlFlow(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `i = 0
 x: int | float = 5
 while i < 1:
@@ -33,6 +35,7 @@ print(z)`, "2.5\n")
 }
 
 func TestUnionAOTReassign(t *testing.T) {
+	t.Parallel()
 	// cross-member reassignment in linear code must dispatch correctly
 	assertOutput(t, `x: int | float = 5
 print(x)

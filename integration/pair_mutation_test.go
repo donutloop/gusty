@@ -29,6 +29,7 @@ const pairMutationSlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestCLIAgentPairBoundNameMutatesAContainerAgreesWithCPython runs the reference and the compiled artifact
 // over the same mutation: append, element assignment, set add, and dict setitem on both sides of the entry.
 func TestCLIAgentPairBoundNameMutatesAContainerAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"the a verdict slot appended to a list", "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n"},
@@ -167,6 +168,7 @@ func TestCLIAgentPairBoundNameMutatesAContainerAgreesWithCPython(t *testing.T) {
 		{"the a text slot added to a set", "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairmut.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -194,6 +196,7 @@ func TestCLIAgentPairBoundNameMutatesAContainerAgreesWithCPython(t *testing.T) {
 // mutation roads: the reference raises, and the compiled leg raises the same sentence at the trap exit —
 // never at the exit code of success, and never as the compiler's own exit 2.
 func TestCLIAgentPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatCPythonRaises(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, sentence string }{
 		{"the a container slot cannot be a key or a member", "xs = []\nxs.append([1, 2])\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n", "TypeError: unhashable type: 'list'"},
@@ -206,6 +209,7 @@ func TestCLIAgentPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatCPythonRaises(t
 		{"the a container slot cannot be a key or a member", "xs = []\nxs.append([1, 2])\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n", "TypeError: unhashable type: 'list'"},
 		{"the a container slot cannot be a key or a member", "xs = []\nxs.append([1, 2])\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n", "TypeError: unhashable type: 'list'"}} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairmut_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok {
 				t.Fatalf("the reference answered %q, expected the trap\nsrc: %s", py, tc.src)
@@ -231,6 +235,7 @@ func TestCLIAgentPairBoundMemberOrKeyThatCannotBeHashedRaisesWhatCPythonRaises(t
 // `print(sum([n]))` and `print(min([n, 3]))` — answer since ADR 0316 and live in
 // `integration/pair_fold_test.go`: a row that stops refusing moves, it does not disappear.
 func TestCLIAgentTheMutationRoadsStillRefuseWhatTheyCannotCarry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a double written into a dict slot", pairMutationSlot + "d2 = {}\nd2[\"k\"] = xs[0] / 2\nprint(d2)\n", "stores an i32 word"},
@@ -238,6 +243,7 @@ func TestCLIAgentTheMutationRoadsStillRefuseWhatTheyCannotCarry(t *testing.T) {
 		{"a pair handed through a parameter into a dict", pairMutationSlot + "def build(k):\n    return {\"k\": k}\nprint(build(n))\n", "roadmap L11.1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairmut_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -258,6 +264,7 @@ func TestCLIAgentTheMutationRoadsStillRefuseWhatTheyCannotCarry(t *testing.T) {
 // program the conformance matrix registers: a deleted record fails a test instead of skipping the row
 // (ADR 0311, ADR 0306's precedent).
 func TestThePairBoundMutationProbeIsOnRecord(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_a_pair_bound_name_mutates_a_container.gy")
 	if !lang.HasGoldenAnswer(src) {
 		t.Fatal("the probe the matrix registers has no record — every corpus case that reads expectations " +

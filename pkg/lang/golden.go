@@ -393,7 +393,23 @@ func quoteOr(s string) string {
 // produce an answer: the compiler could not build it (`hard`), or the program itself trapped
 // (`trapped`, with the report the target wrote to its diagnostics).
 func runRecorded(src string) (res *JITResult, trapped bool, hard error) {
-	r, err := RunSnippet(src)
+	return runRecordedIn("", src)
+}
+
+// runRecordedIn is runRecorded for a source whose `import mod` resolves against dir — the directory a
+// case's own modules live in, which the case used to install by os.Chdir-ing the test process. Nothing
+// about a recorded run is process state any more (ADR 0343), so two cases with two directories are two
+// runs and nothing more.
+func runRecordedIn(dir, src string) (res *JITResult, trapped bool, hard error) {
+	return runRecordedWith(moduleSearch{dir: dir, stdlib: stdlibRoot()}, src)
+}
+
+// runRecordedWith is runRecorded with the whole search path named — the program's directory *and* the
+// standard-library root it reads. A case that wants a `stdlib` of its own used to get one by writing the
+// process-wide root, which told every other case in the process which library it belonged to; it names its
+// root on the run now, and the two cases share nothing (ADR 0343).
+func runRecordedWith(paths moduleSearch, src string) (res *JITResult, trapped bool, hard error) {
+	r, err := RunSnippetWith(CompileRun{Dir: paths.dir, StdlibDir: paths.stdlib}, src)
 	if err != nil {
 		return nil, false, err
 	}
@@ -416,8 +432,19 @@ type goldenOutcome struct {
 // A nil result with refused=false means the case was skipped as a divergence — by then the test has
 // already been ended by Skipf, so a caller never sees that combination in a live run.
 func goldenRun(t errorReporter, src string) goldenOutcome {
+	return goldenRunIn(t, "", src)
+}
+
+// goldenRunIn is goldenRun for a program whose imports resolve against dir (runRecordedIn).
+func goldenRunIn(t errorReporter, dir, src string) goldenOutcome {
+	return goldenRunWith(t, moduleSearch{dir: dir, stdlib: stdlibRoot()}, src)
+}
+
+// goldenRunWith is the funnel over a named search path: the program's directory and its standard-library
+// root (runRecordedWith).
+func goldenRunWith(t errorReporter, paths moduleSearch, src string) goldenOutcome {
 	want := goldenLookup(t, src)
-	res, trapped, hard := runRecorded(src)
+	res, trapped, hard := runRecordedWith(paths, src)
 	if hard != nil {
 		// The front end — lexer, parser, checker — is not the engine's or the compiler's, it is the
 		// language's, and the record says these sources were refused there: `a = 1;;b = 2`, an
@@ -479,8 +506,18 @@ func goldenCompare(res *JITResult, want goldenEntry) (reason, expected, actual s
 // backend and checks the answer against the record. The signature is the old one on purpose — a
 // case keeps its shape when the engine under it changes.
 func evalGolden(t errorReporter, src string) (int64, []Diagnostic, error) {
+	return evalGoldenIn(t, "", src)
+}
+
+// evalGoldenIn is evalGolden for a source whose modules live in dir.
+func evalGoldenIn(t errorReporter, dir, src string) (int64, []Diagnostic, error) {
+	return evalGoldenWith(t, moduleSearch{dir: dir, stdlib: stdlibRoot()}, src)
+}
+
+// evalGoldenWith is evalGolden over a named search path (goldenRunWith).
+func evalGoldenWith(t errorReporter, paths moduleSearch, src string) (int64, []Diagnostic, error) {
 	want := goldenLookup(t, src)
-	out := goldenRun(t, src)
+	out := goldenRunWith(t, paths, src)
 	if out.res == nil {
 		if out.refused {
 			return 0, nil, recordedTrap(want, out.res)
@@ -521,6 +558,14 @@ func runGoldenStdout(t errorReporter, src string) (string, error) {
 // goldenStdout is a program's recorded stdout, for the cases that assert on the whole transcript.
 func goldenStdout(t errorReporter, src string) string {
 	return goldenRun(t, src).stdout()
+}
+
+// goldenStdoutWith is goldenStdout over a named search path — the program's directory and the
+// standard-library root its `import` reads. A case with a module of its own asks this way instead of
+// writing the process-wide root for the length of the case, which is a thing two cases cannot both do
+// (ADR 0343).
+func goldenStdoutWith(t errorReporter, paths moduleSearch, src string) string {
+	return goldenRunWith(t, paths, src).stdout()
 }
 
 // goldenRepr is the REPL's answer for one source: what the compiled backend reports the final
@@ -587,8 +632,13 @@ func goldenReprIs(t errorReporter, src, want string) {
 // goldenRunError is the record-checked failure of a snippet: the error the compiled backend gives
 // for a source the record says must not answer.
 func goldenRunError(t errorReporter, src string) error {
+	return goldenRunErrorWith(t, moduleSearch{stdlib: stdlibRoot()}, src)
+}
+
+// goldenRunErrorWith is goldenRunError over a named search path (goldenRunWith).
+func goldenRunErrorWith(t errorReporter, paths moduleSearch, src string) error {
 	want := goldenLookup(t, src)
-	out := goldenRun(t, src)
+	out := goldenRunWith(t, paths, src)
 	if out.res == nil {
 		if out.refused {
 			return recordedTrap(want, nil)

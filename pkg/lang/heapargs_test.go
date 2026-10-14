@@ -17,6 +17,7 @@ func parseProg(t *testing.T, src string) *Program {
 }
 
 func TestHeapArgKindsInference(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		src  string
@@ -116,6 +117,7 @@ func TestHeapArgKindsInference(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := heapArgKinds(parseProg(t, tt.src))
 			if len(got[tt.fn]) != len(tt.want) {
 				t.Fatalf("heapArgKinds(%s) = %v, want %v", tt.fn, got[tt.fn], tt.want)
@@ -130,6 +132,7 @@ func TestHeapArgKindsInference(t *testing.T) {
 }
 
 func TestHeapKindName(t *testing.T) {
+	t.Parallel()
 	for k, want := range map[int]string{
 		HeapNone: "none", HeapList: "list", HeapDict: "dict", HeapSet: "set", HeapInst: "instance",
 	} {
@@ -140,6 +143,7 @@ func TestHeapKindName(t *testing.T) {
 }
 
 func TestHeapLiteralKindIgnoresNonLiterals(t *testing.T) {
+	t.Parallel()
 	// Only literals are materialised at the call site: a comprehension or a
 	// variable already produces a heap handle through the normal lowering path.
 	if k := heapLiteralKind(&ListLit{}); k != HeapList {
@@ -154,6 +158,7 @@ func TestHeapLiteralKindIgnoresNonLiterals(t *testing.T) {
 }
 
 func TestHeapArgKindsDeterministic(t *testing.T) {
+	t.Parallel()
 	src := "def f(a, b):\n    return 0\n\nf([1], {1: 2})\nf({3}, [4])\n"
 	first := heapArgKinds(parseProg(t, src))
 	for i := 0; i < 5; i++ {
@@ -167,6 +172,7 @@ func TestHeapArgKindsDeterministic(t *testing.T) {
 // --- codegen ---------------------------------------------------------------
 
 func TestHeapContainerArgumentIR(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `def total(xs) -> int:
     n = 0
     for x in xs:
@@ -195,6 +201,7 @@ print(total([1, 2, 3]))
 }
 
 func TestHeapContainerParameterAccessorsUseHeap(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, src, want string
 	}{
@@ -216,6 +223,7 @@ func TestHeapContainerParameterAccessorsUseHeap(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ir := llcCompiles(t, tc.src)
 			if !strings.Contains(ir, tc.want) {
 				t.Errorf("expected %s in:\n%s", tc.want, ir)
@@ -225,6 +233,7 @@ func TestHeapContainerParameterAccessorsUseHeap(t *testing.T) {
 }
 
 func TestHeapContainerArgumentStringElementInterns(t *testing.T) {
+	t.Parallel()
 	// A string element cannot be an i32 pointer; it becomes an index into the runtime
 	// interned string table (roadmap Gap I.2). The old behaviour was IR that LLVM's
 	// verifier rejected, which the exit-code contract reported as a compiler bug.
@@ -241,6 +250,7 @@ func TestHeapContainerArgumentStringElementInterns(t *testing.T) {
 }
 
 func TestHeapContainerParamsRootedPerFunction(t *testing.T) {
+	t.Parallel()
 	// Two functions with the same parameter name need two GC roots: root keys
 	// are per (function, parameter), not per name.
 	ir := llcCompiles(t, `def a(xs) -> int:
@@ -263,6 +273,7 @@ print(a([1]) + b([2, 3]))
 }
 
 func TestHeapContainerDoesNotBreakScalars(t *testing.T) {
+	t.Parallel()
 	// A function whose parameter is never handed a container still compiles as
 	// a plain i32 parameter.
 	ir := llcCompiles(t, "def inc(x) -> int:\n    return x + 1\n\nprint(inc(41))\n")
@@ -280,6 +291,7 @@ func TestHeapContainerDoesNotBreakScalars(t *testing.T) {
 // registration leaked, codegen emitted a load of `%_xs` that only the callee
 // declared (llc: "use of undefined value '%_xs'").
 func TestHeapContainerParamScopeIsLocal(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `def total(xs) -> int:
     n = 0
     for x in xs:
@@ -315,6 +327,7 @@ print(total(xs))
 // `xs.append(i)` stores through a slot that never existed, and rt_gc cannot see the
 // live handle (a collection would recycle a container that is still in use).
 func TestModuleContainerDefinitionIsRooted(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = []\nfor i in range(3):\n    xs.append(i * 2)\nprint(len(xs))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -336,6 +349,7 @@ func TestModuleContainerDefinitionIsRooted(t *testing.T) {
 // variables used to alias each other exactly this way (`ys = []` freed `xs`), which
 // showed up as a non-empty list reading back as empty. Every free must be guarded.
 func TestEmptyBindingNeverFreesHandleZero(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("xs = [i for i in range(3)]\nys = []\nn = 0\nwhile xs:\n    n = n + 1\n    if n >= 3:\n        xs = []\n\nprint(n)\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -367,6 +381,7 @@ func TestEmptyBindingNeverFreesHandleZero(t *testing.T) {
 // variable must not make module-level code reuse the function's alloca (that
 // emits `%_x` references outside the block that allocated it).
 func TestFunctionParamSlotsDoNotLeakIntoMain(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def total(xs) -> int:\n    t = 0\n    for x in xs:\n        t = t + x\n    return t\n\nxs = [1, 2, 3]\nprint(total(xs))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)

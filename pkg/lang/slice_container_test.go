@@ -21,6 +21,7 @@ import (
 
 // The shapes that spent the contract's exit 2, printed the handle, or dropped the tag.
 func TestSliceOfAContainerAnswersLikeTheReference(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([1, 2, 3][1:])`,
 		`print([1, 2, 3][:2])`,
@@ -34,6 +35,7 @@ func TestSliceOfAContainerAnswersLikeTheReference(t *testing.T) {
 		`print([True, 2][0:])`,
 	} {
 		t.Run(strings.ReplaceAll(src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := referenceOut(t, src)
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -55,6 +57,7 @@ func TestSliceOfAContainerAnswersLikeTheReference(t *testing.T) {
 // A heap HANDLE printed through printf's %d is the invalid-IR shape ADR 0188 removed for literals;
 // the slice road walked straight back into it.
 func TestASliceIsNotPrintedAsItsHandle(t *testing.T) {
+	t.Parallel()
 	src := `print([1, 2, 3][1:])`
 	got := compiledOut(t, src)
 	if got == "1" {
@@ -66,6 +69,7 @@ func TestASliceIsNotPrintedAsItsHandle(t *testing.T) {
 // A slice of TEXT is the case ADR 0187 was written about and rt_slice had never obeyed: the copy
 // loop wrote payloads and left @heap_tags alone, so the text's interned INDEX printed as a number.
 func TestASliceCarriesTheTagsItsElementsHave(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print(["a", "b"][1:])`,
 		`print(["a", "b", "c"][::2])`,
@@ -87,6 +91,7 @@ func TestASliceCarriesTheTagsItsElementsHave(t *testing.T) {
 // A text slice still belongs to the text road, and a subscript to the element road — the arms added
 // beside them must not steal work that already answered.
 func TestSliceArmsLeaveTheAnswersTheyAlreadyHad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print("abcdef"[2:])`, `cdef`},
 		{`print("abcdef"[1:3])`, `bc`},
@@ -94,6 +99,7 @@ func TestSliceArmsLeaveTheAnswersTheyAlreadyHad(t *testing.T) {
 		{`print([1, 2, 3][-1])`, `3`},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			got := strings.TrimSpace(compiledOut(t, tc.src))
 			if got != tc.want {
 				t.Fatalf("%q: compiled %q, want %q", tc.src, got, tc.want)
@@ -105,6 +111,7 @@ func TestSliceArmsLeaveTheAnswersTheyAlreadyHad(t *testing.T) {
 // The exit-2 class the whole row is about: the module must not merely run, it must be a module llc
 // was willing to accept in the first place.
 func TestASliceOfALiteralDoesNotSpendExit2(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([1, 2, 3][1:])`,
 		`print([1, 2, 3][:2])`,
@@ -128,6 +135,7 @@ func TestASliceOfALiteralDoesNotSpendExit2(t *testing.T) {
 // The whole runtime helper must still verify: the tag copy added two getelementptrs into a raw
 // module string, where llc — not the LLVM verifier inside Go — is the first thing to complain.
 func TestSliceHelperModuleVerifies(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("llc-20"); err != nil {
 		t.Skip("llc-20 not installed")
 	}
@@ -150,6 +158,7 @@ func TestSliceHelperModuleVerifies(t *testing.T) {
 // One question, asked once: `isContainerExpr` is what the equality, membership and print roads all
 // consult, and the slice arm is in that shared predicate rather than copied into each caller.
 func TestSliceContainerQuestionIsShared(t *testing.T) {
+	t.Parallel()
 	body, err := os.ReadFile("heapargs.go")
 	if err != nil {
 		t.Fatal(err)

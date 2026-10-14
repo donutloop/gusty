@@ -135,6 +135,30 @@ type IRGenOptions struct {
 	// answering "what did that expression evaluate to?", on the same channel the collector's
 	// self-report and an uncaught-exception report use (ADR 0179). Roadmap L13.1, ADR 0302.
 	EchoResult bool
+	// Dir is the directory a bare `import mod` is resolved against, for the program being emitted.
+	// Empty means this process's working directory — the meaning a person at a shell expects. A caller
+	// that owns its modules (a test case that wrote config.gy next to its own temp files) names the
+	// directory here, which is the difference between that case describing *itself* and describing the
+	// whole process, as `os.Chdir` did. Roadmap Gap R.253, ADR 0343.
+	Dir string
+	// StdlibDir is the standard-library root this program's `import mod` falls back to. Empty means the
+	// process default (GUSTY_STDLIB_DIR, or the nearest ancestor `stdlib` holding .gy modules). A caller
+	// with a stdlib of its own — a case with a temp `consts.gy`, the CLI's `--stdlib` — names it here so
+	// the run reads *its* module and not whatever root the process last agreed to (ADR 0343).
+	StdlibDir string
+	// GCReport makes the compiled program print the collector's self-report at the end of main, the
+	// counterpart of `gustyc --gc-stats`. Per-run for the same reason as StdlibDir: the process switch
+	// that used to carry it was read by every codegen in flight.
+	GCReport bool
+}
+
+// importDir is the module-resolution directory of an options bundle, including the bundle that was
+// never built: GenerateIR passes nil, and "the working directory" is what that has always meant.
+func importDir(opts *IRGenOptions) string {
+	if opts == nil {
+		return ""
+	}
+	return opts.Dir
 }
 
 // --- machine-readable accounts --------------------------------------------------

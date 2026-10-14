@@ -5,6 +5,7 @@ import "testing"
 // TestTrailingCommaCall verifies `f(a, b,)` parses and runs identically to
 // `f(a, b)` (roadmap L5.3).
 func TestTrailingCommaCall(t *testing.T) {
+	t.Parallel()
 	src := "def f(a, b):\n    return a + b\nf(1, 2,)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -17,6 +18,7 @@ func TestTrailingCommaCall(t *testing.T) {
 
 // TestTrailingCommaList verifies `[1, 2,]` parses and produces a 2-element list.
 func TestTrailingCommaList(t *testing.T) {
+	t.Parallel()
 	src := "a = [1, 2,]\nlen(a)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -29,6 +31,7 @@ func TestTrailingCommaList(t *testing.T) {
 
 // TestTrailingCommaDict verifies `{1: 2,}` parses and produces a 1-entry dict.
 func TestTrailingCommaDict(t *testing.T) {
+	t.Parallel()
 	src := "a = {1: 2,}\nlen(a)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -41,6 +44,7 @@ func TestTrailingCommaDict(t *testing.T) {
 
 // TestTrailingCommaSet verifies `{1, 2,}` parses and produces a 2-element set.
 func TestTrailingCommaSet(t *testing.T) {
+	t.Parallel()
 	src := "a = {1, 2,}\nlen(a)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -54,6 +58,7 @@ func TestTrailingCommaSet(t *testing.T) {
 // TestTrailingCommaTuple verifies `(1, 2,)` parses as a 2-tuple and `(1,)`
 // as a 1-tuple (Python semantics).
 func TestTrailingCommaTuple(t *testing.T) {
+	t.Parallel()
 	src := "a = (1, 2,)\nlen(a)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -75,6 +80,7 @@ func TestTrailingCommaTuple(t *testing.T) {
 // TestTrailingCommaMatchArg verifies a match class-pattern arg list tolerates
 // a trailing comma: `case Point(x, y,)`.
 func TestTrailingCommaMatchArg(t *testing.T) {
+	t.Parallel()
 	src := `class Point:
     def __init__(self, x, y):
         self.x = x
@@ -98,6 +104,7 @@ area(Point(3, 4))`
 // TestTrailingCommaFmtRoundTrip verifies the canonical formatter accepts
 // trailing-comma source and its output re-parses cleanly (format round-trip).
 func TestTrailingCommaFmtRoundTrip(t *testing.T) {
+	t.Parallel()
 	src := "f(1, 2,)\n[1, 2,]\n{1: 2,}\n{1, 2,}\n(1, 2,)"
 	f, err := FormatSrc(src)
 	if err != nil {

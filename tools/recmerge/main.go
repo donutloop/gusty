@@ -30,7 +30,9 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// recordPath is the file the recorder writes. A var rather than a const so the tests can point it at a copy.
+// recordPath is the file the recorder writes when nothing was named: the real record, in the tree. It is a
+// var because the CLI's --record flag overrides it once at startup, in a process that then records one file;
+// a test never touches it — it hands its own path to runAt.
 var recordPath = "pkg/lang/testdata/interpreter-golden.json"
 
 // entry is one record entry. The field ORDER and the `omitempty` set are the file's: an entry that grew a field
@@ -91,7 +93,23 @@ func main() {
 	}
 }
 
+// run records the sources listed in sourcesPath into the process default record (recordPath). The CLI's
+// entry point; a caller that has its own file — every test in this package — asks for runAt instead.
 func run(sourcesPath string, checkOnly bool, w legs) error {
+	return runAt(recordPath, sourcesPath, checkOnly, w)
+}
+
+// runAt is run with the record it reads and writes named.
+//
+// The target used to be read from the package variable in every path through here, which meant a test that
+// wanted to watch the recorder work had to *reassign* that variable — so the package had one record for all
+// of its cases at once, and two cases running beside each other wrote one file and each saw the other's
+// entries (2 entries where the assertion wanted 4). A recorder that takes its output file is a recorder you
+// can run two of (ADR 0343).
+func runAt(target, sourcesPath string, checkOnly bool, w legs) error {
+	if target == "" {
+		target = recordPath
+	}
 	raw, err := os.ReadFile(sourcesPath)
 	if err != nil {
 		return err
@@ -100,7 +118,7 @@ func run(sourcesPath string, checkOnly bool, w legs) error {
 	if err := json.Unmarshal(raw, &srcs); err != nil {
 		return err
 	}
-	book, err := os.ReadFile(recordPath)
+	book, err := os.ReadFile(target)
 	if err != nil {
 		return err
 	}
@@ -185,7 +203,7 @@ func run(sourcesPath string, checkOnly bool, w legs) error {
 		fmt.Printf("checked %d, added %d, the record is unchanged\n", asked, added)
 		return nil
 	}
-	if err := os.WriteFile(recordPath, out, 0o644); err != nil {
+	if err := os.WriteFile(target, out, 0o644); err != nil {
 		return err
 	}
 	fmt.Printf("checked %d, added %d, entries %d\n", asked, added, len(f.Entries))

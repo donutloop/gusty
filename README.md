@@ -1747,6 +1747,19 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
 - **Integration suite** — `integration/` drives the full pipeline
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
+- **The cases run beside each other** — `make testparallel` runs the whole suite with `t.Parallel()` honoured:
+  **2,246 cases and 646 subtests in about 1 m 40 s on 20 cores, against 11 m 43 s serial** (ADR 0343). It is
+  safe because a compiled program is no longer run inside the test process — the module is linked to an
+  executable and run as a **child** with its own pipes, address space and heap — and because a run's directory,
+  environment and standard-library root travel in `JITOptions`/`CompileRun` instead of in process globals.
+  Parallelism is a checked property, not a style: `go run ./tools/parify -check ./pkg/... ./cmd/... ./integration/... ./tools/...`
+  fails on a case that calls `t.Parallel()` while its body — or any chain of calls it reaches, production files
+  included — touches process state, and on a case left serial without a reason; the twelve cases that legitimately
+  own the process (three `t.Setenv` cases, the in-process JIT entry, nine toolchain-command overrides) carry a
+  `//parify:serial <reason>` marker, and the guard runs inside the suite so the command a person can type is the
+  command that breaks the build. What the change found: two table rows sharing one source file, a ledger row
+  pinned to unstable bytes, and **Gap R.258**, a `sorted(...)` binding that dies by `SIGSEGV` in `@rt_alloc` —
+  invisible while one case at a time was allowed to run.
 - **The suite runs sharded** — `make testshards` (and CI) runs the cases in **one process per core**
   through `tools/testshards`. The reason is arithmetic rather than taste: nearly every case ends inside a
   subprocess — `llc-20` lowering the module (58 ms), `cc` linking it (13 ms), `lli-20` running it (57 ms),
@@ -1820,6 +1833,8 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
 ```sh
 go build -tags=llvm20 ./...
 go test -tags=llvm20 ./pkg/...        # unit tests, serial — the form for the ledger-writing modes
+make testparallel                     # the whole suite with its cases overlapping (ADR 0343, ~1m40s on 20 cores)
+make parallelism                      # the guard: tools/parify -check over the tree
 make testshards                       # the same cases, one test process per core (what CI runs)
 go run ./tools/testshards -tags llvm20 -json ./pkg/...   # the same, as data
 ```

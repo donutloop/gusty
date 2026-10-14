@@ -126,6 +126,7 @@ var cliEngines = []string{"--aot"}
 // comprehensions, collections, floats, exceptions, matching, slicing, tuple unpacking, augmented
 // assignment and f-strings in one file.
 func TestWholeProgramLargeProgram(t *testing.T) {
+	t.Parallel()
 	const prog = `
 # Large whole-program: a mini statistics/vector library exercising the shared
 # AOT+interpreter surface (classes + inheritance, recursion, generators,
@@ -209,6 +210,7 @@ print("fstr", f"n={n}")
 // len(...split(...)) aggregates, and an f-string. Only integer/boolean-returning
 // methods are used (string-producing results are not supported as AOT prints).
 func TestWholeProgramStringIntrospection(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 print(len("hello world"))
 print(len("a b c".split(" ")))
@@ -240,6 +242,7 @@ print("done")
 // (break/continue/else, nested for loops, while) plus runtime heap collections
 // (list append/len/index, dict/set len and index reads) and rebinding.
 func TestWholeProgramNestedControlAndHeap(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 l = [1, 2, 3]
 l.append(4)
@@ -292,6 +295,7 @@ print("done")
 // default/keyword int args, min/max/sum/abs over int lists, len(sorted) and
 // len(reversed) folding, multi-argument range, while, and for-else.
 func TestWholeProgramFunctionsAndAggregation(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 x = 5 if 3 < 4 else 9
 print(x)
@@ -340,6 +344,7 @@ print("done")
 // abs, unary minus, float comparisons, and int/float promotion. sum over float
 // lists is avoided: the record's float sum is not reliable.
 func TestWholeProgramMathFloat(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 a = 2.5
 b = 1.5
@@ -377,6 +382,7 @@ print("done")
 // conversions for float(), round(), and int() on both literals and general
 // (variable) arguments, matching the record.
 func TestWholeProgramConversionBuiltins(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 x = 7
 f = float(x)
@@ -393,6 +399,7 @@ print(int(2.9))
 }
 
 func TestWholeProgramOopAggregation(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 class Counter:
     def __init__(self, start):
@@ -447,6 +454,7 @@ print("done")
 // (min/max/sum/len over int literals, len(sorted)/len(reversed) folding), tuple
 // unpack statements, integer floor/mod, an f-string, and a nested summing loop.
 func TestWholeProgramNumericPromotion(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 a = 3
 b = 2
@@ -490,6 +498,7 @@ print("done")
 // previously broke AOT with "multiple definition of local value named '_i'";
 // the per-function alloca guard keeps the compiled path in agreement.
 func TestWholeProgramLoopVarReuse(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 s = 0
 for i in range(3):
@@ -542,6 +551,7 @@ print("done")
 // AOT backend and through the same canonical kind tags in the record, so
 // both must produce identical stdout.
 func TestWholeProgramObjTaggedDispatch(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 class A:
     def f(self):
@@ -570,6 +580,7 @@ print("done")
 // binary, octal, digit separators, and underscore misuse) through both
 // backends and asserts identical stdout.
 func TestWholeProgramNumericLiterals(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 print(0xFF)
 print(0XFF)
@@ -604,6 +615,7 @@ print("done")
 // TestWholeProgramDocstrings verifies that `def.__doc__` / `Cls.__doc__` folds to a
 // string constant identically in the record and the AOT backend.
 func TestWholeProgramDocstrings(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 def greet():
     "returns a greeting"
@@ -626,6 +638,7 @@ print("done")
 }
 
 func TestWholeProgramLiteralMembership(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 x = 2
 print(x in [1, 2, 3])
@@ -647,6 +660,7 @@ print("done")
 }
 
 func TestWholeProgramWithManagerFieldAccess(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 class M:
     def __init__(self):
@@ -668,6 +682,7 @@ print(f())
 // accumulator list must survive the GC emitted at statement boundaries; a
 // stale handle produced double-appends (ADR 0140 / 0151 regression).
 func TestWholeProgramYieldFromAcrossGC(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 def gen(n):
     for i in range(n):
@@ -685,6 +700,7 @@ print(s)
 // TestWholeProgramYieldFromLiteral verifies yield-from of a statically-known list
 // literal (no heap backing) appends each element exactly once.
 func TestWholeProgramYieldFromLiteral(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 def outer():
     yield 0
@@ -697,6 +713,7 @@ print(s)
 }
 
 func TestWholeProgramWalrus(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 # Walrus operator := : assign in an expression and yield the value.
 def f(x):
@@ -711,6 +728,7 @@ print("final", n, k)
 }
 
 func TestWholeProgramWalrusFnScope(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 def f(x):
     if (n := x * 2) > 0:
@@ -725,6 +743,7 @@ print("after", a, b)
 }
 
 func TestWholeProgramStringSlice(t *testing.T) {
+	t.Parallel()
 	agreesWithRecord(t, `
 s = "hello world"
 print(s[1:4])

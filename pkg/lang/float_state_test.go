@@ -20,6 +20,7 @@ import (
 // beside the rebinding and no `store double` into the variable's own slot.
 
 func TestAFloatRebindingBindsThePairRatherThanWideningTheStore(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -56,6 +57,7 @@ func TestAFloatRebindingBindsThePairRatherThanWideningTheStore(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the compiler refused a program the oracle answers: %v", err)
@@ -73,6 +75,7 @@ func TestAFloatRebindingBindsThePairRatherThanWideningTheStore(t *testing.T) {
 // TestTheFloatRebindingEmitsABoxedPairNotAWideStore is the IR-shape half: the rebinding's own slot may
 // never take a `store double`, and the pair has to be written with the float's tag and rooted.
 func TestTheFloatRebindingEmitsABoxedPairNotAWideStore(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, stmt string
 	}{
@@ -81,6 +84,7 @@ func TestTheFloatRebindingEmitsABoxedPairNotAWideStore(t *testing.T) {
 		{"the augmented float", "t = 0\nt += 1.5\nprint(t)\n", "%_t_tag"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("refused: %v", err)
@@ -108,6 +112,7 @@ func TestTheFloatRebindingEmitsABoxedPairNotAWideStore(t *testing.T) {
 // @rt_float_new writes a different double over the value the variable still names — which is what made
 // `print(h + 1)` correct and `print(h * 2)` print the first line's answer, at exit 0.
 func TestTheFloatRebindingRootsTheBoxItJustMade(t *testing.T) {
+	t.Parallel()
 	const src = "h = 1\nh /= 3\nprint(h + 1)\nprint(h * 2)\nprint(h + 1)\n"
 	const want = "1.3333333333333333\n0.6666666666666666\n1.3333333333333333\n"
 	res, err := Compile(src)
@@ -131,6 +136,7 @@ func TestTheFloatRebindingRootsTheBoxItJustMade(t *testing.T) {
 // still rules out — the payload (the box's handle) answering in place of the value, which printed 14 as
 // an int (Gap R.132, ADR 0273's record). What it answers now is what the reference prints.
 func TestAFloatStateVariableEntersAListByWayOfItsTag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a container element",
@@ -139,6 +145,7 @@ func TestAFloatStateVariableEntersAListByWayOfItsTag(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s refused: %v", tc.name, err)

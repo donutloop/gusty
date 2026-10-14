@@ -18,6 +18,7 @@ import (
 // worth anything if the SAME programs now run identically on the compiled path and match CPython.
 
 func TestCompoundStatementBindingsRunOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{
 			"try body, every path assigns",
@@ -57,6 +58,7 @@ func TestCompoundStatementBindingsRunOnTheCompiledBackend(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q", iout, tc.want)
@@ -80,6 +82,7 @@ func TestCompoundStatementBindingsRunOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	// The other half of the visibility rule: making a name visible must not invent a value.
 	// Only `case y:` would bind it, the literal arm runs, and reading it afterwards is a
 	// NameError — the class CPython raises. Widening the checker's scope did not paper over a
@@ -122,6 +125,7 @@ func TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend(t *testing
 // once the compiled leg traps with NameError too, asserting the garbage would be asserting a bug
 // that no longer exists.
 func TestUnboundAfterPartialMatchReadsGarbageInCompiled(t *testing.T) {
+	t.Parallel()
 	src := "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n"
 	res, err := lang.Compile(src)
 	if err != nil {

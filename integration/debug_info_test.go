@@ -80,6 +80,7 @@ func debugInfoDoc(t *testing.T, bin, src string) map[string]any {
 }
 
 func TestDebugInfoGolden(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -94,6 +95,7 @@ func TestDebugInfoGolden(t *testing.T) {
 // The build report is the same claim about a real artifact: a --debug build says what the
 // object file's .debug_line actually holds. An absent toolchain is a skip, never a pass.
 func TestBuildDebugReportsDWARF(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -164,6 +166,7 @@ func TestBuildDebugReportsDWARF(t *testing.T) {
 // The point of a line table is that a debugger resolves an address to a line. That is
 // checked here the way a debugger does it: addr2line on the linked binary.
 func TestDebugInfoResolvesAddresses(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("llvm-addr2line-20"); err != nil {
 		t.Skip("no llvm-addr2line")
 	}

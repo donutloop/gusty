@@ -23,6 +23,7 @@ import (
 //   - the number is still underneath: `max([True, 0]) + 1` is `2` and `max([True, 0]) == 1` is True,
 //     because a verdict is the number every numeric path reads (ADR 0259).
 func TestTheVerdictAFoldChoosesPrintsItsName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		// The two lines Gap R.117 was filed with.
 		{"print(max([True, 0]))\n", "True\n"},
@@ -78,6 +79,7 @@ func TestTheVerdictAFoldChoosesPrintsItsName(t *testing.T) {
 // operand too, and prints its number; a winner that arrived as a number prints as that number; a text
 // candidate is ordered by its content and printed as text.
 func TestAFoldStillPrintsWhatTheWinnerActuallyIs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"ys = [True, 1]\nprint(ys[0] and ys[1])\n", "1\n"}, // CPython's own answer: the operand
 		{"print(min([2.5, 1]))\n", "1\n"},                   // the int winner among doubles
@@ -109,6 +111,7 @@ func TestAFoldStillPrintsWhatTheWinnerActuallyIs(t *testing.T) {
 // really keeps the winning object, prints CPython's line. Refusing would be a defensible answer;
 // printing `1` is not, which is why this is a row and not a skip (roadmap Gap R.124).
 func TestACandidateTheCompilerCannotReadStillPrintsTheNumber(t *testing.T) {
+	t.Parallel()
 	const src = "i = 0\nprint(max([True, i]))\n"
 	if got, want := captureStdout(t, src), "True\n"; got != want {
 		t.Errorf("the record leg = %q, want CPython's %q", got, want)
@@ -128,6 +131,7 @@ func TestACandidateTheCompilerCannotReadStillPrintsTheNumber(t *testing.T) {
 // `taggableMixedList`/`Set`/`Dict` (ADR 0259) and the three dict builders (ADR 0260) both started the
 // same way — so the shape is asserted at the source, not only in the behaviour rows above.
 func TestTheFoldAndTheVerdictQuestionChooseFromOneDoor(t *testing.T) {
+	t.Parallel()
 	codegen, err := os.ReadFile("codegen.go")
 	if err != nil {
 		t.Fatalf("read codegen.go: %v", err)

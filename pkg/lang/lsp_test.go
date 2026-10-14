@@ -22,6 +22,7 @@ func newTestDoc(t *testing.T, src string) *Document {
 }
 
 func TestLineColFrom(t *testing.T) {
+	t.Parallel()
 	text := "def f():\n    x = 1\n"
 	line, col := lineColFrom(text, lspPosition{Line: 0, Character: 0})
 	if line != 1 || col != 1 {
@@ -34,6 +35,7 @@ func TestLineColFrom(t *testing.T) {
 }
 
 func TestSpanToRange(t *testing.T) {
+	t.Parallel()
 	text := "def sq(x):\n    pass\n"
 	r := spanToRange(text, Span{Line: 1, Col: 5}, 2)
 	if r.Start.Line != 0 || r.Start.Character != 4 || r.End.Character != 6 {
@@ -42,6 +44,7 @@ func TestSpanToRange(t *testing.T) {
 }
 
 func TestBuildIndexDefs(t *testing.T) {
+	t.Parallel()
 	src := `# comment
 def sq(x: int) -> int:
     """square"""
@@ -79,6 +82,7 @@ y = 10
 }
 
 func TestBuildIndexRefs(t *testing.T) {
+	t.Parallel()
 	src := "def f():\n    pass\nf()\n"
 	d := newTestDoc(t, src)
 	// The call f() should produce a reference named "f".
@@ -94,6 +98,7 @@ func TestBuildIndexRefs(t *testing.T) {
 }
 
 func TestHoverOnFunc(t *testing.T) {
+	t.Parallel()
 	src := "def sq(x: int) -> int:\n    \"\"\"square\"\"\"\n    return x * x\n"
 	d := newTestDoc(t, src)
 	// hover on line 0, character of "sq"
@@ -108,6 +113,7 @@ func TestHoverOnFunc(t *testing.T) {
 }
 
 func TestCompleteInScope(t *testing.T) {
+	t.Parallel()
 	src := "def helper():\n    pass\nx = 1\n"
 	d := newTestDoc(t, src)
 	res := completeAt(d, lspPosition{Line: 2, Character: 0})
@@ -123,6 +129,7 @@ func TestCompleteInScope(t *testing.T) {
 // TestRunLSPEndToEnd drives a full stdio session: initialize, didOpen, hover,
 // completion, shutdown, exit.
 func TestRunLSPEndToEnd(t *testing.T) {
+	t.Parallel()
 	msgs := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"file:///root"}}`,
 		`{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.gy","text":"def sq(x: int) -> int:\n    \"\"\"square\"\"\"\n    return x*x\nsq(4)\n"}}}`,
@@ -233,6 +240,7 @@ func itoaLSP(n int) string {
 // edit to statement 2 re-parses only the affected tail, keeps the leading
 // statement's AST identity, and yields a tree equal to a full re-parse.
 func TestIncrementalDidChange(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\nc = 3\n"
 	d := &Document{URI: "mem://doc", Version: 1, Text: src, cache: mustNewCache(t, src)}
 	d.analyze()
@@ -281,6 +289,7 @@ func mustNewCache(t *testing.T, src string) *ParseCache {
 // editor (or an agent driving the server) can tell a one-statement re-parse from a
 // whole-document re-parse without timing the server.
 func TestLSPPublishesParseCacheStats(t *testing.T) {
+	t.Parallel()
 	open := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///big.gy","text":"x = 1\ndef f(a):\n    return a + 1\n\ny = f(2)\nz = y * 3\n"}}}`
 	change := `{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///big.gy","version":2},"contentChanges":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"text":"2"}]}}`
 	shutdown := `{"jsonrpc":"2.0","method":"exit"}`
@@ -350,6 +359,7 @@ func TestLSPPublishesParseCacheStats(t *testing.T) {
 // text as a whole-document set would shrink the file to a fragment; the server
 // must keep the previous buffer and say the change was not applied.
 func TestLSPFailedIncrementKeepsBuffer(t *testing.T) {
+	t.Parallel()
 	open := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///fb.gy","text":"a = 1\nb = 2\n"}}}`
 	// Line 99 does not exist: the incremental update must fail.
 	change := `{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///fb.gy","version":2},"contentChanges":[{"range":{"start":{"line":98,"character":0},"end":{"line":98,"character":0}},"text":"c = 3\n"}]}}`

@@ -8,6 +8,7 @@ import (
 // ADR 0172 — None is a value, not the integer 0.
 
 func TestNoneSingletonSemantics(t *testing.T) {
+	t.Parallel()
 	// ADR 0172's bug was an identity: `None` and `0` were the same word, so `0 == None` answered
 	// True and a container holding None printed as a number. The case is now asked of the compiled
 	// program — which is the stronger form of the same question, since what a user can see is what
@@ -23,6 +24,7 @@ func TestNoneSingletonSemantics(t *testing.T) {
 }
 
 func TestNoneSurvivesGC(t *testing.T) {
+	t.Parallel()
 	// The singleton is a permanent root: if sweeping reclaimed it, its heap slot would be
 	// handed to the free list and a later container would print as "None".
 	src := "for i in range(6):\n    xs = [i, None]\n    print(len(xs))\nprint(None)\n"
@@ -33,6 +35,7 @@ func TestNoneSurvivesGC(t *testing.T) {
 }
 
 func TestVoidFunctionYieldsNone(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string
@@ -67,6 +70,7 @@ func TestVoidFunctionYieldsNone(t *testing.T) {
 }
 
 func TestCompiledNoneUsesTheRuntimeSingleton(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(None)\nx = None\nprint(x)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -84,6 +88,7 @@ func TestCompiledNoneUsesTheRuntimeSingleton(t *testing.T) {
 // TestNoneEqualityIsStaticButNotLazy covers both halves of ADR 0172's codegen rule: the
 // answer is decided at compile time, and the operands still run.
 func TestNoneEqualityIsStaticButNotLazy(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def emit():\n    print(\"side\")\n\nprint(emit() == None)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -94,6 +99,7 @@ func TestNoneEqualityIsStaticButNotLazy(t *testing.T) {
 }
 
 func TestNoneVarIsClearedByReassignment(t *testing.T) {
+	t.Parallel()
 	// x = None; x = 0 must print 0 — the variable's *latest* assignment decides.
 	got, err := runGoldenStdout(t, "x = None\nx = 0\nprint(x)\nprint(x == None)\n")
 	if err != nil {

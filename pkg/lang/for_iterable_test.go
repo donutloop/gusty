@@ -137,6 +137,7 @@ var counterAgainstContainerIR = regexp.MustCompile(`icmp [a-z]+ i32 %[^,]+, @\.(
 // the runtime: no module this suite compiles may put a container global where an i32 count belongs — the
 // folds answer it, the pair answers it, the guard refuses it, and either way the instruction is not emitted.
 func TestTheLoopNeverComparesItsCounterWithAContainer(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"for v in sorted([3, 1, 2]):\n    print(v)",
 		"for v in reversed([1, 2, 3]):\n    print(v)",
@@ -152,6 +153,7 @@ func TestTheLoopNeverComparesItsCounterWithAContainer(t *testing.T) {
 		"for i in range(3):\n    print(i)",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(src)
 			if err != nil {
 				return // a refusal is the other honest answer; the IR cannot contain what was never emitted
@@ -167,8 +169,10 @@ func TestTheLoopNeverComparesItsCounterWithAContainer(t *testing.T) {
 // failure here: these programs are the reference's own, and the fold and the pair exist precisely so they
 // are not refused (ADR 0249).
 func TestTheLoopWalksTheIterableItCanWriteDown(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterablesAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); the reference prints %q", tt.src, got, tt.want)
@@ -195,8 +199,10 @@ func TestTheLoopWalksTheIterableItCanWriteDown(t *testing.T) {
 // exit-0 answer is now a refusal that names the iterable it refused, and none of them may reach exit 2 — the
 // code the contract reserves for a compiler bug (ADR 0166).
 func TestTheLoopRefusesWhatItCannotWalk(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterablesRefused {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tt.src)
 			if !refused {
 				t.Fatalf("%q answered %q at exit 0; the row expects a refusal — the loop read a container's word as a count, which is the answer this contract ranks worst (the reference prints %q)", tt.src, out, tt.oracle)
@@ -217,8 +223,10 @@ func TestTheLoopRefusesWhatItCannotWalk(t *testing.T) {
 // only on a call it can write down, the pair may claim only the two builtins over a list, and the guard may
 // fire only where no container road took it. Every row here answered before the row and answers still.
 func TestTheLoopStillWalksWhatItAlwaysWalked(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterablesUnchanged {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); this loop answered %q before the row and must go on answering it", tt.src, got, tt.want)
@@ -238,6 +246,7 @@ func TestTheLoopStillWalksWhatItAlwaysWalked(t *testing.T) {
 // where an expression goes answers its argument UNREVERSED (see TestWhatTheLoopRowLeavesOwed). Sharing an
 // ordering with a road that does not order is not the same discipline.
 func TestTheFoldAndTheSortedAnswerShareOneOrdering(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		printed string
 		looped  string
@@ -250,6 +259,7 @@ func TestTheFoldAndTheSortedAnswerShareOneOrdering(t *testing.T) {
 		{"xs = [3, 1, 2]\nprint(sorted(xs, reverse=True))", "xs = [3, 1, 2]\nfor v in sorted(xs, reverse=True):\n    print(v)"},
 	} {
 		t.Run(tc.printed, func(t *testing.T) {
+			t.Parallel()
 			p, refused := compiledOutOrRefusal(t, tc.printed)
 			if refused {
 				t.Fatalf("%q refused (%s); the answer this ordering is shared with must keep answering", tc.printed, p)
@@ -283,6 +293,7 @@ func splitSeq(s string) []string {
 // that fixing them has to move a pinned expectation and not slip through. The `roadmap` column is the row
 // that owns each one; the `oracle` column is what the pinned reference answers.
 func TestWhatTheLoopRowLeavesOwed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src     string
 		names   string // what the refusal says today
@@ -310,6 +321,7 @@ func TestWhatTheLoopRowLeavesOwed(t *testing.T) {
 		{"xs = [1, 2, 3]\nprint(reversed(xs))", "", "[1, 2, 3]", "Gap R.251"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if tc.names == "" {
 				if refused {
@@ -331,6 +343,7 @@ func TestWhatTheLoopRowLeavesOwed(t *testing.T) {
 // for a heap list is the SAME helper call the `sorted` answer emits, so a fix to one cannot leave the other
 // behind. Asked of the module, not of the runtime.
 func TestTheLoopRowSharesTheSortWithTheBuiltin(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		need string
@@ -342,6 +355,7 @@ func TestTheLoopRowSharesTheSortWithTheBuiltin(t *testing.T) {
 		{"def b():\n    return [1, 2, 3]\nfor v in reversed(b()):\n    print(v)", "call void @rt_reverse"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused (%v); this loop is answered by the runtime road and must not be refused", tc.src, err)
@@ -357,11 +371,13 @@ func TestTheLoopRowSharesTheSortWithTheBuiltin(t *testing.T) {
 // counter prints `0` once, which is a value the program never wrote. No answered row may print `0` unless the
 // program itself contains a 0.
 func TestTheLoopRowsAnswerIsNotTheCounter(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterablesAnswered {
 		if strings.Contains(tt.src, "0") || strings.Contains(tt.want, "0") || tt.want == "" {
 			continue
 		}
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if !refused && strings.Contains(got, "0") {
 				t.Fatalf("%q printed %q, which contains a 0 the program never wrote — the signature of a loop variable bound to the counter", tt.src, got)
@@ -375,7 +391,9 @@ func TestTheLoopRowsAnswerIsNotTheCounter(t *testing.T) {
 // door, so it is not fixed here — but it was measured on the way to this row, and the exit-2 it produces is
 // the shape ADR 0166 says the compiler owns.
 func TestWhatTheLoopRowLeavesFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	t.Run("membership over a sorted literal hands llc a global (Gap R.253)", func(t *testing.T) {
+		t.Parallel()
 		// `1 in sorted([3, 1, 2])` builds `rt_contains(i32 @.lst1, i32 1)`: the container's GLOBAL in an i32
 		// slot, which `llc` refuses — "global variable reference must have pointer type" — and the program
 		// dies with exit 2, the code the contract reserves for exactly that (ADR 0166). The row is filed;
@@ -395,8 +413,10 @@ func TestWhatTheLoopRowLeavesFiledNotFixed(t *testing.T) {
 // it, and the record says what the reference says. A missing record fails here — coverage cannot be bought
 // back by deleting a row (ADR 0302), and the answer a loop gives is only evidence while the record holds it.
 func TestTheLoopRowsAnswersAreOnTheRecord(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterablesAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			g := goldenLookup(t, tt.src)
 			if !g.HasStd {
 				t.Fatalf("%q is on the record with no stdout, but the row prints %q", tt.src, tt.want)

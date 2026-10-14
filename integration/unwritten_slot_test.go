@@ -81,8 +81,10 @@ var unwrittenShapes = []struct{ name, src, stdout, class string }{
 // TestUnwrittenSlotMatchesCPython: each shape, both legs. CPython defines the expectation; the
 // interpreter and the compiled binary must print the same stdout, raise the same class, and exit 3.
 func TestUnwrittenSlotMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range unwrittenShapes {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			wantOut, _, perr := lang.PythonRun(tc.src)
 			if perr == nil {
 				t.Fatalf("CPython accepted a program this table says raises %s — re-derive the expectation\n%s", tc.class, tc.src)
@@ -124,6 +126,7 @@ func TestUnwrittenSlotMatchesCPython(t *testing.T) {
 // A name assigned on every path is not an error (and must not pay for a flag), and a handler must be
 // able to catch the trap by class on the compiled path.
 func TestUnwrittenSlotIsCatchableAndNotOverEager(t *testing.T) {
+	t.Parallel()
 	definite := "def f(c):\n    if c:\n        r = 1\n    else:\n        r = 2\n    return r\n\nprint(f(True), f(False))\n"
 	for _, engine := range cliEngines {
 		path := writeSrc(t, t.TempDir(), "definite.gy", definite)

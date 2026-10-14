@@ -2,12 +2,16 @@
 
 // Package lang — the gusty language toolchain.
 //
-// jit_llvm.go implements an in-process JIT for fast REPL feedback: source is
-// compiled ahead-of-time through the existing LLVM-IR pipeline (codegen ->
-// llc -> object -> link), the resulting native shared object is dlopen'd into
-// this process, and its generated `main` is invoked directly — no process
-// spawn per expression, so interactive feedback stays snappy while still
-// running real machine code underneath.
+// jit_llvm.go is the compile-and-run pipeline every execution path shares: source is compiled
+// ahead-of-time through the existing LLVM-IR pipeline (codegen -> llc -> cc), and the resulting native
+// program is executed. By default it is executed as its own child process (run_child.go), so one program
+// cannot see another and a crash or a hang stays inside the process that caused it. Callers that want the
+// program entered on this process's own descriptors — the benchmark, and the parity case that keeps the
+// two entries honest — ask for that by name with JITOptions.InProcess, which uses the dlopen entry below.
+//
+// Both entries build the same module and the same object; they differ only in how `main` is reached.
+// ADR 0343 records why the child became the default: the suite runs its cases beside each other, and an
+// entry that takes fd 1 and fd 2 for the duration of a call cannot be overlapped.
 package lang
 
 /*
@@ -85,8 +89,16 @@ type JITResult struct {
 	Result *EchoResult `json:"result,omitempty"`
 	// Debug is what the module handed to `llc` really carries, read back from it; nil when
 	// the build asked for no debug info (L8.5).
-	Debug       *DebugInfo   `json:"debug,omitempty"`
-	Commands    []string     `json:"commands"`
+	Debug    *DebugInfo `json:"debug,omitempty"`
+	Commands []string   `json:"commands"`
+	// Signaled says the compiled program was killed by a signal rather than returning from `main`: the
+	// artifact died (ran off the end of its stack, stored out of bounds) instead of reporting a trap. It
+	// is a fact about the compiler's output, not about the program, and the CLI reports it as the
+	// compiler-bug class for that reason. Signal names it. Both are empty/false for every ordinary run.
+	// Only the isolated runner can produce them — a program entered in-process took the harness down
+	// with it instead of saying so (ADR 0343).
+	Signaled    bool         `json:"signaled,omitempty"`
+	Signal      string       `json:"signal,omitempty"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
@@ -126,6 +138,46 @@ func RunSnippet(src string) (*JITResult, error) {
 	return JITWithOptions(src, 0, &JITOptions{EchoResult: true})
 }
 
+// RunSourceIn is RunSource with the program's working directory named: the directory its `import mod`
+// resolves against and the directory it starts in. It is the per-run form of what used to be
+// os.Chdir(dir) around a compile — an act one case cannot perform while another is compiling, which is
+// the difference between a suite that runs its cases beside each other and one that cannot
+// (ADR 0343).
+func RunSourceIn(dir, src string) (string, error) {
+	res, err := JITWithOptions(src, 0, &JITOptions{Dir: dir})
+	if err != nil {
+		return "", err
+	}
+	if res.Code != 0 {
+		return res.Output, fmt.Errorf("program exited with status %d: %s", res.Code, firstLine(res.Stderr))
+	}
+	return res.Output, nil
+}
+
+// RunSourceWith is RunSource with the world around the program spelled out: the directory its imports
+// resolve against, the standard library it reads, and whether it reports on itself. Every one of those was
+// process state at the start of ADR 0343, which is why a case that wanted one had to run alone.
+func RunSourceWith(run CompileRun, src string) (string, error) {
+	res, err := JITWithOptions(src, 0, run.jitOptions(false))
+	if err != nil {
+		return "", err
+	}
+	if res.Code != 0 {
+		return res.Output, fmt.Errorf("program exited with status %d: %s", res.Code, firstLine(res.Stderr))
+	}
+	return res.Output, nil
+}
+
+// RunSnippetWith is RunSnippet with the run spelled out (RunSourceWith).
+func RunSnippetWith(run CompileRun, src string) (*JITResult, error) {
+	return JITWithOptions(src, 0, run.jitOptions(true))
+}
+
+// RunSnippetIn is RunSnippet with the program's working directory named.
+func RunSnippetIn(dir, src string) (*JITResult, error) {
+	return JITWithOptions(src, 0, &JITOptions{EchoResult: true, Dir: dir})
+}
+
 // JITOptions is what a caller asks of the in-process JIT beyond the source. Debug is nil
 // for the ordinary build; a --debug run asks for the same module `--build --debug` would
 // link, records included, so `GUSTY_KEEP_LLVM=1 gustyc --jit --debug` leaves a .ll and a
@@ -137,6 +189,66 @@ type JITOptions struct {
 	// caller that typed `1 + 1` wants `2` back, not silence. Only a snippet caller sets it; a
 	// program is never echoed (ADR 0204). Roadmap L13.1, ADR 0302.
 	EchoResult bool
+	// Dir is the working directory the program is compiled and run in: the directory a bare
+	// `import mod` is resolved against, and the directory the program itself starts in. Per-run,
+	// which is the point — the cases that needed it used to os.Chdir the process, an act one case
+	// cannot perform while another is compiling (ADR 0343).
+	Dir string
+	// Env is the program's environment, verbatim, when non-nil; nil inherits this process's. The
+	// same argument as Dir's: a case that needs a variable set no longer edits it for everyone.
+	Env []string
+	// Stdin is what the program reads. The language has no `input()` today; the member is here so
+	// that when it gets one, the runner is not the reason it cannot be tested concurrently.
+	Stdin string
+	// InProcess asks for the second way of entering the same machine code: dlopen the linked shared
+	// object and call its `main` on this process's own descriptors (dlopenRun). It exists for the
+	// benchmark, which measures warm execution without a fork per iteration, and for the parity case
+	// that keeps the two entries answering the same question the same way. It is not a speed dial for
+	// a harness: two runs entered this way share fd 1 and fd 2, so they may not overlap (ADR 0343).
+	InProcess bool
+	// Budget is how long the program may run before the harness stops it. Zero means ProgramBudget,
+	// the harness's default patience; a caller that means "forever" says so with NoBudget.
+	Budget time.Duration
+	// NoBudget removes the timeout entirely, which is what an interactive caller whose user may be
+	// typing into a loop wants.
+	NoBudget bool
+	// StdlibDir is the standard-library root the program's `import mod` falls back to. Per-run for the
+	// same reason as Dir: the process-wide root the CLI's `--stdlib` sets is one process's answer, and a
+	// second concurrent run that wants a `stdlib` of its own used to have to overwrite it (ADR 0343).
+	// Empty means the process default.
+	StdlibDir string
+	// GCReport makes the program print the collector's self-report, the way `gustyc --gc-stats` does.
+	// Read from the run rather than from the process switch, so two runs asking different questions get
+	// different answers.
+	GCReport bool
+}
+
+// wantsIR returns the emitter's options for a run that asked for something beyond the plain build, or
+// nil when it asked for nothing — the difference between GenerateIRWithOptions and the bare GenerateIR.
+func (o *JITOptions) wantsIR() (*IRGenOptions, bool) {
+	if o == nil {
+		return nil, false
+	}
+	if o.Debug == nil && !o.EchoResult && o.Dir == "" && o.StdlibDir == "" && !o.GCReport {
+		return nil, false
+	}
+	ir := &IRGenOptions{EchoResult: o.EchoResult, Dir: o.Dir, StdlibDir: o.StdlibDir, GCReport: o.GCReport}
+	if o.Debug != nil {
+		ir.Debug = o.Debug.normalized()
+	}
+	return ir, true
+}
+
+// childOptions is the run request this bundle asks of the isolated runner.
+func (o *JITOptions) childOptions(src string) *runChildOptions {
+	if o == nil {
+		return &runChildOptions{Source: src}
+	}
+	budget := o.Budget
+	if o.NoBudget {
+		budget = -1
+	}
+	return &runChildOptions{Dir: o.Dir, Env: o.Env, Stdin: o.Stdin, Source: src, Budget: budget}
 }
 
 // JITWithOptions compiles the program, lowers it to an object and a shared library, loads
@@ -167,12 +279,14 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	}
 	var ir string
 	var derr error
-	if opts != nil && opts.Debug != nil {
-		var dbg *DebugInfo
-		ir, dbg, derr = GenerateIRReport(prog, &IRGenOptions{Debug: opts.Debug.normalized(), EchoResult: opts.EchoResult})
-		res.Debug = dbg
-	} else if opts != nil && opts.EchoResult {
-		ir, _, derr = GenerateIRReport(prog, &IRGenOptions{EchoResult: true})
+	if irOpts, want := opts.wantsIR(); want {
+		if irOpts.Debug != nil {
+			var dbg *DebugInfo
+			ir, dbg, derr = GenerateIRReport(prog, irOpts)
+			res.Debug = dbg
+		} else {
+			ir, _, derr = GenerateIRReport(prog, irOpts)
+		}
 	} else {
 		ir, derr = GenerateIR(prog)
 	}
@@ -205,7 +319,6 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 
 	irPath := filepath.Join(dir, "jit.ll")
 	objPath := filepath.Join(dir, "jit.o")
-	soPath := filepath.Join(dir, "jit.so")
 	if err := os.WriteFile(irPath, []byte(ir), 0o600); err != nil {
 		return nil, fmt.Errorf("jit: write IR: %w", err)
 	}
@@ -217,25 +330,61 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	}
 	res.Commands = append(res.Commands, llcCmd+" -relocation-model=pic -filetype=obj "+irPath+" -o "+objPath)
 
-	if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm"); err != nil {
-		return nil, toolchainFailure("cc", ccCmd, err, out)
-	}
-	res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
+	// Two entries into the same machine code, chosen by what the caller needs rather than by which
+	// code path it happens to be on.
+	//
+	// The default links an executable and runs it as a child process (run_child.go): its own
+	// descriptors, its own directory, its own exit status, and nothing it does — printing, crashing,
+	// looping forever — able to reach the process that asked. That is what makes one program run
+	// beside another one, which is what the suite now does thousands of times a run.
+	//
+	// InProcess keeps the original entry: link a shared object, dlopen it, call its `main` here. It is
+	// the artifact the benchmark times warm, and the second leg the parity case holds against the
+	// first. It is not safe to overlap two of these — they share this process's fd 1 and fd 2 — which is
+	// exactly why it is no longer the default.
+	if opts != nil && opts.InProcess {
+		soPath := filepath.Join(dir, "jit.so")
+		if out, err := runToolStage(ToolBudget, "cc", ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm"); err != nil {
+			return nil, toolchainFailure("cc", ccCmd, err, out)
+		}
+		res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
 
-	out, errOut, code, err := dlopenRun(soPath)
-	if err != nil {
-		return nil, err
+		out, errOut, code, err := dlopenRun(soPath)
+		if err != nil {
+			return nil, err
+		}
+		res.Output = out
+		res.Stderr = errOut
+		res.Code = code
+	} else {
+		exePath := filepath.Join(dir, "jit.prog")
+		if out, err := runToolStage(ToolBudget, "cc", ccCmd, objPath, "-o", exePath, "-lm"); err != nil {
+			return nil, toolchainFailure("cc", ccCmd, err, out)
+		}
+		ccLine := ccCmd + " " + objPath + " -o " + exePath + " -lm"
+
+		child := opts.childOptions(src)
+		run, runErr := runChildProcess(exePath, child)
+		res.Commands = append(res.Commands, ccLine, run.Command)
+		res.Output = run.Stdout
+		res.Stderr = run.Stderr
+		res.Code = run.Code
+		res.Signaled = run.Signaled
+		res.Signal = run.Signal
+		if runErr != nil {
+			// The run still happened and what it printed still stands: a program that never finished is
+			// an answer about the program, and a caller that wants the partial output can take it from
+			// the result it gets back beside the error.
+			return res, runErr
+		}
 	}
-	res.Output = out
-	res.Stderr = errOut
-	res.Code = code
 	// Lift the snippet's answer out of the tool channel before anyone reads Stderr: the answer is
 	// a fact about the run, and the transcript of the run must not show it twice (ADR 0302).
 	if opts != nil && opts.EchoResult {
-		if echo, ok := ParseEchoLine(errOut); ok {
+		if echo, ok := ParseEchoLine(res.Stderr); ok {
 			e := echo
 			res.Result = &e
-			res.Stderr = StripEchoLine(errOut)
+			res.Stderr = StripEchoLine(res.Stderr)
 		}
 	}
 	return res, nil

@@ -17,6 +17,7 @@ import (
 // are not values yet in either (roadmap L11.1), which is tracked as gated there rather
 // than half-fixed here.
 func TestStrFormsMatchCPythonOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -46,6 +47,7 @@ func TestStrFormsMatchCPythonOnTheCompiledBackend(t *testing.T) {
 // that used to be what `s = str(None)` compiled to. Asserted module-wide over a program
 // that mixes str(), printing and length so a regression is a compiler-visible failure.
 func TestNoGlobalStoredInValuePosition(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("s = str(None)\nt = str(1.5)\nprint(s, t, len(s))\n")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)

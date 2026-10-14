@@ -6,6 +6,7 @@ import "testing"
 // parses into a TypeAliasStmt and later annotations referencing NAME resolve
 // structurally (a copy of T), not nominally.
 func TestTypeAliasParsesAndResolvesStructurally(t *testing.T) {
+	t.Parallel()
 	src := "type Vec = list[int]\ntype Pair = tuple[int, str]\ndef sumv(v: Vec):\n    return v\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -46,6 +47,7 @@ func TestTypeAliasParsesAndResolvesStructurally(t *testing.T) {
 // TestTypeAliasIsANoOpInTheCompiledModule verifies the record treats TypeAliasStmt as a
 // compile-time no-op and that a function using an alias runs without error.
 func TestTypeAliasIsANoOpInTheCompiledModule(t *testing.T) {
+	t.Parallel()
 	src := "type Count = int\ndef twice(c: Count):\n    return c * 2\nprint(twice(21))\n"
 	if _, diags, err := evalGolden(t, src); err != nil {
 		t.Fatalf("eval: %v (diags=%v)", err, diags)
@@ -55,6 +57,7 @@ func TestTypeAliasIsANoOpInTheCompiledModule(t *testing.T) {
 // TestTypeAliasFormatRoundTrip verifies the canonical formatter preserves the
 // alias declaration and expands references structurally.
 func TestTypeAliasFormatRoundTrip(t *testing.T) {
+	t.Parallel()
 	src := "type Vec = list[int]\n\ndef sumv(v: Vec):\n    return v\n"
 	prog, err := Parse(src)
 	if err != nil {

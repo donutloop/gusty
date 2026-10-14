@@ -7,6 +7,7 @@ import (
 
 // Gap P — Python's float rendering (ADR 0180).
 func TestPyFloatRepr(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		in   float64
 		want string

@@ -17,6 +17,7 @@ func cliViewOut(t *testing.T, backend, src string) (string, int) {
 // The exit-2 half: `rt_print_list_mixed(i32 @.lst1, i32 0)` — a global address handed to a heap walker,
 // which llc rejects and ADR 0166 counts as the compiler's own bug.
 func TestCLIDictViewNeverSpendsExit2(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print({"a": 1}.keys())`,
 		`print({1: 2}.values())`,
@@ -38,6 +39,7 @@ func TestCLIDictViewNeverSpendsExit2(t *testing.T) {
 // The wrapper word is the row: `dict_keys([...])` is what distinguishes a view from a list, and both
 // engines printed a bare list.
 func TestCLIDictViewPrintsWhatTheReferencePrints(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print({"a": 1}.keys())`,
 		`print({"a": 1, "b": 2}.keys())`,

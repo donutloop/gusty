@@ -41,6 +41,7 @@ func checkJSONDiags(t *testing.T, src string) []jsonDiagnostic {
 }
 
 func TestJSONDiagnosticsHaveNoRepeats(t *testing.T) {
+	t.Parallel()
 	src := `def f(x):
     match x:
         case 1:
@@ -69,6 +70,7 @@ print(f(3))
 // measurably duplicated before the fix — including the one that used to appear in the roadmap as
 // evidence.
 func TestCorpusProgramsPrintNoRepeatedLine(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"match_literal", "dispatch_gc", "dispatch_nested", "gc_precise", "dispatch_gc_stress"} {
 		bin := filepath.Join(t.TempDir(), "gustyc-"+name)
 		buildCLI(t, bin)

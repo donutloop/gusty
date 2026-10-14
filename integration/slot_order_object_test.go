@@ -30,6 +30,7 @@ import (
 // contract's "the compiler is broken" class) fails this file, in every table.
 
 func TestSlotOrderOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"appended_int_above_number", "xs = []\nxs.append(3)\nprint(1 if xs[0] > 1 else 0)\n", "1\n"},
 		{"appended_int_below_number", "xs = []\nxs.append(3)\nprint(1 if xs[0] < 5 else 0)\n", "1\n"},
@@ -79,6 +80,7 @@ func TestSlotOrderOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 		{"comprehension_built_container_orders", "xs = [x for x in [3, 4]]\nprint(1 if xs[0] > 2 else 0)\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_order.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -106,6 +108,7 @@ func TestSlotOrderOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 // to be. A refusal (exit 1, `codegen: …`) fails the row: it would be the compiler answering a question
 // about the program's data that only the program's data can answer.
 func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, msg string
 		// oracle is CPython's sentence when it differs from the one the two engines agree on. gusty
@@ -182,6 +185,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_order_trap.gy", tc.src)
 			pyOut, pyCode := oracleTrap(t, path)
 			if pyCode == 0 {
@@ -231,6 +235,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 // can catch it, so the compiled leg leaves through the same exit class as the record and not
 // through a crash (roadmap ADR 0166, Gap R.37's rule that a trap must be a trap).
 func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(3)\ntry:\n    print(1 if xs[0] > \"a\" else 0)\nexcept TypeError:\n    print(\"caught\")\n"
 	path := writeSrc(t, t.TempDir(), "slot_order_catch.gy", src)
 	const want = "caught\n"
@@ -252,6 +257,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 // end could see the expression that made it; a container slot is where it cannot, which is why this
 // row needed the tag and not the predicate.
 func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append(True)\nprint(1 if xs[0] > \"a\" else 0)\n"
 	path := writeSrc(t, t.TempDir(), "slot_order_bool.gy", src)
 	if pyOut, pyCode := oracleTrap(t, path); pyCode == 0 || !strings.Contains(pyOut, "TypeError") {
@@ -278,6 +284,7 @@ func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
 // it (Gap R.37's rule: a known wrong answer needs a failing check somewhere, not a comment). Neither
 // leg may exit 2.
 func TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, aotOut, oracle, gap string
 	}{
@@ -297,6 +304,7 @@ func TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_order_filed.gy", tc.src)
 			if pyOut, pyCode := oracleTrap(t, path); pyCode == 0 || !strings.Contains(pyOut, tc.oracle) {
 				t.Fatalf("the oracle's answer is not what the row records (%s):\n%s", tc.oracle, pyOut)
@@ -331,6 +339,7 @@ func TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed(t *testing.T) {
 // missing half, never through 2 — `xs[0] > [0]` (a container on the settled side) is Gap R.87's class,
 // an ordering that reaches llc with a container global in a value position.
 func TestSlotOrderOfAnUnliteralisedSlotKeepsTheRefusalExitClass(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"nested_slot_against_a_container_literal",
@@ -339,6 +348,7 @@ func TestSlotOrderOfAnUnliteralisedSlotKeepsTheRefusalExitClass(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "slot_order_refuse.gy", tc.src)
 			for _, engine := range cliEngines {
 				out := cliRun(t, engine, path)

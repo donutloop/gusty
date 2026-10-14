@@ -30,6 +30,7 @@ func compileOrSkip(t *testing.T, src string) string {
 // TestFlagExistsWhereTheCheckerCannotProveTheWrite: the branch-assigned local carries a flag; the
 // branch-and-else local does not.
 func TestFlagExistsWhereTheCheckerCannotProveTheWrite(t *testing.T) {
+	t.Parallel()
 	flagged := compileOrSkip(t, "def f(c):\n    if c:\n        x = 1\n    return x\n")
 	if !strings.Contains(flagged, "%bnd_x = alloca i8") {
 		t.Fatalf("a local assigned on one path only must carry a written-flag\n%s", flagged)
@@ -50,6 +51,7 @@ func TestFlagExistsWhereTheCheckerCannotProveTheWrite(t *testing.T) {
 // TestModuleTopLevelUsesNameError: the same mechanism, but the frame is the module's, and the class a
 // name the module does not own raises is NameError — CPython's split, which a handler matches on.
 func TestModuleTopLevelUsesNameError(t *testing.T) {
+	t.Parallel()
 	ir := compileOrSkip(t, "if 0:\n    x = 1\nprint(x)\n")
 	if !strings.Contains(ir, "%bnd_x = alloca i8") {
 		t.Fatalf("a top-level name assigned on one path only must carry a flag\n%s", ir)
@@ -63,6 +65,7 @@ func TestModuleTopLevelUsesNameError(t *testing.T) {
 // backends, matching on the class name. That is the whole point of giving UnboundLocalError a code in
 // the canonical exception table (ADR 0212's rule: a built-in trap is a typed raise).
 func TestTypedRaisesAreCatchable(t *testing.T) {
+	t.Parallel()
 	src := "def f(c):\n    if c:\n        x = 1\n    try:\n        return x\n    except UnboundLocalError:\n        return -1\n"
 	got := captureStdout(t, "def f(c):\n    if c:\n        x = 1\n    try:\n        return x\n    except UnboundLocalError:\n        return -1\n\nprint(f(False))\n")
 	if strings.TrimSpace(got) != "-1" {
@@ -81,6 +84,7 @@ func TestTypedRaisesAreCatchable(t *testing.T) {
 // from its own walk; it asks the checker. This is the unit test for that one-rule decision -- each
 // shape is listed with what the checker must say.
 func TestUnwrittenReadsIsTheCheckersAnswer(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, src string
 		inFunc    bool
@@ -99,6 +103,7 @@ func TestUnwrittenReadsIsTheCheckersAnswer(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog, err := parseProgram(tc.src)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
@@ -135,6 +140,7 @@ func TestUnwrittenReadsIsTheCheckersAnswer(t *testing.T) {
 // TestUnwrittenTrapIsNotASilentZero is the behavioural half, and the reason this exists: every shape
 // that used to print a number now refuses to answer one.
 func TestUnwrittenTrapIsNotASilentZero(t *testing.T) {
+	t.Parallel()
 	shapes := []struct{ name, src, want string }{
 		{"branch", "def f(c):\n    if c:\n        x = 1\n    return x\n\nprint(f(True))\n", "1\n"},
 		{"loop", "def f():\n    for i in [1]:\n        z = i\n    return z\n\nprint(f())\n", "1\n"},
@@ -143,6 +149,7 @@ func TestUnwrittenTrapIsNotASilentZero(t *testing.T) {
 	}
 	for _, tc := range shapes {
 		t.Run(tc.name+" (the path that does assign)", func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, tc.src)
 			if got != tc.want {
 				t.Fatalf("printed %q, want %q — the flag must not trap a read that a path did assign", got, tc.want)

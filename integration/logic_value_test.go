@@ -59,8 +59,10 @@ func logicParity() []struct{ name, src, want string } {
 // TestTheReferenceAndBothLegsPrintTheSameOperand is the parity table: one source, both legs, the same
 // bytes, no exit but 0.
 func TestTheReferenceAndBothLegsPrintTheSameOperand(t *testing.T) {
+	t.Parallel()
 	for _, tc := range logicParity() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "logic_parity.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)
@@ -87,6 +89,7 @@ func TestTheReferenceAndBothLegsPrintTheSameOperand(t *testing.T) {
 // a run-time fact and the position keeps one word, the compiled leg spends exit 1 — the capability class —
 // naming both operands and the missing word, while the reference and the reference answer.
 func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"a text bound to a name",
@@ -105,6 +108,7 @@ func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "logic_refusal.gy", tc.src)
 			// The reference's answer is the row's claim; the compiled leg owes those bytes or an honest
@@ -130,6 +134,7 @@ func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
 // TestTheParityProgramPrintsTheSameOnEveryLeg runs the corpus program itself, so a regression in one engine
 // fails even when the tables above are read as unit-only coverage.
 func TestTheParityProgramPrintsTheSameOnEveryLeg(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "and_or_answer_like_python.gy")
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "and_or_answer_like_python.gy", src)
@@ -153,6 +158,7 @@ func TestTheParityProgramPrintsTheSameOnEveryLeg(t *testing.T) {
 // any more — that program is promoted parity surface (`TestTheShortCircuitProgramPrintsTheSameOnEveryLeg`),
 // and the ledger row that pinned the compiled path evaluating it is gone with ADR 0275.
 func TestTheOwedHalvesArePinnedAsTheyMeasure(t *testing.T) {
+	t.Parallel()
 	carry := readProgram(t, "probe_and_or_shapes_the_word_carry.gy")
 	dir := t.TempDir()
 	gy2 := writeSrc(t, dir, "probe_and_or_shapes_the_word_carry.gy", carry)
@@ -165,6 +171,7 @@ func TestTheOwedHalvesArePinnedAsTheyMeasure(t *testing.T) {
 // choose is not in the program, so `boom` is printed only for the operand the test reached, the division the
 // test skipped never traps, and the operand it does reach runs exactly once (roadmap Gap R.149, ADR 0275).
 func TestTheShortCircuitProgramPrintsTheSameOnEveryLeg(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_and_or_the_test_skips.gy")
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "probe_and_or_the_test_skips.gy", src)
@@ -231,8 +238,10 @@ func shortCircuitParity() []struct{ name, src, want string } {
 // both are caught by comparing bytes with the reference, which is why the expected text is the reference's
 // and not the compiler's.
 func TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range shortCircuitParity() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "logic_shortcircuit.gy", tc.src)
 			py, ok := cpythonPlainOut(t, dir, tc.src)

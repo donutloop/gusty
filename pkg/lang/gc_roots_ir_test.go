@@ -78,6 +78,7 @@ var rootCorpus = []string{
 }
 
 func TestRootedFunctionsOpenAndCloseTheirFrame(t *testing.T) {
+	t.Parallel()
 	for _, src := range rootCorpus {
 		res, err := Compile(src)
 		if err != nil {
@@ -114,6 +115,7 @@ func TestRootedFunctionsOpenAndCloseTheirFrame(t *testing.T) {
 }
 
 func TestNoAllocaBelowTheFirstInstruction(t *testing.T) {
+	t.Parallel()
 	// A slot whose allocation is re-executed (an alloca in a loop body) gets a new
 	// address per iteration at -O0, so its root entry can never be matched and the
 	// root stack grows forever. hoistAllocas is what prevents that.
@@ -142,6 +144,7 @@ func TestNoAllocaBelowTheFirstInstruction(t *testing.T) {
 }
 
 func TestHoistAllocasIsIdempotentAndPreservesOrder(t *testing.T) {
+	t.Parallel()
 	src := "def f(n):\n    xs = [n]\n    t = 0\n    for i in range(3):\n        ys = [i]\n        t = t + xs[0] + ys[0]\n    return t\n\nprint(f(2))\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -164,6 +167,7 @@ func TestHoistAllocasIsIdempotentAndPreservesOrder(t *testing.T) {
 }
 
 func TestPureScalarModuleShipsNoRootRuntime(t *testing.T) {
+	t.Parallel()
 	// A program that never touches the heap should not pay for the collector's
 	// scaffolding: it also keeps the "no runtime in the module" assertions honest.
 	res, err := Compile("x = 1 + 2\nprint(x)\n")

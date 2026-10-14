@@ -46,6 +46,7 @@ var stringContainerCases = []struct {
 }
 
 func TestStringContainersMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range stringContainerCases {
 		gotCompiled := runCompiled(t, tc.src)
 		if gotCompiled != tc.want {
@@ -74,6 +75,7 @@ func TestStringContainersMatchPython(t *testing.T) {
 // TestStringInterningIsContentAddressed pins the property that makes string dict keys work:
 // two separate literals with the same text are the same key.
 func TestStringInterningIsContentAddressed(t *testing.T) {
+	t.Parallel()
 	src := "d = {}\nd[\"k\"] = 1\nd[\"k\"] = 2\nprint(len(d))\nprint(d[\"k\"])\n"
 	want := "1\n2\n"
 	lang.RecordedStdoutIs(t, src, want)
@@ -85,6 +87,7 @@ func TestStringInterningIsContentAddressed(t *testing.T) {
 // TestStringsOutsideContainersStillRefuse keeps the ADR 0166 rule for the cases the runtime
 // table cannot help with: a string that is not resolvable to text at compile time.
 func TestStringsOutsideContainersStillRefuse(t *testing.T) {
+	t.Parallel()
 	_, err := lang.Compile("def f(s):\n    return 0\n\nf(\"abc\")\n")
 	if err == nil {
 		t.Skip("string parameters are supported now; nothing left to refuse here")
@@ -99,6 +102,7 @@ func TestStringsOutsideContainersStillRefuse(t *testing.T) {
 // TestIntContainersStillBuild guards against the interned-string path becoming a blanket
 // change of behaviour for containers that never contained strings.
 func TestIntContainersStillBuild(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string
@@ -141,6 +145,7 @@ var containerLiteralCases = []struct {
 }
 
 func TestContainerLiteralsMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range containerLiteralCases {
 		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
@@ -176,6 +181,7 @@ var promotedContainerCases = []struct {
 }
 
 func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
+	t.Parallel()
 	for _, tc := range promotedContainerCases {
 		res, err := lang.Compile(tc.src)
 		if err != nil {
@@ -220,6 +226,7 @@ var mixedFloatCases = []struct {
 }
 
 func TestFloatElementsAppendInsteadOfRefusing(t *testing.T) {
+	t.Parallel()
 	for _, tc := range mixedFloatCases {
 		res, err := lang.Compile(tc.src)
 		if err != nil {
@@ -250,6 +257,7 @@ var mixedLiteralCases = []struct {
 }
 
 func TestMixedLiteralsPrintInsteadOfRefusing(t *testing.T) {
+	t.Parallel()
 	for _, tc := range mixedLiteralCases {
 		res, err := lang.Compile(tc.src)
 		if err != nil {
@@ -269,6 +277,7 @@ func TestMixedLiteralsPrintInsteadOfRefusing(t *testing.T) {
 }
 
 func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
+	t.Parallel()
 	for _, src := range mixedContainerCases {
 		res, err := lang.Compile(src)
 		if err == nil {
@@ -296,6 +305,7 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 // Item assignment replaces an element, so the container's kind follows the new element rather
 // than colliding with the old one: `xs = [1]` then `xs[0] = "s"` is a list holding one string.
 func TestItemAssignmentReplacesElementKind(t *testing.T) {
+	t.Parallel()
 	src := "xs = [1]\nxs[0] = \"s\"\nprint(xs)\n"
 	want := "['s']\n"
 	lang.RecordedStdoutIs(t, src, want)

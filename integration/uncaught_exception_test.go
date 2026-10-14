@@ -140,8 +140,10 @@ var uncaughtCases = []struct {
 }
 
 func TestUncaughtExceptionReportsAndFailsOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range uncaughtCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			for _, run := range []struct {
 				name string
 				fn   func(*testing.T, string) runResult
@@ -183,8 +185,10 @@ var caughtCases = []struct {
 }
 
 func TestRuntimeErrorsAreCatchableOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range caughtCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			gotI := runCompiled(t, tc.src)
 			if gotI != tc.want {
 				t.Errorf("the record leg = %q, want %q (Python's answer)", gotI, tc.want)
@@ -201,6 +205,7 @@ func TestRuntimeErrorsAreCatchableOnTheCompiledBackend(t *testing.T) {
 // program that cannot raise carries no raise state at all, so the golden IR for the
 // trivial program is untouched.
 func TestUncaughtReportIsNotEmittedForCleanPrograms(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("print(42)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -249,8 +254,10 @@ var staticallyRejectedCases = []struct {
 }
 
 func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
+	t.Parallel()
 	for _, tc := range staticallyRejectedCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			lang.RecordedStdoutIs(t, tc.src, "caught\n")
 			_, err := lang.Compile(tc.src)
 			if err == nil {
@@ -269,6 +276,7 @@ func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
 // frame per stack level; the AOT prints the raise site's own frame until the DWARF line
 // tables of L8.5 land.
 func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -298,6 +306,7 @@ func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ri := compiledRun(t, tc.src)
 			if !strings.Contains(ri.stderr, tc.wantFrame) {
 				t.Errorf("interpreter stderr must contain the frame %q, got %q", tc.wantFrame, ri.stderr)

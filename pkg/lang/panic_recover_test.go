@@ -6,6 +6,7 @@ import "testing"
 // are surfaced as a forest (not just the first), and parsing continues past
 // bad statements to collect valid ones.
 func TestPanicRecoveryForest(t *testing.T) {
+	t.Parallel()
 	src := "x = 1\nbad = \ny = 2\ndef f():\n  z =\nw = 3\n"
 	prog, err := Parse(src)
 	if err == nil {
@@ -42,6 +43,7 @@ func TestPanicRecoveryForest(t *testing.T) {
 
 // TestPanicRecoveryCleanInput verifies a clean input still parses with no error.
 func TestPanicRecoveryCleanInput(t *testing.T) {
+	t.Parallel()
 	src := "a = 1\nb = 2\nprint(a)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -55,6 +57,7 @@ func TestPanicRecoveryCleanInput(t *testing.T) {
 // TestPanicRecoveryNested verifies recovery skips out of a nested block error
 // and resumes at the next top-level statement.
 func TestPanicRecoveryNested(t *testing.T) {
+	t.Parallel()
 	src := "def f():\n  if x:\n    bad =\n  ok = 1\nnext = 2\n"
 	prog, err := Parse(src)
 	if err == nil {
@@ -92,6 +95,7 @@ func TestPanicRecoveryNested(t *testing.T) {
 // TestPanicRecoverySingleError verifies a single error is still reported as a
 // forest with one element.
 func TestPanicRecoverySingleError(t *testing.T) {
+	t.Parallel()
 	src := "x = 1\nbad =\n"
 	_, err := Parse(src)
 	if err == nil {
@@ -109,6 +113,7 @@ func TestPanicRecoverySingleError(t *testing.T) {
 // TestPanicRecoveryBadHeader verifies recovery from a bad top-level statement
 // header (not a complete block) skips to the next statement boundary.
 func TestPanicRecoveryBadHeader(t *testing.T) {
+	t.Parallel()
 	src := "def f( :\n  x = 1\ny = 2\n"
 	prog, err := Parse(src)
 	if err == nil {
@@ -135,6 +140,7 @@ func TestPanicRecoveryBadHeader(t *testing.T) {
 
 // TestPanicRecoverySingleLineBlock verifies recovery inside a single-line block.
 func TestPanicRecoverySingleLineBlock(t *testing.T) {
+	t.Parallel()
 	src := "if x: bad =\nw = 3\n"
 	prog, err := Parse(src)
 	if err == nil {
@@ -161,6 +167,7 @@ func TestPanicRecoverySingleLineBlock(t *testing.T) {
 // TestPanicRecoveryLSP verifies the LSP surfaces the parse-error forest as
 // separate diagnostics alongside semantic diagnostics.
 func TestPanicRecoveryLSP(t *testing.T) {
+	t.Parallel()
 	d := &Document{Text: "x = 1\nbad = \ny = 2\ndef f():\n  z =\nw = 3\n"}
 	d.analyze()
 	if len(d.Diags) < 2 {

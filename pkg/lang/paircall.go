@@ -335,14 +335,23 @@ type pairScan struct {
 }
 
 // pairCallSpecs is the program-wide decision: which functions take the pair across their call boundary.
-// pairClosedOut carries the closed-position set out of the one scan a Compile runs. It is written, never
-// read, by every caller but codegen's, which reads it immediately after asking for the specs.
-var pairClosedOut map[string]map[int]bool
-
+//
+// It is the one-answer form. The scan also decides which (function, parameter) positions it *closed* — the
+// ones it considered for the pair and declined — and codegen needs both, so it asks pairCallScan for the
+// pair of answers. There used to be a package variable here carrying the second answer out of the scan
+// ("written, never read, by every caller but codegen's"), which was fine while one process compiled one
+// program and is a race the moment two compiles overlap: the set codegen reads would be whichever scan
+// finished last, and a closed position read from the wrong program is a float truncated to an int word, in
+// a module that verifies and a program that answers wrongly or dies. Two return values cost nothing. (ADR 0343.)
 func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
-	pairClosedOut = nil
+	specs, _ := pairCallScan(prog)
+	return specs
+}
+
+// pairCallScan is the scan: the per-function pair specs, and the closed-position set beside them.
+func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]bool) {
 	if prog == nil {
-		return nil
+		return nil, nil
 	}
 	fds := map[string]*FuncDef{}
 	for _, st := range prog.Stmts {
@@ -358,7 +367,7 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		fds[fd.Name] = fd
 	}
 	if len(fds) == 0 {
-		return nil
+		return nil, nil
 	}
 	s := &pairScan{
 		built:   map[string]bool{},
@@ -553,7 +562,6 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 	// its int word — `y = twice(x)` / `z = twice(y)` / `return z` printed `8` for CPython's `10.0` at exit
 	// 0 this way (roadmap Gap R.164, ADR 0280). codegen asks this set before it hands a float down.
 	closed := map[string]map[int]bool{}
-	pairClosedOut = closed
 	for fnName, needs := range needsOf {
 		fd := fds[fnName]
 		if fd == nil || len(needs) == 0 || ownedByReturnRoad[fnName] {
@@ -643,9 +651,13 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		spec.returnsPair = answerable[fnName]
 	}
 	if len(specs) == 0 {
-		return nil
+		// The closed set is the scan's answer even when no function ends up needing the pair: codegen asks
+		// "did this position get closed?" independently of whether the function was paired, and the refusal
+		// for a double handed to a closed position depends on that answer being there. Dropping it together
+		// with the specs is how `z = twice(y)` printed the truncated word instead of refusing.
+		return nil, closed
 	}
-	return specs
+	return specs, closed
 }
 
 // settlePairAnswer runs the body half and the answer half together, in rounds, and reports which functions

@@ -112,8 +112,10 @@ func forwardedParity() []struct{ name, src, want string } {
 
 // TestAForwardedNumberKeepsItsKindOnEveryLeg is the parity table: one source, three legs, one answer.
 func TestAForwardedNumberKeepsItsKindOnEveryLeg(t *testing.T) {
+	t.Parallel()
 	for _, tc := range forwardedParity() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "forwarded_pair.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -136,6 +138,7 @@ func TestAForwardedNumberKeepsItsKindOnEveryLeg(t *testing.T) {
 // compiled leg printed `4` for the third, fifth and sixth lines and `3` for the seventh, all of them at
 // exit 0.
 func TestThePromotedForwardingProbePrintsCPythonEightLines(t *testing.T) {
+	t.Parallel()
 	const want = "5.0\n6\n5.0\n6\n5.0\n5.0\n3.5\n3\n"
 	src := readProgram(t, "probe_forward_a_pair_through_a_function.gy")
 	path := writeSrc(t, t.TempDir(), "probe_forward_a_pair_through_a_function.gy", src)
@@ -159,6 +162,7 @@ func TestThePromotedForwardingProbePrintsCPythonEightLines(t *testing.T) {
 // truncated answer at exit 0 for a chain the doors cannot carry, and that the reference still answers,
 // which is what makes any compiled refusal a capability gap rather than a question about the program.
 func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, refusal string }{
 		{
 			"the callee floors it",
@@ -188,6 +192,7 @@ func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "forwarded_closed.gy", tc.src)
 			// This is the compiled leg — there is only one — and CPython is the reference it is compared
 			// to. The duplicate "reference" in the old wording was the retired engine, whose leg left

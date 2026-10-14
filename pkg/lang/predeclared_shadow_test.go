@@ -23,6 +23,7 @@ func shadowDiags(t *testing.T, src string) []Diagnostic {
 
 // TestClaimingABuiltInNameBelowItsUseIsRefused is the measured divergence, made a refusal.
 func TestClaimingABuiltInNameBelowItsUseIsRefused(t *testing.T) {
+	t.Parallel()
 	src := "for i in range(2):\n    print(i * 100)\n\n\ndef range(x):\n    return x * 3\n\n\nprint(range(4))\n"
 	diags := shadowDiags(t, src)
 	var found bool
@@ -41,6 +42,7 @@ func TestClaimingABuiltInNameBelowItsUseIsRefused(t *testing.T) {
 // about a call that was perfectly typed is worse than no error at all. The analysis continues down
 // the built-in path precisely so the loop variable keeps the type it would have had.
 func TestTheRefusalIsTheOnlyDiagnostic(t *testing.T) {
+	t.Parallel()
 	src := "for i in range(2):\n    print(i * 100)\n\n\ndef range(x):\n    return x * 3\n"
 	errors, warnings := 0, 0
 	for _, d := range shadowDiags(t, src) {
@@ -59,6 +61,7 @@ func TestTheRefusalIsTheOnlyDiagnostic(t *testing.T) {
 // TestDefinitionAboveEveryUseIsClean is the positive space: claiming a built-in name is legal, and
 // the fix must not make it illegal.
 func TestDefinitionAboveEveryUseIsClean(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"range as a helper", "def range(x):\n    return x * 3\n\nprint(range(4))\n"},
 		{"print as a helper", "def print(x):\n    return x + 1\n\nz = print(2)\n"},
@@ -67,6 +70,7 @@ func TestDefinitionAboveEveryUseIsClean(t *testing.T) {
 		{"a nested def of a built-in name, called below", "def outer():\n    def len(x):\n        return 1\n    return len([1])\n\nprint(outer())\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			for _, d := range shadowDiags(t, tc.src) {
 				if d.Level == LevelError {
 					t.Errorf("%s: a program that owns a built-in name in order was refused: %v", tc.name, d)
@@ -79,6 +83,7 @@ func TestDefinitionAboveEveryUseIsClean(t *testing.T) {
 // TestMethodsDoNotClaimBuiltInNames: `Counter.range` is a method, and a method has never shadowed a
 // module name (ADR 0200) — so a class full of `range` methods must not silence the built-in loop.
 func TestMethodsDoNotClaimBuiltInNames(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def range(self, n):\n        return n * 4\n\n    def print(self, n):\n        return n\n\nfor i in range(2):\n    print(i)\n"
 	for _, d := range shadowDiags(t, src) {
 		if d.Level == LevelError {
@@ -91,6 +96,7 @@ func TestMethodsDoNotClaimBuiltInNames(t *testing.T) {
 // question is not ordered — the body runs after every module definition has executed, so both
 // backends agree there, and refusing it would be over-reach.
 func TestCallInsideAFunctionBodyIsNotRefused(t *testing.T) {
+	t.Parallel()
 	src := "def wrap(v):\n    return range(v)\n\n\ndef range(x):\n    return x * 3\n\n\nprint(wrap(5))\n"
 	for _, d := range shadowDiags(t, src) {
 		if d.Level == LevelError && strings.Contains(d.Msg, "is a built-in here") {
@@ -102,6 +108,7 @@ func TestCallInsideAFunctionBodyIsNotRefused(t *testing.T) {
 // TestTheBuiltInPathIsStillAnalysedAfterTheRefusal: reporting the ambiguity must not stop checking
 // the call's own arguments.
 func TestTheBuiltInPathIsStillAnalysedAfterTheRefusal(t *testing.T) {
+	t.Parallel()
 	src := "print(len(nope_here))\n\n\ndef len(x):\n    return 3\n"
 	diags := shadowDiags(t, src)
 	var undef, shadow bool

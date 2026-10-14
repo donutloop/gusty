@@ -3,6 +3,7 @@ package lang
 import "testing"
 
 func TestGenSum(t *testing.T) {
+	t.Parallel()
 	src := "def g():\n    yield 1\n    yield 2\n    yield 3\ns = 0\nfor x in g():\n    s = s + x\ns"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -14,6 +15,7 @@ func TestGenSum(t *testing.T) {
 }
 
 func TestListLit(t *testing.T) {
+	t.Parallel()
 	src := "a = [1, 2, 3]\ns = 0\nfor x in a:\n    s = s + x\ns"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -25,6 +27,7 @@ func TestListLit(t *testing.T) {
 }
 
 func TestLenList(t *testing.T) {
+	t.Parallel()
 	src := "a = [10, 20, 30]\nlen(a)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -36,6 +39,7 @@ func TestLenList(t *testing.T) {
 }
 
 func TestGenSetComprehensionLen(t *testing.T) {
+	t.Parallel()
 	// {x * x} for x in [1, 2, 2] dedups to {1, 4}.
 	if v, _, err := evalGolden(t, "len({x * x} for x in [1, 2, 2])"); err != nil {
 		t.Fatalf("set comprehension: %v", err)
@@ -45,6 +49,7 @@ func TestGenSetComprehensionLen(t *testing.T) {
 }
 
 func TestGenDictComprehensionLen(t *testing.T) {
+	t.Parallel()
 	// {x: x * 10} for x in [1, 2] builds a 2-entry dict.
 	if v, _, err := evalGolden(t, "len({x: x * 10} for x in [1, 2])"); err != nil {
 		t.Fatalf("dict comprehension: %v", err)
@@ -54,6 +59,7 @@ func TestGenDictComprehensionLen(t *testing.T) {
 }
 
 func TestGenDictComprehensionIndex(t *testing.T) {
+	t.Parallel()
 	// d[1] over {x: x * 10} for x in [1, 2] maps key 1 -> value 10.
 	if v, _, err := evalGolden(t, "({x: x * 10} for x in [1, 2])[1]"); err != nil {
 		t.Fatalf("dict comprehension index: %v", err)
@@ -67,6 +73,7 @@ func TestGenDictComprehensionIndex(t *testing.T) {
 }
 
 func TestGenSetComprehensionIndex(t *testing.T) {
+	t.Parallel()
 	// s[1] over {x * x} for x in [1, 2] asks the set a membership question and gets the member back.
 	// This is a documented gusty extension — CPython answers any set subscript with TypeError:
 	// 'set' object is not subscriptable, and the corpus rows that use it (programs/data_b,
@@ -86,6 +93,7 @@ func TestGenSetComprehensionIndex(t *testing.T) {
 }
 
 func TestGenMinSetLiteral(t *testing.T) {
+	t.Parallel()
 	// min over a set literal folds its elements.
 	if v, _, err := evalGolden(t, "min({1, 2, 3})"); err != nil {
 		t.Fatalf("min set: %v", err)
@@ -95,6 +103,7 @@ func TestGenMinSetLiteral(t *testing.T) {
 }
 
 func TestGenMaxSetLiteral(t *testing.T) {
+	t.Parallel()
 	// max over a set literal folds its elements.
 	if v, _, err := evalGolden(t, "max({1, 2, 3})"); err != nil {
 		t.Fatalf("max set: %v", err)
@@ -104,6 +113,7 @@ func TestGenMaxSetLiteral(t *testing.T) {
 }
 
 func TestGenLambdaInline(t *testing.T) {
+	t.Parallel()
 	// `(lambda x: int: x + 1)(5)` -> 6
 	if v, _, err := evalGolden(t, "(lambda x: int: x + 1)(5)"); err != nil {
 		t.Fatalf("inline lambda call: %v", err)
@@ -119,6 +129,7 @@ func TestGenLambdaInline(t *testing.T) {
 }
 
 func TestGenLambdaNamed(t *testing.T) {
+	t.Parallel()
 	// `f = lambda x: int: x * 2\nf(3)` -> 6
 	if v, _, err := evalGolden(t, "f = lambda x: int: x * 2\nf(3)"); err != nil {
 		t.Fatalf("named lambda: %v", err)
@@ -128,6 +139,7 @@ func TestGenLambdaNamed(t *testing.T) {
 }
 
 func TestGenStrMethod(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -140,6 +152,7 @@ func TestGenStrMethod(t *testing.T) {
 }
 
 func TestGenDictKeysValues(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -158,6 +171,7 @@ func TestGenDictKeysValues(t *testing.T) {
 }
 
 func TestGenListAppend(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -181,6 +195,7 @@ func TestGenListAppend(t *testing.T) {
 }
 
 func TestGenDictItemsLen(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -195,6 +210,7 @@ func TestGenDictItemsLen(t *testing.T) {
 }
 
 func TestGenDictMinMaxMethods(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -211,6 +227,7 @@ func TestGenDictMinMaxMethods(t *testing.T) {
 }
 
 func TestGenStrIndex(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -230,6 +247,7 @@ func TestGenStrIndex(t *testing.T) {
 }
 
 func TestGenStrSplitLen(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -244,6 +262,7 @@ func TestGenStrSplitLen(t *testing.T) {
 }
 
 func TestGenStrEq(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -260,6 +279,7 @@ func TestGenStrEq(t *testing.T) {
 }
 
 func TestGenStrBuiltinLen(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -274,6 +294,7 @@ func TestGenStrBuiltinLen(t *testing.T) {
 }
 
 func TestGenStrReplace(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -286,6 +307,7 @@ func TestGenStrReplace(t *testing.T) {
 }
 
 func TestGenStrFind(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -305,6 +327,7 @@ func TestGenStrFind(t *testing.T) {
 }
 
 func TestGenStrRfind(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -324,6 +347,7 @@ func TestGenStrRfind(t *testing.T) {
 }
 
 func TestGenStrStartswithEndswith(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -346,6 +370,7 @@ func TestGenStrStartswithEndswith(t *testing.T) {
 }
 
 func TestGenStrCount(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -365,6 +390,7 @@ func TestGenStrCount(t *testing.T) {
 }
 
 func TestGenStrCountStartEnd(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -381,6 +407,7 @@ func TestGenStrCountStartEnd(t *testing.T) {
 }
 
 func TestGenStrLstripRstrip(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -396,6 +423,7 @@ func TestGenStrLstripRstrip(t *testing.T) {
 }
 
 func TestGenStrCapitalize(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -411,6 +439,7 @@ func TestGenStrCapitalize(t *testing.T) {
 }
 
 func TestGenStrTitle(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -426,6 +455,7 @@ func TestGenStrTitle(t *testing.T) {
 }
 
 func TestGenStrSwapcase(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -441,6 +471,7 @@ func TestGenStrSwapcase(t *testing.T) {
 }
 
 func TestGenListCount(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -460,6 +491,7 @@ func TestGenListCount(t *testing.T) {
 }
 
 func TestGenStrIsdigit(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -479,6 +511,7 @@ func TestGenStrIsdigit(t *testing.T) {
 }
 
 func TestGenStrIsalpha(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -498,6 +531,7 @@ func TestGenStrIsalpha(t *testing.T) {
 }
 
 func TestGenStrIslowerIsupper(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -523,6 +557,7 @@ func TestGenStrIslowerIsupper(t *testing.T) {
 }
 
 func TestGenStrPartition(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -541,6 +576,7 @@ func TestGenStrPartition(t *testing.T) {
 }
 
 func TestGenStrIsalnum(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -560,6 +596,7 @@ func TestGenStrIsalnum(t *testing.T) {
 }
 
 func TestGenStrIsspace(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -579,6 +616,7 @@ func TestGenStrIsspace(t *testing.T) {
 }
 
 func TestGenSorted(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -613,6 +651,7 @@ func TestGenSorted(t *testing.T) {
 }
 
 func TestGenStrZfill(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -628,6 +667,7 @@ func TestGenStrZfill(t *testing.T) {
 }
 
 func TestGenStrLjustRjust(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -643,6 +683,7 @@ func TestGenStrLjustRjust(t *testing.T) {
 }
 
 func TestGenStrMethodIndex(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -659,6 +700,7 @@ func TestGenStrMethodIndex(t *testing.T) {
 }
 
 func TestGenStrRsplit(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -674,6 +716,7 @@ func TestGenStrRsplit(t *testing.T) {
 }
 
 func TestGenStrRsplitMaxsplit(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -686,6 +729,7 @@ func TestGenStrRsplitMaxsplit(t *testing.T) {
 }
 
 func TestGenStrRemoveprefixSuffix(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -704,6 +748,7 @@ func TestGenStrRemoveprefixSuffix(t *testing.T) {
 }
 
 func TestGenStrExpandtabs(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -713,6 +758,7 @@ func TestGenStrExpandtabs(t *testing.T) {
 }
 
 func TestGenStrStripChars(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -725,6 +771,7 @@ func TestGenStrStripChars(t *testing.T) {
 }
 
 func TestGenStrLstripRstripChars(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -740,6 +787,7 @@ func TestGenStrLstripRstripChars(t *testing.T) {
 }
 
 func TestGenStrSplitMaxsplit(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -755,6 +803,7 @@ func TestGenStrSplitMaxsplit(t *testing.T) {
 }
 
 func TestGenStrJoin(t *testing.T) {
+	t.Parallel()
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
@@ -770,6 +819,7 @@ func TestGenStrJoin(t *testing.T) {
 }
 
 func TestGenDictGet(t *testing.T) {
+	t.Parallel()
 	evalInt := func(src string) int64 {
 		v, _, err := evalGolden(t, src)
 		if err != nil {
@@ -793,6 +843,7 @@ func TestGenDictGet(t *testing.T) {
 }
 
 func TestGenTypedExceptions(t *testing.T) {
+	t.Parallel()
 	evalErr := func(src string) error {
 		return goldenRunError(t, src)
 	}
@@ -823,6 +874,7 @@ func TestGenTypedExceptions(t *testing.T) {
 }
 
 func TestGenGeneratorExpr(t *testing.T) {
+	t.Parallel()
 	evalList := func(src, want string) { goldenReprIs(t, src, want) }
 	// generator expression maps each element.
 	evalList("(x * 2 for x in [1, 2, 3])", "[2, 4, 6]")
@@ -833,6 +885,7 @@ func TestGenGeneratorExpr(t *testing.T) {
 }
 
 func TestGenReversed(t *testing.T) {
+	t.Parallel()
 	// These two cases used to walk the interpreter's heap to tell a string from a list of
 	// elements. What they were asking — does `reversed` reverse, and does the answer keep its
 	// type — is answerable from outside: the value the program hands back, and its type name.
@@ -844,19 +897,23 @@ func TestGenReversed(t *testing.T) {
 }
 
 func TestGenEnumerate(t *testing.T) {
+	t.Parallel()
 	goldenReprIs(t, "enumerate([10, 20, 30])", "[[0, 10], [1, 20], [2, 30]]")
 }
 
 func TestGenZip(t *testing.T) {
+	t.Parallel()
 	goldenReprIs(t, "zip([1, 2], [10, 20])", "[[1, 10], [2, 20]]")
 }
 
 func TestGenForStr(t *testing.T) {
+	t.Parallel()
 	// for x in "abc" yields each character as a string of its own.
 	goldenReprIs(t, "r = []\nfor x in \"abc\":\n    r.append(x)\nr", "['a', 'b', 'c']")
 }
 
 func TestGenIntFloat(t *testing.T) {
+	t.Parallel()
 	goldenReprIs(t, `int("42")`, "42")
 	goldenReprIs(t, "int(3.9)", "3")
 	goldenReprIs(t, `float("2.5")`, "2.5")
@@ -869,6 +926,7 @@ func TestGenIntFloat(t *testing.T) {
 }
 
 func TestWithContextManager(t *testing.T) {
+	t.Parallel()
 	src := `
 class M:
     def __enter__(self):
@@ -891,6 +949,7 @@ main()
 }
 
 func TestWithExitOnNormal(t *testing.T) {
+	t.Parallel()
 	src := `
 class M:
     def __enter__(self):
@@ -913,6 +972,7 @@ main()
 }
 
 func TestYieldFrom(t *testing.T) {
+	t.Parallel()
 	src := `
 def inner():
     yield 1
@@ -936,6 +996,7 @@ main()
 }
 
 func TestYieldFromRange(t *testing.T) {
+	t.Parallel()
 	src := `
 def outer():
     yield 10

@@ -20,6 +20,7 @@ import (
 // TestAPairElementAnswersThroughTheCLI is the answering half: each row runs the same source through the
 // reference and through the CLI, and the two have to agree line for line.
 func TestAPairElementAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([{"a": "x"}["a"], 2])`,
 		`print([["a"][0], 2])`,
@@ -36,6 +37,7 @@ func TestAPairElementAnswersThroughTheCLI(t *testing.T) {
 		`print([["a", "b"][-1], 1])`,
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", src)
 			if code == 2 {
@@ -55,6 +57,7 @@ func TestAPairElementAnswersThroughTheCLI(t *testing.T) {
 // and by the sentence on stderr — and exit 2, the code the contract reserves for a compiler bug, is
 // forbidden on every one of them (ADR 0006, ADR 0214).
 func TestATrapInsideALiteralElementExitsAsATrapThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src      string
 		contains string
@@ -65,6 +68,7 @@ func TestATrapInsideALiteralElementExitsAsATrapThroughTheCLI(t *testing.T) {
 		{"xs = [1, 2]\nprint([xs[0][0], 1])", "TypeError: 'int' object is not subscriptable"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
@@ -92,6 +96,7 @@ func TestATrapInsideALiteralElementExitsAsATrapThroughTheCLI(t *testing.T) {
 // emits a constant, allocates nothing and asks none of the object doors — the negative control beside the
 // rows that now open them (ADR 0249's gate-and-door rule, asserted where a reader can see the IR).
 func TestTheFoldRoadCarriesNoPairDoorThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{`print([[1, 2][0], 3])`, `print([1, 2][0])`, `print([{1: 2}[1], 3])`} {
 		_, stderr, code := cliStreams(t, "--eval", src)
 		if code != 0 {
@@ -132,6 +137,7 @@ func cliMainBody(ir string) string {
 
 // The whole matrix as one program, line for line against CPython.
 func TestThePairElementProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/pair_element_read.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -163,6 +169,7 @@ func TestThePairElementProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 }
 
 func TestThePairElementProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

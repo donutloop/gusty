@@ -10483,3 +10483,79 @@ describe themselves" bits (`mixedLists`/`mixedDicts`/`mixedSets`) and eight elem
 - **`go test`'s 10-minute default is not enough for this suite, and two runs in parallel make it worse.**
   Both `integration` and `pkg/lang` panicked at `test timed out after 10m0s` when a background full run
   overlapped a targeted one. Long runs get `-timeout 40m`, and one full suite runs at a time.
+
+## The suite was serial because it shared a process, so the process stopped being shared (ADR 0343; Gap R.258 filed)
+
+**Feature (harness / test execution)**: `make test` was **11 m 43 s** for 2,246 top-level cases and 646 subtests on
+a 20-core box, and `tools/testshards`' own header explained why no case dared overlap another: the runner took
+fd 1 and fd 2 with `dup2` around a program it `dlopen`ed into the test process. ADR 0343 moved that state out
+instead of working around it. The same tree now runs in **about 1 m 40 s**.
+
+- **The reason a suite is serial is a list of facts, not a mood.** Before touching anything the four kinds of
+  shared state were written down: (1) the program ran *inside* the test process (`captureFD`'s fd surgery,
+  `dlopen`/`dlmopen`, one `@heap` and one intern table per process); (2) per-run facts were process facts
+  (`SetStdlibDir`, `SetGCReport`, the resolver's global stdlib root and `os.Getwd()`); (3) package-level caches
+  with no lock (`bodyBindingCache`, `pairClosedOut`, `recmerge`'s retargeted `recordPath`); (4) cases that
+  genuinely own the process (`t.Setenv`, toolchain-command overrides, the in-process entry). Each got its own
+  answer — child process, per-run option, mutex or return value, `//parify:serial` marker — rather than one
+  blanket "don't parallelise". A rationale you cannot enumerate is a rationale you cannot retire.
+- **Running the program in a child is the whole fix, and it is cheap.** Link to an executable, `cmd.Start`,
+  collect two pipes, honour the tool budget with a context. The in-process path stays for the one case that
+  exists to test it (`JITOptions{InProcess: true}`), and `linkSOOrExecutable` keeps the shared-object shape that
+  path needs (`-Wl,-u,pyre_main`, no `-e main`, no `--gc-sections`) — a `.so` has no entry point of its own, and
+  `--gc-sections` deletes the global the child would call. A death by signal is now reported as the compiler's
+  bug in ADR 0302's own words ("this is the artifact, not the program") instead of being absorbed.
+- **A serial suite is a coverage hole, and this one swallowed a `SIGSEGV`.** `x = sorted([3, 1, 2], reverse=True)`
+  followed by `x` dies in `@rt_alloc`: the binding writes the *tag* half of a (payload, tag) pair into the one-word
+  slot that should hold the heap handle, so the next allocation reads its index back as `0xffff`. Under the old
+  in-process engine the crash came back as an empty answer and the case continued. The moment cases could overlap
+  it became a drift divergence with a name. Filed as **Gap R.258** with the record's answer beside the compiled
+  one, and the crash reproduces standalone through `--file` and `--build`, so nothing about the runner caused it.
+- **`t.Parallel()` is a claim, not a witness.** The first version of `tools/parify` only refused to *insert* into
+  unsafe bodies; a case that already called `t.Parallel()` was reported "already marked" and skipped. The v2 rule
+  is that an existing call is a claim the tool must be able to falsify: the same walk runs, and a case that says
+  parallel while reaching process state is a `-check` **failure**. Both directions are asserted by
+  `TestACaseThatSaysParallelAndTakesTheProcessAnywayIsAFailure` — violation must flag with the reason, and the
+  clean case must not, so "the marker is there" can never be what makes a check pass.
+- **Analyse the package, edit only the tests.** `recordFile` originally scanned just `_test.go`, so a case that
+  assigned `recordPath` — declared in `main.go`, not in a test file — looked clean. The tool now parses every
+  `.go` file for package variables and helper bodies, and rewrites only test files. Same lesson one level down:
+  a callee's body must be read with the *locals of the function being read*, or a `slots := map[string]string{}`
+  inside a codegen helper is reported as writing the tool governor's `slots chan struct{}`, and every case that
+  compiles anything is refused. Scope-blind name matching produces an analysis that is confidently wrong.
+- **Two idioms are safe and had to be believed: `sync.Once` bodies and mutex-guarded spans.** Refusing package
+  writes outright would have serialised every lazy cache and every ledger in the tree (`gapLedger`, `debtSeen`,
+  `ledger` are all written under a mutex). `onceGuardedLits` marks the closure handed to `.Do(...)`; `lockIntervals`
+  reads `Lock/Unlock`, `RLock/RUnlock` and `defer Unlock` (a deferred release holds the span to the end of the
+  body), and a write inside an acquired span is not a race. The unit test that pins it is a ledger with a real
+  mutex — minus the `mu.Lock()`, which must flip it back to serial.
+- **Tier the process-wide acts by *who reaches for them*.** `dlopenRun` is in the runner's call graph — every
+  compiled run passes through `JITWithOptions`, which contains a branch that calls it. Refusing anything that can
+  reach it refused 155 cases for a branch they never take; refusing the case that walks to it **through its own
+  test-file helpers** is the rule that means something. Hence two tables: `knownUnsafe` (followed everywhere) and
+  `knownInTestCode` (followed only through functions defined in a `_test.go` file).
+- **A rewrite tool that can produce unparsable Go is worse than no tool.** Insertion into one-line bodies
+  (`if err != nil { t.Fatal(...) }`, `for ... { break }`, a closure on one line) needs a self-delimiting statement,
+  and every generated file is re-parsed and gofmt-checked before it is written — a refusal to write, not a broken
+  tree. `TestInsertionLandsInsideTheBrace` and `TestTheShapesThatBrokeTheFirstVersion` are the regression set, and
+  the tool is idempotent so a second pass is a no-op.
+- **The guard runs the documented command, not a library.** `integration/parallelism_guard_test.go` shells out to
+  `go run ./tools/parify -check -quiet <patterns>` so the thing in `docs/operations.md` is the thing that reddens
+  the build, and the failure quotes the census line (`2878 parallel, 2 serial, 12 marked serial`) rather than
+  swallowing it. An off-tree analysis library would be a second source of truth with no user.
+- **Shared fixtures are shared state with better names.** Two rows of `TestBuiltArtifactRunsForReal` are both
+  labelled `simple`, and `writeSrc` wrote both programs to `dir/simple.gy` — one row ran the other's source and
+  passed because both answers happened to be right. Every table row now gets its own leaf (`caseLeaf`: sanitized
+  name + hash). A table is not a set of cases; it is a set of cases *and* a filesystem namespace.
+- **A ledger row pinned to bytes that were never stable is a coin flip.** The unbound-`match` value-pattern row
+  prints an object address; the compiled address is not the reference's. `unstable: true` says "re-measure the
+  *shape*" (does it answer at all, does it keep its trap class), which is what that row can honestly claim.
+- **Refactoring a package variable into a return value can silently drop half an answer.** Lifting
+  `pairClosedOut` into `pairCallScan`'s second result returned `nil, nil` on the "no specs" exit — and codegen
+  asks the closed-position question *independently* of whether the program ended up paired.
+  `TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses` failed within seconds (`z = twice(y)` printed the
+  truncated word `8` instead of refusing), and `TestTheClosedPositionSetSurvivesAnEmptySpecMap` now pins both
+  halves — with its teeth checked by reverting the fix and watching that row fail.
+- **`go test`'s ordering note is a fact about the harness**: parallel tests run *beside* the serial ones, not
+  after them, so marking the offenders serial does not protect them. That is why the answer had to be removing
+  the sharing, not scheduling around it.

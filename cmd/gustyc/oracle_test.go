@@ -29,6 +29,7 @@ type oraclePayload struct {
 }
 
 func TestCLIOracleReportsBothLegs(t *testing.T) {
+	t.Parallel()
 	out, code := benchCLI(t, "--json", "--oracle", "print(1 + 1)\n")
 	if code != exitOK {
 		t.Fatalf("--oracle on a conformant program: exit = %d, want 0\n%s", code, out)
@@ -64,6 +65,7 @@ func TestCLIOracleReportsBothLegs(t *testing.T) {
 }
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
+	t.Parallel()
 	// A bool handed to a function prints 1 on the compiled backend and True in CPython (roadmap Gap
 	// R.112): the program is valid, it ran, and the answer is wrong. That class is exit 6 — not a
 	// compile error (1) and not a crash (3). This fixture used to be `print([True, 1])`, which stopped
@@ -97,6 +99,7 @@ func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 }
 
 func TestCLIOracleHasNoVerdictWhenPythonCannotRunTheSource(t *testing.T) {
+	t.Parallel()
 	// `await` outside a coroutine is gusty surface, not Python's: there is no third
 	// opinion, so the honest answer is "no verdict" (exit 7), never success.
 	src := "async def f():\n    return 1\n\nprint(await f())\n"
@@ -120,6 +123,7 @@ func TestCLIOracleHasNoVerdictWhenPythonCannotRunTheSource(t *testing.T) {
 }
 
 func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
+	t.Parallel()
 	// This test used to drive `print([1, 2, 3][-1])`, which panicked in codegen; ADR 0210 fixed
 	// that shape, so the fixture is a program whose compiled leg still fails while the
 	// interpreter and CPython answer — iterating a string computed at run time (Gap R.16).
@@ -152,6 +156,7 @@ func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
 }
 
 func TestCLIOracleUsageErrors(t *testing.T) {
+	t.Parallel()
 	// --oracle with an unreadable file is a usage error (4), not a compile error (1).
 	if _, code := benchCLI(t, "--oracle-file", "does/not/exist.gy"); code != exitUsage {
 		t.Errorf("--oracle-file on a missing file: exit = %d, want %d", code, exitUsage)

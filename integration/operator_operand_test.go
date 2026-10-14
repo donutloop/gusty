@@ -70,8 +70,10 @@ var operandTrapCases = []struct {
 // is missing named — the rule in compiled_or_refuses_test.go, which is what replaced the second
 // backend for rows like this. Exit 0, exit 2, and a mute refusal all fail here.
 func TestOperatorTrapMessagesMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range operandTrapCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// The record speaks first. Where the retired engine's answer for this program already
 			// disagrees with the compiled backend, that mismatch is a row in the drift ledger with a
 			// roadmap owner — the mechanism the ~3,000 golden-backed assertions run on — and this case
@@ -116,6 +118,7 @@ func TestOperatorTrapMessagesMatchCPython(t *testing.T) {
 // `programs/sequence_ops.gy` is the positive side: the operand kinds the language supports compute
 // the right values. Parity here is byte-for-byte against CPython, not "the compiled backend agrees".
 func TestSequenceOperationsMatchCPython(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "sequence_ops.gy")
 	got := runCompiled(t, src)
 	want, wantErr, perr := lang.PythonRun(src)
@@ -131,6 +134,7 @@ func TestSequenceOperationsMatchCPython(t *testing.T) {
 // time, fail the module verifier (the known compiler bug, roadmap Gap R.33), or run and print
 // CPython's answer. It may not print something else.
 func TestCompiledSequenceOpsNeverAnswerWrong(t *testing.T) {
+	t.Parallel()
 	shapes := []struct {
 		name string
 		src  string
@@ -170,6 +174,7 @@ func TestCompiledSequenceOpsNeverAnswerWrong(t *testing.T) {
 // values whose static type it cannot pin, so `1 + None` answers 1 and exits 0. When that starts
 // raising, delete this test and close the gap.
 func TestCompiledNoneOperandIsStillAGap(t *testing.T) {
+	t.Parallel()
 	out, err := runAOTWithTimeout(t, "x = None\nprint(1 + x)\n", 120*time.Second)
 	if err != nil {
 		return // refusing is acceptable too

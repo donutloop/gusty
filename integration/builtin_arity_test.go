@@ -12,6 +12,7 @@ import (
 )
 
 func TestBuiltinWithNoArgumentAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Constructors: the reference answers, so the compiled path must too.
 	rows := []struct {
@@ -33,6 +34,7 @@ func TestBuiltinWithNoArgumentAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")
@@ -58,6 +60,7 @@ func TestBuiltinWithNoArgumentAtTheCLI(t *testing.T) {
 }
 
 func TestBuiltinArityTrapAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -73,6 +76,7 @@ func TestBuiltinArityTrapAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			// The reference must raise too, or the row is describing the wrong program.
 			pyOut, pyOK := cpythonPlainOut(t, dir, r.src)
 			if !pyOK {
@@ -114,11 +118,13 @@ func TestBuiltinArityTrapAtTheCLI(t *testing.T) {
 // TestBuiltinWithNoArgumentNeverExitsTwo is the sweep-in-one-test version of the same contract, over every
 // no-argument spelling rather than the ones that happened to be reported.
 func TestBuiltinWithNoArgumentNeverExitsTwo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	calls := []string{"int", "float", "bool", "str", "repr", "ord", "chr", "abs", "len", "hex", "oct", "bin", "type", "min", "max", "round", "input", "print", "list", "dict", "set"}
 	for _, name := range calls {
 		name := name
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			src := "print(" + name + "())\n"
 			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "noarg", src)

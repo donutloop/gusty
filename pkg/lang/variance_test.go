@@ -52,6 +52,7 @@ class Rock:
 // a differently-typed container of the same shape is rejected, and the
 // diagnostic names the rule with its stable code.
 func TestVarianceListInvariant(t *testing.T) {
+	t.Parallel()
 	if assignable(TList(TStr()), TList(TInt())) {
 		t.Errorf("list[str] must not be assignable to list[int] (list[T] is invariant)")
 	}
@@ -87,6 +88,7 @@ func TestVarianceListInvariant(t *testing.T) {
 // COVARIANT: a list of a subclass may be read where the base is expected, but a
 // list of the base may not be read where the subclass is expected.
 func TestVarianceSequenceCovariant(t *testing.T) {
+	t.Parallel()
 	ci := NewClassIndex()
 	ci.Declare("Animal", nil)
 	ci.Declare("Dog", []string{"Animal"})
@@ -124,6 +126,7 @@ z = count_animals(animals)
 // in its parameters and COVARIANT in its return — the classic gotcha, and the
 // headline "gusty check reports contravariant misuse" behaviour.
 func TestVarianceCallableContravariant(t *testing.T) {
+	t.Parallel()
 	ci := NewClassIndex()
 	ci.Declare("Animal", nil)
 	ci.Declare("Dog", []string{"Animal"})
@@ -188,6 +191,7 @@ z = use(any_animal)
 // itself or a subclass flows to a class position, and the class hierarchy is
 // visible even when the annotation is used before the subclass declaration.
 func TestVarianceClassNominal(t *testing.T) {
+	t.Parallel()
 	ci := NewClassIndex()
 	ci.Declare("Animal", nil)
 	ci.Declare("Dog", []string{"Animal"})
@@ -222,6 +226,7 @@ func TestVarianceClassNominal(t *testing.T) {
 
 // TestVarianceTuple proves tuples are covariant elementwise but fixed in arity.
 func TestVarianceTuple(t *testing.T) {
+	t.Parallel()
 	ci := NewClassIndex()
 	ci.Declare("Animal", nil)
 	ci.Declare("Dog", []string{"Animal"})
@@ -248,6 +253,7 @@ func TestVarianceTuple(t *testing.T) {
 // widen its element type to the destination (mypy-style contextual inference),
 // while a genuinely wrong element is still rejected.
 func TestVarianceFreshLiteralIsCovariant(t *testing.T) {
+	t.Parallel()
 	good := analyzeSrc(t, "x: list[int | str] = [1]\nprint(x)\n")
 	for _, d := range good {
 		if d.Level == LevelError {
@@ -273,6 +279,7 @@ func TestVarianceFreshLiteralIsCovariant(t *testing.T) {
 // TestVariancePredeclaredClasses proves a class may be referenced by an
 // annotation before it appears in the file (the hierarchy is a pre-pass).
 func TestVariancePredeclaredClasses(t *testing.T) {
+	t.Parallel()
 	diags := analyzeSrc(t, "def feed(a: Animal) -> int:\n    return a.speak()\nz = feed(Dog())\nclass Animal:\n    def speak(self):\n        return 1\nclass Dog(Animal):\n    def speak(self):\n        return 2\n")
 	for _, d := range diags {
 		if d.Level == LevelError {
@@ -285,6 +292,7 @@ func TestVariancePredeclaredClasses(t *testing.T) {
 // surface behind `gustyc --variance`: valid JSON, one rule per constructor, each
 // with a declared variance and a stable diagnostic code.
 func TestVarianceTableIsMachineReadable(t *testing.T) {
+	t.Parallel()
 	doc, err := VarianceJSON()
 	if err != nil {
 		t.Fatalf("variance json: %v", err)
@@ -340,6 +348,7 @@ func TestVarianceTableIsMachineReadable(t *testing.T) {
 // class annotation for the real class and its subclasses, and rejects a
 // mismatched class (the runtime half of the same rule).
 func TestVarianceRuntimeNominalCheck(t *testing.T) {
+	t.Parallel()
 	src := classHierarchy + "def feed(a: Animal) -> int:\n    return a.speak()\nprint(feed(Puppy()))\n"
 	out, err := runGoldenStdout(t, src)
 	if err != nil {
@@ -382,6 +391,7 @@ func TestVarianceRuntimeNominalCheck(t *testing.T) {
 // diagnostic code the checker can emit is declared in the machine-readable
 // --schema document, and the schema declares no code that cannot be emitted.
 func TestVarianceCodesMatchTheSchema(t *testing.T) {
+	t.Parallel()
 	codes := []string{
 		CodeTypeMismatch, CodeVarianceInvariant, CodeVarianceCovariant,
 		CodeVarianceContravariant, CodeVarianceNominal, CodeCallableArity, CodeUnionMembers,
@@ -420,6 +430,7 @@ func TestVarianceCodesMatchTheSchema(t *testing.T) {
 // type arguments: Same() must compare class names, otherwise list[Dog] would
 // sneak past the list[T] invariance check.
 func TestVarianceClassContainers(t *testing.T) {
+	t.Parallel()
 	ci := NewClassIndex()
 	ci.Declare("Animal", nil)
 	ci.Declare("Dog", []string{"Animal"})
@@ -453,6 +464,7 @@ z = take(dogs)
 // an LSP diagnostic exposes the stable rule code and folds the checker's
 // suggestion into the message.
 func TestLSPCarriesVarianceCodes(t *testing.T) {
+	t.Parallel()
 	diags := analyzeSrc(t, "def take(xs: list[int]) -> int:\n    return len(xs)\nds: list[str] = [\"a\"]\nz = take(ds)\n")
 	found := false
 	for _, d := range diags {
@@ -479,6 +491,7 @@ func TestLSPCarriesVarianceCodes(t *testing.T) {
 // TestVarianceDoesNotBreakUntypedCode is the gradual-typing guardrail: code with
 // no annotations at all must keep producing zero errors.
 func TestVarianceDoesNotBreakUntypedCode(t *testing.T) {
+	t.Parallel()
 	src := `
 class Animal:
     def speak(self):

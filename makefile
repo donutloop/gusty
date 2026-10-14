@@ -9,6 +9,12 @@
 # partition comes from `go test -list`, every case runs exactly once, and each case asserts what it
 # always asserted.
 #
+# Since ADR 0343 the cases themselves run beside each other: `make testparallel` is the whole suite with
+# `t.Parallel()` honoured, about 1m40s on 20 cores against 11m43s serial. A compiled program runs as a child
+# process, so two cases cannot print into each other's pipes or share a heap; `make parallelism` is the guard
+# (tools/parify -check) that fails a case claiming parallelism while its body reaches process state, and the
+# cases that legitimately own the process carry a `//parify:serial <reason>` marker.
+#
 # `make test` remains the plain serial command, and it is the one to use for the modes that write
 # per-run artifacts (GUSTY_GOLDEN_UPDATE rewriting the drift ledger, GUSTY_GOLDEN_MISSING collecting
 # sources the record does not cover): N shards would each write their own subset over the file.
@@ -16,6 +22,7 @@
 # `test` runs with -count=1. Half the suite reads files outside its own package (docs/*.md, roadmap.md,
 # integration/programs/*.gy) and those are not in `go test`'s cache key, so on a warm cache a doc edit can be
 # certified by a run that never opened the file it changed — which is the opposite of what a guard is for.
+# Every target here keeps the flag for the same reason.
 testshards:
 	go run ./tools/testshards -tags llvm20 ./pkg/... ./cmd/... ./tools/... ./integration/...
 
@@ -25,6 +32,15 @@ showshards:
 
 test:
 	go test -tags=llvm20 -count=1 ./...
+
+# The suite with its cases overlapping (ADR 0343). PARALLEL=N overrides the fan-out.
+PARALLEL ?= $(shell nproc 2>/dev/null || echo 8)
+testparallel:
+	go test -tags=llvm20 -count=1 -parallel $(PARALLEL) -timeout 90m ./...
+
+# The parallelism guard, on its own: the same command the suite runs internally.
+parallelism:
+	go run ./tools/parify -check ./pkg/... ./cmd/... ./integration/... ./tools/...
 
 build:
 	go build -tags=llvm20 ./...
@@ -37,7 +53,7 @@ SOURCES := $(wildcard $(SOURCEDIR)/*.ll)
 OBJECTS := $(patsubst %.ll,%.o,$(SOURCES))
 EXECUTABLES := $(patsubst %.ll,%,$(SOURCES))
 
-.PHONY: all clean
+.PHONY: all clean test testparallel testshards showshards parallelism build
 
 all: $(EXECUTABLES)
 

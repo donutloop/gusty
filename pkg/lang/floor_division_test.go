@@ -41,6 +41,7 @@ func goFloorMod(a, b int64) int64 {
 }
 
 func TestFloorDivisionAndModuloSignGrid(t *testing.T) {
+	t.Parallel()
 	var src strings.Builder
 	var want strings.Builder
 	for _, a := range floorDividends {
@@ -61,6 +62,7 @@ func TestFloorDivisionAndModuloSignGrid(t *testing.T) {
 // self-consistent, so testing `//` and `%` against tables that were each written from the wrong
 // answer still passes. This cannot.
 func TestFloorIdentityHoldsForEverySign(t *testing.T) {
+	t.Parallel()
 	for _, a := range floorDividends {
 		for _, b := range floorDivisors {
 			src := "q = " + itoa64(a) + " // " + itoa64(b) + "\nr = " + itoa64(a) + " % " + itoa64(b) +
@@ -77,6 +79,7 @@ func TestFloorIdentityHoldsForEverySign(t *testing.T) {
 }
 
 func TestFloorModuloOnFloatsCarriesTheDivisorSign(t *testing.T) {
+	t.Parallel()
 	var src, want strings.Builder
 	for _, a := range floorFloatCases {
 		for _, b := range floorFloatDivis {
@@ -96,6 +99,7 @@ func TestFloorModuloOnFloatsCarriesTheDivisorSign(t *testing.T) {
 // divisor's sign, so 7.5 % -0.5 is -0.0 and prints as such. fmod gives the dividend's sign, which
 // renders as a different number.
 func TestExactFloatRemainderKeepsTheDivisorsSign(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`print(7.5 % -0.5)`, "-0.0\n"},
 		{`print(-7.5 % 0.5)`, "0.0\n"},
@@ -118,6 +122,7 @@ func TestExactFloatRemainderKeepsTheDivisorsSign(t *testing.T) {
 // themselves: a future "simplification" that drops the select and keeps the raw srem fails here
 // even when the behaviour tests were written from the emitted IR.
 func TestEmittedFloorCorrectionsAreInTheModule(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string

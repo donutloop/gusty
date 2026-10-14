@@ -33,6 +33,7 @@ import (
 // output — the integration twin in integration/math_names_test.go runs the same source with
 // `from math import floor, ceil, sqrt` prefixed and fails this file's expectation if it differs.
 func TestTheWholeNumberBuiltinsAnswerWholeNumbers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the pair the roadmap row names as its definition of done.
 		{"the row's own answer", "print(floor(3.7))\n", "3\n"},
@@ -83,6 +84,7 @@ func TestTheWholeNumberBuiltinsAnswerWholeNumbers(t *testing.T) {
 		{"a square root returned across a call boundary", "def r(v):\n    return sqrt(v)\n\nprint(r(9))\n", "3.0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -103,6 +105,7 @@ func TestTheWholeNumberBuiltinsAnswerWholeNumbers(t *testing.T) {
 // none of them is a refusal to build the program (ADR 0166), a silent `0.0`, or a `nan` printed and
 // the program carried on.
 func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a negative constant under sqrt", "print(sqrt(-1))\n", "ValueError: math domain error"},
 		{"a negative in a name under sqrt", "x = -1.0\nprint(sqrt(x))\n", "ValueError: math domain error"},
@@ -116,6 +119,7 @@ func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
 		{"a set under ceil", "print(ceil({1}))\n", "TypeError: must be real number, not set"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := trapRun(t, tc.src)
 			if err == nil {
 				t.Fatalf("the interpreter answered where the reference raises: %q", tc.src)
@@ -146,6 +150,7 @@ func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
 		{"the kind caught", "try:\n    print(floor(\"a\"))\nexcept TypeError:\n    print(\"caught\")\n", "TypeError", "caught\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: the %s did not reach its except, printed %q", tc.class, out)
 			}
@@ -167,6 +172,7 @@ func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
 		{"no argument to ceil", "print(ceil())\n", "ceil expects 1 argument, none given"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := Compile(tc.src); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("compiled: err = %v, want it to say %q", err, tc.want)
 			}
@@ -182,6 +188,7 @@ func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
 // a rendering decision: the answer has to be computed and carried as an i32, or the printer is being
 // handed a double and is right to print `3.0`.
 func TestTheWholeNumberAnswerIsEmittedAsOne(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = 3.7\nprint(floor(x), ceil(x))\n")
 	if err != nil {
 		t.Fatalf("the runtime whole-number builtins were refused: %v", err)
@@ -233,6 +240,7 @@ func TestTheWholeNumberAnswerIsEmittedAsOne(t *testing.T) {
 // way: the two answers that do not exist (`NaN`, an infinity), and the boundary of the word the
 // compiled backend carries the answer in.
 func TestTheWholeNumberRuleIsTheOnesTheReferenceUses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		f    float64
@@ -307,6 +315,7 @@ func exnText(err error) string {
 // doubles has no kind for the builtin to follow at all (Gap R.130). Neither is refused, because both
 // print something today and a refusal would retire them for a message.
 func TestTheWholeNumberBeyondTheWordIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, compiledWant, aotWant string
 	}{
@@ -332,6 +341,7 @@ func TestTheWholeNumberBeyondTheWordIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); !strings.Contains(out, tc.compiledWant) {
 				t.Errorf("the record leg: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", out, tc.compiledWant)
 			}
@@ -359,6 +369,7 @@ func TestTheWholeNumberBeyondTheWordIsFiledNotFixed(t *testing.T) {
 // Both routes are pinned here because one fix covers both, and because a route discovered by accident
 // deserves the same net as the one the row was about.
 func TestANonFiniteConstantIsWrittenInTheSpellingTheParserTakes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want, wantIR string
 	}{
@@ -387,6 +398,7 @@ func TestANonFiniteConstantIsWrittenInTheSpellingTheParserTakes(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the reference prints this program and we refused it: %v", err)

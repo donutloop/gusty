@@ -40,6 +40,7 @@ const unrelatedText = "w = []\nw.append(\"a text\")\n"
 // text beside a container holding numbers, and the arithmetic over the numbers' slots answering. Every row
 // is the reference's own output, and every row used to be a refusal at exit 1.
 func TestTheNumberDoorIsKeyedByTheContainerTheStoreWrites(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a slot two levels down, multiplied", unrelatedText + "nested = []\nnested.append([7, 8])\nprint(nested[0][0] * 2)\n", "14\n"},
 		{"the answer bound and printed as a list", unrelatedText + "nested = []\nnested.append([7, 8])\nd = nested[0][0] * 2\nprint([d])\n", "[14]\n"},
@@ -53,6 +54,7 @@ func TestTheNumberDoorIsKeyedByTheContainerTheStoreWrites(t *testing.T) {
 		{"two text containers and one numeric one", "w = []\nw.append(\"a text\")\nxs = []\nxs.append([7, 8])\nys = []\nys.append(\"more text\")\nprint(xs[0][0] + 1)\n", "8\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -69,6 +71,7 @@ func TestTheNumberDoorIsKeyedByTheContainerTheStoreWrites(t *testing.T) {
 // stops crossing an alias fails a decision row rather than turning a program into a wrong answer. Each
 // row names the container the read walks and whether the door may open for it.
 func TestTheBlockTravelsWithTheObjectAndNotTheName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		src    string
@@ -153,6 +156,7 @@ func TestTheBlockTravelsWithTheObjectAndNotTheName(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog, err := parseProgram(tc.src)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
@@ -171,6 +175,7 @@ func TestTheBlockTravelsWithTheObjectAndNotTheName(t *testing.T) {
 // reddens. Dropping the alias closure has to close the door on nothing, so the block would stop travelling
 // and the alias rows would answer where the reference builds a text.
 func TestTheAliasGuardCanFail(t *testing.T) {
+	t.Parallel()
 	src := "xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[0][0] + 1)\n"
 	prog, err := parseProgram(src)
 	if err != nil {
@@ -194,6 +199,7 @@ func TestTheAliasGuardCanFail(t *testing.T) {
 // reference would answer a joined text or a repeated container, and it says so in words. Exit 2 is the
 // contract's compiler-bug code and never an answer here (ADR 0166).
 func TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"text stored in the container the read walks",
@@ -212,6 +218,7 @@ func TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("the door opened for a program the reference answers with a text: %s", tc.src)
@@ -232,6 +239,7 @@ func TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText(t *testing.T) {
 // and its raise formatter (the ADR 0173/0192 rule — a referenced internal function never emitted is the
 // module `llc` rejects).
 func TestTheNumberDoorIsCarriedOnlyByTheProgramThatAsksIt(t *testing.T) {
+	t.Parallel()
 	opened := slotIR(t, unrelatedText+"nested = []\nnested.append([7, 8])\nprint(nested[0][0] + 1)\n")
 	for _, want := range []string{"@rt_num_arith", "@rt_lift_num", "@rt_print_mixed_value"} {
 		if !strings.Contains(opened, want) {

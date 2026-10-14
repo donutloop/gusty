@@ -12,6 +12,7 @@ import (
 )
 
 func TestComparisonChainsAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -36,6 +37,7 @@ func TestComparisonChainsAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")
@@ -63,6 +65,7 @@ func TestComparisonChainsAtTheCLI(t *testing.T) {
 // TestTheMiddleOperandOfAChainRunsOnceAtTheCLI asserts L12.1's requirement through the shipped binary.
 // An effectful middle operand counts itself; a chain must count it once.
 func TestTheMiddleOperandOfAChainRunsOnceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := "def g():\n    print(\"evaluated\")\n\n    return 5\n\nprint(1 < g() < 10)\n"
 	want, ok := cpythonPlainOut(t, dir, src)

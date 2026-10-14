@@ -26,6 +26,7 @@ func paramOrderDiags(t *testing.T, src string) []Diagnostic {
 // TestDefaultInAnyPositionIsAccepted is the rule stated positively: a default marks a parameter that
 // may be omitted, and nothing about the parameters around it.
 func TestDefaultInAnyPositionIsAccepted(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"default first", "def f(a=1, b=2):\n    return a + b\n\nz = f(3, 4)\n"},
 		{"default in the middle", "def f(a, b=1, c):\n    return a + b + c\n\nz = f(1, 2, 3)\n"},
@@ -34,6 +35,7 @@ func TestDefaultInAnyPositionIsAccepted(t *testing.T) {
 		{"a method with a default in the middle", "class C:\n    def m(self, a, b=1, c):\n        return a + b + c\n\nz = C().m(1, 2, 3)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			for _, d := range paramOrderDiags(t, tc.src) {
 				if d.Level == LevelError {
 					t.Errorf("%s: a signature with a default in an unusual position was refused: %v", tc.name, d)
@@ -47,6 +49,7 @@ func TestDefaultInAnyPositionIsAccepted(t *testing.T) {
 // call that would be illegal to *define* in Python is checked, here, exactly like any other call — and
 // a call that really does leave a parameter unfilled is still caught (Gap R.10).
 func TestBothBindingFormsFillEveryParameter(t *testing.T) {
+	t.Parallel()
 	diags := paramOrderDiags(t, "def f(a, b=1, c):\n    return a + b + c\n\nz = f(1, b=2, c=3)\n")
 	for _, d := range diags {
 		if d.Level == LevelError {
@@ -80,6 +83,7 @@ func TestBothBindingFormsFillEveryParameter(t *testing.T) {
 // TestDefaultIsNotRequiredToBeLastNearAnnotations too: an annotated parameter after a defaulted one is
 // the same shape, and its checks must still run.
 func TestDefaultIsNotRequiredToBeLastNearAnnotations(t *testing.T) {
+	t.Parallel()
 	diags := paramOrderDiags(t, "def f(a, b=1, c: int = 0) -> int:\n    return a + b + c\n\nz = f(1, 2)\n")
 	for _, d := range diags {
 		if d.Level == LevelError {

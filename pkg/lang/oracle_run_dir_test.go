@@ -13,6 +13,7 @@ import (
 )
 
 func TestTheOracleRunDirectoryIsScrubbedFromWhatWeQuote(t *testing.T) {
+	t.Parallel()
 	const dir = "/tmp/gusty-oracle3710782730"
 	in := "/tmp/gusty-oracle3710782730/prog.py:4: SyntaxWarning: 'set' object is not subscriptable\n" +
 		"  File \"" + dir + "/prog.py\", line 5, in <module>\n" +
@@ -35,6 +36,7 @@ func TestTheOracleRunDirectoryIsScrubbedFromWhatWeQuote(t *testing.T) {
 }
 
 func TestTheOracleInterpretsItsOwnDiagnosisWithoutANominalRunDir(t *testing.T) {
+	t.Parallel()
 	// A program that dies on line 1: the reference's traceback names the script, and the only
 	// thing the matrix may record about it is `prog.py`.
 	_, stderr, err := PythonRun("x = 1\nprint(x[0])\n")

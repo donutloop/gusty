@@ -192,8 +192,10 @@ var keyedUnchanged = []struct {
 // TestTheKeyTheCompilerCanCallIsCalled runs the answered table on both legs the compiled answer is
 // judged on: the module the compiler writes, and the JIT that executes it.
 func TestTheKeyTheCompilerCanCallIsCalled(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); the reference prints %q", tt.src, got, tt.want)
@@ -215,8 +217,10 @@ func TestTheKeyTheCompilerCanCallIsCalled(t *testing.T) {
 // TestTheKeyThatIsNotCallableRaisesWhatTheReferenceRaises pins the class AND the message: the words a
 // reader acts on are the reference's, and they have to survive as an exception the program can catch.
 func TestTheKeyThatIsNotCallableRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedRaises {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class {
 				t.Fatalf("%q raised %s; the reference raises %s", tt.src, class, tt.class)
@@ -231,8 +235,10 @@ func TestTheKeyThatIsNotCallableRaisesWhatTheReferenceRaises(t *testing.T) {
 // TestTheKeyTheDoorCannotCallIsRefusedByName holds the refusals to ADR 0249: the sentence has to say
 // which key was refused and which half is missing, with the row that owns it.
 func TestTheKeyTheDoorCannotCallIsRefusedByName(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedRefused {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tt.src)
 			if !refused {
 				t.Fatalf("%q answered %q at exit 0 where the row expects a refusal", tt.src, out)
@@ -249,8 +255,10 @@ func TestTheKeyTheDoorCannotCallIsRefusedByName(t *testing.T) {
 
 // TestTheUnkeyedOrderStillAnswers runs the negative control on both legs.
 func TestTheUnkeyedOrderStillAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedUnchanged {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); this row did not touch it and the reference prints %q", tt.src, got, tt.want)
@@ -273,6 +281,7 @@ func TestTheUnkeyedOrderStillAnswers(t *testing.T) {
 // key is not called through a door this file built. A user key appears in the module as a call to the
 // program's own function, and the order is written by the comparator the unkeyed sorter already used.
 func TestTheKeyIsCalledByTheRoadThatAnswersAnyCall(t *testing.T) {
+	t.Parallel()
 	src := "def f(x):\n    return 0-x\nprint(sorted([3, 1, 2], key=f))"
 	res, err := Compile(src)
 	if err != nil {
@@ -306,6 +315,7 @@ func TestTheKeyIsCalledByTheRoadThatAnswersAnyCall(t *testing.T) {
 // second slot used to be the reverse flag, which is how a program the reference stops printed a list
 // at exit 0. These are the three shapes, pinned as behaviours and not as sentences.
 func TestTheOptionIsReadByNameNotByPosition(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		src  string
 		want string
@@ -315,6 +325,7 @@ func TestTheOptionIsReadByNameNotByPosition(t *testing.T) {
 	}
 	for _, tt := range rows {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			out, trap := runForParity(t, tt.src)
 			if trap != "" {
 				t.Fatalf("%q raised %s", tt.src, trap)
@@ -333,8 +344,10 @@ func TestTheOptionIsReadByNameNotByPosition(t *testing.T) {
 // answering without this file changing, the row and this test move together (ADR 0233's rule that an
 // answer is never allowed to arrive unlogged).
 func TestWhatTheKeyRowLeavesOwed(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedRefused {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tt.src)
 			if !refused {
 				t.Fatalf("%q answered %q at exit 0; roadmap %s filed this as a refusal, so the row moved and this pin must move with it", tt.src, out, tt.owns)
@@ -347,8 +360,10 @@ func TestWhatTheKeyRowLeavesOwed(t *testing.T) {
 // it raises, so an answer that only exists on one leg cannot pass (AGENTS.md's two witness legs). A
 // missing record FAILS the case, which is what keeps this coverage from being deleted by deletion.
 func TestTheKeyedOrdersAreOnTheRecord(t *testing.T) {
+	t.Parallel()
 	for _, tt := range keyedAnswered {
 		t.Run("answer "+strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			g := goldenLookup(t, tt.src)
 			if !g.HasStd {
 				t.Fatalf("the record holds no stdout for %q", tt.src)
@@ -360,6 +375,7 @@ func TestTheKeyedOrdersAreOnTheRecord(t *testing.T) {
 	}
 	for _, tt := range keyedRaises {
 		t.Run("raise "+strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			g := goldenLookup(t, tt.src)
 			if g.ExnType != tt.class {
 				t.Fatalf("the record traps %q for %q, the reference raises %s", g.ExnType, tt.src, tt.class)

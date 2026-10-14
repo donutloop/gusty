@@ -13,6 +13,7 @@ import (
 // expectations below are CPython's, transcribed from running the same source — not from what gusty
 // printed, which is the mistake ADR 0186 exists to prevent.
 func TestSortingMatchesCPythonOnAllThreeLegs(t *testing.T) {
+	t.Parallel()
 	mixed := []string{`xs = [3, 1, 2]
 xs.sort()
 print(xs)
@@ -67,6 +68,7 @@ print(vs)
 // number. Assigning a runtime-built handle to a plain int variable printed the handle — the same
 // class of bug as ADR 0188's print-a-handle, reached through the assignment path (ADR 0191).
 func TestSortedResultBehavesLikeAListCompiled(t *testing.T) {
+	t.Parallel()
 	src := "xs = [3, 1, 2]\nys = sorted(xs)\nprint(ys)\nprint(ys[0])\nprint(len(ys))\nfor x in ys:\n    print(x)\n"
 	want := "[1, 2, 3]\n1\n3\n1\n2\n3\n"
 	res, err := lang.JIT(src, 0)
@@ -88,6 +90,7 @@ func TestSortedResultBehavesLikeAListCompiled(t *testing.T) {
 // first-class functions — the refusal has to own the reason rather than claim the argument was a
 // count (roadmap L11.8 owns the diagnostic families).
 func TestSortingRefusalsAreHonest(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src, want string
 	}{

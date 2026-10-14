@@ -59,6 +59,7 @@ var floatStateWant = strings.Join([]string{
 // assigned over an int, leave the variable holding a float on both legs and next to its
 // neighbours.
 func TestIntStateBecomesFloatMatchesCPython(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, floatStateProbe+".gy")
 	path := writeSrc(t, t.TempDir(), "int_state_becomes_float.gy", src)
 	if py, ok := cpythonOut(t, path); ok && py != floatStateWant {
@@ -84,6 +85,7 @@ func TestIntStateBecomesFloatMatchesCPython(t *testing.T) {
 // verified and printed `1074003968`; the exit code was 0 either way, which is the whole
 // reason the row had to be measured by its answer rather than by its diagnostics.
 func TestAFloatRebindingDoesNotReachIntoItsNeighbour(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the neighbour keeps its number",
@@ -107,6 +109,7 @@ func TestAFloatRebindingDoesNotReachIntoItsNeighbour(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "float_rebind.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -129,6 +132,7 @@ func TestAFloatRebindingDoesNotReachIntoItsNeighbour(t *testing.T) {
 // quotient instead of the truncated integer. The `//=` and `%=` rows are the neighbours
 // that must NOT move — an int floor-divide and an int remainder are still ints.
 func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"even division is still a float", "x = 8\nx /= 2\nprint(x)\n", "4.0\n"},
 		{"the quotient survives", "x = 1\nx /= 3\nprint(x)\n", "0.3333333333333333\n"},
@@ -157,6 +161,7 @@ func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "div_domain.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -185,6 +190,7 @@ func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
 // reference instead of a pinned refusal sentence. The int-to-float rebinding that made the shape
 // interesting (`x = 8` then `x = 2.5`) is in the program, not in the expectation.
 func TestAFloatStateVariableEntersAListByWayOfItsTagAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the float-state variable the container element door is asked about",
@@ -193,6 +199,7 @@ func TestAFloatStateVariableEntersAListByWayOfItsTagAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// The answer is what the reference prints. What the box's payload would have answered —
 			// an integer handle where the reference prints a double — is the failure this row exists
 			// to catch, and it is only recognisable against that answer.

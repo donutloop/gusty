@@ -21,6 +21,7 @@ import (
 // the CLI gives it a code that is neither "your program is wrong" (1) nor "the compiler is wrong" (2).
 
 func TestToolchainExitKeepsSilenceApartFromRejection(t *testing.T) {
+	t.Parallel()
 	rejection := &lang.ToolchainRejectionError{Tool: "llc-20", Stage: "llc", Err: errors.New("exit status 1"), Output: "Invalid module"}
 	timeout := &lang.ToolTimeoutError{Tool: "/usr/bin/llc-20", Stage: "llc", Budget: 5 * time.Minute}
 	cases := []struct {
@@ -64,6 +65,8 @@ type wrapped struct{ inner error }
 func (w *wrapped) Error() string { return "build: llc: " + w.inner.Error() + "\n(nothing else)" }
 func (w *wrapped) Unwrap() error { return w.inner }
 
+//parify:serial its harness installs a standard-library root for the CLI it runs, through the process
+//parify:serial switch rather than the per-run one, because the CLI under test is the one reading the flag.
 func TestToolchainTimeoutExitCodeFromTheCLI(t *testing.T) {
 	// Driven through a fresh process with a budget no real `llc` can satisfy: the runner stops
 	// answering on purpose, and the CLI has to say which of its three toolchain classes fired.

@@ -23,6 +23,7 @@ import (
 // TestAReboundNameAnswersWhatTheLatestBindingGaveIt is the parity half: whatever the name is bound to
 // *last* is what every question about it answers with, on both legs.
 func TestAReboundNameAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a list after a text", "x = \"text\"\nx = [1, 2]\nprint(x)\n", "[1, 2]\n"},
 		{"a dict after a text", "x = \"text\"\nx = {\"a\": 1}\nprint(x)\n", "{'a': 1}\n"},
@@ -45,6 +46,7 @@ func TestAReboundNameAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
 		{"the same shape inside a function", "def f():\n    x = \"text\"\n    x = 5\n    print(x)\n\nf()\n", "5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -68,6 +70,7 @@ func TestAReboundNameAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
 // defect hid, the print dispatch *asking* `internedVars` and getting true back for a name the last
 // statement had bound to a list.
 func TestTheRebindingDoorClearsTheStatusItContradicts(t *testing.T) {
+	t.Parallel()
 	after := func(bind Expr) (text, interned, class bool) {
 		g := &irGen{
 			strVals:      map[string]string{"x": "text"},
@@ -95,6 +98,7 @@ func TestTheRebindingDoorClearsTheStatusItContradicts(t *testing.T) {
 		{"a construction keeps the class", &Call{Fn: &Name{Value: "C"}}, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			text, interned, class := after(tc.bind)
 			if got := text || interned; got != tc.wantText {
 				t.Errorf("the interned-text record survived to %v, want %v", got, tc.wantText)
@@ -109,6 +113,7 @@ func TestTheRebindingDoorClearsTheStatusItContradicts(t *testing.T) {
 // TestTheClassRecordIsRetiredByANonConstructionBinding is the same rule read off a program: the class a
 // name was bound to decides print and method dispatch, and only a construction may leave it standing.
 func TestTheClassRecordIsRetiredByANonConstructionBinding(t *testing.T) {
+	t.Parallel()
 	const src = "class C:\n    pass\n\nx = C()\nx = 5\nprint(x)\n"
 	if out := captureStdout(t, src); out != "5\n" {
 		t.Errorf("interpreter: stdout %q, want \"5\\n\"", out)
@@ -126,6 +131,7 @@ func TestTheClassRecordIsRetiredByANonConstructionBinding(t *testing.T) {
 // that clears everything would take the text away from a name that is still a text, and `len(x)`,
 // `x.upper()` and the container print dispatch all read those records.
 func TestARetirementLeavesTheRecordsTheNewBindingNeeds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the text's own length", "x = \"text\"\nx = \"abcde\"\nprint(len(x))\n", "5\n"},
 		{"the text's own method", "x = \"text\"\nx = \"abc\"\nprint(x.upper())\n", "ABC\n"},
@@ -133,6 +139,7 @@ func TestARetirementLeavesTheRecordsTheNewBindingNeeds(t *testing.T) {
 		{"the dict's own key", "x = \"text\"\nd = {\"k\": 1}\nx = d\nprint(x[\"k\"])\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -152,6 +159,7 @@ func TestARetirementLeavesTheRecordsTheNewBindingNeeds(t *testing.T) {
 // the whole reason the door may clear is that the new binding is not a text, and that question has to be
 // the same one the print dispatch asks (ADR 0229's one predicate, read at the binding).
 func TestTheRetirementDoorKeepsTheRecordForATextBinding(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		strFuncs:     map[string]bool{},
 		internedVars: map[string]bool{},

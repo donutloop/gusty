@@ -16,6 +16,7 @@ import (
 //	{1.5} == {1.6}                    -> printed 1 (CPython says 0 — true by luck)
 
 func TestFloatAndKindAnswersMatchCPython(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"float_eq_int", "print(1 if 2.0 == 2 else 0)\n", "1\n"},
 		{"float_ne_int", "print(1 if 1.5 == 2 else 0)\n", "0\n"},
@@ -34,6 +35,7 @@ func TestFloatAndKindAnswersMatchCPython(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "kinds.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -55,6 +57,7 @@ func TestFloatAndKindAnswersMatchCPython(t *testing.T) {
 // forbidden: exit 2 (the compiler rejecting its own module) and exit 0 with an answer nobody
 // checked against the oracle. The oracle leg is now in the table rather than assumed.
 func TestFloatContainersAnswerOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"literal_list_float_eq", "print(1 if [1] == [1.0] else 0)\n", "1\n"},
 		{"literal_list_float_eq_rev", "print(1 if [1.0] == [1] else 0)\n", "1\n"},
@@ -71,6 +74,7 @@ func TestFloatContainersAnswerOnTheCompiledBackend(t *testing.T) {
 		{"none_element_prints_as_none", "xs = [None, 1.5, \"a\"]\nprint(xs)\n", "[None, 1.5, 'a']\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "floats.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -97,12 +101,14 @@ func TestFloatContainersAnswerOnTheCompiledBackend(t *testing.T) {
 // on the record alone — a two-engine table would hide the compiled hole behind the record's
 // answer, which is the thing this file's rule forbids.
 func TestCompiledAnswersWhatTheCompilerRefuses(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"nested_list_equality", "print(1 if [[1, 2]] == [[1, 2]] else 0)\n", "1\n"},
 		{"nested_dict_value", "d = {\"a\": [1, 2]}\nprint(d)\n", "{'a': [1, 2]}\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "floats.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code != 0 {
@@ -131,6 +137,7 @@ func TestCompiledAnswersWhatTheCompilerRefuses(t *testing.T) {
 // `for row in [[1, 2], [3, 4]]` printed 0 and 1 (the handles, because the unrolled body printed
 // the element without its tag). Both are pinned as answers now.
 func TestNestedContainersAnswerOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"list_of_lists", "print([[1, 2], [3, 4]])\n", "[[1, 2], [3, 4]]\n"},
 		{"list_of_lists_and_a_number", "print([[1, 2], 3])\n", "[[1, 2], 3]\n"},
@@ -155,6 +162,7 @@ func TestNestedContainersAnswerOnTheCompiledBackend(t *testing.T) {
 		{"loop_over_inner_containers", "for row in [[1, 2], [3, 4]]:\n    print(row)\n", "[1, 2]\n[3, 4]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "nested.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -183,6 +191,7 @@ func TestNestedContainersAnswerOnTheCompiledBackend(t *testing.T) {
 // `len(xs[0])` and `m[0][1]` are not in this list any more: they were the last two rows of it, and
 // ADR 0241 moved them to the answering table in container_slot_read_test.go.
 func TestNestedShapesThatStillRefuse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"container_key", "print({[1, 2]: 3})\n", "cannot hold"},
 		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
@@ -200,6 +209,7 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 		{"any_of_containers", "print(any([[1], [2]]))\n", "no word for"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "nested.gy", tc.src)
 			// The diagnostic goes to stderr, so the message is read with the combined capture
 			// and the exit code with the coded one.

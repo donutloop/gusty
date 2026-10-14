@@ -51,6 +51,13 @@ type ReferenceDebt struct {
 	Roadmap string `json:"roadmap"`
 	// Why is one sentence of prose: what makes these two answers differ.
 	Why string `json:"why,omitempty"`
+	// Unstable says the compiled side's answer is not the same bytes twice, because the program reads a
+	// value the compiler never initialised and prints whatever the slot happened to hold. Such a row
+	// cannot be pinned by exact text — the first version of this ledger pinned one row to `stdout "16"`,
+	// and the suite was intermittently red on a program whose garbage changed with the heap layout. An
+	// unstable row is instead held to its *shape*: the compiled side still answers plainly where the
+	// reference traps. That is the defect the roadmap row owns, and the only claim that survives a rerun.
+	Unstable bool `json:"unstable,omitempty"`
 }
 
 var (
@@ -147,6 +154,28 @@ func agreesWithReference(a ReferenceAgreement) bool {
 	return a.Code == 0 && a.PythonTrap == "" && strings.TrimSuffix(a.Python, "\n") == strings.TrimSuffix(a.Compiled, "\n")
 }
 
+// ledgerRowDescribes decides whether a filed row still describes what the two sides do. It is a pure
+// function, and the table over it is the suite's definition of "still on the ledger" — including the one
+// row whose compiled answer cannot be reproduced, which is why the answer is a reason and not a bool.
+func ledgerRowDescribes(row ReferenceDebt, a ReferenceAgreement) (bool, string) {
+	if row.Python != a.pythonSide() {
+		return false, "the reference's side changed"
+	}
+	if row.Unstable {
+		// The bytes are not the claim; the shape is. A row filed as "answers plainly where the reference
+		// traps" stops describing the program the moment it stops answering — including when it starts
+		// trapping with the reference, which is the fix and belongs in a deleted row, not this one.
+		if a.Code != 0 || strings.TrimSpace(a.Compiled) == "" {
+			return false, "the row says the compiled side answers with an unreproducible value, and it did not answer this run"
+		}
+		return true, ""
+	}
+	if row.Compiled != a.compiledSide() {
+		return false, "the compiled side's answer changed"
+	}
+	return true, ""
+}
+
 // requireReferenceAgreement is the ratchet. Call it with what a run measured and the roadmap row that
 // owns the gap: it passes when the compiled answer equals the reference's, files (and passes) a
 // documented divergence, and fails anything the ledger does not describe exactly.
@@ -178,7 +207,13 @@ func requireReferenceAgreement(t *testing.T, src string, a ReferenceAgreement, r
 			if debtLoaded == nil {
 				debtLoaded = map[string]ReferenceDebt{}
 			}
-			debtLoaded[src] = debtSeen[src]
+			fresh := debtSeen[src]
+			// A re-measure must not launder away a claim the file already carried: `unstable` is a
+			// statement about the program, not about the number written down for it this afternoon.
+			if prior, had := debtLoaded[src]; had {
+				fresh.Unstable = prior.Unstable
+			}
+			debtLoaded[src] = fresh
 			debtMu.Unlock()
 			t.Logf("NEW reference debt recorded (needs a roadmap row before this passes): %s: %s vs %s", src, a.pythonSide(), a.compiledSide())
 			return
@@ -187,9 +222,9 @@ func requireReferenceAgreement(t *testing.T, src string, a ReferenceAgreement, r
 			src, a.pythonSide(), a.compiledSide(), referenceDebtFile)
 		return
 	}
-	if row.Python != a.pythonSide() || row.Compiled != a.compiledSide() {
-		t.Errorf("%s: the ledger row no longer describes what either side does.\n ledger:   %s vs %s\n measured: %s vs %s\n One of the two changed under it — re-measure (GUSTY_DEBT_UPDATE=1) and re-own it.",
-			src, row.Python, row.Compiled, a.pythonSide(), a.compiledSide())
+	if ok, why := ledgerRowDescribes(row, a); !ok {
+		t.Errorf("%s: the ledger row no longer describes what either side does (%s).\n ledger:   %s vs %s\n measured: %s vs %s\n One of the two changed under it — re-measure (GUSTY_DEBT_UPDATE=1) and re-own it.",
+			src, why, row.Python, row.Compiled, a.pythonSide(), a.compiledSide())
 		return
 	}
 	if strings.TrimSpace(row.Roadmap) == "" {
@@ -285,6 +320,7 @@ func writeReferenceDebt(t *testing.T, path string) {
 // owned by a roadmap row. The two-way ratchet — a row no case reached, and a debt its case says is
 // paid — is checked once by TestReferenceDebtRatchet after the whole package has finished.
 func TestReferenceDebtLedger(t *testing.T) {
+	t.Parallel()
 	ledger := loadReferenceDebt(t)
 	for src, row := range ledger {
 		if strings.TrimSpace(row.Roadmap) == "" {
@@ -335,4 +371,83 @@ func referenceDebtRatchetSince(partial bool) (int, []string) {
 		}
 	}
 	return len(debtLoaded), msgs
+}
+
+// TestAnUnstableLedgerRowIsNotPinnedToItsBytes is the ledger's own defect made testable. The row over the
+// unbound `match` value pattern records whatever number the uninitialised slot held, so pinning it to
+// `stdout "16"` made the suite intermittently red on a program whose answer legitimately varies. The pure
+// predicate over row-vs-measurement is where that claim lives, so that is what gets the table.
+func TestAnUnstableLedgerRowIsNotPinnedToItsBytes(t *testing.T) {
+	t.Parallel()
+	unstableRow := ReferenceDebt{
+		Source:   "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n",
+		Python:   "raises NameError: name 'y' is not defined",
+		Compiled: "stdout \"16\\n\"",
+		Roadmap:  "roadmap Gap K.x",
+		Unstable: true,
+	}
+	stableRow := unstableRow
+	stableRow.Unstable = false
+
+	cases := []struct {
+		name    string
+		row     ReferenceDebt
+		measure ReferenceAgreement
+		want    bool
+	}{
+		{
+			name:    "an unstable row accepts a different garbage value",
+			row:     unstableRow,
+			measure: ReferenceAgreement{Code: 0, PythonTrap: "raises NameError: name 'y' is not defined", Compiled: "-346585980\n"},
+			want:    true,
+		},
+		{
+			name:    "an unstable row still refuses a different reference answer",
+			row:     unstableRow,
+			measure: ReferenceAgreement{Code: 0, PythonTrap: "raises NameError: name 'q' is not defined", Compiled: "7\n"},
+			want:    false,
+		},
+		{
+			// The fix arriving is not a row matching: a program that traps with the reference has paid its
+			// debt, and the row has to go. Silence here would let the ledger claim a bug that is gone.
+			name:    "an unstable row refuses a program that now traps",
+			row:     unstableRow,
+			measure: ReferenceAgreement{Code: 3, PythonTrap: "NameError: name 'y' is not defined"},
+			want:    false,
+		},
+		{
+			name:    "an unstable row refuses a program that printed nothing",
+			row:     unstableRow,
+			measure: ReferenceAgreement{Code: 0, PythonTrap: "raises NameError: name 'y' is not defined"},
+			want:    false,
+		},
+		{
+			name:    "a stable row keeps its exact-text ratchet",
+			row:     stableRow,
+			measure: ReferenceAgreement{Code: 0, PythonTrap: "raises NameError: name 'y' is not defined", Compiled: "17\n"},
+			want:    false,
+		},
+		{
+			name:    "a stable row accepts its own bytes",
+			row:     stableRow,
+			measure: ReferenceAgreement{Code: 0, PythonTrap: "raises NameError: name 'y' is not defined", Compiled: "16\n"},
+			want:    true,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ok, why := ledgerRowDescribes(tc.row, tc.measure)
+			if ok != tc.want {
+				t.Fatalf("ledgerRowDescribes = %v (%s), want %v", ok, why, tc.want)
+			}
+			if !ok && why == "" {
+				t.Error("a refusal with no reason cannot be acted on by whoever reads the failure")
+			}
+			if ok && why != "" {
+				t.Errorf("a match should not arrive with a reason attached: %q", why)
+			}
+		})
+	}
 }

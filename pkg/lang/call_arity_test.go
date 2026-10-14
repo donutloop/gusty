@@ -24,6 +24,7 @@ import (
 // TestACallableFromAVariableIsAskedItsArgumentCount is the wrong-number table: each row must stop the
 // program, and must not print a digit.
 func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, wantSub string }{
 		{"lambda handed one argument too many", "g = lambda x: x * 2\nprint(g(1, 2))\n", "too many arguments for <lambda>"},
 		{"lambda handed nothing", "g = lambda x: x * 2\nprint(g())\n", `missing argument "x" for <lambda>`},
@@ -39,6 +40,7 @@ func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
 		{"a value given twice still names itself", "def g(a):\n    return a\n\nprint(g(1, a=2))\n", "multiple values"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program ran to completion — this is the shape that printed a number at exit 0 (Gap R.168)\nsrc: %s", tc.src)
@@ -60,6 +62,7 @@ func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
 // TestDefaultsAndKeywordsStillAnswer is the other half of the row, and the reason the count sits where
 // it does: a missing argument is only an error when nothing can fill it.
 func TestDefaultsAndKeywordsStillAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"one argument, two defaults", "def g(a, b=2, c=3):\n    return a + b + c\n\nprint(g(1))\n", "6\n"},
 		{"two arguments, one default", "def g(a, b=2, c=3):\n    return a + b + c\n\nprint(g(1, 5))\n", "9\n"},
@@ -74,6 +77,7 @@ func TestDefaultsAndKeywordsStillAnswer(t *testing.T) {
 		{"five parameters", "def h(a, b, c, d, e):\n    return a + b + c + d + e\n\nprint(h(1, 2, 3, 4, 5))\n", "15\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if out := captureStdout(t, tc.src); out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
 			}
@@ -85,6 +89,7 @@ func TestDefaultsAndKeywordsStillAnswer(t *testing.T) {
 // lambda and the callee's own name for a `def`, and this language must not name the compiler's generated
 // `lambda_0` at a reader who never wrote it.
 func TestTheAritySentenceIsOneSentenceForBothRoads(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 		not             []string
@@ -111,6 +116,7 @@ func TestTheAritySentenceIsOneSentenceForBothRoads(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("expected an arity error\nsrc: %s", tc.src)
@@ -132,12 +138,14 @@ func TestTheAritySentenceIsOneSentenceForBothRoads(t *testing.T) {
 // backend refused every one of these at exit 1 with its own arity sentence, so closing the record's
 // wrong numbers brings the engines into agreement rather than moving a refusal.
 func TestTheCompiledRoadAlreadyAskedIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, wantSub string }{
 		{"lambda too many", "g = lambda x: x * 2\nprint(g(1, 2))\n", "too many arguments"},
 		{"lambda too few", "g = lambda x: x * 2\nprint(g())\n", "missing argument"},
 		{"lambda missing second", "g = lambda x, y: x - y\nprint(g(3))\n", "missing argument"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("the compiled leg accepted a call the reference refuses — check whether the checker moved (Gap R.168)\nsrc: %s", tc.src)

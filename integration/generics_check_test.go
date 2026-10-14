@@ -29,6 +29,7 @@ func checkSource(t *testing.T, bin, src string) int {
 // clean check (exit 0), mismatched element shapes are type errors (exit 1),
 // and the JSON machine path carries the diagnostics.
 func TestCLICheckGenericsProtocols(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -86,6 +87,7 @@ n: list[list[int]] = [[1, 2], [3]]
 // across the protocol surface: clean annotations exit 0, each mismatched
 // element shape exits 1.
 func TestCLICheckProtocolExitCodes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)

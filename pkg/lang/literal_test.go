@@ -16,6 +16,7 @@ func litOf(t *testing.T, src string) *Type {
 }
 
 func TestLiteralParseSingle(t *testing.T) {
+	t.Parallel()
 	ty := litOf(t, "def f(x: Literal[1]) -> int:\n    return x\n")
 	if ty.Kind != KindLiteral || ty.LitVal != 1 {
 		t.Fatalf("got %v, want Literal[1]", ty.Name())
@@ -26,6 +27,7 @@ func TestLiteralParseSingle(t *testing.T) {
 }
 
 func TestLiteralParseUnion(t *testing.T) {
+	t.Parallel()
 	ty := litOf(t, "def f(x: Literal[1, 2]) -> int:\n    return x\n")
 	if ty.Kind != KindUnion || len(ty.Members) != 2 {
 		t.Fatalf("got %v, want Literal[1, 2] union", ty.Name())
@@ -54,6 +56,7 @@ func hasError(diags []Diagnostic) bool {
 }
 
 func TestLiteralMatchExhaustiveCovered(t *testing.T) {
+	t.Parallel()
 	src := "def f(x: Literal[1]):\n    match x:\n        case 1:\n            print(x)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -66,6 +69,7 @@ func TestLiteralMatchExhaustiveCovered(t *testing.T) {
 }
 
 func TestLiteralMatchExhaustiveUncovered(t *testing.T) {
+	t.Parallel()
 	src := "def f(x: Literal[1]):\n    match x:\n        case 2:\n            print(x)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -78,6 +82,7 @@ func TestLiteralMatchExhaustiveUncovered(t *testing.T) {
 }
 
 func TestLiteralUnionMatchExhaustiveCovered(t *testing.T) {
+	t.Parallel()
 	src := "def f(x: Literal[1, 2]):\n    match x:\n        case 1:\n            print(x)\n        case 2:\n            print(x)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -90,6 +95,7 @@ func TestLiteralUnionMatchExhaustiveCovered(t *testing.T) {
 }
 
 func TestLiteralUnionMatchExhaustiveUncovered(t *testing.T) {
+	t.Parallel()
 	src := "def f(x: Literal[1, 2]):\n    match x:\n        case 1:\n            print(x)\n"
 	prog, err := Parse(src)
 	if err != nil {
@@ -102,6 +108,7 @@ func TestLiteralUnionMatchExhaustiveUncovered(t *testing.T) {
 }
 
 func TestLiteralReturnMismatch(t *testing.T) {
+	t.Parallel()
 	// Returning a Literal[1] where Literal[2] is expected must be a type error.
 	src := "def f(x: Literal[1]) -> Literal[2]:\n    return x\n"
 	prog, err := Parse(src)
@@ -115,6 +122,7 @@ func TestLiteralReturnMismatch(t *testing.T) {
 }
 
 func TestLiteralReturnMatch(t *testing.T) {
+	t.Parallel()
 	src := "def f(x: Literal[1]) -> Literal[1]:\n    return x\n"
 	prog, err := Parse(src)
 	if err != nil {

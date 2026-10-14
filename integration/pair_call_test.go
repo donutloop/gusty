@@ -28,6 +28,7 @@ const pairCallTwice = "def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7,
 // TestASlotReadHandedToAFunctionAnswersAtTheCLI is the roadmap row through the CLI: the expression the
 // print door answers (ADR 0265), handed to a parameter.
 func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", pairCallTwice + "print(twice(xs[0][0]))\n", "14\n"},
 		{
@@ -147,6 +148,7 @@ func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
@@ -170,6 +172,7 @@ func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
 // to that frame, and the unwinding road has to name the answer it never gave (a tag word left holding
 // the last real answer would print a number-shaped lie for the exception path).
 func TestACalledSlotTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a None slot under the callee's multiplication",
@@ -190,6 +193,7 @@ func TestACalledSlotTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok || !strings.Contains(py, tc.want) {
@@ -215,6 +219,7 @@ func TestACalledSlotTrapsLikeTheReferenceAtTheCLI(t *testing.T) {
 // the callee emits the store-and-branch through the language's one raise door (ADR 0228), so
 // `except TypeError:` in the *caller* — a frame away from the arithmetic — reaches it.
 func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			"caught in the caller",
@@ -226,6 +231,7 @@ func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call_catch.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || !strings.Contains(py, "caught") {
@@ -248,6 +254,7 @@ func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
 // reference answers and the reference prints, where the compiled leg declines with the half that is
 // missing named — the shape the scan's gate closes rather than an answer built from a payload alone.
 func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, compiledWant, refusal string }{
 		{
 			// An argument that is itself a pair-returning call: the inner answer's tag belongs to the
@@ -278,6 +285,7 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call_refusal.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.compiledWant {

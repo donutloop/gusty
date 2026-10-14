@@ -37,6 +37,7 @@ func cpythonOut(t *testing.T, path string) (string, bool) {
 // having an entry called "a" — were worse than the refusal.
 
 func TestMixedContainersAnswerLikeTheRecord(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{"mixed_dict_print",
 			"d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nprint(d)\n",
@@ -120,6 +121,7 @@ func TestMixedContainersAnswerLikeTheRecord(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)
 			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
@@ -138,6 +140,7 @@ func TestMixedContainersAnswerLikeTheRecord(t *testing.T) {
 // is the check the compiled leg used to fail by *refusing*, and the check that would have caught
 // the untagged-lookup answer (`{1: "one"}["a"]` printing `one`) without anyone reading IR.
 func TestMixedContainersMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"mixed_dict_print", "d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nprint(d)\n"},
 		{"mixed_dict_reads_each_kind", "d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nprint(d[\"a\"])\nprint(d[\"b\"])\nprint(d[\"c\"])\n"},
@@ -163,6 +166,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 		{"a_string_read_from_a_dict_enters_a_number_dict", "d = {\"a\": \"x\"}\ne = {\"k\": 1}\ne[\"m\"] = d[\"a\"]\nprint(e)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)
 			want, ok := cpythonOut(t, path)
 			if !ok {
@@ -185,6 +189,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 // actually hit, never exit 2 (the compiler rejecting its own module) and never exit 0 with an
 // answer the tag could not justify (ADR 0166's rule, ADR 0232's application of it).
 func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
+	t.Parallel()
 	// The nested shapes this table used to carry are answers now ({1, [1]} and {"a": 1, "b": [1]}
 	// both print correctly, pinned by TestNestedContainersAnswerOnTheCompiledBackend). What is left is a
 	// value with no entry in the tag table at all, and the one nested shape with no rule.
@@ -194,6 +199,7 @@ func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
 		{"container_dict_key", "print({[1, 2]: 3})\n", "cannot hold"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)
 			_, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -218,6 +224,7 @@ func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
 // new function in @heap's block, and an LLVM-accepting-but-wrong module is the failure mode this
 // project keeps hitting when a plan reads better than a trace.
 func TestMixedContainerModulesVerify(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nprint(d)\nprint(d[\"b\"])\n",
 		"s = {1, \"a\", None}\ns.add(\"z\")\ns.discard(1)\nfor x in s:\n    print(x)\n",

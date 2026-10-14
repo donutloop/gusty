@@ -31,16 +31,19 @@ const sampleRecord = `{
  }
 }`
 
-func useRecord(t *testing.T, body string) *string {
+// recordFile lays a sample record on disk and hands back the path to record into.
+//
+// The cases used to retarget the package's `recordPath` and restore it in a Cleanup, which is a thing two
+// cases cannot both do: with the parallel suite running them together, one case read a record the other had
+// just written. Passing the target down is what makes this package's cases parallel-safe (ADR 0343), and it
+// is the honest shape anyway — a recorder that takes its output file is a recorder you can test.
+func recordFile(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "interpreter-golden.json")
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	old := recordPath
-	recordPath = path
-	t.Cleanup(func() { recordPath = old })
-	return &recordPath
+	return path
 }
 
 func sourcesFile(t *testing.T, srcs ...string) string {
@@ -90,14 +93,15 @@ var (
 )
 
 func TestRunRecordsWhatBothLegsAgreeOn(t *testing.T) {
-	useRecord(t, sampleRecord)
+	t.Parallel()
+	target := recordFile(t, sampleRecord)
 	srcs := sourcesFile(t, "print(min([1], [2]))\n", "print(2)\n")
 	answers := map[string]string{"print(2)\n": "2\n"}
 	traps := map[string]string{"print(min([1], [2]))\n": "TypeError: unorderable types"}
-	if err := run(srcs, false, agreeOn(answers, traps)); err != nil {
+	if err := runAt(target, srcs, false, agreeOn(answers, traps)); err != nil {
 		t.Fatalf("recording two programs both legs agree on: %v", err)
 	}
-	b, err := os.ReadFile(recordPath)
+	b, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +147,7 @@ func TestRunRecordsWhatBothLegsAgreeOn(t *testing.T) {
 }
 
 func TestRunWritesNothingWhenALegDisagrees(t *testing.T) {
+	t.Parallel()
 	const trapSrc = "print(min([1], [2]))\n"
 	const ansSrc = "print(2)\n"
 	for _, tc := range []struct {
@@ -192,16 +197,17 @@ func TestRunWritesNothingWhenALegDisagrees(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			useRecord(t, sampleRecord)
-			before, err := os.ReadFile(recordPath)
+			t.Parallel()
+			target := recordFile(t, sampleRecord)
+			before, err := os.ReadFile(target)
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = run(sourcesFile(t, tc.src), false, legs{ref: tc.ref, compiled: tc.compiled})
+			err = runAt(target, sourcesFile(t, tc.src), false, legs{ref: tc.ref, compiled: tc.compiled})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("the recorder accepted a row it must refuse (%q); got %v", tc.want, err)
 			}
-			after, rerr := os.ReadFile(recordPath)
+			after, rerr := os.ReadFile(target)
 			if rerr != nil {
 				t.Fatal(rerr)
 			}
@@ -221,22 +227,23 @@ func trapRef(src string) func(string) (string, string, error) {
 }
 
 func TestCheckModeRefusesARowTheReferenceAnswers(t *testing.T) {
-	useRecord(t, sampleRecord)
-	before, err := os.ReadFile(recordPath)
+	t.Parallel()
+	target := recordFile(t, sampleRecord)
+	before, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The refusal rows (Gap R.198's shapes) are asked with -check: the reference RAISING is the row, and a
 	// reference that ANSWERS means the row is no longer a refusal and must not be recorded as one.
-	err = run(sourcesFile(t, "print(2)\n"), true, agreeOn(map[string]string{"print(2)\n": "2\n"}, nil))
+	err = runAt(target, sourcesFile(t, "print(2)\n"), true, agreeOn(map[string]string{"print(2)\n": "2\n"}, nil))
 	if err == nil || !strings.Contains(err.Error(), "the reference ANSWERS") {
 		t.Fatalf("-check accepted a source the reference answers: %v", err)
 	}
-	if err := run(sourcesFile(t, "print(min([1], [2]))\n"), true,
+	if err := runAt(target, sourcesFile(t, "print(min([1], [2]))\n"), true,
 		agreeOn(nil, map[string]string{"print(min([1], [2]))\n": "TypeError: unorderable types"})); err != nil {
 		t.Fatalf("-check refused a row whose reference trap it should accept: %v", err)
 	}
-	after, rerr := os.ReadFile(recordPath)
+	after, rerr := os.ReadFile(target)
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
@@ -246,6 +253,7 @@ func TestCheckModeRefusesARowTheReferenceAnswers(t *testing.T) {
 }
 
 func TestAppendEntriesRefusesARecordItCannotFind(t *testing.T) {
+	t.Parallel()
 	if _, err := appendEntries([]byte(`{"meta": {"x": 1}}`), []string{"print(1)\n"},
 		map[string]entry{"print(1)\n": {HasStd: true, Stdout: "1\n"}}); err == nil {
 		t.Fatal("a record with no `entries` object was accepted")

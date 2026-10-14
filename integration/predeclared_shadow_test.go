@@ -34,6 +34,7 @@ const r12Ambiguous = "for i in range(2):\n    print(i * 100)\n\n\ndef range(x):\
 // the situation the checker refuses rather than chooses between, and this is the case that keeps the
 // refusal honest: if the two ever agree, the rule has outlived its reason.
 func TestTheRefusedProgramReallyIsAmbiguous(t *testing.T) {
+	t.Parallel()
 	compiled, err := runAOTWithTimeout(t, r12Ambiguous, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -59,6 +60,7 @@ func TestTheRefusedProgramReallyIsAmbiguous(t *testing.T) {
 // TestTheRefusalIsReachableFromTheCLI checks that an agent actually meets the diagnostic, on both
 // gates: the check path and the build path.
 func TestTheRefusalIsReachableFromTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -85,6 +87,7 @@ func TestTheRefusalIsReachableFromTheCLI(t *testing.T) {
 // the language does fix, must compile, run, and mean the same thing on every path it is asked — the
 // compiled run, the linked binary, and CPython.
 func TestOrderedDefinitionRunsOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := `def range(x):
     return x * 3
 
@@ -117,6 +120,7 @@ print(scale(5))
 // TestMethodNamedAfterABuiltInDoesNotTripTheRule is the class-body counterpart: a method called
 // `range` is a method, not a module binding, and must leave the built-in loop working.
 func TestMethodNamedAfterABuiltInDoesNotTripTheRule(t *testing.T) {
+	t.Parallel()
 	src := `class Counter:
     def range(self, n):
         return n * 4

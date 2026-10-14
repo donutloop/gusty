@@ -67,8 +67,10 @@ var containerAnswerAnswered = []string{
 // TestTheContainerAnswerAnswersThroughTheCLI is the answering half: the same source, the reference and
 // this toolchain, agreeing line for line — with the compiler-bug code forbidden on every row.
 func TestTheContainerAnswerAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, src := range containerAnswerAnswered {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", src)
 			if code == 2 {
@@ -88,6 +90,7 @@ func TestTheContainerAnswerAnswersThroughTheCLI(t *testing.T) {
 // answer, so the row is honest about it: exit 1, a sentence naming the function, the door that does
 // answer and the roadmap row that owns the rest (ADR 0249), and never the code a compiler bug owns.
 func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -104,6 +107,7 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 		{"an answer handed to a parameter", "def build():\n    return [1, 2]\n\ndef takes(xs):\n    return len(xs)\n\nprint(takes(build()))", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program — the code the contract reserves for a compiler bug (ADR 0166):\n%s", stderr)
@@ -131,6 +135,7 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 // pair the pair road owns, and that road's sentence has to survive this table — a scan that opened the
 // door for every call would print `2` for `2.5` at the code of success.
 func TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -163,6 +168,7 @@ func TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program (ADR 0166):\n%s", stderr)
@@ -196,6 +202,7 @@ func TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt(t *testing.T) {
 // global to a `ret`. That one line was the whole of the exit-2 defect — the container's folded global
 // in a value position, which `llc` rejects and the exit-code contract counts as the compiler's bug.
 func TestNoAnswerModuleReturnsAGlobalToAValuePosition(t *testing.T) {
+	t.Parallel()
 	for _, src := range append([]string{
 		"def build():\n    return [[1, 2], [3]]\n\nprint(build())",
 		"def build():\n    return {1, 2}\n\nprint(build())",
@@ -203,6 +210,7 @@ func TestNoAnswerModuleReturnsAGlobalToAValuePosition(t *testing.T) {
 		"def build():\n    return \"ab\"\n\nprint(build())",
 	}, containerAnswerAnswered...) {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -237,6 +245,7 @@ func bodyAroundGlobalReturn(ir string) string {
 
 // The whole matrix as one program, line for line against CPython.
 func TestTheContainerAnswerProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/container_returns.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -268,6 +277,7 @@ func TestTheContainerAnswerProgramMatchesTheReferenceThroughTheCLI(t *testing.T)
 }
 
 func TestTheContainerAnswerProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

@@ -13,6 +13,7 @@ import (
 )
 
 func TestTernaryWithTextArmsAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct {
 		name string
@@ -39,6 +40,7 @@ func TestTernaryWithTextArmsAtTheCLI(t *testing.T) {
 	for _, r := range rows {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
 			want, ok := cpythonPlainOut(t, dir, r.src)
 			if !ok {
 				t.Skip("no python3 available to cross-check")
@@ -67,6 +69,7 @@ func TestTernaryWithTextArmsAtTheCLI(t *testing.T) {
 // recorded debt with the compiled leg pinned at `0\n2\n`; all three legs now agree with `python3`. The test
 // fails if the compiled leg ever prints an index again, which is the point of keeping it after promotion.
 func TestThePromotedTernaryTextProbeMatchesTheReference(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	raw, err := os.ReadFile("programs/probe_ternary_text_arms.gy")
 	if err != nil {

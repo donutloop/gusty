@@ -35,6 +35,7 @@ import (
 // Both legs below, CPython in the sibling integration file.
 
 func TestAParameterReboundToAFloatIsReturnedAsAFloat(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the shape the gap was named for.
 		{"a parameter rebound to a float and returned by bare name",
@@ -108,6 +109,7 @@ func TestAParameterReboundToAFloatIsReturnedAsAFloat(t *testing.T) {
 			"def f(x):\n    y = x + 0.5\n    return y\n\nprint(f(1.0))\n", "1.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -130,6 +132,7 @@ func TestAParameterReboundToAFloatIsReturnedAsAFloat(t *testing.T) {
 // `llc` rejects, which ADR 0166 counts as our bug for an ordinary program. A method is emitted
 // `i32`-returning whatever its body computes, for the same reason.
 func TestAReboundParameterIsRefusedWhereTheWordCannotCarryIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a container parameter in the same signature",
@@ -173,6 +176,7 @@ func TestAReboundParameterIsRefusedWhereTheWordCannotCarryIt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s (%q): compiled; want a refusal — the alternative is a module llc rejects", tc.name, tc.src)
@@ -201,6 +205,7 @@ func TestAReboundParameterIsRefusedWhereTheWordCannotCarryIt(t *testing.T) {
 // would be reached: it is not, the body emits `fsub double 0.0`, and the negation travels in the
 // double word now — pinned by TestReturningAReboundParameterNegatedTravelsInTheDoubleWord.)
 func TestTheFloatReturnPromotionIsOnlyForValuesThatAreTheDouble(t *testing.T) {
+	t.Parallel()
 	// A comparison still answers with the bool word it always used: the value is right and the
 	// rendering is the bool gap (roadmap L11.1's bool step), not this gate's business.
 	src := "def f(x):\n    x = x + 1.5\n    return x > 2\n\nprint(1 if f(2.0) else 0)\n"
@@ -246,6 +251,7 @@ func TestTheFloatReturnPromotionIsOnlyForValuesThatAreTheDouble(t *testing.T) {
 // `ret i32` of a double, the verifier's own rejection (ADR 0166's class, Gap R.89's operator). It
 // answers -2.5 now, and the module is what says so.
 func TestReturningAReboundParameterNegatedTravelsInTheDoubleWord(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def f(x):\n    x = x + 1.5\n    return -x\n\nprint(f(1.0))\n")
 	if err != nil {
 		t.Fatalf("refused: %v", err)
@@ -279,6 +285,7 @@ func TestReturningAReboundParameterNegatedTravelsInTheDoubleWord(t *testing.T) {
 // expression mentions nothing but a name — and must keep saying `define i32` for the same source
 // with no float rebind, or the gate has become a guess about any function at all.
 func TestAReboundParameterReturnBranchesOnTheBodyNotTheLastLine(t *testing.T) {
+	t.Parallel()
 	promoted, err := Compile("def addf(x):\n    x = x + 1.5\n    return x\n\nprint(addf(1.0))\n")
 	if err != nil {
 		t.Fatalf("refused: %v", err)

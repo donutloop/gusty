@@ -15,6 +15,7 @@ import (
 // These tests are what stop them drifting apart again as per-element tagging lands.
 
 func TestValueTagTableIsPinned(t *testing.T) {
+	t.Parallel()
 	// The numbers are a wire format: the record's heap, the compiled %obj values
 	// and exported ABI tags all read them. Renumbering is a breaking change, so it has
 	// to be a decision someone makes here, not an accident in a refactor.
@@ -66,6 +67,7 @@ func TestValueTagTableIsPinned(t *testing.T) {
 }
 
 func TestABITagsAgreeWithCanonicalTags(t *testing.T) {
+	t.Parallel()
 	// The ABI's tag words must be the canonical numbers, or an exported `list` would
 	// arrive as one thing in-process and another across the C boundary.
 	pairs := []struct {
@@ -88,6 +90,7 @@ func TestABITagsAgreeWithCanonicalTags(t *testing.T) {
 }
 
 func TestHeapKindProjectionRoundTrips(t *testing.T) {
+	t.Parallel()
 	// The compiled heap numbers only what it allocates, so its kind word is a
 	// projection — but it must be invertible and total over what it claims.
 	for _, tag := range []ValueTag{TagList, TagDict, TagSet, TagInstance} {
@@ -130,6 +133,7 @@ func TestHeapKindProjectionRoundTrips(t *testing.T) {
 var rtAllocRe = regexp.MustCompile(`call i32 @rt_alloc\(i32 (\d+)\)`)
 
 func TestEmittedHeapKindsComeFromTheTable(t *testing.T) {
+	t.Parallel()
 	// Magic numbers in codegen are how the two vocabularies would come back: this
 	// compiles each container form and asserts the number written into the IR is the
 	// table's, and that no unrecognised kind is ever allocated.
@@ -177,6 +181,7 @@ func TestEmittedHeapKindsComeFromTheTable(t *testing.T) {
 }
 
 func TestInstanceKindsInRuntimeAndCodegenAgree(t *testing.T) {
+	t.Parallel()
 	// The runtime block allocates instances with a literal kind (it is IR text), and
 	// codegen does the same with the named constant: they must be the same number, or
 	// rt_inst_get would look at an object the collector thinks is a list.

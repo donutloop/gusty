@@ -70,8 +70,10 @@ var zdCases = []struct {
 }
 
 func TestDivisionByZeroRaisesATypedExceptionOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range zdCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, err := zdRun(t, tc.src)
 			if err == nil {
 				t.Fatalf("the interpreter accepted a division by zero; it printed %q", out)
@@ -98,8 +100,10 @@ func TestDivisionByZeroRaisesATypedExceptionOnTheCompiledBackend(t *testing.T) {
 // AArch64, so `print(7 % 0)` printed a garbage number and exited 0. A trap that produces
 // output is not a trap.
 func TestDivisionByZeroTrapsInTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range zdCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			code, stdout, stderr := zdBuild(t, "zdiv_"+strings.ReplaceAll(tc.name, " ", "_"), tc.src)
 			if code == 0 {
 				t.Fatalf("the compiled program accepted a division by zero: exit 0, stdout %q", stdout)
@@ -120,6 +124,7 @@ func TestDivisionByZeroTrapsInTheCompiledBackend(t *testing.T) {
 // A trap is only a trap if the language can handle it. This is the requirement the untyped
 // errors failed: the handler must run, and a handler for the *wrong* class must not.
 func TestDivisionByZeroIsCatchableOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	src := "x = 3\ntry:\n    print(x / 0)\nexcept ZeroDivisionError:\n    print(\"handled\")\n"
 	if out, err := zdRun(t, src); err != nil || out != "handled\n" {
 		t.Fatalf("the record leg: got %q (err %v), want \"handled\\n\"", out, err)
@@ -141,6 +146,7 @@ func TestDivisionByZeroIsCatchableOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestDivisionByZeroIsCatchableWhenCompiled(t *testing.T) {
+	t.Parallel()
 	src := "x = 3\ntry:\n    print(x / 0)\nexcept ZeroDivisionError:\n    print(\"handled\")\n"
 	code, stdout, stderr := zdBuild(t, "zero_div_caught", src)
 	if code != 0 || stdout != "handled\n" {
@@ -152,6 +158,7 @@ func TestDivisionByZeroIsCatchableWhenCompiled(t *testing.T) {
 // the raise machinery is present. (The check is on the emitted text because the property is
 // about what reaches llc: an instruction with no guard in front of it is the bug.)
 func TestEmittedDivisionCarriesTheGuard(t *testing.T) {
+	t.Parallel()
 	src := "def half(n):\n    return n % 3\n\nprint(half(7))\nprint(7 % 0)\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -173,6 +180,7 @@ func TestEmittedDivisionCarriesTheGuard(t *testing.T) {
 // Floating division by zero yields ±inf to LLVM, so if the emitter does not test, the program
 // prints `inf` — the exact output that was measured before the fix.
 func TestFloatDivisionByZeroDoesNotPrintInfinity(t *testing.T) {
+	t.Parallel()
 	code, stdout, _ := zdBuild(t, "zero_div_float", "x = 2\nprint(x / 0.0)\n")
 	if strings.Contains(stdout, "inf") {
 		t.Fatalf("the compiled program printed infinity: stdout %q", stdout)

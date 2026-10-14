@@ -20,6 +20,7 @@ import (
 // `floatEval` folds the first, and only the second reaches `llvm.roundeven.f64`. Fixing the runtime
 // call while the fold still tied away from zero would have left half the program wrong.
 func TestRoundTiesToEvenOnAllThreeLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"ties_to_even_literals", "print(round(0.5))\nprint(round(1.5))\nprint(round(2.5))\nprint(round(3.5))\n", "0\n2\n2\n4\n"},
 		{"ties_to_even_negatives", "print(round(-0.5))\nprint(round(-1.5))\nprint(round(-2.5))\nprint(round(-3.5))\n", "0\n-2\n-2\n-4\n"},
@@ -30,6 +31,7 @@ func TestRoundTiesToEvenOnAllThreeLegs(t *testing.T) {
 		{"tie_inside_an_expression", "n = 0.5\nprint(round(n) + 10)\nprint(round(2.5) * 2)\n", "10\n4\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
@@ -46,6 +48,7 @@ func TestRoundTiesToEvenOnAllThreeLegs(t *testing.T) {
 }
 
 func TestRoundUsesTheTiesToEvenIntrinsicNotTheAwayFromZeroOne(t *testing.T) {
+	t.Parallel()
 	// The compiled rule lives in exactly one intrinsic; the fold and the call must not be different
 	// answers to the same question.
 	mod := mustIRText(t, "a = 2.5\nprint(round(a))\n")

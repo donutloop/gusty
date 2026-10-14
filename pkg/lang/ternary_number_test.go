@@ -26,6 +26,7 @@ import (
 // TestATernaryAnswersInTheWordItsArmsAnswer is the parity table: every shape the rule can name, run
 // through the real compiler and the record, against what CPython prints.
 func TestATernaryAnswersInTheWordItsArmsAnswer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- both arms are doubles: the instruction Gap R.102 was filed for.
 		{"both arms doubles, printed",
@@ -89,6 +90,7 @@ func TestATernaryAnswersInTheWordItsArmsAnswer(t *testing.T) {
 			"def f(x):\n    y = x * 2.0\n    return y if y > 2 else 0.5\n\nprint(f(3.0), f(0.5))\n", "6.0 0.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
@@ -109,6 +111,7 @@ func TestATernaryAnswersInTheWordItsArmsAnswer(t *testing.T) {
 // choosing the arms, no i32 select choosing a double, and a function whose arms are doubles ending in
 // `ret double` — the pairing ADR 0254's return-word gate checks for the shapes it already covers.
 func TestTheDoubleSelectIsTheInstructionThatChooses(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(1))\n")
 	if err != nil {
 		t.Fatalf("the shape Gap R.102 filed as unlowerable was refused: %v", err)
@@ -160,6 +163,7 @@ func containsDoubleSelect(body string) bool {
 // number-shaped wrong answers, which ADR 0166 counts as our bug — so the program is refused in words,
 // with the record still answering CPython and the tagged value word named as the owner.
 func TestATernaryWhoseArmsDisagreeOnAWordIsRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"one arm a double at the top level",
@@ -218,6 +222,7 @@ func TestATernaryWhoseArmsDisagreeOnAWordIsRefused(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s (%q): compiled; want a refusal — either word would print a number-shaped wrong answer", tc.name, tc.src)
@@ -252,6 +257,7 @@ func TestATernaryWhoseArmsDisagreeOnAWordIsRefused(t *testing.T) {
 // compiled backend answers CPython, or it refuses in words that name the missing word. There is no
 // third answer, and the one that used to be there — a number, printed happily, truncated — fails here.
 func TestNoTernaryAnswersWithATruncatedNumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"c = 1\nprint(1 if c > 0 else 2.5)\n", "1\n"},
 		{"c = 0\nprint(1 if c > 0 else 2.5)\n", "2.5\n"},
@@ -288,6 +294,7 @@ func TestNoTernaryAnswersWithATruncatedNumber(t *testing.T) {
 // ask `isFloat` of an arm and then choose an instruction somewhere else; both read `ternaryKind`, and a
 // `select i1 … i32 …, i32 …` for a program whose arms are doubles is the bug returning.
 func TestTheTernaryRuleIsAskedOnceAndNotTwice(t *testing.T) {
+	t.Parallel()
 	src := "c = 1\nprint(1.5 if c > 0 else 2.5)\n"
 	res, err := Compile(src)
 	if err != nil {

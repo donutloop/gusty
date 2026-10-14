@@ -76,6 +76,7 @@ func diagWithCode(diags []checkDiag, code string) *checkDiag {
 
 // TestVarianceParity runs the variance conformance program on the compiled path.
 func TestVarianceParity(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("variance")
 	want := "1\n2\n3\n30\n2\n42\n"
 	got := runCompiled(t, src)
@@ -95,6 +96,7 @@ func TestVarianceParity(t *testing.T) {
 // asserts the STABLE machine-readable code plus an actionable suggestion — the
 // agentic consumption path for the type system.
 func TestCheckReportsVarianceRules(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -165,6 +167,7 @@ func TestCheckReportsVarianceRules(t *testing.T) {
 // TestVarianceSelfDescription checks the `gustyc --variance` machine surface:
 // an agent can discover the whole variance model without reading prose.
 func TestVarianceSelfDescription(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)

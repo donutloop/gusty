@@ -21,6 +21,7 @@ import (
 // PASS — so all three are measured here rather than assumed.
 
 func TestPartitionCoversEveryNameOnce(t *testing.T) {
+	t.Parallel()
 	names := []string{}
 	for i := 0; i < 23; i++ {
 		names = append(names, fmt.Sprintf("TestCase%02d", i))
@@ -53,6 +54,7 @@ func TestPartitionCoversEveryNameOnce(t *testing.T) {
 }
 
 func TestPartitionIsReproducible(t *testing.T) {
+	t.Parallel()
 	// The same names must give the same shards every time, in any starting order: `-list` reports in
 	// file order, and a boundary that moves when a file is renamed makes every bisect a new experiment.
 	a := []string{"TestZulu", "TestAlpha", "TestMike", "TestBravo", "TestYankee", "TestKilo"}
@@ -66,6 +68,7 @@ func TestPartitionIsReproducible(t *testing.T) {
 }
 
 func TestRunRegexIsAnchored(t *testing.T) {
+	t.Parallel()
 	// The bug this guards: `-run TestFoo` also matches TestFooBar, so one case runs in two shards and
 	// the second shard's case never runs at all — a hole that no failure ever reports.
 	got := runRegex([]string{"TestFoo", "TestFooBar"})
@@ -78,6 +81,7 @@ func TestRunRegexIsAnchored(t *testing.T) {
 }
 
 func TestIsTestNameRejectsProse(t *testing.T) {
+	t.Parallel()
 	for name, want := range map[string]bool{
 		"TestSomething":                   true,
 		"TestA_1":                         true,
@@ -98,6 +102,7 @@ func TestIsTestNameRejectsProse(t *testing.T) {
 // TestShardsRunRealTestsForReal is the integration half: a synthetic package of sleeping cases, run by
 // the built harness, checked for coverage and for genuine overlap.
 func TestShardsRunRealTestsForReal(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no `go` on PATH to build the harness with")
 	}
@@ -163,6 +168,7 @@ func TestShardsRunRealTestsForReal(t *testing.T) {
 }
 
 func TestAFailingShardFailsTheRun(t *testing.T) {
+	t.Parallel()
 	// The harness may not turn a red case green by virtue of being a wrapper: a failing shard exits the
 	// tool non-zero, says which shard, and the other shards still get to run.
 	dir := writeSyntheticPkg(t, 6, "10*time.Millisecond")
@@ -303,6 +309,7 @@ func writeFile(t *testing.T, path, body string) {
 // nothing would make the CI command depend on which directories happen to exist, and saying nothing
 // would let a renamed package contribute nothing to a green run unnoticed.
 func TestAPackageWithNoTestFilesIsSkippedNotFatal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeModule(t, dir)
 	if err := os.MkdirAll(filepath.Join(dir, "withtests"), 0o755); err != nil {
@@ -404,6 +411,7 @@ func ledgerFixture(t *testing.T, dir string, rows []lang.Divergence) string {
 const shardSource = "print(min(n, 3))"
 
 func TestMergedEvidenceJudgesTheRunAndNotTheShard(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ledger := ledgerFixture(t, dir, []lang.Divergence{{
 		Source: shardSource, Reason: "the compiled backend cannot build a program the engine ran",
@@ -440,6 +448,7 @@ func TestMergedEvidenceJudgesTheRunAndNotTheShard(t *testing.T) {
 }
 
 func TestPaidDebtIsStillCaughtAcrossShards(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ledger := ledgerFixture(t, dir, []lang.Divergence{{
 		Source: shardSource, Reason: "the compiled backend cannot build a program the engine ran",
@@ -459,6 +468,7 @@ func TestPaidDebtIsStillCaughtAcrossShards(t *testing.T) {
 }
 
 func TestANewDivergenceSeenByOneShardFailsTheRun(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ledger := ledgerFixture(t, dir, nil)
 	// Debt arriving unannounced in ONE shard is still debt for the run; a per-shard check finds it too, so
@@ -478,6 +488,7 @@ func TestANewDivergenceSeenByOneShardFailsTheRun(t *testing.T) {
 }
 
 func TestAFailedShardAdjudicatesNothing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ledger := ledgerFixture(t, dir, []lang.Divergence{{Source: shardSource, Reason: "r", Expected: "x"}})
 	// A shard that died mid-run left partial evidence at best; the shard's own failure is the message, and
@@ -497,6 +508,7 @@ func TestAFailedShardAdjudicatesNothing(t *testing.T) {
 // package overwrite the evidence of shard 1 of another — and the merger would silently judge a ledger on half
 // of one run's evidence.
 func TestEvidenceNamesDoNotCollideAcrossPackages(t *testing.T) {
+	t.Parallel()
 	if got := evidenceName("github.com/x/y/pkg/lang", 3); got != "github-com-x-y-pkg-lang-003.golden-evidence.json" {
 		t.Errorf("evidenceName = %q", got)
 	}
@@ -517,6 +529,7 @@ func TestEvidenceNamesDoNotCollideAcrossPackages(t *testing.T) {
 // the cache; this asserts the shipped makefile says so, rather than the docs claiming it and the makefile
 // disagreeing.
 func TestTheMakefileRunsTheSerialSuiteWithoutTheCache(t *testing.T) {
+	t.Parallel()
 	body, err := os.ReadFile(filepath.Join("..", "..", "makefile"))
 	if err != nil {
 		t.Fatalf("read the makefile: %v", err)

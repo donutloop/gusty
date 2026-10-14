@@ -18,6 +18,7 @@ import (
 // the call was wrong for variables. A change that fixes only one leaves half of every program wrong.
 
 func TestRoundTiesToEvenOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ expr, want string }{
 		{"round(0.5)", "0"},
 		{"round(1.5)", "2"},
@@ -39,6 +40,7 @@ func TestRoundTiesToEvenOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range cases {
 		src := "print(" + tc.expr + ")\n"
 		t.Run(tc.expr, func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(src, 0)
 			if err != nil {
 				t.Fatalf("compile %s: %v", tc.expr, err)
@@ -51,6 +53,7 @@ func TestRoundTiesToEvenOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestRoundTiesToEvenAgainstTheRecord(t *testing.T) {
+	t.Parallel()
 	// The same table on the record leg, so the fold and the runtime intrinsic are pinned to the same
 	// numbers rather than to each other.
 	for _, tc := range []struct {
@@ -73,6 +76,7 @@ func TestRoundTiesToEvenAgainstTheRecord(t *testing.T) {
 }
 
 func TestRoundRuntimePathIsTheEvenIntrinsic(t *testing.T) {
+	t.Parallel()
 	mod := compileSrcIR(t, "a = 2.5\nprint(round(a))\n")
 	if !strings.Contains(mod, "call double @llvm.roundeven.f64") {
 		t.Errorf("the runtime path did not emit the ties-to-even intrinsic:\n%s", mod)

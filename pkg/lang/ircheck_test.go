@@ -3,20 +3,41 @@ package lang
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// llcCompiles compiles src and hands the module to the pinned `llc`, which is the check that what this
+// emitter wrote is something LLVM will lower.
+//
+// The object file goes in the case's own temp directory. It used to go to a fixed `/tmp/ircheck.o`, which
+// is a name every case in the suite shared — harmless while the suite walked its cases one at a time, and
+// two cases fighting over one file the moment they run beside each other, which is a flake that points at
+// whichever case lost the race rather than at the shared path (ADR 0343).
 func llcCompiles(t *testing.T, src string) string {
 	t.Helper()
-	res, err := Compile(src)
+	return llcCompilesInDir(t, "", src)
+}
+
+// llcCompilesIn is llcCompiles for a program whose `import mod` resolves against dir — the per-run form
+// of the os.Chdir the import cases used to perform on the process.
+func llcCompilesIn(t *testing.T, dir, src string) string {
+	t.Helper()
+	return llcCompilesInDir(t, dir, src)
+}
+
+func llcCompilesInDir(t *testing.T, dir, src string) string {
+	t.Helper()
+	res, err := CompileIn(dir, src)
 	if err != nil {
 		t.Fatalf("compile %q: %v", src, err)
 	}
 	// -relocation-model=pic: llc otherwise defaults to the static relocation
 	// model, emitting R_X86_64_32 relocations for .rodata string constants that
 	// the default PIE link (cc) rejects. PIC codegen uses RIP-relative refs.
-	cmd := exec.Command("llc-20", "-relocation-model=pic", "-o", "/tmp/ircheck.o")
+	objPath := filepath.Join(t.TempDir(), "ircheck.o")
+	cmd := exec.Command("llc-20", "-relocation-model=pic", "-o", objPath)
 	cmd.Stdin = strings.NewReader(res.IR)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -26,30 +47,37 @@ func llcCompiles(t *testing.T, src string) string {
 }
 
 func TestIRCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "x = 3\nprint(x + 4 * 2)")
 }
 
 func TestIRWhileCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "i = 0\nwhile i < 3:\n    i = i + 1\nprint(i)")
 }
 
 func TestIRForCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "for i in range(5):\n    print(i)")
 }
 
 func TestIRFuncCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "def double(x):\n    return x * 2\nprint(double(5))")
 }
 
 func TestIRFuncTwoParamsCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "def add(a, b):\n    return a + b\nprint(add(3, 4))")
 }
 
 func TestIRIfCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)")
 }
 
 func TestIRMatchWildcardCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// `case _:` wildcard lowers pat := sub, so the icmp is always true.
 	res, err := Compile("x = 5\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)")
 	if err != nil {
@@ -62,31 +90,38 @@ func TestIRMatchWildcardCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRMatchCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
 }
 
 func TestIRBreakContinueCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
 	llcCompiles(t, "s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
 }
 
 func TestIRRangeTwoArgCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "s = 0\nfor i in range(2, 5):\n    s = s + i\nprint(s)")
 }
 
 func TestIRForElseCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\nprint(s)")
 }
 
 func TestIRWhileElseCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\nprint(s)")
 }
 
 func TestIRForElseBreakCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\nprint(s)")
 }
 
 func TestIRDefaultArgCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "def f(a, b=10):\n    return a + b\nprint(f(5))")
 	// codegen must fill the default b=10 as the second call argument
 	if !strings.Contains(ir, "call i32 @gy_f(i32 5, i32 10)") {
@@ -95,6 +130,7 @@ func TestIRDefaultArgCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRKeywordArgCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "def f(a, b):\n    return a * b\nprint(f(a=3, b=4))")
 	// keyword args must be emitted in parameter order a,b => 3,4
 	if !strings.Contains(ir, "call i32 @gy_f(i32 3, i32 4)") {
@@ -103,6 +139,7 @@ func TestIRKeywordArgCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRKeywordOutOfOrderCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "def f(a, b):\n    return a - b\nprint(f(b=3, a=10))")
 	// out-of-order keyword args must be reordered to (a=10, b=3)
 	if !strings.Contains(ir, "call i32 @gy_f(i32 10, i32 3)") {
@@ -111,6 +148,7 @@ func TestIRKeywordOutOfOrderCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRKeywordRejectedInBuiltin(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(x=1)")
 	if err == nil {
 		t.Fatal("expected error for keyword arg to print")
@@ -118,6 +156,7 @@ func TestIRKeywordRejectedInBuiltin(t *testing.T) {
 	_ = res
 }
 func TestIRClosureCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "def outer(x):\n    def inc():\n        return x + 1\n    y = inc()\n    return y\nprint(outer(5))")
 	if !strings.Contains(ir, "@inc_env") {
 		t.Fatalf("missing closure define in IR:\n%s", ir)
@@ -134,6 +173,7 @@ func TestIRClosureCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRDecoratorCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "def dec(g):\n    return g\n@dec\ndef f(x):\n    return x + 1\nprint(f(3))")
 	if !strings.Contains(ir, "@gy_f_impl") {
 		t.Fatalf("missing decorated impl in IR:\n%s", ir)
@@ -144,17 +184,20 @@ func TestIRDecoratorCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRAndOrCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "print(1 and 0)\nprint(1 or 0)")
 	llcCompiles(t, "x = 1\ny = 0\nprint(x and y)\nprint(x or y)")
 	llcCompiles(t, "print(9 // 2)")
 }
 
 func TestIRDictSetCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "print({1: 10, 2: 20}[1])\nprint(len({1: 10, 2: 20}))")
 	llcCompiles(t, "print({1, 2, 3}[2])\nprint(len({1, 2, 3}))")
 }
 
 func TestIRDictSetGlobals(t *testing.T) {
+	t.Parallel()
 	// dict/set literals lower to dedicated global structs with a count field.
 	res, err := Compile("print(len({1: 10, 2: 20}))")
 	if err != nil {
@@ -173,11 +216,13 @@ func TestIRDictSetGlobals(t *testing.T) {
 }
 
 func TestIRStringConstLenCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "print(len(\"hello\"))\nprint(len(\"ab\" + \"cd\"))")
 	llcCompiles(t, "print(len({1, 2, 3}))")
 }
 
 func TestIRStringConstLenFolds(t *testing.T) {
+	t.Parallel()
 	// len of a string literal and a string-concat fold to constants, so no
 	// getelementptr/load count is emitted for the string case.
 	res, err := Compile("print(len(\"ab\" + \"cd\"))")
@@ -194,6 +239,7 @@ func TestIRStringConstLenFolds(t *testing.T) {
 }
 
 func TestIRConstantFolding(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("x = 1 + 2")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -207,6 +253,7 @@ func TestIRConstantFolding(t *testing.T) {
 }
 
 func TestIRModuloCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// constant modulo folds to a constant (17 % 5 = 2).
 	res, err := Compile("print(17 % 5)")
 	if err != nil {
@@ -226,6 +273,7 @@ func TestIRModuloCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRZeroArgPrintCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// print(*args, sep=" ", end="\n"): with no arguments only the terminator is
 	// written, so print() is a blank line — exactly one printf ("\n").
 	res, err := Compile("print()")
@@ -241,6 +289,7 @@ func TestIRZeroArgPrintCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// print(1, 2) lowers to: value, separator, value, terminator — four printfs,
 	// and no argument format carries its own newline (the terminator does, so
 	// `sep`/`end` stay honoured). See ADR 0165.
@@ -291,12 +340,14 @@ func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRForListCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        continue\n    s = s + x\nprint(s)")
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\nprint(s)")
 }
 
 func TestIRForListUnrolls(t *testing.T) {
+	t.Parallel()
 	// for-over-list unrolls one body block per constant element, so the IR
 	// must contain one for.list.body block per element.
 	res, err := Compile("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
@@ -316,6 +367,7 @@ func TestIRForListUnrolls(t *testing.T) {
 }
 
 func TestIRComprehensionCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// Inline list comprehension over a constant list literal, including
 	// indexing into the lowered comprehension result.
 	llcCompiles(t, "print([x * 2 for x in [1, 2, 3]][1])")
@@ -326,6 +378,7 @@ func TestIRComprehensionCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRComprehensionLowersToGlobalStruct(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print([x * 2 for x in [1, 2, 3]][1])")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -351,11 +404,13 @@ func TestIRComprehensionLowersToGlobalStruct(t *testing.T) {
 	}
 }
 func TestIRSetComprehensionCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// {x * x for x in [1, 2, 2]} dedups to {1, 4}.
 	llcCompiles(t, "print(len({x * x} for x in [1, 2, 2]))")
 }
 
 func TestIRSetComprehensionLowersToSetGlobal(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "print(len({x * x} for x in [1, 2, 3]))")
 	if !strings.Contains(ir, "@.set1 = private global {i32, [3 x i32]}") {
 		t.Fatalf("set comprehension should lower to a set global, got:\n%s", ir)
@@ -363,11 +418,13 @@ func TestIRSetComprehensionLowersToSetGlobal(t *testing.T) {
 }
 
 func TestIRDictComprehensionCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// {x: x * 10 for x in [1, 2, 3]} builds a 3-entry dict.
 	llcCompiles(t, "print(len({x: x * 10} for x in [1, 2, 3]))")
 }
 
 func TestIRDictComprehensionLowersToDictGlobal(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, "print(len({x: x * 10} for x in [1, 2]))")
 	if !strings.Contains(ir, "@.dict1 = private global {i32, [2 x i32], [2 x i32]}") {
 		t.Fatalf("dict comprehension should lower to a dict global, got:\n%s", ir)
@@ -375,6 +432,7 @@ func TestIRDictComprehensionLowersToDictGlobal(t *testing.T) {
 }
 
 func TestIRDictComprehensionIndexCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// d[key] on a lowered dict comprehension resolves the mapped value at
 	// codegen time (constant key lookup, not a positional GEP).
 	llcCompiles(t, "print(({x: x * 10} for x in [1, 2])[1])")
@@ -382,6 +440,7 @@ func TestIRDictComprehensionIndexCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRDictComprehensionIndexMissingKeyErrors(t *testing.T) {
+	t.Parallel()
 	// d[3] with no matching key must fail at codegen, like a normal dict.
 	if _, err := Compile("print(({x: x * 10} for x in [1, 2])[3])"); err == nil {
 		t.Fatalf("expected key-not-found compile error")
@@ -389,6 +448,7 @@ func TestIRDictComprehensionIndexMissingKeyErrors(t *testing.T) {
 }
 
 func TestIRDictComprehensionIndexLowersToConstant(t *testing.T) {
+	t.Parallel()
 	// d[1] over {x: x * 10} for x in [1, 2] is resolved to the constant 10 at
 	// codegen time (no runtime GEP/lookup).
 	ir := llcCompiles(t, "print(({x: x * 10} for x in [1, 2])[1])")
@@ -398,6 +458,7 @@ func TestIRDictComprehensionIndexLowersToConstant(t *testing.T) {
 }
 
 func TestIRSetComprehensionIndexCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// s[key] on a lowered set comprehension is a membership test returning
 	// the element when present.
 	llcCompiles(t, "print(({x * x} for x in [1, 2])[1])")
@@ -405,6 +466,7 @@ func TestIRSetComprehensionIndexCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRSetComprehensionIndexMissingErrors(t *testing.T) {
+	t.Parallel()
 	// s[5] with no matching element must fail at codegen (membership test).
 	if _, err := Compile("print(({x * x} for x in [1, 2])[5])"); err == nil {
 		t.Fatalf("expected not-in-set compile error")
@@ -412,6 +474,7 @@ func TestIRSetComprehensionIndexMissingErrors(t *testing.T) {
 }
 
 func TestIRTernaryCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// ternary with a constant condition folds to the taken branch.
 	llcCompiles(t, "print(5 if 1 else 3)")
 	llcCompiles(t, "print(10 if 0 else 42)")
@@ -422,6 +485,7 @@ func TestIRTernaryCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRTernaryLowersToSelect(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(7 if 2 > 1 else 99)")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -432,6 +496,7 @@ func TestIRTernaryLowersToSelect(t *testing.T) {
 }
 
 func TestIRMultiArgRangeComprehension(t *testing.T) {
+	t.Parallel()
 	// 2-arg and 3-arg range iterables in AOT comprehensions must compile.
 	llcCompiles(t, "print(sum([x for x in range(0, 5)]))")
 	llcCompiles(t, "print(sum([x for x in range(1, 5, 2)]))")
@@ -440,6 +505,7 @@ func TestIRMultiArgRangeComprehension(t *testing.T) {
 }
 
 func TestIRAggregateOverComprehension(t *testing.T) {
+	t.Parallel()
 	// len/sum/min/max over a lowered comprehension must compile and verify.
 	llcCompiles(t, "print(len([x for x in range(5)]))")
 	llcCompiles(t, "print(sum([x for x in range(5)]))")
@@ -448,6 +514,7 @@ func TestIRAggregateOverComprehension(t *testing.T) {
 }
 
 func TestIRSumFoldsComprehension(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(sum([x for x in range(5)]))")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -458,6 +525,7 @@ func TestIRSumFoldsComprehension(t *testing.T) {
 	}
 }
 func TestIRRuntimeListAgg(t *testing.T) {
+	t.Parallel()
 	// min/max/sum over a list of runtime variables lowers each element via
 	// g.value directly (no emitList global), so runtime elements work.
 	progs := []string{
@@ -477,6 +545,7 @@ func TestIRRuntimeListAgg(t *testing.T) {
 }
 
 func TestIRRuntimeLenIndex(t *testing.T) {
+	t.Parallel()
 	// len of a runtime-element list literal returns the count directly; list
 	// index evaluates the indexed element via g.value directly.
 	progs := []string{
@@ -495,6 +564,7 @@ func TestIRRuntimeLenIndex(t *testing.T) {
 }
 
 func TestIRSumMinMaxAbs(t *testing.T) {
+	t.Parallel()
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")
 	if err != nil {
@@ -558,10 +628,12 @@ func TestIRSumMinMaxAbs(t *testing.T) {
 }
 
 func TestIRSumSetLiteralCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "print(sum({1, 2, 3}))")
 }
 
 func TestIRMinDictLiteralRejectedWithLLC(t *testing.T) {
+	t.Parallel()
 	// min/max over a non-empty dict literal is rejected, matching the
 	// interpreter (which rejects non-list/set collections for min/max).
 	if _, err := Compile("print(min({1: 10, 2: 20}))"); err == nil {
@@ -570,10 +642,12 @@ func TestIRMinDictLiteralRejectedWithLLC(t *testing.T) {
 }
 
 func TestIRMaxSetLiteralCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, "print(max({1, 2, 3}))")
 }
 
 func TestIRLambdaInlineCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// `print((lambda x: int: x + 1)(5))` -> 6 via an anonymous FuncDef + call.
 	ir := llcCompiles(t, "print((lambda x: int: x + 1)(5))")
 	if !strings.Contains(ir, "@gy_lambda_") {
@@ -582,6 +656,7 @@ func TestIRLambdaInlineCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRLambdaNamedCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// `f = lambda x: int: x * 2; f(3)` -> 6 via g.lambdas resolution.
 	ir := llcCompiles(t, "f = lambda x: int: x * 2\nprint(f(3))")
 	if !strings.Contains(ir, "@gy_lambda_") {
@@ -590,6 +665,7 @@ func TestIRLambdaNamedCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRStrMethodUpperLenFolds(t *testing.T) {
+	t.Parallel()
 	// `len("AbC".upper())` constant-folds upper to "ABC" and returns 3.
 	ir := llcCompiles(t, `print(len("AbC".upper()))`)
 	if !strings.Contains(ir, "3") {
@@ -598,6 +674,7 @@ func TestIRStrMethodUpperLenFolds(t *testing.T) {
 }
 
 func TestIRStrMethodLowerStripFolds(t *testing.T) {
+	t.Parallel()
 	// `len(" AbC ".strip())` folds strip to "AbC" (len 3).
 	llcCompiles(t, `print(len(" AbC ".strip()))`)
 	// `len("ABC".lower())` folds lower to "abc" (len 3).
@@ -605,6 +682,7 @@ func TestIRStrMethodLowerStripFolds(t *testing.T) {
 }
 
 func TestIRStrMethodPrintLowersString(t *testing.T) {
+	t.Parallel()
 	// print("AbC".upper()) emits the folded string global (ABC).
 	ir := llcCompiles(t, `print("AbC".upper())`)
 	if !strings.Contains(ir, "ABC") {
@@ -613,6 +691,7 @@ func TestIRStrMethodPrintLowersString(t *testing.T) {
 }
 
 func TestIRDictKeysValuesLowers(t *testing.T) {
+	t.Parallel()
 	// sum({1: 2, 3: 4}.keys()) folds keys to a list and sums to 4.
 	ir := llcCompiles(t, "print(sum({1: 2, 3: 4}.keys()))")
 	if !strings.Contains(ir, "4") {
@@ -622,6 +701,7 @@ func TestIRDictKeysValuesLowers(t *testing.T) {
 }
 
 func TestIRListAppendLowers(t *testing.T) {
+	t.Parallel()
 	// sum([1, 2, 3].append(4)) folds append to [1,2,3,4] and sums via IR.
 	ir := llcCompiles(t, "print(sum([1, 2, 3].append(4)))")
 	if !strings.Contains(ir, "add i32") {
@@ -630,6 +710,7 @@ func TestIRListAppendLowers(t *testing.T) {
 }
 
 func TestIRRuntimeListLenLowers(t *testing.T) {
+	t.Parallel()
 	// Runtime list variable: `len(x)` must read the mutated heap length via
 	// rt_list_len instead of failing codegen (no compile-time folding available).
 	ir := llcCompiles(t, "x = [1, 2]\nx.append(3)\nprint(len(x))")
@@ -642,6 +723,7 @@ func TestIRRuntimeListLenLowers(t *testing.T) {
 }
 
 func TestIRRuntimeGCReclaimsGarbage(t *testing.T) {
+	t.Parallel()
 	// A program that accumulates nested heap garbage across statements must
 	// still compile (the AOT mark-and-sweep GC reclaims unreachable objects).
 	ir := llcCompiles(t, "x = [1, 2, 3]\nprint(len(x))")
@@ -651,6 +733,7 @@ func TestIRRuntimeGCReclaimsGarbage(t *testing.T) {
 }
 
 func TestIRRuntimeListIndexLowers(t *testing.T) {
+	t.Parallel()
 	// Runtime list variable: `x[i]` must read heap[x].data[i] via rt_get_elem
 	// instead of failing codegen (no compile-time global for the var).
 	ir := llcCompiles(t, "x = [10, 20]\nx.append(30)\nprint(x[0] + x[2])")
@@ -663,6 +746,7 @@ func TestIRRuntimeListIndexLowers(t *testing.T) {
 }
 
 func TestIRRuntimeListReuseLowers(t *testing.T) {
+	t.Parallel()
 	// Rebinding a runtime list var must free its old heap slot via rt_free so
 	// rt_alloc can recycle it (no unbounded slot leak on reassignment).
 	ir := llcCompiles(t, "x = [1, 2]\nx = [3, 4]\nprint(len(x))")
@@ -675,6 +759,7 @@ func TestIRRuntimeListReuseLowers(t *testing.T) {
 }
 
 func TestIRRuntimeListToScalarFreeLowers(t *testing.T) {
+	t.Parallel()
 	// A list var rebound to a non-list value must free its old heap slot.
 	ir := llcCompiles(t, "x = [1, 2]\nx = 5\nprint(x)")
 	if !strings.Contains(ir, "@rt_free") {
@@ -683,6 +768,7 @@ func TestIRRuntimeListToScalarFreeLowers(t *testing.T) {
 }
 
 func TestIRRuntimeListVarIndexLowers(t *testing.T) {
+	t.Parallel()
 	// `x[a]` with a runtime index var must pass the var operand to rt_get_elem
 	// (not a literal), so variable-index list reads compile.
 	ir := llcCompiles(t, "x = [10, 20]\na = 1\nprint(x[a])")
@@ -692,6 +778,7 @@ func TestIRRuntimeListVarIndexLowers(t *testing.T) {
 }
 
 func TestIRRuntimeDictLowers(t *testing.T) {
+	t.Parallel()
 	// `d = {1: 10}` must allocate a runtime dict heap object via rt_dict_put,
 	// and `d[k]` must read via rt_dict_get (not a compile-time global).
 	ir := llcCompiles(t, "d = {1: 10}\nprint(d[1])")
@@ -704,6 +791,7 @@ func TestIRRuntimeDictLowers(t *testing.T) {
 }
 
 func TestIRRuntimeSetLowers(t *testing.T) {
+	t.Parallel()
 	// `s = {1, 2}` must allocate a runtime set heap object via rt_set_add.
 	ir := llcCompiles(t, "s = {1, 2}\nprint(len(s))")
 	if !strings.Contains(ir, "@rt_set_add") {
@@ -715,6 +803,7 @@ func TestIRRuntimeSetLowers(t *testing.T) {
 }
 
 func TestIRRuntimeCrossCollectionFreeLowers(t *testing.T) {
+	t.Parallel()
 	// Rebinding a runtime dict var to a list must free the old dict slot.
 	ir := llcCompiles(t, "d = {1: 10}\nd = [1, 2]\nprint(len(d))")
 	if !strings.Contains(ir, "@rt_free") {
@@ -726,6 +815,7 @@ func TestIRRuntimeCrossCollectionFreeLowers(t *testing.T) {
 }
 
 func TestIRHeapBoundsGuardLowers(t *testing.T) {
+	t.Parallel()
 	// rt_alloc must not write out of bounds when the 1024-slot heap is full:
 	// it returns a -1 sentinel instead of corrupting memory.
 	ir := llcCompiles(t, "x = [1]\nprint(len(x))")
@@ -735,6 +825,7 @@ func TestIRHeapBoundsGuardLowers(t *testing.T) {
 }
 
 func TestIRDictItemsLenLowers(t *testing.T) {
+	t.Parallel()
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
 	if !strings.Contains(ir, "2") {
@@ -743,6 +834,7 @@ func TestIRDictItemsLenLowers(t *testing.T) {
 }
 
 func TestIRDictMinMaxMethodsLowers(t *testing.T) {
+	t.Parallel()
 	// max({1: 2, 3: 4}.keys()) -> 3, min({1: 2, 3: 4}.values()) -> 2.
 	ir := llcCompiles(t, "print(max({1: 2, 3: 4}.keys()))")
 	if !strings.Contains(ir, "3") {
@@ -752,6 +844,7 @@ func TestIRDictMinMaxMethodsLowers(t *testing.T) {
 }
 
 func TestIRStrIndexFolds(t *testing.T) {
+	t.Parallel()
 	// print("abc"[1]) folds to a one-character *string* (ADR 0225): an @str_tab index printed
 	// through the text lookup. Folding the byte and formatting it with %d is what answered 98
 	// where CPython answers b, so the assertion is about the intern and the pointer read, not a
@@ -766,6 +859,7 @@ func TestIRStrIndexFolds(t *testing.T) {
 }
 
 func TestIRStrSplitLenFolds(t *testing.T) {
+	t.Parallel()
 	// len("a b c".split()) folds to 3.
 	ir := llcCompiles(t, `print(len("a b c".split()))`)
 	if !strings.Contains(ir, "3") {
@@ -774,6 +868,7 @@ func TestIRStrSplitLenFolds(t *testing.T) {
 }
 
 func TestIRStrEqFolds(t *testing.T) {
+	t.Parallel()
 	// print("abc" == "abd") folds to 0.
 	ir := llcCompiles(t, `print("abc" == "abd")`)
 	if !strings.Contains(ir, "0") {
@@ -783,6 +878,7 @@ func TestIRStrEqFolds(t *testing.T) {
 }
 
 func TestIRStrBuiltinFolds(t *testing.T) {
+	t.Parallel()
 	// len(str(42)) folds to 2.
 	ir := llcCompiles(t, `print(len(str(42)))`)
 	if !strings.Contains(ir, "2") {
@@ -791,6 +887,7 @@ func TestIRStrBuiltinFolds(t *testing.T) {
 }
 
 func TestIRPrintStrFloatIsValid(t *testing.T) {
+	t.Parallel()
 	// print(str(3.5)) must fold the float to its %g decimal string and emit a
 	// %s printf fed the string-global pointer — not a %d printf fed an i8*
 	// (which llc rejects with "global variable reference must have pointer
@@ -806,6 +903,7 @@ func TestIRPrintStrFloatIsValid(t *testing.T) {
 }
 
 func TestIRStrReplaceFolds(t *testing.T) {
+	t.Parallel()
 	// `print("aXbXc".replace("X", "-"))` folds to a single string global
 	// "a-b-c", so the emitted IR contains that exact string constant.
 	ir := llcCompiles(t, `print("aXbXc".replace("X", "-"))`)
@@ -815,6 +913,7 @@ func TestIRStrReplaceFolds(t *testing.T) {
 }
 
 func TestIRStrFindFolds(t *testing.T) {
+	t.Parallel()
 	// `print("abcabc".find("bc"))` folds to the index 1, so the emitted IR
 	// contains the i32 constant 1.
 	ir := llcCompiles(t, `print("abcabc".find("bc"))`)
@@ -824,6 +923,7 @@ func TestIRStrFindFolds(t *testing.T) {
 }
 
 func TestIRStrRfindFolds(t *testing.T) {
+	t.Parallel()
 	// `print("abcabc".rfind("bc"))` folds to the last index 4.
 	ir := llcCompiles(t, `print("abcabc".rfind("bc"))`)
 	if !strings.Contains(ir, "i32 4") {
@@ -832,6 +932,7 @@ func TestIRStrRfindFolds(t *testing.T) {
 }
 
 func TestIRStrCapitalizeFolds(t *testing.T) {
+	t.Parallel()
 	// `print(len("hello".capitalize()))` folds capitalize to "Hello" (len 5).
 	ir := llcCompiles(t, `print(len("hello".capitalize()))`)
 	if !strings.Contains(ir, "i32 5") {
@@ -840,6 +941,7 @@ func TestIRStrCapitalizeFolds(t *testing.T) {
 }
 
 func TestIRStrTitleFolds(t *testing.T) {
+	t.Parallel()
 	// `print(len("hello world".title()))` folds title to "Hello World" (len 11).
 	ir := llcCompiles(t, `print(len("hello world".title()))`)
 	if !strings.Contains(ir, "i32 11") {
@@ -848,6 +950,7 @@ func TestIRStrTitleFolds(t *testing.T) {
 }
 
 func TestIRStrSwapcaseFolds(t *testing.T) {
+	t.Parallel()
 	// `print(len("HeLLo".swapcase()))` folds swapcase to "hEllO" (len 5).
 	ir := llcCompiles(t, `print(len("HeLLo".swapcase()))`)
 	if !strings.Contains(ir, "i32 5") {
@@ -856,6 +959,7 @@ func TestIRStrSwapcaseFolds(t *testing.T) {
 }
 
 func TestIRStrIsdigitFolds(t *testing.T) {
+	t.Parallel()
 	// `print("123".isdigit())` folds to i32 1.
 	ir := llcCompiles(t, `print("123".isdigit())`)
 	if !strings.Contains(ir, "i32 1") {
@@ -864,6 +968,7 @@ func TestIRStrIsdigitFolds(t *testing.T) {
 }
 
 func TestIRStrIsalphaFolds(t *testing.T) {
+	t.Parallel()
 	// `print("abc".isalpha())` folds to i32 1.
 	ir := llcCompiles(t, `print("abc".isalpha())`)
 	if !strings.Contains(ir, "i32 1") {
@@ -872,6 +977,7 @@ func TestIRStrIsalphaFolds(t *testing.T) {
 }
 
 func TestIRStrIslowerIsupperFolds(t *testing.T) {
+	t.Parallel()
 	// `print("abc".islower())` folds to i32 1, `print("ABC".isupper())` too.
 	ir := llcCompiles(t, `print("abc".islower())`)
 	if !strings.Contains(ir, "i32 1") {
@@ -884,6 +990,7 @@ func TestIRStrIslowerIsupperFolds(t *testing.T) {
 }
 
 func TestIRStrIsalnumFolds(t *testing.T) {
+	t.Parallel()
 	// `print("abc123".isalnum())` folds to i32 1.
 	ir := llcCompiles(t, `print("abc123".isalnum())`)
 	if !strings.Contains(ir, "i32 1") {
@@ -892,6 +999,7 @@ func TestIRStrIsalnumFolds(t *testing.T) {
 }
 
 func TestIRStrIsspaceFolds(t *testing.T) {
+	t.Parallel()
 	// `print("   ".isspace())` folds to i32 1.
 	ir := llcCompiles(t, `print("   ".isspace())`)
 	if !strings.Contains(ir, "i32 1") {
@@ -900,6 +1008,7 @@ func TestIRStrIsspaceFolds(t *testing.T) {
 }
 
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
+	t.Parallel()
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)
 	if !strings.Contains(ir, "i32 1") {
@@ -912,6 +1021,7 @@ func TestIRStrStartswithEndswithFolds(t *testing.T) {
 }
 
 func TestIRStrCountFolds(t *testing.T) {
+	t.Parallel()
 	// `print("ababab".count("ab"))` folds to the count 3, so the emitted IR
 	// contains the i32 constant 3.
 	ir := llcCompiles(t, `print("ababab".count("ab"))`)
@@ -921,6 +1031,7 @@ func TestIRStrCountFolds(t *testing.T) {
 }
 
 func TestIRStrJoinFolds(t *testing.T) {
+	t.Parallel()
 	// `print(len("x".join(["a", "b" ])))` folds join to "axb" (len 3),
 	// so the emitted IR contains i32 3.
 	ir := llcCompiles(t, `print(len("x".join(["a", "b"])))`)
@@ -930,6 +1041,7 @@ func TestIRStrJoinFolds(t *testing.T) {
 }
 
 func TestIRStrLstripRstripFolds(t *testing.T) {
+	t.Parallel()
 	// `print(len("  hi  ".lstrip()))` folds lstrip to "hi  " (len 4),
 	// so the emitted IR contains i32 4.
 	ir := llcCompiles(t, `print(len("  hi  ".lstrip()))`)
@@ -944,6 +1056,7 @@ func TestIRStrLstripRstripFolds(t *testing.T) {
 }
 
 func TestIRSortedFolds(t *testing.T) {
+	t.Parallel()
 	// sorted(list) folds to a sorted inline list literal global at codegen.
 	// A bare expression statement emits the folded list global (the codegen
 	// represents lists as constant integer-element globals).
@@ -975,6 +1088,7 @@ func TestIRSortedFolds(t *testing.T) {
 }
 
 func TestIRChrOrdFolds(t *testing.T) {
+	t.Parallel()
 	// chr(n) folds a constant codepoint to a single-character string global.
 	ir := llcCompiles(t, `chr(65)`)
 	if !strings.Contains(ir, `c"A\00"`) {
@@ -1008,6 +1122,7 @@ func TestIRChrOrdFolds(t *testing.T) {
 }
 
 func TestIRLjustRjustFolds(t *testing.T) {
+	t.Parallel()
 	// "s".ljust(w) pads on the right with spaces to width w -> string global.
 	ir := llcCompiles(t, `"ab".ljust(5)`)
 	if !strings.Contains(ir, "c\"ab   \\00\"") {
@@ -1034,6 +1149,7 @@ func TestIRLjustRjustFolds(t *testing.T) {
 	llcCompiles(t, `"ab".ljust(2)`)
 }
 func TestIRZfillFolds(t *testing.T) {
+	t.Parallel()
 	// "s".zfill(w) pads on the left with '0' to width w -> string global.
 	ir := llcCompiles(t, `"ab".zfill(5)`)
 	// IR global is c"000ab" + nul terminator: assert on the padded content.
@@ -1051,6 +1167,7 @@ func TestIRZfillFolds(t *testing.T) {
 	llcCompiles(t, `"ab".zfill(2)`)
 }
 func TestIRRemoveprefixSuffixFolds(t *testing.T) {
+	t.Parallel()
 	// "s".removeprefix(p) strips the prefix -> string global.
 	ir := llcCompiles(t, `"abcabc".removeprefix("abc")`)
 	if !strings.Contains(ir, "abc") {
@@ -1069,6 +1186,7 @@ func TestIRRemoveprefixSuffixFolds(t *testing.T) {
 }
 
 func TestIRRoundFolds(t *testing.T) {
+	t.Parallel()
 	// round(x) folds a constant integer literal to itself (no floats in
 	// the AOT backend); consumed by print so the folded i32 lands in the IR.
 	ir := llcCompiles(t, `print(round(42))`)
@@ -1084,6 +1202,7 @@ func TestIRRoundFolds(t *testing.T) {
 }
 
 func TestIRIndexFolds(t *testing.T) {
+	t.Parallel()
 	// "s".index(sub) folds to the byte index of sub (strings.Index).
 	ir := llcCompiles(t, `print("abcabc".index("bc"))`)
 	if !strings.Contains(ir, " 1") && !strings.Contains(ir, "1 ") {
@@ -1098,6 +1217,7 @@ func TestIRIndexFolds(t *testing.T) {
 }
 
 func TestIRFloatFolds(t *testing.T) {
+	t.Parallel()
 	// float(int) folds to the int (AOT represents floats as truncated ints).
 	ir := llcCompiles(t, `print(float(42))`)
 	if !strings.Contains(ir, " 42") && !strings.Contains(ir, "42 ") {
@@ -1112,6 +1232,7 @@ func TestIRFloatFolds(t *testing.T) {
 }
 
 func TestIRFloatArith(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `print(2.5 + 1.0)`)
 	if !strings.Contains(ir, "fadd double") {
 		t.Fatalf("2.5 + 1.0 should emit fadd, got:\n%s", ir)
@@ -1239,6 +1360,7 @@ print(f + 1.0)`)
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
+	t.Parallel()
 	// "s".expandtabs(w) folds to a string global. Source literals have no
 	// escape sequences, so literal receivers contain no tabs -> no-op.
 	ir := llcCompiles(t, `"abc".expandtabs(4)`)
@@ -1251,6 +1373,7 @@ func TestIRExpandtabsFolds(t *testing.T) {
 }
 
 func TestIRDictGetFolds(t *testing.T) {
+	t.Parallel()
 	// {k: v}.get(key) returns the value for the key.
 	ir := llcCompiles(t, `print({1: 42}.get(1))`)
 	if !strings.Contains(ir, " 42") && !strings.Contains(ir, "42 ") {
@@ -1265,6 +1388,7 @@ func TestIRDictGetFolds(t *testing.T) {
 }
 
 func TestIRListCallConsumers(t *testing.T) {
+	t.Parallel()
 	// len/sum/min/max/any/all fold over a list-returning builtin call
 	// (sorted/reversed) by unwrapping the underlying inline list literal.
 	// The element set is preserved (only reordered), so the folds match the
@@ -1320,6 +1444,7 @@ func TestIRListCallConsumers(t *testing.T) {
 }
 
 func TestIRListLenFolds(t *testing.T) {
+	t.Parallel()
 	// len over list-producing builtin calls (enumerate/zip/partition/split/
 	// rsplit) folds to the matching literal length constant.
 	cases := []struct{ src, want string }{
@@ -1346,6 +1471,7 @@ func TestIRListLenFolds(t *testing.T) {
 }
 
 func TestIROverEmptyNestedLists(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `print(sum(sorted([])))`)
 	if !strings.Contains(ir, "i32 0") {
 		t.Fatalf("sum(sorted([])) should fold to 0, got:\n%s", ir)
@@ -1357,6 +1483,7 @@ func TestIROverEmptyNestedLists(t *testing.T) {
 }
 
 func TestIROverEmptyCollections(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `print(sum([]))`)
 	if !strings.Contains(ir, "i32 0") {
 		t.Fatalf("sum([]) should fold to 0, got:\n%s", ir)
@@ -1368,6 +1495,7 @@ func TestIROverEmptyCollections(t *testing.T) {
 }
 
 func TestIRNestedListCallConsumers(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `print(len(sorted(reversed([3, 1, 2]))))`)
 	if !strings.Contains(ir, "i32 3") {
 		t.Fatalf("len(sorted(reversed([3,1,2]))) should fold to 3, got:\n%s", ir)
@@ -1383,6 +1511,7 @@ func TestIRNestedListCallConsumers(t *testing.T) {
 }
 
 func TestIRFloatFloorModNeg(t *testing.T) {
+	t.Parallel()
 	// Float `//` floor division must emit fdiv + llvm.floor.f64, float `%`
 	// must emit frem, and unary minus on a float var must emit fsub double
 	// 0.0 — not integer sdiv/srem/sub on the double bit pattern.
@@ -1396,6 +1525,7 @@ func TestIRFloatFloorModNeg(t *testing.T) {
 }
 
 func TestIRRoundFloatVar(t *testing.T) {
+	t.Parallel()
 	// round(float variable) must emit the ties-to-even intrinsic + fptosi, not error with
 	// "folds only a constant integer arg". This pin used to require `llvm.round.f64` and call it
 	// "(half-away)" — half of the reason the compiled backend answered round(2.5) = 3 and the parity matrix,
@@ -1410,17 +1540,20 @@ func TestIRRoundFloatVar(t *testing.T) {
 }
 
 func TestIRUnionVarIntFloatCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// A union-annotated scalar variable widens to a tagged float slot; the
 	// emitted IR must still assemble cleanly (L6.3 tagged-union lowering).
 	llcCompiles(t, "x: int | float = 5\nprint(x)\n")
 }
 
 func TestIRUnionVarIntStrCompilesWithLLC(t *testing.T) {
+	t.Parallel()
 	// A union-annotated variable with a string member must compile cleanly.
 	llcCompiles(t, "x: int | str = \"hi\"\nprint(x)\n")
 }
 
 func TestIRRoundIntVar(t *testing.T) {
+	t.Parallel()
 	// round(int variable) must pass the value through (identity) rather than
 	// error "round: codegen folds only a constant integer arg".
 	ir := llcCompiles(t, "a = 3\nb = -3\nprint(round(a))\nprint(round(b))")
@@ -1430,6 +1563,7 @@ func TestIRRoundIntVar(t *testing.T) {
 }
 
 func TestIRPrintChrConst(t *testing.T) {
+	t.Parallel()
 	// print(chr(65)) must emit a %s printf fed the chr string-global pointer,
 	// not a %d printf fed the array (llc: global variable reference must have
 	// pointer type). llcCompiles aborts if the module fails to verify.
@@ -1440,21 +1574,14 @@ func TestIRPrintChrConst(t *testing.T) {
 }
 
 func TestIRImportModuleGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/config.gy", []byte("base = 21\nstep = base * 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
 
 	src := "import config\nprint(config.step + 1)"
-	res, err := Compile(src)
+	res, err := CompileIn(dir, src)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1463,18 +1590,14 @@ func TestIRImportModuleGlobals(t *testing.T) {
 	if !strings.Contains(ir, "42") {
 		t.Fatalf("module global not folded into IR:\n%s", ir)
 	}
-	llcCompiles(t, src)
+	llcCompilesIn(t, dir, src)
 }
 
 func TestIRImportModuleFunctions(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/lib.gy", []byte("def f(x):\n    return x * 2\n"), 0o600)
-	old, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	res, err := Compile("import lib\nprint(lib.f(21))")
+	res, err := CompileIn(dir, "import lib\nprint(lib.f(21))")
 	if err != nil {
 		t.Fatalf("AOT import with module functions should compile: %v", err)
 	}
@@ -1487,14 +1610,12 @@ func TestIRImportModuleFunctions(t *testing.T) {
 }
 
 func TestIRImportNestedModules(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/base.gy", []byte("b = 10\n"), 0o600)
 	os.WriteFile(dir+"/config.gy", []byte("import base\nx = base.b * 2\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 
-	res, err := Compile("import config\nprint(config.x + 1)")
+	res, err := CompileIn(dir, "import config\nprint(config.x + 1)")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1503,17 +1624,15 @@ func TestIRImportNestedModules(t *testing.T) {
 	if !strings.Contains(ir, "20") {
 		t.Fatalf("nested module global not folded:\n%s", ir)
 	}
-	llcCompiles(t, "import config\nprint(config.x + 1)")
+	llcCompilesIn(t, dir, "import config\nprint(config.x + 1)")
 }
 
 func TestIRImportStringGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 
-	res, err := Compile("import msg\nprint(msg.msg)")
+	res, err := CompileIn(dir, "import msg\nprint(msg.msg)")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1525,19 +1644,17 @@ func TestIRImportStringGlobals(t *testing.T) {
 }
 
 func TestIRImportStringOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := evalGolden(t, "import msg\nlen(msg.msg)")
+	v, _, err := evalGoldenIn(t, dir, "import msg\nlen(msg.msg)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
 	// AOT
-	res, err := Compile("import msg\nprint(len(msg.msg))")
+	res, err := CompileIn(dir, "import msg\nprint(len(msg.msg))")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1550,12 +1667,10 @@ func TestIRImportStringOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportReversedString(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	res, err := Compile("import msg\nprint(len(reversed(msg.msg)))")
+	res, err := CompileIn(dir, "import msg\nprint(len(reversed(msg.msg)))")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1566,19 +1681,17 @@ func TestIRImportReversedString(t *testing.T) {
 }
 
 func TestIRImportReversedOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := evalGolden(t, "import msg\nlen(reversed(msg.msg))")
+	v, _, err := evalGoldenIn(t, dir, "import msg\nlen(reversed(msg.msg))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
 	// AOT
-	res, err := Compile("import msg\nprint(len(reversed(msg.msg)))")
+	res, err := CompileIn(dir, "import msg\nprint(len(reversed(msg.msg)))")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1591,12 +1704,10 @@ func TestIRImportReversedOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportListGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	res, err := Compile("import cfg\nx = cfg.l")
+	res, err := CompileIn(dir, "import cfg\nx = cfg.l")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1607,17 +1718,15 @@ func TestIRImportListGlobals(t *testing.T) {
 }
 
 func TestIRImportListIndexOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 
-	v, _, err := evalGolden(t, "import cfg\ncfg.l[0]")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\ncfg.l[0]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(cfg.l[0])")
+	res, err := CompileIn(dir, "import cfg\nprint(cfg.l[0])")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1630,12 +1739,10 @@ func TestIRImportListIndexOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportDictGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	res, err := Compile("import cfg\nx = cfg.d")
+	res, err := CompileIn(dir, "import cfg\nx = cfg.d")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -1645,16 +1752,14 @@ func TestIRImportDictGlobals(t *testing.T) {
 }
 
 func TestIRImportLenListOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	v, _, err := evalGolden(t, "import cfg\nlen(cfg.l)")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\nlen(cfg.l)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(len(cfg.l))")
+	res, err := CompileIn(dir, "import cfg\nprint(len(cfg.l))")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1667,12 +1772,10 @@ func TestIRImportLenListOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportSortedList(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [3, 1, 2]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	res, err := Compile("import cfg\nx = sorted(cfg.l)")
+	res, err := CompileIn(dir, "import cfg\nx = sorted(cfg.l)")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1682,16 +1785,14 @@ func TestIRImportSortedList(t *testing.T) {
 }
 
 func TestIRImportDictIndexOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	v, _, err := evalGolden(t, "import cfg\ncfg.d[1]")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\ncfg.d[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(cfg.d[1])")
+	res, err := CompileIn(dir, "import cfg\nprint(cfg.d[1])")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1704,12 +1805,10 @@ func TestIRImportDictIndexOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportReversedList(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	res, err := Compile("import cfg\nx = reversed(cfg.l)")
+	res, err := CompileIn(dir, "import cfg\nx = reversed(cfg.l)")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1720,16 +1819,14 @@ func TestIRImportReversedList(t *testing.T) {
 }
 
 func TestIRImportListArithOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	v, _, err := evalGolden(t, "import cfg\ncfg.l[0] + cfg.l[1]")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\ncfg.l[0] + cfg.l[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(cfg.l[0] + cfg.l[1])")
+	res, err := CompileIn(dir, "import cfg\nprint(cfg.l[0] + cfg.l[1])")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1742,16 +1839,14 @@ func TestIRImportListArithOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportLenDictOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	v, _, err := evalGolden(t, "import cfg\nlen(cfg.d)")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\nlen(cfg.d)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(len(cfg.d))")
+	res, err := CompileIn(dir, "import cfg\nprint(len(cfg.d))")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1764,16 +1859,14 @@ func TestIRImportLenDictOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportDictArithOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	v, _, err := evalGolden(t, "import cfg\ncfg.d[1] + cfg.d[2]")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\ncfg.d[1] + cfg.d[2]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
-	res, err := Compile("import cfg\nprint(cfg.d[1] + cfg.d[2])")
+	res, err := CompileIn(dir, "import cfg\nprint(cfg.d[1] + cfg.d[2])")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1786,18 +1879,16 @@ func TestIRImportDictArithOnTheCompiledBackend(t *testing.T) {
 }
 
 func TestIRImportReversedListParity(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
-	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
 	// interpreter: len(reversed(cfg.l)) == 3
-	v, _, err := evalGolden(t, "import cfg\nlen(reversed(cfg.l))")
+	v, _, err := evalGoldenIn(t, dir, "import cfg\nlen(reversed(cfg.l))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
 	// AOT: reversed(cfg.l) folds to a list of the same length as cfg.l
-	res, err := Compile("import cfg\nprint(len(cfg.l))")
+	res, err := CompileIn(dir, "import cfg\nprint(len(cfg.l))")
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
@@ -1810,6 +1901,7 @@ func TestIRImportReversedListParity(t *testing.T) {
 }
 
 func TestAOTClassBasics(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, `
 class Point:
     def __init__(self, x, y):
@@ -1823,6 +1915,7 @@ print(p.sum())
 }
 
 func TestAOTClassInheritanceSuper(t *testing.T) {
+	t.Parallel()
 	llcCompiles(t, `
 class Animal:
     def __init__(self, x):
@@ -1841,6 +1934,7 @@ print(d.val())
 }
 
 func TestAOTGeneratorFuncsAndExpressions(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `
 def g(n):
     yield n * 2
@@ -1861,6 +1955,7 @@ print((x for x in range(6) if x % 2 == 0))
 }
 
 func TestAOTYieldInsideMatchCase(t *testing.T) {
+	t.Parallel()
 	// Regression: containsYield must recurse into match-case bodies so a
 	// generator whose only yield sits inside a `match` case is registered as
 	// a generator. Previously the yield was missed, so codegen emitted
@@ -1880,6 +1975,7 @@ print(g(2))
 }
 
 func TestAOTIdentityDecorator(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `
 def twice(f):
     return f
@@ -1898,6 +1994,7 @@ print(g())
 }
 
 func TestAOTWrappingDecorator(t *testing.T) {
+	t.Parallel()
 	src := `
 def add1(g):
     def wrap(x):
@@ -1915,6 +2012,7 @@ print(f(3))
 }
 
 func TestAOTEscapeDeadList(t *testing.T) {
+	t.Parallel()
 	// a list literal assigned to a variable that is never read (dead) must
 	// skip its rt_alloc heap allocation (escape analysis / dead-object elim).
 	ir := llcCompiles(t, "g = [1, 2, 3]\n")
@@ -1929,6 +2027,7 @@ func TestAOTEscapeDeadList(t *testing.T) {
 }
 
 func TestAOTDynamicDispatch(t *testing.T) {
+	t.Parallel()
 	ir := llcCompiles(t, `
 class Animal:
     def __init__(self):
@@ -1959,6 +2058,7 @@ print(a.speak())
 	}
 }
 func TestIRMembership(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		"lst = [1, 2, 3]\nif 1 in lst:\n    print(1)\nif 4 not in lst:\n    print(2)\nif 1 is 1:\n    print(3)\nif 1 is not 2:\n    print(4)",
 		"s = {1, 2, 3}\nif 2 in s:\n    print(5)\nif 9 not in s:\n    print(6)",
@@ -1969,6 +2069,7 @@ func TestIRMembership(t *testing.T) {
 	}
 }
 func TestIRFStringPrint(t *testing.T) {
+	t.Parallel()
 	// f-strings with runtime values decompose in the print lowering: constant
 	// parts are emitted as string globals, interpolated expressions as their
 	// values. They compile cleanly through llc.
@@ -1980,6 +2081,7 @@ print(f"val={n}")`)
 }
 
 func TestCodegenTupleUnpack(t *testing.T) {
+	t.Parallel()
 	// tuple assignment: a, b = 1, 2
 	llcCompiles(t, "a, b = 1, 2\nprint(a + b)")
 	// tuple swap
@@ -1987,6 +2089,7 @@ func TestCodegenTupleUnpack(t *testing.T) {
 }
 
 func TestIRPowerInt(t *testing.T) {
+	t.Parallel()
 	// Non-literal integer operands lower to @llvm.pow.f64 (converted to double).
 	ir := llcCompiles(t, "x = 2\ny = 3\nz = x ** y\nprint(z)")
 	if !strings.Contains(ir, "@llvm.pow.f64") {
@@ -1998,6 +2101,7 @@ func TestIRPowerInt(t *testing.T) {
 }
 
 func TestIRPowerConst(t *testing.T) {
+	t.Parallel()
 	// Integer-literal power folds at compile time, so no rt_pow is emitted.
 	ir := llcCompiles(t, "print(2 ** 3)")
 	if strings.Contains(ir, "rt_pow") {
@@ -2011,6 +2115,7 @@ func TestIRPowerConst(t *testing.T) {
 // payload=handle}, tag-check it (rt_obj_is), and read the payload
 // (rt_obj_payload) before the class-id switch.
 func TestObjTaggedDispatch(t *testing.T) {
+	t.Parallel()
 	src := "class A:\n    def f(self):\n        return 1\nclass B(A):\n    def f(self):\n        return 2\ndef pick(x):\n    return x.f()\na = A()\nprint(pick(a))\nb = B()\nprint(pick(b))\nprint(\"done\")"
 	ir := llcCompiles(t, src)
 	for _, want := range []string{

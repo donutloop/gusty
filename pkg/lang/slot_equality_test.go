@@ -19,6 +19,7 @@ import (
 // index happens to be the number in the slot (ADR 0232's collision, at a new site).
 
 func TestSlotEqualityAnswersOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -86,6 +87,7 @@ func TestSlotEqualityAnswersOnBothLegs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused: %v", tc.src, err)
@@ -103,6 +105,7 @@ func TestSlotEqualityAnswersOnBothLegs(t *testing.T) {
 // The equality is asked of one helper. Two answers to "are these the same value?" is how the float
 // box bug survived: the printer unboxed, the comparison did not (roadmap L11.1, Gap R.79).
 func TestSlotEqualityAsksTheOneComparison(t *testing.T) {
+	t.Parallel()
 	ir := compileOrFatal(t, "xs = [1, \"a\"]\nprint(1 if xs[1] == \"a\" else 0)\n")
 	for _, want := range []string{
 		"call i32 @rt_get_elem(",
@@ -122,6 +125,7 @@ func TestSlotEqualityAsksTheOneComparison(t *testing.T) {
 // coincidence: an ordering comparison needs the tagged operand on the *relational* side too, and a
 // comparison against an expression whose kind cannot be proven has no tag to compare with at all.
 func TestSlotEqualityRefusesWhatItCannotProve(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -136,6 +140,7 @@ func TestSlotEqualityRefusesWhatItCannotProve(t *testing.T) {
 		// the comparison was — and is pinned with its traps in slot_ordering_test.go (Gap R.82, ADR 0250).
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%q compiled; want a refusal\nsrc: %s", tc.src, tc.src)

@@ -26,17 +26,26 @@ const llc = "llc-20"
 // compileAndRun drives the full native pipeline and returns the program's stdout.
 func compileAndRun(t *testing.T, src string) string {
 	t.Helper()
-	res, err := lang.Compile(src)
+	return compileAndRunIn(t, "", src)
+}
+
+// compileAndRunIn is compileAndRun for a program whose `import mod` resolves against dir, and which
+// starts in that directory. It is the per-run form of what used to be os.Chdir(dir) around the compile —
+// a process-wide act that two cases cannot perform at once, which is the reason this file's import cases
+// could not run beside anything (ADR 0343).
+func compileAndRunIn(t *testing.T, dir, src string) string {
+	t.Helper()
+	res, err := lang.CompileIn(dir, src)
 	if err != nil {
 		t.Fatalf("compile %q: %v", src, err)
 	}
 	if res.IR == "" {
 		t.Fatalf("compile %q: empty IR", src)
 	}
-	dir := t.TempDir()
-	irPath := filepath.Join(dir, "prog.ll")
-	objPath := filepath.Join(dir, "prog.o")
-	binPath := filepath.Join(dir, "prog")
+	out := t.TempDir()
+	irPath := filepath.Join(out, "prog.ll")
+	objPath := filepath.Join(out, "prog.o")
+	binPath := filepath.Join(out, "prog")
 	if err := os.WriteFile(irPath, []byte(res.IR), 0o600); err != nil {
 		t.Fatalf("write IR: %v", err)
 	}
@@ -48,22 +57,28 @@ func compileAndRun(t *testing.T, src string) string {
 	// string constants in .rodata. The default PIE link (cc) rejects those with
 	// "relocation R_X86_64_32 against '.rodata.str1.1' can not be used when
 	// making a PIE object". PIC codegen uses RIP-relative references instead.
-	out, err := exec.Command(llc, "-filetype=obj", "-relocation-model=pic", irPath, "-o", objPath).CombinedOutput()
+	run, err := lang.RunTool("llc", llc, "-filetype=obj", "-relocation-model=pic", irPath, "-o", objPath)
 	if err != nil {
-		t.Fatalf("llc-20 rejected module for %q: %v\n%s\nIR:\n%s", src, err, out, res.IR)
+		t.Fatalf("llc-20 rejected module for %q: %v\n%s\nIR:\n%s", src, err, run, res.IR)
 	}
 
 	// link the object into a native executable.
-	if out, err := exec.Command("cc", objPath, "-lm", "-o", binPath).CombinedOutput(); err != nil {
-		t.Fatalf("link failed for %q: %v\n%s", src, err, out)
+	if run, err := lang.RunTool("cc", "cc", objPath, "-lm", "-o", binPath); err != nil {
+		t.Fatalf("link failed for %q: %v\n%s", src, err, run)
 	}
 
-	// execute and capture stdout.
-	out, err = exec.Command(binPath).Output()
+	// execute the program as its own process and capture its stdout. cmd.Dir is the case's own
+	// directory, so the program reads the modules it was compiled with and nothing else.
+	cmd := exec.Command(binPath)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	cmd.Env = append(os.Environ(), "GUSTY_TEST_RUN=1")
+	out2, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("run failed for %q: %v", src, err)
 	}
-	return string(out)
+	return string(out2)
 }
 
 // assertOutput compiles src, executes it, and asserts the captured stdout.
@@ -74,13 +89,28 @@ func assertOutput(t *testing.T, src, want string) {
 	}
 }
 
+// assertOutputIn is assertOutput for a program that owns a directory to import from.
+func assertOutputIn(t *testing.T, dir, src, want string) {
+	t.Helper()
+	if got := compileAndRunIn(t, dir, src); got != want {
+		t.Fatalf("output for %q:\n got %q\nwant %q", src, got, want)
+	}
+}
+
 // assertNativeTrap compiles src through the same native pipeline as assertOutput, and asserts the run
 // died with the reference's sentence: exit 3 (the contract's "the program raised", ADR 0166), the
 // class-and-message on stderr, and no `codegen:` refusal — a program the reference runs must never be
 // refused by this compiler, and must never exit 0 with a substituted value either.
 func assertNativeTrap(t *testing.T, src, want string) {
 	t.Helper()
-	res, err := lang.Compile(src)
+	assertNativeTrapIn(t, "", src, want)
+}
+
+// assertNativeTrapIn is assertNativeTrap for a program that imports from a directory of its own — the
+// per-run directory the compile resolves against and the program starts in (ADR 0343).
+func assertNativeTrapIn(t *testing.T, workDir, src, want string) {
+	t.Helper()
+	res, err := lang.CompileIn(workDir, src)
 	if err != nil {
 		t.Fatalf("the compiler refused a program the reference runs: %v", err)
 	}
@@ -98,6 +128,9 @@ func assertNativeTrap(t *testing.T, src, want string) {
 		t.Fatalf("link failed for %q: %v\n%s", src, err, out)
 	}
 	cmd := exec.Command(binPath)
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
 	var errb bytes.Buffer
 	cmd.Stdout = nil
 	cmd.Stderr = &errb
@@ -122,6 +155,7 @@ func assertNativeTrap(t *testing.T, src, want string) {
 }
 
 func TestExecMultiArgPrint(t *testing.T) {
+	t.Parallel()
 	// print(*args, sep=" ", end="\n") — Python's separator/terminator
 	// semantics, identical on the record and the AOT backend (ADR 0165).
 	// Arguments are joined with a single space and the line ends with one
@@ -150,6 +184,7 @@ func TestExecMultiArgPrint(t *testing.T) {
 }
 
 func TestExecPrintArithmetic(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "print(40 + 2)", "42\n")
 	assertOutput(t, "print(2 * 21)", "42\n")
 	assertOutput(t, "print(84 / 2)", "42.0\n")
@@ -157,11 +192,13 @@ func TestExecPrintArithmetic(t *testing.T) {
 }
 
 func TestExecAssignAndRead(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = 5\nprint(x + 1)", "6\n")
 	assertOutput(t, "a = 2\nb = 40\nprint(a * b)", "80\n")
 }
 
 func TestExecModulo(t *testing.T) {
+	t.Parallel()
 	// constant modulo folds to a constant.
 	assertOutput(t, "print(17 % 5)", "2\n")
 	assertOutput(t, "print(20 % 7)", "6\n")
@@ -175,11 +212,13 @@ func TestExecModulo(t *testing.T) {
 }
 
 func TestExecIfElse(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)", "10\n")
 	assertOutput(t, "x = 3\nif x < 2:\n    print(10)\nelse:\n    print(20)", "20\n")
 }
 
 func TestExecElifChain(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = 3\nif x < 2:\n    print(10)\nelif x < 4:\n    print(20)\nelse:\n    print(30)", "20\n")
 	assertOutput(t, "x = 9\nif x < 2:\n    print(10)\nelif x < 4:\n    print(20)\nelse:\n    print(30)", "30\n")
 	assertOutput(t, "x = 6\nif x < 2:\n    print(10)\nelif x < 5:\n    print(20)\nelif x < 8:\n    print(30)\nelse:\n    print(40)", "30\n")
@@ -188,21 +227,25 @@ func TestExecElifChain(t *testing.T) {
 }
 
 func TestExecWhileSum(t *testing.T) {
+	t.Parallel()
 	src := "s = 0\ni = 0\nwhile i < 5:\n    s = s + i\n    i = i + 1\nprint(s)"
 	assertOutput(t, src, "10\n")
 }
 
 func TestExecForRange(t *testing.T) {
+	t.Parallel()
 	src := "s = 0\nfor i in range(5):\n    s = s + i\nprint(s)"
 	assertOutput(t, src, "10\n")
 }
 
 func TestExecForRangeTwoArg(t *testing.T) {
+	t.Parallel()
 	src := "s = 0\nfor i in range(2, 5):\n    s = s + i\nprint(s)"
 	assertOutput(t, src, "9\n")
 }
 
 func TestExecForRangeStep(t *testing.T) {
+	t.Parallel()
 	// positive step: range(1, 5, 2) => 1 + 3 = 4
 	src := "s = 0\nfor i in range(1, 5, 2):\n    s = s + i\nprint(s)"
 	assertOutput(t, src, "4\n")
@@ -212,43 +255,51 @@ func TestExecForRangeStep(t *testing.T) {
 }
 
 func TestExecNestedLoops(t *testing.T) {
+	t.Parallel()
 	src := "s = 0\nfor i in range(3):\n    for j in range(3):\n        s = s + i + j\nprint(s)"
 	// rows: (0+0)+(0+1)+(0+2)=3, (1+0)+(1+1)+(1+2)=6, (2+0)+(2+1)+(2+2)=9 => 18
 	assertOutput(t, src, "18\n")
 }
 
 func TestExecFunctionReturn(t *testing.T) {
+	t.Parallel()
 	src := "def double(x):\n    return x * 2\nprint(double(5))"
 	assertOutput(t, src, "10\n")
 }
 
 func TestExecFunctionTwoParams(t *testing.T) {
+	t.Parallel()
 	src := "def add(a, b):\n    return a + b\nprint(add(3, 4))"
 	assertOutput(t, src, "7\n")
 }
 
 func TestExecFunctionComposition(t *testing.T) {
+	t.Parallel()
 	src := "def double(x):\n    return x * 2\ndef add(a, b):\n    return a + b\nprint(add(double(3), double(4)))"
 	assertOutput(t, src, "14\n")
 }
 
 func TestExecMatch(t *testing.T) {
+	t.Parallel()
 	src := "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\n    case 3:\n        print(3)"
 	assertOutput(t, src, "2\n")
 }
 
 func TestExecBreak(t *testing.T) {
+	t.Parallel()
 	src := "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\nprint(i)"
 	assertOutput(t, src, "3\n")
 }
 
 func TestExecContinue(t *testing.T) {
+	t.Parallel()
 	// sum 0..4 skipping 2 => 0+1+3+4 = 8
 	src := "s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\nprint(s)"
 	assertOutput(t, src, "8\n")
 }
 
 func TestExecMatchWildcard(t *testing.T) {
+	t.Parallel()
 	// `case _:` wildcard matches any subject (like the record).
 	assertOutput(t, "x = 5\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)", "9\n")
 	// non-wildcard case still matches normally.
@@ -258,6 +309,7 @@ func TestExecMatchWildcard(t *testing.T) {
 }
 
 func TestExecPassStatement(t *testing.T) {
+	t.Parallel()
 	// pass in a loop body is a no-op; the loop still sums 0..2.
 	assertOutput(t, "s = 0\nfor i in range(3):\n    pass\n    s = s + i\nprint(s)", "3\n")
 	// pass in an if body; else branch still executes.
@@ -267,11 +319,13 @@ func TestExecPassStatement(t *testing.T) {
 }
 
 func TestExecMultiplePrints(t *testing.T) {
+	t.Parallel()
 	src := "print(1)\nprint(2)\nprint(3)"
 	assertOutput(t, src, "1\n2\n3\n")
 }
 
 func TestExecAndOrBool(t *testing.T) {
+	t.Parallel()
 	// `and`/`or` hand back the operand the test chose — `2 and 3` is `3`, not the verdict `1` the compiled
 	// backend used to print (roadmap Gap R.147, ADR 0269). Both engines read one rule: the test picks, the
 	// picked operand answers, in its own representation.
@@ -292,6 +346,7 @@ func TestExecAndOrBool(t *testing.T) {
 }
 
 func TestExecComparison(t *testing.T) {
+	t.Parallel()
 	src := "x = 10\nif x > 5:\n    print(1)\nif x == 10:\n    print(2)\nif x < 5:\n    print(3)"
 	assertOutput(t, src, "1\n2\n")
 }
@@ -300,6 +355,7 @@ func TestExecComparison(t *testing.T) {
 // llc-20. The compileAndRun helper already aborts on verifier failure, so this
 // just runs a representative set through the flow to confirm clean verification.
 func TestModuleVerifiesUnderLLVM20(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		"print(1)",
 		"x = 1\nif x == 1:\n    print(2)",
@@ -314,6 +370,7 @@ func TestModuleVerifiesUnderLLVM20(t *testing.T) {
 // TestCompileProducesExecutable asserts the emitted IR actually contains a
 // callable main entry point (the flow depends on it).
 func TestCompileProducesExecutable(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("print(1)")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -324,52 +381,62 @@ func TestCompileProducesExecutable(t *testing.T) {
 }
 
 func TestExecDefaultArg(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "def f(a, b=10):\n    return a + b\nprint(f(5))", "15\n")
 }
 
 func TestExecKeywordArg(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "def f(a, b):\n    return a * b\nprint(f(a=3, b=4))", "12\n")
 }
 
 func TestExecKeywordOutOfOrder(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "def f(a, b):\n    return a - b\nprint(f(b=3, a=10))", "7\n")
 }
 
 func TestExecKeywordAndDefault(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "def f(a, b=5):\n    return a + b\nprint(f(b=100, a=2))", "102\n")
 }
 
 func TestExecClosureCapturesParam(t *testing.T) {
+	t.Parallel()
 	assertOutput(t,
 		"def make(x):\n    def inc():\n        return x + 1\n    return inc()\nprint(make(5))",
 		"6\n")
 }
 
 func TestExecClosureCapturesLocal(t *testing.T) {
+	t.Parallel()
 	assertOutput(t,
 		"def make():\n    n = 10\n    def get():\n        return n\n    return get()\nprint(make())",
 		"10\n")
 }
 
 func TestExecClosureOwnParamsAndCapture(t *testing.T) {
+	t.Parallel()
 	assertOutput(t,
 		"def make(x):\n    def add(y):\n        return x + y\n    return add(7)\nprint(make(5))",
 		"12\n")
 }
 
 func TestExecClosureCalledTwice(t *testing.T) {
+	t.Parallel()
 	assertOutput(t,
 		"def make(x):\n    def inc():\n        return x + 1\n    a = inc()\n    b = inc()\n    return a + b\nprint(make(5))",
 		"12\n")
 }
 
 func TestExecTwoClosures(t *testing.T) {
+	t.Parallel()
 	assertOutput(t,
 		"def make(x):\n    def add1():\n        return x + 1\n    def add2():\n        return x + 2\n    return add1() + add2()\nprint(make(5))",
 		"13\n")
 }
 
 func TestExecForListLiteral(t *testing.T) {
+	t.Parallel()
 	// for-over-list: sum the elements of an inline list literal.
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)", "6\n")
 	assertOutput(t, "s = 0\nfor x in [2, 4, 6]:\n    s = s + x\nprint(s)", "12\n")
@@ -384,6 +451,7 @@ func TestExecForListLiteral(t *testing.T) {
 }
 
 func TestExecMultiArgRangeComprehensionAOT(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "print(sum([x for x in range(0, 5)]))\n", "10\n")
 	assertOutput(t, "print(sum([x for x in range(1, 5, 2)]))\n", "4\n")
 	assertOutput(t, "print(max([x for x in range(2, 10, 3)]))\n", "8\n")
@@ -391,6 +459,7 @@ func TestExecMultiArgRangeComprehensionAOT(t *testing.T) {
 }
 
 func TestExecAggregateOverComprehensionAOT(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "print(len([x for x in range(5)]))\n", "5\n")
 	assertOutput(t, "print(sum([x for x in range(5)]))\n", "10\n")
 	assertOutput(t, "print(min([y * y for y in range(3)]))\n", "0\n")
@@ -399,6 +468,7 @@ func TestExecAggregateOverComprehensionAOT(t *testing.T) {
 }
 
 func TestExecTernaryAOT(t *testing.T) {
+	t.Parallel()
 	// constant-condition ternary folds to the taken branch.
 	assertOutput(t, "print(5 if 1 else 3)\n", "5\n")
 	assertOutput(t, "print(10 if 0 else 42)\n", "42\n")
@@ -411,6 +481,7 @@ func TestExecTernaryAOT(t *testing.T) {
 }
 
 func TestExecListComprehensionAOT(t *testing.T) {
+	t.Parallel()
 	// inline list comprehension over a constant list literal, folded at
 	// compile time and indexed directly.
 	assertOutput(t, "print([x * 2 for x in [1, 2, 3]][1])", "4\n")
@@ -425,6 +496,7 @@ func TestExecListComprehensionAOT(t *testing.T) {
 }
 
 func TestExecDictSetLiterals(t *testing.T) {
+	t.Parallel()
 	// dict literal constant-key lookup folds at compile time.
 	assertOutput(t, "print({1: 10, 2: 20}[1])", "10\n")
 	assertOutput(t, "print({1: 10, 2: 20}[2])", "20\n")
@@ -440,6 +512,7 @@ func TestExecDictSetLiterals(t *testing.T) {
 }
 
 func TestExecStringConstLen(t *testing.T) {
+	t.Parallel()
 	// len of a string literal folds to its character count.
 	assertOutput(t, "print(len(\"hello\"))", "5\n")
 	assertOutput(t, "print(len(\"\"))", "0\n")
@@ -451,16 +524,19 @@ func TestExecStringConstLen(t *testing.T) {
 }
 
 func TestListIndexAndLen(t *testing.T) {
+	t.Parallel()
 	src := "print([1, 2, 3][1])\nprint(len([1, 2, 3]))"
 	assertOutput(t, src, "2\n3\n")
 }
 
 func TestListIndexLargeAndPrint(t *testing.T) {
+	t.Parallel()
 	src := "print([10, 20, 30, 40][3])"
 	assertOutput(t, src, "40\n")
 }
 
 func TestExecSumMinMaxAbs(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "print(sum([1, 2, 3]))", "6\n")
 	assertOutput(t, "print(sum([1, 2, 3, 4, 5]))", "15\n")
 	assertOutput(t, "print(min([3, 1, 2]))", "1\n")
@@ -483,29 +559,35 @@ func TestExecSumMinMaxAbs(t *testing.T) {
 }
 
 func TestExecLambdaInline(t *testing.T) {
+	t.Parallel()
 	// `(lambda x: int: x + 1)(5)` -> 6
 	assertOutput(t, "print((lambda x: int: x + 1)(5))", "6\n")
 }
 
 func TestExecLambdaNamed(t *testing.T) {
+	t.Parallel()
 	// `f = lambda x: int: x * 2; f(3)` -> 6
 	assertOutput(t, "f = lambda x: int: x * 2\nprint(f(3))", "6\n")
 }
 
 func TestExecStrMethod(t *testing.T) {
+	t.Parallel()
 	// `print(len("AbC".upper()))` -> 3 (constant-folded upper)
 	assertOutput(t, `print(len("AbC".upper()))`, "3\n")
 }
 
 func TestExecStrMethodPrint(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
 func TestExecPrintChrConst(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "print(chr(65))\nprint(chr(66))", "A\nB\n")
 }
 
 func TestExecDynamicDispatch(t *testing.T) {
+	t.Parallel()
 	// A function returns an instance of a different class per argument; method
 	// dispatch must follow the runtime instance, not a compile-time guess.
 	src := "class Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\na = Animal()\nb = Dog()\nprint(a.speak())\nprint(b.speak())"
@@ -513,11 +595,13 @@ func TestExecDynamicDispatch(t *testing.T) {
 }
 
 func TestExecIntFloatConv(t *testing.T) {
+	t.Parallel()
 	// int(float var) truncates toward zero, float(int var) widens: AOT parity.
 	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2.0\n")
 }
 
 func TestExecClassInitArgs(t *testing.T) {
+	t.Parallel()
 	// Regression: class instantiation with constructor args previously
 	// produced malformed IR (the arg loads were emitted inline inside the
 	// __init__ call), failing the llc step. This exercises __init__ with
@@ -527,6 +611,7 @@ func TestExecClassInitArgs(t *testing.T) {
 }
 
 func TestExecStringInClassMethod(t *testing.T) {
+	t.Parallel()
 	// Regression: a string literal inside a class method body previously
 	// emitted its global declaration interleaved into the method's instruction
 	// stream (g.globals held both globals and method bodies), producing
@@ -536,6 +621,7 @@ func TestExecStringInClassMethod(t *testing.T) {
 }
 
 func TestExecForOverGeneratorList(t *testing.T) {
+	t.Parallel()
 	// Regression: generator calls return runtime heap list handles, but the
 	// target was not tracked as a list, so `print(g)` printed a scalar and
 	// `for x in gen()` / `for x in g` iterated 0..handle instead of the list
@@ -547,6 +633,7 @@ func TestExecForOverGeneratorList(t *testing.T) {
 }
 
 func TestExecFloatFloorModNegNeg(t *testing.T) {
+	t.Parallel()
 	// Floor division and modulo on a negative dividend. This test used to pin `-1.5` for
 	// `-3.5 % 2.0` — the *truncated* remainder, C's answer, described in the comment as if
 	// it were the language's. CPython gives 0.5 (the result carries the divisor's sign), so
@@ -557,14 +644,17 @@ func TestExecFloatFloorModNegNeg(t *testing.T) {
 }
 
 func TestExecAbsFloat(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "a = -3.5\nb = -2.0\nprint(abs(a))\nprint(abs(b))", "3.5\n2.0\n")
 }
 
 func TestExecRoundIntVar(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "a = 3\nb = -3\nprint(round(a))\nprint(round(b))", "3\n-3\n")
 }
 
 func TestExecRoundVar(t *testing.T) {
+	t.Parallel()
 	// round(float variable) ties to the nearest EVEN value, in the AOT binary and everywhere else.
 	// This asserted "3\n-3\n" — half-away — with the rule spelled out in the comment above it, which
 	// is the shape of mistake that survives review: the prose, the record and the compiler all
@@ -574,12 +664,14 @@ func TestExecRoundVar(t *testing.T) {
 }
 
 func TestExecRound(t *testing.T) {
+	t.Parallel()
 	// round(float) ties to even, the IEEE roundTiesToEven that CPython uses; round(3.9) and round(2.4)
 	// are not ties and must not move.
 	assertOutput(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "2\n4\n2\n-2\n")
 }
 
 func TestExecFloatFloorModNeg(t *testing.T) {
+	t.Parallel()
 	// Float `//` floor division, `%` remainder, and unary `-` on float
 	// variables must match the record's float64-payload semantics
 	// (and the AOT codegen emits llvm.floor/frem/fsub for them).
@@ -588,6 +680,7 @@ func TestExecFloatFloorModNeg(t *testing.T) {
 }
 
 func TestExecPrintStrFloat(t *testing.T) {
+	t.Parallel()
 	// str(float-constant) folds to its %g decimal string; print must emit a
 	// %s printf with the string-global pointer (valid IR), not a %d printf fed
 	// an i8*. Matches the record's str()/Repr for floats.
@@ -598,37 +691,45 @@ func TestExecPrintStrFloat(t *testing.T) {
 }
 
 func TestExecDictKeysValues(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(sum({1: 2, 3: 4}.keys()))`, "4\n")
 }
 
 func TestExecListAppend(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(sum([1, 2, 3].append(4)))`, "10\n")
 }
 
 func TestExecDictItemsLen(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(len({1: 2, 3: 4}.items()))`, "2\n")
 }
 
 func TestExecDictMinMaxMethods(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(max({1: 2, 3: 4}.keys()))`, "3\n")
 }
 
 func TestExecStrIndex(t *testing.T) {
+	t.Parallel()
 	// The character, not the byte: `98` was what this asserted until ADR 0225 made a string
 	// subscript a one-character string on the compiled path.
 	assertOutput(t, `print("abc"[1])`, "b\n")
 }
 
 func TestExecStrSplitLen(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(len("a b c".split()))`, "3\n")
 }
 
 func TestExecStrReplace(t *testing.T) {
+	t.Parallel()
 	// `print("aXbXc".replace("X", "-"))` -> a-b-c (constant-folded replace)
 	assertOutput(t, `print("aXbXc".replace("X", "-"))`, "a-b-c\n")
 }
 
 func TestExecStrFind(t *testing.T) {
+	t.Parallel()
 	// `print("abcabc".find("bc"))` -> 1 (constant-folded index)
 	assertOutput(t, `print("abcabc".find("bc"))`, "1\n")
 	// absent substring folds to -1
@@ -636,27 +737,32 @@ func TestExecStrFind(t *testing.T) {
 }
 
 func TestExecStrRfind(t *testing.T) {
+	t.Parallel()
 	// rfind folds to the last occurrence index
 	assertOutput(t, `print("abcabc".rfind("bc"))`, "4\n")
 	assertOutput(t, `print("hello".rfind("z"))`, "-1\n")
 }
 
 func TestExecStrCapitalize(t *testing.T) {
+	t.Parallel()
 	// capitalize folds to a string constant
 	assertOutput(t, `print("hello".capitalize())`, "Hello\n")
 }
 
 func TestExecStrTitle(t *testing.T) {
+	t.Parallel()
 	// title folds to a string constant
 	assertOutput(t, `print("hello world".title())`, "Hello World\n")
 }
 
 func TestExecStrSwapcase(t *testing.T) {
+	t.Parallel()
 	// swapcase folds to a string constant
 	assertOutput(t, `print("HeLLo".swapcase())`, "hEllO\n")
 }
 
 func TestExecStrIsdigit(t *testing.T) {
+	t.Parallel()
 	// isdigit answers a verdict, and a verdict PRINTS True/False (ADR 0257).
 	// These pins once expected `1`/`0` — a wrong answer recorded as the expected one
 	// (Gap R.172, ADR 0289)
@@ -665,12 +771,14 @@ func TestExecStrIsdigit(t *testing.T) {
 }
 
 func TestExecStrIsalpha(t *testing.T) {
+	t.Parallel()
 	// isalpha answers a verdict (ADR 0257; these pins once said 1/0)
 	assertOutput(t, `print("abc".isalpha())`, "True\n")
 	assertOutput(t, `print("ab1".isalpha())`, "False\n")
 }
 
 func TestExecStrIslowerIsupper(t *testing.T) {
+	t.Parallel()
 	// islower/isupper answer a verdict (ADR 0257; these pins once said 1/0)
 	assertOutput(t, `print("abc".islower())`, "True\n")
 	assertOutput(t, `print("Abc".islower())`, "False\n")
@@ -678,18 +786,21 @@ func TestExecStrIslowerIsupper(t *testing.T) {
 }
 
 func TestExecStrIsalnum(t *testing.T) {
+	t.Parallel()
 	// isalnum answers a verdict (ADR 0257; these pins once said 1/0)
 	assertOutput(t, `print("abc123".isalnum())`, "True\n")
 	assertOutput(t, `print("abc!".isalnum())`, "False\n")
 }
 
 func TestExecStrIsspace(t *testing.T) {
+	t.Parallel()
 	// isspace answers a verdict (ADR 0257; these pins once said 1/0)
 	assertOutput(t, `print("   ".isspace())`, "True\n")
 	assertOutput(t, `print(" a ".isspace())`, "False\n")
 }
 
 func TestExecStrStartswithEndswith(t *testing.T) {
+	t.Parallel()
 	// startswith/endswith answer a verdict, so they print True/False and not the 0/1 the
 	// fold holds (Gap R.172, ADR 0257/0289)
 	assertOutput(t, `print("hello".startswith("he"))`, "True\n")
@@ -697,38 +808,45 @@ func TestExecStrStartswithEndswith(t *testing.T) {
 }
 
 func TestExecStrCount(t *testing.T) {
+	t.Parallel()
 	// count folds to the occurrence count
 	assertOutput(t, `print("ababab".count("ab"))`, "3\n")
 	assertOutput(t, `print("hello".count("z"))`, "0\n")
 }
 
 func TestExecStrLstripRstrip(t *testing.T) {
+	t.Parallel()
 	// lstrip/rstrip fold to trimmed string constants
 	assertOutput(t, `print("  hi  ".lstrip())`, "hi  \n")
 	assertOutput(t, `print("  hi  ".rstrip())`, "  hi\n")
 }
 
 func TestExecStrJoin(t *testing.T) {
+	t.Parallel()
 	// join folds constant list element strings with the separator
 	assertOutput(t, `print("-".join(["a", "b", "c"]))`, "a-b-c\n")
 	assertOutput(t, `print("x".join(["a", "b"]))`, "axb\n")
 }
 
 func TestExecStrEq(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print("abc" == "abd")`, "False\n")
 }
 
 func TestExecStrBuiltin(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `print(len(str(42)))`, "2\n")
 }
 
 func TestExecStrBuiltinPrint(t *testing.T) {
+	t.Parallel()
 	// print(str(42)) emits a folded string global via the %s format path.
 	assertOutput(t, `print(str(42))`, "42\n")
 	assertOutput(t, `print("n=" + str(7))`, "n=7\n")
 }
 
 func TestReversedCodegen(t *testing.T) {
+	t.Parallel()
 	// reversed folds on a literal string in the AOT codegen.
 	ir, err := lang.Compile(`print(reversed("abc"))`)
 	if err != nil {
@@ -748,6 +866,7 @@ func TestReversedCodegen(t *testing.T) {
 }
 
 func TestIntCodegen(t *testing.T) {
+	t.Parallel()
 	// int(str) folds to the parsed decimal constant in the AOT codegen.
 	assertOutput(t, `print(int("42"))`, "42\n")
 	// int(int) is the identity.
@@ -762,6 +881,7 @@ func TestIntCodegen(t *testing.T) {
 }
 
 func TestForStrCodegen(t *testing.T) {
+	t.Parallel()
 	ir, err := lang.Compile(`for x in "ab":
     print(x)`)
 	if err != nil {
@@ -773,6 +893,7 @@ func TestForStrCodegen(t *testing.T) {
 }
 
 func TestDecoratorCodegenZeroParam(t *testing.T) {
+	t.Parallel()
 	// Regression: a decorated 0-param function previously panicked with a
 	// negative strings.Repeat count in the closure IR emission.
 	src := "def twice(f):\n    return f\n@twice\ndef h():\n    return 1\nprint(h())\n"
@@ -786,6 +907,7 @@ func TestDecoratorCodegenZeroParam(t *testing.T) {
 }
 
 func TestAnyAllCodegenIR(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile("print(any([0, 0, 1]))\nprint(all([1, 1, 1]))\n")
 	if err != nil {
 		t.Fatalf("compile any/all: %v", err)
@@ -796,6 +918,7 @@ func TestAnyAllCodegenIR(t *testing.T) {
 }
 
 func TestListCallConsumersRun(t *testing.T) {
+	t.Parallel()
 	// len/sum/min/max/any/all fold over a list-returning builtin call
 	// (sorted/reversed) by unwrapping the underlying inline list literal;
 	// the element set is preserved, so results match the record.
@@ -838,6 +961,7 @@ func TestListCallConsumersRun(t *testing.T) {
 }
 
 func TestListLenRun(t *testing.T) {
+	t.Parallel()
 	// len over list-producing builtin calls folds to the matching length.
 	cases := []struct{ src, want string }{
 		{`print(len(enumerate([1, 2, 3])))`, "3"},
@@ -864,6 +988,7 @@ func TestListLenRun(t *testing.T) {
 }
 
 func TestOverEmptyNestedListsRun(t *testing.T) {
+	t.Parallel()
 	got := compileAndRun(t, `print(sum(sorted([])))`)
 	if got != "0\n" {
 		t.Fatalf("sum(sorted([])) = %q, want 0", got)
@@ -875,6 +1000,7 @@ func TestOverEmptyNestedListsRun(t *testing.T) {
 }
 
 func TestRejectNonEmptyDicts(t *testing.T) {
+	t.Parallel()
 	// the record rejects non-list/set collections for sum/min/max/any/all;
 	// the codegen must match by rejecting non-empty dict literals too.
 	for _, src := range []string{
@@ -893,6 +1019,7 @@ func TestRejectNonEmptyDicts(t *testing.T) {
 }
 
 func TestOverEmptyCollectionsRun(t *testing.T) {
+	t.Parallel()
 	got := compileAndRun(t, `print(sum([]))`)
 	if got != "0\n" {
 		t.Fatalf("sum([]) = %q, want 0", got)
@@ -904,6 +1031,7 @@ func TestOverEmptyCollectionsRun(t *testing.T) {
 }
 
 func TestNestedListCallRun(t *testing.T) {
+	t.Parallel()
 	got := compileAndRun(t, `print(len(sorted(reversed([3, 1, 2]))))`)
 	if got != "3\n" {
 		t.Fatalf("len(sorted(reversed([3,1,2]))) = %q, want 3", got)
@@ -915,6 +1043,7 @@ func TestNestedListCallRun(t *testing.T) {
 }
 
 func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
+	t.Parallel()
 	// Floor division, modulo, abs and round across negative operands, exact multiples and
 	// half-values. The modulo row used to assert `-1.0` for `-5.0 % 2.0` and `1.0` for
 	// `5.0 % -2.0` — both operands' signs reversed relative to the language, because the
@@ -931,6 +1060,7 @@ func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
 }
 
 func TestExecSqrt(t *testing.T) {
+	t.Parallel()
 	// Standard-library sqrt builtin: promotes int/float args to float and
 	// emits llvm.sqrt.f64; constant args are folded at compile time.
 	assertOutput(t, "print(sqrt(9.0))\nprint(sqrt(9))\nprint(sqrt(2.0))", "3.0\n3.0\n1.4142135623730951\n")
@@ -938,6 +1068,7 @@ func TestExecSqrt(t *testing.T) {
 }
 
 func TestExecFloorCeil(t *testing.T) {
+	t.Parallel()
 	// The whole-number builtins answer in the word a whole number travels in (roadmap Gap R.51,
 	// ADR 0264). The rows below used to pin `2.0`, `-3.0`, `7.0` — with a comment citing the
 	// language's own "the largest double <=" wording and a roadmap row for the divergence. That was
@@ -954,6 +1085,7 @@ func TestExecFloorCeil(t *testing.T) {
 }
 
 func TestExecTryExcept(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `try:
     print(1)
     raise ValueError("boom")
@@ -984,232 +1116,157 @@ print("done")`, "caught\ndone\n")
 }
 
 func TestExecImportModuleGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/config.gy", []byte("base = 21\nx = base * 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import config\nprint(config.x)", "42\n")
+	assertOutputIn(t, dir, "import config\nprint(config.x)", "42\n")
 }
 
 func TestExecImportStringGlobals(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import msg\nprint(msg.msg)", "hello!\n")
+	assertOutputIn(t, dir, "import msg\nprint(msg.msg)", "hello!\n")
 }
 
 func TestExecImportLenString(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import msg\nprint(len(msg.msg))", "6\n")
+	assertOutputIn(t, dir, "import msg\nprint(len(msg.msg))", "6\n")
 }
 
 func TestExecImportOrdString(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
 	// One character answers, and the answer is the code point the reference gives.
-	assertOutput(t, "import msg\nprint(ord(\"h\"))", "104\n")
+	assertOutputIn(t, dir, "import msg\nprint(ord(\"h\"))", "104\n")
 	// A text longer than one character is the reference's TypeError, not its first byte. This case used
 	// to pin `104` for `msg.msg` ("hello!"), which is the answer the fold read off a text the reference
 	// refuses to reduce — the constant fold had no door to the raise (roadmap Gap R.37, ADR 0326).
-	assertNativeTrap(t, "import msg\nprint(ord(msg.msg))\n",
+	assertNativeTrapIn(t, dir, "import msg\nprint(ord(msg.msg))\n",
 		"TypeError: ord() expected a character, but string of length 6 found")
 }
 
 func TestExecImportReversedString(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	_ = os.Getwd
+	// This case used to chdir and then assert nothing at all — `_ = os.Getwd` is not a claim about the
+	// language. The directory now travels to the compile and the run, and the case says what it always
+	// meant to: a folded module string arrives at print intact (ADR 0343).
+	assertOutputIn(t, dir, "import msg\nprint(msg.msg)", "hello!\n")
 }
 
 func TestExecImportListIndex(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(cfg.l[0])", "1\n")
+	assertOutputIn(t, dir, "import cfg\nprint(cfg.l[0])", "1\n")
 }
 
 func TestExecImportLenList(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(len(cfg.l))", "3\n")
+	assertOutputIn(t, dir, "import cfg\nprint(len(cfg.l))", "3\n")
 }
 
 func TestExecImportDictIndex(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(cfg.d[1])", "10\n")
+	assertOutputIn(t, dir, "import cfg\nprint(cfg.d[1])", "10\n")
 }
 
 func TestExecImportListArith(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(cfg.l[0] + cfg.l[1])", "3\n")
+	assertOutputIn(t, dir, "import cfg\nprint(cfg.l[0] + cfg.l[1])", "3\n")
 }
 
 func TestExecImportLenDict(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(len(cfg.d))", "2\n")
+	assertOutputIn(t, dir, "import cfg\nprint(len(cfg.d))", "2\n")
 }
 
 func TestExecImportDictArith(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import cfg\nprint(cfg.d[1] + cfg.d[2])", "30\n")
+	assertOutputIn(t, dir, "import cfg\nprint(cfg.d[1] + cfg.d[2])", "30\n")
 }
 
 // Runtime-heap feature: `x = [1, 2]` allocates a runtime list object, `x.append(v)`
 // mutates it on the heap, and `print(x)` renders the runtime list contents.
 func TestExecRuntimeListAppend(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
 }
 
 func TestExecImportModuleGlobalsAndCrossCalls(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// A module with a global constant, a helper function, and a function that
 	// calls the helper and uses the global.
 	os.WriteFile(dir+"/calc.gy", []byte("BASE = 10\ndef helper(x):\n    return x + BASE\ndef total(a, b):\n    return helper(a) + helper(b)\n"), 0o600)
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	assertOutput(t, "import calc\nprint(calc.total(1, 2))", "23\n")
+	assertOutputIn(t, dir, "import calc\nprint(calc.total(1, 2))", "23\n")
 }
 
 func TestExecRuntimeListAppendTwo(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [1]\nx.append(2)\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
 }
 
 func TestExecRuntimeListPrint(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [5, 6]\nprint(x)", "[5, 6]\n")
 }
 
 // Runtime-heap observability: `len(x)` on a runtime list variable reads back
 // the mutated list length through the heap.
 func TestExecRuntimeListLen(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(len(x))", "3\n")
 }
 
 // Runtime-heap indexing: `x[i]` on a runtime list variable reads back the
 // mutated element through the heap.
 func TestExecRuntimeListIndex(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [10, 20]\nx.append(30)\nprint(x[0] + x[2])", "40\n")
 }
 
 // Runtime-heap slot reuse: rebinding a list var frees its old heap slot, so
 // thousands of rebinds must not exhaust the 1024-slot heap or corrupt results.
 func TestExecRuntimeListReuse(t *testing.T) {
+	t.Parallel()
 	src := "x = [0, 0]\n" + strings.Repeat("x = [0, 0]\n", 2000) + "print(len(x))\n"
 	assertOutput(t, src, "2\n")
 }
@@ -1218,6 +1275,7 @@ func TestExecRuntimeListReuse(t *testing.T) {
 // must free its heap slot; alternating list/scalar rebinds must not exhaust
 // the 1024-slot heap.
 func TestExecRuntimeListToScalarFree(t *testing.T) {
+	t.Parallel()
 	var sb strings.Builder
 	sb.WriteString("x = [0]\n")
 	sb.WriteString(strings.Repeat("x = 5\nx = [0]\n", 2000))
@@ -1228,18 +1286,21 @@ func TestExecRuntimeListToScalarFree(t *testing.T) {
 // Runtime-heap variable-index read: `x[a]` with a runtime index var reads
 // through the heap via rt_get_elem (not a compile-time literal).
 func TestExecRuntimeListVarIndex(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "x = [10, 20]\na = 1\nprint(x[a])\n", "20\n")
 }
 
 // Runtime-heap dicts: `d = {1: 10}` allocates a runtime dict heap object;
 // `d[k]` reads via rt_dict_get and `len(d)` via rt_dict_len.
 func TestExecRuntimeDict(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "d = {1: 10, 2: 20}\nprint(d[1] + d[2])\nprint(len(d))\n", "30\n2\n")
 }
 
 // Runtime-heap sets: `s = {1, 2}` allocates a runtime set heap object;
 // `len(s)` via rt_set_len and `print(s)` via rt_set_print.
 func TestExecRuntimeSet(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, "s = {1, 2}\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n")
 }
 
@@ -1248,6 +1309,7 @@ func TestExecRuntimeSet(t *testing.T) {
 // the free, thousands of rebinds exhaust the 1024-slot heap and corrupt the
 // final list read; with it, `len(d)` is correct.
 func TestExecRuntimeCrossCollectionFree(t *testing.T) {
+	t.Parallel()
 	var sb strings.Builder
 	sb.WriteString("d = {1: 10}\n")
 	sb.WriteString(strings.Repeat("s = {1, 2}\nd = [1, 2]\ns = 5\n", 2000))
@@ -1259,6 +1321,7 @@ func TestExecRuntimeCrossCollectionFree(t *testing.T) {
 // live vars (list -> dict -> list -> scalar -> set) must not exhaust the
 // 1024-slot heap; final reads of both vars stay correct.
 func TestExecHeapStress(t *testing.T) {
+	t.Parallel()
 	var sb strings.Builder
 	sb.WriteString("d = [1, 2]\n")
 	sb.WriteString("s = {1, 2}\n")
@@ -1270,6 +1333,7 @@ func TestExecHeapStress(t *testing.T) {
 }
 
 func TestDecoratorIdentityRuntime(t *testing.T) {
+	t.Parallel()
 	// identity decorators are supported end-to-end in AOT: the decorated
 	// function resolves to its body, and calls print the expected result.
 	got := compileAndRun(t, `
@@ -1286,6 +1350,7 @@ print(g())
 }
 
 func TestDecoratorWrappingAOT(t *testing.T) {
+	t.Parallel()
 	src := `
 def add1(g):
     def wrap():
@@ -1303,6 +1368,7 @@ print(f())
 }
 
 func TestSlice(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `
 l = [1, 2, 3, 4, 5, 6]
 print(l[1:4])
@@ -1324,6 +1390,7 @@ print(l[6:0:-1])
 }
 
 func TestExecPower(t *testing.T) {
+	t.Parallel()
 	// integer power: 2 ** 3 == 8
 	assertOutput(t, "print(2 ** 3)", "8\n")
 	// right-associative: 2 ** 3 ** 2 == 2 ** (3 ** 2) == 2 ** 9 == 512
@@ -1333,6 +1400,7 @@ func TestExecPower(t *testing.T) {
 }
 
 func TestExecMatchOrPatterns(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `x = 3
 match x:
     case 1 | 2:
@@ -1344,6 +1412,7 @@ match x:
 }
 
 func TestExecMatchGuard(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `x = 5
 match x:
     case 5 if x > 10:
@@ -1355,6 +1424,7 @@ match x:
 }
 
 func TestExecMatchListPattern(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `x = [10, 20]
 match x:
     case [a, b]:
@@ -1371,6 +1441,7 @@ match x:
 }
 
 func TestExecMatchDictPattern(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `d = {1: 10}
 match d:
     case {1: v}:
@@ -1387,6 +1458,7 @@ match d:
 }
 
 func TestExecMatchClassPattern(t *testing.T) {
+	t.Parallel()
 	assertOutput(t, `class Point:
     def __init__(self, x, y):
         self.x = x
@@ -1404,6 +1476,7 @@ match p:
 // call argument list split across lines compiles and runs identically to the
 // single-line form (byte-identical stdout on the AOT binary).
 func TestExecLineContinuation(t *testing.T) {
+	t.Parallel()
 	// long arithmetic expression split with a continuation
 	assertOutput(t, "s = 1 + \\\n    2 + \\\n    3\nprint(s)", "6\n")
 	// continued call argument list (no forced parens)
@@ -1413,6 +1486,7 @@ func TestExecLineContinuation(t *testing.T) {
 }
 
 func TestMatchClassPatternAliasAOT(t *testing.T) {
+	t.Parallel()
 	// `Alias = Point` stores the class id; `case Alias(x, y)` must match
 	// a Point instance through the runtime alias path in AOT.
 	assertOutput(t, `class Point:
@@ -1429,6 +1503,7 @@ match p:
 }
 
 func TestMatchClassPatternAliasMismatchAOT(t *testing.T) {
+	t.Parallel()
 	// A non-matching class pattern falls through to the wildcard.
 	assertOutput(t, `class Point:
     def __init__(self, x, y):
@@ -1449,6 +1524,7 @@ match q:
 // TestUnionAnnotationRun verifies programs with `int | str` union annotations
 // compile, execute, and are gradual: a member value is accepted at runtime.
 func TestUnionAnnotationRun(t *testing.T) {
+	t.Parallel()
 	// int member of the union passes through a union-annotated param.
 	assertOutput(t, `def f(x: int | str):
     return x

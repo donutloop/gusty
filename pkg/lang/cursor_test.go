@@ -5,6 +5,7 @@ import "testing"
 // TestCursorPeek verifies bounds-safe lookahead: peek(n) returns the token n
 // ahead without advancing, and returns TokEOF past the end of the stream.
 func TestCursorPeek(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("a b c")
 	if err != nil {
 		t.Fatalf("lex: %v", err)
@@ -35,6 +36,7 @@ func TestCursorPeek(t *testing.T) {
 // TestCursorWalkMarkReset verifies sequential walk, mark/reset backtracking,
 // and that reset seeks back to a previously-marked position.
 func TestCursorWalkMarkReset(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("a b c")
 	if err != nil {
 		t.Fatalf("lex: %v", err)
@@ -80,6 +82,7 @@ func TestCursorWalkMarkReset(t *testing.T) {
 // TestCursorPredicates verifies atEOF/atNewline/atDedent/atIndent and
 // skipNewlines on a multi-line token stream.
 func TestCursorPredicates(t *testing.T) {
+	t.Parallel()
 	toks, err := Lex("a\n\nb")
 	if err != nil {
 		t.Fatalf("lex: %v", err)

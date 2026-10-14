@@ -10,6 +10,9 @@ import (
 // now part of BuildResult / --json, so a script can tell an optimized build from one that
 // quietly fell back to the textual pass.
 
+//parify:serial it points the package switch for `opt` at a path that does not exist, which is the only
+//parify:serial way to ask what the report says when the tool is missing — and the only way to make
+//parify:serial every other compile in the process ask it too.
 func TestOptimizationReportWhenOptToolIsMissing(t *testing.T) {
 	saved := optCmd
 	defer func() { optCmd = saved }()
@@ -38,6 +41,7 @@ func TestOptimizationReportWhenOptToolIsMissing(t *testing.T) {
 	}
 }
 
+//parify:serial the other spelling of the missing-`opt` question, same package switch.
 func TestOptimizationReportWhenOptToolIsAbsent(t *testing.T) {
 	saved := optCmd
 	defer func() { optCmd = saved }()
@@ -57,6 +61,7 @@ func TestOptimizationReportWhenOptToolIsAbsent(t *testing.T) {
 }
 
 func TestOptimizationReportAbsentWhenNotRequested(t *testing.T) {
+	t.Parallel()
 	res, err := Compile("print(1)\n")
 	if err != nil {
 		t.Fatalf("compile: %v", err)
@@ -67,6 +72,7 @@ func TestOptimizationReportAbsentWhenNotRequested(t *testing.T) {
 }
 
 func TestOptimizationReportWhenOptRuns(t *testing.T) {
+	t.Parallel()
 	if findTool("opt-20") == "" {
 		t.Skip("opt-20 not installed")
 	}
@@ -86,6 +92,7 @@ func TestOptimizationReportWhenOptRuns(t *testing.T) {
 // TestBuildCarriesOptimizationReport: the whole point is that the *build result* tells the
 // story, not just the optimizer internals.
 func TestBuildCarriesOptimizationReport(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := writeTemp(t, dir, "opt.gy", "def add(a, b):\n    return a + b\n\nprint(add(2, 3))\n")
 	res, err := BuildWithOptions([]string{src}, dir+"out", 2, nil)

@@ -70,8 +70,10 @@ var sliceBoundsAnswered = []struct {
 // each row runs the same source through the reference and through the CLI, and the two have to agree line for
 // line — and no row may end at a refusal, which is the failure mode of a gate that asks too much.
 func TestTheBoundsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceBoundsAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tt.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
@@ -92,6 +94,7 @@ func TestTheBoundsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 // never the compiler's own `codegen:` prefix — which is how a reader tells a refusal from a raise (ADR 0006,
 // ADR 0166, ADR 0214).
 func TestABoundThatIsNotAPositionRaisesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	const msg = "TypeError: slice indices must be integers or None or have an __index__ method"
 	for _, tt := range []struct {
 		name string
@@ -121,6 +124,7 @@ func TestABoundThatIsNotAPositionRaisesThroughTheCLI(t *testing.T) {
 		{"float bounds on a text", "s = \"abcd\"\nflt = 1.5\nprint(s[flt:3])"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a program the reference raises: the code the contract reserves for a compiler bug (ADR 0166)\n%s", stderr)
@@ -146,6 +150,7 @@ func TestABoundThatIsNotAPositionRaisesThroughTheCLI(t *testing.T) {
 // for `except TypeError as e:` — the `as` clause is not in the grammar at all, which is roadmap Gap R.113's
 // open row, not this raise's business.
 func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -156,6 +161,7 @@ func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 		{"after output", "xs = [1, 2, 3]\ntxt = \"a\"\nprint(\"first\")\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"caught\")\nprint(\"last\")"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tt.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
@@ -175,12 +181,14 @@ func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 // reference raises, the module raises before it copies; where the reference answers, the module copies and
 // never mentions the raise (ADR 0249 — the gate and the door grow together, visibly).
 func TestTheBoundGateIsInTheModule(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"txt = \"a\"\nxs = [1, 2, 3]\nprint(xs[0:txt])",
 		"flt = 1.5\nxs = [1, 2, 3]\nprint(xs[flt:3])",
 		"xs = [1, 2, 3]\nprint(xs[0:[1]])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -206,6 +214,7 @@ func TestTheBoundGateIsInTheModule(t *testing.T) {
 		"xs = [1, 2, 3]\nprint(xs[True:True])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -229,6 +238,7 @@ func TestTheBoundGateIsInTheModule(t *testing.T) {
 // each is asserted separately, and the two answered shapes beside them are the negative control: a stride the
 // compiler reads must still answer, not raise.
 func TestASliceStepOfZeroRaisesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	const msg = "ValueError: slice step cannot be zero"
 	for _, tt := range []struct {
 		name string
@@ -252,6 +262,7 @@ func TestASliceStepOfZeroRaisesThroughTheCLI(t *testing.T) {
 		{"bound to a name", "xs = [1, 2, 3]\nys = xs[::0]\nprint(ys)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 — the code the contract reserves for a compiler bug, which is exactly what this shape used to be (ADR 0166):\n%s", stderr)
@@ -276,6 +287,7 @@ func TestASliceStepOfZeroRaisesThroughTheCLI(t *testing.T) {
 // can read raises nothing and emits no raise site at all, and a stride it cannot read is guarded and still
 // strides. These are the rows a guard emitted unconditionally would fail while every other row stayed green.
 func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -289,6 +301,7 @@ func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 		{"s = \"abcd\"\nprint(s[0:4:2])", "ac"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tt.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
@@ -320,6 +333,7 @@ func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 // runs with the exception flag still set, so the call's own post-call check takes it back, the traceback prints,
 // and the statement after the `try` never runs).
 func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -371,6 +385,7 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tc.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tc.src)
 			if code == 2 {
@@ -406,6 +421,7 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 // The same program with `print` in the arm exits 0 — the call's post-check on the module-wide exception flag is
 // the difference. Every row here pins the reference's output beside what the toolchain does today.
 func TestACallInsideAnExceptArmStillTakesTheRunDown(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name       string
 		src        string
@@ -438,6 +454,7 @@ func TestACallInsideAnExceptArmStillTakesTheRunDown(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program (ADR 0166):\n%s", stderr)
@@ -455,6 +472,7 @@ func TestACallInsideAnExceptArmStillTakesTheRunDown(t *testing.T) {
 // TestTheSliceBoundsProgramMatchesTheReferenceThroughTheCLI is the whole row as one program, line for line
 // against the recorded reference answer.
 func TestTheSliceBoundsProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/slice_bounds.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -488,6 +506,7 @@ func TestTheSliceBoundsProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 // TestTheSliceBoundsProgramIsOnTheRecord is ADR 0302's rule at this altitude: a program whose record
 // disappeared fails here rather than passing by having nothing to compare against.
 func TestTheSliceBoundsProgramIsOnTheRecord(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/slice_bounds.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)

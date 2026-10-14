@@ -15,6 +15,7 @@ import (
 )
 
 func TestComprehensionOverATextIteratesCharacters(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print([c for c in "abc"])`, `['a', 'b', 'c']`},
 		{`print([c for c in "abc" if c != "b"])`, `['a', 'c']`},
@@ -29,6 +30,7 @@ func TestComprehensionOverATextIteratesCharacters(t *testing.T) {
 		{`print([x for x in "abc" if False])`, `[]`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -46,6 +48,7 @@ func TestComprehensionOverATextIteratesCharacters(t *testing.T) {
 
 // min/max of a text compare CHARACTERS, because a text is an iterable and not a scalar.
 func TestMinMaxOverATextAnswerACharacter(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print(max("abc"))`, `c`},
 		{`print(min("abc"))`, `a`},
@@ -58,6 +61,7 @@ func TestMinMaxOverATextAnswerACharacter(t *testing.T) {
 		{`print(max(3, 5))`, `5`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want != tc.want {
 				t.Fatalf("this pin disagrees with the reference: %q vs %q", tc.want, want)
@@ -74,6 +78,7 @@ func TestMinMaxOverATextAnswerACharacter(t *testing.T) {
 // Iterating a text is ONE question, asked by three roads — `for`, a comprehension, and an iterable
 // builtin. If the comprehension disagrees with the `for`, the language has two answers.
 func TestTextIterationIsOneQuestionAcrossRoads(t *testing.T) {
+	t.Parallel()
 	const src = `"abc"`
 	forLoop := "for c in " + src + ":\n    print(c)\n"
 	comp := "print([c for c in " + src + "])\n"
@@ -100,6 +105,7 @@ func TestTextIterationIsOneQuestionAcrossRoads(t *testing.T) {
 // The compiled leg refuses these; a refusal is allowed, an invented answer is not. If it ever starts
 // answering, this logs — and the row moves into the tables above rather than being deleted.
 func TestCompiledLegRefusesOrAnswersButNeverInvents(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print([c for c in "abc"])`,
 		`print(max("abc"))`,

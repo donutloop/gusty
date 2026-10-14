@@ -7,6 +7,7 @@ import (
 // TestPropSourceReproducible is the core determinism property: the same seed
 // always yields the same corpus, so a failing seed is reproducible.
 func TestPropSourceReproducible(t *testing.T) {
+	t.Parallel()
 	g := DefaultPropGrammar()
 	a := PropSource(12345, 20, g)
 	b := PropSource(12345, 20, g)
@@ -37,6 +38,7 @@ func TestPropSourceReproducible(t *testing.T) {
 // parenthesization quirks for unary-minus and tuple-assignment operands that
 // are out of scope for the parity property this package guards.
 func TestPropSourceParses(t *testing.T) {
+	t.Parallel()
 	g := DefaultPropGrammar()
 	srcs := PropSource(20260701, 40, g)
 	for i, src := range srcs {
@@ -51,6 +53,7 @@ func TestPropSourceParses(t *testing.T) {
 // interpreter (no undefined names, no runtime errors), so the parity test has
 // observable, comparable output.
 func TestPropGeneratedValid(t *testing.T) {
+	t.Parallel()
 	g := DefaultPropGrammar()
 	for _, seed := range []int64{1, 42, 20260702, 12345, 54321, 999} {
 		srcs := PropSource(seed, 40, g)
@@ -65,6 +68,7 @@ func TestPropGeneratedValid(t *testing.T) {
 // TestPropGeneratedDeterministic checks the record determinism property:
 // running the same generated program twice must produce byte-identical stdout.
 func TestPropGeneratedDeterministic(t *testing.T) {
+	t.Parallel()
 	g := DefaultPropGrammar()
 	srcs := PropSource(20260702, 40, g)
 	for i, src := range srcs {

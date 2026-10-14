@@ -105,8 +105,10 @@ var minusOperatorAnswered = []struct {
 // through the JIT, and refuses to accept a refusal: the whole point of the row is that these
 // programs were parse errors and wrong answers, not capability boundaries (ADR 0249).
 func TestSubtractionAnswersWhatTheReferenceAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tt := range minusOperatorAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tt.src)
 			if refused {
 				t.Fatalf("%q refused (%s); the reference answers %q", tt.src, got, tt.want+"\n")
@@ -129,8 +131,10 @@ func TestSubtractionAnswersWhatTheReferenceAnswers(t *testing.T) {
 // retired engine gave, kept as an expectation. The row is newly answered surface: a source
 // whose answer the record does not hold fails, so coverage cannot be quietly dropped.
 func TestTheSubtractionIsOnTheRecord(t *testing.T) {
+	t.Parallel()
 	for _, tt := range minusOperatorAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if !HasGoldenAnswer(tt.src) {
 				t.Fatalf("%q is not on the record: a newly answered program is recorded, not self-certified", tt.src)
 			}
@@ -150,6 +154,7 @@ func TestTheSubtractionIsOnTheRecord(t *testing.T) {
 // ADR 0338 — they are the reference's answers this toolchain does not give, filed as their own
 // rows rather than smuggled in beside a one-line rule.
 func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src    string
 		want   string // the shape the refusal must name
@@ -165,6 +170,7 @@ func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if !refused {
 				t.Fatalf("%q answered %q; the row expects the filed refusal to stand", tc.src, out)

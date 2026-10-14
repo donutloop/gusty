@@ -41,6 +41,7 @@ func debugModuleOf(t *testing.T, src string, opts *DebugOptions) (string, *Debug
 }
 
 func TestDebugInfoRecordsProgramFunctions(t *testing.T) {
+	t.Parallel()
 	ir, dbg := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "debug_prog.gy"})
 	if dbg == nil {
 		t.Fatal("debug requested but no DebugInfo returned")
@@ -97,6 +98,7 @@ func TestDebugInfoRecordsProgramFunctions(t *testing.T) {
 // TestDebugRecordsAreOptIn pins that a plain build is exactly the build it was
 // before: no metadata, no !dbg, the same bytes.
 func TestDebugRecordsAreOptIn(t *testing.T) {
+	t.Parallel()
 	plain, err := func() (string, error) {
 		prog, perr := Parse(debugProgSrc)
 		if perr != nil {
@@ -117,6 +119,7 @@ func TestDebugRecordsAreOptIn(t *testing.T) {
 // attaching a record appends to a line and never adds one, so IR line N means the
 // same thing in a debug module and a debug-free one.
 func TestDebugPassKeepsLineNumbers(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(debugProgSrc)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -170,6 +173,7 @@ func TestDebugPassKeepsLineNumbers(t *testing.T) {
 // TestLineRowsNameTheStatementTheyCameFrom is the useful claim: a debugger asked
 // about the print on line 15 has machine code that says line 15.
 func TestLineRowsNameTheStatementTheyCameFrom(t *testing.T) {
+	t.Parallel()
 	ir, dbg := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "p.gy"})
 	_ = ir
 	wantLines := map[int]bool{1: false, 2: false, 3: false, 4: false, 5: false, 8: false, 9: false, 10: false, 12: false, 13: false, 14: false}
@@ -198,6 +202,7 @@ func TestLineRowsNameTheStatementTheyCameFrom(t *testing.T) {
 // debugger cannot name, rather than quietly producing no records for it. The
 // exempt set is derived from the runtime blocks themselves, not from a list.
 func TestEveryProgramDefineCarriesASubprogram(t *testing.T) {
+	t.Parallel()
 	_, dbg := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "p.gy"})
 	ir, _ := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "p.gy"})
 	registered := map[string]bool{}
@@ -212,6 +217,7 @@ func TestEveryProgramDefineCarriesASubprogram(t *testing.T) {
 }
 
 func TestDebugInfoJSONShape(t *testing.T) {
+	t.Parallel()
 	_, dbg := debugModuleOf(t, "print(1)\nx = 2\nprint(x)\n", &DebugOptions{File: "shape.gy", Directory: "/tmp", OptLevel: 2})
 	if dbg.SchemaVersion != DebugSchemaVersion {
 		t.Errorf("schema_version = %d, want %d", dbg.SchemaVersion, DebugSchemaVersion)
@@ -241,6 +247,7 @@ func TestDebugInfoJSONShape(t *testing.T) {
 // no span of its own is attributed to the enclosing definition, never to line 0,
 // which DWARF has no meaning for.
 func TestUnknownStatementsInheritAPosition(t *testing.T) {
+	t.Parallel()
 	_, dbg := debugModuleOf(t, "def f(n):\n    total = 0\n    for i in range(0, n):\n        total = total + i\n    return total\nprint(f(4))\n", &DebugOptions{File: "loop.gy"})
 	for _, r := range dbg.Lines {
 		if r.Line < 1 {
@@ -253,6 +260,7 @@ func TestUnknownStatementsInheritAPosition(t *testing.T) {
 }
 
 func TestAttachWithNoMarksFallsBackToTheDefinition(t *testing.T) {
+	t.Parallel()
 	marks := []dbgMark{{off: 0, line: 3, col: 1}}
 	funcs := []dbgFunc{{sym: "gy_f", name: "f", off: 0, line: 3, col: 1}}
 	module := "define i32 @gy_f(i32 %p1) {\nentry:\n  %t1 = add i32 %p1, 1\n  ret i32 %t1\n}\n!llvm.module.flags = !{!0}\n!0 = !{i32 2, !\"PIC Level\", i32 2}\n"
@@ -271,6 +279,7 @@ func TestAttachWithNoMarksFallsBackToTheDefinition(t *testing.T) {
 // TestAttachLeavesRuntimeFunctionsAlone pins the verifier's rule: a !dbg inside a
 // function with no subprogram is an invalid module.
 func TestAttachLeavesRuntimeFunctionsAlone(t *testing.T) {
+	t.Parallel()
 	module := "define i32 @gy_f() {\nentry:\n  %t1 = call i32 @rt_thing(i32 1)\n  ret i32 %t1\n}\ndefine internal i32 @rt_thing(i32 %h) {\nentry:\n  ret i32 %h\n}\n!llvm.module.flags = !{!0}\n!0 = !{i32 2, !\"PIC Level\", i32 2}\n"
 	out, art := attachDebugInfo(module, nil, []dbgFunc{{sym: "gy_f", name: "f", off: 0, line: 2, col: 1}}, 0, 0, &DebugOptions{File: "x.gy"})
 	info := readBackDebugInfo(out, art)
@@ -282,6 +291,8 @@ func TestAttachLeavesRuntimeFunctionsAlone(t *testing.T) {
 	}
 }
 
+//parify:serial it swaps the package switch for the objdump command out from under every other case:
+//parify:serial the point of the case is what the report says when the tool is not there at all.
 func TestDwarfReportWithoutAToolchainIsSkippedNotOk(t *testing.T) {
 	saved := dwarfdumpCmd
 	dwarfdumpCmd = "llvm-dwarfdump-that-does-not-exist"
@@ -299,6 +310,7 @@ func TestDwarfReportWithoutAToolchainIsSkippedNotOk(t *testing.T) {
 }
 
 func TestDebugInstructionGate(t *testing.T) {
+	t.Parallel()
 	yes := []string{
 		"  store i32 0, i32* %_x",
 		"  ret i32 0",
@@ -334,6 +346,7 @@ func TestDebugInstructionGate(t *testing.T) {
 }
 
 func TestDebugAppendLocationKeepsCommentsLast(t *testing.T) {
+	t.Parallel()
 	got := dbgAppendLocation("  store i32 0, i32* %_x ; the reset", 7)
 	if got != "  store i32 0, i32* %_x, !dbg !7 ; the reset" {
 		t.Fatalf("got %q", got)
@@ -344,12 +357,14 @@ func TestDebugAppendLocationKeepsCommentsLast(t *testing.T) {
 }
 
 func TestDebugNamesCannotBreakTheirLiteral(t *testing.T) {
+	t.Parallel()
 	if got := dbgMDText(`a"b` + "\n" + `c`); got != `"abc"` {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func TestDebugSignatureIsReadFromTheDefine(t *testing.T) {
+	t.Parallel()
 	ret, params := dbgDefineSignature("define double @gy_f(i32 %p1, i8* %p2) {")
 	if ret != "double" {
 		t.Errorf("ret = %q", ret)
@@ -445,6 +460,7 @@ func tailOf(s string, n int) string {
 }
 
 func TestDebugLocationIsInternedOncePerPosition(t *testing.T) {
+	t.Parallel()
 	ir, dbg := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "intern.gy"})
 	// One source position, one metadata node. The line table may point at it from many
 	// instructions; the same position spelled as two nodes is how a module grows without
@@ -478,6 +494,9 @@ func TestDebugLocationIsInternedOncePerPosition(t *testing.T) {
 // The textual pass is what runs when there is no LLVM `opt`; it used to rebuild the
 // module from parsed globals and defines, which silently discarded the whole metadata
 // block — the line table included. Debug info has to survive it.
+//
+//parify:serial it retargets the package switch for `opt` to run the real optimizer over a module of
+//parify:serial its own; every other compile in flight would read the override too.
 func TestTextualOptimizerKeepsTheLineTable(t *testing.T) {
 	ir, before := debugModuleOf(t, debugProgSrc, &DebugOptions{File: "keep.gy"})
 	if before.Tagged == 0 {
@@ -515,6 +534,8 @@ func TestTextualOptimizerKeepsTheLineTable(t *testing.T) {
 
 // A module with no debug info must not grow any through the textual pass either: the
 // metadata block is carried through because it was there, not invented.
+//
+//parify:serial the same `opt` override as TestTextualOptimizerKeepsTheLineTable, for its twin.
 func TestTextualOptimizerInventsNoDebugInfo(t *testing.T) {
 	_, _ = debugModuleOf(t, "print(1)\n", nil) // warm the generator, prove the opt-in path above
 	prog, err := Parse("print(1)\n")
@@ -539,6 +560,7 @@ func TestTextualOptimizerInventsNoDebugInfo(t *testing.T) {
 // struct but not in the schema is a field nobody can consume, so the two are checked
 // against each other rather than kept in line by memory.
 func TestSchemaDescribesEveryDebugField(t *testing.T) {
+	t.Parallel()
 	var doc struct {
 		Definitions map[string]struct {
 			Properties map[string]json.RawMessage `json:"properties"`

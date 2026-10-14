@@ -121,8 +121,10 @@ func parseProgramForTest(t *testing.T, src string) *Program {
 }
 
 func TestAContainerReturnedFromACallAnswersTheContainer(t *testing.T) {
+	t.Parallel()
 	for _, tt := range containerAnswerPrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if out := strings.TrimRight(compiledOut(t, tt.src), "\n"); out != tt.want {
 				t.Fatalf("compiled %q, printed %q, want %q", tt.src, out, tt.want)
 			}
@@ -134,6 +136,7 @@ func TestAContainerReturnedFromACallAnswersTheContainer(t *testing.T) {
 // `llc` rejects and the exit-code contract counts as the compiler's bug — and the two replacements have to
 // both be there: the builder that made the handle, and the printer that was told what the handle is.
 func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
+	t.Parallel()
 	ir := emittedModuleIR(t, "def build():\n    return [1, 2]\n\nprint(build())")
 	fn := functionBodyOf(ir, "gy_build")
 	for _, want := range []string{
@@ -177,6 +180,7 @@ func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
 // over every shape the row touches, and over the answers of the ordinary kinds, whose roads this change
 // must leave exactly as they were.
 func TestNoEmittedModuleReturnsAGlobal(t *testing.T) {
+	t.Parallel()
 	shapes := []string{
 		"def f():\n    return [1, 2]\n\nprint(f())",
 		"def f():\n    return {1, 2}\n\nprint(f())",
@@ -196,6 +200,7 @@ func TestNoEmittedModuleReturnsAGlobal(t *testing.T) {
 	}
 	for _, src := range shapes {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			ir := emittedModuleIR(t, src)
 			if strings.Contains(ir, "ret i32 @.") {
 				t.Fatalf("a global sits in a `ret` (the exit-2 shape ADR 0166 counts as the compiler's bug):\n%s", ir)
@@ -209,6 +214,7 @@ func TestNoEmittedModuleReturnsAGlobal(t *testing.T) {
 // any of this — no allocation, no container printer, no temp holding a handle. A door that opened for
 // everything is how a working program picks up an object it never asked for.
 func TestAnAnswerThatIsNotAContainerIsLeftOnTheOrdinaryRoad(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def f():\n    return 5\n\nprint(f())",
 		"def f():\n    return 1.5\n\nprint(f())",
@@ -231,6 +237,7 @@ func TestAnAnswerThatIsNotAContainerIsLeftOnTheOrdinaryRoad(t *testing.T) {
 // about a function has to be true of every road through its body. `want == ""` means "not recorded", which
 // is the answer that keeps the function on the road it has always taken.
 func TestTheScanRecordsAFunctionOnlyWhenEveryArmAnswersIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -289,6 +296,7 @@ func TestTheScanRecordsAFunctionOnlyWhenEveryArmAnswersIt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog := parseProgramForTest(t, tc.src)
 			got := containerReturningFuncs(prog)
 			ans, ok := got[tc.fn]
@@ -312,6 +320,7 @@ func TestTheScanRecordsAFunctionOnlyWhenEveryArmAnswersIt(t *testing.T) {
 // container answer; the sentence has to name the door that does answer, and the exit class must never be 2,
 // which the contract reserves for a compiler bug — the code this row used to print for a legal program.
 func TestAPositionWithoutAContainerRoadRefusesByName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -321,6 +330,7 @@ func TestAPositionWithoutAContainerRoadRefusesByName(t *testing.T) {
 		{"list concatenation", "def b():\n    return [1, 2]\n\nprint(b() + b())", "b"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, refused := compiledOutOrRefusal(t, tc.src)
 			if !refused {
 				t.Fatalf("%q answered where the row records a refusal for %s", tc.src, tc.name)
@@ -339,6 +349,7 @@ func TestAPositionWithoutAContainerRoadRefusesByName(t *testing.T) {
 // The five programs that used to break the verifier: the same source, now, has to build a module the
 // verifier accepts. These are the exit-2 rows, and exit 2 is the code that says the compiler is broken.
 func TestTheProgramsThatBrokeTheVerifierNowBuildModules(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def build():\n    return [1, 2]\n\nprint(build())",
 		"def build():\n    return {1, 2}\n\nprint(build())",
@@ -350,6 +361,7 @@ func TestTheProgramsThatBrokeTheVerifierNowBuildModules(t *testing.T) {
 		"la = [1, 2]\n\ndef f():\n    xs = [3]\n    return xs\n\nprint(f())",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			ir := emittedModuleIR(t, src)
 			mustVerifyWithLLC(t, ir)
 		})
@@ -360,6 +372,7 @@ func TestTheProgramsThatBrokeTheVerifierNowBuildModules(t *testing.T) {
 // backend says today — so the day a door grows, a test fails loudly rather than a wrong answer shipping
 // quietly (the discipline ADR 0331 and ADR 0332 each shipped with).
 func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -413,6 +426,7 @@ func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if tc.compiled == "" {
 				if !refused {
@@ -434,6 +448,7 @@ func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
 // The record leg: every answered row has to have an answer on record, so a later cycle cannot take the door
 // away without taking the evidence away with it (ADR 0302's rule that a missing record fails).
 func TestTheContainerAnswerRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def build():\n    return [1, 2]\n\nprint(build())",
 		"def build():\n    return {1, 2}\n\nprint(build())",
@@ -449,6 +464,7 @@ func TestTheContainerAnswerRowsAreRecorded(t *testing.T) {
 		"def build():\n    return [1, 2]\n\ndef g():\n    return build()\n\nprint(g())",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that returns it", src)
@@ -461,6 +477,7 @@ func TestTheContainerAnswerRowsAreRecorded(t *testing.T) {
 // `0`. That is this row's shape from the other side — the element door (ADR 0332) inside the return door
 // (ADR 0333) — and it is asserted here so the two cannot each claim the other paid it.
 func TestAPairElementListReturnedFromACallAnswersTheList(t *testing.T) {
+	t.Parallel()
 	src := "def f():\n    return [{\"a\": \"x\"}[\"a\"], 2]\n\nprint(f())"
 	if out := strings.TrimRight(compiledOut(t, src), "\n"); out != "['x', 2]" {
 		t.Fatalf("%q printed %q, want ['x', 2] (Gap R.224's element door inside Gap R.67's return door)", src, out)

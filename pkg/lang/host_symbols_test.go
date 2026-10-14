@@ -24,6 +24,7 @@ func mustIRForSymbols(t *testing.T, src string) string {
 }
 
 func TestUserFunctionIsEmittedUnderTheLinkPrefix(t *testing.T) {
+	t.Parallel()
 	ir := mustIRForSymbols(t, "def sync():\n    return 7\n\nprint(sync())\n")
 	if !strings.Contains(ir, "define i32 @gy_sync()") {
 		t.Errorf("the program's own function must be defined under the prefix:\n%s", ir)
@@ -48,6 +49,7 @@ func TestUserFunctionIsEmittedUnderTheLinkPrefix(t *testing.T) {
 // interpreter and answered something else — 0, 1, or a duplicate-definition failure — on
 // the compiled path before the prefix existed.
 func TestHostAbiNameBattery(t *testing.T) {
+	t.Parallel()
 	// Names the host ABI owns that are NOT also built-in call names of the language.
 	// `abs`, `floor`, `min`, `sum` and friends are a different defect, recorded as
 	// roadmap R.6: a call to a name the builtin table knows is resolved against the
@@ -73,6 +75,7 @@ func TestHostAbiNameBattery(t *testing.T) {
 // TestExternKeepsItsCName: an `extern fn` is an FFI surface — its link name is the C name
 // the program asked to bind, and prefixing it would break the very call it declares.
 func TestExternKeepsItsCName(t *testing.T) {
+	t.Parallel()
 	ir := mustIRForSymbols(t, "extern fn abs(x: int) -> int\n\nprint(abs(-5))\n")
 	if !strings.Contains(ir, "declare i32 @abs(i32)") {
 		t.Errorf("the extern declaration lost its C name:\n%s", ir)
@@ -88,6 +91,7 @@ func TestExternKeepsItsCName(t *testing.T) {
 // TestGeneratedEntryPointIsNotPrefixed: `main` is generated, not user-owned, and the
 // runtime helpers are named by the compiler. The user's `def main` lives beside it.
 func TestGeneratedEntryPointIsNotPrefixed(t *testing.T) {
+	t.Parallel()
 	ir := mustIRForSymbols(t, "def main(x):\n    return x + 7\n\nprint(main(0))\n")
 	if !strings.Contains(ir, "define i32 @main()") {
 		t.Errorf("the generated entry point must stay @main:\n%s", ir)
@@ -107,7 +111,9 @@ func TestGeneratedEntryPointIsNotPrefixed(t *testing.T) {
 }
 
 func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
+	t.Parallel()
 	t.Run("method", func(t *testing.T) {
+		t.Parallel()
 		ir := mustIRForSymbols(t, "class Point:\n    def x(self):\n        return 3\n\nprint(Point().x())\n")
 		if !strings.Contains(ir, "define i32 @gy_Point_x(") {
 			t.Errorf("a method symbol must carry the prefix:\n%s", ir)
@@ -117,6 +123,7 @@ func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
 		}
 	})
 	t.Run("decorated body", func(t *testing.T) {
+		t.Parallel()
 		ir := mustIRForSymbols(t, "def twice(f):\n    return f\n\n@twice\ndef g():\n    return 42\n\nprint(g())\n")
 		if !strings.Contains(ir, "@gy_g_impl") {
 			t.Errorf("the decorated body and its references must agree on one prefixed symbol:\n%s", ir)
@@ -126,22 +133,19 @@ func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
 		}
 	})
 	t.Run("lambda", func(t *testing.T) {
+		t.Parallel()
 		ir := mustIRForSymbols(t, "f = lambda x: int: x * 2\n\nprint(f(3))\n")
 		if !strings.Contains(ir, "@gy_lambda_") {
 			t.Errorf("a generated lambda is program-owned too:\n%s", ir)
 		}
 	})
 	t.Run("imported module function", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		if err := os.WriteFile(dir+"/lib.gy", []byte("def f(x):\n    return x * 2\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		old, _ := os.Getwd()
-		if err := os.Chdir(dir); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Chdir(old)
-		res, err := Compile("import lib\nprint(lib.f(21))")
+		res, err := CompileIn(dir, "import lib\nprint(lib.f(21))")
 		if err != nil {
 			t.Fatalf("AOT import should compile: %v", err)
 		}
@@ -159,6 +163,7 @@ func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
 // TestSourceMapNamesTheSourceAndTheLinkSeparately: the map exists to point a tool at a
 // function, so `name` is what the program wrote and `symbol` is what the linker sees.
 func TestSourceMapNamesTheSourceAndTheLinkSeparately(t *testing.T) {
+	t.Parallel()
 	src := "def sync(x):\n    return x + 1\n\nprint(sync(1))\n"
 	ir := mustIRForSymbols(t, src)
 	raw, err := GenerateSourceMap(parseOrFatal(t, src), ir, nil)

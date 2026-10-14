@@ -22,6 +22,7 @@ import (
 // interned text, which the variable leg already did and the literal leg did not.
 
 func TestForOverContainerLiteralsIteratesTheContainer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// A set literal's members are pinned one-member-each where the members are text or
 		// mixed kinds: CPython's set order is its own (hash order), so a three-engine table
@@ -39,6 +40,7 @@ func TestForOverContainerLiteralsIteratesTheContainer(t *testing.T) {
 		{"empty_set_literal", "for v in set():\n    print(v)\nprint(0)\n", "0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "loops.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -64,6 +66,7 @@ func TestForOverContainerLiteralsIteratesTheContainer(t *testing.T) {
 // and CPython's own iteration order is hash order rather than the language's. both legs are
 // compared as multisets, which is what a set's iteration is.
 func TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"for v in {1, \"a\"}:\n    print(v)\n",
 		"for v in {1, \"a\", None, 2.5}:\n    print(v)\n",
@@ -105,6 +108,7 @@ func TestForOverMixedSetLiteralAgreesWithTheOracleIgnoringOrder(t *testing.T) {
 // variable leg, and a loop that binds text must print text rather than an interned index.
 
 func TestForOverContainerVariablesStillIterates(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"set_variable", "xs = {1, 2}\nfor v in xs:\n    print(v)\n", "1\n2\n"},
 		{"dict_variable", "d = {\"a\": 1, \"b\": 2}\nfor k in d:\n    print(k)\n", "a\nb\n"},
@@ -112,6 +116,7 @@ func TestForOverContainerVariablesStillIterates(t *testing.T) {
 		{"literal_then_variable", "for v in {1, 2}:\n    print(v)\nfor k in {\"a\": 1}:\n    print(k)\nfor v in [3]:\n    print(v)\n", "1\n2\na\n3\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "loops.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -133,6 +138,7 @@ func TestForOverContainerVariablesStillIterates(t *testing.T) {
 // handle — and routing every iterable through the container builder turned it into a refusal
 // ("*lang.Call is not a container"), which is a compiled leg losing a shape it used to answer.
 func TestForOverGeneratorCallStillIterates(t *testing.T) {
+	t.Parallel()
 	src := "def g(n):\n    i = 0\n    while i < n:\n        yield i\n        i = i + 1\n\nfor y in g(3):\n    print(y)\n"
 	path := writeSrc(t, t.TempDir(), "gen.gy", src)
 	want := "0\n1\n2\n"

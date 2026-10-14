@@ -9,6 +9,7 @@ import (
 // TestABISchemaValid verifies the ABI schema is machine-readable JSON carrying
 // the version, struct layouts, tag words, and extern marshalling rules.
 func TestABISchemaValid(t *testing.T) {
+	t.Parallel()
 	schema, err := ABISchema()
 	if err != nil {
 		t.Fatalf("ABISchema: %v", err)
@@ -55,6 +56,7 @@ func TestABISchemaValid(t *testing.T) {
 // TestABITagWordsFixed locks the tag words — renumbering them would break the
 // extern-fn ABI across releases.
 func TestABITagWordsFixed(t *testing.T) {
+	t.Parallel()
 	want := []int{ABITagInt, ABITagFloat, ABITagBool, ABITagNone, ABITagStr, ABITagList, ABITagDict, ABITagSet, ABITagTuple, ABITagClass, ABITagInstance, ABITagMethod, ABITagClosure, ABITagExn, ABITagModule}
 	expect := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for i := range want {
@@ -67,6 +69,7 @@ func TestABITagWordsFixed(t *testing.T) {
 // TestEmitABIIntoIR verifies the generated module carries the versioned ABI
 // prelude: stable named struct types + the version marker global.
 func TestEmitABIIntoIR(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse(`x = 1
 print(x)`)
 	if err != nil {
@@ -89,6 +92,7 @@ print(x)`)
 
 // TestEmitABIIdempotent verifies the ABI prelude is emitted exactly once.
 func TestEmitABIIdempotent(t *testing.T) {
+	t.Parallel()
 	var b string
 	EmitABI(&b)
 	EmitABI(&b)
@@ -100,6 +104,7 @@ func TestEmitABIIdempotent(t *testing.T) {
 // TestABIStructLayout mirrors the C struct layout for the tagged value and
 // union: tag word at offset 0, payload/words at stable offsets.
 func TestABIStructLayout(t *testing.T) {
+	t.Parallel()
 	v := ABIValue{Tag: ABITagInt, Payload: 42}
 	if v.Tag != 0 || v.Payload != 42 {
 		t.Errorf("ABIValue layout = %+v", v)

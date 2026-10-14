@@ -79,8 +79,10 @@ var sliceAnswerAnswered = []struct {
 // TestASliceAnswersThroughTheCLI is the answering half: each row runs the same source through the reference
 // and through the CLI, and the two have to agree line for line.
 func TestASliceAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceAnswerAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, tt.src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
@@ -101,6 +103,7 @@ func TestASliceAnswersThroughTheCLI(t *testing.T) {
 // untagged copy keeps the plain pair — the gate and the door growing together (ADR 0249) rather than the
 // whole slice road being moved to the runtime.
 func TestTheTaggedCopyIsPrintedByThePrinterThatReadsATag(t *testing.T) {
+	t.Parallel()
 	taggedIR, taggedErr, taggedCode := cliStreams(t, "--emit-llvm", "xs = [1.5, \"a\", [7]]\nprint(xs[0:2])")
 	if taggedCode != 0 {
 		t.Fatalf("--emit-llvm exited %d:\n%s", taggedCode, taggedErr)
@@ -128,6 +131,7 @@ func TestTheTaggedCopyIsPrintedByThePrinterThatReadsATag(t *testing.T) {
 // The reference raises these; the row keeps the raise a program-level exception — the right exit class, the
 // sentence on stderr, silence on stdout, and never the code a compiler bug owns (ADR 0006, ADR 0166, ADR 0214).
 func TestASliceTrapStillRaisesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src      string
 		contains string
@@ -136,6 +140,7 @@ func TestASliceTrapStillRaisesThroughTheCLI(t *testing.T) {
 		{"xs = [1.5, \"a\", [7]]\ntry:\n    print(xs[0:2][0][9])\nexcept TypeError:\n    print(\"caught\")", "caught"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
@@ -160,6 +165,7 @@ func TestASliceTrapStillRaisesThroughTheCLI(t *testing.T) {
 // argument is an i32 register, which `llc` rejected: exit 2, the code the contract reserves for a compiler bug
 // (ADR 0166). Both are refusals now, and each row says which door owes the answer.
 func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name    string
 		src     string
@@ -194,6 +200,7 @@ func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program — the code the contract reserves for a compiler bug (ADR 0166):\n%s", stderr)
@@ -215,8 +222,10 @@ func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 // is a shape that reached `rt_slice` with a compile-time global in its place and had the module rejected, so
 // the emitted module is checked for the shape rather than only run.
 func TestNoSliceModuleReturnsAGlobalToAValuePosition(t *testing.T) {
+	t.Parallel()
 	for _, tt := range sliceAnswerAnswered {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(tt.src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -235,6 +244,7 @@ func TestNoSliceModuleReturnsAGlobalToAValuePosition(t *testing.T) {
 // TestTheSliceProgramMatchesTheReferenceThroughTheCLI is the whole row as one program, line for line against
 // the recorded reference answer.
 func TestTheSliceProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/slice_answer.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -268,6 +278,7 @@ func TestTheSliceProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 // TestTheSliceProgramIsOnTheRecord is ADR 0302's rule at this altitude: a program whose record disappeared
 // fails here rather than passing by having nothing to compare against.
 func TestTheSliceProgramIsOnTheRecord(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/slice_answer.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)

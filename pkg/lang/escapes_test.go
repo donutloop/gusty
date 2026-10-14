@@ -36,6 +36,7 @@ func lexStringValue(t *testing.T, src string) (string, []Diagnostic) {
 }
 
 func TestLexerDecodesPythonEscapes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`x = "a\nb"`, "a\nb"},
 		{`x = "a\tb"`, "a\tb"},
@@ -69,6 +70,7 @@ func TestLexerDecodesPythonEscapes(t *testing.T) {
 // The value of a UTF-8 literal must be the source's own bytes. The old scanner
 // produced "hÃ©llo" for "héllo" because string(byte) re-encodes each byte.
 func TestLexerPreservesUTF8Bytes(t *testing.T) {
+	t.Parallel()
 	for _, word := range []string{"héllo", "café", "日本語", "ñ", "€", "naïve", "🐍"} {
 		src := `x = "` + word + `"`
 		got, diags := lexStringValue(t, src)
@@ -84,6 +86,7 @@ func TestLexerPreservesUTF8Bytes(t *testing.T) {
 // Every string form must go through one decoder: the ordinary path used to be a
 // duplicate of scanString with different bugs.
 func TestAllStringFormsShareEscapes(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		{`x = "a\nb"`, "a\nb"},
 		{"x = \"\"\"a\\nb\"\"\"", "a\nb"},
@@ -109,6 +112,7 @@ func TestAllStringFormsShareEscapes(t *testing.T) {
 // unescapeStr (f-strings) and the lexer must never disagree about an escape:
 // they share appendEscape.
 func TestUnescapeStrMatchesLexer(t *testing.T) {
+	t.Parallel()
 	for _, body := range []string{`a\nb`, `a\tb`, `\x41`, `\u00e9`, `\U0001F600`, `a\qb`, `\\`, `\xZZ`, `100%`} {
 		lexed, _ := lexStringValue(t, `x = "`+body+`"`)
 		if got := unescapeStr(body); got != lexed {
@@ -119,6 +123,7 @@ func TestUnescapeStrMatchesLexer(t *testing.T) {
 
 // An unterminated string is a diagnostic, not a hang or a silent empty value.
 func TestUnterminatedStringDiagnostics(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{`x = "abc`, "x = 'abc"} {
 		raw, err := Lex(src)
 		if err != nil {

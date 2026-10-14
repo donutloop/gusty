@@ -89,8 +89,10 @@ var containerSubscriptPrograms = []struct {
 // TestASubscriptOnACallResultAnswersTheElement is the row's own claim: the element a call hands back is
 // read, in every container kind and every kind of slot, by the door that reads a variable's slot.
 func TestASubscriptOnACallResultAnswersTheElement(t *testing.T) {
+	t.Parallel()
 	for _, tt := range containerSubscriptPrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tt.src), "\n"); got != tt.want {
 				t.Fatalf("%q printed %q, want %q (the reference's answer, read off python3)", tt.src, got, tt.want)
 			}
@@ -103,6 +105,7 @@ func TestASubscriptOnACallResultAnswersTheElement(t *testing.T) {
 // `except` is allowed to take the raise. Exit 2 — the code the contract reserves for a compiler bug — is
 // forbidden on every row (ADR 0166, ADR 0211).
 func TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src     string
 		class   string
@@ -130,6 +133,7 @@ func TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises(t *testin
 		},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class || message != tt.message {
 				t.Fatalf("%q raised %s: %s; the reference raises %s: %s", tt.src, class, message, tt.class, tt.message)
@@ -141,6 +145,7 @@ func TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises(t *testin
 // TestATrapInsideACallResultSubscriptIsCatchable is the same raise asked of the program: a trap that ends
 // the run is a crash, and a trap the program can take is a value the language has.
 func TestATrapInsideACallResultSubscriptIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		want string
@@ -149,6 +154,7 @@ func TestATrapInsideACallResultSubscriptIsCatchable(t *testing.T) {
 		{"def f():\n    return {\"a\": 1}\n\ntry:\n    print(f()[\"b\"])\nexcept KeyError:\n    print(\"missing\")", "missing"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
 				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
 			}
@@ -179,6 +185,7 @@ func runForParity(t *testing.T, src string) (stdout, trap string) {
 // feature. `ys = build()` has answered `ys[i]` for as long as ADR 0333 has existed; the row is that the
 // same program written one statement shorter answers the same thing.
 func TestTheCallResultReadIsTheBoundFormsRead(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		direct string
 		bound  string
@@ -209,6 +216,7 @@ func TestTheCallResultReadIsTheBoundFormsRead(t *testing.T) {
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.direct, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			directOut, directTrap := runForParity(t, tc.direct)
 			boundOut, boundTrap := runForParity(t, tc.bound)
 			if directTrap != boundTrap || directOut != boundOut {
@@ -227,12 +235,14 @@ func TestTheCallResultReadIsTheBoundFormsRead(t *testing.T) {
 // compiler cannot count the answer's slots, and the compile-time lookup keeps every shape it can read.
 // A row that starts allocating is a row that got the gate wrong.
 func TestTheFoldStillOwnsTheLiteralRead(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print([1, 2][0])",
 		"print({1: 2}[1])",
 		"print([1, 2][0] + 1)",
 	} {
 		t.Run(src, func(t *testing.T) {
+			t.Parallel()
 			main := mainBodyOf(emittedModuleIR(t, src))
 			for _, banned := range []string{"@rt_alloc", "@rt_get_elem", "@rt_dict_get_tagged", "@rt_list_from"} {
 				if strings.Contains(main, banned) {
@@ -246,8 +256,10 @@ func TestTheFoldStillOwnsTheLiteralRead(t *testing.T) {
 // TestEveryCallResultSubscriptModuleVerifies is the exit-2 guard: the row began as a refusal, and a row that
 // ends as an `llc` rejection has only changed class, not been fixed.
 func TestEveryCallResultSubscriptModuleVerifies(t *testing.T) {
+	t.Parallel()
 	for _, tt := range containerSubscriptPrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			mustVerifyWithLLC(t, emittedModuleIR(t, tt.src))
 		})
 	}
@@ -257,6 +269,7 @@ func TestEveryCallResultSubscriptModuleVerifies(t *testing.T) {
 // each with the reference's answer beside what this backend says today — the discipline ADR 0331, ADR 0332
 // and ADR 0333 each shipped with. A row that stops refusing moves; it does not disappear.
 func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src      string
@@ -331,6 +344,7 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if tc.compiled == "" {
 				if !refused {
@@ -354,8 +368,10 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 // The record leg: every answered row has an answer on record, so the door cannot be deleted without
 // deleting the evidence the suite reads (ADR 0302's rule that a missing record fails the case).
 func TestTheCallResultSubscriptRowsAreRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tt := range containerSubscriptPrograms {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			rec := goldenLookup(t, tt.src)
 			if rec.Repr == "" && rec.Stdout == "" && rec.Err == "" {
 				t.Fatalf("%q has no recorded answer: re-record it before shipping the door that reads it", tt.src)

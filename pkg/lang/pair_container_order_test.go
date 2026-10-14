@@ -127,9 +127,11 @@ var foldPairRefusalRows = []struct{ name, src, want string }{
 }
 
 func TestAFoldOfContainersOrdersThemElementWise(t *testing.T) {
+	t.Parallel()
 	for _, tc := range foldPairAnswerRows {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -146,9 +148,11 @@ func TestAFoldOfContainersOrdersThemElementWise(t *testing.T) {
 }
 
 func TestAFoldOfContainersRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range foldPairTrapRows {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := RecordedRunError(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program answered where the reference raises")
@@ -183,9 +187,11 @@ func TestAFoldOfContainersRaisesWhatTheReferenceRaises(t *testing.T) {
 }
 
 func TestAFoldOfContainersTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range foldPairCatchRows {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -202,9 +208,11 @@ func TestAFoldOfContainersTrapIsCatchable(t *testing.T) {
 }
 
 func TestWhatTheFoldOfContainersStillRefusesIsRefusedInWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range foldPairRefusalRows {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(tc.src, 0)
 			if err == nil {
 				t.Fatalf("answered %q where the door declines this shape", res.Output)
@@ -233,6 +241,7 @@ func TestWhatTheFoldOfContainersStillRefusesIsRefusedInWords(t *testing.T) {
 // re-acquire the one-word bug. The negative rows are ADR 0309's gate: a module carries the ordering only for
 // the folds it actually walks.
 func TestTheOrderingDoorIsOneHelperTheFoldAsks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		src     string
@@ -263,6 +272,7 @@ func TestTheOrderingDoorIsOneHelperTheFoldAsks(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("the compiled backend refused a program the reference answers: %v", err)
@@ -286,6 +296,7 @@ func TestTheOrderingDoorIsOneHelperTheFoldAsks(t *testing.T) {
 // `min(la, o)` as `2`. An argument the container analysis describes opens the door; an all-literal fold keeps
 // the constant road it has always had.
 func TestTheFoldGateOpensForAContainerItCanName(t *testing.T) {
+	t.Parallel()
 	g := &irGen{taggedVars: map[string]bool{}, pairRetDone: map[string]bool{}}
 	for _, tc := range []struct {
 		name      string
@@ -302,6 +313,7 @@ func TestTheFoldGateOpensForAContainerItCanName(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			prog, err := parseProgram(tc.call + "\n")
 			if err != nil {
 				t.Fatalf("parse: %v", err)
@@ -339,6 +351,7 @@ func TestTheFoldGateOpensForAContainerItCanName(t *testing.T) {
 // reference's answer is asked here too, so the row cannot drift. The exit codes are asserted where a crash can be
 // survived: at the CLI, in `integration/pair_container_order_test.go`, in a process per program.
 func TestAFoldOfCyclicContainersCompilesAndTheReferenceAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		src       string
@@ -371,6 +384,7 @@ func TestAFoldOfCyclicContainersCompilesAndTheReferenceAnswers(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			refOut, refErr, refErr2 := PythonRun(tc.src)
 			if tc.refAnswer != "" {
 				if refErr2 != nil {

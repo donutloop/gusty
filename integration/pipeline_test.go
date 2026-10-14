@@ -15,6 +15,7 @@ import (
 // floor-division, and modulo. This guards the float-variable alloca path
 // exercised by the CLI build pipeline (`gustyc -build` / `make testllvmcode`).
 func TestPipelineFloatVars(t *testing.T) {
+	t.Parallel()
 	src := "x = 16.0\nprint(sqrt(x))\nprint(x // 2.0)\nprint(x % 3.0)\n"
 	dir := t.TempDir()
 	srcPath := filepath.Join(dir, "t.gy")
@@ -38,6 +39,7 @@ func TestPipelineFloatVars(t *testing.T) {
 }
 
 func TestGeneratorFunctionsAndExpressions(t *testing.T) {
+	t.Parallel()
 	src := `def g(n):
     yield n * 2
     yield n * 3
@@ -70,6 +72,7 @@ print((x for x in range(6) if x % 2 == 0))
 // skips a dead heap allocation or not. A truly dead list (never read) coexists
 // with a live list (elements read) in the same program.
 func TestEscapeDeadListRun(t *testing.T) {
+	t.Parallel()
 	src := `dead = [1, 2, 3]     # never read anywhere: allocation is skipped
 live = [4, 5, 6]           # element read below: allocation is kept
 print(live[0])

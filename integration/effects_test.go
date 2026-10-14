@@ -75,13 +75,16 @@ func noCode(t *testing.T, src, code string) {
 // The refused programs, one per rule, with the message the human and the agent
 // both read.
 func TestCheckRefusesBrokenAwaitDiscipline(t *testing.T) {
+	t.Parallel()
 	t.Run("never awaited", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def f(x):\n    return x + 1\nv = f(2)\nprint(v)\n",
 			lang.CodeCoroNeverAwaited, lang.LevelError, 1)
 		checkCode(t, "async def f(x):\n    return x + 1\nf(2)\n",
 			lang.CodeCoroNeverAwaited, lang.LevelError, 1)
 	})
 	t.Run("awaited twice", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def f(x):\n    return x + 1\na = f(1)\nprint(await a)\nprint(await a)\n",
 			lang.CodeCoroAwaitedTwice, lang.LevelError, 1)
 	})
@@ -89,22 +92,27 @@ func TestCheckRefusesBrokenAwaitDiscipline(t *testing.T) {
 	// suspend on, so the program still means something here — it is the reference
 	// implementation that rejects it outright.
 	t.Run("await outside a coroutine", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def f(x):\n    return x\ndef g():\n    return await f(1)\nprint(g())\n",
 			lang.CodeAwaitOutsideCoroutine, lang.LevelWarning, 0)
 	})
 	t.Run("async for outside a coroutine", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def f(x):\n    return x\ndef g():\n    async for v in [f(1)]:\n        print(v)\ng()\n",
 			lang.CodeAsyncStmtOutsideCoroutine, lang.LevelWarning, 0)
 	})
 	t.Run("async def that yields", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def gen():\n    yield 1\n",
 			lang.CodeAsyncGeneratorUnsupported, lang.LevelError, 1)
 	})
 	t.Run("await on a non-coroutine", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "def dbl(x):\n    return x * 2\nprint(await dbl(3))\n",
 			lang.CodeAwaitNotCoroutine, lang.LevelWarning, 0)
 	})
 	t.Run("missing return", func(t *testing.T) {
+		t.Parallel()
 		checkCode(t, "async def f(x) -> int:\n    if x > 0:\n        return x\nprint(await f(1))\n",
 			lang.CodeAsyncMissingReturn, lang.LevelWarning, 0)
 	})
@@ -113,6 +121,7 @@ func TestCheckRefusesBrokenAwaitDiscipline(t *testing.T) {
 // The legal programs the rules must not touch — the same shapes the conformance
 // corpus runs, plus the handoffs a checker has to respect.
 func TestCheckAcceptsLegalAsync(t *testing.T) {
+	t.Parallel()
 	errorCodes := []string{
 		lang.CodeCoroNeverAwaited, lang.CodeCoroAwaitedTwice,
 		lang.CodeAwaitNotCoroutine, lang.CodeAsyncGeneratorUnsupported,
@@ -144,6 +153,7 @@ func TestCheckAcceptsLegalAsync(t *testing.T) {
 // disagreement a second engine manufactures. With one backend the question is asked once, and the
 // checker answers it before anyone runs anything.
 func TestUnawaitedCoroutineIsRefused(t *testing.T) {
+	t.Parallel()
 	src := "async def f(x):\n    return x + 1\nv = f(2)\nprint(v)\n"
 
 	// The path the CLI takes (--file -> analyse -> refuse) must refuse it, exit non-zero, and never
@@ -179,6 +189,7 @@ func TestUnawaitedCoroutineIsRefused(t *testing.T) {
 
 // And the legal deferred call runs the way the record says it does.
 func TestDeferredAwaitRunsAsRecorded(t *testing.T) {
+	t.Parallel()
 	src := "async def f(x):\n    return x + 1\nasync def g(x):\n    return x * 2\na = f(2)\nb = g(3)\nprint(await a)\nprint(await b)\n"
 	want := "3\n6\n"
 	lang.RecordedStdoutIs(t, src, want)
@@ -194,6 +205,7 @@ func TestDeferredAwaitRunsAsRecorded(t *testing.T) {
 // The conformance row: the legal-async program prints the pinned output and is silent under every
 // effect rule.
 func TestAsyncEffectsConformanceRow(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("async_effects")
 	res, err := lang.CheckSource(src)
 	if err != nil {
@@ -214,6 +226,7 @@ func TestAsyncEffectsConformanceRow(t *testing.T) {
 // Machine path: `gustyc --effects` is the self-describing view of the same facts
 // the checker decided from.
 func TestCLIEffectsJSON(t *testing.T) {
+	t.Parallel()
 	src := "async def fetch(n):\n    total = 0\n    for i in range(n):\n        total += i\n    if total > 3:\n        raise ValueError(\"big\")\n    return await helper(total)\nasync def helper(x):\n    return x\ndef plain(x):\n    return x * 2\n"
 	out, code := cliRunCode(t, "--effects="+src, "--json")
 	if code != 0 {
@@ -268,6 +281,7 @@ func TestCLIEffectsJSON(t *testing.T) {
 
 // The human view of the same table, and the refusal path's exit code.
 func TestCLIEffectsHumanAndRefusal(t *testing.T) {
+	t.Parallel()
 	human := cliRun(t, "--effects=async def f(x):\n    return x\nasync def g():\n    return await f(1)\nprint(await g())\n")
 	for _, want := range []string{"effect signatures for <src>", "async def", "falls_through=no"} {
 		if !strings.Contains(human, want) {
@@ -287,6 +301,7 @@ func TestCLIEffectsHumanAndRefusal(t *testing.T) {
 // The check-mode JSON carries the codes, which is how an agent branches on the
 // rule instead of matching prose.
 func TestCheckJSONCarriesAsyncCodes(t *testing.T) {
+	t.Parallel()
 	out, code := cliRunCode(t, "--check=async def f(x):\n    return x\nv = f(1)\nprint(v)\n", "--json")
 	if code != 1 {
 		t.Errorf("exit = %d, want 1 (out=%s)", code, out)

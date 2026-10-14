@@ -63,6 +63,7 @@ func prattExpr(t *testing.T, src string) string {
 }
 
 func TestPrattPrecedence(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ src, want string }{
 		// multiplicative binds tighter than additive
 		{"a + b * c", "(a + (b * c))"},
@@ -112,6 +113,7 @@ func TestPrattPrecedence(t *testing.T) {
 }
 
 func TestPrattPostfix(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"f(a, b)",
 		"g(x)[i].m",
@@ -128,6 +130,7 @@ func TestPrattPostfix(t *testing.T) {
 
 // TestPrattKeywords verifies keyword operators parse and don't leak tokens.
 func TestPrattKeywords(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"x in y",
 		"x not in y",

@@ -37,6 +37,7 @@ func writeLedgerFixture(t *testing.T, rows []Divergence) string {
 // from the evidence handed in, not from what this process happened to accumulate. A process-local read
 // would look identical in a serial run and wrong in a sharded one, which is exactly how Gap R.199 arrived.
 func TestCheckDriftAgainstReadsOnlyItsInputs(t *testing.T) {
+	t.Parallel()
 	const src = "xs = []\nxs.append(7)\nn = xs[0]\nprint(min(n, 3))\n"
 	ledger := writeLedgerFixture(t, []Divergence{{
 		Source: src, Reason: "the compiled backend cannot build a program the engine ran",
@@ -103,6 +104,7 @@ func TestCheckDriftAgainstReadsOnlyItsInputs(t *testing.T) {
 // saw is the run's, a source any shard asked counts as asked, and both lists come out sorted and free of
 // duplicates so the report an agent reads is deterministic.
 func TestMergeGoldenEvidenceIsTheUnionOfTheShards(t *testing.T) {
+	t.Parallel()
 	merged := MergeGoldenEvidence([]GoldenEvidence{
 		{Ledger: "/ledger/a.json", Asked: []string{"print(1)", "print(2)"}, Divergences: []Divergence{
 			{Source: "print(1)", Reason: "r", Expected: "e"},
@@ -133,6 +135,7 @@ func TestMergeGoldenEvidenceIsTheUnionOfTheShards(t *testing.T) {
 // a path a test binary resolves from its own package directory — the merger groups shards by that path, so
 // it has to be absolute — and the sources asked are the ones this process put a question to.
 func TestGoldenEvidenceFromLedgerCollectsWhatTheProcessKnows(t *testing.T) {
+	t.Parallel()
 	ledger := writeLedgerFixture(t, nil)
 	const src = "print(sum([1, 2])) — the collector's own source\n"
 	askedAbout.Store(src, true)

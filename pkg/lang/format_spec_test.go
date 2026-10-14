@@ -13,6 +13,7 @@ package lang
 import "testing"
 
 func TestFormatSpecRendersWhatTheReferenceRenders(t *testing.T) {
+	t.Parallel()
 	floats := []struct {
 		v    float64
 		spec string
@@ -73,6 +74,7 @@ func TestFormatSpecRendersWhatTheReferenceRenders(t *testing.T) {
 // A spec the language cannot honour must REFUSE with a sentence naming it. Answering the plain value
 // — which is what every one of these used to do, silently — is the failure this row exists to end.
 func TestFormatSpecRefusesWhatItCannotHonour(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		v    float64
 		spec string
@@ -99,6 +101,7 @@ func TestFormatSpecRefusesWhatItCannotHonour(t *testing.T) {
 // conversion and the spec apart even when the expression itself contains a `:` (a slice, a dict
 // literal) or a quoted `:` — the old code split at the first top-level colon and dropped the tail.
 func TestSplitSpecConvKeepsTheSpecItUsedToThrowAway(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		inner, expr string
 		conv        FormatConv

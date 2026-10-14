@@ -8,6 +8,7 @@ import (
 
 // parser: extern fn declaration parses into an ExternDecl statement.
 func TestParseExternDecl(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("extern fn abs(x: int) -> int\nextern fn strlen(s: str) -> int\n")
 	if err != nil {
 		t.Fatalf("parse extern: %v", err)
@@ -34,6 +35,7 @@ func TestParseExternDecl(t *testing.T) {
 
 // codegen: extern declarations emit C prototypes and calls are lowered.
 func TestGenerateIRExtern(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("extern fn abs(x: int) -> int\nabs(-5)")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -52,6 +54,7 @@ func TestGenerateIRExtern(t *testing.T) {
 
 // codegen: strlen with a string literal passes an i8* to the C function.
 func TestGenerateIRExternStr(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("extern fn strlen(s: str) -> int\nstrlen(\"hello\")")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -70,6 +73,7 @@ func TestGenerateIRExternStr(t *testing.T) {
 
 // interpreter: extern calls dispatch to the Go registry.
 func TestEvalExtern(t *testing.T) {
+	t.Parallel()
 	// abs(-5) == 5
 	v, _, err := evalGolden(t, "extern fn abs(x: int) -> int\nabs(-5)")
 	if err != nil {
@@ -98,6 +102,7 @@ func TestEvalExtern(t *testing.T) {
 
 // semantic: extern arity is type-checked.
 func TestExternArityCheck(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("extern fn abs(x: int) -> int\nabs(1, 2)")
 	if err != nil {
 		t.Fatalf("parse: %v", err)

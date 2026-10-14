@@ -20,6 +20,7 @@ import (
 // were right under --aot and dead under --aot.
 
 func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{
 			// The minimal repro: a call after the try decides whether the bug shows.
@@ -88,6 +89,7 @@ func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q", iout, tc.want)
@@ -114,6 +116,7 @@ func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 // that merely silenced the flag everywhere would pass every one of them. Here nothing handles the
 // exception, so the compiled path must report it, print nothing, and fail.
 func TestUncaughtTrapStillTrapsOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	src := "def half() -> int:\n    try:\n        z = 1 // 0\n    except:\n        pass\n    return 1\n\ndef boom() -> int:\n    return 7 // 0\n\na = half()\nb = boom()\nprint(a, b)\n"
 	// The first call's exception IS handled; the second's is not. If the clear had become a mute,
 	// this program would print "1 0" or similar instead of dying.

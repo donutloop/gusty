@@ -51,6 +51,7 @@ N = 7
 `
 
 func TestADataImportConstantAnswersLikeTheReferenceOnBothLegs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the census row", "import consts\nprint(consts.PI)\n", "3.141592653589793\n"},
 		{"the second constant", "import consts\nprint(consts.E)\n", "2.718281828459045\n"},
@@ -64,6 +65,7 @@ func TestADataImportConstantAnswersLikeTheReferenceOnBothLegs(t *testing.T) {
 		{"appended to a container", "import consts\nys = []\nys.append(consts.PI)\nprint(ys[0])\n", "3.141592653589793\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir, gy, twin := moduleConstDir(t, tc.src)
 			py, ok := cpythonPlainOut(t, dir, twin)
 			if !ok || py != tc.want {
@@ -86,11 +88,13 @@ func TestADataImportConstantAnswersLikeTheReferenceOnBothLegs(t *testing.T) {
 }
 
 func TestAModuleConstantTrapsTheWayTheReferenceDoes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, kind string }{
 		{"abs of a text the module declared", "import consts\nprint(abs(consts.NAME))\n", "str"},
 		{"the negation of one", "import consts\nprint(-consts.NAME)\n", "str"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir, gy, twin := moduleConstDir(t, tc.src)
 			sentence := "TypeError: bad operand type for "
 			if strings.Contains(tc.src, "abs(") {
@@ -123,6 +127,7 @@ func TestAModuleConstantTrapsTheWayTheReferenceDoes(t *testing.T) {
 // what the reference prints for its own name — the reason the row stays `not_applicable` is that the twin
 // cannot be the same file, not that the legs disagree.
 func TestTheStdlibProbeProgramAnswersOnBothLegs(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_math_const.gy")
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "probe_math_const.gy", src)

@@ -25,6 +25,7 @@ const absCLISlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 
 // TestCLIAbsAgreesWithCPython runs the reference and the compiled artifact over the same program.
 func TestCLIAbsAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"an int slot", absCLISlot + "print(abs(n))\n"},
@@ -56,6 +57,7 @@ func TestCLIAbsAgreesWithCPython(t *testing.T) {
 		{"a sum element", absCLISlot + "print(sum([abs(n)]))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairabs.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -88,6 +90,7 @@ func TestCLIAbsAgreesWithCPython(t *testing.T) {
 // double door lift its own pair-shaped sibling, and the two doors recursed until the process ran out of
 // stack; the position refuses now (ADR 0166's rule about who owns exit 2).
 func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"an abs operand of a sum", absCLISlot + "print(abs(n) + 1)\n"},
@@ -98,6 +101,7 @@ func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 		{"two abs answers added", absCLISlot + "m = xs[0]\nprint(abs(n) + abs(m))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "pairabs_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -125,6 +129,7 @@ func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 // the bytes below are CPython's, and the row's `oracle: match` plus the ledger are what keep that from
 // being a self-certifying recording (ADR 0309).
 func TestTheSignlessCallProbeIsOnRecord(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_the_signless_call_answers_for_a_pair_bound_name.gy")
 	want := "7\n7\n8\n2.5\n2.5\n1\n0\n14\n14\n9\n5\n"
 	if !lang.HasGoldenAnswer(src) {

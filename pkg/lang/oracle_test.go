@@ -23,6 +23,7 @@ func reportFor(aotOK bool, aot, aotErr string, pyOK bool, py, pyErr string, rule
 }
 
 func TestOracleReportMatchWhenTheCompiledLegPrintsPythonsAnswer(t *testing.T) {
+	t.Parallel()
 	rep := reportFor(true, "True\n", "", true, "True\n", "", nil)
 	if rep.Status != OracleMatch {
 		t.Fatalf("status = %q, want %q", rep.Status, OracleMatch)
@@ -49,6 +50,7 @@ func TestOracleReportMatchWhenTheCompiledLegPrintsPythonsAnswer(t *testing.T) {
 // answer the compiler agrees with itself about. The oracle leg is now the *only* verdict a row can
 // carry, which is why these classification functions matter more than they did, not less.
 func TestOracleReportAgreeingWithItselfIsDebt(t *testing.T) {
+	t.Parallel()
 	rep := reportFor(true, "1\n", "", true, "True\n", "", nil)
 	if rep.Status != OracleDebt {
 		t.Fatalf("status = %q, want %q — the compiler agreeing with itself is not a verdict", rep.Status, OracleDebt)
@@ -62,6 +64,7 @@ func TestOracleReportAgreeingWithItselfIsDebt(t *testing.T) {
 }
 
 func TestOracleReportRefusalIsDebtNotPass(t *testing.T) {
+	t.Parallel()
 	// The compiled backend refuses the program while CPython runs it.
 	rep := reportFor(false, "", "codegen: unsupported expression", true, "[1, 'a']\n", "", nil)
 	if rep.Status != OracleDebt {
@@ -76,6 +79,7 @@ func TestOracleReportRefusalIsDebtNotPass(t *testing.T) {
 }
 
 func TestOracleReportALegThatDiedViolentlyIsStillNotAMatch(t *testing.T) {
+	t.Parallel()
 	// A Go panic inside the compiler is the worst thing a leg can do, and the report has to
 	// treat it as a failed leg rather than let it look like a verdict. This is the shape
 	// `print([1, 2, 3][-1])` used to produce before ADR 0210 gave the constant folder a bounds
@@ -95,6 +99,7 @@ func TestOracleReportALegThatDiedViolentlyIsStillNotAMatch(t *testing.T) {
 }
 
 func TestOracleReportNotApplicableOnlyWhenTheOracleCannotJudge(t *testing.T) {
+	t.Parallel()
 	rep := reportFor(true, "3\n", "", false, "", "Traceback: SyntaxError", nil)
 	if rep.Status != OracleNA {
 		t.Fatalf("status = %q, want %q", rep.Status, OracleNA)
@@ -113,6 +118,7 @@ func TestOracleReportNotApplicableOnlyWhenTheOracleCannotJudge(t *testing.T) {
 }
 
 func TestOracleSetOrderRuleNormalizesSetsAndOnlySets(t *testing.T) {
+	t.Parallel()
 	rules := DefaultOracleRules()
 	// A set rendering: order is unspecified in CPython, so both sides are sorted.
 	if got := OracleNormalize("{3, 1, 2}\n", rules); got != "{1, 2, 3}\n" {
@@ -150,6 +156,7 @@ func TestOracleSetOrderRuleNormalizesSetsAndOnlySets(t *testing.T) {
 }
 
 func TestOracleCheckRequiresADeclaredState(t *testing.T) {
+	t.Parallel()
 	c := ConformanceCase{ID: "programs/x", Name: "x.gy"} // no Oracle declared
 	r := &ConformanceResult{}
 	drift := c.OracleCheck(r)
@@ -163,6 +170,7 @@ func TestOracleCheckRequiresADeclaredState(t *testing.T) {
 }
 
 func TestOracleCheckDebtNeedsReasonOwnerAndPin(t *testing.T) {
+	t.Parallel()
 	c := ConformanceCase{ID: "programs/x", Name: "x.gy", Oracle: OracleDebt}
 	drift := c.OracleCheck(&ConformanceResult{})
 	joined := strings.Join(drift, " | ")
@@ -187,6 +195,7 @@ func TestOracleCheckDebtNeedsReasonOwnerAndPin(t *testing.T) {
 // TestOracleCheckFailsWhenADebtIsPaid is the ratchet: an unrecorded fix is as much a
 // failure as a new divergence, because a ledger nobody maintains is a fiction.
 func TestOracleCheckFailsWhenADebtIsPaid(t *testing.T) {
+	t.Parallel()
 	c := ConformanceCase{
 		ID: "programs/x", Name: "x.gy", Oracle: OracleDebt, Reason: "r", Ref: "L11.2",
 		Pins: []OraclePin{{Backend: "aot", Stdout: "1\n"}},
@@ -208,6 +217,7 @@ func TestOracleCheckFailsWhenADebtIsPaid(t *testing.T) {
 }
 
 func TestOracleCheckPinsCatchEveryKindOfLegDrift(t *testing.T) {
+	t.Parallel()
 	base := func(pins ...OraclePin) ConformanceCase {
 		return ConformanceCase{ID: "p", Name: "p.gy", Oracle: OracleDebt, Reason: "r", Ref: "L", Pins: pins}
 	}
@@ -239,6 +249,7 @@ func TestOracleCheckPinsCatchEveryKindOfLegDrift(t *testing.T) {
 }
 
 func TestOracleCheckAppliesTheDeclaredComparisonRules(t *testing.T) {
+	t.Parallel()
 	c := ConformanceCase{
 		ID: "p", Name: "p.gy", Oracle: OracleMatch, Rules: []string{RuleSetOrder},
 	}
@@ -269,6 +280,7 @@ func TestOracleCheckAppliesTheDeclaredComparisonRules(t *testing.T) {
 }
 
 func TestOracleVerdictVocabularyIsStable(t *testing.T) {
+	t.Parallel()
 	// Agents branch on these strings in the matrix artifact and in --oracle JSON;
 	// renaming one is a breaking change to the CLI's ABI.
 	for got, want := range map[string]string{OracleMatch: "match", OracleDebt: "debt", OracleNA: "not_applicable"} {
@@ -282,6 +294,7 @@ func TestOracleVerdictVocabularyIsStable(t *testing.T) {
 }
 
 func TestSchemaDescribesTheOracleOutputs(t *testing.T) {
+	t.Parallel()
 	var doc map[string]any
 	if err := json.Unmarshal([]byte(ASTIRSchema), &doc); err != nil {
 		t.Fatalf("--schema is not valid JSON: %v", err)
@@ -295,6 +308,7 @@ func TestSchemaDescribesTheOracleOutputs(t *testing.T) {
 }
 
 func TestPythonRunRunsTheOracle(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath(PythonBinary()); err != nil {
 		t.Skipf("no CPython available for the oracle leg: %v", err)
 	}
@@ -317,6 +331,9 @@ func TestPythonRunRunsTheOracle(t *testing.T) {
 	}
 }
 
+//parify:serial it uses t.Setenv, which testing refuses on a parallel case because the environment is
+//parify:serial the one thing every goroutine in the process reads. The override it exercises is the
+//parify:serial reference oracle's path, and the case is instant; the serial cost is a rounding error.
 func TestPythonBinaryIsOverridable(t *testing.T) {
 	t.Setenv("GUSTY_PYTHON", "/opt/py3.13/bin/python3")
 	if got := PythonBinary(); got != "/opt/py3.13/bin/python3" {
@@ -335,6 +352,7 @@ func TestPythonBinaryIsOverridable(t *testing.T) {
 // runner. These tests hold the pieces that make that read correctly.
 
 func TestOracleVersionParsesTheVersionBanner(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		banner       string
 		major, minor int
@@ -358,6 +376,7 @@ func TestOracleVersionParsesTheVersionBanner(t *testing.T) {
 }
 
 func TestOracleTooOldIsComparedAgainstThePin(t *testing.T) {
+	t.Parallel()
 	if OracleVersionTooOld("Python 3.12.3") {
 		t.Fatal("the pinned oracle must not be too old for itself")
 	}
@@ -373,6 +392,7 @@ func TestOracleTooOldIsComparedAgainstThePin(t *testing.T) {
 }
 
 func TestOracleTooOldHintNamesTheRemedy(t *testing.T) {
+	t.Parallel()
 	hint := OracleTooOldHint("  File \"prog.py\", line 1\n    type Count = int\n    ^^^^^\nSyntaxError: invalid syntax")
 	for _, want := range []string{"SyntaxError", "3.12", "GUSTY_PYTHON"} {
 		if !strings.Contains(hint, want) {
@@ -386,6 +406,7 @@ func TestOracleTooOldHintNamesTheRemedy(t *testing.T) {
 }
 
 func TestBuildOracleReportKeepsAnOldOracleDiagnosingItself(t *testing.T) {
+	t.Parallel()
 	// The python leg died on a SyntaxError: the row is not_applicable (no oracle
 	// answer exists), and the note must say the oracle may be the problem rather than
 	// leaving a reader to conclude the compiler regressed.
@@ -404,6 +425,7 @@ func TestBuildOracleReportKeepsAnOldOracleDiagnosingItself(t *testing.T) {
 // rule must normalize one and preserve the other, and it must do that only where the reference's identity
 // form actually appears.
 func TestOracleInstanceIdentityRuleComparesClassesNotAddresses(t *testing.T) {
+	t.Parallel()
 	rules := DefaultOracleRules()
 	left := "<__main__.C object at 0x7fff1234>\n[<__main__.C object at 0x1>, 'x']\n"
 	right := "<__main__.C object at 0x99>\n[<__main__.C object at 0x22>, 'x']\n"

@@ -10,6 +10,7 @@ import (
 // TestSchemaIsValidJSON confirms the AST/IR schema document is itself valid
 // JSON (draft-07), so agents can parse it deterministically.
 func TestSchemaIsValidJSON(t *testing.T) {
+	t.Parallel()
 	var v any
 	if err := json.Unmarshal([]byte(ASTIRSchema), &v); err != nil {
 		t.Fatalf("schema is not valid JSON: %v", err)
@@ -31,6 +32,7 @@ func TestSchemaIsValidJSON(t *testing.T) {
 // schema's stmt oneOf required-field shapes. This is a smoke contract test: an
 // agent validating a dump should be able to identify the node kind.
 func TestSchemaDescribesASTDump(t *testing.T) {
+	t.Parallel()
 	prog, err := Parse("x = 1\ny = x + 2\nprint(y)\n")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -74,6 +76,7 @@ func TestSchemaDescribesASTDump(t *testing.T) {
 // TestSchemaHasIRDumpDefinition confirms the IR dump (--emit-llvm) is
 // documented as text/plain in the same schema document.
 func TestSchemaHasIRDumpDefinition(t *testing.T) {
+	t.Parallel()
 	var v struct {
 		Definitions map[string]struct {
 			ContentMediaType string `json:"contentMediaType"`
@@ -91,6 +94,7 @@ func TestSchemaHasIRDumpDefinition(t *testing.T) {
 // field GCStats marshals must be declared in definitions.gcStats, so an agent can
 // validate a --gc-stats payload against the schema instead of reading Go structs.
 func TestSchemaDeclaresGCStats(t *testing.T) {
+	t.Parallel()
 	var doc struct {
 		Definitions struct {
 			GCStats struct {
@@ -128,6 +132,7 @@ func TestSchemaDeclaresGCStats(t *testing.T) {
 // can validate a `gustyc --effects` document against the schema instead of reading
 // Go structs (roadmap Phase 7, ADR 0195).
 func TestSchemaDeclaresEffectSummary(t *testing.T) {
+	t.Parallel()
 	var doc struct {
 		Definitions struct {
 			EffectSummary struct {
@@ -183,6 +188,7 @@ func TestSchemaDeclaresEffectSummary(t *testing.T) {
 // --json` payload against `gustyc --schema` should not be the one to find the hole
 // (roadmap Phase 7, ADR 0195).
 func TestSchemaDeclaresEffectsDocument(t *testing.T) {
+	t.Parallel()
 	var schema map[string]any
 	if err := json.Unmarshal([]byte(ASTIRSchema), &schema); err != nil {
 		t.Fatalf("schema is not valid JSON: %v", err)
@@ -232,6 +238,7 @@ func TestSchemaDeclaresEffectsDocument(t *testing.T) {
 // TestGCStatsShapeInJSON: the --json payload member is produced by the CLI, so the
 // CLI test covers it; here assert the report survives marshalling with stable keys.
 func TestGCStatsMarshalKeysAreStable(t *testing.T) {
+	t.Parallel()
 	st := GCStats{Collections: 1, Roots: 2, Skipped: 3, Marked: 4, Freed: 5, TotalFreed: 6, Live: 7, Frames: 1, Protected: 2, Top: 9, Generational: true, Backend: "interpreter"}
 	b, err := json.Marshal(st)
 	if err != nil {
@@ -250,6 +257,7 @@ func TestGCStatsMarshalKeysAreStable(t *testing.T) {
 // The CLI turns the compiled program's line into JSON this way, so the two halves must
 // agree byte-for-byte on the field names.
 func TestGCStatsLineRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, st := range []GCStats{
 		{Collections: 3, Roots: 4, Skipped: 5, Marked: 6, Freed: 7, TotalFreed: 9, Live: 2, Frames: 1, Protected: 3, Generational: true, Backend: "interpreter"},
 		{Collections: 102, Roots: 3, Skipped: 0, Marked: 51, Freed: 0, TotalFreed: 4243, Live: 51, Top: 17, Backend: "aot"},

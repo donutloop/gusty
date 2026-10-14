@@ -14,6 +14,7 @@ import (
 // (roadmap Gap R.15, ADR 0208).
 
 func TestStringIterationAgreesOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("for_string_chars")
 	want := "a\nb\nc\nx\ny\n1\na\n2\n< h >\n< i >\nab\ncd\n"
 
@@ -37,6 +38,7 @@ func TestStringIterationAgreesOnEveryPath(t *testing.T) {
 // TestStringIterationModuleVerifies is the assertion that actually failed before the fix: the emitted
 // module has to be one llc accepts, not merely one the emitter believed in.
 func TestStringIterationModuleVerifies(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"for c in \"ab\":\n    print(c)\n",
 		"for w in [\"x\", \"y\"]:\n    print(w)\n",

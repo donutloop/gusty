@@ -27,6 +27,7 @@ import (
 // TestAndOrAnswerWithTheOperandTheTestChose is the row: the operand the test picks is the answer, on both
 // engines, and it keeps the representation it arrived with.
 func TestAndOrAnswerWithTheOperandTheTestChose(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int picks the right operand", "print(2 and 3)\n", "3\n"},
 		{"a falsy int keeps itself", "print(0 and 3)\n", "0\n"},
@@ -69,6 +70,7 @@ func TestAndOrAnswerWithTheOperandTheTestChose(t *testing.T) {
 		{"a mixed-list slot chooses its operand", "ys = [True, 1]\nprint(ys[0] and ys[1])\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -91,6 +93,7 @@ func TestAndOrAnswerWithTheOperandTheTestChose(t *testing.T) {
 // is what made both of them `1`, and promoting every chosen operand to a verdict would break the second row
 // — the row ADR 0261 has kept unbroken since it landed.
 func TestTheOperandTheTestChoseDecidesTheRendering(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a verdict chosen by a constant test", "print(True and False)\n", "False\n"},
 		{"a verdict taken by an or", "print(False or True)\n", "True\n"},
@@ -104,6 +107,7 @@ func TestTheOperandTheTestChoseDecidesTheRendering(t *testing.T) {
 		{"a verdict and a number print the number", "print(0 or 2)\n", "2\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -124,6 +128,7 @@ func TestTheOperandTheTestChoseDecidesTheRendering(t *testing.T) {
 // shapes the value door refuses. If these rows started refusing, the value door had leaked into the head of
 // an `if`, which is the wrong question asked at the wrong place.
 func TestAConditionAsksOnlyWhetherTheAnswerIsTrue(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"two numbers", "x = 3\ny = 4\nif x and y:\n    print(\"both\")\n", "both\n"},
 		{"a falsy number short of the branch", "x = 0\ny = 4\nif x and y:\n    print(\"both\")\nelse:\n    print(\"neither\")\n", "neither\n"},
@@ -139,6 +144,7 @@ func TestAConditionAsksOnlyWhetherTheAnswerIsTrue(t *testing.T) {
 		{"a float's zero", "x = 0.0\nif x or 2.5:\n    print(\"fallback is truthy\")\n", "fallback is truthy\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -158,6 +164,7 @@ func TestAConditionAsksOnlyWhetherTheAnswerIsTrue(t *testing.T) {
 // verdict is worse than the door's wrong answer because it disappears into an index, a repeat count or a
 // constant argument, where no later pass can see the operator that invented it.
 func TestTheFoldAnswersTheOperandAndNotTheVerdict(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an index computed by and", "xs = [10, 20, 30]\nprint(xs[1 and 2])\n", "30\n"},
 		{"an index computed by or", "xs = [10, 20, 30]\nprint(xs[0 or 1])\n", "20\n"},
@@ -166,6 +173,7 @@ func TestTheFoldAnswersTheOperandAndNotTheVerdict(t *testing.T) {
 		{"a condition that folds", "print(1 if 1 and 0 else 9)\n", "9\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -185,6 +193,7 @@ func TestTheFoldAnswersTheOperandAndNotTheVerdict(t *testing.T) {
 // a chosen operand whose kind the module cannot state is *refused*, named by both operands and by the word
 // that is missing. Before this cycle each of these printed a number the language never produced, at exit 0.
 func TestTheShapesWhoseAnswerHasNoWordRefuseThemInWords(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a text bound to a name", "x = 0\nz = x or \"d\"\nprint(z)\n", "`x or \"d\"` chooses between two values"},
 		{"a text as a container element", "x = 0\nw = [x or \"b\"]\nprint(w)\n", "chooses between two values"},
@@ -196,6 +205,7 @@ func TestTheShapesWhoseAnswerHasNoWordRefuseThemInWords(t *testing.T) {
 		// (roadmap L11.6, ADR 0272) — and the answer is the reference's own number.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%q compiled; the answer has no word and the door must refuse it (roadmap Gap R.147, ADR 0269)\nsrc: %s", tc.src, tc.src)
@@ -218,6 +228,7 @@ func TestTheShapesWhoseAnswerHasNoWordRefuseThemInWords(t *testing.T) {
 // both operands share. A regression to the old lowering would leave a `zext i1` of a composed verdict here,
 // which is exactly the instruction that printed `1` for `2 and 3`.
 func TestTheModuleSelectsTheOperandAndItsKind(t *testing.T) {
+	t.Parallel()
 	mixed := "x = 0\nprint(x or \"d\")\n"
 	res, err := Compile(mixed)
 	if err != nil {
@@ -262,6 +273,7 @@ func TestTheModuleSelectsTheOperandAndItsKind(t *testing.T) {
 // door boundary: `and`/`or` sit inside comparisons, ternaries and loops, and each of those contexts asks its
 // own question of the answer rather than assuming the old 0/1.
 func TestTheConditionsAndComparisonsAroundAnOperandChoosingOperatorStillCompose(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an and inside a comparison", "x = 0\nprint((x or 1) < 2)\n", "True\n"},
 		{"an and as both sides", "print((1 and 2) == 2)\n", "True\n"},
@@ -270,6 +282,7 @@ func TestTheConditionsAndComparisonsAroundAnOperandChoosingOperatorStillCompose(
 		{"nested in a comprehension filter", "print([v for v in [0, 1, 2] if v and 1])\n", "[1, 2]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: exit 0 stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -290,6 +303,7 @@ func TestTheConditionsAndComparisonsAroundAnOperandChoosingOperatorStillCompose(
 // blocks: the operand the test cannot reach is not in the program, and the literal that made the test
 // decidable has no effects to keep.
 func TestTheConstantTestDropsTheOperandTheReferenceDrops(t *testing.T) {
+	t.Parallel()
 	falsy := "def boom():\n    print(\"boom\")\n    return 9\n\nprint(0 and boom())\n"
 	if out := captureStdout(t, falsy); out != "0\n" {
 		t.Errorf("interpreter ran the operand a constant test rejected: %q", out)
@@ -330,6 +344,7 @@ const shortCircuitBoom = "def boom():\n    print(\"boom\")\n    return 9\n\n"
 // TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend is the row: the effects, the traps and the
 // count are the reference's, on the record and in the compiled module.
 func TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"a falsy test skips a call", shortCircuitBoom + "x = 0\nprint(x and boom())\n", "0\n"},
 		{"a truthy test skips the fallback", shortCircuitBoom + "y = 1\nprint(y or boom())\n", "1\n"},
@@ -359,6 +374,7 @@ func TestTheOperandTheTestDidNotChooseIsNeverRunOnTheCompiledBackend(t *testing.
 		{"an operand the test reaches still runs in a container", shortCircuitBoom + "y = 1\nprint([y and boom()])\n", "boom\n[9]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
@@ -399,6 +415,7 @@ func functionHolding(ir, marker string) string {
 }
 
 func TestTheSkippedOperandIsNotInTheCompiledModule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, fn string
 		calls         int
@@ -438,6 +455,7 @@ func TestTheSkippedOperandIsNotInTheCompiledModule(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := Compile(tc.src)
 			if err != nil {
 				t.Fatalf("compile: %v\n%s", err, tc.src)
@@ -480,6 +498,7 @@ func TestTheSkippedOperandIsNotInTheCompiledModule(t *testing.T) {
 // excluded must not swallow what it included. The division the program reached raises the reference's
 // error, catchably, on both legs — otherwise the branch would be a way to lose a trap.
 func TestTheOperandTheTestReachedStillTrapsOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, message string }{
 		{
 			"a chosen division traps",
@@ -498,6 +517,7 @@ func TestTheOperandTheTestReachedStillTrapsOnTheCompiledBackend(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ee := trapRun(t, tc.src)
 			if ee.ExnType != "ZeroDivisionError" {
 				t.Errorf("interpreter raised %q, want ZeroDivisionError (msg %q)", ee.ExnType, ee.ExnMsg)
@@ -527,6 +547,7 @@ func TestTheOperandTheTestReachedStillTrapsOnTheCompiledBackend(t *testing.T) {
 // TestTheTrapTheTestSkippedIsNotRaised is the same rule read the other way: the arm the program wrote is
 // not entered, because the raise never happened — `except` finds nothing to catch and the line answers.
 func TestTheTrapTheTestSkippedIsNotRaised(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"the skipped division is not caught",
@@ -545,6 +566,7 @@ func TestTheTrapTheTestSkippedIsNotRaised(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := captureStdout(t, tc.src)
 			if out != tc.want {
 				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)

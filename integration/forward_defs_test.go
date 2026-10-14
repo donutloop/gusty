@@ -26,6 +26,7 @@ func mustParseForCheck(t *testing.T, src string) *lang.Program {
 // "is_odd"`, which — because the compiled path refuses to emit IR for a program the front
 // end rejected — meant the canonical Python shape could not be compiled at all.
 func TestForwardReferencedProgramCompilesAndRuns(t *testing.T) {
+	t.Parallel()
 	res, err := lang.Compile(`def is_even(n):
     if n == 0:
         return True
@@ -93,6 +94,7 @@ print(1 if is_odd(3) else 0)
 // TestForwardReferenceIsNotARefusal pins the checker verdict itself: no diagnostic at all
 // for the shapes the language allows, and the errors that belong to it still reported.
 func TestForwardReferenceIsNotARefusal(t *testing.T) {
+	t.Parallel()
 	mustBeClean := map[string]string{
 		"mutual recursion": `def a(n):
     return b(n)

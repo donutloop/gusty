@@ -6,6 +6,7 @@ import (
 )
 
 func TestFmtRoundTrip(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		"x = 1\n",
 		"def f(a, b):\n    return a + b\n",
@@ -37,6 +38,7 @@ func TestFmtRoundTrip(t *testing.T) {
 }
 
 func TestFmtCanonical(t *testing.T) {
+	t.Parallel()
 	src := "x=1\nif x>1:print(x)\n"
 	f, err := FormatSrc(src)
 	if err != nil {
@@ -49,6 +51,7 @@ func TestFmtCanonical(t *testing.T) {
 }
 
 func TestFormatDocstringRoundTrip(t *testing.T) {
+	t.Parallel()
 	// Docstrings are extracted from the body into FuncDef.Doc, so the
 	// formatter must re-emit them or round-trips would drop them.
 	src := `def greet():
@@ -76,6 +79,7 @@ class Animal:
 // numeric-literal spelling (hex/binary/octal and digit separators) verbatim,
 // so formatting is a faithful round-trip.
 func TestFmtNumericLiterals(t *testing.T) {
+	t.Parallel()
 	src := `x = 0xFF + 0b101 + 0o17 + 1_000 + 0x_FF
 y = -0b1010
 z = 2_5

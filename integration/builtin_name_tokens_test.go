@@ -18,6 +18,7 @@ import (
 
 // TestBuiltInNamedDefinitionsAgreeOnEveryPath runs the program that uses those names everywhere.
 func TestBuiltInNamedDefinitionsAgreeOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgramSrc("builtin_names_as_defs")
 	want := "6\n12\n15\n9\n12\n6\n"
 
@@ -41,6 +42,7 @@ func TestBuiltInNamedDefinitionsAgreeOnEveryPath(t *testing.T) {
 // TestNamingADefinitionPrintOrRangeIsAcceptedAtTheCLI is the CLI-level form of the gap: these
 // programs used to fail before the checker ever ran.
 func TestNamingADefinitionPrintOrRangeIsAcceptedAtTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
@@ -50,6 +52,7 @@ func TestNamingADefinitionPrintOrRangeIsAcceptedAtTheCLI(t *testing.T) {
 		{"def with built-in parameter names", "def f(print, range, len):\n    return print\n\nz = f(1, 2, 3)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out, _ := exec.Command(bin, "--check", tc.src).CombinedOutput()
 			text := string(out)
 			if strings.Contains(text, "expected identifier") {
@@ -62,6 +65,7 @@ func TestNamingADefinitionPrintOrRangeIsAcceptedAtTheCLI(t *testing.T) {
 	}
 
 	t.Run("real keywords are still reserved", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(dir, "kw.gy")
 		if err := os.WriteFile(path, []byte("def if(x):\n    return x\n"), 0o600); err != nil {
 			t.Fatal(err)

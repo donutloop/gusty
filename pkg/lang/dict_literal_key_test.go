@@ -22,6 +22,7 @@ import (
 // dictLiteralCases: the left column is what the program prints, and every entry was first read off
 // CPython 3.12 (the reference leg), not off the compiler.
 func TestADictLiteralAnswersTheEntryTheKeyNames(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -65,6 +66,7 @@ func TestADictLiteralAnswersTheEntryTheKeyNames(t *testing.T) {
 		{name: "fold_and_door_agree", src: "print({7: 42}[7])\n", want: "42\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := compiledOut(t, tc.src); got != tc.want {
 				t.Errorf("printed %q, want %q", got, tc.want)
 			}
@@ -76,6 +78,7 @@ func TestADictLiteralAnswersTheEntryTheKeyNames(t *testing.T) {
 // answer is a compile-time constant. A program that stays inside it must not gain the heap dict at all —
 // the road to the doors runs through them, and a test that cannot tell the two apart tests neither.
 func TestTheFoldStillAnswersWhatItCanRead(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"print({1: 2, 2: 3}[1])\n",
 		"print({7: 42}[7])\n",
@@ -93,6 +96,7 @@ func TestTheFoldStillAnswersWhatItCanRead(t *testing.T) {
 // The fold is the same road for a repeated key, and keeps the same rule: the entries are scanned from the
 // last to the first, because a key written twice is one key and the later write is the dict's.
 func TestTheFoldKeepsTheLastValueOfARepeatedKeyWhenTheFoldReadsIt(t *testing.T) {
+	t.Parallel()
 	if got := compiledOut(t, "print({1: 2, 1: 3}[1])\n"); got != "3\n" {
 		t.Errorf("the fold answered %q where the reference answers 3; a repeated key is one key written twice", got)
 	}
@@ -107,6 +111,7 @@ func TestTheFoldKeepsTheLastValueOfARepeatedKeyWhenTheFoldReadsIt(t *testing.T) 
 // The other half of the same claim: the shape the fold cannot read really does reach the objects, so the
 // negative control above is a control and not an empty assertion.
 func TestTheLiteralDictReadRoutesThroughTheObjectsDoor(t *testing.T) {
+	t.Parallel()
 	ir := emittedModuleIR(t, "print({\"a\": [1, 2]}[\"a\"])\n")
 	for _, helper := range []string{"@rt_dict_get_tagged", "@rt_dict_value_tag", "@rt_dict_has_tagged", "@rt_print_mixed_value"} {
 		if !strings.Contains(ir, helper) {
@@ -119,6 +124,7 @@ func TestTheLiteralDictReadRoutesThroughTheObjectsDoor(t *testing.T) {
 // runtime's own words by jitTrap, so the assertion is about the program's exception and not about the
 // compiler's opinion of it.
 func TestAMissingKeyOfADictLiteralRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		src         string
@@ -136,6 +142,7 @@ func TestAMissingKeyOfADictLiteralRaisesWhatTheReferenceRaises(t *testing.T) {
 		{name: "fold_cannot_read_the_key", src: "print({1: 2, 1: 3}[\"a\"])\n", wantClass: "KeyError", wantMessage: "'a'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tc.src)
 			if class != tc.wantClass {
 				t.Errorf("raised %s, want %s", class, tc.wantClass)
@@ -150,6 +157,7 @@ func TestAMissingKeyOfADictLiteralRaisesWhatTheReferenceRaises(t *testing.T) {
 // The KeyError the doors raise is the ordinary one: `except KeyError` catches it, so a missing key is a
 // value the program can handle rather than a wall.
 func TestTheLiteralDictsKeyErrorIsCatchable(t *testing.T) {
+	t.Parallel()
 	if got := compiledOut(t, "try:\n    print({\"a\": 1}[\"b\"])\nexcept KeyError:\n    print(\"no such key\")\n"); got != "no such key\n" {
 		t.Errorf("got %q, want \"no such key\\n\"", got)
 	}
@@ -164,6 +172,7 @@ func TestTheLiteralDictsKeyErrorIsCatchable(t *testing.T) {
 // refuses, the variable road must not be answering the reference either — a refusal where the other road
 // is right is a regression, and that is the shape a test that only checks the wins would let through.
 func TestTheLiteralRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		literal  string // printed with the dict written in place
@@ -195,6 +204,7 @@ func TestTheLiteralRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			literalOut, literalRefused := compiledOutOrRefusal(t, tc.literal)
 			variableOut, variableRefused := compiledOutOrRefusal(t, tc.variable)
 			switch {
@@ -224,6 +234,7 @@ func TestTheLiteralRoadIsNeverWorseThanTheVariableRoad(t *testing.T) {
 // an entry whose value is a text printed its `@str_tab` position — the shape every wrong answer in this
 // family had — so the module is checked for the printer and against the formatter.
 func TestADictLiteralReadIsNotPrintedByPrintf(t *testing.T) {
+	t.Parallel()
 	// A text entry is a text, so the text printer answers it; a container entry has no kind the compiler
 	// could read off a spelling, so its tag travels with it and the module's one tag-reading printer
 	// answers. Neither is written by printf with a numeric format — that is the shape every wrong answer
@@ -268,6 +279,7 @@ func mainRegion(t *testing.T, src string) string {
 // which is what printed `1` for `{"a": "x"}["a"]`. The refusal says which road, which half is missing,
 // and which row owns the rest.
 func TestTheOneWordPositionsRefuseTheLiteralDictRead(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -290,6 +302,7 @@ func TestTheOneWordPositionsRefuseTheLiteralDictRead(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Compile(tc.src)
 			if err == nil {
 				t.Fatalf("%s compiled; a one-word road cannot carry a (payload, tag) pair (Gap R.146)", tc.name)
@@ -314,11 +327,13 @@ func TestTheOneWordPositionsRefuseTheLiteralDictRead(t *testing.T) {
 // float, bool or None entry may not. Both halves are pinned, because a test that only checks the refusal
 // cannot tell a paid row from a row that stopped answering at all.
 func TestAPlainIntEntryStillTakesTheOneWordRoads(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{name: "return_an_int_entry", src: "def f():\n    return {\"a\": 7}[\"a\"]\n\nprint(f())\n", want: "7\n"},
 		{name: "pass_an_int_entry", src: "def twice(v):\n    return v + v\n\nprint(twice({\"a\": 3}[\"a\"]))\n", want: "6\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := compiledOut(t, tc.src); got != tc.want {
 				t.Errorf("printed %q, want %q", got, tc.want)
 			}
@@ -330,6 +345,7 @@ func TestAPlainIntEntryStillTakesTheOneWordRoads(t *testing.T) {
 // comparing a payload under a guessed tag is how `{0: 1}` answered "the key is there" for `"0"`. The
 // sentence names the key it could not type, and the row that owns it.
 func TestAnUntypableDictLiteralKeyRefuses(t *testing.T) {
+	t.Parallel()
 	_, err := Compile("print({(1, 2): 3}[(1, 2)])\n")
 	if err == nil {
 		t.Fatal("a tuple key compiled; a key with no tag has no arm here (roadmap Gap R.212)")

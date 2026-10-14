@@ -16,6 +16,7 @@ import (
 )
 
 func TestDictViewPrintsAsAView(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print({"a": 1}.keys())`, `dict_keys(['a'])`},
 		{`print({"a": 1, "b": 2}.keys())`, `dict_keys(['a', 'b'])`},
@@ -29,6 +30,7 @@ func TestDictViewPrintsAsAView(t *testing.T) {
 		{`print({"a": 1})`, `{'a': 1}`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -47,6 +49,7 @@ func TestDictViewPrintsAsAView(t *testing.T) {
 // The exit-2 half: the fold rendered a folded literal as the ADDRESS of a compile-time global and fed
 // it to a heap walker, which is the shape ADR 0188 removed for literals and llc rejects.
 func TestDictViewOfAnIntValuedDictDoesNotSpendExit2(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print({1: 2}.values())`,
 		`print({1: 2, 3: 4}.values())`,
@@ -68,12 +71,14 @@ func TestDictViewOfAnIntValuedDictDoesNotSpendExit2(t *testing.T) {
 // A view is list-SHAPED: everything a list can be used for, a view can be used for. The rendering
 // changed; the object's kind deliberately did not, which is why none of these broke.
 func TestDictViewIsStillListShaped(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print(sum({1: 2, 3: 4}.keys()))`, `4`},
 		{`print(max({1: 2, 3: 4}.keys()))`, `3`},
 		{`print(min({1: 2, 3: 4}.keys()))`, `1`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want != tc.want {
 				t.Fatalf("this pin disagrees with the reference: %q vs %q", tc.want, want)
@@ -91,6 +96,7 @@ func TestDictViewIsStillListShaped(t *testing.T) {
 // unchanged on a HEAD build, so they are reported, not pinned — a refusal an earlier cycle has not lifted
 // must not be laundered into an assertion, and must not be deleted when it starts working either.
 func TestDictViewThroughOtherRoadsStillRefuses(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print(sorted({"b": 1, "a": 2}.keys()))`,
 		`print(list({"a": 1}.keys()))`,
@@ -106,6 +112,7 @@ func TestDictViewThroughOtherRoadsStillRefuses(t *testing.T) {
 // One question, asked of the same call shape the fold recognises — a hand-copied method-name switch is
 // how the printer and the fold drift apart (the same rule as Gap R.180's one lookup).
 func TestDictViewPrinterAndFoldAgree(t *testing.T) {
+	t.Parallel()
 	body, err := os.ReadFile("codegen.go")
 	if err != nil {
 		t.Fatal(err)

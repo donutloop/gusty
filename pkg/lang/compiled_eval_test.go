@@ -6,6 +6,7 @@ import "strings"
 import "testing"
 
 func TestEvalUserFunc(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def double(x):\n    return x * 2\ndouble(5)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -16,6 +17,7 @@ func TestEvalUserFunc(t *testing.T) {
 }
 
 func TestEvalUserFuncTwoParams(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def add(a, b):\n    return a + b\nadd(3, 4)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -26,6 +28,7 @@ func TestEvalUserFuncTwoParams(t *testing.T) {
 }
 
 func TestEvalIfElse(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)\nx")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -36,6 +39,7 @@ func TestEvalIfElse(t *testing.T) {
 }
 
 func TestEvalElifChain(t *testing.T) {
+	t.Parallel()
 	// elif taken
 	v, _, err := evalGolden(t, "x = 3\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
 	if err != nil {
@@ -55,6 +59,7 @@ func TestEvalElifChain(t *testing.T) {
 }
 
 func TestEvalElifMultiple(t *testing.T) {
+	t.Parallel()
 	// second of three elifs taken
 	v, _, err := evalGolden(t, "x = 6\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\nelif x < 8:\n    y = 30\nelse:\n    y = 40\ny")
 	if err != nil {
@@ -74,6 +79,7 @@ func TestEvalElifMultiple(t *testing.T) {
 }
 
 func TestEvalWhileSum(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -84,6 +90,7 @@ func TestEvalWhileSum(t *testing.T) {
 }
 
 func TestEvalForSum(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "s = 0\nfor i in range(5):\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -94,6 +101,7 @@ func TestEvalForSum(t *testing.T) {
 }
 
 func TestEvalMatch(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -104,6 +112,7 @@ func TestEvalMatch(t *testing.T) {
 }
 
 func TestEvalBreakContinue(t *testing.T) {
+	t.Parallel()
 	// break out of while
 	v, _, err := evalGolden(t, "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
 	if err != nil {
@@ -123,6 +132,7 @@ func TestEvalBreakContinue(t *testing.T) {
 }
 
 func TestEvalRangeTwoArg(t *testing.T) {
+	t.Parallel()
 	// sum range(2, 5) = 2+3+4 = 9
 	v, _, err := evalGolden(t, "s = 0\nfor i in range(2, 5):\n    s = s + i\ns")
 	if err != nil {
@@ -134,6 +144,7 @@ func TestEvalRangeTwoArg(t *testing.T) {
 }
 
 func TestEvalForRangeStep(t *testing.T) {
+	t.Parallel()
 	// positive step range(1, 5, 2) = 1+3 = 4
 	v, _, err := evalGolden(t, "s = 0\nfor i in range(1, 5, 2):\n    s = s + i\ns")
 	if err != nil {
@@ -153,6 +164,7 @@ func TestEvalForRangeStep(t *testing.T) {
 }
 
 func TestEvalMatchWildcard(t *testing.T) {
+	t.Parallel()
 	// match with _ wildcard catches unmatched value
 	v, _, err := evalGolden(t, "x = 42\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(42)\nx")
 	if err != nil {
@@ -164,6 +176,7 @@ func TestEvalMatchWildcard(t *testing.T) {
 }
 
 func TestEvalForElse(t *testing.T) {
+	t.Parallel()
 	// for without break: else runs
 	v, _, err := evalGolden(t, "s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\ns")
 	if err != nil {
@@ -175,6 +188,7 @@ func TestEvalForElse(t *testing.T) {
 }
 
 func TestEvalForElseBreak(t *testing.T) {
+	t.Parallel()
 	// break skips else
 	v, _, err := evalGolden(t, "s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\ns")
 	if err != nil {
@@ -186,6 +200,7 @@ func TestEvalForElseBreak(t *testing.T) {
 }
 
 func TestEvalWhileElse(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns")
 	if err != nil {
 		t.Fatalf("while-else err: %v", err)
@@ -196,6 +211,7 @@ func TestEvalWhileElse(t *testing.T) {
 }
 
 func TestEvalClassMethod(t *testing.T) {
+	t.Parallel()
 	src := "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def sum(self):\n        return self.x + self.y\np = Point(2, 3)\np.sum()"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -207,6 +223,7 @@ func TestEvalClassMethod(t *testing.T) {
 }
 
 func TestEvalClassAttrSet(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def __init__(self):\n        self.n = 0\n    def bump(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\nc.bump()\nc.bump()"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -218,6 +235,7 @@ func TestEvalClassAttrSet(t *testing.T) {
 }
 
 func TestEvalTryExcept(t *testing.T) {
+	t.Parallel()
 	src := "x = 0\ntry:\n    x = 1 // 0\nexcept Exception:\n    x = 42\nx"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -229,6 +247,7 @@ func TestEvalTryExcept(t *testing.T) {
 }
 
 func TestEvalRaiseCaught(t *testing.T) {
+	t.Parallel()
 	src := "x = 0\ntry:\n    raise Exception\n    x = 1\nexcept Exception:\n    x = 42\nx"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -240,6 +259,7 @@ func TestEvalRaiseCaught(t *testing.T) {
 }
 
 func TestEvalDefaultArg(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def f(a, b=10):\n    return a + b\nf(5)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -250,6 +270,7 @@ func TestEvalDefaultArg(t *testing.T) {
 }
 
 func TestEvalKeywordArg(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def f(a, b):\n    return a * b\nf(a=3, b=4)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -260,6 +281,7 @@ func TestEvalKeywordArg(t *testing.T) {
 }
 
 func TestEvalKeywordArgOutOfOrder(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def f(a, b):\n    return a - b\nf(b=3, a=10)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -270,6 +292,7 @@ func TestEvalKeywordArgOutOfOrder(t *testing.T) {
 }
 
 func TestEvalKeywordAndDefault(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def f(a, b=5):\n    return a + b\nf(b=100, a=2)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -280,6 +303,7 @@ func TestEvalKeywordAndDefault(t *testing.T) {
 }
 
 func TestEvalDictSetIndexLen(t *testing.T) {
+	t.Parallel()
 	// dict constant-key lookup.
 	v, _, err := evalGolden(t, "{1: 10, 2: 20}[1]")
 	if err != nil {
@@ -323,6 +347,7 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 }
 
 func TestEvalDictLiteral(t *testing.T) {
+	t.Parallel()
 	// dict literal then iterate keys and sum via comprehension
 	v, _, err := evalGolden(t, "def f(d):\n    return len(d)\nf({1: 10, 2: 20})")
 	if err != nil {
@@ -334,6 +359,7 @@ func TestEvalDictLiteral(t *testing.T) {
 }
 
 func TestEvalListComprehension(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, "def g(ys):\n    s = 0\n    for y in ys:\n        s = s + y\n    return s\nv = [1, 2, 3]\ng([x * 2 for x in v])")
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -344,6 +370,7 @@ func TestEvalListComprehension(t *testing.T) {
 }
 
 func TestEvalForOverList(t *testing.T) {
+	t.Parallel()
 	// for-over-list sums the elements of a boxed list.
 	v, _, err := evalGolden(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\ns")
 	if err != nil {
@@ -378,6 +405,7 @@ func TestEvalForOverList(t *testing.T) {
 }
 
 func TestEvalComprehensionAssignment(t *testing.T) {
+	t.Parallel()
 	// A comprehension assigned to a variable must bind its loop variable so
 	// the body/condition can reference it. Previously the semantic analyzer
 	// reported "undefined name x", short-circuiting evaluation to 0.
@@ -400,6 +428,7 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 }
 
 func TestEvalTernary(t *testing.T) {
+	t.Parallel()
 	// ternary `then if cond else otherwise` picks the branch by truthiness.
 	for _, tc := range []struct {
 		src  string
@@ -424,6 +453,7 @@ func TestEvalTernary(t *testing.T) {
 }
 
 func TestClosureCapturesEnclosingScope(t *testing.T) {
+	t.Parallel()
 	src := "def make_adder(x):\n    def add(y):\n        return x + y\n    return add\nw = make_adder(5)\nw(3)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -435,6 +465,7 @@ func TestClosureCapturesEnclosingScope(t *testing.T) {
 }
 
 func TestClosureNestedFunctionCall(t *testing.T) {
+	t.Parallel()
 	src := "def outer(a):\n    def inner(b):\n        return a * b\n    return inner\nf = outer(6)\nf(7)"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -446,6 +477,7 @@ func TestClosureNestedFunctionCall(t *testing.T) {
 }
 
 func TestClosureInClosure(t *testing.T) {
+	t.Parallel()
 	// a closure that itself returns a closure capturing both layers
 	src := "def add(x):\n    def mid(y):\n        def inner(z):\n            return x + y + z\n        return inner\n    return mid\nm = add(1)\nm2 = m(2)\nm2(3)"
 	v, _, err := evalGolden(t, src)
@@ -458,6 +490,7 @@ func TestClosureInClosure(t *testing.T) {
 }
 
 func TestDecoratorAppliesToFunction(t *testing.T) {
+	t.Parallel()
 	// @dec def f -> f = dec(f); dec wraps the function value.
 	src := "def dec(g):\n    return g\n@dec\ndef f():\n    return 42\nf()"
 	v, _, err := evalGolden(t, src)
@@ -470,6 +503,7 @@ func TestDecoratorAppliesToFunction(t *testing.T) {
 }
 
 func TestDecoratorTransformsFunction(t *testing.T) {
+	t.Parallel()
 	// dec returns a new closure that adds 1 to the decorated function's result.
 	src := "def add1(g):\n    def wrap():\n        return g() + 1\n    return wrap\n@add1\ndef f():\n    return 40\nf()"
 	v, _, err := evalGolden(t, src)
@@ -482,6 +516,7 @@ func TestDecoratorTransformsFunction(t *testing.T) {
 }
 
 func TestMultipleDecorators(t *testing.T) {
+	t.Parallel()
 	// decorators apply bottom-up: f = dec2(dec1(f)).
 	src := "def dec1(g):\n    def w():\n        return g() + 1\n    return w\ndef dec2(g):\n    def w():\n        return g() * 2\n    return w\n@dec1\n@dec2\ndef f():\n    return 10\nf()"
 	v, _, err := evalGolden(t, src)
@@ -494,6 +529,7 @@ func TestMultipleDecorators(t *testing.T) {
 }
 
 func TestAnnotAssignOK(t *testing.T) {
+	t.Parallel()
 	// a matching annotation is accepted and the value flows through.
 	src := "x: int = 5\nx"
 	v, _, err := evalGolden(t, src)
@@ -506,6 +542,7 @@ func TestAnnotAssignOK(t *testing.T) {
 }
 
 func TestAnnotAssignMismatch(t *testing.T) {
+	t.Parallel()
 	// a list value under an int annotation is a runtime type error.
 	src := "x: int = [1, 2]"
 	_, _, err := evalGolden(t, src)
@@ -518,6 +555,7 @@ func TestAnnotAssignMismatch(t *testing.T) {
 }
 
 func TestAnnotDynAcceptsAnything(t *testing.T) {
+	t.Parallel()
 	// any (dynamic) annotation accepts a list under an int context.
 	src := "x: any = [1, 2]\nlen(x)"
 	v, _, err := evalGolden(t, src)
@@ -530,6 +568,7 @@ func TestAnnotDynAcceptsAnything(t *testing.T) {
 }
 
 func TestAnnotParamMismatch(t *testing.T) {
+	t.Parallel()
 	// an annotated parameter rejects a wrong-typed argument.
 	src := "def f(x: int):\n    return x\nf([1, 2])"
 	_, _, err := evalGolden(t, src)
@@ -539,6 +578,7 @@ func TestAnnotParamMismatch(t *testing.T) {
 }
 
 func TestAnnotReturnMismatch(t *testing.T) {
+	t.Parallel()
 	// an annotated return rejects a wrong-typed returned value.
 	src := "def f() -> int:\n    return [1, 2]\nf()"
 	_, _, err := evalGolden(t, src)
@@ -548,6 +588,7 @@ func TestAnnotReturnMismatch(t *testing.T) {
 }
 
 func TestEvalClassInheritanceMethodResolution(t *testing.T) {
+	t.Parallel()
 	// Child inherits a method defined only on Base.
 	src := "class Base:\n    def greet(self):\n        return 41\nclass Child(Base):\n    def hi(self):\n        return 1\nc = Child()\nc.greet()"
 	v, _, err := evalGolden(t, src)
@@ -560,6 +601,7 @@ func TestEvalClassInheritanceMethodResolution(t *testing.T) {
 }
 
 func TestEvalClassInheritanceOverride(t *testing.T) {
+	t.Parallel()
 	// A subclass overriding a base method uses the subclass's version.
 	src := "class Base:\n    def val(self):\n        return 1\nclass Child(Base):\n    def val(self):\n        return 2\nc = Child()\nc.val()"
 	v, _, err := evalGolden(t, src)
@@ -572,6 +614,7 @@ func TestEvalClassInheritanceOverride(t *testing.T) {
 }
 
 func TestEvalClassInheritanceInit(t *testing.T) {
+	t.Parallel()
 	// __init__ inherited from Base runs when instantiating Child.
 	src := "class Base:\n    def __init__(self):\n        self.n = 5\nclass Child(Base):\n    def get(self):\n        return self.n\nc = Child()\nc.get()"
 	v, _, err := evalGolden(t, src)
@@ -584,6 +627,7 @@ func TestEvalClassInheritanceInit(t *testing.T) {
 }
 
 func TestEvalClassSuperDelegation(t *testing.T) {
+	t.Parallel()
 	// super() lets an overridden method delegate to the base implementation.
 	src := "class Base:\n    def val(self):\n        return 10\nclass Child(Base):\n    def val(self):\n        return super().val() + 5\nc = Child()\nc.val()"
 	v, _, err := evalGolden(t, src)
@@ -596,6 +640,7 @@ func TestEvalClassSuperDelegation(t *testing.T) {
 }
 
 func TestEvalClassGrandChildResolution(t *testing.T) {
+	t.Parallel()
 	// method resolution walks the whole base chain (grandparent).
 	src := "class A:\n    def f(self):\n        return 7\nclass B(A):\n    def b(self):\n        return 1\nclass C(B):\n    def g(self):\n        return 1\nc = C()\nc.f()"
 	v, _, err := evalGolden(t, src)
@@ -608,6 +653,7 @@ func TestEvalClassGrandChildResolution(t *testing.T) {
 }
 
 func TestEvalDynamicDispatch(t *testing.T) {
+	t.Parallel()
 	// Dynamic dispatch: the receiver's class is only known at runtime because
 	// `make` returns an instance of a different class per argument. Method
 	// resolution must follow the runtime instance, not a compile-time guess.
@@ -623,13 +669,11 @@ func TestEvalDynamicDispatch(t *testing.T) {
 }
 
 func TestEvalImportModuleFunction(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/mylib.gy", []byte("def double(x):\n    return x * 2\n"), 0o600)
-	old, _ := os.Getwd()
-	defer os.Chdir(old)
-	os.Chdir(dir)
 	src := "import mylib\nmylib.double(4)"
-	v, _, err := evalGolden(t, src)
+	v, _, err := evalGoldenIn(t, dir, src)
 	if err != nil {
 		t.Fatalf("import fn err: %v", err)
 	}
@@ -639,13 +683,11 @@ func TestEvalImportModuleFunction(t *testing.T) {
 }
 
 func TestEvalImportModuleConst(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(dir+"/constlib.gy", []byte("base = 21\n"), 0o600)
-	old, _ := os.Getwd()
-	defer os.Chdir(old)
-	os.Chdir(dir)
 	src := "import constlib\nconstlib.base + 1"
-	v, _, err := evalGolden(t, src)
+	v, _, err := evalGoldenIn(t, dir, src)
 	if err != nil {
 		t.Fatalf("import const err: %v", err)
 	}
@@ -655,18 +697,17 @@ func TestEvalImportModuleConst(t *testing.T) {
 }
 
 func TestEvalImportMissingModule(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	old, _ := os.Getwd()
-	defer os.Chdir(old)
-	os.Chdir(dir)
 	src := "import nope\nnope.x"
-	_, _, err := evalGolden(t, src)
+	_, _, err := evalGoldenIn(t, dir, src)
 	if err == nil {
 		t.Fatalf("expected import error, got nil")
 	}
 }
 
 func TestEvalListIndex(t *testing.T) {
+	t.Parallel()
 	src := "lst = [10, 20, 30]\nlst[1]"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -678,6 +719,7 @@ func TestEvalListIndex(t *testing.T) {
 }
 
 func TestEvalListIndexOutOfRange(t *testing.T) {
+	t.Parallel()
 	src := "lst = [1, 2]\nlst[5]"
 	_, _, err := evalGolden(t, src)
 	if err == nil {
@@ -686,6 +728,7 @@ func TestEvalListIndexOutOfRange(t *testing.T) {
 }
 
 func TestEvalDictIndex(t *testing.T) {
+	t.Parallel()
 	src := "d = {1: 100, 2: 200}\nd[2]"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -697,6 +740,7 @@ func TestEvalDictIndex(t *testing.T) {
 }
 
 func TestEvalPassStatement(t *testing.T) {
+	t.Parallel()
 	// pass inside a loop body is a no-op; iteration proceeds normally.
 	v, _, err := evalGolden(t, "x = 0\nfor i in range(3):\n    pass\n    x = x + i\nx")
 	if err != nil {
@@ -724,6 +768,7 @@ func TestEvalPassStatement(t *testing.T) {
 }
 
 func TestEvalStringConcatLen(t *testing.T) {
+	t.Parallel()
 	// len over a string concatenation counts the joined characters.
 	v, _, err := evalGolden(t, "len(\"ab\" + \"cd\")")
 	if err != nil {
@@ -743,6 +788,7 @@ func TestEvalStringConcatLen(t *testing.T) {
 }
 
 func TestEvalStringLiteral(t *testing.T) {
+	t.Parallel()
 	// string literals evaluate to boxed strings (last stmt is an assignment)
 	v, _, err := evalGolden(t, "s = \"hello\"\ns")
 	if err != nil {
@@ -770,6 +816,7 @@ func TestEvalStringLiteral(t *testing.T) {
 }
 
 func TestEvalDictVariableIndex(t *testing.T) {
+	t.Parallel()
 	// d[key] on a dict variable resolves at codegen time.
 	v, _, err := evalGolden(t, "d = {1: 10, 2: 20}\nd[1]")
 	if err != nil {
@@ -781,6 +828,7 @@ func TestEvalDictVariableIndex(t *testing.T) {
 }
 
 func TestEvalLenStringVariable(t *testing.T) {
+	t.Parallel()
 	// len(s) on a string variable resolves at codegen time.
 	v, _, err := evalGolden(t, "s = \"abc\"\nlen(s)")
 	if err != nil {
@@ -800,6 +848,7 @@ func TestEvalLenStringVariable(t *testing.T) {
 }
 
 func TestEvalUnionVarIntStr(t *testing.T) {
+	t.Parallel()
 	// A union-annotated variable accepts an int member (regression: previously
 	// rejected at runtime with "expected value but got int").
 	v, _, err := evalGolden(t, "x: int | str = 42\nx")
@@ -812,12 +861,14 @@ func TestEvalUnionVarIntStr(t *testing.T) {
 }
 
 func TestEvalUnionVarStrMember(t *testing.T) {
+	t.Parallel()
 	// A union-annotated variable accepts a string member, and the value that comes back is the
 	// string — which is what a snippet answers, in the end.
 	goldenReprIs(t, "x: int | str = \"hello\"\nx", "hello")
 }
 
 func TestEvalUnionVarIntFloat(t *testing.T) {
+	t.Parallel()
 	// int member of an int | float union.
 	v, _, err := evalGolden(t, "x: int | float = 7\nx")
 	if err != nil {
@@ -831,6 +882,7 @@ func TestEvalUnionVarIntFloat(t *testing.T) {
 }
 
 func TestEvalFloatLiteral(t *testing.T) {
+	t.Parallel()
 	// float literals evaluate to boxed floats
 	v, _, err := evalGolden(t, "x = 1.5\nx")
 	if err != nil {
@@ -866,6 +918,7 @@ func TestEvalFloatLiteral(t *testing.T) {
 }
 
 func TestEvalAndOrFloorDiv(t *testing.T) {
+	t.Parallel()
 	// `and`/`or` hand back an **operand**, not a verdict (roadmap Gap R.147, ADR 0269): the reference
 	// evaluates the left, tests it, and returns whichever operand the test chose. The verdict these used
 	// to answer — `1 and 2` as the 1 — is the exit-0 wrong answer the row was filed for.
@@ -930,6 +983,7 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 }
 
 func TestEvalComprehension(t *testing.T) {
+	t.Parallel()
 	// list comprehension over range
 	v, _, err := evalGolden(t, "xs = [x * 2 for x in range(3)]\nxs")
 	if err != nil {
@@ -949,6 +1003,7 @@ func TestEvalComprehension(t *testing.T) {
 }
 
 func TestEvalMinMaxAbs(t *testing.T) {
+	t.Parallel()
 	// min/max over a list
 	v, _, err := evalGolden(t, "min([3, 1, 2])")
 	if err != nil {
@@ -975,16 +1030,19 @@ func TestEvalMinMaxAbs(t *testing.T) {
 }
 
 func TestStrMethods(t *testing.T) {
+	t.Parallel()
 	goldenReprIs(t, `"heLLo".upper()`, "HELLO")
 	// Python quotes strings inside containers, and so does the answer for split.
 	goldenReprIs(t, `"a b c".split(" ")`, "['a', 'b', 'c']")
 }
 
 func TestListAppend(t *testing.T) {
+	t.Parallel()
 	goldenReprIs(t, "xs = [1, 2]\nxs.append(3)\nxs", "[1, 2, 3]")
 }
 
 func TestDictMethods(t *testing.T) {
+	t.Parallel()
 	// This pin read "[1, 2]", which is what this backend used to print. CPython prints
 	// dict_values([1, 2]) — a dict view is not a list and says so in its own rendering — so the
 	// pin moved rather than being deleted (roadmap Gap R.182, ADR 0296).
@@ -992,6 +1050,7 @@ func TestDictMethods(t *testing.T) {
 }
 
 func TestSumBuiltin(t *testing.T) {
+	t.Parallel()
 	v, _, err := evalGolden(t, `sum([1, 2, 3])`)
 	if err != nil {
 		t.Fatalf("sum: %v", err)
@@ -1002,6 +1061,7 @@ func TestSumBuiltin(t *testing.T) {
 }
 
 func TestEvalMultiArgPrint(t *testing.T) {
+	t.Parallel()
 	// print(*args, sep=" ", end="\n") — Python semantics, matched by the AOT
 	// backend (ADR 0165).
 	out := captureStdout(t, "print(1, 2)")
@@ -1071,6 +1131,7 @@ func captureStdout(t *testing.T, src string) string {
 }
 
 func TestEvalFloatSubMul(t *testing.T) {
+	t.Parallel()
 	// Float `-` and `*` on float variables must operate on the float64
 	// payload, not the raw heap handles (which are small ints). Regression:
 	// a*b previously multiplied the boxed handles and produced garbage.
@@ -1084,6 +1145,7 @@ func TestEvalFloatSubMul(t *testing.T) {
 }
 
 func TestEvalFloatFloorModNeg(t *testing.T) {
+	t.Parallel()
 	// Float `//` floor division, `%` remainder, and unary `-` must operate on
 	// the float64 payload (not raw heap handles). 5.5//2.0 == 2, 5.5%2.0 == 1.5,
 	// -5.5 == -5.5, 7.0//2 == 3.
@@ -1092,6 +1154,7 @@ func TestEvalFloatFloorModNeg(t *testing.T) {
 }
 
 func TestEvalRound(t *testing.T) {
+	t.Parallel()
 	// round(float) goes to the nearest value, ties to EVEN — the IEEE rule CPython uses, matching the
 	// AOT codegen's fold and `llvm.roundeven.f64`, and not truncating toward zero either. The comment
 	// here used to say "must round half-away-from-zero (math.Round), matching the AOT codegen's
@@ -1108,12 +1171,14 @@ func TestEvalRound(t *testing.T) {
 }
 
 func TestEvalAbsFloat(t *testing.T) {
+	t.Parallel()
 	// abs(float) must negate a negative float64 payload, not return the boxed
 	// heap handle unchanged.
 	goldenStdoutIs(t, "a = -3.5\nb = 3.5\nc = abs(a)\nd = abs(b)\ne = abs(-1.5 * 2.0)\nprint(c, d, e)", "3.5 3.5 3.0")
 }
 
 func TestEvalMembership(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		src  string
 		want int64
@@ -1148,6 +1213,7 @@ func TestEvalMembership(t *testing.T) {
 }
 
 func TestEvalFString(t *testing.T) {
+	t.Parallel()
 	// a plain f-string is just a string
 	if v, _, err := evalGolden(t, `f"hello"`); err != nil {
 		t.Fatalf("plain fstring err: %v", err)
@@ -1183,6 +1249,7 @@ print(f"val={n:>3}")`)
 }
 
 func TestFStringConstantFold(t *testing.T) {
+	t.Parallel()
 	// constant-only f-strings should fold through the optimizer to a StrLit
 	if v, _, err := evalGolden(t, `f"a{1}b"`); err != nil {
 		t.Fatalf("const fstring err: %v", err)
@@ -1192,6 +1259,7 @@ func TestFStringConstantFold(t *testing.T) {
 }
 
 func TestEvalFStringEdgeCases(t *testing.T) {
+	t.Parallel()
 	// multiple parts and string interpolation
 	out := captureStdout(t, `s = "world"
 print(f"hello {s}!")`)
@@ -1217,6 +1285,7 @@ print(f"hello {s}!")`)
 }
 
 func TestEvalAugmentedAssignment(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want int64
@@ -1238,6 +1307,7 @@ func TestEvalAugmentedAssignment(t *testing.T) {
 }
 
 func TestEvalAugmentedAttr(t *testing.T) {
+	t.Parallel()
 	src := "class C:\n    def set(self, v):\n        self.x = v\n    def bump(self):\n        self.x += 5\nc = C()\nc.set(2)\nc.bump()\nc.x"
 	v, _, err := evalGolden(t, src)
 	if err != nil {
@@ -1249,6 +1319,7 @@ func TestEvalAugmentedAttr(t *testing.T) {
 }
 
 func TestTupleUnpack(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		src  string
 		want int64
@@ -1274,6 +1345,7 @@ func TestTupleUnpack(t *testing.T) {
 }
 
 func TestEvalPower(t *testing.T) {
+	t.Parallel()
 	// integer power: 2 ** 3 == 8
 	v, diags, err := evalGolden(t, "2 ** 3")
 	if err != nil {
@@ -1320,6 +1392,7 @@ func TestEvalPower(t *testing.T) {
 }
 
 func TestEvalOperatorOverloading(t *testing.T) {
+	t.Parallel()
 	// Left-operand dunder dispatch: Vec.__add__ combines two vectors' x.
 	src := "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __add__(self, other):\n        return self.x + other.x\n    def __mul__(self, n):\n        return self.x * n\na = Vec(2)\nb = Vec(3)\na + b"
 	v, _, err := evalGolden(t, src)
@@ -1350,6 +1423,7 @@ func TestEvalOperatorOverloading(t *testing.T) {
 }
 
 func TestEvalDocstringFunc(t *testing.T) {
+	t.Parallel()
 	// A leading bare string literal in a def body becomes __doc__.
 	out := captureStdout(t, `def greet():
     "returns a greeting"
@@ -1361,6 +1435,7 @@ print(greet.__doc__)`)
 }
 
 func TestEvalDocstringFuncNone(t *testing.T) {
+	t.Parallel()
 	// A function without a docstring yields the empty string.
 	out := captureStdout(t, `def f():
     return 1
@@ -1371,6 +1446,7 @@ print(f.__doc__)`)
 }
 
 func TestEvalDocstringClass(t *testing.T) {
+	t.Parallel()
 	// A leading string literal in a class body becomes cls.__doc__.
 	out := captureStdout(t, `class Animal:
     "an animal class"
@@ -1384,6 +1460,7 @@ print(Animal.__doc__)`)
 }
 
 func TestEvalDocstringClosure(t *testing.T) {
+	t.Parallel()
 	// A nested def (closure value) carries __doc__ too.
 	out := captureStdout(t, `def outer():
     def inner():
@@ -1398,6 +1475,7 @@ print(f.__doc__)`)
 }
 
 func TestEvalDocstringNotFirst(t *testing.T) {
+	t.Parallel()
 	// A string literal that is NOT the first statement is a normal expression,
 	// not a docstring.
 	out := captureStdout(t, `def g():
@@ -1424,6 +1502,7 @@ print(g.__doc__)`)
 // stack, writes Python's shape rather than a paraphrase of it. Both are asserted below, per shape.
 // When Gap K.8 fills in, the frames join the same three cases without rewriting them.
 func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, wantClass, wantMsg string
 		frame                         Frame
@@ -1445,6 +1524,7 @@ func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := goldenRunError(t, tc.src)
 			if err == nil {
 				t.Fatalf("%q answered; a division by zero must fail the program", tc.src)
@@ -1485,6 +1565,7 @@ func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
 }
 
 func TestTrapReportNamesTheCallThatFailed(t *testing.T) {
+	t.Parallel()
 	// What a trap owes the reader: its class, its message, and the frames it travelled through. The
 	// engine used to build that frame stack itself, and this case read it back out of Go. The
 	// compiled backend reports the class and the message on the tool channel and not yet the frames

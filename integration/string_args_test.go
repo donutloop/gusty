@@ -23,6 +23,7 @@ print(greet("ada"))
 `
 
 func TestStringArgumentRunsOnTheCompiledBackend(t *testing.T) {
+	t.Parallel()
 	want := "hello ada\n1\n"
 	lang.RecordedStdoutIs(t, stringArgProgram, want)
 	if got := compileAndRun(t, stringArgProgram); got != want {
@@ -68,6 +69,7 @@ var stringArgCases = []struct {
 }
 
 func TestStringParameterProgramsMatchPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range stringArgCases {
 		gotCompiled := runCompiled(t, tc.src)
 		if gotCompiled != tc.want {
@@ -97,6 +99,7 @@ func TestStringParameterProgramsMatchPython(t *testing.T) {
 // example here; it answers since ADR 0230, so the shape is repetition, which still has no
 // lowering — the contract under test is the refusal, not this particular operator.
 func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
+	t.Parallel()
 	src := "def shout(s):\n    return s * 2\n\nprint(shout(\"hi\"))\n"
 	res, err := lang.Compile(src)
 	if err == nil {

@@ -90,8 +90,10 @@ func floatArgParity() []struct{ name, src, want string } {
 
 // TestTheReferenceAndBothLegsHandTheSameNumber is the parity table: one source, three legs, one answer.
 func TestTheReferenceAndBothLegsHandTheSameNumber(t *testing.T) {
+	t.Parallel()
 	for _, tc := range floatArgParity() {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "float_arg.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -113,6 +115,7 @@ func TestTheReferenceAndBothLegsHandTheSameNumber(t *testing.T) {
 // twelve fragments: the flooring identity, the rebound int variable, and the two calls whose arguments
 // carry a double. It ran as a probe with the last two lines pinned wrong until this round.
 func TestThePromotedFloatProbeStillPrintsCPythonSixLines(t *testing.T) {
+	t.Parallel()
 	const want = "-4\n0.5\n4.0\n0.2\n2.5\n"
 	src := readProgram(t, "probe_float_numeric.gy")
 	path := writeSrc(t, t.TempDir(), "probe_float_numeric.gy", src)
@@ -133,6 +136,7 @@ func TestThePromotedFloatProbeStillPrintsCPythonSixLines(t *testing.T) {
 // TestTheCompiledLegRefusesWhatThePairCannotCarry keeps the honest half at the interface a script reads:
 // exit 1, the missing half named, and no truncated digit anywhere in the output.
 func TestTheCompiledLegRefusesWhatThePairCannotCarry(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// A container element is the element road's question, and this door declines it rather than
@@ -150,6 +154,7 @@ func TestTheCompiledLegRefusesWhatThePairCannotCarry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "float_arg_refuse.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", "--file", path)
 			if code == 2 {

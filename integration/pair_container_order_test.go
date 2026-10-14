@@ -36,6 +36,7 @@ const (
 // SET orders by the subset operator, and the pair that is neither one's subset orders NEITHER way without
 // raising, so the incumbent survives exactly as the reference's `min` keeps it.
 func TestCLIAgentAFoldOfContainersAgreesWithCPython(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"two built lists, min", foldPairCLILists + "print(min(a, b))\n"},
@@ -52,6 +53,7 @@ func TestCLIAgentAFoldOfContainersAgreesWithCPython(t *testing.T) {
 		{"the winner folded again by a second fold", foldPairCLILists + "m = min(a, b)\nn = max(m, b)\nprint(n)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -79,6 +81,7 @@ func TestCLIAgentAFoldOfContainersAgreesWithCPython(t *testing.T) {
 // kinds: `min(["a"], [1])` names 'int' and 'str' because the reference asks the later argument against the
 // earlier one.
 func TestCLIAgentAFoldOfContainersRaisesWhatCPythonRaises(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, sentence string }{
 		{"a list folded against a number (min)", foldPairCLILists + "print(min(a, 3))\n", "TypeError: '<' not supported between instances of 'int' and 'list'"},
@@ -99,6 +102,7 @@ func TestCLIAgentAFoldOfContainersRaisesWhatCPythonRaises(t *testing.T) {
 		{"the lists a min folds, with a number last", "print(min([1], [2], 3))\n", "TypeError: '<' not supported between instances of 'int' and 'list'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair_trap.gy", tc.src)
 			if py, ok := cpythonPlainOut(t, dir, tc.src); ok {
 				t.Fatalf("the reference answered %q, expected the trap\nsrc: %s", py, tc.src)
@@ -121,6 +125,7 @@ func TestCLIAgentAFoldOfContainersRaisesWhatCPythonRaises(t *testing.T) {
 // TestCLIAgentAFoldOfContainersTrapReachesTheProgramsOwnArm is the half that makes a compiled raise a raise:
 // in a linked binary, the handler runs, the program continues, and the exit code is success.
 func TestCLIAgentAFoldOfContainersTrapReachesTheProgramsOwnArm(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the container-against-a-number raise caught",
@@ -132,6 +137,7 @@ func TestCLIAgentAFoldOfContainersTrapReachesTheProgramsOwnArm(t *testing.T) {
 		{"the dict raise caught", "d = {}\ntry:\n    print(min(d, d))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair_catch.gy", tc.src)
 			ref, ok := cpythonPlainOut(t, dir, tc.src)
 			if !ok {
@@ -157,6 +163,7 @@ func TestCLIAgentAFoldOfContainersTrapReachesTheProgramsOwnArm(t *testing.T) {
 // read by a builtin that asks the compiler to see inside the value. None of them is an answer, and none of
 // them is allowed to spend the exit-code contract's "the compiler is broken" code (ADR 0166).
 func TestCLIAgentWhatTheFoldOfContainersStillRefusesIsStillRefusedInWords(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"two literal containers", "print(min([1], [2]))\n", "container among values"},
@@ -169,6 +176,7 @@ func TestCLIAgentWhatTheFoldOfContainersStillRefusesIsStillRefusedInWords(t *tes
 		{"the winner subscripted", foldPairCLILists + "m = min(a, b)\nprint(m[0])\n", "index of a non-literal variable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair_refuse.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -190,6 +198,7 @@ func TestCLIAgentWhatTheFoldOfContainersStillRefusesIsStillRefusedInWords(t *tes
 // the case, and the compiled leg must print the reference's BYTES — the answer Gap R.197's debt row recorded
 // beside the raise is now the answer both legs print (roadmap Gap R.197, ADR 0318).
 func TestTheContainerOrderProbeIsOnRecord(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "probe_a_fold_orders_two_built_containers.gy")
 	if !lang.HasGoldenAnswer(src) {
 		t.Fatal("the probe this cycle promotes out of the debt list has no record — every corpus case that reads " +
@@ -226,6 +235,7 @@ func TestTheContainerOrderProbeIsOnRecord(t *testing.T) {
 // Both classes are asserted as the reference answers them, so the row cannot drift, and as the compiled leg
 // answers them today, so the defect cannot silently "pass" by moving somewhere else.
 func TestCLIAgentTheRelationalOrderingOfContainersIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, reference, compiled string }{
 		{
@@ -260,6 +270,7 @@ func TestCLIAgentTheRelationalOrderingOfContainersIsFiledNotFixed(t *testing.T) 
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair_relation.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -306,6 +317,7 @@ func TestCLIAgentTheRelationalOrderingOfContainersIsFiledNotFixed(t *testing.T) 
 // does not own: the ordering's own arm is the honest one, which is why the depth-guard row records the reference's
 // `RecursionError` beside the `TypeError` the compiled leg raises instead of claiming they agree.
 func TestCLIAgentTheCyclicContainerFoldIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct {
 		name      string
@@ -345,6 +357,7 @@ func TestCLIAgentTheCyclicContainerFoldIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "foldpair_cyclic.gy", tc.src)
 			ref, refAnswered := cpythonPlainOut(t, dir, tc.src)
 			if tc.refAnswer != "" {

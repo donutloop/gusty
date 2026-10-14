@@ -14,6 +14,7 @@ import (
 // the defect, and a toolchain failure is the contract's own bug code.
 
 func TestAnIndexThatIsNotAPositionExitsAsATrapThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		src  string
@@ -30,6 +31,7 @@ func TestAnIndexThatIsNotAPositionExitsAsATrapThroughTheCLI(t *testing.T) {
 		{"an index bound to a text", "xs = [1, 2, 3]\nt = \"a\"\nprint(xs[t])", "TypeError: list indices must be integers or slices, not str"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("%q exited 2 — the toolchain's own failure code:\n%s", tt.src, stderr)
@@ -50,6 +52,7 @@ func TestAnIndexThatIsNotAPositionExitsAsATrapThroughTheCLI(t *testing.T) {
 // The containers that keep answering, at the same altitude: positions, negative positions, a bool, a
 // slice, a nested list, a string character, a dict key.
 func TestAPositionStillIndexesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src  string
 		want string
@@ -64,6 +67,7 @@ func TestAPositionStillIndexesThroughTheCLI(t *testing.T) {
 		{"xs = [1, 2, 3]\ni = 1\nprint(xs[i])", "2"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code != 0 {
 				t.Fatalf("exit %d, want 0: the reference answers this program\nstderr %q", code, stderr)
@@ -77,6 +81,7 @@ func TestAPositionStillIndexesThroughTheCLI(t *testing.T) {
 
 // The whole matrix as one program, line for line against CPython.
 func TestTheIndexKindProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/list_index_kind.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -108,6 +113,7 @@ func TestTheIndexKindProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 }
 
 func TestTheIndexKindProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

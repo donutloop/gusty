@@ -32,6 +32,7 @@ const absIntSlot = "xs = []\nxs.append(7)\nn = xs[0]\n"
 // TestTheSignlessCallAnswersForAPairBoundName is the row this cycle exists for. Every shape is `abs` over a
 // name the pair road bound, and every answer is the record's, which is CPython's.
 func TestTheSignlessCallAnswersForAPairBoundName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"an int slot", absIntSlot + "print(abs(n))\n", "7\n"},
 		{"a negative slot", "xs = []\nxs.append(-8)\nn = xs[0]\nprint(abs(n))\n", "8\n"},
@@ -48,6 +49,7 @@ func TestTheSignlessCallAnswersForAPairBoundName(t *testing.T) {
 		{"the loop variable", "xs = []\nxs.append(-5)\nfor v in xs:\n    print(abs(v))\n", "5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := JIT(tc.src, 0)
 			if err != nil {
@@ -65,6 +67,7 @@ func TestTheSignlessCallAnswersForAPairBoundName(t *testing.T) {
 // are the rows where reading one word would have been silent — a text slot's payload is an interned index,
 // and `abs` of an index is a number.
 func TestTheSignlessCallRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, class, message string
 	}{
@@ -89,6 +92,7 @@ func TestTheSignlessCallRaisesWhatTheReferenceRaises(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("compiled to nothing where the reference raises: %v", err)
@@ -113,6 +117,7 @@ func TestTheSignlessCallRaisesWhatTheReferenceRaises(t *testing.T) {
 // of a literal has a compile-time answer, and a door that routes it through the run time both costs an
 // instruction and lets a module grow a helper call for a constant.
 func TestTheSignlessCallOfAKnownValueIsStillFolded(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, want string
 	}{
@@ -123,6 +128,7 @@ func TestTheSignlessCallOfAKnownValueIsStillFolded(t *testing.T) {
 		{"a plain variable", "x = -7\nprint(abs(x))\n", "7\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := Compile(tc.src)
 			if err != nil {
@@ -146,6 +152,7 @@ func TestTheSignlessCallOfAKnownValueIsStillFolded(t *testing.T) {
 // reserves for the module the verifier rejected; the pair door keeps its hand off a pair-shaped sibling and
 // the position refuses instead.
 func TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{"an abs operand of a sum the door will not prove", absIntSlot + "print(abs(n) + 1)\n"},
 		{"two abs answers added together", absIntSlot + "m = xs[0]\nprint(abs(n) + abs(m))\n"},
@@ -157,6 +164,7 @@ func TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
 		{"a sum element", absIntSlot + "print(sum([abs(n)]))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			CompiledRefusal(t, tc.src, "roadmap")
 		})
 	}
@@ -166,6 +174,7 @@ func TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
 // the lifted value inside the module's own arithmetic helper, so a pair never reaches printf as a number and
 // the sentence is written by the helper that knows the tag.
 func TestTheSignlessCallRunsThroughTheArithmeticDoor(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(absIntSlot + "print(abs(n))\n")
 	if err != nil {
 		t.Fatalf("refused a program the reference prints: %v", err)

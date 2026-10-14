@@ -109,8 +109,10 @@ var reboundKindParity = []struct {
 // the record (the answer the retired engine left behind for the source) and the compiled backend. One
 // table on purpose — an answer asserted on one leg and not the other is a row nobody measured.
 func TestAReboundContainerAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range reboundKindParity {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			if !HasGoldenAnswer(tc.src) {
 				t.Errorf("%q has no entry in the record leg (pkg/lang/testdata/interpreter-golden.json); a new answer needs a record in the same commit", tc.src)
 			}
@@ -136,6 +138,7 @@ func TestAReboundContainerAnswersWhatTheLatestBindingGaveIt(t *testing.T) {
 // belongs to the object the last binding made. A dict's claim answering for a list would raise the wrong
 // class, which ADR 0212 does not allow to be handled by an `except` that never matched the program.
 func TestTheContainerKindTrapNamesTheContainerTheLastBindingMade(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src            string
 		class, message string
@@ -145,6 +148,7 @@ func TestTheContainerKindTrapNamesTheContainerTheLastBindingMade(t *testing.T) {
 		{"s = {1, 2}\ns = [5]\nprint(s[3])", "IndexError", "list index out of range"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			class, message := jitTrap(t, tc.src)
 			if class != tc.class || message != tc.message {
 				t.Fatalf("%q raised %s: %s, want %s: %s", tc.src, class, message, tc.class, tc.message)
@@ -156,12 +160,14 @@ func TestTheContainerKindTrapNamesTheContainerTheLastBindingMade(t *testing.T) {
 // TestTheContainerKindTrapIsCatchable keeps the raise inside the program: ADR 0218's handled exception is
 // over, and the name after the arm is still the container the last binding made.
 func TestTheContainerKindTrapIsCatchable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(\"caught\")", "caught"},
 		{"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[\"a\"])\nexcept TypeError:\n    print(\"caught\")", "caught"},
 		{"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(d[0])", "3"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			out, trap := runForParity(t, tc.src)
 			if trap != "" {
 				t.Fatalf("%q raised %s; the reference prints %q", tc.src, trap, tc.want)
@@ -210,6 +216,7 @@ func claimSurvivors(g *irGen, name string) []string {
 // cannot: a read that happens to work would hide a claim that stayed set. Every name starts with all
 // fourteen claims on; the survivors are the answer.
 func TestTheRebindingDoorClearsWhatTheBindingContradicts(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		kind string
@@ -233,6 +240,7 @@ func TestTheRebindingDoorClearsWhatTheBindingContradicts(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			g := &irGen{
 				listVars: map[string]bool{}, mixedLists: map[string]bool{},
 				runtimeDicts: map[string]bool{}, mixedDicts: map[string]bool{},
@@ -258,6 +266,7 @@ func TestTheRebindingDoorClearsWhatTheBindingContradicts(t *testing.T) {
 // is a broom, and ADR 0241's fold record — the thing that licenses reading a literal's slot statically —
 // is exactly a claim the binding agrees with.
 func TestTheRebindingDoorLeavesWhatTheBindingAgreesWith(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		kind string
@@ -281,6 +290,7 @@ func TestTheRebindingDoorLeavesWhatTheBindingAgreesWith(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			g := &irGen{
 				listVars: map[string]bool{}, mixedLists: map[string]bool{},
 				runtimeDicts: map[string]bool{}, mixedDicts: map[string]bool{},
@@ -348,6 +358,7 @@ func claimMapFor(g *irGen, claim string) *map[string]bool {
 // TestTheRebindingDoorClearsNothingForAnotherName: the door is name-scoped. `mixedLists` in particular is
 // the one notebook shared across scopes, so this is asked rather than assumed.
 func TestTheRebindingDoorClearsNothingForAnotherName(t *testing.T) {
+	t.Parallel()
 	g := &irGen{
 		listVars: map[string]bool{}, mixedLists: map[string]bool{},
 		runtimeDicts: map[string]bool{}, mixedDicts: map[string]bool{},
@@ -372,6 +383,7 @@ func TestTheRebindingDoorClearsNothingForAnotherName(t *testing.T) {
 // literal writes every slot again, so the element notebook the freed object left describes bytes this
 // statement replaces. Without it, `xs = ["a"]` then `xs = [1, 2]` is refused as a mixed list.
 func TestTheLiteralDoorClearsItsOwnKindsNotebookToo(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		kind string
@@ -389,6 +401,7 @@ func TestTheLiteralDoorClearsItsOwnKindsNotebookToo(t *testing.T) {
 			[]string{"setElemStr", "setElemInt"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			g := &irGen{
 				listVars: map[string]bool{}, mixedLists: map[string]bool{},
 				runtimeDicts: map[string]bool{}, mixedDicts: map[string]bool{},
@@ -419,6 +432,7 @@ func TestTheLiteralDoorClearsItsOwnKindsNotebookToo(t *testing.T) {
 // A name that goes from a list to a dict cannot keep a list literal answering reads of it, and a fold
 // record of the kind the binding IS stays (the restraint rows above).
 func TestTheRebindingDoorDropsAFoldRecordOfAnotherKind(t *testing.T) {
+	t.Parallel()
 	lit := &ListLit{Elems: []Expr{&IntLit{Value: 1}, &IntLit{Value: 2}}}
 	g := &irGen{
 		listVars: map[string]bool{}, mixedLists: map[string]bool{},
@@ -511,6 +525,7 @@ func programReaderCalls(t *testing.T, src string) map[string]int {
 // `@rt_set_contains_tagged`; and the text-list-then-number-list pair was REFUSED outright for want of the
 // notebook the freed object left behind.
 func TestAReboundContainerIsReadByTheSameRoadsAsAContainerBoundOnce(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		rebound  string
@@ -561,6 +576,7 @@ func TestAReboundContainerIsReadByTheSameRoadsAsAContainerBoundOnce(t *testing.T
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			rebound := programReaderCalls(t, tc.rebound)
 			single := programReaderCalls(t, tc.single)
 			if len(rebound) != len(single) {
@@ -588,6 +604,7 @@ func TestAReboundContainerIsReadByTheSameRoadsAsAContainerBoundOnce(t *testing.T
 // slot — the worst property a heap can have. It belongs to the handle copy, not the kind claim
 // (roadmap Gap R.257, pinned as a debt row in integration/rebind_kind_test.go with the reference's answer).
 func TestTheAliasedContainerIsNotThisRowsDebt(t *testing.T) {
+	t.Parallel()
 	const src = "y = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\n"
 	res, err := Compile(src)
 	if err != nil {
@@ -604,6 +621,7 @@ func TestTheAliasedContainerIsNotThisRowsDebt(t *testing.T) {
 // TestWhatTheRebindingRowDoesNotOwn pins the shapes this row leaves to other rows. Each is refused in words
 // that name the half that is missing — never an answer at exit 0, never exit 2.
 func TestWhatTheRebindingRowDoesNotOwn(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, phrase string
 	}{
@@ -617,6 +635,7 @@ func TestWhatTheRebindingRowDoesNotOwn(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, refused := compiledOutOrRefusal(t, tc.src)
 			if !refused {
 				t.Fatalf("%q answered %q at exit 0; the roadmap row the name cites owes this shape", tc.src, got)

@@ -19,6 +19,7 @@ import (
 // dies on; each has to die the same way here — not at the compile door, not at the verifier's exit 2,
 // and not at 0 with a silent 0 where an error belongs.
 func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, src, msg string
 		// theirs is what the reference raises. It is written separately from `msg` only where the two
@@ -93,6 +94,7 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			theirs := tc.theirs
 			if theirs == "" {
 				theirs = tc.msg
@@ -136,6 +138,7 @@ func TestAConstantTrapExitsAsATrapThroughTheCLI(t *testing.T) {
 // wrong. A compile error cannot be wrapped, so the whole debugging move was unavailable — and these
 // programs print, carry on, and exit 0, exactly as they do under the reference.
 func TestTheCatchableConstantTrapsCarryTheProgramOn(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			name: "an_index_that_isnt",
@@ -159,6 +162,7 @@ func TestTheCatchableConstantTrapsCarryTheProgramOn(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "const_catch.gy", tc.src)
 			pyOut, pyCode := oracleTrap(t, path)
 			if pyCode != 0 {
@@ -189,6 +193,7 @@ func TestTheCatchableConstantTrapsCarryTheProgramOn(t *testing.T) {
 // has to be a row that asserts and matches, not one the matrix shrugs at. A family pinned only in unit
 // tests is a family that can regress in the CLI, which is where the symptom was.
 func TestTheConstantTrapProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	matrix, err := os.ReadFile(filepath.Join(recordRoot, "integration", "conformance-matrix.json"))
 	if err != nil {
 		t.Fatalf("read the matrix (run `go test ./integration` once to write it): %v", err)

@@ -12,6 +12,7 @@ import (
 // is a debt row (programs/probe_module_scope.gy) rather than a parity case.
 
 func TestFunctionReadsModuleScope(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ name, src, want string }{
 		{
 			"module constant",
@@ -76,6 +77,7 @@ func TestFunctionReadsModuleScope(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := captureStdout(t, tc.src)
 			if got != tc.want {
 				t.Fatalf("interpreter printed %q, want %q\nsource:\n%s", got, tc.want, tc.src)
@@ -85,6 +87,7 @@ func TestFunctionReadsModuleScope(t *testing.T) {
 }
 
 func TestModuleScopeDoesNotWeakenTheChecker(t *testing.T) {
+	t.Parallel()
 	// Widening a function's reach must not cost the front end its bite. Each of these is a
 	// mistake the same analyzer still has to name.
 	cases := []struct{ name, src, want string }{
@@ -108,6 +111,7 @@ func TestModuleScopeDoesNotWeakenTheChecker(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			diags := checkDiags(t, tc.src)
 			if !scopeHasDiag(diags, LevelError, tc.want) {
 				t.Fatalf("expected %s; diags=%v\nsource:\n%s", tc.want, diags, tc.src)
@@ -117,6 +121,7 @@ func TestModuleScopeDoesNotWeakenTheChecker(t *testing.T) {
 }
 
 func TestModuleScopeShapesCheckClean(t *testing.T) {
+	t.Parallel()
 	// The programs TestFunctionReadsModuleScope runs must also analyse clean — the checker used
 	// to refuse the "defined below the def" one with `undefined name`, which failed --check and
 	// blocked --aot on a program that simply works.
@@ -140,6 +145,7 @@ func TestModuleScopeShapesCheckClean(t *testing.T) {
 // program's behaviour at run time: a name that never entered the environment has to arrive as a
 // catchable NameError naming the missing binding, not as an empty print and exit 0.
 func TestUnboundReadFromAFunctionIsACatchableNameError(t *testing.T) {
+	t.Parallel()
 	// A function reading a name the module never binds is a program the checker refuses — before
 	// the run, at the line, with the binding named. That is a strictly better answer than the one
 	// this case originally pinned (the retired engine ran the program and raised at the call, and

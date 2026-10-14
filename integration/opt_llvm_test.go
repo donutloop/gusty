@@ -74,6 +74,7 @@ func compileOptRun(t *testing.T, src string, level int) string {
 // runCompiled, so comparing the -O2 artifact against it asks a real question — did LLVM's optimiser
 // delete a root that keeps a growing list alive — rather than comparing an artifact with itself.
 func TestRealOptPipelineGC(t *testing.T) {
+	t.Parallel()
 	haveOptTools(t)
 	src := `lst = [1, 2, 3]
 s = 0
@@ -94,6 +95,7 @@ print(s)`
 // scalar-replacement demonstration: the loop alloca is replaced by a register
 // and the sum folded to a constant).
 func TestRealOptPipelineHotLoop(t *testing.T) {
+	t.Parallel()
 	haveOptTools(t)
 	src := `s = 0
 for i in range(1000):
@@ -110,6 +112,7 @@ print(s)`
 // real tool: it folds a runtime add of constants to a literal, something the
 // textual front-end pass cannot see through calls.
 func TestRealOptFoldsArithmetic(t *testing.T) {
+	t.Parallel()
 	haveOptTools(t)
 	res, err := lang.Compile("print(2 + 3)")
 	if err != nil {

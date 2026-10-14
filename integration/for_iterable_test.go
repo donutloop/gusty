@@ -104,8 +104,10 @@ var loopCounterAgainstContainerIR = regexp.MustCompile(`icmp [a-z]+ i32 %[^,]+, 
 // TestTheCompiledLoopAnswersWhatTheReferenceAnswers runs every answered row through the CLI and asks the
 // pinned interpreter the same program.
 func TestTheCompiledLoopAnswersWhatTheReferenceAnswers(t *testing.T) {
+	t.Parallel()
 	for _, tt := range forIterableCLIRows {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a program the reference runs — the code the contract reserves for a compiler bug (ADR 0166)\n%s", stderr)
@@ -128,6 +130,7 @@ func TestTheCompiledLoopAnswersWhatTheReferenceAnswers(t *testing.T) {
 // module this suite compiles may put a container global where an i32 count belongs, whether the loop was
 // answered by the fold, by the runtime road, or refused by the guard.
 func TestTheLoopNeverComparesItsCounterWithAContainerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	srcs := []string{}
 	for _, tt := range forIterableCLIRows {
 		srcs = append(srcs, tt.src)
@@ -137,6 +140,7 @@ func TestTheLoopNeverComparesItsCounterWithAContainerThroughTheCLI(t *testing.T)
 	}
 	for _, src := range srcs {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				return // a refusal is the other honest answer; the IR cannot contain what was never emitted
@@ -152,6 +156,7 @@ func TestTheLoopNeverComparesItsCounterWithAContainerThroughTheCLI(t *testing.T)
 // a heap list is the SAME helper call the `sorted` answer emits, so a fix to one cannot leave the other
 // behind.
 func TestTheRuntimeRoadWalksTheRuntimesOwnHelpers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		src  string
 		need string
@@ -164,6 +169,7 @@ func TestTheRuntimeRoadWalksTheRuntimesOwnHelpers(t *testing.T) {
 		{"def b():\n    return [1, 2, 3]\nfor v in reversed(b()):\n    print(v)", "call void @rt_reverse"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(tc.src)
 			if err != nil {
 				t.Fatalf("%q refused (%v); this loop is answered by the runtime road and must not be refused", tc.src, err)
@@ -179,8 +185,10 @@ func TestTheRuntimeRoadWalksTheRuntimesOwnHelpers(t *testing.T) {
 // cannot walk is refused, the refusal names the iterable and the half that is missing, and none of these
 // programs reaches exit 2 — the code the contract reserves for a module the compiler wrote and LLVM refused.
 func TestWhatTheLoopRowStillCannotAnswerThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tc := range forIterableRefusalRows {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tc.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a program the reference runs: this is the code the contract reserves for a compiler bug (ADR 0166)\n%s", stderr)
@@ -222,6 +230,7 @@ func TestWhatTheLoopRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 // TestTheLoopProgramMatchesTheReferenceThroughTheCLI is the whole row as one program, line for line against
 // the recorded reference answer.
 func TestTheLoopProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/for_iterables.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -255,6 +264,7 @@ func TestTheLoopProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
 // TestTheLoopProgramIsOnTheRecord is ADR 0302's rule at this altitude: a program whose record disappeared
 // fails here rather than passing by having nothing to compare against.
 func TestTheLoopProgramIsOnTheRecord(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/for_iterables.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)

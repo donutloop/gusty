@@ -6,6 +6,7 @@ import (
 )
 
 func TestCheckSourceClean(t *testing.T) {
+	t.Parallel()
 	res, err := CheckSource("def add(a: int, b: int) -> int:\n    return a + b\nx = add(1, 2)\n")
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
@@ -19,6 +20,7 @@ func TestCheckSourceClean(t *testing.T) {
 }
 
 func TestCheckSourceErrors(t *testing.T) {
+	t.Parallel()
 	res, err := CheckSource("def f() -> int:\n    return \"bad\"\n")
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
@@ -32,6 +34,7 @@ func TestCheckSourceErrors(t *testing.T) {
 }
 
 func TestCheckSourceParseError(t *testing.T) {
+	t.Parallel()
 	res, err := CheckSource("def f(:")
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
@@ -54,6 +57,7 @@ func TestCheckSourceParseError(t *testing.T) {
 // string. This is the whole point of recovery: a broken document still tells
 // you all the places that are broken.
 func TestCheckSourceReportsEveryRecoveredError(t *testing.T) {
+	t.Parallel()
 	res, err := CheckSource("a = 1\nb = $\nc = @\nd = 4\n")
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
@@ -80,6 +84,7 @@ func TestCheckSourceReportsEveryRecoveredError(t *testing.T) {
 // Statements that DO parse must still be checked: recovery is not "stop at the
 // first bad line".
 func TestCheckSourceChecksWhatParsed(t *testing.T) {
+	t.Parallel()
 	res, err := CheckSource("a = 1\nb = $\ndef f(x: int) -> int:\n    return \"s\"\n")
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
@@ -90,6 +95,7 @@ func TestCheckSourceChecksWhatParsed(t *testing.T) {
 }
 
 func TestCheckFilesAggregates(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	good := dir + "/good.gy"
 	bad := dir + "/bad.gy"

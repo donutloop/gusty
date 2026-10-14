@@ -28,6 +28,7 @@ import (
 // can only be read through its tag.
 
 func TestComprehensionElementsMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		// The mis-parsed shape: a brace display as the element of a list comprehension.
 		{"comp_over_set_literals", "d = [{1, 2} for x in [1, 2]]\nprint(len(d))\n", "2\n"},
@@ -92,6 +93,7 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 		{"empty_dict_literal", "d = {}\nd[\"a\"] = 1\nprint(d[\"a\"])\n", "1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -118,6 +120,7 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 // too; the compiled leg must refuse (exit 1) and never exit 2, which would be the compiler rejecting
 // its own module rather than the program.
 func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// (Two `len(...)` rows used to sit here demanding refusals — `len(d[0])` of a comprehension
@@ -140,6 +143,7 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_refuse.gy", tc.src)
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
@@ -174,6 +178,7 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 // TestComprehensionFailuresMatchCPython pins the rows where CPython itself dies: the element exists
 // but the program gets a position wrong. Neither engine may exit 0 with a value.
 func TestComprehensionFailuresMatchCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"index_out_of_range",
@@ -187,6 +192,7 @@ func TestComprehensionFailuresMatchCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.want) {
@@ -220,6 +226,7 @@ func TestComprehensionFailuresMatchCPython(t *testing.T) {
 // A set's iteration order is this runtime's own business — CPython's moves with the hash seed — so the
 // set rows ask length and membership, and pin a printed list only where the order is agreed.
 func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"mixed_list",
@@ -289,6 +296,7 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_mixed.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -313,6 +321,7 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 // does not reach. Each is answered by CPython and by the record; the compiled backend declines by
 // naming the promise it is missing, and never by exiting 2.
 func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			// A name the escape analysis kept as a compile-time list has no heap object to walk at all,
@@ -334,6 +343,7 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 		// (roadmap Gap R.79, ADR 0247).)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_tagged_refuse.gy", tc.src)
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
@@ -372,6 +382,7 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 // 0 — two answers to one question. ADR 0241's pair (mark the object *and* the variable) is what the
 // rows below check, each printing the container and reading a slot of it.
 func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"grown_text_list",
@@ -413,6 +424,7 @@ func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_onekind.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
@@ -439,10 +451,12 @@ func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
 // the same shape is the refusal above; the row only checks that neither engine exits 0 with a value,
 // and that the record's own failure names what CPython names.
 func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"text_element_in_addition", "xs = [1, \"a\"]\nxs.append(2)\nout = [x + 0 for x in xs]\nprint(out)\n", "can only concatenate str"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_mixed_trap.gy", tc.src)
 			py, pyCode := oracleTrap(t, path)
 			if pyCode == 0 || !strings.Contains(py, tc.want) {
@@ -483,6 +497,7 @@ func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 // `{0: 1}`, and `out["a"]`, which looks text up by index and tag together, died with `KeyError: key not
 // found` while the record and CPython both printed 1.
 func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"text_key_is_findable_by_its_text",
@@ -523,6 +538,7 @@ func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, t.TempDir(), "comp_dict_entry.gy", tc.src)
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)

@@ -47,6 +47,7 @@ func mathProbe(t *testing.T) string {
 // TestCLIAgentTheReferenceRunsTheProgramThatSpellsMathItsOwnWay is the reference leg through the shipped CLI:
 // one source text, two engines' outputs compared rather than described.
 func TestCLIAgentTheReferenceRunsTheProgramThatSpellsMathItsOwnWay(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	probe := mathProbe(t)
 	ref, ok := cpythonPlainOut(t, dir, probe)
@@ -69,6 +70,7 @@ func TestCLIAgentTheReferenceRunsTheProgramThatSpellsMathItsOwnWay(t *testing.T)
 // TestCLIAgentEveryPositionThatHidADoubleAnswersTheReferenceThroughTheCLI is the L11.6 family asked of the
 // reference-spelled name, one line at a time, because a single probe cannot say which position broke.
 func TestCLIAgentEveryPositionThatHidADoubleAnswersTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{"the census row, spelled as the reference does", "import math\nprint(math.pi)\n", "3.141592653589793\n"},
@@ -86,6 +88,7 @@ func TestCLIAgentEveryPositionThatHidADoubleAnswersTheReferenceThroughTheCLI(t *
 		{"an extension name, both spellings", "import math\nprint(math.PHI)\nprint(math.phi)\n", "1.618033988749895\n1.618033988749895\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "mathuse.gy", tc.src)
 			got, code := cliRunMerged(t, "--file", path)
 			if code == 2 {
@@ -112,6 +115,7 @@ func TestCLIAgentEveryPositionThatHidADoubleAnswersTheReferenceThroughTheCLI(t *
 // TestTheMathProbeIsAssertedParityInTheMatrix keeps the promotion honest: the program the ledger used to skip
 // for its spelling is a row that asserts, matches, and is conformant.
 func TestTheMathProbeIsAssertedParityInTheMatrix(t *testing.T) {
+	t.Parallel()
 	matrix, err := os.ReadFile(filepath.Join(recordRoot, "integration", "conformance-matrix.json"))
 	if err != nil {
 		t.Fatalf("read the matrix (run `go test ./integration` once to write it): %v", err)
@@ -156,6 +160,7 @@ func TestTheMathProbeIsAssertedParityInTheMatrix(t *testing.T) {
 // does not have is a refusal in words at exit 1, never the contract's own-bug code, and the sentence names the
 // missing attribute (ADR 0166, ADR 0006).
 func TestAMathNameTheModuleDoesNotDeclareIsRefusedAtTheContractCode(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ src, want string }{
 		{"import math\nprint(math.PI2)\n", "math.PI2"},
@@ -163,6 +168,7 @@ func TestAMathNameTheModuleDoesNotDeclareIsRefusedAtTheContractCode(t *testing.T
 		{"import math\nprint(math.nan)\n", "math.nan"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
 			path := writeSrc(t, dir, "mathmiss.gy", tc.src)
 			out, code := cliRunMerged(t, "--file", path)
 			if code != 1 {
@@ -181,6 +187,7 @@ func TestAMathNameTheModuleDoesNotDeclareIsRefusedAtTheContractCode(t *testing.T
 // TestTheStdlibModuleOnDiskIsWhatTheTestsImport closes the loop between the module the unit tests read and the
 // module the CLI resolves: a `--stdlib` pointing elsewhere must not be what the probe's answer came from.
 func TestTheStdlibModuleOnDiskIsWhatTheTestsImport(t *testing.T) {
+	t.Parallel()
 	if got := lang.ResolveImportPath("math"); !strings.HasSuffix(got, filepath.Join("stdlib", "math.gy")) {
 		t.Fatalf("the resolver answered %q for `import math` — the probe's answer has to come from the module in "+
 			"the tree, not from a --stdlib someone exported", got)

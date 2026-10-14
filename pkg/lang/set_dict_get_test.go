@@ -20,6 +20,7 @@ import (
 
 // The set literal's COUNT is the number of distinct members, not the number the source spelled.
 func TestSetLiteralDeduplicatesItsElements(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		{`print(len({1, 2, 2, 3}))`, `3`},
 		{`print(len({1, 1, 1}))`, `1`},
@@ -32,6 +33,7 @@ func TestSetLiteralDeduplicatesItsElements(t *testing.T) {
 		{`print(9 in {1, 2, 2, 3})`, `False`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -50,6 +52,7 @@ func TestSetLiteralDeduplicatesItsElements(t *testing.T) {
 // The count a set global CARRIES is the deduplicated one; a global that stores 4 and prints 3 is a
 // set whose length disagrees with its own rendering, which is what this bug was.
 func TestSetGlobalCountAndElementsAgree(t *testing.T) {
+	t.Parallel()
 	res, err := Compile(`print(len({1, 2, 2, 3}))`)
 	if err != nil {
 		t.Fatalf("the reference answers this at exit 0: %v", err)
@@ -74,6 +77,7 @@ func TestSetGlobalCountAndElementsAgree(t *testing.T) {
 // What a `dict.get` ANSWERS with is the slot's kind, and print must ask. Four kinds, four roads that
 // had each lost it.
 func TestDictGetAnswersTheKindItsSlotHas(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ src, want string }{
 		// a text slot — the interned index used to print through %d as `0`
 		{`print({1: "a"}.get(1))`, `a`},
@@ -96,6 +100,7 @@ func TestDictGetAnswersTheKindItsSlotHas(t *testing.T) {
 		{`print({1: "a"}.get(9))`, `None`},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, " ", ""), func(t *testing.T) {
+			t.Parallel()
 			want := strings.TrimSpace(referenceOut(t, tc.src))
 			if want == "" || strings.Contains(want, "Error") {
 				t.Fatalf("the reference did not answer: %q", want)
@@ -114,6 +119,7 @@ func TestDictGetAnswersTheKindItsSlotHas(t *testing.T) {
 // One question per expression: the print road, the void road and the verdict road each ask the SAME
 // lookup the fold performs, so a slot can never be rendered with a kind it does not have.
 func TestDictGetKindIsAskedOfTheFoldOwnLookup(t *testing.T) {
+	t.Parallel()
 	body, err := os.ReadFile("codegen.go")
 	if err != nil {
 		t.Fatal(err)
@@ -132,6 +138,7 @@ func TestDictGetKindIsAskedOfTheFoldOwnLookup(t *testing.T) {
 // The verdict half lives in the shared pure predicate, so the record and the compiler answer the
 // same question and a REPL cannot echo True beside a binary echoing 1.
 func TestDictGetVerdictGoesThroughTheSharedPredicate(t *testing.T) {
+	t.Parallel()
 	out, err := pythonTwin(t, "print({1: True}.get(1))")
 	if err == nil && strings.TrimSpace(out) != "True" {
 		t.Skip("the reference on this host disagrees")
@@ -147,6 +154,7 @@ func TestDictGetVerdictGoesThroughTheSharedPredicate(t *testing.T) {
 // test, not a skipped one: when the compiled leg starts answering these, delete the t.Log and move the
 // rows into TestDictGetAnswersTheKindItsSlotHas — do not delete the coverage.
 func TestDictGetFloatSlotStillOwesItsTag(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`print({1: 1.5}.get(1))`,
 		`print({1: 1.5}.get(9, 2.5))`,

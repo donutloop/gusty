@@ -23,6 +23,7 @@ import (
 // TestACallResultSubscriptAnswersThroughTheCLI is the answering half: each row runs the same source through
 // the reference and through the CLI, and the two have to agree line for line.
 func TestACallResultSubscriptAnswersThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def build():\n    return [1, 2, 3]\n\nprint(build()[0], build()[2])",
 		"def cfg():\n    return {\"a\": 1, \"b\": 2}\n\nprint(cfg()[\"b\"])",
@@ -57,6 +58,7 @@ func TestACallResultSubscriptAnswersThroughTheCLI(t *testing.T) {
 		"def nums():\n    return [1, 2, 3]\n\ni = 1\nprint(nums()[i])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			want := pythonOutput(t, src+"\n")
 			stdout, stderr, code := cliStreams(t, "--eval", src)
 			if code == 2 {
@@ -77,6 +79,7 @@ func TestACallResultSubscriptAnswersThroughTheCLI(t *testing.T) {
 // compiler bug, is forbidden on every one of them (ADR 0006, ADR 0214). Before the row these were exit 1
 // refusals; a refusal that arrives where the reference raises is the wrong-answer class one step away.
 func TestACallResultSubscriptRaisesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		src      string
 		contains string
@@ -91,6 +94,7 @@ func TestACallResultSubscriptRaisesThroughTheCLI(t *testing.T) {
 		{"def b():\n    return [1, 2]\n\ntry:\n    print(b()[7])\nexcept IndexError:\n    print(\"caught\")", "caught"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
@@ -110,6 +114,7 @@ func TestACallResultSubscriptRaisesThroughTheCLI(t *testing.T) {
 // admit that the answer is not a value at the subscript door, which is the defect being fixed here — and
 // that a refusal never arrives at exit 0 or at the code a compiler bug owns (ADR 0249, ADR 0166).
 func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name       string
 		src        string
@@ -150,6 +155,7 @@ func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *test
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program — the code the contract reserves for a compiler bug (ADR 0166):\n%s", stderr)
@@ -175,6 +181,7 @@ func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *test
 // the door this row grew must not grow by stealing the sentence that road owes them (ADR 0249's gate-and-door
 // rule, and the reason the row is a rewrite rather than a second reader).
 func TestThePairRoadKeepsWhatTheCallResultSubscriptLeavesIt(t *testing.T) {
+	t.Parallel()
 	stdout, stderr, code := cliStreams(t, "--eval", "def mk():\n    return [1.0]\n\nprint(mk()[0])")
 	if code != 0 {
 		t.Fatalf("a float slot of an answer did not print at exit 0 (exit %d):\nstdout %q\nstderr %q", code, stdout, stderr)
@@ -191,6 +198,7 @@ func TestThePairRoadKeepsWhatTheCallResultSubscriptLeavesIt(t *testing.T) {
 		{"def mk():\n    return [{\"k\": 1}]\n\nprint(mk()[0][\"k\"] + 1)", "index must be a constant"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program — the code the contract reserves for a compiler bug (ADR 0166):\n%s", stderr)
@@ -215,6 +223,7 @@ func TestThePairRoadKeepsWhatTheCallResultSubscriptLeavesIt(t *testing.T) {
 // and asks the existing read, so no module puts a container global in a value position — the one line that
 // made `llc` reject the module, and the code the exit-code contract counts as the compiler's bug.
 func TestNoCallResultSubscriptModuleReturnsAGlobalToAValuePosition(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		"def build():\n    return [1, 2, 3]\n\nprint(build()[0], build()[2])",
 		"def cfg():\n    return {\"a\": 1, \"b\": 2}\n\nprint(cfg()[\"b\"])",
@@ -224,6 +233,7 @@ func TestNoCallResultSubscriptModuleReturnsAGlobalToAValuePosition(t *testing.T)
 		"def fill():\n    ys = []\n    for i in range(3):\n        ys.append(i * 2)\n    return ys\n\nprint(fill()[2])",
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
 			res, err := lang.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
@@ -244,6 +254,7 @@ func TestNoCallResultSubscriptModuleReturnsAGlobalToAValuePosition(t *testing.T)
 // those doors for a call's answer and for nothing the fold already answers (ADR 0249's gate-and-door rule,
 // asserted where a reader can see the IR).
 func TestTheFoldRoadStillCarriesNoDoorThroughACallResult(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{`print([1, 2][0])`, `print([[1, 2][0], 3])`, `print([{1: 2}[1], 3])`} {
 		_, stderr, code := cliStreams(t, "--eval", src)
 		if code != 0 {
@@ -268,6 +279,7 @@ func TestTheFoldRoadStillCarriesNoDoorThroughACallResult(t *testing.T) {
 
 // The whole matrix as one program, line for line against the recorded reference answer.
 func TestTheCallResultSubscriptProgramMatchesTheReferenceThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile("programs/container_subscript.gy")
 	if err != nil {
 		t.Fatalf("read program: %v", err)
@@ -299,6 +311,7 @@ func TestTheCallResultSubscriptProgramMatchesTheReferenceThroughTheCLI(t *testin
 }
 
 func TestTheCallResultSubscriptProgramIsAnAssertedMatrixRow(t *testing.T) {
+	t.Parallel()
 	cases := conformanceCases()
 	var row *lang.ConformanceCase
 	for i := range cases {

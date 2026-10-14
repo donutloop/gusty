@@ -15,6 +15,7 @@ import (
 // computed at run time, because a guard that only works for constants guards nothing.
 
 func TestZeroDivisionAgreesOnEveryPath(t *testing.T) {
+	t.Parallel()
 	src := readProgram(t, "zero_division.gy")
 	want := "2.0\n2\n3\ncaught division\ncaught modulo\ncaught floor division\ncaught float modulo\ncaught a divisor computed at run time\n"
 
@@ -39,6 +40,7 @@ func TestZeroDivisionAgreesOnEveryPath(t *testing.T) {
 // as well: an uncaught ZeroDivisionError is class 3 on both run paths (ADR 0211 made the
 // compiled path able to say so), and CPython calls it an error too.
 func TestUncaughtDivisionByZeroIsTheRuntimeClass(t *testing.T) {
+	t.Parallel()
 	src := "x = 6\nprint(x / 0)\n"
 
 	bin := cliBin(t)
@@ -64,6 +66,7 @@ func TestUncaughtDivisionByZeroIsTheRuntimeClass(t *testing.T) {
 // stdout alone: the traceback belongs to stderr, and a trap that puts anything on stdout is
 // still answering the question it was supposed to refuse.
 func TestCompiledDivisionNeverPrintsGarbage(t *testing.T) {
+	t.Parallel()
 	bin := cliBin(t)
 	dir := t.TempDir()
 	for i, src := range []string{

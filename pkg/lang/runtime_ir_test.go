@@ -16,6 +16,7 @@ import (
 // This test scans every embedded IR block for both, so the mistake is caught by a test
 // instead of by `opt -passes=verify` at build time.
 func TestEmbeddedRuntimeIRIsWellFormedText(t *testing.T) {
+	t.Parallel()
 	blocks := map[string]string{
 		"heapRuntimeIR":  heapRuntimeIR,
 		"raiseRuntimeIR": raiseRuntimeIR,
@@ -54,6 +55,7 @@ func TestEmbeddedRuntimeIRIsWellFormedText(t *testing.T) {
 // TestRuntimeHelpersAreDefinedOnce guards the other failure I hit: adding a helper that
 // already exists gives the verifier "invalid redefinition of function".
 func TestRuntimeHelpersAreDefinedOnce(t *testing.T) {
+	t.Parallel()
 	all := heapRuntimeIR + "\n" + raiseRuntimeIR
 	seen := map[string]int{}
 	for _, line := range strings.Split(all, "\n") {
