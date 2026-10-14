@@ -10771,3 +10771,27 @@ declared, an alias is retargeted, and everything the pass cannot prove comes bac
   out to be programs CPython itself stops (`apply1(twice, 3)` is a `TypeError`, not a value), which is why they are
   not on the list. The list came from one script that printed `ours`/`ref` side by side; that script is worth more
   than any table I could have written from intent.
+
+## The gate was a serial command in a concurrent suite (AGENTS.md § Test gate, makefile)
+
+**Change (loop contract)**: `AGENTS.md` told the cycle "run `go test ./...` before commit" while the makefile
+had long since grown the concurrent runners — so the command an agent read from the contract was the slowest
+correct one available (`make testparallel` is ~1m40s against the serial run's ~11m43s on the 20-core box,
+ADR 0343), and it was also the one missing two flags. `AGENTS.md` now names `make testparallel` as the gate in
+all three places a gate is stated (the Correctness bullet, loop step 5, the Testing rule), and a new
+§ Test gate table lists the targets and when each one is right.
+
+- **A hand-rolled copy of a makefile target is not the same command.** The bare `go test ./...` drops
+  `-tags=llvm20`, and a suite built without the tag skips its LLVM legs — it reports a green that was never
+  earned — and drops `-count=1`, which is the only thing standing between a doc guard and `go test`'s cache
+  (ADR 0317: the cache key holds build inputs, not the `docs/*.md` and `roadmap.md` a guard opens at runtime).
+  Pointing the contract at the *target* rather than a transcription of it is what keeps the flags attached.
+- **A contract and a makefile drift the same way two modules do.** `tools/testshards/main_test.go` asserts the
+  makefile's serial target keeps the tag and the flag but its comment claimed the serial run was "the gate
+  AGENTS.md names" — true once, then only about the artifact-writing modes. The comment now says which half
+  of that is still true, because a stale comment in the guard that watches the gate is the failure mode with
+  no test to catch it.
+- **Concurrency has an exception and it had to travel with the recommendation.** `GUSTY_GOLDEN_UPDATE` and
+  `GUSTY_GOLDEN_MISSING` write per-run ledgers, so N concurrent runs would each overwrite the file with their
+  own subset (ADR 0313, ADR 0315). A doc that says "run the parallel one" without naming the serial
+  carve-out manufactures a corrupted ledger out of an agent who was following instructions.

@@ -522,7 +522,8 @@ func TestEvidenceNamesDoNotCollideAcrossPackages(t *testing.T) {
 
 // --- the serial command the loop is told to run (docs/operations.md § Running the suite) ---------
 //
-// `make test` is the gate AGENTS.md names, and half the suite reads files that live outside the package
+// `make test` is the serial command the loop keeps for the artifact-writing modes (the commit gate AGENTS.md
+// names is `make testparallel`), and half the suite reads files that live outside the package
 // holding the test — docs/language.md, roadmap.md, integration/programs/*.gy. `go test`'s cache key is the
 // package's build inputs, not the data a test opens, so on a warm cache a doc guard can be reported green by
 // a run that never opened the file a doc edit changed. The only honest serial command is the one that skips

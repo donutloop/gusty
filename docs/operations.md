@@ -1111,6 +1111,11 @@ the compiled leg runs the module under `lli-20`, and the reference leg asks `pyt
 `lli` 57 ms, `llvm-as` 10 ms, the Go side of the case 1 ms. The toolchain is the suite, so the suite is
 only as fast as the number of cores it is allowed to use.
 
+**The commit gate `AGENTS.md` names is `make testparallel`** — the concurrent runner. The serial `make test`
+stays the command for the artifact-writing modes, and a hand-rolled `go test ./...` is not a gate at all: it
+loses the `-tags=llvm20` build (so the LLVM legs skip and the green means nothing) and the `-count=1` (so a
+doc guard can answer from the cache without opening the document it guards).
+
 | Command | What it does |
 |---|---|
 | `make test` | `go test -tags=llvm20 -count=1 ./...` — the plain serial run, and **the only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`): those write per-run ledgers, and N shards would each write their own subset over the file. The `-count=1` is load-bearing, not hygiene: a third of the suite are guards over files that live outside the package holding the test (`docs/*.md`, `roadmap.md`, `integration/programs/*.gy`, `testdata/*.json`), and those are not in `go test`'s cache key — on a warm cache an edited doc can be certified by a run that never opened it (ADR 0317; `tools/testshards` asserts the makefile keeps the flag) |

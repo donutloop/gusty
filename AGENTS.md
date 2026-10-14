@@ -45,7 +45,7 @@ Build the best Python-like language ever known by humanity, compiled through LLV
 - **Internal components** — lexer (including indentation/`INDENT`/`DEDENT` tracking), parser, AST, semantic analysis / type inference (gradual typing, optional annotations), a lightweight runtime (boxed values, reference counting or a simple GC, dynamic dispatch for methods), LLVM IR codegen, optimization pass pipeline, linker integration. Keep them clean, layered, and extensible.
 - **User experience** — a great CLI and REPL for humans: clear help, discoverable commands, readable diagnostics with source spans and suggestions (in the spirit of Python's tracebacks, but better), sensible defaults for optimization levels and target triples, fast REPL feedback despite AOT compilation underneath (e.g. via a JIT execution engine for interactive use).
 - **Agentic workflows** — this toolchain is not just for humans: it is also a compilation engine for agents and scripts. The interface must expose machine-readable output (JSON diagnostics, JSON AST/IR dumps, schema), stable CLI flags (`--emit-llvm`, `--emit-ast`, `--eval`, `--file`, `--verify`, `--target`, `--opt-level`, `--version`), and self-describing commands so an agent can discover the full language surface, plan its compilation, and consume results without guessing.
-- **Correctness** — every feature ships with unit tests, IR verification (emitted textual IR checked by external `llc`/`llvm-as`), lit-style codegen tests, and verify coverage. `go test ./...` must pass before commit.
+- **Correctness** — every feature ships with unit tests, IR verification (emitted textual IR checked by external `llc`/`llvm-as`), lit-style codegen tests, and verify coverage. **`make testparallel`** — the makefile's concurrent suite runner — must pass before commit (see § Test gate below; `docs/operations.md` § Running the suite is the authority).
 
 Because we build for both humans and agents, the interface must reflect both: humans get a friendly CLI/REPL; agents get structured, predictable, self-describing access. Every new feature should consider its machine consumption path (JSON output, exit codes, schema) as well as its human one.
 
@@ -59,6 +59,27 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 - **LLVM codegen**: a textual LLVM IR emitter (`pkg/lang/codegen.go`), verified and lowered by external `llc`/`llvm-as` and linked with `cc` — no Go LLVM bindings.
 - **LLVM version**: pin one supported version (e.g. LLVM 20 / `llc-20`) and record it in `docs/operations.md`; do not silently float across LLVM versions.
 - **Install/build**: LLVM tools installed from apt.llvm.org (Debian/Ubuntu) or Homebrew (macOS) matching the pinned version.
+
+## Test gate
+
+The suite is subprocess-bound — almost every case ends inside `llc-20`, `cc`, `lli-20` or `python3` — so the
+commit gate is the makefile's **concurrent** runner, never a bare serial `go test ./...`:
+
+| Command | When |
+|---|---|
+| `make testparallel` | **the default gate** — `go test -tags=llvm20 -count=1 -parallel $(nproc) -timeout 90m ./...`, the whole suite with its cases overlapping (ADR 0343). `PARALLEL=N` overrides the fan-out |
+| `make testshards` | the same cases in one process per core (what CI runs, ADR 0313); `make showshards` prints the partition as JSON without running |
+| `make test` | the plain serial run (`go test -tags=llvm20 -count=1 ./...`) — **the only correct command for the artifact-writing modes** (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`), which write per-run ledgers that N concurrent runs would each overwrite with their own subset |
+| `make testrace` | the same suite under the race detector — the check the static analysis cannot replace |
+| `make parallelism` | the parallelism guard on its own (`tools/parify -check`, ADR 0343) |
+
+Every command that runs cases builds against the pinned LLVM (`-tags=llvm20`) and skips the test cache
+(`-count=1`, applied per shard by the sharding harness). Both are load-bearing: without the tag the LLVM legs
+skip and the run reports a green that was never earned, and a third of the suite are guards over files —
+`docs/*.md`, `roadmap.md`, `integration/programs/*.gy`, `testdata/*.json` — that are not in `go test`'s cache
+key, so on a warm cache an edited doc can be certified by a run that never opened it (ADR 0317).
+Use the target, not a hand-rolled `go test` line: the makefile is where the tag, the budget and the fan-out
+live, and `tools/testshards` asserts the makefile keeps the tag and the flag.
 
 ## The loop
 
@@ -76,7 +97,10 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
    - docs — `docs/language.md`, `docs/operations.md`, `README.md`, `_001_session_learnings.md`, an ADR if needed.
 3. **Machine path** — if the feature is language/interface, make sure it is discoverable via schema/help and consumable as JSON where it makes sense (agents must not need to scrape prose or parse raw LLVM IR text blindly).
 4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (JIT-executes or links) real source. Every behavioural case covers both **legs**, never two engines: the record leg (`evalGolden`/`runGoldenStdout`/`goldenRepr` against `testdata/interpreter-golden.json`) and the reference leg (`integration/`, `Compile` + `llc`, or the CLI against CPython).
-5. Run tests before committing: full test suite must pass, and every emitted module must pass LLVM's module verifier.
+5. Run tests before committing: `make testparallel` (the makefile's concurrent runner — see § Test gate) must
+   pass, and every emitted module must pass LLVM's module verifier. Use `make test` instead when the change
+   involves the artifact-writing modes (`GUSTY_GOLDEN_UPDATE`, `GUSTY_GOLDEN_MISSING`), which must stay
+   single-process.
 6. Commit with a clear message (`feat(codegen): ...`, `feat(parser): ...`).
 7. Always push your commits: `git push origin HEAD`.
 8. If the remote diverged, `git pull --rebase origin HEAD` then push again.
@@ -127,7 +151,8 @@ Every feature or change ships with BOTH:
 - **Unit tests** (in the package/module under change — e.g. parser tests, type-checker tests, codegen tests), and
 - **Integration tests** (`tests/integration/`) that compile real source through the full pipeline (lex → parse → typecheck → codegen → optimize → JIT-execute or link-and-run) and check both the output and that the emitted LLVM module verifies cleanly.
 
-Always add both — never a feature without unit + integration coverage. Every behavioural case is judged
+Always add both — never a feature without unit + integration coverage, and never a commit whose gate was a
+bare `go test ./...` instead of `make testparallel`. Every behavioural case is judged
 on both witness legs, not on two engines: a case that asserts a value, a print or a trap also asks the
 record leg (`evalGolden`/`runGoldenStdout`) and the reference leg (the CLI or `Compile` → `llc` against
 CPython), and keeps all of them green before commit. There is no interpreter case to write: the engine
