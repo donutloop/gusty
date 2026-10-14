@@ -1134,15 +1134,34 @@ address space and its own heap; a run's directory, environment and standard-libr
 | Command | What it does |
 |---|---|
 | `go test -tags=llvm20 -count=1 -parallel 20 ./...` | the whole suite with the cases overlapping — **about 1 m 40 s** on 20 cores against 11 m 43 s serial |
-| `go run ./tools/parify -check -quiet ./pkg/... ./cmd/... ./integration/... ./tools/...` | the parallelism guard: fails (exit 1) on a case that calls `t.Parallel()` while its body — or any chain of calls it reaches, production files included — touches process state, and on a case left serial without a reason. Prints the census: `2246 test(s), 646 subtest(s) — 2878 parallel, 2 serial, 12 marked serial` |
+| `go run ./tools/parify -check -quiet ./pkg/... ./cmd/... ./integration/... ./tools/...` | the parallelism guard: fails (exit 1) on a case that calls `t.Parallel()` while its body — or any chain of calls it reaches, production files included — touches process state, and on a case left serial without a reason. Prints the census: `2256 test(s), 649 subtest(s) — 2902 parallel, 2 serial, 1 marked serial` |
 | `go run ./tools/parify -apply <patterns>` | inserts `t.Parallel()` into every case the analysis clears; refuses to write a file it cannot re-parse and gofmt, so a bad insertion is a non-zero exit and not a broken tree. Idempotent |
 | `go run ./tools/parify -json <patterns>` | one verdict per case: `{file, test, subtest, parent, parallel, markedSerial, justified, violation, reason, action}` — the `reason` names the process-wide act **and the call chain to it** |
 
 A case that must own the process says so with `//parify:serial <reason>` on the line above it, and the reason
-is mandatory: twelve cases carry it (three `t.Setenv` cases, the `JITOptions{InProcess: true}` case, and nine
-that retarget the package's `llc`/`opt`/`objdump` command or the CLI's standard-library root). `t.Setenv`
-cannot be called from a parallel test at all — Go 1.22 panics — so those cases are the ones the tool will
-never mark, and the marker is what stops their `t.Parallel()` from coming back. The census line above is not
+is mandatory, and exactly **one** case carries it: the parity case that asks for `JITOptions{InProcess: true}`,
+which enters the program on this process's own fd 1 and fd 2 and so cannot overlap another run. Everything else
+that used to need it was refactored instead — the toolchain commands became `ToolOverride` values, and the
+environment knobs became functions of an environment they are given:
+
+```go
+lang.PythonBinary()            // the process-wide entry, on top of…
+lang.pythonBinaryFrom(lookup)  // …a resolver that reads the environment it is handed
+budgetFrom(lookup, name, def, warn)
+```
+
+`t.Setenv` cannot be called from a parallel test at all (Go 1.22 panics), and it retunes the process for every
+case running beside it — so the tunable-behaviour cases are tables over a supplied environment, plus one run of
+`tools/envprobe`, a probe that prints the knobs *its own process* resolved:
+
+```console
+$ GUSTY_TOOL_TIMEOUT=17s go run ./tools/envprobe tool-budget python
+tool-budget=17s
+python=python3
+```
+
+The knobs stay process-wide by design — that is what makes them tunable from a shell — so the probe is how a
+test asks the real entry points the question without taking the environment away from anyone. The census line above is not
 prose: `integration/parallelism_guard_test.go::TestTheSuiteIsMarkedToRunBesideItself` runs the documented
 command inside the suite and fails on it, so the check a person can type is the check that breaks the build.
 

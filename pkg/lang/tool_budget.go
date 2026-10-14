@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -59,7 +60,17 @@ var (
 // the variable never took effect (ADR 0166's rule about naming what is missing applies to the tool's own
 // knobs too, and a silently ignored setting is the worst kind of missing thing).
 func envBudget(name string, def time.Duration) time.Duration {
-	raw, ok := os.LookupEnv(name)
+	return budgetFrom(os.LookupEnv, name, def, os.Stderr)
+}
+
+// budgetFrom is envBudget with the environment it reads and the writer it complains to handed in. The knobs
+// are process-wide by design — that is what makes them tunable from a shell — but a test of a knob does not
+// have to take the process's environment over to ask: ADR 0343's rule is that a fact a decision reads is a
+// value the decision is given, and "what the environment says" is such a fact. The table in
+// tool_budget_test.go is what that bought: the ignored-setting sentence is now asserted as text, which a
+// t.Setenv case cannot do without owning the process.
+func budgetFrom(lookup func(string) (string, bool), name string, def time.Duration, warn io.Writer) time.Duration {
+	raw, ok := lookup(name)
 	if !ok {
 		return def
 	}
@@ -69,7 +80,7 @@ func envBudget(name string, def time.Duration) time.Duration {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
-		fmt.Fprintf(os.Stderr, "gustyc: %s=%q is not a duration above zero; using the pinned %s\n", name, raw, def)
+		fmt.Fprintf(warn, "gustyc: %s=%q is not a duration above zero; using the pinned %s\n", name, raw, def)
 		return def
 	}
 	return d

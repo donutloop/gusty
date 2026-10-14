@@ -1754,10 +1754,12 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   environment and standard-library root travel in `JITOptions`/`CompileRun` instead of in process globals.
   Parallelism is a checked property, not a style: `go run ./tools/parify -check ./pkg/... ./cmd/... ./integration/... ./tools/...`
   fails on a case that calls `t.Parallel()` while its body — or any chain of calls it reaches, production files
-  included — touches process state, and on a case left serial without a reason; the twelve cases that legitimately
-  own the process (three `t.Setenv` cases, the in-process JIT entry, nine toolchain-command overrides) carry a
-  `//parify:serial <reason>` marker, and the guard runs inside the suite so the command a person can type is the
-  command that breaks the build. What the change found: two table rows sharing one source file, a ledger row
+  included — touches process state, and on a case left serial without a reason. Exactly **one** case carries a
+  `//parify:serial <reason>` marker — the parity case that enters the program through `JITOptions{InProcess: true}`
+  and so owns fd 1 and fd 2 — and everything that used to need a marker was refactored out of needing one: the
+  toolchain became a per-run `ToolOverride` value (Gap R.260) and the environment knobs became functions of an
+  environment they are handed (`tools/envprobe` is how a case asks the process-wide ones without `t.Setenv`).
+  The guard runs inside the suite, so the command a person can type is the command that breaks the build. What the change found: two table rows sharing one source file, a ledger row
   pinned to unstable bytes, and **Gap R.258**, a `sorted(...)` binding that dies by `SIGSEGV` in `@rt_alloc` —
   invisible while one case at a time was allowed to run.
 - **The suite runs sharded** — `make testshards` (and CI) runs the cases in **one process per core**

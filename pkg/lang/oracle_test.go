@@ -331,17 +331,42 @@ func TestPythonRunRunsTheOracle(t *testing.T) {
 	}
 }
 
-//parify:serial it uses t.Setenv, which testing refuses on a parallel case because the environment is
-//parify:serial the one thing every goroutine in the process reads. The override it exercises is the
-//parify:serial reference oracle's path, and the case is instant; the serial cost is a rounding error.
 func TestPythonBinaryIsOverridable(t *testing.T) {
-	t.Setenv("GUSTY_PYTHON", "/opt/py3.13/bin/python3")
-	if got := PythonBinary(); got != "/opt/py3.13/bin/python3" {
-		t.Errorf("GUSTY_PYTHON override ignored: %q", got)
+	t.Parallel()
+	// The oracle interpreter is tunable (`GUSTY_PYTHON`), and the interesting half of that is a set value
+	// that must win over the default — and an unset or empty one that must not. Asked as a table over the
+	// environment the resolver reads, so the case does not take the process's environment away from the
+	// cases running beside it (ADR 0343; the resolver is pythonBinaryFrom, with PythonBinary the thin
+	// process-wide entry on top of it).
+	lookup := func(v string, present bool) func(string) (string, bool) {
+		return func(string) (string, bool) { return v, present }
 	}
-	t.Setenv("GUSTY_PYTHON", "")
-	if got := PythonBinary(); got != "python3" {
-		t.Errorf("default oracle = %q, want python3", got)
+	for _, tc := range []struct {
+		name    string
+		value   string
+		present bool
+		want    string
+	}{
+		{"unset falls back to python3", "", false, "python3"},
+		{"set-but-empty falls back to python3", "", true, "python3"},
+		{"a named interpreter is used", "/opt/py3.13/bin/python3", true, "/opt/py3.13/bin/python3"},
+		{"a bare name is used as named", "python3.12", true, "python3.12"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := pythonBinaryFrom(lookup(tc.value, tc.present)); got != tc.want {
+				t.Errorf("GUSTY_PYTHON=%q (present=%v): got %q, want %q", tc.value, tc.present, got, tc.want)
+			}
+		})
+	}
+	// And the chain end to end: a process started with the variable actually resolves it through
+	// PythonBinary, which is what the oracle legs then exec.
+	if got := envProbe(t, []string{"GUSTY_PYTHON=/opt/py3.13/bin/python3"}, "python"); got != "python=/opt/py3.13/bin/python3" {
+		t.Errorf("GUSTY_PYTHON did not reach the interpreter a process resolves: %q", got)
+	}
+	if got := envProbe(t, nil, "python"); got != "python=python3" {
+		t.Errorf("with nothing set a process resolved %q, want the documented default python3", got)
 	}
 }
 

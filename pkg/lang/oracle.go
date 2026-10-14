@@ -73,7 +73,13 @@ func DefaultOracleRules() []string { return []string{RuleSetOrder, RuleInstanceI
 // (`GUSTY_PYTHON`) because the pinned oracle is a *named* toolchain, recorded in
 // docs/operations.md, not an accident of whoever's PATH came first.
 func PythonBinary() string {
-	if p := os.Getenv("GUSTY_PYTHON"); p != "" {
+	return pythonBinaryFrom(os.LookupEnv)
+}
+
+// pythonBinaryFrom is PythonBinary read from an environment the caller supplies, which is what lets the
+// override case be a table rather than a t.Setenv on the whole process (ADR 0343).
+func pythonBinaryFrom(lookup func(string) (string, bool)) string {
+	if p, ok := lookup("GUSTY_PYTHON"); ok && p != "" {
 		return p
 	}
 	return "python3"

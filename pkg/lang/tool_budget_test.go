@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,22 +118,55 @@ func TestASlowToolThatAnswersIsUntouched(t *testing.T) {
 	}
 }
 
-//parify:serial t.Setenv again, for the same reason as TestPythonBinaryIsOverridable: the budget knobs are
-//parify:serial read from the environment, so the case has to own the process to change one.
 func TestTheBudgetsAreTunableAndSaySo(t *testing.T) {
-	// A setting that is ignored is a worse setting than one that does not exist.
-	if got := envBudget("GUSTY_TEST_BUDGET_ABSENT", 7*time.Second); got != 7*time.Second {
-		t.Errorf("unset: got %s, want the default", got)
+	t.Parallel()
+	// A setting that is ignored is a worse setting than one that does not exist — so the interesting part of
+	// this case is not that the number is read, it is what happens to a value that cannot be honoured: the
+	// pinned default comes back AND the run says so. Asserting that from inside the process used to mean
+	// t.Setenv, which a parallel case may not do and which would have retuned every other case's toolchain
+	// calls with it (ADR 0343). The environment is passed in now, and the complaint is a buffer.
+	const def = 7 * time.Second
+	lookup := func(v string, present bool) func(string) (string, bool) {
+		return func(string) (string, bool) { return v, present }
 	}
-	t.Setenv("GUSTY_TEST_BUDGET_SET", "45s")
-	if got := envBudget("GUSTY_TEST_BUDGET_SET", 7*time.Second); got != 45*time.Second {
-		t.Errorf("GUSTY_TEST_BUDGET_SET=45s: got %s, want 45s", got)
+	rows := []struct {
+		name    string
+		value   string
+		present bool
+		want    time.Duration
+		wants   string // a substring of the complaint, when the default is being restored
+	}{
+		{"unset takes the pinned default", "", false, def, ""},
+		{"set-but-empty takes the pinned default", "", true, def, ""},
+		{"a whitespace answer takes the pinned default", "   ", true, def, ""},
+		{"a real duration is honoured", "45s", true, 45 * time.Second, ""},
+		{"minutes are a duration", "2m", true, 2 * time.Minute, ""},
+		{"bare seconds are a number, not a duration", "90", true, def, "is not a duration above zero"},
+		{"zero is not a budget", "0s", true, def, "is not a duration above zero"},
+		{"negative is not a budget", "-3s", true, def, "is not a duration above zero"},
+		{"prose is not a duration", "soon", true, def, "is not a duration above zero"},
 	}
-	for _, bad := range []string{"90", "0s", "-3s", "soon"} {
-		t.Setenv("GUSTY_TEST_BUDGET_BAD", bad)
-		if got := envBudget("GUSTY_TEST_BUDGET_BAD", 7*time.Second); got != 7*time.Second {
-			t.Errorf("GUSTY_TEST_BUDGET_BAD=%q: got %s, want the pinned default", bad, got)
-		}
+	for _, tc := range rows {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var warned strings.Builder
+			if got := budgetFrom(lookup(tc.value, tc.present), "GUSTY_TEST_BUDGET", def, &warned); got != tc.want {
+				t.Errorf("GUSTY_TEST_BUDGET=%q (present=%v): got %s, want %s", tc.value, tc.present, got, tc.want)
+			}
+			got := warned.String()
+			if tc.wants == "" && got != "" {
+				t.Errorf("a setting that was honoured still complained: %q", got)
+			}
+			if tc.wants != "" {
+				if !strings.Contains(got, tc.wants) {
+					t.Errorf("an ignored setting must say so, got %q", got)
+				}
+				if !strings.Contains(got, "GUSTY_TEST_BUDGET") || !strings.Contains(got, def.String()) {
+					t.Errorf("the complaint must name the variable and the default it fell back to: %q", got)
+				}
+			}
+		})
 	}
 	// The pinned defaults are the numbers docs/operations.md states, and a change to one is a change to
 	// that page: the CI budget is derived from them.
@@ -142,6 +176,49 @@ func TestTheBudgetsAreTunableAndSaySo(t *testing.T) {
 	if OracleBudgetDefault != 2*time.Minute {
 		t.Errorf("OracleBudgetDefault = %s, want the documented 2m", OracleBudgetDefault)
 	}
+	// And the whole chain, asked of a process that was actually started with the variable set: the table
+	// proves the parser, this proves that the entry point every tool call goes through reads it.
+	if got := envProbe(t, []string{"GUSTY_TOOL_TIMEOUT=17s"}, "tool-budget"); got != "tool-budget=17s" {
+		t.Errorf("GUSTY_TOOL_TIMEOUT=17s reached the process as %q — a tunable that is ignored is worse than one that does not exist", got)
+	}
+	if got := envProbe(t, nil, "tool-budget"); got != "tool-budget="+ToolBudgetDefault.String() {
+		t.Errorf("with nothing set the process resolved %q, want the pinned default", got)
+	}
+}
+
+// envProbe runs tools/envprobe — the probe that reports the knobs a process resolved out of ITS OWN
+// environment — with the environment a case wants, and returns its trimmed stdout.
+//
+// The knobs (`GUSTY_TOOL_TIMEOUT`, `GUSTY_ORACLE_TIMEOUT`, `GUSTY_PYTHON`) are process-wide by design; that is
+// what makes them tunable from a shell. Asking the real entry points about them from inside a test used to
+// mean `t.Setenv`, which a parallel case may not call and which retunes every other case running beside it.
+// A subprocess answers the same question about a process nobody else is using (ADR 0343's rule: isolate the
+// process-wide thing rather than queueing for it).
+func envProbe(t *testing.T, env []string, keys ...string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe is run with `go run`, which is spelled differently there")
+	}
+	dir, err := filepath.Abs(filepath.Join("..", "..", "tools", "envprobe"))
+	if err != nil {
+		t.Fatalf("locate the probe: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "main.go")); err != nil {
+		t.Fatalf("the envprobe the suite depends on is missing: %v", err)
+	}
+	// The probe is a tool call, so it gets a tool call's budget rather than an invented number.
+	ctx, cancel := context.WithTimeout(context.Background(), ToolBudget)
+	defer cancel()
+	argv := append([]string{"run", dir}, keys...)
+	cmd := exec.CommandContext(ctx, "go", argv...)
+	cmd.Env = append(os.Environ(), env...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go run ./tools/envprobe %v: %v\n%s", keys, err, stderr.String())
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func TestTheCompiledLegStillRunsWithItsBudgets(t *testing.T) {

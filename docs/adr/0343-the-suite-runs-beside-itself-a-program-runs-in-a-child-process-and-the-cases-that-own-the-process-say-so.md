@@ -130,8 +130,12 @@ resolved once per run by `toolNamesFor` and carried by every step that execs a b
 (`optimizeIRReportWith`), the verifier (`verifyModuleIRWith`), `llc`, `cc`, and the `llvm-dwarfdump` behind
 `--debug`. An empty field means "the default", and absence (the optimizer that was never discovered) is a
 separate, explicit question: `toolNamesWithoutOpt`. Nine cases that had to own the process stopped needing to,
-which the census says: **2878 parallel / 12 marked serial became 2892 parallel / 4**, and the four that remain
-are the ones that genuinely cannot share — three `t.Setenv` cases and the in-process engine.
+which the census says: **2878 parallel / 12 marked serial became 2892 parallel / 4**, and then — once the
+environment knobs (`GUSTY_PYTHON`, `GUSTY_TOOL_TIMEOUT`) became functions of an environment they are handed
+rather than `t.Setenv` cases, with `tools/envprobe` to ask the process-wide entry points end to end — **2902
+parallel / 1 marked serial**. The one survivor is the parity case that asks for `JITOptions{InProcess: true}`,
+which takes fd 1 and fd 2 by definition. The target was never zero markers; it was a marker for every case that
+genuinely owns the process and no marker for any other.
 
 The change also caught a regression of its own making, which is worth recording: lifting `pairClosedOut` into
 `pairCallScan`'s return value initially dropped the closed-position set on the exit where no function ends up

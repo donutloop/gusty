@@ -10616,3 +10616,32 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
   `2892 parallel, 2 serial, 4 marked serial`: nine cases released from owning the process, four left, each of
   which (three `t.Setenv`, the in-process engine) takes the process by definition. A serial-marked case is fine
   when it is honest; the goal was never zero, it was *named*.
+
+## The last serial markers were refactored away, not granted (ADR 0343, `tools/envprobe`, parify's callee rule)
+
+- **The census ended at one marker.** `parify` now reports **2902 parallel, 2 serial, 1 marked serial** — the
+  survivor being the case that asks for `JITOptions{InProcess: true}` and therefore owns fd 1 and fd 2. The
+  target was never "zero markers"; a marker on a case that genuinely owns the process is the honest outcome. The
+  target was *no marker that is a workaround*, and every one of those got a refactor instead.
+- **A tunable knob stays process-wide — the test of it does not have to be.** `GUSTY_PYTHON` and
+  `GUSTY_TOOL_TIMEOUT` are process-wide *by design*: that is what makes them settable from a shell. The mistake
+  was testing them with `t.Setenv`, which both panics in a parallel case and retunes the process for every case
+  running beside it. The fix has two halves: the decision becomes a function of an environment it is *given*
+  (`pythonBinaryFrom(lookup)`, `budgetFrom(lookup, name, def, warn)`), which makes it a table — and one run of
+  `tools/envprobe` keeps the process-wide entry point honest, because a probe reports what **its own process**
+  resolved. The table would otherwise certify a resolver nobody calls.
+- **Asserting the complaint, not just the fallback.** `budgetFrom` takes the writer it grumbles to, so
+  "GUSTY_TOOL_TIMEOUT=90 is ignored" is now asserted as a sentence naming the variable and the default it fell
+  back to. The old case could only assert the duration, because a `t.Setenv` case cannot capture stderr without
+  owning the process — so the half of the requirement that mattered most ("a setting silently ignored is worse
+  than one that does not exist") had no witness at all.
+- **`parify`'s shadowing rule had to be extended from variables to callees, and the false positive was
+  load-bearing.** A CLI case defines a local `run := func(...)` that execs the built binary; the package also
+  has a helper called `run` that installs a standard-library root. Callee resolution was name-blind, so the case
+  was refused for a call it never makes — and because a `//parify:serial` marker also grants exemption from
+  `-check`, my own tool's bug had bought a case a permanent, unexamined excuse. `TestALocalNamedRunIsNotThePackagesRun`
+  asserts both directions (the shadowing local runs free; the case that really calls the package's `run` still
+  refuses), because "assume functions named `run` are safe" would have passed it too.
+- **Rule of the campaign, said once more:** an unsafe-looking test is a design report. Every marker that came
+  off was a piece of production state that should have been a parameter — the runner's fds, the stdlib root, the
+  toolchain, the power predicates' reader, the environment knobs.
