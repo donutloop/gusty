@@ -97,7 +97,7 @@ jobs:
       # cmd/ and tools/ are named alongside pkg/ because they hold tests too (the CLI's exit-code and
       # toolchain-classification cases live in cmd/gustyc, the harness's own claims in
       # tools/testshards) — a unit step that lists only ./pkg/... leaves them unrun by any step.
-      - name: Unit tests (sharded: one test process per core)
+      - name: "Unit tests (sharded: one test process per core)"
         run: go run ./tools/testshards -tags llvm20 -timeout 12m ./pkg/... ./cmd/... ./tools/...
 
       - name: Integration tests (execute generated code)

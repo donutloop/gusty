@@ -10645,3 +10645,32 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
 - **Rule of the campaign, said once more:** an unsafe-looking test is a design report. Every marker that came
   off was a piece of production state that should have been a parameter — the runner's fds, the stdlib root, the
   toolchain, the power predicates' reader, the environment knobs.
+
+## CI that runs nothing looks like a quiet week, not like a failure (`.github/workflows/go.yml`, 37 pushes)
+
+- **The signal was an email that said "No jobs were run", and it read like nothing happening.** Every Actions
+  failure I had ever handled was a red step with a log. A workflow whose YAML does not **parse** produces no
+  step at all: the run opens and closes in the same second, has zero jobs, and is named after the *file path*
+  instead of the workflow's `name:` — because the parser died before the name. Conclusion `failure`, no check
+  runs on the commit, no log to open, nothing to click. The diagnostic to keep: **a run whose `name` is the path
+  and whose `updated_at == created_at` never parsed**. The API's `jobs` list comes back empty, and the commits
+  API reports *zero check runs* for the SHA — that pair is the whole signature.
+- **One character-class of bug, in a comment-adjacent line, took CI dark for a week.** The offending line was
+  `- name: Unit tests (sharded: one test process per core)` — a plain YAML scalar ends at the first `": "`, so
+  GitHub read a mapping whose value was `Unit tests (sharded:` and the job vanished with it (`mapping values are
+  not allowed here`, line 100 col 34). It landed in the ADR 0313 commit that added the sharding step; the last
+  run with jobs was the push before it. Nothing about the code was involved, and nothing in the repo could tell
+  me, because the file is the only one in the tree that nothing in the suite reads.
+- **So the suite now reads it.** `integration/ci_workflow_test.go` has three parts, and the middle one is the
+  reason the other two are trustworthy: the structural rule in Go (a step/job name must not be a plain scalar
+  carrying `": "`), **a table that feeds the rule the exact line that broke CI and requires it to refuse** — a
+  guard written to match nothing would also have passed all week — and a real `yaml.safe_load` where `python3`
+  has PyYAML (the oracle's own interpreter, so the dependency costs nothing), skipped rather than passed where it
+  does not. The parse asserts the four things a runner needs before it can run anything: a `name`, an `on`,
+  non-empty `jobs`, and a job with `steps`.
+- **Verified both ways before pushing**: with the quoting removed, the two checks name line 100 and fail; with
+  the fix in place they pass. `git log -- .github/workflows/go.yml` plus the run list's `created_at` is what
+  localised it — the file's last change sat exactly between the last run with jobs and the first without.
+- **A harness owns its own plumbing, including the plumbing nobody executes from a test.** The same instinct
+  that produced `tools/testshards`'s self-tests and the `parify` guard should have covered the workflow file: if
+  an artifact decides whether the suite ran at all, a case must read it.

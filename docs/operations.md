@@ -943,7 +943,15 @@ has to read like one, so:
   instead of emitting a pile of drift that points at the compiler.
 - `.github/workflows/go.yml` pins the runner to `ubuntu-24.04` (Python 3.12) and has a setup step
   that prints `go` / `llc-20` / `python3` versions and exits non-zero if the oracle is below the
-  pin. A red setup step is a better signal than a green build with a meaningless matrix.
+  pin. A red setup step is a better signal than a green build with a meaningless matrix — and a
+  workflow that does not **parse** produces neither colour: GitHub records a run with zero jobs,
+  names it after the file path rather than the workflow's `name:` (it never read that far), finishes
+  it in the second it opened, and the only thing a human sees is an email saying *“No jobs were
+  run”*. That is why `integration/ci_workflow_test.go` reads the workflow: a step name that is a plain
+  YAML scalar carrying `": "` (`Unit tests (sharded: one test process per core)`) ends its value at the
+  colon, the job disappears, and 37 pushes looked like a quiet week. The test states the structural rule
+  in Go, proves the rule against the very line that broke CI, and, where `python3` has PyYAML, parses the
+  file and asserts it still has a name, a trigger, jobs, and a job with steps.
 - `lang.OracleVersion` parses a version banner, and an **unidentifiable** banner counts as unknown,
   never as too old — a machine whose oracle cannot be read must not be told it is unsupported.
 - A python leg that fails with a `SyntaxError` gets an extra note naming the pin and the remedy
