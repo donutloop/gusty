@@ -1056,6 +1056,14 @@ only as fast as the number of cores it is allowed to use.
 | `make showshards` | prints the partition as JSON without running anything: which case is in which shard |
 | `go run ./tools/testshards -tags llvm20 -json ./pkg/...` | machine-readable per-shard summary — `{pkg, index, of, tests, ok, duration, error, evidence}` per row, plus the run's `ok` and `elapsed`; `evidence` is the file that shard's golden evidence went to, so the merged verdict can be cross-read against it |
 | `-shards N` / `-timeout D` | how many processes per package (default `GOMAXPROCS`), and each shard's `go test -timeout` — one shard's budget, stated rather than implicit |
+| `-case-parallel N` | how many cases **one shard** runs at once (`go test -parallel`). Sharding and `t.Parallel()` are two axes of the same run and each defaults to the whole machine, so the default here is `2·cores / shards` — the product fills the toolchain governor's window (`min(2·GOMAXPROCS, 128)` external tools, `pkg/lang/tool_slots.go`) instead of multiplying to shards×GOMAXPROCS. `1` is one case at a time inside each shard, which is the shape a flake investigation wants; `-list`'s JSON reports the chosen value as `cases_per_shard_parallel` |
+
+Measured on one 20-core box, all three commands over the same tree: `make testparallel` **1 m 40 s**,
+`make testshards` **2 m 09 s**, and the retired serial behaviour **11 m 43 s** (ADR 0343). The shards used to win
+because a shard was the only thing that isolated the process state a case could not share; now that a run is a
+child process, the plain parallel run is the faster of the two, and shards earn their keep where a *process*
+boundary is the point — the artifact-writing modes stay single-process, and a shard's `-timeout` is still one
+shard's budget rather than the suite's.
 
 A package that holds no test files is **reported and skipped** (`testshards: …/echoprobe has no tests to
 shard`), because `./...` matches the tools and the command alongside the packages; a `go test -list` that

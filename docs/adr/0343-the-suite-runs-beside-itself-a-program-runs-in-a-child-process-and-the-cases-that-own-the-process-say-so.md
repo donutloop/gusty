@@ -86,7 +86,9 @@ same act by another name.
 
 The suite runs in **about 1 m 40 s** on the same 20-core box, against 11 m 43 s serial — a 7× cut, with
 `-parallel 20`. Per-package wall time is dominated by the cases that compile and link for real, so the floor
-is `cc`/`llc`, not Go.
+is `cc`/`llc`, not Go. Sharding is no longer the faster way to run it on a big box (2 m 09 s against 1 m 40 s on 20 cores) — a shard
+was the isolation, and the isolation moved into the child process — but it stays the command that gives each
+process its own ledger evidence and its own `-timeout`, which is why CI still runs it.
 
 Three defects surfaced that the serial suite could not see, which is the argument for the change more than the
 speed is:

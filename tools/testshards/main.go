@@ -57,6 +57,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +70,7 @@ func main() {
 		tags    = flag.String("tags", "", "build tags handed to every `go test` (e.g. llvm20)")
 		shards  = flag.Int("shards", 0, "processes per package (default: GOMAXPROCS)")
 		timeout = flag.String("timeout", "10m", "per-shard `go test` timeout: one shard's cases, not the whole suite")
+		casePar = flag.Int("case-parallel", 0, "cases one shard may run at once (`go test -parallel`); 0 sizes it to cores/shards so the two axes of parallelism multiply to the machine rather than to shards×GOMAXPROCS")
 		jsonOut = flag.Bool("json", false, "print a machine-readable summary of the run on stdout")
 		list    = flag.Bool("list", false, "print the partition and exit — nothing is compiled or run")
 		verbose = flag.Bool("v", false, "ask each shard for verbose `go test` output")
@@ -76,12 +78,13 @@ func main() {
 	flag.Parse()
 	patterns := flag.Args()
 	if len(patterns) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: testshards [-tags T] [-shards N] [-timeout D] [-json] [-list] [-v] ./pkg/...")
+		fmt.Fprintln(os.Stderr, "usage: testshards [-tags T] [-shards N] [-case-parallel N] [-timeout D] [-json] [-list] [-v] ./pkg/...")
 		os.Exit(2)
 	}
 	if *shards <= 0 {
 		*shards = runtime.NumCPU()
 	}
+	caseParallel := caseParallelFor(*casePar, *shards, runtime.NumCPU())
 	if _, err := time.ParseDuration(*timeout); err != nil {
 		fmt.Fprintf(os.Stderr, "testshards: -timeout %q is not a duration: %v\n", *timeout, err)
 		os.Exit(2)
@@ -118,7 +121,11 @@ func main() {
 		// that a name is in exactly one shard before trusting a green run to mean anything.
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(map[string]any{"shards_per_package": *shards, "plan": plan})
+		_ = enc.Encode(map[string]any{
+			"shards_per_package":       *shards,
+			"cases_per_shard_parallel": caseParallel,
+			"plan":                     plan,
+		})
 		return
 	}
 
@@ -147,7 +154,7 @@ func main() {
 		reportDir = d
 	}
 
-	sum := runPlan(*tags, *shards, *timeout, *verbose, *jsonOut, reportDir, plan)
+	sum := runPlan(*tags, *shards, caseParallel, *timeout, *verbose, *jsonOut, reportDir, plan)
 	// The drift adjudication runs ONCE for the whole run, over the evidence every shard left behind. It is
 	// per-process state by construction (`askedAbout`, `divergenceSet` in pkg/lang/golden.go), so a shard
 	// that judges a ledger row at all judges it by a fraction of the run's evidence — which reads a row whose
@@ -209,7 +216,38 @@ type summary struct {
 	Results []resultFor `json:"results"`
 }
 
-func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, reportDir string, plan []planFor) summary {
+// caseParallelFor sizes the intra-shard `go test -parallel` from the machine and the shard count.
+//
+// Sharding and `t.Parallel()` are two axes of the same run, and each defaults to the whole machine: N shards
+// each running GOMAXPROCS cases is N×GOMAXPROCS runnable cases on GOMAXPROCS cores. The cases are
+// subprocess-bound — a case spends its life waiting on `llc`, `cc`, `lli` and `python3` (ADR 0313) — so the
+// useful question is not how many cases fit on a core but how many toolchains the machine can keep busy, and
+// that number is already written down: the compiler's toolchain governor admits min(2·GOMAXPROCS, 128)
+// external processes at a time (pkg/lang/tool_slots.go, ADR 0343). Sizing shards × cases to 2× the core count
+// fills exactly that window and no more; leaving it at `go test`'s default made the product
+// shards × GOMAXPROCS, which on this box meant four hundred in-flight cases all queueing behind forty slots.
+//
+// An explicit -case-parallel always wins: `1` is how you ask for one case at a time inside each shard (the
+// old behaviour, and the shape a flake investigation wants), a big number is how you ask for the governor's
+// whole window per shard.
+func caseParallelFor(requested, shards, cores int) int {
+	if requested > 0 {
+		return requested
+	}
+	if shards < 1 {
+		shards = 1
+	}
+	if cores < 1 {
+		cores = 1
+	}
+	n := (2 * cores) / shards
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+func runPlan(tags string, shards, caseParallel int, timeout string, verbose, jsonOut bool, reportDir string, plan []planFor) summary {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -221,7 +259,7 @@ func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, rep
 			wg.Add(1)
 			go func(p planFor, sh shardFor, n int) {
 				defer wg.Done()
-				r := runShard(tags, timeout, verbose, jsonOut, reportDir, p.Pkg, sh, n)
+				r := runShard(tags, caseParallel, timeout, verbose, jsonOut, reportDir, p.Pkg, sh, n)
 				mu.Lock()
 				rows = append(rows, r)
 				mu.Unlock()
@@ -245,8 +283,15 @@ func runPlan(tags string, shards int, timeout string, verbose, jsonOut bool, rep
 // runShard is one `go test -run '^(A|B|…)$'` for one package, with its output attributed to the shard
 // that produced it. A run that dies at its timeout has to leave a log saying which shard was still
 // talking when it stopped — that attribution is the piece the CI panic could not provide.
-func runShard(tags, timeout string, verbose, quiet bool, reportDir, pkg string, sh shardFor, n int) resultFor {
+func runShard(tags string, caseParallel int, timeout string, verbose, quiet bool, reportDir, pkg string, sh shardFor, n int) resultFor {
 	args := []string{"test", "-count=1", "-timeout", timeout}
+	if caseParallel > 0 {
+		// Sized on purpose: since ADR 0343 the cases inside a shard run beside each other, so a shard
+		// left at `go test`'s default would take GOMAXPROCS concurrent cases *per shard* and the two
+		// axes would multiply to shards×GOMAXPROCS — forty processes' worth of `llc` on a twenty-core
+		// runner, all competing for the same cores and the same toolchain slots.
+		args = append(args, "-parallel", strconv.Itoa(caseParallel))
+	}
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}

@@ -564,3 +564,80 @@ func TestTheMakefileRunsTheSerialSuiteWithoutTheCache(t *testing.T) {
 		t.Errorf("`make test` must build against the pinned LLVM: %q", line)
 	}
 }
+
+// TestTheTwoAxesOfParallelismMultiplyToTheMachine is the arithmetic behind -case-parallel. Sharding decided
+// how many processes run; ADR 0343 decided that the cases *inside* each one run beside each other; nobody
+// decided what the product should be, and the default `go test` answer made it shards × GOMAXPROCS — four
+// hundred in-flight cases on a twenty-core box, all queueing behind the forty toolchain slots the compiler's
+// governor admits. The sizing is asserted as a function because the interesting rows are the edges: more
+// shards than cores must not round to zero cases, an explicit request must win (including the request for one
+// case at a time, which is what a flake investigation asks for), and a machine that reports no cores must
+// still be told to run something.
+func TestTheTwoAxesOfParallelismMultiplyToTheMachine(t *testing.T) {
+	t.Parallel()
+	const cores = 20
+	cases := []struct {
+		name                    string
+		shards, requested, want int
+	}{
+		{"one shard gets the governor's whole window", 1, 0, 40},
+		{"as many shards as cores get two cases each", cores, 0, 2},
+		{"twice as many shards as cores still run one case each", 2 * cores, 0, 1},
+		{"more shards than cores cannot round to nothing", 10 * cores, 0, 1},
+		{"an explicit request wins", cores, 7, 7},
+		{"one case at a time inside each shard is askable", cores, 1, 1},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := caseParallelFor(tc.requested, tc.shards, cores); got != tc.want {
+				t.Errorf("shards=%d requested=%d on %d cores: got %d cases per shard, want %d", tc.shards, tc.requested, cores, got, tc.want)
+			}
+		})
+	}
+	if got := caseParallelFor(0, 4, 0); got != 1 {
+		t.Errorf("a machine reporting zero cores: got %d cases per shard, want 1 (a run that sizes to zero runs nothing)", got)
+	}
+	// The properties, not only the rows. Up to the governor's window, the two axes are sized to FILL it —
+	// shards × cases == 2·cores, the number of external toolchains the compiler is willing to have running
+	// at once (pkg/lang/tool_slots.go). Past it, more shards means fewer cases each down to one and no
+	// further: the knob stops being able to shrink, and the governor, not this file, is what bounds the run.
+	// Asserting the two regimes separately is the honest form — a single "product never exceeds the window"
+	// loop is a property this function does not have and should not have, since a caller who asks for two
+	// hundred shards wants two hundred processes and gets them.
+	for shards := 1; shards <= 2*cores; shards++ {
+		prod := shards * caseParallelFor(0, shards, cores)
+		if prod > 2*cores {
+			t.Errorf("shards=%d gives %d in-flight cases on %d cores — past the governor's window of %d", shards, prod, cores, 2*cores)
+		}
+		// Integer division means the window is filled to a whole case per shard and no finer, so the
+		// honest bound is "at least one case per core, never more than the window". A sizing that let
+		// the product fall below the core count would leave cores with no toolchain to run.
+		if prod < cores {
+			t.Errorf("shards=%d gives %d in-flight cases on %d cores — the sizing left cores idle", shards, prod, cores)
+		}
+	}
+	for shards := 2*cores + 1; shards <= 8*cores; shards++ {
+		if n := caseParallelFor(0, shards, cores); n != 1 {
+			t.Errorf("shards=%d: %d cases per shard, want the floor of 1 — zero would run nothing", shards, n)
+		}
+	}
+}
+
+// TestTheShardCommandCarriesTheCaseSizing pins the half that a unit test of the helper cannot see: the number
+// has to reach the `go test` command line, because a shard that ignores it silently returns to GOMAXPROCS.
+func TestTheShardCommandCarriesTheCaseSizing(t *testing.T) {
+	t.Parallel()
+	body, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	src := string(body)
+	if !strings.Contains(src, `"-parallel", strconv.Itoa(caseParallel)`) {
+		t.Error("runShard no longer passes -parallel to its shard: the two axes of parallelism are unsized again")
+	}
+	if !strings.Contains(src, `"cases_per_shard_parallel"`) {
+		t.Error("-list does not report the case sizing, so an agent reading the plan cannot see the concurrency it is about to get")
+	}
+}
