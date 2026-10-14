@@ -10905,3 +10905,11 @@ suggestion, owning roadmap rows — read by `--json`'s `capability` member, by `
   created and then vanished; a stale binary at a fixed path answered a `--run` flag the CLI has never had,
   which briefly looked like a regression in `cmd/gustyc`. Two habits follow: verify with a binary built in
   the same command, and commit the moment a cycle's tests are green instead of batching docs behind them.
+- **A trap can be a regression in the witness legs and still be the right decision — but only if you say
+  so in the row.** `while i < 2000: live.append([1,2,3])` + `print(len(live))` printed `2000` at exit 0
+  before this cycle, matching CPython, and now raises `MemoryError` at exit 3. The old agreement was
+  accidental: `rt_list_len` reads the container's own count, so 2000 poisoned `-1` element handles were
+  never dereferenced. Ask the same shape to read an element and the pre-cycle binary returns another
+  iteration's list. The ADR now carries that table (reference / before / after) instead of only the
+  cases where the trap is an improvement, because a decision documented only by its best cases is a
+  decision nobody can audit six months later.

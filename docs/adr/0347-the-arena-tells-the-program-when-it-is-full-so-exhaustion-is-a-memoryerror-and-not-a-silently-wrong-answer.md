@@ -118,6 +118,36 @@ Handling the condition does not create capacity: the two buckets are still live,
 the program builds raises again. That is the right semantics for an exhausted arena and the reason the
 handleable witness ends at its two caught arms instead of demonstrating recovery.
 
+### The reference leg now diverges, and that is the point
+
+```gusty
+live = []
+i = 0
+while i < 2000:
+    live.append([1, 2, 3])
+    i = i + 1
+print(len(live))
+```
+
+| | CPython | before ADR 0347 | after |
+|---|---|---|---|
+| `print(len(live))` | `2000` | `2000`, exit 0 | `MemoryError`, exit 3 |
+
+The middle column is the uncomfortable one, so it deserves an exact explanation rather than an argument.
+That answer was right *by luck*: `rt_list_len` reads the container's own count — a field of `live`, not an
+element handle — so the 2000 poisoned `-1`s in the payload were never dereferenced. Asking a different
+question of the same shape shows what was sitting there: the tuple case read back the slot the recycling
+had left behind, and the churn loop printed `[7]` and `[13]`. The program's live set is 2001 containers and
+the arena holds 1024. There is no correct answer to give, and the one answer that looked correct was
+describing a container that was partly fiction.
+
+So the compiled leg now *disagrees with the reference* for any program whose live set exceeds the arena,
+where it previously agreed sometimes by accident. That disagreement is this row's remaining half — a heap
+that grows — recorded as the row's next concrete action rather than smoothed over: when `@heap` grows,
+`capacity=` grows with it (`TestTheArenaSpellsItsCapacityOnce` holds the two together) and this program's
+trap turns into the answer with no change to the guard. Until then `--gc-stats`' `headroom=0` is the
+diagnostic that tells an author which of the two situations their program is in.
+
 ## IR impact
 
 Every guarded call site grows a `heapfull` block that calls `rt_raise` with `MemoryError`'s code and
