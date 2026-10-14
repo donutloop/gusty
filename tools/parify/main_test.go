@@ -685,3 +685,32 @@ func TestPlacement(t *testing.T) {
 	}
 	t.Fatal("TestPlacement disappeared")
 }
+
+// TestALocalNamedRunIsNotThePackagesRun is the callee half of the shadowing rule, and the case that produced
+// it. A CLI case defines `run := func(…) string { … }` — a local that shells out to the built binary — and the
+// package it lives in also has a helper named `run` that touches the process. Name-blind callee resolution
+// walked into the *package's* `run` and refused the case for a call it never makes; and because the marker
+// that answer bought also buys exemption from `-check`, the mistake was load-bearing rather than merely wrong.
+// The paired case, which calls the package's `run`, is what stops this from being "assume `run` is safe".
+func TestALocalNamedRunIsNotThePackagesRun(t *testing.T) {
+	t.Parallel()
+	vs, out := runOn(t, "func run() { os.Chdir(\"/tmp\") }\n\n"+
+		"func TestShadowingLocalHelperIsNotThePackageOne(t *testing.T) {\n"+
+		"\trun := func() string { return \"ok\" }\n"+
+		"\tif run() == \"\" {\n\t\tt.Fatal(\"no output\")\n\t}\n}\n\n"+
+		"func TestCallingThePackageHelper(t *testing.T) {\n\trun()\n}\n")
+	got := verdictFor(t, vs, "test", "TestShadowingLocalHelperIsNotThePackageOne")
+	if !got.Parallel || got.Violation != "" {
+		t.Fatalf("a case whose only helper is a local closure sharing a package function's name was refused: %s\n%s", got.Reason, out)
+	}
+	if !strings.Contains(string(out), "func TestShadowingLocalHelperIsNotThePackageOne(t *testing.T) {\n\t"+parallelCall) {
+		t.Fatalf("the shadowing case was not marked:\n%s", out)
+	}
+	bad := verdictFor(t, vs, "test", "TestCallingThePackageHelper")
+	if bad.Parallel || bad.Violation != "" {
+		t.Fatal("a case that calls the package's process-touching run() was marked parallel")
+	}
+	if !strings.Contains(bad.Reason, "run") || !strings.Contains(bad.Reason, "working directory") {
+		t.Errorf("the case that really does call it must say so: %s", bad.Reason)
+	}
+}

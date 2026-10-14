@@ -405,6 +405,13 @@ func (p *pkgState) whyLocal(b *ast.BlockStmt, seen map[string]bool, inOnce bool,
 			}
 		case *ast.CallExpr:
 			name := calleeName(x)
+			// A name the function declares for ITSELF is not the package's function of that spelling.
+			// The tool's own rule for variables applies to callees too, and the case that found it is a
+			// CLI test whose local `run := func(...){}` closure shadowed a package helper named `run`
+			// that installs a standard-library root: the case was refused for a call it never made.
+			if locals[name] {
+				return true
+			}
 			if r, ok := knownUnsafe[name]; ok {
 				why = r
 				return false
