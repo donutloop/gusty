@@ -158,3 +158,41 @@ An agent planning a compilation reads this table instead of guessing which
 substitutions are legal: `params[i]` pairs with `variance[i]`, `mutable` says
 why, `read_only` names the covariant alternative to suggest, and `code` is the
 diagnostic emitted when the rule is broken.
+
+## The function-value pass: `gustyc --callables <src>` (L11.7, ADR 0345)
+
+`gustyc --callables` prints what the defunctionalisation pass decided about one source, as JSON — the same
+document the schema declares as `definitions.callablePassReport`:
+
+```json
+{
+  "tool": "callable-values",
+  "pass": "defunctionalize-callables",
+  "hash": "37411cc8606393b5",
+  "rewritten": true,
+  "clones": 1,
+  "hoisted_lambdas": 1,
+  "rewritten_call_sites": 2,
+  "higher_order_functions": ["twice"],
+  "symbols": ["sorted$lambda$c4319c9a_0", "twice$callable$3edc3ceb_0"],
+  "refused": []
+}
+```
+
+An agent planning a higher-order program reads this instead of guessing whether the backend will call its
+function:
+
+- `rewritten` is `true` when the pass produced a new program and `false` when it **declined** — and a decline
+  leaves the program exactly as it was, including the refusal the backend already had. The pass can only add
+  answers, never take them away.
+- `refused` carries the sentence the pass declined with, cited to the roadmap row that owns the shape. It is not
+  the sentence the *user* of the program is shown: that one comes from the door the program still hits, and both
+  name what is missing (ADR 0166).
+- `clones`, `hoisted_lambdas` and `rewritten_call_sites` say how much was rewritten, and `symbols` the internal
+  names — which never appear in a diagnostic: a clone reports the function the program wrote (`twice`) and a
+  hoisted lambda reports `<lambda>`, the reference's own word for it.
+- `hash` is a digest of the rewrite. One source gives one hash; two runs that disagree are a compiler that cannot
+  compile the same program twice.
+
+Exit codes: `0` with the document on stdout, `1` when the source cannot be parsed (`gustyc: callables: …` on
+stderr).

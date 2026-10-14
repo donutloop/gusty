@@ -127,8 +127,19 @@ type FuncDef struct {
 	ReturnAnno *Type    `json:"return_annot,omitempty"`
 	Doc        string   `json:"doc,omitempty"`
 	Body       []Stmt   `json:"body"`
-	Decorators []Expr   `json:"decorators,omitempty"`
-	Src        Span     `json:"span,omitempty"`
+	// SkipEmit marks a definition whose body this pass has taken out of the program: the calls that used
+	// it as a value were rewritten to a clone, so its own body would be compiled for a callable that no
+	// longer exists, and the IR emitter skips it entirely. Set only by the defunctionalization pass
+	// (ADR 0345), and never read by anything that decides what a program MEANS — `--emit-ast` and
+	// `gusty fmt` speak the source, which is why the flag is not in the JSON (ADR 0345, ADR 0320's rule
+	// that a rewrite must not mutate what the front end reports about the text).
+	SkipEmit bool `json:"-"`
+	// CloneOf names the original this generated clone was copied from; "" for a definition the source had.
+	// Traceback names are minted from it, so a frame reads as the function the human wrote rather than as
+	// the pass's internal spelling.
+	CloneOf    string `json:"-"`
+	Decorators []Expr `json:"decorators,omitempty"`
+	Src        Span   `json:"span,omitempty"`
 }
 
 func (n *FuncDef) Span() Span { return n.Src }

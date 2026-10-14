@@ -3340,6 +3340,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_fn_value",
+        "name": "probe_fn_value.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The\n# interpreter maps with a lambda; the compiled backend answers `unsupported call \"f\"`\n# because there is no fnptr operand or indirect call lowering (L11.7).\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(lambda v: v * 3, [1, 2]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[3, 6]\n",
+      "python_ok": true,
+      "python_stdout": "[3, 6]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_fn_name",
+        "name": "probe_fn_name.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186; ADR 0283) — a def'd function used as a *value* (passed as an\n# argument). The interpreter answers CPython's `[2, 4]` now that a top-level `def` binds its own\n# name, the way a `lambda` bound to a name always has; before ADR 0283 it reported\n# `undefined name twice`. The compiled leg still refuses, because the body calls a *parameter*\n# (`f(x)`), which is the higher-order limit L11.7 records rather than this row's name lookup.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[2, 4]\n",
+      "python_ok": true,
+      "python_stdout": "[2, 4]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4090,7 +4132,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/165/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/167/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4104,7 +4146,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/165/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/167/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4569,76 +4611,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_fn_value",
-        "name": "probe_fn_value.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The\n# interpreter maps with a lambda; the compiled backend answers `unsupported call \"f\"`\n# because there is no fnptr operand or indirect call lowering (L11.7).\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(lambda v: v * 3, [1, 2]))\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
-        "ref": "roadmap L11.7 (functions are values that compile)",
-        "pins": [
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)",
-      "python_ok": true,
-      "python_stdout": "[3, 6]\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
-      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_fn_name",
-        "name": "probe_fn_name.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186; ADR 0283) — a def'd function used as a *value* (passed as an\n# argument). The interpreter answers CPython's `[2, 4]` now that a top-level `def` binds its own\n# name, the way a `lambda` bound to a name always has; before ADR 0283 it reported\n# `undefined name twice`. The compiled leg still refuses, because the body calls a *parameter*\n# (`f(x)`), which is the higher-order limit L11.7 records rather than this row's name lookup.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
-        "ref": "roadmap L11.7 (functions are values that compile)",
-        "pins": [
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)",
-      "python_ok": true,
-      "python_stdout": "[2, 4]\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
-      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_a_function_as_a_value",
         "name": "probe_a_function_as_a_value.gy",
         "source": "# A declared name is not a variable, and a function is not a number (Gap R.150, Gap R.151, Gap R.153,\n# ADR 0283). Reading a def'd name is no longer a NameError, so a function flows through a parameter on\n# the interpreter; the numeric door raises CPython's sentence rather than reaching the arithmetic that\n# used to hand llc a load of a slot no `def` allocated.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\ng = twice\nprint(g(21))\nprint(apply(twice, [1, 2, 3]))\nh = lambda x: x * 3\nprint(h(4))\ntry:\n    print(abs(twice))\nexcept TypeError:\n    print('caught the function operand')\ntry:\n    print(-twice)\nexcept TypeError:\n    print('caught the negation')\n",
@@ -4815,11 +4787,11 @@
     }
   ],
   "rows": 193,
-  "skipped": 38,
-  "pass": 155,
+  "skipped": 36,
+  "pass": 157,
   "fail": 0,
-  "oracle_match": 140,
-  "oracle_debt": 32,
+  "oracle_match": 142,
+  "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

@@ -627,12 +627,6 @@
     "actual": "jit: codegen: the two arms of `2.0 if x > 2 else 2` do not agree on a word \u2014 one is the double the other is an i32 \u2014 and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "def f(x):\n    return x * 2\n\ng = f\nprint(g(21))\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be \u2014 the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
-  },
-  {
     "source": "def f(x):\n    return x * 2\n\nh = f\nprint(h())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: missing argument \"x\" for f",
@@ -742,12 +736,6 @@
     "source": "def show(v):\n    print(v)\n    return 0\n\nxs = []\nxs.append([7, 8])\nshow(xs[0][0])\n",
     "reason": "the echoed value differs from the record",
     "expected": "0"
-  },
-  {
-    "source": "def twice(fn, v):\n    return fn(v) + fn(v)\n\nprint(twice(lambda x: x * 3, 2))\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: \"fn\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "def twice(v):\n    return v + v\n\nprint(twice(1.5 if 1 else 2))\n",

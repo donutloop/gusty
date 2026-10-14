@@ -4028,6 +4028,14 @@ func GenerateIRWithOptions(prog *Program, opts *IRGenOptions) (string, error) {
 // text that was produced, so what `--debug-info` prints is what the module says
 // and not what the emitter hoped for.
 func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, error) {
+	// A function used as a value is defunctionalised before anything reads the program: the calls that pass
+	// one are rewritten to the specialised clone this pass mints, so every door downstream sees calls that
+	// name functions (roadmap L11.7, ADR 0345). It runs FIRST because the tables that decide a call's road
+	// — the container-answer scan, the text and float return scans, the pair road's arity — are whole-program
+	// reads of this same tree, and a rewrite that arrived after them would be a second opinion about a
+	// program they had already answered. A program the pass cannot see through is handed back untouched,
+	// with the refusal it always had.
+	prog = defunctionalizeCallables(prog)
 	imports, err := resolveImports(prog, moduleSearchFor(opts))
 	if err != nil {
 		return "", nil, err
@@ -17136,6 +17144,18 @@ func callableSurfaceName(fnName string) string {
 	if strings.HasPrefix(fnName, "lambda_") {
 		return "<lambda>"
 	}
+	// A lambda the defunctionalisation pass gave a declaration of its own carries the binding or callee
+	// it was minted from in its symbol; the reader's program has neither, and the reference names the
+	// anonymous function `<lambda>` whatever it is bound to (ADR 0345 §3).
+	if strings.Contains(fnName, callableLambdaInfix) {
+		return "<lambda>"
+	}
+	// A clone the defunctionalisation pass minted is the function the source wrote, and a diagnostic about
+	// it must say so: the reader's program contains `twice`, not `twice$callable$1a2b3c4d` (ADR 0345,
+	// ADR 0166's rule that a refusal names the program's own spelling).
+	if base := callableGeneratedBase(fnName); base != "" {
+		return base
+	}
 	return fnName
 }
 
@@ -17620,6 +17640,13 @@ func (g *irGen) emitModuleFuncs(b *strings.Builder) error {
 }
 
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
+	// A definition the defunctionalisation pass retired: every call that used this function as a value now
+	// names the clone the pass minted for it, so its own body compiles nothing, and emitting it would put a
+	// function in the module that no call reaches — one whose name could then be taken by the very clone that
+	// replaced it (ADR 0345).
+	if fd.SkipEmit {
+		return nil
+	}
 	prevRaise := g.funcRaiseExit
 	prevHandlers := g.handlerStack
 	g.handlerStack = nil
@@ -17633,9 +17660,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevDeferred := g.deferred
 	g.deferred = nil
 	defer func() { g.deferred = prevDeferred }()
-	// The traceback frame names the function the raise is written in.
+	// The traceback frame names the function the raise is written in — and for a clone the pass minted, that
+	// is the function the human wrote, not the pass's internal spelling (ADR 0320's rule for a rewritten
+	// call, applied to a rewritten definition; ADR 0345).
 	prevFnSrc := g.curFnSrc
-	g.curFnSrc = fd.Name
+	g.curFnSrc = callableDisplayName(fd)
 	defer func() { g.curFnSrc = prevFnSrc }()
 	g.funcRaiseExit = g.fnName(fd) + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
@@ -17747,7 +17776,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		}
 	}
 	// The program's own functions carry the irSymbolPrefix; see irSymbol.
-	g.dbgDefine(b, irSymbol(g.fnName(fd)), g.fnName(fd), fd.Src)
+	g.dbgDefine(b, irSymbol(g.fnName(fd)), callableDisplayName(fd), fd.Src)
 	fmt.Fprintf(b, "define %s @%s(", retTy, irSymbol(g.fnName(fd)))
 	for i := range fd.Params {
 		if i > 0 {

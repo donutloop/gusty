@@ -45,6 +45,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--schema` | print the machine-readable JSON schema for the AST/IR/diagnostic dumps |
 | `--abi` | print the versioned extern-fn C ABI schema as JSON |
 | `--variance` | print the generic variance table as JSON (L6.6) |
+| `--callables <src>` | print, as JSON, what the function-value pass did to a source string: whether it rewrote it, the clones and hoisted lambdas it minted, the symbols it generated, and the shape it declined (roadmap L11.7, ADR 0345; the document is the schema's `definitions.callablePassReport`) |
 | `--effects <src>` | print each function's **effect signature** (effects performed, return shape, control-flow termination) for a source string; `gusty effects <file>...` for files, `--json` for the schema-declared document (L7.6, ADR 0195) |
 
 
@@ -679,8 +680,39 @@ lowered to opaque-pointer IR.
 - codegen emits an anonymous FuncDef (`lambda_N`) at module level and a call to it. The generated name stays
   where it belongs: an arity diagnostic says `<lambda>`, the name the reference uses and the only one the
   programmer recognises — `too many arguments for lambda_0` blames a name nobody wrote (ADR 0302).
-- a lambda is a *call site*, not a value: passing one to a higher-order function needs a function value, and
-  that is the `L11.1`/function-as-value debt, refused by name.
+- a lambda the compiler must *name* is given a declaration of its own by the function-value pass below, so the
+  positions that call one answer: `sorted(xs, key=lambda x: 0 - x)`, `max`/`min` with a `key=lambda`, a lambda
+  bound to a module name, a lambda passed to a function this backend specialises. A lambda that is *read* rather
+  than called — `print(lambda x: x)`, a lambda that reads a variable of an enclosing function, one returned from
+  a function and then called — is still refused by name, in the sentence quoted under “One backend”. A hoisted
+  lambda reports itself as `<lambda>` wherever a human reads a name, because that is the reference's word for it.
+
+## Function values (L11.7, ADR 0345)
+
+A function used as a value is specialised into names by `defunctionalizeCallables`
+(`pkg/lang/callable_value.go`) as the first act of codegen, before the doors that decide a call —
+and before every whole-program read that would otherwise answer a tree about to change — are asked:
+
+- a function whose body calls one of its own parameters is **cloned once per tuple of functions its call sites
+  ask for**; the clone's body calls the named function by the ordinary call road, and the original definition is
+  retired, so the module carries one definition per thing that can actually be called;
+- a `lambda` that needs a name is **hoisted into a declaration** (module-level binding, an argument to a builtin
+  such as a `key=` hook, an argument to a specialised function) when its body reads nothing but its own
+  parameters;
+- a name that only ever **aliases** a function is retargeted to the calls it makes — `g = f` then `g(21)` calls
+  `f`, provided nothing else reads `g`;
+- anything the pass cannot prove is **handed back untouched**, which costs nothing and keeps the older, honest
+  refusal as the answer (ADR 0273's rule applied to a rewrite).
+
+No `fnptr` operand and no indirect `call` are involved: the pass never puts a handle in a value slot, and the
+test tables forbid `ptrtoint`/`inttoptr` across the whole probe set. A clone reports the function the program
+wrote (`twice`, not `twice$callable$1a2b3c4d`) to a traceback and to `--debug-info`.
+
+**Machine path.** `gustyc --callables <src>` prints the pass's own account as JSON — `rewritten`, `clones`,
+`hoisted_lambdas`, `rewritten_call_sites`, `higher_order_functions`, `symbols`, `refused` — described by the
+schema's `definitions.callablePassReport` (`gustyc --schema`). Exit codes: `0` with the document, `1` when the
+source cannot be parsed. `refused` carries why the pass declined, with its roadmap citation, and is *not* the
+sentence the user is shown for the program: a decline leaves the program where it was.
 
 ## Dict methods (constant receivers)
 
@@ -703,8 +735,8 @@ one:
 | decorators (`@dec def f`) | works — `f = dec(f)` at def time, and the decorated body is the one that runs | ADR 0301's method/table work |
 | closures over a captured scope, at module level | works | — |
 | a **nested** `def` capturing the enclosing scope (`m = make_counter(10); m(2)`) | **refused**: the returned function is a value, and calling a value whose kind is only known at run time needs the tagged word | `L11.1`, function-as-value |
-| higher-order calls (`apply(f, x)`, `lambda` as an argument) | **refused**, by name | `L11.1`, `L11.7` |
-| ordering options on `sorted`/`min`/`max` (`key=`, `reverse=`) | **partial**: options are read by name; declared `def` keys and allowed builtin keys over literal elements/arguments work through the ordinary call road, while run-time containers, lambda keys, call-expression keys, and unsupported builtin keys refuse by name (roadmap L11.7, Gap R.249, ADR 0340) | `L11.7`, `Gap R.254`, `Gap R.255` |
+| higher-order calls (`apply(f, x)`, `lambda` as an argument, `g = f` then `g(x)`) | **works** when the program calls the function: a higher-order body is cloned per tuple of functions its sites ask for, a `lambda` that needs a name is given a declaration, an alias is retargeted (**ADR 0345**). What still refuses is the *read*: a function printed, stored in a container, returned from a call, or a `lambda` that calls its own parameter | `L11.7`, `ADR 0345`, `Gap R.265`, `Gap R.266`, `Gap R.267`, `Gap R.268` |
+| ordering options on `sorted`/`min`/`max` (`key=`, `reverse=`) | **partial**: options are read by name; declared `def` keys, allowed builtin keys and `key=lambda …` hooks over literal elements/arguments work through the ordinary call road (the hook lambda gets a declaration from **ADR 0345**), while run-time containers, call-expression keys and unsupported builtin keys refuse by name (roadmap L11.7, Gap R.249, ADR 0340) | `L11.7`, `Gap R.254`, `Gap R.255`, `Gap R.264`, `Gap R.269` |
 | gradual runtime type checking (`def adopt(a: Animal)` rejecting a `Rock`) | enforced — by the shared front end, at check time, on every path (`--eval`, `--file`, `--verify`, `--check`) | `L6.6` |
 | iteration/comprehension over a *run-time* container or text | literal containers fold; a slot of a container the program built is walked by asking the object (`for v in xs[0]`, `7 in xs[0]` — `ADR 0323`), and any chain depth asks the object at its end (`for v in d["a"]["k"]`, `7 in xs[0][0]` — `ADR 0324`) | `Gap I.2`, `L11.1` |
 | `in` and `for` over a **slot** of a container built at run time | works for one slot deep: a list slot, a dict slot (its keys), a set slot and a text slot each get their own arm, and a slot holding a number, a verdict or `None` raises the reference's own sentence; two slots deep refuses | `L11.1`, `Gap R.95` (paid), `Gap R.210` |
@@ -1040,8 +1072,8 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6877 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden.json` | 6879 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -1559,6 +1591,12 @@ not comments, so a future re-recording cannot silently undo them.
   `{"schema_version","generated_by","runs","opt_level","cases":[...],"totals":{...},"regressions":[...],"new_cases":[...],"exit":N}`
   — see `docs/benchmark.md` and the `benchSuite` / `benchRegression` /
   `benchBaseline` definitions in `--schema`.
+- `--callables <src>` → the function-value pass's own account of the source:
+  `{"tool":"callable-values","pass":"defunctionalize-callables","hash":"…","rewritten":true,`
+  `"clones":1,"hoisted_lambdas":1,"rewritten_call_sites":2,"higher_order_functions":["twice"],`
+  `"symbols":[…],"refused":[]}` — the `callablePassReport` definition in `--schema` (roadmap L11.7, ADR 0345).
+  `rewritten` is `false` and `refused` carries one sentence when the pass declined: the program is then exactly
+  what it was before the pass, and the refusal a user is shown is the one the backend already had.
 
 ### Benchmark suite flags (L10.4)
 

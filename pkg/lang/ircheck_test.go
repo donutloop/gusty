@@ -650,18 +650,15 @@ func TestIRLambdaInlineCompilesWithLLC(t *testing.T) {
 	t.Parallel()
 	// `print((lambda x: int: x + 1)(5))` -> 6 via an anonymous FuncDef + call.
 	ir := llcCompiles(t, "print((lambda x: int: x + 1)(5))")
-	if !strings.Contains(ir, "@gy_lambda_") {
-		t.Fatalf("expected generated lambda FuncDef, got:\n%s", ir)
-	}
+	assertProgramOwnedLambdaSymbol(t, ir, "print((lambda x: int: x + 1)(5))")
 }
 
 func TestIRLambdaNamedCompilesWithLLC(t *testing.T) {
 	t.Parallel()
 	// `f = lambda x: int: x * 2; f(3)` -> 6 via g.lambdas resolution.
-	ir := llcCompiles(t, "f = lambda x: int: x * 2\nprint(f(3))")
-	if !strings.Contains(ir, "@gy_lambda_") {
-		t.Fatalf("expected generated lambda FuncDef, got:\n%s", ir)
-	}
+	src := "f = lambda x: int: x * 2\nprint(f(3))"
+	ir := llcCompiles(t, src)
+	assertProgramOwnedLambdaSymbol(t, ir, src)
 }
 
 func TestIRStrMethodUpperLenFolds(t *testing.T) {

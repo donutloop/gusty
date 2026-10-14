@@ -66,6 +66,13 @@ gusty ships an indentation-based syntax covering:
 - **Functions** — `def` with default/keyword args, inferred return types, and
   anonymous `lambda` functions (`lambda x: int: x + 1`) lowered to closures
   exactly like `def`.
+- **Functions as values** — a function the program *calls* is a value this backend answers: a higher-order body
+  is cloned once per tuple of functions its call sites ask for, a `lambda` that needs a name is given a
+  declaration of its own, and `g = f` is called as `f` — so `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`,
+  `g = d2` / `g(4)` is `8`, and `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]` (**ADR 0345**,
+  roadmap L11.7). A function that is *read* rather than called — `print(f)`, `xs = [f]`, a function a call
+  returns — still refuses in words, because no `fnptr` word exists to hold it; `gustyc --callables <src>` prints
+  what the pass decided about a program.
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local
@@ -261,6 +268,40 @@ a slice that drops its slots' tags and a slice bound to a name that answers the 
 **ADR 0335**), and a
 membership test whose needle is a slot, refusing with a sentence that prints the needle's Go representation
 (**Gap R.232**).
+
+**A function used as a value is specialised into names before the doors that decide a call are asked** — ADR
+0345 pays the called half of L11.7. One sentence had stood between this backend and every higher-order program
+since it existed — `"fn" is called but is not a function this backend can build a call to … (roadmap L11.1,
+ADR 0166)` — and seven doors each carried their own version of it, because a callee the compiler cannot name is
+one question each door answered in its own words. The pass in `pkg/lang/callable_value.go` asks it once, first:
+`defunctionalizeCallables` reads the whole program (calls, name occurrences, whether a name is a callee, every
+binding), plans a rewrite or declines, and only then deep-copies the tree — so the container-answer scan, the
+float and text return scans and the pair road's arity all read the tree the module is built from, and a rewrite
+that arrived after them would be a second opinion about a program they had already answered. A higher-order
+function is cloned once per tuple of functions its call sites ask its parameters to be (the original retires with
+`SkipEmit`, so no unspecialised body survives to be called), a `lambda` that must be named gets a declaration of
+its own when its body reads nothing but its own parameters, and a name whose whole history is one binding plus
+calls is retargeted at the function it means. What it cannot prove it hands back **untouched** — the pass's only
+safe answer, and the reason it can run before the front end's own tools are asked — so the refusal a reader sees
+is the honest one that was already written. `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`, `g = d2` / `g(4)`
+is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min` with a `key=lambda` likewise —
+and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
+now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, which is the file's own
+count and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
+a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
+the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
+the tests now hold shut: names were minted from `%p`, which Go randomises per process, so one program compiled to
+two different modules until `nodeSeed` seeded from a node's ordinal in the plan (the determinism the record and
+every lit test read — Gap R.162's shape again); the reference-leg test used the package's `compiledPrints`, which
+answers from the *record* when the record holds the source, so four probes passed without the compiler being asked
+anything; and a hoisted lambda reported its binding as its name until a CLI row that had been passing by accident
+caught `too many arguments for g` where CPython says `<lambda>`. `gustyc --callables <src>` prints the pass's own
+account — clones, hoisted lambdas, minted symbols, and the shape it declined, with the row that owns it — and the
+seven shapes still refused each got a row: **Gap R.263** (a `lambda` with a default parameter never reaches the
+pass because the parser refuses it), **R.264** (a hook lambda whose body asks a door the call site cannot answer),
+**R.265** (a `lambda` that calls its own parameter, and a `lambda` inside a `lambda`), **R.266** (a function a
+call produces), **R.267** (a higher-order body that calls itself), **R.268** (a bound method or a `__call__`
+object as a callable), **R.269** (`list.sort` still refusing the options `sorted` was taught to read).
 
 **A container the answer table declines is still a container, and the doors are told who they ask** — ADR 0344
 pays Gap R.261, the wrong answer the higher-order door turned up. `containerAnswerScan` had always asked two

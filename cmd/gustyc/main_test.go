@@ -73,6 +73,15 @@ func TestCLILang(t *testing.T) {
 		!strings.Contains(got, "bad operand type for unary -") {
 		t.Errorf("--lang does not print the operand-kind rule for the operators:\n%s", got)
 	}
+	// A function used as a value is discoverable too (ADR 0345): an agent planning a higher-order program
+	// must be able to learn here — not from docs prose — that the CALLED shapes compile, that the READ shapes
+	// refuse in words, and that the pass's own decision is a command away.
+	if got := cli(t, "--lang"); !strings.Contains(got, "callable values:") ||
+		!strings.Contains(got, "cloned once per tuple") ||
+		!strings.Contains(got, "--callables") ||
+		!strings.Contains(got, "ADR 0345") {
+		t.Errorf("--lang does not print the function-value rule:\n%s", got)
+	}
 	// A container variable's kind is decided by the binding that takes the name over (ADR 0341). The rule
 	// is discoverable rather than something an agent has to read docs prose for: the answer a read of a
 	// rebound name gives is the last binding's, and an agent planning a compilation can learn that here.

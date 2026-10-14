@@ -15,8 +15,11 @@ package lang
 //
 // The document also describes the other structured outputs an agent consumes:
 // `definitions.diagnostic` (the `code`/`suggestion` fields carried by
-// --verify/--check JSON) and `definitions.varianceRule` (one row of the
-// self-describing variance table printed by `gustyc --variance`).
+// --verify/--check JSON), `definitions.varianceRule` (one row of the
+// self-describing variance table printed by `gustyc --variance`), and
+// `definitions.callablePassReport` (the account the function-value pass prints for
+// `gustyc --callables <src>` — what it specialised, and the shape it declined;
+// roadmap L11.7, ADR 0345).
 const ASTIRSchema = `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gusty.local/schema/ast-ir.json",
@@ -1051,6 +1054,73 @@ const ASTIRSchema = `{
         },
         "code": {
           "type": "string"
+        }
+      }
+    },
+    "callablePassReport": {
+      "type": "object",
+      "required": [
+        "tool",
+        "pass",
+        "hash",
+        "rewritten",
+        "clones",
+        "hoisted_lambdas",
+        "rewritten_call_sites",
+        "higher_order_functions",
+        "symbols",
+        "refused"
+      ],
+      "description": "The defunctionalisation pass's own account of one source (gustyc --callables <src>; lang.CallablesJSON, roadmap L11.7, ADR 0345): what the pass rewrote, and the shape it could not prove. A program whose functions are used as values is specialised — each higher-order function is cloned once per distinct tuple of functions its parameters are asked to be, and a lambda that had no declaration is given one — so every call names a function by the time the doors that decide a call are asked. rewritten=false means the pass handed the program back untouched, which is the pass's only safe answer: the refusal the backend already had stays the answer, and Refused says why (ADR 0273's rule that a scan which declines must not speak over the road that named what it could not carry).",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Always \"callable-values\": the self-describing name of this tool."
+        },
+        "pass": {
+          "type": "string",
+          "description": "Always \"defunctionalize-callables\": the pass that produced the account."
+        },
+        "hash": {
+          "type": "string",
+          "description": "A stable digest of the rewrite (clones, hoisted lambdas, rewritten call sites), or \"none\" when nothing was rewritten. Two runs of one source give one hash; a different hash for unchanged source is the pass losing the determinism the record and the lit tests read."
+        },
+        "rewritten": {
+          "type": "boolean",
+          "description": "true when the pass produced a new program; false when it declined and the caller's untouched tree was kept."
+        },
+        "clones": {
+          "type": "integer",
+          "description": "How many specialised definitions the pass minted."
+        },
+        "hoisted_lambdas": {
+          "type": "integer",
+          "description": "How many lambdas the pass gave a declaration of its own — a body bound to a name, an argument to a builtin, a key= hook."
+        },
+        "rewritten_call_sites": {
+          "type": "integer",
+          "description": "How many call sites now name a function where they used to pass a value."
+        },
+        "higher_order_functions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The functions whose bodies call one of their own parameters, in the order the source declares them."
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The internal names the minted definitions carry, sorted. A diagnostic never prints these: a clone reports the name the program wrote, and a hoisted lambda reports <lambda>, the reference's own word for it (ADR 0345 §3)."
+        },
+        "refused": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Why the pass declined — the shape it could not prove, in the sentence it declines with. Empty when the program was rewritten. These are not the program's errors: a decline leaves the program where it was, and the refusal a user is shown is the one the backend already had."
         }
       }
     },

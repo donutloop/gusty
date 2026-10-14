@@ -10719,3 +10719,55 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
 - **A stale binary is a false memory.** Two "regressions" in this session were `/tmp/gustyc-a` having been built
   from an intermediate edit — one of them was my own first, wrong fix reporting itself as HEAD behaviour. Any
   claim about "what HEAD does" now gets re-measured with a binary built from `git commit` in a clean worktree.
+
+## A function used as a value is a name the pass mints, not a word the value carries (ADR 0345, roadmap L11.7)
+
+**Feature (codegen + front-end-adjacent pass)**: `print(apply1(inc, 41))`, `print(twice(d2, 3))`,
+`g = d2` / `print(g(4))` and `print(sorted([3, 1, 2], key=lambda x: 0 - x))` were refused at exit 1 by seven
+different doors wearing seven vocabularies, where CPython prints `42`, `12`, `8` and `[3, 2, 1]`. `defunctionalizeCallables`
+(`pkg/lang/callable_value.go`) now runs as the first act of `GenerateIRReport`: read the program, plan a rewrite
+or decline, deep-copy, write. A higher-order function is cloned per entry tuple, a lambda that must be named is
+declared, an alias is retargeted, and everything the pass cannot prove comes back exactly as it went in.
+
+- **The record is a witness, and a helper can quietly be the record.** `captureStdout`/`compiledPrints` in
+  `pkg/lang` answers from `testdata/interpreter-golden.json` *when the record holds the source*, and falls back to
+  the JIT otherwise. The reference-leg table I wrote used it, so four probes "passed" while the compiler was never
+  asked — they were being read back out of a JSON file. `callable_value_test.go` now has its own
+  `compiledRunIsTheBackend`, which is `RunSource` and nothing else. Anything that claims to be a *compiled* leg has
+  to name the compiled entry point in its body, not in its comment.
+- **A skip needs a floor.** The record-leg test skips probes the retired engine never saw — which is most of the
+  new ones — and a table of skips is indistinguishable from a table of passes. Both that test and
+  `TestTheKeyedOrdersAreOnTheRecord` now count how many rows reached a record and fail at zero. The same bug hid in
+  the counting itself: the counters were filled by `t.Parallel()` subtests, which run *after* the parent function
+  returns, so the guard read `0` while the real answer was still queued. A guard that counts subtest work cannot be
+  a parallel parent.
+- **`%p` is not a seed.** Names minted with `fmt.Fprintf(h, "%s|%p", base, node)` gave
+  `print(sorted([3, 1, 2], key=lambda x: -x))` two different modules in two runs: Go randomises `%p` per process
+  since 1.21. Determinism is load-bearing here — the golden record, the lit tests and every cached artifact read IR
+  symbols — so `nodeSeed` numbers nodes by first ask within the plan, and
+  `TestThePassRewritessTwiceToTheSameBytes` compiles every probe twice. Gap R.162 was filed against exactly this
+  property on another pass; expect it wherever a name is minted.
+- **A wrong answer showed up before a test did.** While the alias road was half-built, `print(apply1(inc, 41))`
+  printed **`43`** — 41 plus two increments — at exit 0. It reached me only through a probe script, because the
+  reference harness at the time compared against a CPython run of a *source that did not define `inc`*, so CPython
+  printed nothing and "both printed nothing" looked like agreement. A reference leg has to run the *same program*;
+  a harness whose reference silently produces the empty string turns every mismatch into a match. The arity audit
+  (`callableInnerAgrees`, checked against the *declared* parameter count) is what makes the double-application
+  shape impossible now, and the answer table would have caught it too — but only if it had been compared to
+  something real.
+- **The refusal's name is part of the refusal.** `too many arguments for g` passed an integration test that asked
+  for `<lambda>`… except it did not: the row had been written to accept whatever came out, and only became a real
+  check when the CLI table was rewritten to demand CPython's word. A lambda's surface name is `<lambda>` even when
+  a name is bound to it, because that is what the reference prints; a clone's surface name is the function the
+  program wrote (`twice`), because that is what the reader's file contains. Both decisions live in one function
+  (`callableSurfaceName`) so the minted spelling never leaks, and `FuncDef.CloneOf` carries the source name into
+  `--debug-info` and tracebacks.
+- **Declining is a feature, and it wants to be legible.** Every unprovable shape returns the caller's untouched
+  tree, which keeps the older honest refusal — the pass can only *add* answers. `--callables` prints why it
+  declined (the `refused` field, cited to the roadmap row) with a schema definition behind it, because a rewrite
+  whose decisions are unreadable is a rewrite nobody can debug without reading its source.
+- **Every measurement I trusted was the one that had a reference beside it.** The seven new gap rows (R.263–R.269)
+  each carry CPython's answer as measured, not as remembered — and three shapes I first believed were gaps turned
+  out to be programs CPython itself stops (`apply1(twice, 3)` is a `TypeError`, not a value), which is why they are
+  not on the list. The list came from one script that printed `ours`/`ref` side by side; that script is worth more
+  than any table I could have written from intent.

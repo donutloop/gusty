@@ -12,6 +12,7 @@
 //	--lang              list supported language features (self-describing)
 //	--oracle <src>      run the compiled backend and CPython and compare (exit 6 divergence, 7 no verdict)
 //	--variance          print the generic variance table as JSON (L6.6)
+//	--callables <src>   print what the defunctionalization pass did to a source string as JSON (L11.7)
 //	--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
 //	--version           print version
 //	--repl              start an interactive REPL (default when stdin is a TTY)
@@ -149,6 +150,7 @@ func run() int {
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
 	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
+	callables := fs.String("callables", "", "print, as JSON, what the function-value pass did to a source string: whether it rewrote it, the clones and hoisted lambdas it minted, the IR names it generated, and the shape it could not prove (roadmap L11.7, ADR 0345)")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
 	jit := fs.Bool("jit", false, "accepted for compatibility: the compiled LLVM backend is the only backend (ADR 0302)")
@@ -218,6 +220,15 @@ func run() int {
 			return exitCompileError
 		}
 		fmt.Println(abiSchema)
+		return exitOK
+	}
+	if *callables != "" {
+		doc, err := lang.CallablesJSON(*callables)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gustyc: callables: "+err.Error())
+			return exitCompileError
+		}
+		fmt.Println(doc)
 		return exitOK
 	}
 	if *varianceCmd {
@@ -967,6 +978,7 @@ Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emi
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
 Effects: gustyc --effects <src> | gustyc effects <file>...  # per-function effect signature: awaits/yields/raises, returns, fall-through (L7.6; --json for the document)
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
+Function values: gustyc --callables <src>  # JSON account of the defunctionalization pass: rewritten?, clones, hoisted lambdas, minted symbols, the shape it declined (roadmap L11.7)
 Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier verdict for the emitted module (L8.2)
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
 Debug info: gustyc --debug-info <src> [--json]          # the compiled line table: functions, IR-line to source-line rows (L8.5)
@@ -995,6 +1007,7 @@ statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, 
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda, comprehension (list [x for x in it if c] / set {x for x in it if c} / dict {k: v for k in it if c})
 operators: every operator is a question about the operand's KIND, binary or unary. An operator with no rule for the pair raises CPython's own TypeError at run time — exit 3, catchable by except TypeError: — and never answers with a number. That includes unary -: -"hi", -None, -[1], -{"a":1}, -{1}, -C() each raise bad operand type for unary -: '<kind>' naming the operand's real kind (the compiled backend; ADR 0266, docs/language.md § Unary minus), and abs(): abs("hi"), abs(None), abs([1]), abs({"a":1}), abs({1}), abs(C()) raise bad operand type for abs(): '<kind>' through the same door, so the two operators can never name the same operand differently (the compiled backend; ADR 0271, docs/language.md § abs)
 ordering: sorted/min/max read key= and reverse= by NAME, not position; a callable key is called on each element through the ordinary call road, and a non-callable key raises CPython's TypeError (roadmap L11.7; Gap R.249; ADR 0340)
+callable values: a function the program CALLS is a value the backend answers — a higher-order body is cloned once per tuple of functions its call sites ask its parameters to be, a lambda that needs a name is given a declaration of its own, and g = f then g(x) calls f — so apply(f, x), twice(d2, 3) and sorted(xs, key=lambda v: 0-v) compile; what still refuses in words is a function READ rather than called (print(f), xs = [f], a function a call returns), which needs the word L11.1 owns; --callables <src> prints what the pass decided (roadmap L11.7; ADR 0345; Gaps R.263-R.269)
 containers: a list/dict/set variable asks its LAST binding what it is — the binding that takes the name over settles the kind, whether its slots describe themselves and what they hold, so d = {1: 10} then d = [3, 4] prints [3, 4] and d[0] reads a position, and a container rebound to a literal of the same kind is read by the same roads as one bound once (roadmap L11.1; Gap Q.1; ADR 0341)
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
 patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (the compiled backend; ADR 0235)

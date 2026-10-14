@@ -3,6 +3,7 @@ package lang
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -13,6 +14,28 @@ import (
 // nothing complained (roadmap Gap R.4, ADR 0198). Program-owned names are therefore emitted
 // under irSymbolPrefix; names the program does not define — the runtime helpers, the C
 // library, and what `extern fn` binds — keep theirs.
+
+// assertProgramOwnedLambdaSymbol is the claim both the IR check and the host-symbol table make about a
+// lambda that reaches the module as a definition: whatever spelling it carries, it carries the
+// program-owned prefix, and every call that reaches it binds a symbol the module actually defines.
+//
+// A lambda bound to a name is spelled `@gy_<name>$lambda$<hash>_0` since the defunctionalisation pass gave
+// it a declaration of its own (roadmap L11.7, ADR 0345); the closure road's anonymous spelling is
+// `@gy_lambda_<n>`. The two are the same claim wearing two names — a lambda the program wrote is emitted
+// under the prefix that keeps it from colliding with the C library (Gap R.4, ADR 0198) — and the assertion
+// is about that claim, not about which pass got there first.
+func assertProgramOwnedLambdaSymbol(t *testing.T, ir, src string) {
+	t.Helper()
+	calls := regexp.MustCompile(`call i32 @(`+irSymbolPrefix+`[A-Za-z0-9_$]*lambda[A-Za-z0-9_$]*)\(`).FindAllStringSubmatch(ir, -1)
+	if len(calls) == 0 {
+		t.Fatalf("%q emitted no program-owned lambda call:\n%s", src, ir)
+	}
+	for _, m := range calls {
+		if !strings.Contains(ir, "define i32 @"+m[1]+"(") {
+			t.Fatalf("%q calls %s, which the module does not define:\n%s", src, m[1], ir)
+		}
+	}
+}
 
 func mustIRForSymbols(t *testing.T, src string) string {
 	t.Helper()
@@ -134,10 +157,8 @@ func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
 	})
 	t.Run("lambda", func(t *testing.T) {
 		t.Parallel()
-		ir := mustIRForSymbols(t, "f = lambda x: int: x * 2\n\nprint(f(3))\n")
-		if !strings.Contains(ir, "@gy_lambda_") {
-			t.Errorf("a generated lambda is program-owned too:\n%s", ir)
-		}
+		src := "f = lambda x: int: x * 2\n\nprint(f(3))\n"
+		assertProgramOwnedLambdaSymbol(t, mustIRForSymbols(t, src), src)
 	})
 	t.Run("imported module function", func(t *testing.T) {
 		t.Parallel()

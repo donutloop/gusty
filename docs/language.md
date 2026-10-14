@@ -18,8 +18,9 @@ that says "the record answers X" is one of two things, and the sentence's own te
 
 A capability the retired engine had and the compiler does not is a **gap with an owner**, never a
 fallback: `docs/operations.md` §"One backend, and what it does not lower" lists them (nested closures,
-higher-order calls, run-time iteration and `sorted` over a computed container, `dict(<container>)` copies)
-with the row that owes each.
+a function *read* as a value rather than called, run-time iteration and `sorted` over a computed container,
+`dict(<container>)` copies) with the row that owes each. A function *called* as a value answers — a higher-order
+body is cloned per tuple of functions its call sites ask for (**ADR 0345**, roadmap L11.7).
 
 ## Gradual typing
 
@@ -2759,9 +2760,40 @@ through exit 2. A function in a **numeric** position raises instead of refusing,
 on the compiled backend: `abs(f)` → `TypeError: bad operand type for abs(): 'function'`, `-f` →
 `bad operand type for unary -: 'function'`, and an imported module answers `'module'`; each is catchable by
 `except TypeError:`. A name the program *assigned* is a different matter and keeps working — `g = f` then
-`g(21)` answers `42` on the record, `g = lambda x: x * 3` then `g(4)` answers `12` on both legs —
-and a body that calls a **parameter** is still refused compiled (`unsupported call "f"`), which is L11.7's
-higher-order limit (`Gap R.167`), as is printing a function object.
+`g(21)` answers `42`, `g = lambda x: x * 3` then `g(4)` answers `12` — and a body that calls a **parameter**
+answers too: **ADR 0345** specialises a function that is used as a value into names before the doors that decide
+a call are asked, so `print(f)` and `xs = [f]` still refuse in words while `apply(inc, 41)` compiles.
+
+A **function used as a value** is a value this backend answers, as long as the program *calls* it (L11.7,
+ADR 0345). A higher-order function is cloned once per tuple of functions its call sites ask its parameters to be,
+a `lambda` that needs a name is given a declaration of its own, and a name that only ever aliases a function is
+pointed at the calls it makes:
+
+```python
+def twice(fn, v):
+    return fn(v) + fn(v)
+
+def d2(x: int) -> int:
+    return x * 2
+
+print(twice(d2, 3))                              # 12
+print(twice(lambda x: x * 3, 2))                 # 12
+
+g = d2
+print(g(4))                                      # 8 — the alias is called as d2
+print(sorted([3, 1, 2], key=lambda x: 0 - x))    # [3, 2, 1] — the hook lambda gets a declaration
+print(max([1, 3, 2], key=lambda x: 0 - x))       # 1
+```
+
+The boundary is *called* versus *read*. A function that flows to a position which keeps one word for a value
+still refuses, in words, at exit 1: `print(f)`, `xs = [f]`, `print(g)` after `g = f`, a `lambda` returned from a
+function and then called, a `lambda` that reads a variable of an enclosing function, and a `lambda` that calls
+its own parameter. What the rewrite did not change is what ADR 0283 promises about reading a `def`'d name; what it
+changed is that a function the program *calls* no longer needs a word to travel in. A clone reports the name the
+program wrote — a traceback and `--debug-info` say `twice`, and a hoisted `lambda` says `<lambda>`, the
+reference's own word for it. `gustyc --callables <src>` prints the pass's own account of a source (what it
+specialised, and the shape it declined), and the shapes still refused are Gaps R.255, R.263, R.264, R.265,
+R.266, R.267, R.268 and R.269.
 
 Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
 printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print
@@ -4241,10 +4273,11 @@ order; `reverse=False` keeps ascending order. (With no `key=`, this language als
 accepts a documented constant truthy second positional argument as its repeat flag.)
 `list.sort()` sorts in place and returns `None`; `list.reverse()` reverses
 in place and returns `None`. The two **methods** still take no `key=`/`reverse=`
-argument — `sort(key=...)` needs the method's own first-class call road and refuses,
-naming that reason (roadmap L11.7, ADR 0191). The **builtin** `sorted` now reads
+argument — `sort(key=...)` has not been given the key road the **builtin** was given in
+ADR 0340, and refuses naming that reason (roadmap L11.7, **Gap R.269**; ADR 0191). The **builtin** `sorted` now reads
 `key=` and `reverse=` by name and calls an allowed key through the ordinary call road
-(roadmap L11.7; Gap R.249; ADR 0340).
+(roadmap L11.7; Gap R.249; ADR 0340), including a `key=lambda …` hook, which **ADR 0345** gives a
+declaration of its own so the door that calls a named callable has a name to call.
 
 **What used to be wrong with the shape, and what it took to see it** (roadmap **Gap R.258**, paid by
 **ADR 0343**): `x = sorted([3, 1, 2], reverse=True)` followed by `x` died by `SIGSEGV` inside `@rt_alloc` while
@@ -4395,7 +4428,9 @@ equal keys, using the same comparator (`@rt_elem_gt`) the unkeyed sorter already
 
 What still refuses is named, not guessed: `sorted(xs, key=...)` over a heap list built by the program needs
 the value word to carry each element to the call (**Gap R.254**; the same call without `key=` is answered by
-`@rt_sort`), a `lambda` key or call-expression key needs function values (**Gap R.255**, roadmap L11.7), and
+`@rt_sort`), a call-expression key or a builtin key this backend cannot call still needs the function-*answer*
+the value word will carry (**Gap R.255**, roadmap L11.7 — a `key=lambda …` hook answers, since **ADR 0345**
+declares the lambda and the ordinary call road answers the call), and
 a key returning a float needs the comparator the tagged value word owns (**Gap R.248**). The ordinary call
 road's existing parameter-kind refusals are not widened by this row.
 

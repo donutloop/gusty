@@ -1,5 +1,14 @@
 {
  "entries": {
+"# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The\n# interpreter maps with a lambda; the compiled backend answers `unsupported call \"f\"`\n# because there is no fnptr operand or indirect call lowering (L11.7).\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(lambda v: v * 3, [1, 2]))\n": {
+    "stdout": "[3, 6]\n",
+    "hasStdout": true
+   },
+
+"# Oracle probe (L11.9, ADR 0186; ADR 0283) — a def'd function used as a *value* (passed as an\n# argument). The interpreter answers CPython's `[2, 4]` now that a top-level `def` binds its own\n# name, the way a `lambda` bound to a name always has; before ADR 0283 it reported\n# `undefined name twice`. The compiled leg still refuses, because the body calls a *parameter*\n# (`f(x)`), which is the higher-order limit L11.7 records rather than this row's name lookup.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n": {
+    "stdout": "[2, 4]\n",
+    "hasStdout": true
+   },
 "a = {1: 2}\nb = a\nb = [7, 8]\nprint(b)": {
     "stdout": "[7, 8]\n",
     "hasStdout": true

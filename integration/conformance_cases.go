@@ -625,6 +625,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// bounds words the last binding earns are in this one program, whose expectation is what CPython
 		// printed for it (roadmap Gap Q.1, owner L11.1, ADR 0341).
 		"rebound_container_kind",
+		// A function passed to a function is a value the compiled backend answers. The body of `apply`
+		// calls its *parameter* (`f(x)`), which is the shape L11.7 recorded as refused since the backend
+		// had one word per value: the defunctionalisation pass gives the lambda — and a `def` reached
+		// through an alias — a declaration of its own, so the call is an ordinary one by the time the
+		// doors that decide a call are asked, and both programs print CPython's answer on the compiled
+		// leg (roadmap L11.7, ADR 0345; these two probes recorded the debt).
+		"probe_fn_value", // L11.7 — a lambda called through a parameter
+		"probe_fn_name",  // L11.7 — a declared function called through a parameter
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -789,8 +797,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
 		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",
 		// A declared name is not a variable, and a function is not a number: reading a `def`'d name is no
 		// longer a NameError, so a function flows through a parameter on the interpreter, and the numeric
 		// door raises CPython's `'function'`/`'module'` sentence instead of handing `llc` a load of a slot
@@ -1138,19 +1144,6 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
 		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	"programs/probe_fn_value": {oracle: lang.OracleDebt,
-		reason: "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
-		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	// the record leg closed with ADR 0283: a top-level `def` now binds its own name to the same
-	// closure handle a `lambda` gets, so `apply(twice, [1, 2])` maps the function and answers CPython's
-	// `[2, 4]` instead of `undefined name twice`. Only the compiled leg still owes it — its body calls a
-	// *parameter*, which is the higher-order limit L11.7 records — so this stays a debt row with one pin
-	// answered and one still missing (roadmap Gap R.150, Gap R.151, ADR 0283).
-	"programs/probe_fn_name": {oracle: lang.OracleDebt,
-		reason: "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
-		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// Five lines of CPython parity on the record. The compiled leg answers the two trap lines
 	// (`abs(twice)`, `-twice`) byte-for-byte and refuses only the higher-order body — `apply` calls a

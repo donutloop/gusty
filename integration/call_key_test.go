@@ -33,6 +33,13 @@ func TestKeyedOrdersAtTheCLIMatchCPython(t *testing.T) {
 		{"already-written order survives ties", "print(sorted([3, 3, 1], key=abs))\n", "[1, 3, 3]\n"},
 		{"an empty keyed list", "print(sorted([], key=abs))\n", "[]\n"},
 		{"a user function as the key", "def flip(x):\n    return 0 - x\nprint(sorted([3, 1, 2], key=flip))\n", "[3, 2, 1]\n"},
+		// A `key=lambda ...` reaches the key door as a named callable because the defunctionalisation pass gave
+		// the lambda a declaration of its own (roadmap L11.7, ADR 0345); the door itself calls it by the
+		// ordinary call road, which is ADR 0340's rule.
+		{"a lambda key orders", "print(sorted([3, 1, 2], key=lambda x: 0 - x))\n", "[3, 2, 1]\n"},
+		{"a lambda key with reverse", "print(sorted([3, 1, 2], key=lambda x: x, reverse=True))\n", "[3, 2, 1]\n"},
+		{"a lambda key on max", "print(max([1, 3, 2], key=lambda x: 0 - x))\n", "1\n"},
+		{"a lambda key on min", "print(min([3, 1, 2], key=lambda x: 0 - x))\n", "3\n"},
 		{"a default parameter is callable with one argument", "def bump(x, bias=0):\n    return x + bias\nprint(sorted([3, 1, 2], key=bump))\n", "[1, 2, 3]\n"},
 		{"min reads its key", "print(min(3, 1, -2, key=abs))\n", "1\n"},
 		{"max reads its key", "print(max(3, 1, -2, key=abs))\n", "3\n"},
@@ -140,7 +147,6 @@ func TestKeyedOrdersThatRemainRefusedStayRefusedAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, phrase string }{
 		{"heap list sorted by key", "xs = [3, 1, 2]\nprint(sorted(xs, key=abs))\n", "key=abs"},
 		{"float-returning user key", "def f(x):\n    return x / 2\nprint(sorted([3, 1, 2], key=f))\n", "key=f"},
-		{"lambda key", "print(sorted([3, 1, 2], key=lambda x: 0 - x))\n", "lambda"},
 		{"call-expression key", "def f(x):\n    return x\nprint(sorted([3, 1, 2], key=f(1)))\n", "key=f(1)"},
 		{"builtin that cannot be called by this door", "print(sorted([3, 1, 2], key=hash))\n", "key=hash"},
 	} {

@@ -11629,3 +11629,156 @@ mystery: an index read of a declined answer (`print(f()[0])`, `print(f()["k"])` 
 what a declined answer's slots hold — which is the thing the scan declined to claim, and the reason it declined:
 a slot filled by a call can arrive as the (payload, tag) pair, and ADR 0273 exists to stop this table from
 printing the pair as its payload.
+
+### L11.7 — a function used as a value is specialised into names before the doors that decide a call are asked (ADR 0345, 2026-10-15)
+
+The measurement that opened the row is one line, and it had been true for the whole life of the compiled
+backend:
+
+```text
+def apply1(fn, v):
+    return fn(v)
+
+print(apply1(inc, 41))
+```
+
+```text
+codegen: "fn" is called but is not a function this backend can build a call to: the reference asks the value
+what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that
+question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)
+```
+
+The sentence is honest. The program is CPython's `42`, and the retired engine ran it. What made it more than a
+missing feature is the *count*: seven doors carried their own `cannot build a call to` — the ordinary call road,
+`call_key.go`'s keyed comparator, the container-answer scan, the float and text return scans, the pair road's
+arity, the builtin hook arguments — and each described the same missing thing in different words. A DR about one
+door at a time would have produced seven partial answers and seven vocabularies.
+
+**Why the pass runs first.** `GenerateIRReport` is where a program becomes a module, and its first acts are
+whole-program reads: `resolveImports`, then `containerAnswerScan` (ADR 0333, read in halves by ADR 0344), then
+the float/text return scans, then the pair road's arity table. Every one of them answers a question about *this
+tree*. A rewrite that arrived after them would leave those tables describing a program the module no longer
+contains — the same class of bug ADR 0259 filed against a kind table that agreed with a stale tree, and the same
+reason ADR 0232 wants a question asked once. So:
+
+```go
+func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, error) {
+	prog = defunctionalizeCallables(prog)
+	imports, err := resolveImports(prog, moduleSearchFor(opts))
+```
+
+**Three functions, one of which may mutate.** `callableReadProgram` walks the AST by reflection and records data
+(calls, name occurrences, whether a name occurrence is a callee, bindings, enclosers). `planDefunctionalization`
+answers with a `callablePlan` or with a `*callableDecline` — it copies nothing and changes nothing, so a decline
+is free and a bug in the reader shows up as a decline rather than as a mangling. `applyDefunctionalization`
+deep-copies (`copyProgramAST` → `copyASTNode`/`copyASTValue`) and writes the plan into the copy. The caller's
+tree is never the target, which is what lets the pass run before the front end's own tools (`--emit-ast`,
+`gusty fmt`) are asked about the source — the rule ADR 0320 learned from a rewrite that reached a formatter.
+
+**What the plan may do.** Four rewrites, each with a proof obligation:
+
+* *Clone a higher-order function once per entry tuple.* The obligation is that the body calls its parameter the
+  same way at every site and that every entry takes the same number of arguments (`callableInnerAgrees`) —
+  checked against the *declared* arity of the entry, not the arity the site happens to pass, which is the bug
+  shape that turns a refusal into `43` for `apply1(inc, 41)`. The original definition retires via
+  `FuncDef.SkipEmit`: emitting it would put a body in the module that no call reaches and whose name the clone
+  just took.
+* *Give a lambda a declaration* when it is self-contained. The proof is the free-name set
+  (`callableFreeNames`): a lambda that reads an enclosing variable would read it from a different place once
+  hoisted, and a wrong answer from a moved body is exactly what ADR 0245's scope work is for, so the shape stays
+  with the closure road's refusal.
+* *Retarget an alias* when the name's whole history is one binding plus calls. `print(g)`, `xs = [d2]` and a
+  later `g = 3` each break the proof, and the program keeps ADR 0283's refusal — the pass does not delete a
+  refusal it did not earn.
+* *Hoist a hook lambda* in an argument position so ADR 0340's key road gets the name it always asked for. The
+  comparator changed by zero lines; it had been refusing a lambda for having no name.
+
+**Naming is decided once.** A clone reports `FuncDef.CloneOf` — the function the programmer wrote — so
+`--debug-info` and a traceback say `twice` and the linker sees `gy_twice$callable$…`. A hoisted lambda reports
+`<lambda>`, because that is CPython's word for an anonymous function even when a name is bound to it:
+`g = lambda x: x` / `g(1, 2)` must say `too many arguments for <lambda>`, and an integration row that had been
+passing by accident caught the first draft saying `for g`. Both roads go through `callableSurfaceName`, and the
+minted spelling never reaches a human.
+
+**Determinism is not optional and the first draft lost it.** Names were first minted with `fmt.Fprintf(h, "%s|%p",
+base, seed)`. Go randomises `%p` per process, so `print(sorted([3, 1, 2], key=lambda x: -x))` produced two
+different modules in two runs — which the golden record, the lit tests and every cached artifact would read as a
+compiler that cannot compile the same program twice. `TestThePassRewritessTwiceToTheSameBytes` compiles every
+probe twice, and `nodeSeed` seeds from a node's ordinal in the plan. (Gap R.162 was filed against this property
+on another pass; the shape recurs whenever a name is minted.)
+
+**The two legs, and what each is allowed to say.** The reference leg is written down: each probe's `want` is
+CPython's own text, and the CLI table in `integration/call_key_test.go` compares against `python3` at run time.
+The record leg asks `testdata/interpreter-golden.json` where a record exists — and it must say so honestly: the
+first draft used the package's `compiledPrints`, which answers from the *record* when the record holds the source,
+so four probes were "passing" without the compiler being asked anything. The file now has its own
+`compiledRunIsTheBackend`, which is `RunSource` and nothing else, and the record leg has a guard that fails if no
+probe reached a record at all, so a skip cannot become the test. Two corpus programs newly asserted
+(`probe_fn_value`, `probe_fn_name`) had never been recorded; they were recorded from the reference through
+`tools/recmerge`, which refuses an entry the compiled leg will not agree to — the record's own
+`meta.added_after_0302` rule, and the reason the record grew from 6877 to 6879.
+
+**What the pass is not.** It is not the value word. No `fnptr` operand, no indirect `call`, no `i32` holding a
+function: two tables forbid `ptrtoint`/`inttoptr` across the whole probe set, because the handle-as-a-number call
+is the exact shape this backend has been wrong about, and `print(g)` still refuses — a function that is *called*
+is in scope, a function that is *read* is L11.1's. It also stays out of ADR 0284's declared-type road: a parameter
+annotated `function` or `Callable[...]` declines, because that machinery decides such a call's shape and its trap
+today and a clone over the top of it answers one program by two roads. A plain `x: int` annotation is not a
+reason to decline — the first draft's blanket ban on annotated parameters declined `def inc(x: int) -> int`,
+which is half the record, for a reason this pass has no opinion about.
+
+### Gap R.263 — a `lambda` with a default parameter never reaches the pass, because the parser refuses it
+
+`f = lambda x, y=1: x + y` is a parse error (`expected ":"` at the `=`), while `def f(x, y=1)` is not. CPython
+answers `2` for `f(1)` and `6` for `f(1, y=5)`, and the retired engine answered both. The row is filed against the
+front end, not the pass: a lambda the parser refuses can be neither hoisted nor named, and letting the pass "work
+around" it would mean the pass inventing a parameter list the source did not parse. The fix is in `parseLambda`
+taking the same `Param`s `parseParams` takes; the arity audit then has to see the arity the reference sees, and
+the arity sentence must keep naming `<lambda>`.
+
+### Gap R.264 — a hook lambda whose body asks a door the call site cannot answer
+
+`sorted(['bbb', 'a', 'cc'], key=lambda s: len(s))` refuses with `len of a non-string variable` while the
+integer-key twin of the same program answers. The distinction is the tag: the key's parameter arrives as one
+untagged word, and `len` of a *variable* is the door Gap R.104 names. The pass did its part — the hook has a
+declaration and is called by the ordinary road — and the body's own door is what is left. Filed separately so the
+key row (Gap R.255) and the tag row (L11.1) do not absorb each other.
+
+### Gap R.265 — a `lambda` that calls a parameter, and a `lambda` inside a `lambda`
+
+`(lambda f: f(3))(lambda x: x * 2)` is `6` in the reference; here the parameter call is refused exactly as a
+function parameter's call used to be. The second shape is worse than a refusal: `apply1(lambda x: (lambda y:
+y * 2)(x), 4)` reports `undefined name "x"`, because hoisting the inner lambda out of the outer one takes its
+parameter's scope with it. A name error for a bound parameter is not an honest refusal, so the row pins both
+sentences and says which one is the bug. The fix is the pass's own clone road applied to a lambda body, plus
+hoisting an inner lambda together with the one that encloses it.
+
+### Gap R.266 — a function a call produces is not a value
+
+`def picker(): return lambda x: x + 1` / `print(picker()(2))` refuses, and so does the branch-selected twin. The
+pass cannot reach it: its whole technique is that a call site names its own entries, and here the callee is the
+answer of a call. It stays a refusal (ADR 0283's sentence, exit 1) until a callable has a word the tagged value
+can hold; the row says plainly that if it stays a refusal, `docs/language.md` must say so in the same words.
+
+### Gap R.267 — a higher-order body that calls itself keeps its parameter un-specialised
+
+`fact(n, f)` recursing with `f` in hand is CPython's `24` and a refusal here. A self-call inside a higher-order
+body passes the *same* entry it was called with, so the clone it should call is itself — the fixed-point loop
+`runProgram` already runs exists for this shape, and the site walk simply does not own a call written inside a
+higher-order body. This is the one row on this list whose fix is inside the pass.
+
+### Gap R.268 — a callable that is neither a `def` nor a `lambda`
+
+`key=K().neg` (a bound method) and `apply1(add, 1)` over a class with `__call__` both refuse where CPython
+answers. A bound method is a declaration plus a receiver; `__call__` is a method the reference calls on the
+object's behalf. The pass substitutes things with declarations, so both need the (receiver, symbol) pair the
+method-call road already builds — and a key that is neither should still raise the reference's `TypeError`
+catchably, which is Gap R.249's rule.
+
+### Gap R.269 — `list.sort` still refuses the options `sorted` was taught to read
+
+`xs.sort(key=lambda v: 0 - v)` is refused with `sort() takes no arguments in this build — key= and reverse= need
+first-class function values (roadmap L11.7)`. The sentence was true when written and is now only half true:
+ADR 0345 supplies the name, and ADR 0340's key road is the road. The unkeyed `xs.sort()` answers; the
+run-time-element half remains Gap R.254. The row's definition of done includes deleting the sentence for the
+shapes that answer, because a refusal that has outgrown its reason is a lie with a citation in it.

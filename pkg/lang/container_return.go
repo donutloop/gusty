@@ -1416,7 +1416,7 @@ func (g *irGen) containerAnswerReadIsRefused(e Expr, read containerAnswerRead) (
 // next move is different: making the appended value something the table can follow is a program change,
 // and so is asking for the object through a name, which the binding road already answers.
 func containerAnswerUndescribedRefusal(fnName string) error {
-	return fmt.Errorf("codegen: %q hands back a container whose slots this backend will not describe: the object is built, and its `return` says list, dict or set, but a slot is filled by a value the answer table cannot follow (a call, a comprehension or a format), and reading the heap handle as a number would print what the allocator handed out where the reference prints the contents — bind it to a name and print that, or fill the slots with values the table can read (roadmap Gap R.261, Gap R.67, ADRs 0333 and 0344)", fnName)
+	return fmt.Errorf("codegen: %q hands back a container whose slots this backend will not describe: the object is built, and its `return` says list, dict or set, but a slot is filled by a value the answer table cannot follow (a call, a comprehension or a format), and reading the heap handle as a number would print what the allocator handed out where the reference prints the contents — bind it to a name and print that, or fill the slots with values the table can read (roadmap Gap R.261, Gap R.67, ADRs 0333 and 0344)", callableSurfaceName(fnName))
 }
 
 // containerAnswerPermit is one lowering's hold on the permission above — the same permission
@@ -1477,5 +1477,5 @@ func (p *containerAnswerPermit) Done() {
 // and `[f(), 9]` reached `[1, 9]`. Naming the door that does answer, and the row that owns the rest of
 // them, is ADR 0249's rule — a refusal is only honest while it says what is missing.
 func containerAnswerRefusal(fnName string) error {
-	return fmt.Errorf("codegen: %q hands back a container, whose word is a heap object and whose kind only this table knows: print(...), str(...), a condition, a loop's iterable and a binding ask the door that reads a container answer, and this position keeps one word for the value and has no such road (roadmap Gap R.67, ADR 0333)", fnName)
+	return fmt.Errorf("codegen: %q hands back a container, whose word is a heap object and whose kind only this table knows: print(...), str(...), a condition, a loop's iterable and a binding ask the door that reads a container answer, and this position keeps one word for the value and has no such road (roadmap Gap R.67, ADR 0333)", callableSurfaceName(fnName))
 }
