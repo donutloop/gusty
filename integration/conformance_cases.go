@@ -616,6 +616,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// reference's TypeError and not a positional option that silently meant something else (roadmap
 		// L11.7, Gap R.249, ADR 0340).
 		"key_argument",
+		// A container variable asks its LAST binding what it is. Six binding roads had been deciding a
+		// name's container kind six ways and the list-literal road cleared nothing at all, so the object
+		// a statement freed kept answering reads of the name: `d = {1: 10}` / `d = [3, 4]` printed
+		// `{3: 4, 0: 0}` and `d[0]` printed `0`, both at the exit code that means the program ran. The six
+		// transitions between the container kinds, the mixed (per-slot-tagged) spellings, the detour
+		// through a scalar, the same kind with a new object, the loops, copies, comprehensions and the
+		// bounds words the last binding earns are in this one program, whose expectation is what CPython
+		// printed for it (roadmap Gap Q.1, owner L11.1, ADR 0341).
+		"rebound_container_kind",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

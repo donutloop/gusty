@@ -10403,3 +10403,83 @@ refused because `key=abs` had been added to `min`'s candidate list and then read
   that row belongs to a CLI leg comparing compiled legs only. The keyed sources the reference answers moved to
   the record (6591 → 6665 for the family), while the refused key shapes remain in the refusal tables and cannot
   acquire records.
+
+## A name's container kind was decided by six roads, none of them the binding that took the name over (L11.1, Gap Q.1; ADR 0341; Gaps R.256–R.257 filed)
+
+`d = {1: 10}` then `d = [3, 4]` is two programs to the object and one program to the reader. The assignment
+freed the dict, built a list, stored the handle — and the read asked a notebook the compiler had kept by
+*name*. `print(d)` wrote `{3: 4, 0: 0}` and `print(d[0])` wrote `0`, both at exit 0; `print(d[1])` died
+`KeyError: 1` where CPython prints `4`; `d.append(9)` grew a dict; `d.sort()` printed `{1: 2, 3: 0, 0: 0}`;
+and `d = {1: "x"}` then `d = [2, 3]` handed `llc` a module it rejected. The asymmetry was the diagnosis:
+`xs = [1,2]` then `xs = {1: 10}` answered, because the dict road happens to clear its two neighbours, while
+the **list-literal road cleared nothing at all**. Six roads, fourteen claims — three kind bits, three "my slots
+describe themselves" bits (`mixedLists`/`mixedDicts`/`mixedSets`) and eight element-kind notebooks
+(`listElemStr`/`Int`, `setElemStr`/`Int`, `dictKeyStr`/`Int`, `dictValStr`/`Int`).
+
+- **When a family looks symmetric, measure both directions before believing any of it.** "Rebinding works"
+  was true in one direction and false in the other, and every prior green test had been written in the
+  direction that worked. The row is six transitions × the read doors, not one program.
+- **A door that clears everything is a broom, and the suite tells you so.** The first draft of
+  `settleContainerKind` deleted every claim for the name; `print(xs[0])` of a literal list went back to
+  refusing, because ADR 0241's fold record — the thing that licenses a static slot read — is exactly a claim
+  the binding *agrees* with. The rule became: clear what **disagrees** with the binding in hand, leave what
+  it agrees with for the caller to re-record. The negative-control row (seed another name with claims, settle
+  this one, assert the other is untouched) is what keeps a "clear the map" fix from ever passing again.
+- **A notebook is a fact about an object, not about a name.** `xs = ["a"]` then `xs = [1, 2]` was refused as
+  "a compiled list holds either strings or numbers, not both" — Gap J.6's sentence, spoken about a list that
+  had been freed. `recordElemKind` consults the opposite notebook before recording, so a literal binding that
+  rewrites every slot has to retire the record first. The literal sibling door answers `[1, 2]`; the sentence
+  stays honest for a container that *grows* into a second kind, which is J.6's row.
+- **The structural witness is the test an answer-level test cannot write.** Counting the reader calls
+  (`readerHelpers`: `@rt_get_elem`, `@rt_list_len`, `@rt_print_list`, `@rt_contains_tagged`, `@rt_dict_get`,
+  `@rt_dict_has`, `@rt_dict_has_tagged`, `@rt_dict_print`, `@rt_set_find`, `@rt_set_print` and their siblings)
+  counted inside the program's own `@main`/`@gy_*` bodies, seven rebound/single pairs were different programs
+  before the row and are the same program after. Before, measured: the dict→list pair called `@rt_dict_get` 1,
+  `@rt_dict_has` 1, `@rt_dict_has_tagged` 1, `@rt_dict_print` 1 and never `@rt_print_list`/`@rt_contains_tagged`,
+  where the list-only program called `@rt_print_list` 1, `@rt_get_elem` 2, `@rt_list_len` 3,
+  `@rt_contains_tagged` 1; the text→number pair refused outright. The definition-vs-call lesson from
+  ADR 0340 paid for itself immediately: the runtime block *defines* every one of those helpers and calls them
+  from each other, so a whole-module grep witnesses nothing.
+- **A probe harness against CPython must know the exit-code contract.** `d = {1: 10}` / `d = [3, 4]` /
+  `print(d[9])` "disagreed" with the reference in the first sweep — the trap is exit **3** here and exit 1
+  there (ADR 0166's classes). Comparing `returncode` equality, not exit *class*, turns every correct raise
+  into a fake defect and trains the reader to ignore the sweep.
+- **Probe shapes you were not planning to fix; they surface the neighbours.** The alias lines added for
+  coverage (`b = a`, `b = [7, 8]`, `print(a[1])`) exposed a use-after-free: `emitFreeOld` is a *name*-level
+  statement, and `b = a` had made two names one object. It is filed as **Gap R.257**, with the reference's
+  answer written into the row, and pinned as a debt — not fixed here, because the fix belongs to the handle
+  copy. The same program is where the row's own answer is visible: `print(b[0])` answered `0` before the
+  door and `7` after it.
+- **A heap bug that depends on free-list order is a worse bug, not a milder one.** The alias shape answered
+  `2` in a four-line program (stale bytes nobody had overwritten) and died `KeyError: 1` in the seven-statement
+  program the debt row pins, where an earlier rebinding had put the freed slot up for reuse. Same object, same
+  read, opposite verdicts — the difference is allocator history. A "works in the minimal case" check is not
+  evidence for anything about a heap, and the row therefore pins the *longer* program.
+- **The conformance corpus is a claim about what answers, so unrelated defects come out of it.** The alias
+  read was removed from `programs/rebound_container_kind.gy` (it would have made a `match` row impossible)
+  and moved into the filed-not-fixed tables with the reference's answer beside it. `tools/recmerge` also
+  aborts on the first program the compiled leg refuses, so owed shapes — `max(d)` over a variable is
+  **Gap R.107**, a set asked for a position is the newly filed **Gap R.256** — have to be filtered out of the
+  sources file before recording, not after.
+- **Ask the tables, not only the programs — that is where the stale bit was.** The door's first draft cleared
+  the two rival kinds' "my slots describe themselves" bits and left the bound kind's own. `sealTheDeal` looked
+  right — the door's own comment said "leave what the binding agrees with for the caller to re-record" —
+  until the gate table seeded all
+  fourteen claims and printed the survivors: a name that had been a mixed list and was rebound to a
+  homogeneous literal kept `mixedLists` standing, because every road that builds an object writes that bit
+  only in the branch where slots carry tags and **none of them writes `false`**. `xs = [1, "a"]` then
+  `xs = [1, 2]` was printing CPython's answer through the per-slot-tag readers over tags nobody wrote. The
+  three mixed bits are now cleared unconditionally; the element notebooks of the kind being bound are not, and
+  the difference is exactly which claims a caller re-records. A program-level test cannot see either half —
+  the answer is right in both — so the table, asked as a function, is what witnesses it.
+- **A probe table measured against a stale binary is a fabricated table.** Twice in this row a `/tmp/gc-*`
+  build misled the sweep: once it showed a defect (`xs = ["a"]` / `xs = [1, 2]` refusing Gap J.6's sentence)
+  that the current tree does not have, and once it showed the *fix* not working. The rule that fixes it is
+  not "rebuild often" — it is **build the baseline from the commit, not from a timestamp**: `git worktree add
+  /tmp/prereq HEAD --detach` and build there, so "before" is HEAD by construction and "after" is the working
+  tree. The before/after table in ADR 0341 and in the roadmap row is that pair of binaries, and the corpus
+  half of the sweep (203 of the 204 conformance programs answering identically; the 204th is this row's own,
+  which the commit before refused) is the same two binaries asked of the whole corpus.
+- **`go test`'s 10-minute default is not enough for this suite, and two runs in parallel make it worse.**
+  Both `integration` and `pkg/lang` panicked at `test timed out after 10m0s` when a background full run
+  overlapped a targeted one. Long runs get `-timeout 40m`, and one full suite runs at a time.

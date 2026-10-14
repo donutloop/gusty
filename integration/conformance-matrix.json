@@ -3319,6 +3319,27 @@
     },
     {
       "case": {
+        "id": "programs/rebound_container_kind",
+        "name": "rebound_container_kind.gy",
+        "source": "# rebound_container_kind.gy -- one container variable, rebound across kinds.\n#\n# Gap Q.1 / L11.1 / ADR 0341. The claim is that a name's container kind is the\n# kind of the object last bound to it, and that every road -- indexing,\n# membership, length, the mutators, sorting, looping, and a binding that comes\n# back from a call -- reads that one claim. Every line is checked against\n# CPython in the conformance matrix.\n\nxs = [1, 2]\nxs = {\"a\": 1, \"b\": 2}\nprint(xs[\"a\"])\nprint(xs[\"b\"])\nprint(\"a\" in xs)\nprint(\"c\" in xs)\nxs = [3, 4]\nprint(xs[0])\nprint(xs[1])\nprint(len(xs))\nprint(xs)\nxs.append(5)\nprint(xs)\nxs.sort()\nprint(xs)\n\nd = {1: 10}\nd = [3, 4]\nprint(d)\nprint(3 in d)\nd = {\"k\": 1}\nprint(d)\nprint(\"k\" in d)\n\ns = {1, 2}\ns = [5, 6]\nprint(s)\nprint(5 in s)\nprint(9 in s)\ns = {7, 8}\nprint(7 in s)\nprint(9 in s)\n\ndef two_lists():\n    return [7, 8]\n\ndef two_dicts():\n    return {\"m\": 9}\n\nt = [1, 2]\nt = two_lists()\nprint(t)\nt = two_dicts()\nprint(t)\n\nlooped = {\"a\": 1, \"b\": 2}\nlooped = [10, 20]\nfor one in looped:\n    print(one)\n\nsq = []\nfor i in [1, 2, 3]:\n    sq.append(i * i)\nprint(sq)\nsq = [x for x in [4, 5, 6]]\nprint(sq)\n\nsame = [1, 1]\nsame = [2, 2]\nprint(same)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "1\n2\nTrue\nFalse\n3\n4\n2\n[3, 4]\n[3, 4, 5]\n[3, 4, 5]\n[3, 4]\nTrue\n{'k': 1}\nTrue\n[5, 6]\nTrue\nFalse\nTrue\nFalse\n[7, 8]\n{'m': 9}\n10\n20\n[1, 4, 9]\n[4, 5, 6]\n[2, 2]\n",
+      "python_ok": true,
+      "python_stdout": "1\n2\nTrue\nFalse\n3\n4\n2\n[3, 4]\n[3, 4, 5]\n[3, 4, 5]\n[3, 4]\nTrue\n{'k': 1}\nTrue\n[5, 6]\nTrue\nFalse\nTrue\nFalse\n[7, 8]\n{'m': 9}\n10\n20\n[1, 4, 9]\n[4, 5, 6]\n[2, 2]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4069,7 +4090,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/164/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/165/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4083,7 +4104,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/164/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/165/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4793,11 +4814,11 @@
       ]
     }
   ],
-  "rows": 192,
+  "rows": 193,
   "skipped": 38,
-  "pass": 154,
+  "pass": 155,
   "fail": 0,
-  "oracle_match": 139,
+  "oracle_match": 140,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

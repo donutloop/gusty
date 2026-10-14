@@ -3622,6 +3622,40 @@ themselves — only the object knows how its own slots are stored. What still re
 where it came from, and roadmap L11.1 owns the missing word. A *name* bound from a slot carries its tag with
 it, and a refusal never claims a value "comes from a loop" unless a loop bound it (Gap R.38).
 
+### A container variable asks its last binding what it is (L11.1, Gap Q.1, ADR 0341)
+
+A name is not an object. `d = {1: 10}` then `d = [3, 4]` frees the dict, builds a list and stores the new
+handle — and a read of `d` then asks the compiler's own notebook, kept by *name*, about a kind that statement
+just replaced. One door decides all of a name's container facts at the binding that takes the name over: the
+kind, whether its slots describe themselves, and what those slots hold.
+
+```python
+d = {1: 10}
+d = [3, 4]
+print(d)          # [3, 4]        (it printed {3: 4, 0: 0} before ADR 0341)
+print(d[0])       # 3             (it printed 0)
+print(d[-1])      # 4             (it died KeyError: 1)
+d.append(9)
+print(d)          # [3, 4, 9]
+print(d[9])       # IndexError: list index out of range — the LAST binding's container names the trap
+
+s = {1, 2}
+s = [5, 6]
+print(s)          # [5, 6]
+
+xs = ["a"]
+xs = [1, 2]
+print(xs)         # [1, 2]  — a literal writes every slot again, so the freed object's element kinds are gone
+```
+
+The rule is the one ADR 0172 wrote for `None`, ADR 0257 for `bool`, ADR 0267 for a pair's tag and ADR 0270 for
+an interned text: the variable's **latest** assignment decides how a read lowers, and a binding retires what
+contradicts it — never more than that. A name bound *once* to one literal keeps the record that lets its slots
+be read statically (ADR 0241), and a rebinding of a different kind takes that record away with the object it
+described. Two alias names for one object are a separate matter (a rebinding frees what shares its handle) and
+belong to roadmap **Gap R.257**; a kind that only the run time can describe — a parameter, a value that
+crosses a call — belongs to L11.1's tagged roads.
+
 ### A name bound from a container slot can be used as a number
 
 A slot the program built at run time carries its kind beside its payload, so a name bound from one keeps that

@@ -1,5 +1,1064 @@
 {
  "entries": {
+"a = {1: 2}\nb = a\nb = [7, 8]\nprint(b)": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"a = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"d = [1, 2]\nd = {\"k\": 1, \"j\": 2}\nprint(d[\"j\"])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nd = {2: 3}\nprint(d)": {
+    "stdout": "{2: 3}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nd = {2: 3}\nprint(d[2])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\", \"a\": 2}\nd = {1: 2}\nprint(d)": {
+    "stdout": "{1: 2}\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\", \"a\": 2}\nd = {1: 2}\nprint(d[1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\"}\nd = [2, 3]\nprint(d)": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 'x'}\nd = [2, 3]\nprint(d[1])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(9 in d)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[\"a\"])": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[9])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[\"a\"])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(d[0])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def f():\n    d = {1: 10}\n    d = [3, 4]\n    print(d[0])\n    print(d)\n\nf()": {
+    "stdout": "3\n[3, 4]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    xs = [1, 2]\n    xs = {\"a\": 1}\n    print(xs[\"a\"])\n\nf()": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def two_dicts():\n    return {\"m\": 9}\n\nt = [1, 2]\nt = two_dicts()\nprint(t)": {
+    "stdout": "{'m': 9}\n",
+    "hasStdout": true
+   },
+
+"def two_lists():\n    return [7, 8]\n\nt = [1, 2]\nt = two_lists()\nprint(t)": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"def two_lists():\n    return [7, 8]\n\nt = {1: 2}\nt = two_lists()\nprint(t[1])": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"s = {\"a\"}\ns = {1}\nprint(s)": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5]\nprint(s[3])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"s = {2, 3}\ns = [2, 3]\nprint(s[1])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"sq = [1, 2]\nsq = [x for x in [4, 5, 6]]\nprint(sq)": {
+    "stdout": "[4, 5, 6]\n",
+    "hasStdout": true
+   },
+
+"sq = []\nfor i in [1, 2, 3]:\n    sq.append(i * i)\nprint(sq)": {
+    "stdout": "[1, 4, 9]\n",
+    "hasStdout": true
+   },
+
+"sq = {1, 2}\nsq = [x for x in [4, 5]]\nprint(sq[0])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"v = [1, 2]\nv = {1: 2}\nv = 7\nprint(v)": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"v = {1, 2}\nv = 5\nprint(v)": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"v = {1: 2}\nv = 5\nv = [7, 8]\nprint(v[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nxs.append(3)\nprint(xs)": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nprint(xs)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nprint(xs[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nxs.sort()\nprint(xs)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [\"a\", \"b\"]\nprint(xs[1])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [\"a\"]\nprint(xs)": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [7, 8]\nprint(len(xs))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [7, 8]\nprint(xs[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"xs = {1: 2}\nxs = [3, 4]\nprint(xs[0], xs[1])": {
+    "stdout": "3 4\n",
+    "hasStdout": true
+   },
+"[3, 'a']\n": {
+    "hasStdout": true
+   },
+
+"[3, 4, 9]\n": {
+    "hasStdout": true
+   },
+
+"[5, 6, 7]\n": {
+    "hasStdout": true
+   },
+
+"d = [1, 2]\nd = {\"k\": 1, \"j\": 2}\nprint(d[\"j\"])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {'a': 1}\nd = [7, 8]\nprint(d[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\", \"a\": 2}\nd = {1: 2}\nprint(d)\n": {
+    "stdout": "{1: 2}\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\", \"a\": 2}\nd = {1: 2}\nprint(d[1])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 'x'}\nd = [2, 3]\nprint(d[1])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 'a']\nprint(d)\n": {
+    "stdout": "[3, 'a']\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(9 in d)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    xs = [1, 2]\n    xs = {\"a\": 1}\n    print(xs[\"a\"])\n\nf()\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def two_dicts():\n    return {\"m\": 9}\n\nt = [1, 2]\nt = two_dicts()\nprint(t)\n": {
+    "stdout": "{'m': 9}\n",
+    "hasStdout": true
+   },
+
+"def two_lists():\n    return [7, 8]\n\nt = [1, 2]\nt = two_lists()\nprint(t)\n": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"def two_lists():\n    return [7, 8]\n\nt = {1: 2}\nt = two_lists()\nprint(t[1])\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(5 in s)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = {2, 3}\ns = [2, 3]\nprint(s[1])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"sq = [1, 2]\nsq = [x for x in [4, 5, 6]]\nprint(sq)\n": {
+    "stdout": "[4, 5, 6]\n",
+    "hasStdout": true
+   },
+
+"sq = []\nfor i in [1, 2, 3]:\n    sq.append(i * i)\nprint(sq)\n": {
+    "stdout": "[1, 4, 9]\n",
+    "hasStdout": true
+   },
+
+"sq = {1, 2}\nsq = [x for x in [4, 5]]\nprint(sq[0])\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"v = [1, 2]\nv = {1: 2}\nv = 7\nprint(v)\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"v = [7, 8]\nprint(v)\nprint(v[0])\nprint(len(v))\n": {
+    "stdout": "[7, 8]\n7\n2\n",
+    "hasStdout": true
+   },
+
+"v = {1, 2}\nv = 5\nprint(v)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"v = {1: 2}\nv = 5\nv = [7, 8]\nprint(v)\nprint(v[0])\nprint(len(v))\n": {
+    "stdout": "[7, 8]\n7\n2\n",
+    "hasStdout": true
+   },
+
+"v = {1: 2}\nv = 5\nv = [7, 8]\nprint(v[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = {5, 6}\nprint(x)\n": {
+    "stdout": "{5, 6}\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nprint(xs)\nprint(xs[1])\n": {
+    "stdout": "['a', 'b']\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs)\nprint(xs[0])\nprint(len(xs))\n": {
+    "stdout": "[1, 2]\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs[0])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nprint(xs)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nprint(xs[0])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nxs = [1, 2]\nxs.sort()\nprint(xs)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs)\nprint(xs[0])\nprint(len(xs))\n": {
+    "stdout": "[1, 2]\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [\"a\", \"b\"]\nprint(xs)\nprint(xs[1])\n": {
+    "stdout": "['a', 'b']\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [\"a\", \"b\"]\nprint(xs[1])\n": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [7, 8]\nprint(len(xs))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [7, 8]\nprint(xs[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"xs = {1: 2}\nxs = [3, 4]\nprint(xs[0], xs[1])\n": {
+    "stdout": "3 4\n",
+    "hasStdout": true
+   },
+"d = {'a': 1}\nd = [7, 8]\nprint(d[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"d = {1: 'x'}\nd = [2, 3]\nprint(d)": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 'x'}\nd = [2, 3]\nprint(d[0])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [1, 'a']\nprint(d)": {
+    "stdout": "[1, 'a']\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [1, 'a']\nprint(d[1])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 'a']\nprint(d)": {
+    "stdout": "[3, 'a']\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 1, 2]\nd.sort()\nprint(d)": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 1, 2]\ni = 0\nwhile i \u003c len(d):\n    print(d[i])\n    i = i + 1": {
+    "stdout": "3\n1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nd.append(9)\nprint(d)": {
+    "stdout": "[3, 4, 9]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nfor k in d:\n    print(k)": {
+    "stdout": "3\n4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nfor v in d:\n    print(v)": {
+    "stdout": "3\n4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(3 in d)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d)": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[-1])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[0:2])": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[0])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[1])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(len(d))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(str(d))": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(3 in d)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(d)": {
+    "stdout": "{3, 4}\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(len(d))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    d = {1: 10}\n    d = [3, 4]\n    print(d)\nf()": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    d = {1: 10}\n    d = [3, 4]\n    print(d[0])\nf()": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"s = 'ab'\ns = [1, 2]\nprint(s[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"s = {1, 'a'}\ns = [2, 3]\nprint(s)": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 'a'}\ns = [2, 3]\nprint(s[1])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(5 in s)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(len(s))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(s)": {
+    "stdout": "[5, 6]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(s[0])": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\ns.append(7)\nprint(s)": {
+    "stdout": "[5, 6, 7]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = {5: 6}\nprint(s)": {
+    "stdout": "{5: 6}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = {5: 6}\nprint(s[5])": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = 'ab'\nprint(x[1])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = 5\nx = {2: 3}\nprint(x[2])": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = [7, 8]\nprint(x)": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = [7, 8]\nprint(x[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = {5, 6}\nprint(5 in x)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = {5, 6}\nprint(x)": {
+    "stdout": "{5, 6}\n",
+    "hasStdout": true
+   },
+
+"x = {1, 2}\nx = 5\nprint(x)": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = 5\nprint(x)": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = 5\nx = [7, 8]\nprint(x[0])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = [7, 8]\nx = 5\nprint(x)": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = [7, 8]\nx = {3: 4}\nprint(x[3])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 'a']\nxs = {2: 'b'}\nprint(xs)": {
+    "stdout": "{2: 'b'}\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 'a']\nxs = {2: 'b'}\nprint(xs[2])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nfor v in xs:\n    print(v)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(1 in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(len(xs))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs)": {
+    "stdout": "{1: 10}\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs[1])": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs[2])": {
+    "err": "KeyError: 2",
+    "exnType": "KeyError",
+    "exnMsg": "2"
+   },
+
+"xs = [3, 4]\nxs = {7}\nprint(7 in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {7}\nprint(xs)": {
+    "stdout": "{7}\n",
+    "hasStdout": true
+   },
+"# rebound_container_kind.gy -- one container variable, rebound across kinds.\n#\n# Gap Q.1 / L11.1 / ADR 0341. The claim is that a name's container kind is the\n# kind of the object last bound to it, and that every road -- indexing,\n# membership, length, the mutators, sorting, looping, and a binding that comes\n# back from a call -- reads that one claim. Every line is checked against\n# CPython in the conformance matrix.\n\nxs = [1, 2]\nxs = {\"a\": 1, \"b\": 2}\nprint(xs[\"a\"])\nprint(xs[\"b\"])\nprint(\"a\" in xs)\nprint(\"c\" in xs)\nxs = [3, 4]\nprint(xs[0])\nprint(xs[1])\nprint(len(xs))\nprint(xs)\nxs.append(5)\nprint(xs)\nxs.sort()\nprint(xs)\n\nd = {1: 10}\nd = [3, 4]\nprint(d)\nprint(3 in d)\nd = {\"k\": 1}\nprint(d)\nprint(\"k\" in d)\n\ns = {1, 2}\ns = [5, 6]\nprint(s)\nprint(5 in s)\nprint(9 in s)\ns = {7, 8}\nprint(7 in s)\nprint(9 in s)\n\ndef two_lists():\n    return [7, 8]\n\ndef two_dicts():\n    return {\"m\": 9}\n\nt = [1, 2]\nt = two_lists()\nprint(t)\nt = two_dicts()\nprint(t)\n\nlooped = {\"a\": 1, \"b\": 2}\nlooped = [10, 20]\nfor one in looped:\n    print(one)\n\nsq = []\nfor i in [1, 2, 3]:\n    sq.append(i * i)\nprint(sq)\nsq = [x for x in [4, 5, 6]]\nprint(sq)\n\nsame = [1, 1]\nsame = [2, 2]\nprint(same)\n": {
+    "stdout": "1\n2\nTrue\nFalse\n3\n4\n2\n[3, 4]\n[3, 4, 5]\n[3, 4, 5]\n[3, 4]\nTrue\n{'k': 1}\nTrue\n[5, 6]\nTrue\nFalse\nTrue\nFalse\n[7, 8]\n{'m': 9}\n10\n20\n[1, 4, 9]\n[4, 5, 6]\n[2, 2]\n",
+    "hasStdout": true
+   },
+"a = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"d = [2, 3]\nprint(d)\nprint(d[1])\nprint(len(d))\n": {
+    "stdout": "[2, 3]\n3\n2\n",
+    "hasStdout": true
+   },
+
+"d = [3, 4]\nprint(d)\nprint(d[0])\nprint(len(d))\nprint(3 in d)\nfor v in d:\n    print(v)\n": {
+    "stdout": "[3, 4]\n3\n2\nTrue\n3\n4\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nd = [7, 8]\nprint(d[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nd = {2: 3}\nprint(d)\n": {
+    "stdout": "{2: 3}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nd = {2: 3}\nprint(d[2])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\"}\nd = [2, 3]\nprint(d)\n": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\"}\nd = [2, 3]\nprint(d)\nprint(d[1])\nprint(len(d))\n": {
+    "stdout": "[2, 3]\n3\n2\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"x\"}\nd = [2, 3]\nprint(d[0])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [1, \"a\"]\nprint(d[1])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [1, 2]\nprint([v * 2 for v in d])\n": {
+    "stdout": "[2, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, \"a\"]\nprint(d)\n": {
+    "stdout": "[3, 'a']\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 1, 2]\nd.sort()\nprint(d)\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 1, 2]\ni = 0\nwhile i \u003c len(d):\n    print(d[i])\n    i = i + 1\n": {
+    "stdout": "3\n1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 1, 2]\nprint(sorted(d))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nd.append(9)\nprint(d)\n": {
+    "stdout": "[3, 4, 9]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nfor v in d:\n    print(v)\n": {
+    "stdout": "3\n4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(3 in d)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d)\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d)\nprint(d[0])\nprint(len(d))\nprint(3 in d)\nfor v in d:\n    print(v)\n": {
+    "stdout": "[3, 4]\n3\n2\nTrue\n3\n4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[\"a\"])\n": {
+    "err": "TypeError: list indices must be integers or slices, not str",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not str"
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[-1])\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[0:2])\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[0])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[1])\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(d[9])\n": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(len(d))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(repr(d))\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\nprint(str(d))\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[\"a\"])\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = [3, 4]\ntry:\n    print(d[9])\nexcept IndexError:\n    print(d[0])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(3 in d)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(d)\n": {
+    "stdout": "{3, 4}\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nd = {3, 4}\nprint(len(d))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 10}\nprint(d[1])\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"d = {}\nd[\"a\"] = 1\nprint(d)\n": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    d = {1: 10}\n    d = [3, 4]\n    print(d[0])\n    print(d)\n\nf()\n": {
+    "stdout": "3\n[3, 4]\n",
+    "hasStdout": true
+   },
+
+"def first(xs):\n    return xs[0]\nd = {1: 10}\nd = [7, 8]\nprint(first(d))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2, 3]:\n    print(v)\n": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"s = [5, 6]\nprint(s)\nprint(s[0])\nprint(len(s))\nprint(5 in s)\n": {
+    "stdout": "[5, 6]\n5\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = {\"a\"}\ns = {1}\nprint(s)\n": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"s = {1, \"a\"}\ns = [2, 3]\nprint(s)\n": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"s = {1, \"a\"}\ns = [2, 3]\nprint(s[1])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nprint(1 in s)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(s)\n": {
+    "stdout": "[5, 6]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(s)\nprint(s[0])\nprint(len(s))\nprint(5 in s)\n": {
+    "stdout": "[5, 6]\n5\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\nprint(s[0])\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5, 6]\ns.append(7)\nprint(s)\n": {
+    "stdout": "[5, 6, 7]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [5]\nprint(s[3])\n": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"x = [1, 2]\nx = {1: 10}\nprint(x)\nprint(x[1])\nprint(len(x))\nprint(1 in x)\nfor k in x:\n    print(k)\n": {
+    "stdout": "{1: 10}\n10\n1\nTrue\n1\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = [7, 8]\nprint(x)\n": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = [7, 8]\nprint(x[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {1: 2}\nx = {5, 6}\nprint(5 in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = [1, 2]\nx = {7}\nprint(x)\nprint(len(x))\nprint(7 in x)\n": {
+    "stdout": "{7}\n1\nTrue\n",
+    "hasStdout": true
+   },
+
+"x = {1: 10}\nprint(x)\nprint(x[1])\nprint(len(x))\nprint(1 in x)\nfor k in x:\n    print(k)\n": {
+    "stdout": "{1: 10}\n10\n1\nTrue\n1\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = 5\nx = [7, 8]\nprint(x[0])\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = {1: 2}\nx = {3, 4}\nprint(x)\nprint(len(x))\nprint(3 in x)\n": {
+    "stdout": "{3, 4}\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"x = {3, 4}\nprint(x)\nprint(len(x))\nprint(3 in x)\n": {
+    "stdout": "{3, 4}\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"x = {7}\nprint(x)\nprint(len(x))\nprint(7 in x)\n": {
+    "stdout": "{7}\n1\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nfor v in xs:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs)\nprint(xs[1])\nfor v in xs:\n    print(v)\n": {
+    "stdout": "[1, 2]\n2\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nprint(xs[1])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs = [1, 2]\nxs.append(3)\nprint(xs)\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs)\nprint(xs[1])\nfor v in xs:\n    print(v)\n": {
+    "stdout": "[1, 2]\n2\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs = [\"a\"]\nprint(xs)\n": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = [[1, 2]]\nprint(xs)\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nfor k in xs:\n    print(k)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(len(xs))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs)\n": {
+    "stdout": "{1: 10}\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs[1])\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {1: 10}\nprint(xs[1], len(xs))\n": {
+    "stdout": "10 1\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {7}\nprint(7 in xs)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nxs = {7}\nprint(xs)\n": {
+    "stdout": "{7}\n",
+    "hasStdout": true
+   },
+
+"xs = [[1, 2]]\nxs = [3, 4]\nprint(xs)\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"xs = [[7, 8]]\nprint(xs[0][1])\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(3)\nxs.append(4)\nprint(xs)\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
 "# The ordering builtins read their options by name, and a `key=` the compiler can call is called\n# through the ordinary call road (roadmap L11.7; Gap R.249; ADR 0340).\n#\n# The expectations are CPython's.  The old backend read the second positional argument as a reverse\n# flag, so `key=abs` silently became \"sort ascending\" or, for a non-callable key, printed a list at\n# exit 0 where the reference raises TypeError.\n\nprint(sorted([3, 1, 2], key=abs))\nprint(sorted([-3, 1, 2], key=abs))\nprint(sorted([3, 1, -2], key=abs, reverse=True))\nprint(sorted([3, 1, 2], key=abs, reverse=False))\nprint(sorted([3, 1, 2], key=None))\nprint(sorted([2, 1, 2, 1], key=abs))\nprint(sorted([3, 3, 1], key=abs))\nprint(sorted([], key=abs))\n\ndef flip(x):\n    return 0 - x\n\nprint(sorted([3, 1, 2], key=flip))\nprint(min(3, 1, -2, key=abs))\nprint(max(3, 1, -2, key=abs))\nprint(min([3, 1, 2], key=abs))\nprint(max([3, 1, 2], key=abs))\nprint(min([3, 1, -2], key=flip))\nprint(max([3, 1, -2], key=flip))\n\ndef half_or_self(x, bias=0):\n    return x + bias\n\nprint(sorted([3, 1, 2], key=half_or_self))\n\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=len))\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=len, reverse=True))\nprint(min([\"aaa\", \"b\", \"cc\"], key=len))\nprint(max([\"aaa\", \"b\", \"cc\"], key=len))\nprint(sorted([10, 9, 1], key=str))\n\nxs = sorted([3, 1, 2], key=abs)\nprint(xs)\nprint(len(xs))\nprint(xs[1])\nprint(xs[0] + 1)\n\nfor v in sorted([3, 1, -2], key=abs, reverse=True):\n    print(v)\n\nfor v in sorted([\"bbb\", \"a\", \"cc\"], key=len):\n    print(v)\n\nfor v in sorted([2, 1, 2, 1], key=abs):\n    print(v)\n\ntry:\n    print(sorted([3, 1, 2], key=3))\nexcept TypeError:\n    print(\"key_int\")\n\ntry:\n    print(sorted([3, 1, 2], key=\"abs\"))\nexcept TypeError:\n    print(\"key_str\")\n\ntry:\n    print(min([3, 1], reverse=True))\nexcept TypeError:\n    print(\"bad_reverse\")\n\ntry:\n    print(sorted([1], cmp=3))\nexcept TypeError:\n    print(\"bad_cmp\")\n\ndef no_args():\n    return 1\n\ntry:\n    print(sorted([1, 2], key=no_args))\nexcept TypeError:\n    print(\"bad_arity_zero\")\n\ndef needs_two(a, b):\n    return a\n\ntry:\n    print(sorted([1, 2], key=needs_two))\nexcept TypeError:\n    print(\"bad_arity_two\")\n\ntry:\n    print(min([], key=abs))\nexcept ValueError:\n    print(\"empty_min\")\n\ntry:\n    print(max([], key=abs))\nexcept ValueError:\n    print(\"empty_max\")\n": {
     "stdout": "[1, 2, 3]\n[1, 2, -3]\n[3, -2, 1]\n[1, 2, 3]\n[1, 2, 3]\n[1, 1, 2, 2]\n[1, 3, 3]\n[]\n[3, 2, 1]\n1\n3\n1\n3\n3\n-2\n[1, 2, 3]\n['a', 'cc', 'bbb']\n['bbb', 'cc', 'a']\nb\naaa\n[1, 10, 9]\n[1, 2, 3]\n3\n2\n2\n3\n-2\n1\na\ncc\nbbb\n1\n1\n2\n2\nkey_int\nkey_str\nbad_reverse\nbad_cmp\nbad_arity_zero\nbad_arity_two\nempty_min\nempty_max\n",
     "hasStdout": true

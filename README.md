@@ -383,6 +383,21 @@ keyed `min`/`max` use the same comparator. Non-callable keys and invalid keyword
 their own rows (**Gap R.254**, **Gap R.255**). The conformance program `programs/key_argument.gy` is `match`
 on both legs.
 
+**A container variable asks its last binding what it is, and ADR 0341 pays Gap Q.1** — the assignment freed
+the old object and the notebook kept answering for it, because six binding roads had been deciding a name's
+container kind six ways and the list-literal road cleared nothing at all. `d = {1: 10}` then `d = [3, 4]`
+printed `{3: 4, 0: 0}` and `d[0]` printed `0`, both at the exit code that means the program ran; `d.append(9)`
+grew a *dict*; and `d = {1: "x"}` then `d = [2, 3]` made `llc` reject the module. One door in
+`pkg/lang/rebind_kind.go` now writes all fourteen of a name's container claims at the binding that takes the
+name over — kind, whether the slots describe themselves, what they hold — and it clears only what disagrees
+with that binding, so a name bound once keeps the record that lets its slots be read statically (ADR 0241).
+All six transitions between the container kinds answer, a rebound list loops and sorts as the list it is, and
+`xs = ["a"]` / `xs = [1, 2]` prints `[1, 2]` instead of refusing as a mixed list. The structural witness is
+the one an answer-level test cannot write: for seven pairs, the reader calls a rebound name makes are
+*identical* to the calls the same program makes with the name bound once. `programs/rebound_container_kind.gy`
+is `match` on both legs; the alias that shares a handle (Gap R.257) and the set asked for a position (Gap
+R.256) are filed, not hidden.
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a

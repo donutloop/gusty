@@ -18205,14 +18205,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// need the inferred type to say so here.
 			rebindsContainer := boundKind != "" && !literal && !literalDict && !literalSet
 			if rebindsContainer {
-				switch boundKind {
-				case "dict":
-					g.runtimeDicts[nm.Value] = true
-				case "list":
-					g.listVars[nm.Value] = true
-				case "set":
-					g.runtimeSets[nm.Value] = true
-				}
+				// The kind a call's answer, an index or a copy brings is settled by the one door that
+				// writes all twelve container facts, not by the three bits this switch used to set —
+				// which left the two kinds the binding is NOT still claimed by every read of the name
+				// (roadmap Gap Q.1).
+				g.settleContainerKind(nm.Value, boundKind)
 			}
 			// A container handed back by a call records its own facts, and they are richer than the three
 			// kind bits above: whether its slots describe themselves, and that no static literal describes
@@ -18288,38 +18285,36 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)
 				}
-				g.listVars[nm.Value] = false
-				g.runtimeDicts[nm.Value] = false
-				g.runtimeSets[nm.Value] = false
-				g.mixedLists[nm.Value] = false
+				// One door, twelve claims: the comprehension binds whatever kind its brackets wrote, and
+				// the claims of the other two kinds go with it (roadmap Gap Q.1).
+				compKind := containerKindList
 				switch comp.Kind {
 				case CompDict:
-					g.runtimeDicts[nm.Value] = true
+					compKind = containerKindDict
 				case CompSet:
-					g.runtimeSets[nm.Value] = true
-				default:
-					g.listVars[nm.Value] = true
-					if len(comp.Elems) == 1 {
-						if g.compElemIsTaggedLoopVar(comp) {
-							// The element's kind is only in the object: the loop variable came out of a
-							// container whose slots mix kinds, so nothing static says what landed in this
-							// list. It has to let its slots speak (ADR 0232) and be able to print a float it
-							// cannot see coming (roadmap Gap R.76, ADR 0244).
-							g.mixedLists[nm.Value] = true
-							g.listElemStr[nm.Value] = false
-							g.floatFmtUsed = true
-						} else if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
-							// The builder wrote a tag with every slot and told the object to let its slots
-							// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
-							// handle where CPython shows 1.5, and a container element prints its handle
-							// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
-							g.mixedLists[nm.Value] = true
-							g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
-						} else if g.compElemPrintsAsText(comp) {
-							g.listElemStr[nm.Value] = true
-						} else {
-							g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
-						}
+					compKind = containerKindSet
+				}
+				g.settleContainerKind(nm.Value, compKind)
+				if len(comp.Elems) == 1 {
+					if g.compElemIsTaggedLoopVar(comp) {
+						// The element's kind is only in the object: the loop variable came out of a
+						// container whose slots mix kinds, so nothing static says what landed in this
+						// list. It has to let its slots speak (ADR 0232) and be able to print a float it
+						// cannot see coming (roadmap Gap R.76, ADR 0244).
+						g.mixedLists[nm.Value] = true
+						g.listElemStr[nm.Value] = false
+						g.floatFmtUsed = true
+					} else if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
+						// The builder wrote a tag with every slot and told the object to let its slots
+						// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
+						// handle where CPython shows 1.5, and a container element prints its handle
+						// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
+						g.mixedLists[nm.Value] = true
+						g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+					} else if g.compElemPrintsAsText(comp) {
+						g.listElemStr[nm.Value] = true
+					} else {
+						g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
 					}
 				}
 				if !g.allocd[nm.Value] {
@@ -18454,7 +18449,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)
 				}
-				g.listVars[nm.Value] = true
+				// The one door: a list literal takes the name over, and every claim the dict and set
+				// roads made about it goes with the object they described — including this kind's own
+				// element notebook, which describes slots this statement writes again (roadmap Gap Q.1).
+				g.settleContainerKindFromLiteral(nm.Value, containerKindList)
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 					g.gcReg(b, nm.Value)
@@ -18546,11 +18544,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if g.allocd[nm.Value] {
 					g.gcClearRoot(b, nm.Value)
 				}
-				g.listVars[nm.Value] = false
-				g.runtimeDicts[nm.Value] = false
-				g.runtimeSets[nm.Value] = false
-				g.runtimeDicts[nm.Value] = false
-				g.runtimeSets[nm.Value] = false
+				// The one door for the binding that is not a container at all: the slot now holds a
+				// raw value, and no read of the name may still be measured as a container read
+				// (roadmap Gap Q.1).
+				g.settleContainerKind(nm.Value, containerKindScalar)
 			}
 			// runtime set: allocate a heap set object and add each element.
 			if sl, ok := rhs.(*SetLit); ok {
@@ -18562,11 +18559,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapUsed = true
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)
-					g.listVars[nm.Value] = false
-					g.runtimeDicts[nm.Value] = false
-					g.runtimeSets[nm.Value] = false
 				}
-				g.runtimeSets[nm.Value] = true
+				g.settleContainerKindFromLiteral(nm.Value, containerKindSet)
 				// A set whose members describe themselves has no element kind to record: {1, "a"}
 				// is neither the number set nor the string set (roadmap L11.1 (1b), ADR 0232). A member
 				// the pair road bound is the same record for the same reason: its tag is a register, and a
@@ -18670,11 +18664,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapUsed = true
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)
-					g.listVars[nm.Value] = false
-					g.runtimeDicts[nm.Value] = false
-					g.runtimeSets[nm.Value] = false
 				}
-				g.runtimeDicts[nm.Value] = true
+				g.settleContainerKindFromLiteral(nm.Value, containerKindDict)
 				// The set above and heapDictFrom share this rule: a dict whose keys or values mix
 				// kinds has no kind to record, so every slot carries its own tag (ADR 0232). A key or a
 				// value the pair road bound is the same case with one more word: the entry goes through
@@ -18827,9 +18818,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if call, ok := n.Value.(*Call); ok {
 					if fn, ok2 := call.Fn.(*Name); ok2 {
 						if g.genFuncs[fn.Value] {
-							g.listVars[nm.Value] = true
+							g.settleContainerKind(nm.Value, containerKindList)
 						} else if fn.Value == "sorted" || fn.Value == "reversed" || fn.Value == "list" {
-							g.listVars[nm.Value] = true
+							g.settleContainerKind(nm.Value, containerKindList)
 							// Inherit what the elements are, so the printer and the sort
 							// comparator agree with the source container.
 							if len(call.Args) > 0 {
@@ -18855,7 +18846,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 						g.emitFreeOld(b, nm.Value)
 					}
-					g.listVars[nm.Value] = true
+					g.settleContainerKindFromLiteral(nm.Value, containerKindList)
 					if !g.allocd[nm.Value] {
 						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 						g.gcReg(b, nm.Value)

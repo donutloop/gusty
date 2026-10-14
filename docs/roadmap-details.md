@@ -1717,18 +1717,41 @@ wrong answer that reproduced identically at HEAD, one as the ceiling the new roo
 revealed underneath. Neither is a root-set bug — they are what the collector was hiding.
 
 <a id="gap-q-1"></a>
-### Gap Q.1 — a container variable rebound to another kind keeps the old kind (OPEN)
+### Gap Q.1 — a container variable rebound to another kind keeps the old kind (DONE, ADR 0341)
 ```
 d = {1: 10}
 d = [3, 4]
-print(d[0])        # interpreter 3, python3 3, --aot 0   (identical before ADR 0181)
+print(d)           # python3 [3, 4]        compiled, before ADR 0341: {3: 4, 0: 0}  at exit 0
+print(d[0])        # python3 3             compiled, before ADR 0341: 0              at exit 0
+print(d[1])        # python3 4             compiled, before ADR 0341: KeyError: 1
+d.append(9)        # python3 [3, 4, 9]     compiled, before ADR 0341: {3: 4, 9: 0, 0: 0}
 ```
-The assignment frees the old object and stores the new handle, but the variable's
-container-kind tracking (`listVars` / `runtimeDicts` / `runtimeSets`) does not settle on
-the new kind for every read path, so `d[0]` is still measured as a dict lookup and yields
-the wrong slot. Reproduced at HEAD, so this is not a regression from the root work; it is
-a candidate for the same "one tagged word" fix as Gap A/J.6 rather than another patch to
-the kind maps.
+The assignment frees the old object and stores the new handle; the *read* asks a notebook the compiler
+kept by name, and nothing retired it. The row was filed against three kind claims and named the "one tagged
+word" fix as the candidate. The measurement that decided the shape was the asymmetry: `xs = [1,2]` then
+`xs = {1: 10}` answered, and `d = {1: 10}` then `d = [3,4]` did not — because the dict road happens to
+clear its two neighbours and the **list-literal road clears nothing at all**. Six roads, six opinions, and
+fourteen claims to be decided: the three kind bits, the three "my slots describe themselves" bits
+(`mixedLists`/`mixedDicts`/`mixedSets`) and the eight element-kind notebooks (`listElemStr`/`listElemInt`,
+`setElemStr`/`setElemInt`, `dictKeyStr`/`dictKeyInt`, `dictValStr`/`dictValInt`). The door clears eleven
+of them for a list rebound over a dict (the dict's and the set's claims, and all three "my slots describe
+themselves" bits), and all fourteen when the binding takes container-hood away.
+
+ADR 0341 put the decision in one place (`pkg/lang/rebind_kind.go`) rather than in the road that happened to
+be measured last. Every binding that hands a name a container kind calls the door; the literal roads call
+its `…FromLiteral` sibling, which also retires the element notebook the freed object left behind — the
+measurement that turned `xs = ["a"]` / `xs = [1, 2]` from Gap J.6's mixed-list refusal into CPython's
+`[1, 2]`. Two rules kept it a door rather than a broom: it clears only what disagrees with the binding in
+hand, so ADR 0241's fold record survives the binding it describes (the first attempt cleared everything and
+sent `print(xs[0])` of a literal list back to refusing); and it decides nothing else — the pair's tag is
+ADR 0267's, the interned-text claim is ADR 0270's, `None` and `bool` are ADR 0172's.
+
+What this row still is not: a run-time kind. Where only the object can say what it holds — a parameter, a
+pair across a call, `min`/`max` over a container variable (Gap R.107), an alias whose object was freed by
+its other name (Gap R.257) — the tagged roads of L11.1 decide, and this row leaves those to their owners.
+The witness is written so the next drift is visible at the road rather than at the answer: for seven pairs,
+the reader calls a rebound name makes in its own `@main` must be *identical* to the calls the same program
+makes with the name bound once.
 
 <a id="gap-q-2"></a>
 ### Gap Q.2 — the runtime heap is a fixed 1024 objects, and exhaustion is silent (OPEN)
@@ -11358,3 +11381,52 @@ These are refusals at exit 1, not wrong answers at exit 0 and not `llc` rejectio
 the shape the door cannot call, and `roadmap L11.7` (or Gap R.248 for the float comparator). A lambda or a
 call-expression key belongs to the function-value road, not to a special ordering helper. The row stays open
 until `gustyc` can turn those callables into the same ordinary call shape that `f = def name` already uses.
+
+<a id="gap-r-256"></a>
+
+### Gap R.256 — a set asked for a position refuses instead of raising (PLANNED, found by ADR 0341)
+
+```python
+s = {1, 2}
+print(s[0])          # TypeError: 'set' object is not subscriptable   here: codegen: index of a non-literal variable  (exit 1)
+print({1, 2}[0])     # TypeError: 'set' object is not subscriptable   here: codegen: not in set                      (exit 1)
+d = {1: 10}
+d = {3, 4}
+print(d[0])          # TypeError: 'set' object is not subscriptable   here: the same refusal, after the rebinding
+```
+
+The subscript door was taught its other bases one row at a time: a list raises its bounds words
+(`IndexError: list index out of range`, ADR 0326), a text says `string index out of range` (ADR 0210), a
+dict hashes the key and names what it missed (`KeyError`, ADR 0328), and a key of the wrong kind into a
+list raises the reference's own sentence (ADR 0329). The set arm was never written: the road gives up in
+the front end, so `except TypeError:` is unreachable and the program never runs. ADR 0337's zero-step and
+ADR 0329's wrong-kind key are the shape to copy — ask the base's kind, then emit the raise from it.
+
+It surfaced in ADR 0341's probe table and is filed rather than bundled: it reproduces on a program with one
+binding, on the commit before that ADR, so it is not the kind claim's defect. The slice twin of the same
+missing question is already Gap R.234.
+
+<a id="gap-r-257"></a>
+
+### Gap R.257 — rebinding one alias frees the object the other still names (PLANNED, found by ADR 0341)
+
+```python
+y = {1: 2}
+y = 5
+y = [7, 8]
+print(y[0])          # 7
+a = {1: 2}
+b = a                # b shares a's object — one handle, two names
+b = [7, 8]           # the rebinding frees THAT object
+print(b[0])          # 7     (before ADR 0341: 0 — the dict's claim outlived the dict)
+print(a[1])          # 2     here: KeyError: 1 at exit 3, or a plausible number when the freed slot is not reused
+```
+
+The kind claim is settled (that is ADR 0341, and `print(b[0])` is its evidence: `0` became `7`). What is
+left is the release: `emitFreeOld` is a *name*-level statement, and `b = a` made two names one object.
+Whether the read of `a` dies or quietly answers a number depends on whether the allocator hands the freed
+slot to the new list, which is the worst property a heap can have — a wrong answer at exit 0 is available
+here, not only the trap. The fix belongs to the handle copy, not to the notebook: a copy that shares should
+release once (the heap block already owns `rt_alloc`/`rt_free`), or the shape is refused by name until then.
+Filed from this row's own probe table, reproduced identically on the commit before ADR 0341, and pinned as a
+debt row (not a promise) in `pkg/lang/rebind_kind_test.go` and `integration/rebind_kind_test.go`.

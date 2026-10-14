@@ -3080,10 +3080,7 @@ func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
 			g.gcClearRoot(b, name)
 		}
 	}
-	g.listVars[name] = false
-	g.runtimeDicts[name] = false
-	g.runtimeSets[name] = false
-	g.mixedLists[name] = false
+	g.settleContainerKind(name, containerKindScalar)
 	delete(g.strVals, name)
 	delete(g.internedVars, name)
 	delete(g.noneVars, name)

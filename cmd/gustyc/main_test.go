@@ -69,6 +69,14 @@ func TestCLILang(t *testing.T) {
 		!strings.Contains(got, "bad operand type for unary -") {
 		t.Errorf("--lang does not print the operand-kind rule for the operators:\n%s", got)
 	}
+	// A container variable's kind is decided by the binding that takes the name over (ADR 0341). The rule
+	// is discoverable rather than something an agent has to read docs prose for: the answer a read of a
+	// rebound name gives is the last binding's, and an agent planning a compilation can learn that here.
+	if got := cli(t, "--lang"); !strings.Contains(got, "containers:") ||
+		!strings.Contains(got, "LAST binding") ||
+		!strings.Contains(got, "Gap Q.1") {
+		t.Errorf("--lang does not print the container rebinding rule:\n%s", got)
+	}
 }
 
 func TestCLIVerify(t *testing.T) {

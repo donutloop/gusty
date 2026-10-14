@@ -1,0 +1,68 @@
+# rebound_container_kind.gy -- one container variable, rebound across kinds.
+#
+# Gap Q.1 / L11.1 / ADR 0341. The claim is that a name's container kind is the
+# kind of the object last bound to it, and that every road -- indexing,
+# membership, length, the mutators, sorting, looping, and a binding that comes
+# back from a call -- reads that one claim. Every line is checked against
+# CPython in the conformance matrix.
+
+xs = [1, 2]
+xs = {"a": 1, "b": 2}
+print(xs["a"])
+print(xs["b"])
+print("a" in xs)
+print("c" in xs)
+xs = [3, 4]
+print(xs[0])
+print(xs[1])
+print(len(xs))
+print(xs)
+xs.append(5)
+print(xs)
+xs.sort()
+print(xs)
+
+d = {1: 10}
+d = [3, 4]
+print(d)
+print(3 in d)
+d = {"k": 1}
+print(d)
+print("k" in d)
+
+s = {1, 2}
+s = [5, 6]
+print(s)
+print(5 in s)
+print(9 in s)
+s = {7, 8}
+print(7 in s)
+print(9 in s)
+
+def two_lists():
+    return [7, 8]
+
+def two_dicts():
+    return {"m": 9}
+
+t = [1, 2]
+t = two_lists()
+print(t)
+t = two_dicts()
+print(t)
+
+looped = {"a": 1, "b": 2}
+looped = [10, 20]
+for one in looped:
+    print(one)
+
+sq = []
+for i in [1, 2, 3]:
+    sq.append(i * i)
+print(sq)
+sq = [x for x in [4, 5, 6]]
+print(sq)
+
+same = [1, 1]
+same = [2, 2]
+print(same)

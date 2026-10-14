@@ -710,7 +710,7 @@ func (g *irGen) recordContainerSlice(name string, base Expr) bool {
 	if !ok || kind != "list" {
 		return false // a dict or a set is not sliced (the reference raises, and those doors are elsewhere)
 	}
-	g.listVars[name] = true
+	g.settleContainerKind(name, containerKindList)
 	g.mixedLists[name] = g.containerSlotsCarryTags(base)
 	if g.mixedLists[name] {
 		g.listElemStr[name], g.listElemInt[name] = false, false
@@ -793,10 +793,13 @@ func (g *irGen) sliceBaseIsDescribed(base Expr) bool {
 func (g *irGen) recordContainerAnswer(name string, ans containerAnswer) {
 	switch ans.kind {
 	case listAnswer:
-		g.listVars[name] = true
+		// Every claim the name held from another kind's object is settled by the one door, which
+		// then lets the line below answer the only question the door cannot: do these slots
+		// describe themselves (roadmap Gap Q.1, ADR 0232's rule).
+		g.settleContainerKind(name, containerKindList)
 		g.mixedLists[name] = g.containerAnswerCarriesTags(ans)
 	case dictAnswer:
-		g.runtimeDicts[name] = true
+		g.settleContainerKind(name, containerKindDict)
 		// The builder's own question, asked here rather than guessed: `heapDictFrom` picks the tagged put —
 		// and sets the object's bit 8 — when an entry's key or value mixes kinds, and the print, binding and
 		// membership roads read that fact back out of `mixedDicts` before deciding whether to ask the slot or
@@ -806,7 +809,7 @@ func (g *irGen) recordContainerAnswer(name string, ans containerAnswer) {
 		// answer started refusing with Gap R.146's sentence (roadmap Gap R.214, ADR 0232's rule).
 		g.mixedDicts[name] = g.containerAnswerDictCarriesTags(ans)
 	case setAnswer:
-		g.runtimeSets[name] = true
+		g.settleContainerKind(name, containerKindSet)
 		// The same question, asked of the same predicate `heapSetFrom` uses.
 		g.mixedSets[name] = g.containerAnswerSetCarriesTags(ans)
 	}
