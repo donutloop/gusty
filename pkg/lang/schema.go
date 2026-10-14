@@ -1,6 +1,11 @@
 package lang
 
-// ASTIRSchema is the machine-readable JSON Schema (draft-07) describing the
+import (
+	"fmt"
+	"strings"
+)
+
+// astIRSchemaTemplate is the machine-readable JSON Schema (draft-07) describing the
 // AST dump emitted by `--emit-ast`. It is the self-describing contract for
 // agents consuming gusty's structured output: given a JSON object, an agent
 // can validate it against this schema to confirm it is a well-formed Program
@@ -16,11 +21,19 @@ package lang
 // The document also describes the other structured outputs an agent consumes:
 // `definitions.diagnostic` (the `code`/`suggestion` fields carried by
 // --verify/--check JSON), `definitions.varianceRule` (one row of the
-// self-describing variance table printed by `gustyc --variance`), and
+// self-describing variance table printed by `gustyc --variance`),
 // `definitions.callablePassReport` (the account the function-value pass prints for
 // `gustyc --callables <src>` — what it specialised, and the shape it declined;
-// roadmap L11.7, ADR 0345).
-const ASTIRSchema = `{
+// roadmap L11.7, ADR 0345), `definitions.capabilityRefusal` and
+// `definitions.capabilityRefusalCode` (the refusal the compiled backend gives a shape it
+// does not lower, and the closed enum of its stable codes — `gustyc --capabilities`;
+// roadmap L11.8, ADR 0346), and `definitions.toolFailure` (the `"ok": false` payload every
+// path that did not reach a run prints under `--json`, now that it carries the refusal's code).
+//
+// The capability enum is not typed here: it is spliced in from `capabilityRefusalRegistry`, so
+// the codes an agent branches on and the codes the classifier emits cannot be two lists
+// (ADR 0346; the registry's own test fails if the two ever disagree).
+const astIRSchemaTemplate = `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gusty.local/schema/ast-ir.json",
   "title": "gusty AST & IR dump schema",
@@ -1008,7 +1021,76 @@ const ASTIRSchema = `{
         },
         "suggestion": {
           "type": "string"
+        },
+        "capability": {
+          "$ref": "#/definitions/capabilityRefusal",
+          "description": "Present when the refusal is a capability gap rather than a program's own error: the shape the compiled backend declines to lower, with its stable code and the roadmap rows that own the missing half (L11.8, ADR 0346). Absent means the classifier matched nothing — a sentence that is not a missing lowering gets no code rather than a guessed one."
         }
+      }
+    },
+    "capabilityRefusalCode": {
+      "type": "string",
+      "description": "One stable capability-refusal code. <phase>.unsupported.<shape>: the prefix names the stage that declined, and the suffix names the shape. The list is closed and is generated from the registry that classifies the sentences, so a code is added by adding the refusal's marker, suggestion and owning roadmap row (pkg/lang/capability.go) — never by widening this enum alone.",
+      "enum": __CAPABILITY_CODES__
+    },
+    "capabilityRefusal": {
+      "type": "object",
+      "required": ["code", "shape", "suggestion", "rows"],
+      "description": "One capability refusal of the compiled backend: a shape the language allows and the backend declines to lower, in words that say what is missing. Reached three ways — beside a failure's prose in the --json payload, as the whole document from gustyc --capabilities, and as definitions.capabilityRefusalCode's enum (roadmap L11.8, ADR 0346). An agent that has to plan a compilation asks this instead of matching on prose.",
+      "properties": {
+        "code": { "$ref": "#/definitions/capabilityRefusalCode" },
+        "shape": {
+          "type": "string",
+          "description": "What was refused, in the words the refusal itself uses."
+        },
+        "suggestion": {
+          "type": "string",
+          "description": "The actionable half: what to write instead, or what to wait for. A refusal without one is a bug with better manners (ADR 0166)."
+        },
+        "rows": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The roadmap rows that own the missing half (Gap R.67, L11.1, …) — where a reader who wants the construct goes."
+        }
+      }
+    },
+    "capabilitiesDocument": {
+      "type": "object",
+      "required": ["tool", "family", "backend", "kinds"],
+      "description": "The whole registry as one self-describing document (gustyc --capabilities; lang.CapabilitiesJSON): every shape the compiled backend refuses as a matter of design. \"tool\" is the account's name, \"family\" the code prefix every kind carries, \"backend\" the one backend that refuses.",
+      "properties": {
+        "tool": { "type": "string", "description": "Always \"capabilities\": the self-describing name of this account, in the sense --variance and --callables use it." },
+        "family": { "type": "string", "description": "The code family the document enumerates (\"lower.unsupported\")." },
+        "backend": { "type": "string", "description": "The backend that refuses — \"aot\", the one backend (ADR 0302)." },
+        "kinds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/capabilityRefusal" }
+        }
+      }
+    },
+    "toolFailure": {
+      "type": "object",
+      "required": ["ok", "phase", "error", "exit"],
+      "description": "What every path that did not reach a run prints under --json (cmd/gustyc/main.go's toolFailurePayload / reportCompileErr): a parse error, a checker refusal, a codegen refusal, an llc rejection, an expired toolchain budget. phase already said which stage spoke; capability now says, when the sentence is a missing lowering rather than a program's own error, which shape was refused and where the work is owed (L11.8, ADR 0346).",
+      "properties": {
+        "ok": { "type": "boolean", "description": "Always false: this is the shape of a run that did not happen." },
+        "phase": { "type": "string", "enum": ["parse", "check", "codegen", "verify", "toolchain", "compile"], "description": "The stage that spoke, from the pipeline's own vocabulary." },
+        "error": { "type": "string", "description": "The sentence, unchanged from the human path." },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "line": { "type": "integer" },
+              "col": { "type": "integer" },
+              "msg": { "type": "string" }
+            }
+          },
+          "description": "The positions the sentence carries, as numbers."
+        },
+        "backend": { "type": "string", "description": "The one backend: \"aot\" (ADR 0302)." },
+        "exit": { "type": "integer", "description": "The exit code the process answers with (docs/operations.md § Exit codes, ADR 0211)." },
+        "capability": { "$ref": "#/definitions/capabilityRefusal" }
       }
     },
     "varianceRule": {
@@ -1483,3 +1565,37 @@ const ASTIRSchema = `{
   },
   "additionalProperties": true
 }`
+
+// capabilityCodePlaceholder is where the template keeps the place the code enum goes. A
+// placeholder rather than an inline list because the registry — the thing that decides which
+// sentence is which capability — is the only thing allowed to say what the codes are.
+const capabilityCodePlaceholder = "__CAPABILITY_CODES__"
+
+// ASTIRSchema is `astIRSchemaTemplate` with the capability-code enum spliced in from the
+// registry. Read it as the schema; write the codes only in pkg/lang/capability.go.
+//
+// It is a variable, and there is exactly one reason: a hand-typed enum is a second list of the
+// same fact, and the day a refusal is added on one side and not the other, an agent's branch on
+// a real code misses the schema and nobody notices. Generated, the two cannot disagree — and
+// TestSchemaDeclaresCapabilityRefusal fails if the splice ever stops happening.
+var ASTIRSchema = withCapabilityCodes(astIRSchemaTemplate)
+
+// withCapabilityCodes replaces the placeholder with the sorted, quoted code list. A template
+// that has lost its placeholder is a loud failure at init (rather than a schema that quietly
+// declares an empty enum, which is the same schema saying "no refusal has a code").
+func withCapabilityCodes(tmpl string) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, code := range CapabilityRefusalCodes() {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q", code)
+	}
+	b.WriteByte(']')
+	out := strings.Replace(tmpl, capabilityCodePlaceholder, b.String(), 1)
+	if strings.Contains(out, capabilityCodePlaceholder) {
+		panic("schema template left the capability enum unspliced")
+	}
+	return out
+}

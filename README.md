@@ -269,6 +269,27 @@ a slice that drops its slots' tags and a slice bound to a name that answers the 
 membership test whose needle is a slot, refusing with a sentence that prints the needle's Go representation
 (**Gap R.232**).
 
+**A refusal is part of the model, so it is part of the machine document too** — ADR 0346 pays the diagnostic
+half of L11.8. The exit-code half landed with ADR 0211 (refusal 1, `llc` rejection 2, trap 3, on every path);
+what stayed open is the sentence. A capability refusal reached a human as prose and a script as
+`"error": "codegen: …"`, so an agent planning a compilation had to match on the wording to learn what it was
+refused — and prose is not a contract: the sentence gets edited, the branch silently stops firing, and the
+failure is a script that quietly stops covering the shape. `pkg/lang/capability.go` is now the single source for
+the code (`lower.unsupported.<shape>`, 40 of them), the suggestion that writes the same intent in what the
+backend does answer, and the roadmap rows that own the missing half. It reaches three readers: the `capability`
+member of every `--json` failure payload, `gustyc --capabilities` as one self-describing document, and
+`--schema`'s `definitions.capabilityRefusalCode` — where the enum is *spliced out of the registry at init*,
+because a second hand-typed list of the same fact is a second thing to drift. Two rules keep it honest, and both
+fail loudly instead of silently: **nothing is invented** (the classifier answers the longest marker its sentence
+contains, and one that matches nothing gets `null` rather than a guessed code — a typo stays a typo), and
+**coverage is measured rather than claimed** (`TestEveryCapabilityRefusalInTheCorpusIsClassified` compiles the
+whole conformance corpus and fails on any refusal without a code, except an explicit allowlist where each entry
+carries the reason it is the program's own error; `TestTheDocumentedCapabilitySentencesStillExist` greps every
+sentence the docs tell an agent to match out of the compiler's own string literals, and caught three rows that
+advertised sentences the backend had stopped emitting; `go run ./tools/captable -check` holds the doc table to
+the registry). No `codegen:` site was touched — a typed error at 142 refusal sites would compile with a forgotten
+type and rot quietly, where a registry whose sample no longer classifies is a failing test the same afternoon.
+
 **A function used as a value is specialised into names before the doors that decide a call are asked** — ADR
 0345 pays the called half of L11.7. One sentence had stood between this backend and every higher-order program
 since it existed — `"fn" is called but is not a function this backend can build a call to … (roadmap L11.1,
@@ -1774,6 +1795,7 @@ gustyc --json ...                            # machine-readable JSON output
 gustyc --schema                              # print the JSON Schema for AST/IR dumps
 gustyc --lang                                 # self-describing feature list
 gustyc --variance                             # JSON variance table (list/dict invariant, Sequence covariant, Callable params contravariant)
+gustyc --capabilities                         # JSON refusal registry: every lower.unsupported.<shape> code, its suggestion, and the roadmap rows that own it (L11.8, ADR 0346)
 gustyc --effects <src> | effects file1.gy ...  # per-function effect signatures: effects performed, return shape, termination (--json for the document)
 gustyc --jit "..."                           # in-process dlopen JIT path
 gustyc --gc-stats --file prog.gy             # report what the collector did (stderr; --json adds a gc member)

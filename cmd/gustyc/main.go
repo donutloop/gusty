@@ -150,6 +150,7 @@ func run() int {
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
 	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
+	capabilitiesCmd := fs.Bool("capabilities", false, "print, as JSON, every shape the compiled backend refuses as a matter of design: its stable lower.unsupported.<shape> code, the suggestion that replaces it, and the roadmap rows that own the missing half (roadmap L11.8, ADR 0346); --json failures carry the same object as `capability`")
 	callables := fs.String("callables", "", "print, as JSON, what the function-value pass did to a source string: whether it rewrote it, the clones and hoisted lambdas it minted, the IR names it generated, and the shape it could not prove (roadmap L11.7, ADR 0345)")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
@@ -235,6 +236,15 @@ func run() int {
 		doc, err := lang.VarianceJSON()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "gustyc: variance: "+err.Error())
+			return exitCompileError
+		}
+		fmt.Println(doc)
+		return exitOK
+	}
+	if *capabilitiesCmd {
+		doc, err := lang.CapabilitiesJSON()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gustyc: capabilities: "+err.Error())
 			return exitCompileError
 		}
 		fmt.Println(doc)
@@ -511,6 +521,7 @@ func toolFailurePayload(err error, exitCode int) string {
 	b, jerr := json.Marshal(map[string]any{
 		"ok": false, "phase": phase, "error": msg, "errors": list,
 		"backend": backendAOT, "exit": exitCode,
+		"capability": capabilityField(msg),
 	})
 	if jerr != nil {
 		return fmt.Sprintf("{\"error\": %q, \"backend\": %q, \"exit\": %d}", msg, backendAOT, exitCode)
@@ -850,10 +861,43 @@ func reportCompileErr(err error, jsonOut bool) int {
 		return reportParseErr(err, jsonOut)
 	}
 	if jsonOut {
-		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
+		payload := map[string]any{
+			"ok": false, "phase": "compile", "error": err.Error(), "exit": exitCompileError,
+			"capability": capabilityField(err.Error()),
+		}
+		b, jerr := json.Marshal(payload)
+		if jerr != nil {
+			fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
+			return exitCompileError
+		}
+		fmt.Println(string(b))
 		return exitCompileError
 	}
 	return reportParseErr(err, jsonOut)
+}
+
+// capabilityField is the machine path's answer to "what was I refused?" — the payload's optional
+// `capability` object (roadmap L11.8, ADR 0346).
+//
+// It is nil unless the classifier recognises the sentence, and the JSON encoder writes a nil map as
+// `null` — so the key is always present and an agent reads `null` as "this was not a capability
+// refusal" rather than having to distinguish "absent" from "not yet looked at". The classifier
+// itself never guesses: no marker, no code (pkg/lang/capability.go).
+func capabilityField(msg string) map[string]any {
+	k, ok := lang.ClassifyCapabilityRefusal(msg)
+	if !ok {
+		return nil
+	}
+	rows := append([]string(nil), k.Rows...)
+	if rows == nil {
+		rows = []string{}
+	}
+	return map[string]any{
+		"code":       k.Code,
+		"shape":      k.Shape,
+		"suggestion": k.Suggestion,
+		"rows":       rows,
+	}
 }
 
 // isToolchainTimeout says whether a failure is the external toolchain running out of its budget

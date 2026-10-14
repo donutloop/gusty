@@ -10795,3 +10795,59 @@ all three places a gate is stated (the Correctness bullet, loop step 5, the Test
   `GUSTY_GOLDEN_MISSING` write per-run ledgers, so N concurrent runs would each overwrite the file with their
   own subset (ADR 0313, ADR 0315). A doc that says "run the parallel one" without naming the serial
   carve-out manufactures a corrupted ledger out of an agent who was following instructions.
+
+## A refusal is an interface, so the code it is branched on is generated from the registry (ADR 0346, roadmap L11.8)
+
+**Feature (CLI + machine path)**: a capability refusal reached a human as a sentence and a script as
+`"error": "codegen: …"`, so an agent planning a compilation had to match on prose to learn what it had been
+refused. `pkg/lang/capability.go` is now the one registry of 40 `lower.unsupported.<shape>` codes — code, shape,
+suggestion, owning roadmap rows — read by `--json`'s `capability` member, by `gustyc --capabilities`, and by
+`--schema`'s `capabilityRefusalCode` enum, which is spliced out of the registry at init rather than typed. No
+`codegen:` refusal site was touched. The exit-code half of the row was already ADR 0211's.
+
+- **A reworded sentence does not fail a branch, it stops firing one.** That is the whole argument for codes, and
+  it inverted how I chose the mechanism: the comparison was never "typed errors vs a table", it was "which
+  forgetting is silent". Wrapping 142 refusal sites in a typed error compiles happily with a site left out, and
+  the coverage decays the first time someone adds a refusal in a hurry. A registry whose `Sample` no longer
+  produces its refusal is a red test that afternoon. Pick the failure mode you can see.
+- **The docs table advertised sentences the compiler had stopped saying.** The guard that reads every
+  "Message substring" out of `docs/operations.md` and greps it from the package's own string literals found three
+  dead rows (`strings inside runtime containers …`, `unsupported call "`, `cannot hold another container yet` —
+  all retired underneath ADRs 0224/0232/0239) and one that had drifted (`operator "<op>" on a string` had grown a
+  `(kind)` clause between the two halves of the quote). A doc that tells a script what to match on is code, and
+  code that is never compiled against anything rots on exactly that schedule.
+- **Cut a quoted sentence at its placeholders before you grep for it.** `%s`/`%q`/`<op>` are not in the docs and
+  the docs' `…` is not in the source, so `capabilityFragments` splits on both and asks each surviving fragment ≥ 12
+  characters separately. Fragments too short to be a sentence are dropped rather than allowed, because matching
+  `operator` anywhere in `pkg/lang` certifies nothing.
+- **Classify one message, not the payload.** The first coverage pass joined a program's diagnostics into one
+  string and truncated it to 130 characters for the report — and the truncation cut through the markers, so real
+  codes went missing from the tally. Same for level: `arithmetic on non-numeric operands` and
+  `match is not exhaustive` are checker *warnings* about programs that compile, and counting them as refusals
+  would have made the coverage claim about the checker's mood. Errors and hard failures only, and the allowlist
+  says why for the rest.
+- **A marker is measured or it is a guess wearing a contract.** `d.items()` was written into the registry as the
+  sample for the dict-methods refusal and classified as `container-method-over-a-name` instead — the receiver
+  question is asked before the method question, and only `for k, v in {"a": 1}.items():` reaches the sentence I
+  had meant. Every entry got its sentence by compiling its sample and reading the answer back, which is why
+  `Markers` and `Sample` live in the registry at all (`json:"-"`: how the entry is tested, not a field an agent
+  should read).
+- **Two hand-typed lists of one fact is the bug, not the drift.** The schema enum used to be a place a human
+  added codes. Now `ASTIRSchema` is a template plus `withCapabilityCodes`, and a lost placeholder panics at init
+  rather than shipping a schema that says no refusal has a code. The same reason made `capability` an always-present
+  key rendered `null`: "absent" and "looked and found nothing" have to be distinguishable, or the reader is
+  guessing about the classifier from the payload's shape.
+- **Longest marker wins, and that is a determinism claim.** `tuple(…)`'s refusal contains the generic
+  indirect-call sentence too; first-match-wins over registry order would answer a different shape depending on
+  where an entry was pasted. `TestTheCapabilityClassifierPrefersTheMostSpecificShape` pins both sides of it.
+- **Reuse the harness that already learned the lesson.** I wrote `cliExit` over `go run ./cmd/gustyc`; the
+  package already had one built from the binary, with a comment explaining that `go run` reports the *launcher's*
+  status, so an exit-2 assertion through it had never been able to fail. Deleting my copy is the cheaper way to
+  learn that twice.
+- **The registry's floor has to be paid for by the corpus, not by the registry.** The coverage test fails if fewer
+  than 10 distinct codes are exercised, because "0 unclassified" over a corpus that refused nothing is the same
+  green as full coverage. It currently reaches 14 codes over 20 refused programs, with 3 sentences allowlisted —
+  measured numbers logged by the test, not remembered in a comment.
+- **Snapshot tables are lies until something recomputes them** (Gap R.204 again): adding the ADR and closing the
+  queue row moved `ADRs` to 337/0346 and `Rows owed` to 139/185, and
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered` reported both before I did.

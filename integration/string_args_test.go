@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -112,11 +113,31 @@ func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
 		}
 	}
 	// The same message reaches the CLI's machine path unchanged, so an agent can branch on it
-	// instead of on an llc error.
+	// instead of on an llc error — and since ADR 0346 it is not the only thing there: the payload also
+	// carries the refusal's code, which is what a script actually branches on. Read the payload as JSON
+	// rather than matching its spacing: the shape is the contract, not the byte layout.
 	out := cliRun(t, "--json", "--emit-llvm", src)
-	for _, want := range []string{`"ok": false`, `"phase": "compile"`, "on a string"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("CLI json %s should contain %q", out, want)
-		}
+	var payload struct {
+		OK         *bool   `json:"ok"`
+		Phase      string  `json:"phase"`
+		Error      string  `json:"error"`
+		Capability *struct {
+			Code string `json:"code"`
+		} `json:"capability"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &payload); jerr != nil {
+		t.Fatalf("CLI json payload does not parse: %v\n%s", jerr, out)
+	}
+	if payload.OK == nil || *payload.OK {
+		t.Errorf("a refusal answers ok=false: %s", out)
+	}
+	if payload.Phase != "compile" {
+		t.Errorf("phase = %q, want compile: %s", payload.Phase, out)
+	}
+	if !strings.Contains(payload.Error, "on a string") {
+		t.Errorf("error %q should contain %q", payload.Error, "on a string")
+	}
+	if payload.Capability == nil || payload.Capability.Code != "lower.unsupported.text-operator" {
+		t.Errorf("the refusal carries no code for the shape it refused: %s", out)
 	}
 }

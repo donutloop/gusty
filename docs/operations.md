@@ -46,6 +46,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--abi` | print the versioned extern-fn C ABI schema as JSON |
 | `--variance` | print the generic variance table as JSON (L6.6) |
 | `--callables <src>` | print, as JSON, what the function-value pass did to a source string: whether it rewrote it, the clones and hoisted lambdas it minted, the symbols it generated, and the shape it declined (roadmap L11.7, ADR 0345; the document is the schema's `definitions.callablePassReport`) |
+| `--capabilities` | print, as JSON, every shape the compiled backend refuses as a matter of design — each with its stable `lower.unsupported.<shape>` code, the suggestion that replaces it, and the roadmap rows that own the missing half (roadmap L11.8, ADR 0346; the document is the schema's `definitions.capabilitiesDocument`, and the same object rides on a `--json` failure as its `capability` member — § Codegen capability messages) |
 | `--effects <src>` | print each function's **effect signature** (effects performed, return shape, control-flow termination) for a source string; `gusty effects <file>...` for files, `--json` for the schema-declared document (L7.6, ADR 0195) |
 
 
@@ -469,6 +470,14 @@ The `async.*` rules (L7.6, ADR 0195) are the await/return discipline of the
 async surface — what must hold for `async def` to mean anything. Their input,
 the per-function effect signature the rules were decided from, is machine-readable
 too: `gustyc --effects` prints it and `--schema` declares `effectSummary`.
+
+The table above is the **front end's** rules: what a program did wrong. Where the *backend* is the one
+refusing — a shape the language allows and the compiled leg has no lowering for — the codes are a
+different family, `lower.unsupported.<shape>`, published by `gustyc --capabilities`, declared as
+`definitions.capabilityRefusalCode`, and carried on a `--json` failure as its `capability` member
+(§ Codegen capability messages, roadmap L11.8, ADR 0346). A refusal is a divergence from what the
+reference answers, and an agent planning a compilation should be able to discover it as data rather
+than by guessing which sentence to match.
 
 ## Exit codes (deterministic)
 
@@ -1591,6 +1600,19 @@ not comments, so a future re-recording cannot silently undo them.
   failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 1}`
   (the human path prints `gustyc: <message>` on stderr; the exit code is the
   same either way, so an agent never has to parse stderr prose)
+- every `"ok": false` payload where the compiler, not the program, is the one speaking also carries
+  `"capability"`: the refusal's stable code, the shape it names, the suggestion that replaces it, and the
+  roadmap rows that own the missing half — `{"ok": false, "phase": "codegen", "error": "codegen: unsupported
+  expression *lang.Tuple", "errors": [], "backend": "aot", "exit": 1, "capability": {"code":
+  "lower.unsupported.tuple-value", "shape": "…", "suggestion": "…", "rows": ["L11.3"]}}`. It is `null` when the
+  sentence is not a missing lowering — a typo, an undefined name, a non-exhaustive `match` — and the
+  classifier never guesses a code for a program's own error. The shape is `definitions.toolFailure` and the
+  code's enum is `definitions.capabilityRefusalCode`, both generated from the one registry (§ Codegen
+  capability messages, roadmap L11.8, ADR 0346)
+- `--capabilities` → the whole refusal registry as one document: `{"tool": "capabilities",
+  "family": "lower.unsupported", "backend": "aot", "kinds": [{"code", "shape", "suggestion", "rows"}, …]}`,
+  the schema's `definitions.capabilitiesDocument`. Ask it before writing a program, not after the refusal
+  (roadmap L11.8, ADR 0346)
 - `--json --bench-suite` (optionally with `--bench-baseline <path>`) → the
   benchmark suite artifact plus the gate verdict:
   `{"schema_version","generated_by","runs","opt_level","cases":[...],"totals":{...},"regressions":[...],"new_cases":[...],"exit":N}`
@@ -1626,19 +1648,19 @@ Match these messages rather than scraping diagnostics prose:
 
 | Message substring | Meaning | Workaround |
 |---|---|---|
-| `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the record (`--eval`, `--file`), or keep container elements numeric |
-| `unsupported call "` | a call the AOT backend cannot lower, e.g. calling through a `Callable` parameter (`def apply(f, x): return f(x)`) | interpreter path, or dispatch on a class with methods |
+| `list(<container>) copies are not supported` | `list(xs)` / `dict(d)` / `set(xs)` would copy a container the program already built, and the word the source arrives in carries no kind, so the copy would be built from a handle read as an element (roadmap Gap I.2, L11.1) | build the copy with `list()` and add the elements, or index the source's slots |
+| `is called but is not a function this backend can build a call to` | a call whose callee is a value the compiler cannot name — calling through a `Callable` parameter (`def apply(f, x): return f(x)`), or calling a value read out of a container (roadmap L11.7, ADR 0345 answers the *called* half) | call a declared function, or bind the callable where the defunctionalisation pass can see it (`--callables <src>` prints what it specialised and what it declined) |
 | `concatenating a runtime string is not supported in the AOT backend yet` | building a new string (`s + "!"` where a side is not a compile-time constant) needs a buffer allocation the compiled runtime does not have; passing the string itself is fine (ADR 0174) | run it on the record, or concatenate the constant parts and pass the result |
-| `operator "<op>" on a string is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the record raises `TypeError` (ADR 0174) | check the value before the operation, or run it on the record |
+| `operator "<op>" on a string (<kind>) is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the reference raises `TypeError` (ADR 0174) | concatenate with `+` where the reference does, or measure the value first and branch on it |
 | `string method <name> on non-constant string` | a method that would build a new string (`upper`, `strip`, …) needs an allocator; `len`, `==` and container use of a string parameter are supported | run it on the record, or compare/measure instead |
 | `cannot hold a float yet` | a float in a container slot: an element is one `i32` word and a compiled float is a `double` (roadmap L11.6, ADR 0226) | interpreter, or keep the float in a variable |
-| `cannot hold another container yet` | a container inside a container: an element that is a handle is not marked by the collector, so its tag would be a guess (roadmap L11.1 (5), ADR 0188) | interpreter, or build the inner container separately and index it |
+| `the base is not a list the records describe` | a slice copies a list the container records can describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one — and this base has no record saying what its slots hold (roadmap Gap R.235, Gap R.234, ADR 0335) | bind the base to a name and slice the name, or slice a literal written at the call |
 | `cannot prove one kind for` | an element the compiler cannot label — typically a call that returns text on one path and a number on another. `print` asks at print time; a slot is labelled once, and the wrong label prints `(null)` (ADR 0232) | interpreter, or give the function one return kind (the tagged value word, L11.1 (5), retires this) |
 | `needs a needle whose kind the compiler can prove` | `x in c` where `c`'s slots describe themselves and `x`'s kind is not provable (ADR 0232) | interpreter, or compare a literal/tagged variable |
 | `has no number the compiled backend can lift` | a numeric use of a slot whose kind only the object knows, where the operator cannot settle the result's kind — `xs[0] + 1`, `xs[0] ** 2`, `xs[0] / ys[0]` (roadmap L11.1, Gap R.82, Gap R.101). `/` alone answers, because true division is a float whatever arrives (ADR 0253) | bind the slot to a variable first and print/compare it, or run the record; `xs[0] / k` already answers |
 | `is answered with a double by the tagged numeric door, and this context stores an i32 word` | the answer is a `double` and the sink is an `i32` store: a call argument, `str()`'s argument, a container slot written by key (roadmap Gap R.98, ADR 0253) | bind it to a variable that starts life a float (`half = xs[0] / 2`), then pass/print the variable, or run the record |
-| `returns "x", which its own body binds to a float` | a function whose `return` is the bare name of a parameter its body rebound to a float, in a signature the `double` convention cannot carry — a parameter that is a container handle or interned text, which the body also reads (roadmap L11.6, Gap R.3c, ADR 0254). Emitted anyway it is `sitofp i32 @.lst1 to double`, which `llc` rejects | `return x + 0.0`, or bind the answer to a new name (`y = x + 0.0; return y`); the record answers all of these |
-| `returns a ternary arm of "x", which its own body binds to a float` | `return x if cond else 0.0` of such a parameter: the answer's word is the arm's and there is no number-typed `select` to choose two doubles with (roadmap Gap R.102, ADR 0254) | take the branch with `if`/`else` and `return` the number on each arm, or add it to `0.0` on the arm |
+| `which its own body binds to a float` | a function whose `return` is the bare name of a parameter its body rebound to a float, in a signature the `double` convention cannot carry — a parameter that is a container handle or interned text, which the body also reads (roadmap L11.6, Gap R.3c, ADR 0254). Emitted anyway it is `sitofp i32 @.lst1 to double`, which `llc` rejects | `return x + 0.0`, or bind the answer to a new name (`y = x + 0.0; return y`); the record answers all of these |
+| `returns a value read off` | `return x if cond else 0.0` of such a parameter — the sentence continues `which its own body binds to a float`: the answer's word is the arm's and there is no number-typed `select` to choose two doubles with (roadmap Gap R.102, ADR 0254) | take the branch with `if`/`else` and `return` the number on each arm, or add it to `0.0` on the arm |
 | `winner's own kind needs the tagged value word` | `min` / `max` over runtime candidates whose static kinds mix `int` and `double`: the comparison is decidable, but the winner's kind is not, and forcing the double domain answers `min(2.5, 1)` as `1.0` (roadmap Gap R.109, ADR 0256) | keep candidates literal, use the record, or wait for L11.1's tagged value word |
 | `takes values side by side or one container, not a container among values` | a `min` / `max` argument is a container literal beside another candidate; comparing containers by their handle words would answer with heap addresses (roadmap Gap R.107, ADR 0256) | flatten the candidates, or use the record's element-wise ordering |
 | `chooses between two values whose kinds this pass cannot state in one word` | `a and b` / `a or b` hand back the **operand** the test chose (ADR 0269), and the position that holds the answer keeps one `i32` word while the two operands do not agree on what lives in it — a text among numbers, a float beside an int, a container among either | `print` it (the print door selects the payload *and* its tag and asks the module's tag-reading printer), take the branch with `if`/`else` and bind the operand on each arm, or run the record; the row the missing tag belongs to is L11.1 with Gap R.146 beside it |
@@ -1647,6 +1669,85 @@ Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the
 parameter kinds are inferred from annotations, defaults and call sites, so no
 extra syntax is required at the call site.
+
+### Capability refusal codes (L11.8, ADR 0346)
+
+Every row above is a sentence. A sentence is not a contract: when one is reworded, the script that
+matched on it stops firing, and the failure is a program that silently stops covering the shape. So each
+capability refusal also has a **code** — `<phase>.unsupported.<shape>`, today all `lower.unsupported.*` —
+plus the **suggestion** that replaces it and the **roadmap rows** that own the missing half. The three
+live in one registry, `pkg/lang/capability.go`, and reach three readers:
+
+| Reader | Where the code arrives |
+|---|---|
+| a script or agent running the compiler | the `capability` member of a `--json` failure payload — `{"ok": false, "phase": "codegen", "error": "codegen: …", "errors": [...], "backend": "aot", "exit": 1, "capability": {"code": "lower.unsupported.tuple-value", "shape": "…", "suggestion": "…", "rows": ["L11.3"]}}` (the schema's `definitions.toolFailure`) |
+| an agent planning a compilation before writing it | `gustyc --capabilities`, the whole registry as one document (the schema's `definitions.capabilitiesDocument`) |
+| anything validating a payload instead of reading Go structs | `gustyc --schema`, where `definitions.capabilityRefusalCode` is the **closed enum** of codes |
+
+Three rules keep the codes worth trusting:
+
+- **Nothing is invented.** The classifier matches the compiled leg's sentence against the registry's
+  markers and answers the **longest** marker it finds, so `tuple(…)` gets its own row rather than the
+  generic indirect-call row whose sentence it also contains. A sentence that matches no marker gets no
+  code: `capability` is `null`, and a front-end error stays a front-end error instead of being dressed up
+  as a missing lowering.
+- **Coverage is measured, not claimed.** `integration/capability_coverage_test.go` compiles the whole
+  conformance corpus and fails if any refusal it produces is unclassified — except an explicit allowlist
+  of sentences that are the *program's* error (an undefined name, a non-exhaustive `match`, a tuple
+  unpacked from a non-sequence), each with the reason it is not a capability gap. A refusal is added to
+  the backend and reaches the corpus before this row knows about it, and that is a failing test.
+- **The registry is the source of the table below.** `go run ./tools/captable` prints it and
+  `go run ./tools/captable -check` verifies the document; `pkg/lang/capability_docs_test.go` fails when the
+  two disagree, and `TestTheDocumentedCapabilitySentencesStillExist` fails when any sentence in the table
+  above stops being one the compiler emits. A code is therefore added by adding a refusal's marker,
+  suggestion and owning rows to the registry — never by widening the schema enum alone.
+
+A code does not change an exit code: a capability refusal is still **exit 1**, an `llc` rejection **exit 2**,
+a trap **exit 3** (§ Exit codes, ADR 0211). The code says *which shape* was refused; the exit code says
+*whose fault* it is.
+
+| Code | Shape | Suggestion | Roadmap rows |
+|---|---|---|---|
+| `lower.unsupported.builtin-needs-inline-container` | min/max/sum asked of a container the compiler does not hold as a literal | write the container out at the call (min([1, 2])), or count with a loop — the reduction folds over a literal it can see and this container's slots belong to the runtime | Gap R.71 · Gap R.107 · L11.1 |
+| `lower.unsupported.candidate-among-values` | a container standing among the candidates of min/max | flatten the candidates (`min(1, 2, 3)`) or pass exactly one container — comparing two containers by their handle words would answer with heap addresses | L11.1 · Gap R.73 · Gap R.107 |
+| `lower.unsupported.comprehension-key-not-constant` | a dict comprehension whose key is not a compile-time constant | build the dict with a loop and an assignment, or key it by an integer literal — the integer-key spelling of the same comprehension compiles | Gap R.123 · L11.1 |
+| `lower.unsupported.comprehension-over-constant-list` | a comprehension over a list the compiler kept as a compile-time global | materialise the list first (append to an empty one, or iterate it with `for`) — a comprehension needs slots to walk, and a global has none to hand | L11.1 · Gap R.247 |
+| `lower.unsupported.comprehension-over-text` | a comprehension over a text iterates characters, which the backend has no code-point door for | iterate a list of the texts you want (["a", "b"]), or a container variable the compiler can see the kind of | L11.5 · Gap N.2 · Gap R.16 |
+| `lower.unsupported.container-answer-slots` | a container a function hands back whose slots the answer table declined to describe | bind the answer to a name and read it there (print, str, a condition and a membership test all answer it), or fill the slots with values the table can follow — a slot filled by a call may be the (payload, tag) pair | Gap R.261 · Gap R.262 · Gap R.67 |
+| `lower.unsupported.container-answer-whole` | a container a function hands back, in a position that keeps one word for the value | bind the answer to a name and use it where the container road reads it (print, str, a condition, a loop), or return the contents instead of the container | Gap R.67 · Gap R.146 |
+| `lower.unsupported.container-method-over-a-name` | a container method the backend folds only over a literal it can see | write the argument out at the call (xs.extend([7])), or loop and append — the method road folds over a literal written at the call and this argument's slots belong to the runtime | Gap I.2 · L11.1 |
+| `lower.unsupported.container-slot-kind-unprovable` | a container slot filled by a call that hands back text on one arm and a number on another | give the function one return kind, or bind the answer to a name and print it (print asks the question at print time and answers correctly) — a slot is labelled once, and labelling it either way misprints the other arm | L11.1 · Gap R.219 |
+| `lower.unsupported.dict-copy` | dict(<container>) copies a container the program already built | build the copy with dict() and assign the keys, or read the source's slots — the same missing element word as list(<container>) | L11.1 · Gap I.2 |
+| `lower.unsupported.dict-method-needs-runtime-search` | a dict method that would have to search the container at run time | iterate the container with `for` (for k in d / for k, v in items), or read the keys you know — the method road lowers against the container's own word, and this method needs a run-time search the doors do not have | L11.1 · Gap I.2 |
+| `lower.unsupported.float-return-word` | a function whose `return` is a name its own body rebound to a float | write `return x + 0.0`, or bind the answer first (`y = x + 0.0; return y`) — `return x` says nothing about the word, and the double the body computed would travel in an i32 | L11.6 · Gap R.3c |
+| `lower.unsupported.format-spec-needs-constant` | a format spec whose value the compiler cannot read | drop the spec (f"{v}" prints it), or format a value the compiler can see at that point — the spec is applied where the value is still a word with no kind | Gap R.146 · L11.1 |
+| `lower.unsupported.function-read-as-value` | a declared function read where a value is asked — print(f), a container slot, str(f) | call the function and print the answer, or pass it to a function that calls it (roadmap L11.7, ADR 0345 answers the called half) — a `def` allocates no slot to read, so there is nothing for the position to hold | Gap R.150 · Gap R.151 · L11.7 |
+| `lower.unsupported.index-needs-inline-container` | an index into a container the compiler has no notebook for | bind the container to a name and index the name, or index a literal written at the call — the index door reads a slot out of the notebooks it writes, and this container is not in them | Gap R.214 · Gap R.262 |
+| `lower.unsupported.indirect-call` | a call whose callee is a value the compiler cannot name | call a declared function, or bind the callable where the pass can see it (roadmap L11.7, ADR 0345); the reference asks the value what it is at the moment of the call, which needs the word L11.1 owns | L11.1 · L11.7 |
+| `lower.unsupported.join-needs-constant` | str.join over a list the compiler cannot see element by element | write the list out at the call (",".join(["a", "b"])), or build the string with += in a loop — join is folded over a constant list of constant strings | Gap I.2 · L11.1 |
+| `lower.unsupported.lambda-read-as-value` | a lambda used as a value rather than called | bind the lambda to a name and call it, or pass it where it will be called (ADR 0345 gives it a declaration there) — printed or stored, it has no slot to read and no kind to carry | Gap R.150 · Gap R.151 · L11.7 |
+| `lower.unsupported.len-needs-inline-container` | len of something whose length the compiler has no door for | ask a container the compiler can see (a literal, or a variable it recorded a kind for), or count with a loop — len of a text and of a recorded container both answer | Gap I.2 · L11.1 |
+| `lower.unsupported.list-copy` | list(<container>) copies a container the program already built | build the copy with list() and append the elements, or index the source's slots (xs[i]) — a copy is a container the runtime would have to build from a word that carries no kind yet | L11.1 · Gap I.2 |
+| `lower.unsupported.literal-element-needs-tag` | a literal's element read in a position that keeps one word for a whole value | print it, bind it (`v = xs[i]`), or ask it where the pair door stands (print, str/repr, len, a membership test, a loop) — a float, text, None or bool element is a (payload, tag) pair and one word would answer with the handle or the table index | Gap R.218 · Gap R.146 · L11.1 |
+| `lower.unsupported.membership-needle-unprovable` | a membership test whose needle's kind the compiler cannot prove | test a literal or a variable whose kind the compiler knows (`"hi" in xs`), or compare with == — the haystack's slots describe themselves, and the needle must arrive with the kind it has (the sentence also prints the needle's Go representation, which is Gap R.232's half of this row) | L11.1 · Gap R.232 · Gap R.82 |
+| `lower.unsupported.method-receiver-unreadable` | a text method whose receiver is not a text the compiler can read | bind the receiver first (`s = f()` / `s.upper()`), or call the method on a text written at the call — the method road needs the receiver's text to fold against | Gap I.2 · L11.1 |
+| `lower.unsupported.minmax-winner-kind` | min/max over runtime candidates whose static kinds mix int and double | keep the candidates literal, or put them in one domain (`min(2.5, float(k))` spelling) — the comparison is decidable, but which operand wins is only known at run time and its kind travels with it | L11.1 · Gap R.73 · Gap R.109 |
+| `lower.unsupported.mixed-element-pair` | an element of a list whose elements are more than one kind, in a position that keeps one word | print(xs[i]) directly, bind it (`v = xs[i]`), or keep one kind per list — the element is a (payload, tag) pair and this position stores a single i32 with no tag beside it | L11.1 · Gap R.82 · Gap R.146 |
+| `lower.unsupported.pair-return-word` | a function asked to hand back the (payload, tag) pair its answer arrived in | print the call, or bind it (`y = f(x)`) and use the name — the positions that read one word cannot carry the tag beside the payload, so the pair has nowhere to go | L11.1 · Gap R.146 |
+| `lower.unsupported.printf-style-format` | printf-style `%` on a text is not formatting here | write the answer with an f-string (f"{v:.2f}") or concatenate the parts — the reference's `"%.2f" % 3.5` is `3.50`, and this backend builds neither a double from a format string nor a number from one | Gap R.165 · Gap R.31 |
+| `lower.unsupported.runtime-reduction` | a reduction whose elements are computed at run time | accumulate in a loop (`total = 0` / `total += v`), or reduce a literal — folding over elements that only exist at run time would answer 0 rather than add them up | L11.7 · Gap R.71 |
+| `lower.unsupported.sequence-operation` | a sequence operation on containers — concatenation, repeat, ordering — has no runtime helper | build the result with a loop and append, or index the operands — a container lowers to the address of a compile-time global, so an arithmetic door over two of them has no number to read | Gap R.33 · L11.1 |
+| `lower.unsupported.set-comprehension-of-verdicts` | a set comprehension of verdicts needs the tagged set builder | collect the verdicts into a list instead, or bind each verdict to a name first — a set slot has nowhere to put a bool's kind today | L11.1 · Gap R.117 |
+| `lower.unsupported.set-copy` | set(<container>) copies a container the program already built | build the copy with set() and add the elements, or read the source's slots — the same missing element word as list(<container>) | L11.1 · Gap I.2 |
+| `lower.unsupported.slice-base-not-described` | a slice whose base the container records do not describe | bind the base to a name and slice the name, or slice a literal / a variable a binding recorded as a list — the copy is built from the base's slots, and this base has no record saying what they hold | Gap R.235 · Gap R.234 |
+| `lower.unsupported.slot-read-of-rebound-name` | a subscript into a container the compiler no longer trusts the binding of | bind the container to a fresh name after the last mutation and index that, or ask the object as a whole (print, ==, len, a loop) — the slot read is licensed by the literal the name was bound to, and a mutation or a hand-off to another function takes that licence back | L11.1 · Gap R.191 |
+| `lower.unsupported.sort-loop-argument` | for over sorted()/reversed() with an argument neither door can name | sort a list literal or a list variable (for v in sorted(xs)), or bind the sorted list first and walk it — the ordering helper chooses its comparator from the argument's spelled kind, and this argument has none the doors can read | Gap R.247 · Gap R.248 · L11.1 |
+| `lower.unsupported.sort-method-options` | list.sort with key= or reverse=, which the method door has not been given | use the builtin — ys = sorted(xs, key=f, reverse=True) — and assign back: the builtin reads the options by name and calls the key through the ordinary call road (ADRs 0340 and 0345) | Gap R.269 · L11.7 |
+| `lower.unsupported.sorted-key-over-runtime-elements` | sorted with key= over a container whose elements exist only at run time | sort a literal, or bind the elements first and sort those — the key must be called on each element, and the element has no word to travel in yet | Gap R.254 · Gap R.249 |
+| `lower.unsupported.ternary-arms-disagree` | a ternary whose two arms do not agree on a word (one is a double, one an i32) | write both arms in the same shape (`else 0` -> `else 0.0`), or take the branch with if/else and bind the value on each arm — an i32 select would truncate the double arm | L11.1 · L11.6 |
+| `lower.unsupported.text-operator` | an arithmetic operator applied to a text | concatenate with `+` where the reference does, and build a repeat with a loop — a compiled text is an interned table index, so arithmetic over it has no meaning to read | Gap R.31 · L11.1 |
+| `lower.unsupported.tuple-call` | tuple(...) builds a tuple from an iterable, which needs a callable and an element word | build a list instead, or write the tuple out and bind its positions — the row names both halves: tuple as a value (L11.3) and the element the call would carry (L11.1) | L11.3 · L11.1 |
+| `lower.unsupported.tuple-value` | a tuple is a value: a tuple literal reaches codegen and no door has a word for it | use a list for what you need to mutate or index, and a two-name binding (a, b = …) for what you needed a tuple for — the immutable tuple object is the row this code names | L11.3 |
 
 ## Optimization: constant folding
 

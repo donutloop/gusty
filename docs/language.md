@@ -22,6 +22,18 @@ a function *read* as a value rather than called, run-time iteration and `sorted`
 `dict(<container>)` copies) with the row that owes each. A function *called* as a value answers — a higher-order
 body is cloned per tuple of functions its call sites ask for (**ADR 0345**, roadmap L11.7).
 
+Refusing is therefore part of the language's surface, and it is documented as such (**ADR 0346**, roadmap
+L11.8). Each shape the compiled backend declines has a stable **code** — `lower.unsupported.<shape>` — beside
+the **suggestion** that writes the same intent in what the backend does answer and the **roadmap rows** that
+own the missing half. `gustyc --capabilities` prints that inventory, `gustyc --schema` declares it
+(`definitions.capabilityRefusalCode` is the closed enum), and a `--json` failure carries the entry as its
+`capability` member. A refusal is not a diagnosis of the program: a program the reference runs and this
+backend refuses is a divergence with a row, which is why the code names the rows rather than only the shape.
+Where the program is the one that is wrong — an undefined name, a non-exhaustive `match`, a text used as a
+number — the payload's `capability` is `null` and the `phase` field says who spoke. The prose a refusal is
+written in is in `docs/operations.md` §"Codegen capability messages", and the table there is printed from
+the same registry that answers `--capabilities`.
+
 ## Gradual typing
 
 `--verify` statically checks assignment annotations against the inferred type

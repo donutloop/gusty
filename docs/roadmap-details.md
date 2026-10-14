@@ -1016,22 +1016,42 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     the payload); `list.sort(key=)` and the remaining callable values need the fnptr lowering; and a runtime helper
     emitted in the prelude changes any module-wide call-site count, so count in user code.
 <a id="l11-8"></a>
-- **L11.8 — Refusal is part of the model, and so is its exit code** 🔷 PARTIAL —
-  **the exit-code half is ✅ DONE (ADR 0211)**: an `llc` rejection is exit **2** on every path
-  (`*lang.ToolchainRejectionError`, matched with `errors.As`), a trap is exit **3** on every run
-  path including `--aot` (`JITResult.Code`), a refusal stays 1, and a toolchain that is not
-  installed is not an LLVM rejection; `TestCLIExitCodeContract` drives the `--aot` leg and
-  `integration/trap_exit_test.go` drives the classes end to end with a manufactured `llc`
-  failure and a real-toolchain control. **Still PLANNED**: the capability diagnostics with
-  stable codes for what is refused today only in prose — `list(<container>)`, `tuple(...)`, a
-  compiled container of containers — measured this cycle to be clean refusals rather than `llc`
-  rejections or panics (so the ADR 0166 "no tested shape may leave the compiler as a panic"
-  contract holds for them), but their messages are `codegen:` text rather than schema'd codes.
-  **Closed since this row was written**: the refusal that covered the interned-string comparison —
-  a filter comparing elements with a string literal, and the same comparison in a `for` loop, which
-  made `llc` reject the module — is gone, because both bugs under it are fixed: a string value is an
-  `@str_tab` index (Gap R.42) and the filtered loop's `phi` names a predecessor that really branches
-  to it (ADR 0224). `probe_str_loop_eq` and `probe_comp_str_filter` were promoted to parity programs.
+- **L11.8 — Refusal is part of the model, and so is its exit code** ✅ DONE (**ADR 0211** for the exit
+codes, **ADR 0346** for the codes) —
+**the exit-code half (ADR 0211)**: an `llc` rejection is exit **2** on every path
+(`*lang.ToolchainRejectionError`, matched with `errors.As`), a trap is exit **3** on every run
+path including `--aot` (`JITResult.Code`), a refusal stays 1, and a toolchain that is not
+installed is not an LLVM rejection; `TestCLIExitCodeContract` drives the `--aot` leg and
+`integration/trap_exit_test.go` drives the classes end to end with a manufactured `llc`
+failure and a real-toolchain control.
+**The capability-diagnostic half (ADR 0346, 2026-10-16)**: the sentence a refusal speaks was the
+last part of this row still written only for a human. A script reading `--json` saw
+`"error": "codegen: …"` and had to match prose to learn what it was refused — and prose is not a
+contract, because a reworded sentence does not fail a branch, it stops firing one. `pkg/lang/capability.go`
+is now the single source of 40 `lower.unsupported.<shape>` codes, each with the suggestion that
+rewrites the program in what the backend does answer and the roadmap rows that own the missing half;
+`--json` failures carry the entry as `capability` (or `null`), `gustyc --capabilities` prints the
+registry as one document, and `--schema`'s `capabilityRefusalCode` enum is **spliced out of the
+registry at init** rather than typed, so the classifier and the contract cannot be two lists.
+Three measurements, not three assertions: the registry's unit test compiles every entry's `Sample`
+and fails an entry whose sentence stopped matching; `integration/capability_coverage_test.go`
+compiles the whole conformance corpus and fails on any refusal without a code, except an explicit
+allowlist whose 10 entries each state why they are the program's own error (measured: 20 refused
+programs, 14 distinct codes, 3 allowlisted sentences); and `TestTheDocumentedCapabilitySentencesStillExist`
+greps every sentence `docs/operations.md` tells an agent to match out of the package's own string
+literals — which found **three rows advertising sentences the backend had stopped emitting**
+(`strings inside runtime containers are not supported …`, `unsupported call "`, `cannot hold another
+container yet`, all retired by ADRs 0224/0232/0239) and one that had drifted (`operator "<op>" on a
+string (…)` had grown a `(kind)` clause); they are corrected in this commit. The doc inventory table
+is printed by `go run ./tools/captable` and held to the registry by `-check` and by
+`TestTheCapabilityDocsTableIsTheRegistry`. No refusal site was touched: 142 `codegen:` sites wrapped in
+typed errors would compile with a forgotten type and rot quietly, where a registry whose sample no
+longer classifies is a red test the same afternoon.
+**Closed since this row was written**: the refusal that covered the interned-string comparison —
+a filter comparing elements with a string literal, and the same comparison in a `for` loop, which
+made `llc` reject the module — is gone, because both bugs under it are fixed: a string value is an
+`@str_tab` index (Gap R.42) and the filtered loop's `phi` names a predecessor that really branches
+to it (ADR 0224). `probe_str_loop_eq` and `probe_comp_str_filter` were promoted to parity programs.
 <a id="l11-9"></a>
 - **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ✅ DONE (ADR 0186) —
   the harness ran 41 cases and asserted backend-vs-backend only, which is exactly why rows like
