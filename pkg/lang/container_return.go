@@ -74,6 +74,42 @@ func (k containerAnswerKind) String() string {
 type containerAnswer struct {
 	kind containerAnswerKind
 	arms []Expr
+	// fullyDescribed is set by the scan's described half alone. An entry in the opaque set — a container
+	// the scan proved and the slot table declined — leaves it false, which is what makes the doors that
+	// read a slot back through the COMPILE-TIME notebooks decline the answer while the doors that ask the
+	// OBJECT itself take it (roadmap Gap R.261, ADR 0344).
+	fullyDescribed bool
+}
+
+// containerAnswerRead is what a position means to read out of the answer a call hands back, and so what
+// the answer has to BE. There are two kinds of reader, and the difference is who answers the question:
+//
+//   - print, str, repr, an f-string field and a binding hand the handle to a runtime entry point that walks
+//     the object, and a condition asks the object's own count — none of them needs this table to have read
+//     a slot, only to know which container it is; and
+//   - an index read, a slice, a comparison, a builtin argument and a loop's iterable read a slot out of the
+//     object using the notebooks this table writes (is the element text, does the slot carry a tag). Those
+//     notebooks belong to the described answer alone: asked for an answer the table could not describe, they
+//     send the reader to a word nobody wrote, which is how `for k in f()` printed `0` where the reference
+//     prints the key (roadmap Gap R.261, ADR 0344).
+type containerAnswerRead int
+
+const (
+	containerReadSlots   containerAnswerRead = iota // an index, a slice, a comparison, a builtin argument
+	containerReadWhole                              // print(...), str(...), repr(...), an f-string field, a binding
+	containerReadShape                              // a condition, `not`: is the answer empty, which is its count
+	containerReadMembers                            // a membership test: the object is asked whether it holds
+	containerReadWalk                               // a loop's iterable: every member, read through the notebooks
+)
+
+// takesRead asks the answer's own record whether a position may read it (roadmap Gap R.261, ADR 0344).
+func (a containerAnswer) takesRead(read containerAnswerRead) bool {
+	switch read {
+	case containerReadWhole, containerReadShape, containerReadMembers:
+		return true
+	default:
+		return a.fullyDescribed
+	}
 }
 
 // containerReturningFuncs is the whole-program scan: which functions hand back a container, and which
@@ -82,9 +118,50 @@ type containerAnswer struct {
 // its end, an async or decorated definition, a generator) is absent too, keeping whatever road that
 // function has always taken, refusal included.
 func containerReturningFuncs(prog *Program) map[string]containerAnswer {
-	out := map[string]containerAnswer{}
+	answers, _ := containerAnswerScan(prog)
+	return answers
+}
+
+// ContainerAnswerIsUndescribed is the scan's second answer in exported form: the functions whose `return`
+// provably hands back a container, and which one, minus the ones whose slots the table could not
+// describe. It is the set the number door refuses against (roadmap Gap R.261, ADR 0344).
+func ContainerAnswerIsUndescribed(prog *Program, fnName string) bool {
 	if prog == nil {
-		return out
+		return false
+	}
+	_, undescribed := containerAnswerScan(prog)
+	_, ok := undescribed[fnName]
+	return ok
+}
+
+// containerAnswerScan answers the scan's two questions in one walk. The first is the one the doors ask:
+// which functions hand back a container, and which. The second is the one the *fall-through* asks, and it
+// exists because the first, answered "no", used to be read as "not a container":
+//
+//	def g():
+//	    return 5
+//
+//	def f():
+//	    out = []
+//	    out.append(g())
+//	    return out
+//
+//	print(f())
+//
+// `f` hands back a list — its `return` says so, its body builds it — and only the slot table's refusal to
+// follow a value written as a call (Gap R.67, which is right: a call can answer the (payload, tag) pair)
+// keeps this table from promising what its slots hold. The roads that print a container consult the table;
+// when it declines, `print` fell through to the number road and printed the heap handle as an integer. At
+// exit 0. A decline is not an answer, and it is not evidence of a number either: the second set names the
+// functions whose answer is a container this backend will not describe, so the number door can say so
+// instead of printing what the allocator handed out (roadmap Gap R.261, ADR 0333's scan read a second
+// time, ADR 0166's exit 1
+// vocabulary).
+func containerAnswerScan(prog *Program) (map[string]containerAnswer, map[string]containerAnswer) {
+	out := map[string]containerAnswer{}
+	undescribed := map[string]containerAnswer{}
+	if prog == nil {
+		return out, undescribed
 	}
 	funcs := map[string]*FuncDef{}
 	order := []string{}
@@ -120,8 +197,15 @@ func containerReturningFuncs(prog *Program) map[string]containerAnswer {
 		}
 		// The kind is only half the claim: the slots have to be values this table can describe. A slot that
 		// is a call, a comprehension or a format is a value this scan cannot follow, and another road's to
-		// refuse (roadmap Gap R.67).
+		// refuse (roadmap Gap R.67). Refusing *that* is the case the opaque set exists for: the answer is
+		// still a container, and no door may read its handle as a number.
 		if !containerAnswerDescribesItsSlots(fd, returns, out, defines) {
+			// The kind is recorded even though the slots are not: the doors that read the whole object —
+			// print, str, repr, a binding, a condition — need the kind, and the doors that read a slot need
+			// the refusal. What is not recorded is the arms list: a table that could not read the slots does
+			// not get to describe them, and a loop over the answer asks only about its keys or elements,
+			// which the record below answers (roadmap Gap R.261, ADR 0344).
+			undescribed[name] = containerAnswer{kind: kind}
 			return containerAnswer{kind: notAContainerAnswer}
 		}
 		return containerAnswer{kind: kind, arms: returns}
@@ -148,7 +232,13 @@ func containerReturningFuncs(prog *Program) map[string]containerAnswer {
 			break
 		}
 	}
-	return out
+	// A function the walk *proved* a container and then declined for its slots may also have been proved
+	// while answering another function's forwarding call; and a function that ended up in `out` is not
+	// opaque, whatever an intermediate pass said about it.
+	for name := range out {
+		delete(undescribed, name)
+	}
+	return out, undescribed
 }
 
 // containerKindOfIn is the "what container is this expression" question inside one body: a literal or a
@@ -296,71 +386,8 @@ func containerAnswerDescribesItsSlots(fd *FuncDef, returns []Expr, out map[strin
 		}
 	}
 	binds := bodyBindings(fd)
-	var slot func(e Expr, depth int) bool
-	slot = func(e Expr, depth int) bool {
-		if depth > 4 {
-			return false
-		}
-		if lit, isBuiltinEmpty := emptyContainerLiteral(e); isBuiltinEmpty {
-			// `xs = set()` is the same object as `xs = set{}`, and the same answer: the call form is what
-			// the body wrote, not a value that came from somewhere else (Gap R.6's builtin rule, ADR 0199).
-			e = lit
-		}
-		switch v := e.(type) {
-		case *IntLit, *StrLit, *BoolLit, *NoneLit, *FloatLit:
-			return true
-		case *UnOp:
-			return v.Op == "-" && slot(v.X, depth+1)
-		case *ListLit:
-			for _, el := range v.Elems {
-				if !slot(el, depth+1) {
-					return false
-				}
-			}
-			return true
-		case *Comp:
-			// A comprehension builds its own object, tags and all: the road that fills it is the one that
-			// knows what the slots hold, and this table only has to keep the handle (roadmap Gap R.67).
-			return true
-		case *SetLit:
-			for _, el := range v.Elems {
-				if !slot(el, depth+1) {
-					return false
-				}
-			}
-			return true
-		case *DictLit:
-			for _, k := range v.Keys {
-				if !slot(k, depth+1) {
-					return false
-				}
-			}
-			for _, val := range v.Vals {
-				if !slot(val, depth+1) {
-					return false
-				}
-			}
-			return true
-		case *Name:
-			// What the body bound the name to decides; a binding the construct wrote rather than a value
-			// (`for i in ...`, `with x as v`) says nothing, and an unsaid name is the caller's word — the
-			// call site is asked below, where the value has a kind.
-			for _, val := range binds[v.Value] {
-				if val == nil {
-					continue
-				}
-				if !slot(val, depth+1) {
-					return false
-				}
-			}
-			return true
-		case *BinOp, *Index, *CondExpr:
-			return true // an arithmetic or reading answer: its kind is the call site's, asked below
-		}
-		// A call, a comprehension, a format: a value this scan cannot follow, and the pair door or
-		// another road's. The table leaves the program where that road can say what it cannot carry.
-		return false
-	}
+	reader := containerAnswerSlotReader{binds: binds, out: out, defines: defines}
+	slot := reader.slot
 	for _, arm := range returns {
 		// `return build()` forwards an answer this table already judged, and the judgement included
 		// build's own slots; the arguments still have to be values this body can write down, because
@@ -407,6 +434,83 @@ func containerAnswerDescribesItsSlots(fd *FuncDef, returns []Expr, out map[strin
 		}
 	}
 	return true
+}
+
+// containerAnswerSlotReader is the slot question of the answer table, held with the three records it
+// asks the question of — what the body bound each name to, what the other functions' answers were, and
+// what names the program took for itself. It is a type because the question is asked by two doors: the
+// full one below, and the narrower one a loop over the answer asks about its keys or elements
+// (roadmap Gap R.261, ADR 0344) — one question asked once, which is ADR 0232's rule.
+type containerAnswerSlotReader struct {
+	binds   map[string][]Expr
+	out     map[string]containerAnswer
+	defines map[string]bool
+}
+
+// slot answers whether one expression is a value the answer table can write into a container's slot.
+func (r containerAnswerSlotReader) slot(e Expr, depth int) bool {
+	if depth > 4 {
+		return false
+	}
+	if lit, isBuiltinEmpty := emptyContainerLiteral(e); isBuiltinEmpty {
+		// `xs = set()` is the same object as `xs = set{}`, and the same answer: the call form is what
+		// the body wrote, not a value that came from somewhere else (Gap R.6's builtin rule, ADR 0199).
+		e = lit
+	}
+	switch v := e.(type) {
+	case *IntLit, *StrLit, *BoolLit, *NoneLit, *FloatLit:
+		return true
+	case *UnOp:
+		return v.Op == "-" && r.slot(v.X, depth+1)
+	case *ListLit:
+		for _, el := range v.Elems {
+			if !r.slot(el, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *Comp:
+		// A comprehension builds its own object, tags and all: the road that fills it is the one that
+		// knows what the slots hold, and this table only has to keep the handle (roadmap Gap R.67).
+		return true
+	case *SetLit:
+		for _, el := range v.Elems {
+			if !r.slot(el, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *DictLit:
+		for _, k := range v.Keys {
+			if !r.slot(k, depth+1) {
+				return false
+			}
+		}
+		for _, val := range v.Vals {
+			if !r.slot(val, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *Name:
+		// What the body bound the name to decides; a binding the construct wrote rather than a value
+		// (`for i in ...`, `with x as v`) says nothing, and an unsaid name is the caller's word — the
+		// call site is asked below, where the value has a kind.
+		for _, val := range r.binds[v.Value] {
+			if val == nil {
+				continue
+			}
+			if !r.slot(val, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *BinOp, *Index, *CondExpr:
+		return true // an arithmetic or reading answer: its kind is the call site's, asked below
+	}
+	// A call, a comprehension, a format: a value this scan cannot follow, and the pair door or
+	// another road's. The table leaves the program where that road can say what it cannot carry.
+	return false
 }
 
 // containerAnswerSlotWrites collects the values the body writes into a container's slots — `xs.append(v)`,
@@ -627,6 +731,16 @@ func containerBodyIsOpaque(fd *FuncDef) bool {
 // always taken: this is an extra answer, never a substitute for one (ADR 0273's rule for the pair door
 // beside this one).
 func (g *irGen) containerAnswerOperand(b *strings.Builder, e Expr) (Expr, containerAnswerKind, bool) {
+	return g.containerAnswerOperandRead(b, e, containerReadSlots)
+}
+
+// containerAnswerOperandRead is the door above with the position's question in hand: an answer the scan
+// proved and the slot table declined is taken only by a position whose `read` the record can answer —
+// print, str, repr, a binding and a condition can, a loop and a membership test only when its keys or
+// elements are described, and an index read, a comparison or a builtin argument never (roadmap Gap R.261,
+// ADR 0344). Every caller that does not say otherwise asks the strictest question, so the rule can only
+// ever widen a door that was already open, never open one that was shut.
+func (g *irGen) containerAnswerOperandRead(b *strings.Builder, e Expr, read containerAnswerRead) (Expr, containerAnswerKind, bool) {
 	c, isCall := e.(*Call)
 	if !isCall {
 		return nil, notAContainerAnswer, false
@@ -637,7 +751,36 @@ func (g *irGen) containerAnswerOperand(b *strings.Builder, e Expr) (Expr, contai
 	}
 	ans, ok := g.containerAnswerOf(nm.Value)
 	if !ok || !g.containerAnswerCallIsCarriable(c) {
-		return nil, notAContainerAnswer, false
+		// The scan proved a container and the slot table declined to describe it. A position that can ask
+		// the object what it is — `print`, `str`, `repr`, an f-string, a condition, a binding, a loop over
+		// described keys — may still take the answer, and it takes it the way the binding road does: the
+		// handle goes into a rooted slot recorded as a container variable, which is the state `ys = f()`
+		// reaches and `print(ys)` prints right from (roadmap Gap R.261, ADR 0344). What the table will not
+		// do is let a road that reads ONE SLOT back, and calls it a number, near the word — that refusal is
+		// the call road's, taken with no permission out here.
+		und, isUndescribed := containerAnswer{}, false
+		if g.containerRetOpaque != nil {
+			und, isUndescribed = g.containerRetOpaque[nm.Value]
+		}
+		if !isUndescribed || und.kind == notAContainerAnswer || !und.takesRead(read) {
+			return nil, notAContainerAnswer, false
+		}
+		kind := und.kind
+		g.containerAsked[nm.Value] = true
+		h, err := g.value(b, c)
+		delete(g.containerAsked, nm.Value)
+		if err != nil {
+			return nil, notAContainerAnswer, false
+		}
+		g.tmp++
+		name := fmt.Sprintf("__cans%d", g.tmp)
+		g.allocd[name] = true
+		g.heapUsed = true
+		b.WriteString(fmt.Sprintf("  %s = alloca i32\n", "%_"+name))
+		g.gcReg(b, name)
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %s\n", h, "%_"+name))
+		g.settleContainerKind(name, kind.String())
+		return &Name{Value: name, Src: c.Span()}, kind, true
 	}
 	g.containerAsked[nm.Value] = true
 	h, err := g.value(b, c)
@@ -1229,6 +1372,53 @@ func (g *irGen) containerAnswerIsAsked(fnName string) bool {
 	return g != nil && g.containerAsked[fnName]
 }
 
+// containerAnswerIsUndescribed asks the second set: this function's `return` provably hands back a
+// container, and the slot table declined to describe what its slots hold. The number roads must refuse
+// such a call rather than print the allocator's handle; the positions that can hold a handle may take it
+// with a permission (roadmap Gap R.261, ADR 0344).
+func (g *irGen) containerAnswerIsUndescribed(fnName string) bool {
+	if g == nil || g.containerRetOpaque == nil {
+		return false
+	}
+	_, ok := g.containerRetOpaque[fnName]
+	return ok
+}
+
+// containerAnswerReadIsRefused answers the question a position asks after the door above declined: is the
+// expression it just watched decline a PROVEN container answer that this position's own `read` cannot be
+// given? If so the position may not continue on the road it was about to take, because every one of those
+// roads lowers the call to the one word the allocator handed back and reads it as a number — the `0` on the
+// screen at exit 0 that this row exists to end (roadmap Gap R.261, ADR 0344).
+func (g *irGen) containerAnswerReadIsRefused(e Expr, read containerAnswerRead) (string, bool) {
+	c, isCall := e.(*Call)
+	if !isCall || g == nil {
+		return "", false
+	}
+	nm, isName := c.Fn.(*Name)
+	if !isName {
+		return "", false
+	}
+	if _, ok := g.containerAnswerOf(nm.Value); ok {
+		return "", false // a described answer: the door took it, or the carriable question declined it
+	}
+	if g.containerRetOpaque == nil {
+		return "", false
+	}
+	und, ok := g.containerRetOpaque[nm.Value]
+	if !ok || und.kind == notAContainerAnswer || und.takesRead(read) {
+		return "", false
+	}
+	return nm.Value, true
+}
+
+// containerAnswerUndescribedRefusal is the sentence for a call whose answer is a container this backend
+// will not describe. It says which half is missing — the slots, not the object — because the reader's
+// next move is different: making the appended value something the table can follow is a program change,
+// and so is asking for the object through a name, which the binding road already answers.
+func containerAnswerUndescribedRefusal(fnName string) error {
+	return fmt.Errorf("codegen: %q hands back a container whose slots this backend will not describe: the object is built, and its `return` says list, dict or set, but a slot is filled by a value the answer table cannot follow (a call, a comprehension or a format), and reading the heap handle as a number would print what the allocator handed out where the reference prints the contents — bind it to a name and print that, or fill the slots with values the table can read (roadmap Gap R.261, Gap R.67, ADRs 0333 and 0344)", fnName)
+}
+
 // containerAnswerPermit is one lowering's hold on the permission above — the same permission
 // `containerAnswerOperand` takes while it emits the call, given to a position that can keep the handle
 // itself: a binding's slot, a forwarding `return`. It is taken by name and released by hand rather than
@@ -1242,6 +1432,12 @@ type containerAnswerPermit struct {
 // container, and returns the handle that releases it. A nil return means "nothing to permit" — the call is
 // not one of these, and the ordinary road keeps the behaviour it has always had.
 func (g *irGen) permitContainerAnswer(e Expr) *containerAnswerPermit {
+	return g.permitContainerAnswerRead(e, containerReadWhole)
+}
+
+// permitContainerAnswerRead is the permission with the position's question in hand, beside the door
+// above's own copy of the rule (roadmap Gap R.261, ADR 0344).
+func (g *irGen) permitContainerAnswerRead(e Expr, read containerAnswerRead) *containerAnswerPermit {
 	c, isCall := e.(*Call)
 	if !isCall || g == nil {
 		return nil
@@ -1251,7 +1447,18 @@ func (g *irGen) permitContainerAnswer(e Expr) *containerAnswerPermit {
 		return nil
 	}
 	if _, ok := g.containerAnswerOf(nm.Value); !ok || !g.containerAnswerCallIsCarriable(c) {
-		return nil
+		und, isUndescribed := containerAnswer{}, false
+		if g.containerRetOpaque != nil {
+			und, isUndescribed = g.containerRetOpaque[nm.Value]
+		}
+		if !isUndescribed || und.kind == notAContainerAnswer || !und.takesRead(read) {
+			return nil
+		}
+		// A container the table could not describe is still a container, and a position that can hold the
+		// handle may still take it — `ys = f()` is such a position, and it prints `[5]` today by asking the
+		// object itself what it is (roadmap Gap R.261, ADR 0344).
+		g.containerAsked[nm.Value] = true
+		return &containerAnswerPermit{g: g, fn: nm.Value}
 	}
 	g.containerAsked[nm.Value] = true
 	return &containerAnswerPermit{g: g, fn: nm.Value}

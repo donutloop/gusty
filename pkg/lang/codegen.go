@@ -4062,7 +4062,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// Which functions hand back a container, and which one: asked of the whole program, before any IR
 	// exists, so a `def` written below its first call and a call written below that `def` read one answer
 	// (roadmap Gap R.67, ADR 0333; the same statelessness ADR 0273 requires of the pair road's arity).
-	g.containerRet = containerReturningFuncs(prog)
+	g.containerRet, g.containerRetOpaque = containerAnswerScan(prog)
 	g.containerAsked = map[string]bool{}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
@@ -4747,6 +4747,11 @@ type irGen struct {
 	// the function's whole body, so it is written down once here rather than guessed per call site: a
 	// caller that renders a number through the container printer is Gap R.219's defect wearing a tag.
 	containerRet map[string]containerAnswer
+	// containerRetOpaque is the scan's second answer: the functions whose `return` provably hands back a
+	// container and whose slots the answer table declined to describe. They are the difference between a
+	// program that is not a container and a program whose container this backend will not read as a
+	// number — the first prints 1, the second refuses (roadmap Gap R.261, ADR 0344).
+	containerRetOpaque map[string]containerAnswer
 	// containerAsked is `containerAnswerOperand`'s permission, beside `pairCallAsked`'s: the ordinary
 	// single-word road refuses a call whose answer is a container, and the door that has just handed that
 	// answer to a road which can read one lowers the call with this set marked (ADR 0273's rule, applied
@@ -8954,7 +8959,7 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	// no word for that object, so the condition is asked again of the name the container door materialised
 	// for it — and the road below (`heapContainerLenFn`) already knows how to ask a container name whether
 	// it is empty, which is what a condition on a container has always meant (roadmap Gap R.67, ADR 0333).
-	if ansName, _, okAns := g.containerAnswerOperand(b, e); okAns {
+	if ansName, _, okAns := g.containerAnswerOperandRead(b, e, containerReadShape); okAns {
 		return g.truthOperandErr(b, ansName)
 	}
 	// Strings and containers test their *content*, never their representation: a
@@ -10018,11 +10023,23 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// it: every road below already reads a container variable, and a container answer is precisely one
 		// of those (roadmap Gap R.67, ADR 0333). The needle keeps its own lowering, so a container needle
 		// beside an answer still takes the tagged slot rule.
-		if (n.Op == "in" || n.Op == "not in") && g.isContainerExpr(n.R) {
-			if ansName, _, okAns := g.containerAnswerOperand(b, n.R); okAns {
+		//
+		// The door is asked before `isContainerExpr` is, because the question the two answer differs: the
+		// notebooks know a *described* answer, while the door also takes an answer the scan proved a
+		// container and the slot table declined — and `5 in f()` asked the object and answered correctly
+		// before this row existed. Losing that answer to a refusal would be the fix costing more than the
+		// bug (roadmap Gap R.261).
+		if n.Op == "in" || n.Op == "not in" {
+			if ansName, _, okAns := g.containerAnswerOperandRead(b, n.R, containerReadMembers); okAns {
 				redo := *n
 				redo.R = ansName
 				return g.value(b, &redo)
+			}
+			if fnName, refused := g.containerAnswerReadIsRefused(n.R, containerReadMembers); refused {
+				// The haystack is a container this backend proved and could not describe, and its keys or
+				// elements are the undescribed half — so the test below would walk slots it cannot name and
+				// answer with whatever the allocator wrote. Refuse rather than answer (roadmap Gap R.261).
+				return "", containerAnswerUndescribedRefusal(fnName)
 			}
 		}
 		l, err := g.value(b, n.L)
@@ -10608,7 +10625,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// operand is materialised to a name and the operator asked again, so the truth road below — the one
 		// a container variable already goes through — answers the answer (roadmap Gap R.67, ADR 0333).
 		if n.Op == "not" {
-			if ansName, _, okAns := g.containerAnswerOperand(b, n.X); okAns {
+			if ansName, _, okAns := g.containerAnswerOperandRead(b, n.X, containerReadShape); okAns {
 				redo := *n
 				redo.X = ansName
 				return g.value(b, &redo)
@@ -14009,6 +14026,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if _, isContainerAnswer := g.containerAnswerOf(fnName); isContainerAnswer && !g.containerAnswerIsAsked(fnName) && g.containerAnswerCallIsCarriable(c) {
 			return "", containerAnswerRefusal(fnName)
 		}
+		// The same refusal for a container the scan proved and the slot table declined. Without this the
+		// fall-through returns the word the allocator handed back, and `print(f())` printed `0` for a
+		// function that returns `[5]` — the module built, the program ran, exit 0, and the number on the
+		// screen was a heap slot (roadmap Gap R.261, ADR 0333's scan read a second time).
+		if g.containerAnswerIsUndescribed(fnName) && !g.containerAnswerIsAsked(fnName) {
+			return "", containerAnswerUndescribedRefusal(fnName)
+		}
 		asked := g.pairCallAsked
 		g.pairCallAsked = map[string]bool{}
 		provided := make([]bool, n)
@@ -14649,7 +14673,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// printer that name would be printed by: `ys = build()` / `print(ys)` has printed `[1, 2]` all
 			// along, and `print(build())` printing `0` was the same object asked a second question and given
 			// the first answer it had (roadmap Gap R.67, ADR 0333).
-			if ansName, ansKind, okAns := g.containerAnswerOperand(b, a); okAns {
+			if ansName, ansKind, okAns := g.containerAnswerOperandRead(b, a, containerReadWhole); okAns {
 				h, herr := g.value(b, ansName)
 				if herr != nil {
 					return "", herr
@@ -19226,12 +19250,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			n.Iter = folded
 		} else if named, okNamed := g.materializeSortedReversedForLoop(b, n.Iter); okNamed {
 			n.Iter = named
-		} else if ansName, _, okAns := g.containerAnswerOperand(b, n.Iter); okAns {
+		} else if ansName, _, okAns := g.containerAnswerOperandRead(b, n.Iter, containerReadWalk); okAns {
 			// `for v in build():` — the iterable is the container the callee built. The loop road below reads a
 			// container by name, which is what the container door hands over: the call is emitted once, the
 			// answer is rooted for the collector, and the loop runs over the answer as over any other container
 			// the program named (roadmap Gap R.67, ADR 0333).
 			n.Iter = ansName
+		} else if fnName, refused := g.containerAnswerReadIsRefused(n.Iter, containerReadWalk); refused {
+			// ADR 0339's rule, applied to an answer rather than to a variable: a loop asks its iterable what
+			// it is, and a container whose members this table cannot describe is refused — never read as a
+			// count, never walked slot by slot for whatever word the allocator left there (roadmap Gap R.261).
+			return containerAnswerUndescribedRefusal(fnName)
 		}
 		// `for x in [1, 2, 3]`: iterate an inline list literal's constant
 		// elements by unrolling one body block per element. `break` skips the

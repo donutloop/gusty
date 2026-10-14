@@ -1421,6 +1421,17 @@ not comments, so a future re-recording cannot silently undo them.
   texts, the interned INDEX, because `rt_slice` copied element payloads and never their tags. the record
   answered every one of them correctly throughout, so the parity matrix saw nothing and only the oracle leg
   could.
+- **a container a call hands back prints as the object it is, and a slot this backend cannot describe is refused,
+  never printed**: `--eval` on `def g(): return 5` / `def f(): out = []` / `out.append(g())` / `return out` /
+  `print(f())` exits 0 with `[5]` — as does `{5}` over `out.add(g())`, `{'k': 5}` over `out["k"] = g()` and
+  `{'k': 2.5}` with a float-returning callee. Every one of those printed **`0`** at **exit 0** before this row:
+  the answer table proves the container and declines to describe the slot, and the decline was read as "not a
+  container", so the ordinary call road handed the heap handle to the number printer. The positions whose
+  question the object answers (`print`, `str`, `repr`, a condition, a binding, `in`) now take the handle and ask
+  it; the positions that read a slot back through the compiler's own records (an index, a slice, a comparison, a
+  loop's iterable) exit **1** with a sentence that names the function the program wrote and the way around it
+  (`bind it to a name and print that`) — and `for v in f(): print(v)`, which had printed *nothing* at exit 0,
+  is among them (`Gap R.261` / ADR 0344; the two open readers are `Gap R.262`).
 - **a power answers the kind the reference answers with**: `print(2 ** -1)` exits 0 with `0.5` and
   `print(4 ** 0.5)` with `2.0` on both engines (`Gap R.176` / ADR 0293). Before this, both backends answered
   `0` for a negative int exponent (under a comment claiming Python does that) and the compiled leg pushed

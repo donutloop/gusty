@@ -10674,3 +10674,48 @@ instead of working around it. The same tree now runs in **about 1 m 40 s**.
 - **A harness owns its own plumbing, including the plumbing nobody executes from a test.** The same instinct
   that produced `tools/testshards`'s self-tests and the `parify` guard should have covered the workflow file: if
   an artifact decides whether the suite ran at all, a case must read it.
+
+## The decline was the answer nobody read (ADR 0344, Gap R.261)
+
+- **What was measured, before any code changed.** Five programs, one preamble (`def g(): return 5`), each run
+  against `python3` and against `/tmp/gustyc-head` built from the commit under work:
+  `print(f())` over a list filled by `out.append(g())` printed `0` for `[5]`; over a set filled by `out.add(g())`
+  printed `0` for `{5}`; over a dict filled by `out["k"] = g()` printed `0` for `{'k': 5}`; the same dict with a
+  float-returning callee printed `0` for `{'k': 2.5}`; and `for v in f(): print(v)` printed **nothing at all** for
+  `5`. All at exit 0. `str(f())` and `repr(f())` were already correct — and that asymmetry was the diagnosis
+  waiting to be found: the render road hands the handle to `rt_str_of_container`, so the object was never the
+  problem, only who had been handed it.
+- **A function returning `[5]` printing `0` meant the print door was asked nothing at all.** The root cause was
+  not in the printer, the runtime or the object layout: `containerAnswerScan` answers *two* questions and returns
+  them as two maps, and every consumer in the tree read the first as the whole answer. A decline is a fact with a
+  subject — "this is a container, and I cannot describe its slots" — and encoding it as absence from one map
+  throws away the first clause, which is the only clause three doors needed.
+- **The first fix was wrong, and the probe caught it.** Letting every position that can hold a handle take the
+  answer is the natural move; it turned `for k in f(): print(k)` into `0` (the reference prints `k`). That is the
+  row's real lesson: **"can hold the pointer" is not the same question as "asks the object"**. A loop reads each
+  member back through notebooks the scan writes; hand it an answer with no notebooks and it does not fail, it
+  *guesses*. The rule is now a method on the record (`takesRead(read)`), the reads are named (`Whole`, `Shape`,
+  `Members`, `Slots`, `Walk`), and every door that does not name its read gets the strictest one — which makes
+  the whole change provably monotone: a door can only widen from what it already was.
+- **A refusal has to be unreachable by fall-through, not merely available.** Adding the loop's refusal meant
+  putting a guard (`containerAnswerReadIsRefused`) where the door *declines*, because the code after a declined
+  door is the road that prints the handle. `return refusal` sitting in a helper nobody calls is how a row that
+  "handles" a case keeps the bug.
+- **One question, asked twice, becomes two answers (ADR 0232 again).** The slot predicate lived in a closure
+  inside `containerAnswerDescribesItsSlots`; the narrower judgement the membership and loop doors needed would
+  have been a second copy of it. Lifting it to `containerAnswerSlotReader.slot` — a type holding the three records
+  the question reads — kept both doors asking one question, and cost no behaviour.
+- **Process: isolate the bug from the feature that found it.** The defect surfaced while bringing up L11.7's
+  higher-order door, but it reproduces with no function values in the program at all. The pass was moved out of
+  the tree (`/tmp/callable_value.go.pass`), the AST fields it needs reverted, and the container fix re-verified
+  alone against `python3` — 18 programs, all matching, the two non-matches being honest refusals of unrelated
+  limitations (`sum` over a call's answer, tuples). Three binaries side by side (`-head`, `-a` stale, `-b` fixed)
+  is what made "is this mine?" a five-second question instead of a debate.
+- **Guard the shape, not just the answer.** `TestTheRuleIsAskedOfTheRecordNotOfTheCaller` fails if a door starts
+  deciding for itself again; `TestTheDeclinedAnswerIsPrintedByTheDoorThatAsksTheObject` asserts the answer reaches
+  the printer as a rooted slot (`__cans…`) rather than as the ordinary road's word; and both test files forbid the
+  refusal from leaking `*lang.`, `0x`, `%!s(` or a compiler temp. Every refused row carries CPython's answer in
+  the table, so a door that grows later turns a passing row into a green answer rather than a guess.
+- **A stale binary is a false memory.** Two "regressions" in this session were `/tmp/gustyc-a` having been built
+  from an intermediate edit — one of them was my own first, wrong fix reporting itself as HEAD behaviour. Any
+  claim about "what HEAD does" now gets re-measured with a binary built from `git commit` in a clean worktree.

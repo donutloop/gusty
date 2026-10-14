@@ -681,6 +681,17 @@ answer (**Gap R.229** beside **Gap R.230**, whose road answers words for every b
 parameter (Gap R.154), `f() + [9]` (Gap R.175), a membership test whose needle is one of its slots (Gap R.232)
 — refuses and names the function and the door it is waiting for; none of them prints the handle. `None` handed
 back by a function is the one value in this family still answered as a number (**Gap R.228**).
+A container the answer table *declines* is still a container, as of **ADR 0344** (roadmap **Gap R.261**):
+when a slot is filled by a value the scan cannot follow — a call, a comprehension, a format — the function is
+recorded with its kind and without a description of its slots, and which positions may still read the answer is
+asked of that record, not of each door. A position whose question the **object** answers prints it: `print(f())`
+is `[5]` over `out.append(g())`, `{5}` over `out.add(g())` and `{'k': 5}` over `out["k"] = g()` (and `{'k': 2.5}`
+when the callee answers a float) — each of which printed `0` at exit 0 before the row; the same for
+`str(f())`, `repr(f())`, `if f():`, `not f()` and `ys = f()` / `print(ys)`, and a membership test keeps asking
+the object, so `5 in f()` is `True`. A position that reads a slot back through the compiler's own records — an
+index, a slice, a comparison, a loop's iterable — refuses naming the missing half and the way around it
+(`bind it to a name and print that`), because a notebook nobody filled is a fabricated number: `print(f()[0])`
+and `for v in f(): print(v)` are **Gap R.262**'s, the second of which printed nothing at exit 0 before the row.
 A comprehension over a value the compiler cannot see at compile time — a text, or a container built by
 running the program — is refused naming its missing runtime door (`Gap I.2`), where the retired engine
 evaluated it and the record still holds its answer.

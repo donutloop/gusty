@@ -262,6 +262,24 @@ a slice that drops its slots' tags and a slice bound to a name that answers the 
 membership test whose needle is a slot, refusing with a sentence that prints the needle's Go representation
 (**Gap R.232**).
 
+**A container the answer table declines is still a container, and the doors are told who they ask** — ADR 0344
+pays Gap R.261, the wrong answer the higher-order door turned up. `containerAnswerScan` had always asked two
+questions — does this function hand back a container, and can the table describe what its slots hold — and the
+toolchain read only the first, so a function declined for the second was simply absent, and absence meant "not a
+container" to the ordinary call road. `def g(): return 5` / `def f(): out = []` / `out.append(g())` /
+`return out` / `print(f())` printed **`0`** at **exit 0** — the heap handle's address digits — and the same over
+`out.add(g())` (`{5}`), over `out["k"] = g()` (`{'k': 5}`), over a float-returning callee (`{'k': 2.5}`), while
+`for v in f(): print(v)` printed *nothing at all* where CPython prints `5`. The scan now keeps the decline as a
+fact (`(described, undescribed)`), and which positions may read such an answer is a method on the record —
+`containerAnswer.takesRead` — not a choice each door makes for itself: the positions whose question the **object**
+answers (`print`, `str`, `repr`, an f-string field, a condition, `not`, `in`, a binding) take the handle and ask
+it, and the positions that read a slot back through the compiler's own notebooks (an index, a slice, a
+comparison, a loop's iterable) refuse at exit 1 naming the missing half and the rewrite that works — `bind it to
+a name and print that`. Every door that does not name its read asks the strictest question, so the change is
+monotone: a door only ever gets wider. The two readers left shut are filed as **Gap R.262** with CPython's answer
+written into the row, because opening them means recording what a declined slot holds — and a slot filled by a
+call may be the `(payload, tag)` pair ADR 0273 exists to keep out of this table.
+
 **A slice hands back a copy of the base's slots, tags included, and the copy is a list the records know** — ADR
 0335 pays Gap R.230, the row ADR 0334 filed rather than widen. A slice was the one container operation that
 built a **new** container out of words it read one at a time, and it dropped the tag on the way through:

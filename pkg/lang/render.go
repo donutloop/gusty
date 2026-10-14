@@ -216,7 +216,7 @@ func (g *irGen) renderPairContainer(b *strings.Builder, e Expr) (string, bool, e
 	// road below already renders a container variable from its own object, and an answer is that same
 	// object in a different name — which is what keeps `str(build())` and `ys = build()` / `str(ys)`
 	// from ever disagreeing (roadmap Gap R.67, ADR 0333).
-	if ansName, _, okAns := g.containerAnswerOperand(b, e); okAns {
+	if ansName, _, okAns := g.containerAnswerOperandRead(b, e, containerReadWhole); okAns {
 		return g.renderPairContainer(b, ansName)
 	}
 	if isContainerLiteral(e) {

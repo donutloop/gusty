@@ -11554,3 +11554,78 @@ not "nobody said which `opt`".
 Nine cases that had to own the process no longer do. `parify`'s census is the record of that: from
 **2878 parallel / 12 marked serial** to **2892 parallel / 4**, the survivors being the three `t.Setenv` cases and
 the in-process engine — both of which take the process by definition.
+
+### Gap R.261 — a container the answer table declines still reached the screen as the allocator's slot (PAID by ADR 0344)
+
+`containerAnswerScan` has always answered two questions, and the toolchain read only the first.
+
+```go
+func containerAnswerScan(prog *Program) (map[string]containerAnswer, map[string]containerAnswer)
+```
+
+The first map is "which functions hand back a container, and which container" — the question the container
+roads ask before they lower a call. The second — added by this row, and empty before it — is "which functions
+provably hand back a container whose **slots** the table could not describe". A function in the second map is
+absent from the first, and absence had exactly one reading downstream: *not a container*. The ordinary call
+road lowered the call to the one word it keeps for a value — the heap handle — and the print door wrote that
+word with the number printer.
+
+Measured off `python3` before any door was touched, every one at **exit 0**:
+
+| program (shared preamble: `def g(): return 5`) | reference | this toolchain |
+|---|---|---|
+| `def f(): out = []` / `out.append(g())` / `return out` / `print(f())` | `[5]` | `0` |
+| `def f(): out = set()` / `out.add(g())` / `return out` / `print(f())` | `{5}` | `0` |
+| `def f(): out = {}` / `out["k"] = g()` / `return out` / `print(f())` | `{'k': 5}` | `0` |
+| as above with `def g(): return 2.5` | `{'k': 2.5}` | `0` |
+| list preamble + `for v in f(): print(v)` | `5` | *(nothing printed)* |
+
+The `str(f())` and `repr(f())` of the same programs were **already right**, and that is the fact that says what
+was missing: the render road hands the handle to a runtime entry point that walks the object, and the object
+prints correctly as soon as somebody asks it what it is. The print door had simply never been given the
+handle. A first attempt at the row did the obvious thing — let every position that can carry the handle take
+it — and the loop case then printed `0` where the reference prints `k`: the loop road had been given an answer
+whose element notebook was never written, and walked it anyway. That attempt is why the row is shaped the way
+it is.
+
+**Who answers the question the position is about to ask.** The rule is not "can this position hold a pointer"
+but "does this position's answer come from the OBJECT or from this table's notebooks", and it is a method on
+the record — `containerAnswer.takesRead(read)` — not a decision each door makes for itself:
+
+- `containerReadWhole` — `print(...)`, `str(...)`, `repr(...)`, an f-string field, a binding — hands the handle
+  to `rt_str_of_container` / the container printers, which read the object;
+- `containerReadShape` — `if f():`, `not f()` — asks the object its own count, a slot every builder writes;
+- `containerReadMembers` — `x in f()` — asks the object whether it holds the needle (`rt_contains`), which is
+  why that row kept answering and why the door is asked **before** `isContainerExpr` is;
+- `containerReadSlots` — an index, a slice, a comparison, a builtin argument — and `containerReadWalk` — a
+  loop's iterable — read a slot back out of the object **using the notebooks** (is the element text, does the
+  slot carry a tag). A declined answer has no notebooks, so it is refused, with the missing half named, at
+  exit 1. `containerAnswerReadIsRefused` exists so those doors cannot quietly fall through to the road that
+  prints the handle.
+
+Every door that does not name its read asks the strictest one (`containerAnswerOperand` delegates with
+`containerReadSlots`), which makes the whole change monotone: a door can only get wider than it was, never
+shut. And the slot question itself — the predicate that decides whether a value may sit in a slot — moved out
+of `containerAnswerDescribesItsSlots`'s closure into a type, `containerAnswerSlotReader`, because the loop
+door and the full door ask the same question and ADR 0232 says two askings become two answers.
+
+The refusal says what is missing and what to do about it, because a refusal that does not is a bug with better
+manners:
+
+```text
+codegen: "f" hands back a container whose slots this backend will not describe: the object is built, and its
+`return` says list, dict or set, but a slot is filled by a value the answer table cannot follow (a call, a
+comprehension or a format), and reading the heap handle as a number would print what the allocator handed out
+where the reference prints the contents — bind it to a name and print that, or fill the slots with values the
+table can read (roadmap Gap R.261, Gap R.67, ADRs 0333 and 0344)
+```
+
+"Bind it to a name and print that" is not filler: `ys = f()` goes through the binding road, which records the
+name as a container variable, and `print(ys)` has printed `[5]` for as long as this scan has existed.
+
+What the row leaves refused, with the reference's answer recorded beside each so it is owed work rather than a
+mystery: an index read of a declined answer (`print(f()[0])`, `print(f()["k"])` → `5`) and a loop over one
+(`for v in f()` → `5`, `for k in f()` → `k`). Those are the notebook doors, and opening them means recording
+what a declined answer's slots hold — which is the thing the scan declined to claim, and the reason it declined:
+a slot filled by a call can arrive as the (payload, tag) pair, and ADR 0273 exists to stop this table from
+printing the pair as its payload.
