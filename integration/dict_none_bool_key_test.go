@@ -168,9 +168,13 @@ func TestTheNoneKeyProgramIsOnTheRecord(t *testing.T) {
 // The half the row does not own, at the CLI: a text entry that is *operated on* still leaves the pair
 // door's reach, and the two faces of that gap are both pinned — one road refuses with a sentence that
 // claims CPython raises where it answers, and the other prints the payload at exit 0. The rows the fix
-// left standing are pinned here too — the f-string field, the truth test, the `None`-valued name key, and
-// the two untaggable-key refusals — each with the roadmap row that owes it, so the assertion is that none
-// of them has quietly become something else.
+// left standing are pinned here too — the truth test, the `None`-valued name key, and the two untaggable-key
+// refusals — each with the roadmap row that owes it, so the assertion is that none of them has quietly
+// become something else.
+//
+// The f-string field used to be in this table, printing `3` for `f"{d[None]}"` beside `print(d[None])`'s
+// `3.5`. It is answered now, and lives in `TestTheFstringFieldOfANoneKeyEntryIsAnsweredAtTheCLI` below
+// (roadmap Gap R.283, ADR 0356).
 func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -194,13 +198,6 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 			wantOut:   "0\n",
 			reference: `"aa"`,
 			row:       "Gap R.285",
-		},
-		{
-			name:      "an_fstring_field_answers_the_payload",
-			src:       "d = {None: 3.5}\nprint(f\"{d[None]}\")\n",
-			wantOut:   "3\n",
-			reference: "3.5",
-			row:       "Gap R.283",
 		},
 		{
 			name:      "the_truth_of_an_entry_answers_the_payload",
@@ -248,6 +245,43 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 			if code != 0 || stdout != tc.wantOut {
 				t.Errorf("%s: the compiled leg printed %q (exit %d), this row pinned %q — the reference prints %s (%s)",
 					tc.name, stdout, code, tc.wantOut, tc.reference, tc.row)
+			}
+		})
+	}
+}
+
+// The field road's paid row, kept at the CLI so the answer is witnessed where a caller sees it: one value,
+// the `print` line and the field line, both the reference's text. This is the pair ADR 0356 exists for — the
+// field had its own narrower view of the subscript roads and rendered the payload alone (the `@float_box`
+// handle of a float entry, the `@str_tab` index of a text entry, a heap slot for a list entry), all at exit 0
+// with the line above printing the value (roadmap Gap R.283).
+func TestTheFstringFieldOfANoneKeyEntryIsAnsweredAtTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"a_float_entry", "d = {None: 3.5}\nprint(d[None])\nprint(f\"{d[None]}\")\n", "3.5\n3.5\n"},
+		{"a_text_entry", "d = {None: \"hi\"}\nprint(d[None])\nprint(f\"{d[None]}\")\n", "hi\nhi\n"},
+		{"a_list_entry", "d = {None: [1, 2]}\nprint(d[None])\nprint(f\"{d[None]}\")\n", "[1, 2]\n[1, 2]\n"},
+		{"a_none_entry", "d = {None: None}\nprint(d[None])\nprint(f\"{d[None]}\")\n", "None\nNone\n"},
+		{"the_int_key_twin", "d = {1: 3.5}\nprint(d[1])\nprint(f\"{d[1]}\")\n", "3.5\n3.5\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "field_answered.gy", tc.src)
+			stdout, stderr, code := cliStreams(t, "--file", path)
+			if code == 2 {
+				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
+			}
+			if code != 0 || stdout != tc.want {
+				t.Fatalf("the compiled leg printed %q (exit %d), want %q — stderr %q", stdout, code, tc.want, stderr)
+			}
+			ref := pythonOutput(t, tc.src)
+			if ref != tc.want {
+				t.Fatalf("the reference prints %q, so this row's expectation is invented", ref)
 			}
 		})
 	}

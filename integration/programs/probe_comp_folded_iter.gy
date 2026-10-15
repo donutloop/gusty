@@ -1,6 +1,7 @@
-# Oracle probe (ADR 0192) — a comprehension over a list the escape analysis kept as a compile-time
-# constant has nothing to walk at runtime. The interpreter answers; AOT refuses (it must not emit
-# the load of a slot that was never allocated, which is the module llc rejects). Iterating the same
-# list with `for`, or mutating it first, materialises it and the comprehension works.
+# A comprehension over a list the compiler keeps as a compile-time constant has no slot to load, so the
+# walk materialises the list first — which is what `for` over the same list has always done. The answer
+# used to be a refusal (and, before that, a build that stopped): the escape analysis was deleting the
+# binding while its only read sat in a construct the old walkers did not visit (roadmap Gap R.289,
+# ADR 0356), and the route that walks a computed container is ADR 0357's. Both legs print [2, 4, 6].
 xs = [1, 2, 3]
 print([x * 2 for x in xs])

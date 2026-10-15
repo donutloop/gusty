@@ -325,7 +325,7 @@ is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min`
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
 Gap R.111's promoted program was recorded the same way, to 6882 with Gap R.132's signed-zero rows, to 6888 with Gap Q.2's
-growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes, and to 7008 with Gap R.221's seventy-seven key×value readings and its corpus program — the count is the file's
+growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes, and to 7009 with Gap R.221's seventy-seven key×value readings, its corpus program and Gap R.291's promoted comprehension-over-a-folded-list program — the count is the file's
 own and not this sentence's, and `recmerge` refuses to write an entry whose compiled leg disagrees with the reference). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
@@ -1761,11 +1761,12 @@ falls back to dynamic dispatch.
   (`pkg/lang/dict_key_pair.go`), asked by the four doors that read an entry rather than by each of them, and
   **nothing in the runtime, the builder or the printers moved**. 36 of a 301-shape probe changed answer and
   nothing else did. What the probe session found beside the fix stayed as rows, each pinned with today's answer
-  in a filed table: an f-string field of the entry prints the payload (**R.283**), the truth of it is asked of
-  the payload (**R.284**), the operator roads that label it disagree with the pair road in both directions
+  in a filed table: the truth of the entry is asked of the payload (**R.284**), the operator roads that label it
+  disagree with the pair road in both directions
   (**R.285**), a name whose last binding was `None` is a key that arrives untagged (**R.286**), and `abs` of it
   truncates (**R.287**) — the first two of those answer the same wrong thing off an **int** key, which is why
-  they are rows and not clauses. The tempting `NoneLit` arm on the *static* key door was built, measured, and
+  they are rows and not clauses. The f-string field that was in that list has since been paid, and is told below
+  (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static* key door was built, measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
 - **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls
@@ -1794,6 +1795,51 @@ falls back to dynamic dispatch.
   through a helper, a recursion shallow and a recursion deep enough to collapse, an escape after a
   handled exception, a comprehension's helper, the module's own statement — are compared to CPython
   frame by frame, by name **and** line, in `integration/traceback_test.go`.
+- **An f-string field is a print in disguise (Gap R.283, R.289, R.292, R.294; ADR 0356)** — one value, two lines,
+  two answers: `print(d[1])` wrote `3.5` and `print(f"{d[1]}")` wrote `5`, at **exit 0**, over `d = {1: 3.5}`; the
+  text entry wrote `0` (its index into `@str_tab`) and the list entry wrote a heap slot. The pair door that fixes
+  this has existed for cycles and `pkg/lang/list_literal_read.go` even named the field as one of the positions
+  that asks it — the field just never asked, and no test noticed, because the claim was written where a reader
+  would trust it. The five arms `print` walks are now one function (`subscriptPairOf`) that both roads call, so the
+  field, `print(x)` and `str(x)` cannot answer a slot differently, and the field renders through the module's ONE
+  printer while a foldable field still folds to a constant. Three defects came out of the same road and are each
+  pinned: a **padded field was a syntax error** (`f"{ x }"` → `parse error at 1:2: unexpected token`, and with it
+  every field that opens with a brace, because the lexer reads a fragment's leading blanks as a block — `lexFieldSrc`
+  now trims the ends and keeps the columns); a **format spec over a field the spec engine could not read aligned an
+  empty text**, so `x = 5` / `print(f"{x:>6}")` wrote six spaces at exit 0 where the reference writes `     5`; and
+  the deepest one, **a read the escape analysis could not see deleted the container it reads** — `deadListAssignments`
+  issues a permission, not a report, and a list whose only read sat in an f-string field, a keyword argument, a
+  tuple element, a chain comparison, a comprehension's iterable, a `match` guard, a `raise`, a class body, a
+  decorator or a parameter default had its allocation taken away, then got refused with a sentence about a
+  construct the source did not contain (`show(k=xs)` → `undefined name "xs"`, two lines after assigning it). The walk
+  is now driven from the AST's own **field types** by reflection, so a node type cannot be forgotten, and a guard
+  reads `ast.go`, censuses the types carrying `exprNode()`, and fails when the read-set table has no row for one. The
+  two policy nodes stay enumerated and stated: a `lambda` body **is** a read (a closure is exactly that), a `def`
+  body is **not** (a compiled body cannot read module state at all — `Gap R.290` owns the day both move). The record
+  leg deserves one honest sentence: of the record's 7008 engine-era sources, exactly **one** interpolated a subscript into a field,
+  which is why no record ever caught this; so the field is witnessed by its `print(E)` twin's record plus CPython, and
+  a guard fails if anyone mints a second record for it.
+- **A comprehension walks what a call answers (Gap R.291; ADR 0357)** — `def g(): return [1, 2, 3]` /
+  `print([x for x in g()])` did not refuse and did not answer: it died `panic: runtime error: index out of range [0]
+  with length 0`, **exit 2**. The dispatcher asked whether a comprehension's iterable *was a call* and handed it to
+  the compile-time unroller, whose only notion of a call is `range` — so it opened `Args[0]` (nothing to read for a
+  zero-argument call) and, for any one-argument call, read **the call's own argument as the loop bound**. `def h(n):
+  return [n*n]` / `[x for x in h(3)]` printed `[0, 1, 2]` where CPython prints `[9]`, and `return n + 1` printed
+  `[0, 1, 2]` where it raises `TypeError`. So the row could not be closed by a nil check: only `range(...)` with at
+  least one argument has a compile-time length, every other call goes to the runtime loop, and the loop asks the
+  `for` road's three iterable questions before lowering — fold it, materialise a `sorted`/`reversed`, or read a
+  proven container answer — and **refuses** what nothing can prove rather than asking `rt_list_len` of a word and
+  walking nothing (that is how `[x for x in h(3)]` over `return range(n)` printed `[]` at exit 0 mid-row). Four
+  shapes that panicked or refused now answer (`[1, 2, 3]`, `['a']`, `[9]`, `[1, 2, 3]` for `sorted`), the refusal
+  quotes the container door's own sentence, and the leftovers are rows rather than surprises: the `for` road still
+  reads a call's argument as a bound (**R.299**), a `range` is still not a value anywhere else (**R.293**), the two
+  roads keep two copies of the iterable sequence (**R.298**), and a generator handed to a builtin is refused twice
+  over (**R.296**). The set and dict spellings walk the same road and answer the reference's bytes — `{x for x in
+  [1, 2, 3, 2]}` is `{1, 2, 3}`, the fourth element dropped in the object rather than in the printer — and seven of
+  the sources the retired engine answered with a *name* as the iterable are now the route's record leg. One shape is
+  filed instead of pinned: a set the program builds prints the order the elements arrived in, so `{3, 1, 2}` comes
+  out `{3, 1, 2}` where the reference prints `{1, 2, 3}` — unordered in the language, visible in a file, and owned by
+  **R.300** rather than by a test expectation copied from the wrong leg.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

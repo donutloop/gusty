@@ -508,8 +508,12 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		{
 			"a comprehension over a copy",
 			"xs = [1, 2, 3]\nprint([x * 2 for x in xs[0:2]])",
-			"", "[2, 4]",
-			"roadmap Gap R.239 (the iterable door builds a comprehension over a literal, `range()` or a variable it knows the kind of: name the copy — `zs = xs[0:2]` — and the same comprehension answers `[2, 4]`)",
+			// Was a refusal (`the iterable door builds a comprehension over a literal, range() or a variable
+			// it knows the kind of`) and is an answer: the refusal was emitted because the escape analysis
+			// never counted a comprehension's ITERABLE as a read, so `xs`'s binding was deleted and the
+			// copy had no object to walk (ADR 0356, roadmap Gap R.239 for the sibling that still refuses).
+			"[2, 4]", "[2, 4]",
+			"roadmap Gap R.239",
 		},
 		{
 			"the length of a slice of a text",

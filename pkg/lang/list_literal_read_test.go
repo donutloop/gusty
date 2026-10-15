@@ -87,7 +87,10 @@ func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
 		"def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))",
 		`print([1.5, 2][0] + 1)`,
 		`print(["a"] [0] + "b")`,
-		`print(f"{[None, 1.5][1]}")`,
+		// (`print(f"{[None, 1.5][1]}")` sat here, on the belief that an f-string field keeps one word for a
+		// whole value. It does not: the field is rendered by the module's one tag-reading printer, and ADR
+		// 0356 gave the field the pair door print already asked — the field now prints `1.5`, which is what
+		// CPython prints, and it is asserted as an answer in `pkg/lang/fstring_pair_read_test.go`.)
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()

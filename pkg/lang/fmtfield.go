@@ -32,6 +32,9 @@ func (g *irGen) formatFieldConst(part FStringPart) (string, bool) {
 	text := ""
 	isFloat := false
 	numeric := false
+	// readable records whether this road actually read the field: a spec is only ever applied to a value
+	// the lines below can see, never to the absence of one.
+	readable := false
 	// A container interpolated into an f-string has no reading on this road at all: the value is a
 	// heap object and the printf door below can only take an i32 or an i8*, which is how `f"{[1,2]}"`
 	// came to emit `printf(..., i32 @.lst1)` — a global address where a heap handle belongs, rejected
@@ -43,12 +46,13 @@ func (g *irGen) formatFieldConst(part FStringPart) (string, bool) {
 	}
 	switch v := part.Expr.(type) {
 	case *FloatLit:
-		numeric, isFloat = true, true
+		numeric, isFloat, readable = true, true, true
 		text = pyFloatRepr(v.Value)
 	case *IntLit:
-		numeric = true
+		numeric, readable = true, true
 		text = strconv.FormatInt(v.Value, 10)
 	case *StrLit:
+		readable = true
 		text = v.Value
 	}
 	if part.Conv == ConvStr {
@@ -67,6 +71,16 @@ func (g *irGen) formatFieldConst(part FStringPart) (string, bool) {
 	}
 	if part.Spec == "" {
 		return text, true
+	}
+	// The switch above reads LITERALS only. An expression it did not recognise left `text` empty and
+	// `numeric` false, and falling past both branches below is how `x = 5; print(f"{x:>6}")` came to print
+	// six spaces: the field was formatted as an empty TEXT and aligned. A blank where the reference puts a
+	// number is the class this project keeps having to re-learn — three wrong answers at exit 0, no message,
+	// and the format string looks tidy — so a spec whose field this road cannot read at compile time is
+	// refused, which is what ADR 0299 already decides for the numeric arm two lines above and for every
+	// presentation type, grouping or precision over a non-number (roadmap Gap R.60 / L12.8, Gap R.292).
+	if !readable {
+		return "", false
 	}
 	if numeric {
 		out, ok, err := numFormatOf(needFloatOf(part.Expr), part.Spec, isFloat)

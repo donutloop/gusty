@@ -326,12 +326,17 @@ func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 //
 // The first three are the silent half of this row's own gate: it names a kind only where a record names one, and
 // a slot, a call's answer and a float-carrying parameter each hold theirs one word too far away (roadmap Gap
-// R.237). The rest are the neighbours this row measured and filed rather than fixed: a comprehension whose
-// iterable is a copy (Gap R.239), `len` of a slice of a text (Gap R.240), a stepped slice of a text whose step is
+// R.237). The rest are the neighbours this row measured and filed rather than fixed: `len` of a slice of a text
+// (Gap R.240), a stepped slice of a text whose step is
 // a value (Gap R.243 — the fold answers a constant stride and refuses any other), and an `except` arm that calls
 // a function (Gap R.241 — pinned in its own test below, because there the run's exit code is the thing: the arm
 // runs with the exception flag still set, so the call's own post-call check takes it back, the traceback prints,
 // and the statement after the `try` never runs).
+//
+// The comprehension whose iterable is a copy (`Gap R.239`) used to sit in this table refusing. It answers now —
+// ADR 0357's iterable route materialises the copy and walks it — and a divergence row whose compiled answer has
+// caught up with the reference is a row that moves rather than one that is quietly kept: the shape is asserted
+// against CPython in `integration/comprehension_brace_element_test.go` (`comprehension_over_a_copy`).
 func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -358,12 +363,6 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 			"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))",
 			"1", "TypeError: slice indices must be integers or None or have an __index__ method",
 			"roadmap Gap R.237 (a float parameter is the pair road's, so the body holds no static kind to ask; a text argument DOES raise — the gate reads that kind)",
-		},
-		{
-			"a comprehension over a copy",
-			"xs = [1, 2, 3]\nprint([x * 2 for x in xs[0:2]])",
-			"", "[2, 4]",
-			"roadmap Gap R.239 (the same copy, named, iterates fine: `zs = xs[0:2]` then `[x * 2 for x in zs]` answers — one program, two doors)",
 		},
 		{
 			"the length of a slice of a text",

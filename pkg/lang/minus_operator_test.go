@@ -150,9 +150,9 @@ func TestTheSubtractionIsOnTheRecord(t *testing.T) {
 }
 
 // TestWhatTheMinusRowLeavesStandingIsFiledNotFixed keeps the neighbours honest: the row fixes
-// the lexer's `-N` rule and nothing else. Both shapes below behave identically before and after
-// ADR 0338 — they are the reference's answers this toolchain does not give, filed as their own
-// rows rather than smuggled in beside a one-line rule.
+// the lexer's `-N` rule and nothing else. The shape below behaves identically before and after
+// ADR 0338 — it is the reference's answer this toolchain does not give, filed as its own row
+// rather than smuggled in beside a one-line rule.
 func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -164,10 +164,13 @@ func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 			// Gap R.244: `+` before an operand is Python's grammar, and the parser has no rule for it.
 			"print(+1)", "unexpected token", "Gap R.244",
 		},
-		{
-			// L11.1 (the tagged value word; ADR 0192 is the comprehension's record): a comprehension over a list the compiler kept static.
-			"xs = [1, 2, 3]\nys = [x*2 for x in xs]\nprint(ys)", "compile-time constant", "L11.1",
-		},
+		// (A second row sat here demanding that a comprehension over a list the compiler kept static
+		// refuse with `compile-time constant`. It was right when written and wrong afterwards: the
+		// sentence was emitted because the escape analysis could not see the comprehension's iterable
+		// as a READ (it walked a `switch` of node types and `Comp.Iter` was not one), so the binding's
+		// allocation was deleted and the comprehension had no object to walk. `xs = [1,2,3]` /
+		// `ys = [x*2 for x in xs]` / `print(ys)` now prints `[2, 4, 6]` on both legs — ADR 0356, and
+		// it is asserted in `TestAContainerReadOnlyInsideAConstructTheWalkMustCoverKeepsItsBinding`.)
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()

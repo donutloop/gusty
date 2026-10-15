@@ -85,7 +85,7 @@ func TestContainerComprehensionsMatchCPythonOnAllThreeLegs(t *testing.T) {
 // TestComprehensionRefusalsAreHonest covers the places the comprehension paths decline rather than
 // getting one answer wrong: a runtime reduction (which would have summed an empty compile-time
 // element set and printed 0), and a folded-away iterable (which has no slot to load) — the latter
-// asserted for both the list and the set spelling, which refuse in the same words. A string
+// asserted for the set spelling, whose list twin now answers (see the row's note). A string
 // comparison in a filter used to be the third case: the comparison itself was broken (two operands
 // in different representations) and the filtered loop emitted a `phi` whose predecessors did not
 // match. Both are fixed (Gap R.42, ADR 0224) and asserted positively in TestStringElementFilterCompiles.
@@ -96,10 +96,13 @@ func TestComprehensionRefusalsAreHonest(t *testing.T) {
 		src, want string
 	}{
 		{"def sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n", "runtime reduction"},
-		{"xs = [1, 2, 3]\nprint([x * 2 for x in xs])\n", "compile-time constant"},
-		// The set twin declines a folded-away iterable in the same words the list twin uses,
-		// which is what makes the refusal a statement about the program (Gap J.2, ADR 0234).
-		{"xs = [1, 2, 3]\nprint({x for x in xs})\n", "compile-time constant"},
+		// …and that is the whole table. The two rows this one used to carry — a comprehension over a list the
+		// compiler had folded away, and the set spelling of the same question — are answered now: the escape
+		// analysis had been deleting the iterable while the only read of it sat in a construct the old walkers
+		// did not visit, and the route that walks a computed container asks the `for` road's three iterable
+		// questions before lowering anything (ADR 0356's dead-binding fix, ADR 0357's route; roadmap
+		// Gap R.289, Gap R.291). Both answers are asserted below and in `comprehension_brace_element_test.go`,
+		// including the element the set drops.
 	} {
 		res, err := lang.Compile(tc.src)
 		msg := ""
@@ -117,5 +120,63 @@ func TestComprehensionRefusalsAreHonest(t *testing.T) {
 		if !strings.Contains(msg, tc.want) {
 			t.Fatalf("%q refusal should mention %q, got:\n%s", tc.src, tc.want, msg)
 		}
+	}
+}
+
+// TestASetOrDictComprehensionOverAContainerVariableIsAnswered is the route's other two container shapes.
+//
+// The list twin is asserted in `TestAComprehensionOverAContainerTheAnalysisOnceDeletedAnswers`; these are
+// the spellings that build a set and a dict, and they were refused outright until the route landed — no
+// comprehension over a variable compiled, so the two rows the refusal table used to carry were both
+// refusals of the same absent road (roadmap Gap R.291, ADR 0357).
+//
+// The set row is the interesting one: `xs = [1, 2, 3, 2]` has four elements and the answer has three, so
+// this is not a list printed with braces — the dedup happens in the object, through the tagged add that
+// finds a slot by (payload, tag) together (ADR 0234's set store, one door over). The expectations are
+// the reference's own bytes, taken from CPython before the rows were written; where an inserted order and
+// a hash order differ, the row is not here — a set built at runtime prints in insertion order today, and
+// that divergence is a roadmap row of its own (Gap R.300) rather than an expectation written down wrong.
+func TestASetOrDictComprehensionOverAContainerVariableIsAnswered(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src, want string
+	}{
+		{
+			"set dedups",
+			"xs = [1, 2, 3, 2]\nprint({x for x in xs})\n",
+			"{1, 2, 3}\n",
+		},
+		{
+			"set filters first",
+			"xs = [1, 2, 3, 4]\nprint({x for x in xs if x % 2 == 0})\n",
+			"{2, 4}\n",
+		},
+		{
+			"dict puts entries",
+			"xs = [1, 2]\nprint({x: x * 2 for x in xs})\n",
+			"{1: 2, 2: 4}\n",
+		},
+		{
+			"dict over a dict walks keys",
+			"d = {\"a\": 1, \"b\": 2}\nprint({k: k for k in d})\n",
+			"{'a': 'a', 'b': 'b'}\n",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "comp_answered.gy", tc.src)
+			stdout, stderr, code := cliStreams(t, "--file", path)
+			if code == 2 {
+				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
+			}
+			if code != 0 || stdout != tc.want {
+				t.Fatalf("the compiled leg printed %q (exit %d), want %q — stderr %q", stdout, code, tc.want, stderr)
+			}
+			ref := pythonOutput(t, tc.src)
+			if ref != tc.want {
+				t.Fatalf("the reference prints %q, so this row's expectation is invented", ref)
+			}
+		})
 	}
 }

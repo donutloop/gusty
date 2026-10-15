@@ -4168,14 +4168,13 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		// the callee answers a container, and the permission below is what lets the ordinary call road
 		// lower it here instead of refusing to use its own answer (ADR 0273's permission, read again by
 		// ADR 0333).
-		if nm, isName := n.Fn.(*Name); isName {
-			if _, isContainerAnswer := g.containerAnswerOf(nm.Value); isContainerAnswer && g.containerAnswerCallIsCarriable(n) {
-				g.heapUsed = true
-				g.containerAsked[nm.Value] = true
-				h, err := g.value(b, e)
-				delete(g.containerAsked, nm.Value)
-				return h, err
-			}
+		if g.callAnswersContainer(n) {
+			g.heapUsed = true
+			calleeName := n.Fn.(*Name).Value
+			g.containerAsked[calleeName] = true
+			h, err := g.value(b, e)
+			delete(g.containerAsked, calleeName)
+			return h, err
 		}
 		return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; a call answers a container only where the scan can see every arm of the callee answer one (roadmap Gap R.67, ADR 0333)", exprSnippet(e))
 	case *Comp:
@@ -5902,12 +5901,36 @@ func fieldIsConstantLiteral(e Expr) bool {
 	return false
 }
 
+// callAnswersContainer reports whether a call's result is a container the compiler PROVED: the scan saw
+// every arm of the callee answer one, and the shape of this particular call carries it. It is the permission
+// `containerHandleOf`'s *Call arm takes, extracted so the comprehension loop asks the identical question and
+// cannot answer it differently — the loop used to lower the call through the ordinary one-word road, take the
+// `0` back, ask `rt_list_len` of it, and walk zero elements: `[x for x in h(3)]` over `def h(n): return
+// range(n)` printed `[]` at exit 0 where CPython prints `[0, 1, 2]` (roadmap Gap R.67, ADR 0333, Gap R.291).
+func (g *irGen) callAnswersContainer(n *Call) bool {
+	if n == nil {
+		return false
+	}
+	nm, isName := n.Fn.(*Name)
+	if !isName {
+		return false
+	}
+	if _, isContainerAnswer := g.containerAnswerOf(nm.Value); !isContainerAnswer {
+		return false
+	}
+	return g.containerAnswerCallIsCarriable(n)
+}
+
 // filedPairOf is the f-string field's version of the same question print asks: does this expression travel
-// as a (payload, tag) pair, and if so what are its two words? Two sources. A name the pair road bound reads
-// its own two allocas; an expression built over one (`n - 1`, `-n`, `n // 2`) goes through the arithmetic
-// door print uses, so the field, `print()` and `str()` cannot disagree about `6` versus `6.0` — and an
-// operator that door will not vouch for (`+` over a slot whose kind is a run-time fact) answers not-ok and
-// the field keeps the refusal it has always printed, rather than reading a payload alone (roadmap L11.1,
+// as a (payload, tag) pair, and if so what are its two words? Four sources, each the door the print road
+// already asks. A name the pair road bound reads its own two allocas; the answer of a fold the run time
+// decided asks `@rt_pair_fold`; a **slot read** asks the one subscript dispatch print asks
+// (`subscriptPairOf`, roadmap Gap R.283 — the field used to ask none of its arms and rendered a `@str_tab`
+// index where the line above it rendered a word); and an expression built over one (`n - 1`, `-n`, `n // 2`)
+// goes through the arithmetic door print uses, so the field, `print()` and `str()` cannot disagree about `6`
+// versus `6.0` — and an operator that door will not vouch for (`+` over a slot whose kind is a run-time fact)
+// answers not-ok and the field keeps the refusal it has always printed, rather than reading a payload alone
+// (roadmap L11.1,
 // Gap R.146's rendering positions; ADR 0303's one printer, ADR 0265's per-kind door).
 func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok bool, err error) {
 	if nm, isName := e.(*Name); isName && (g.numericPairVar(nm.Value) || (g.taggedVars != nil && g.taggedVars[nm.Value])) {
@@ -5921,6 +5944,21 @@ func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok
 		return "", "", false, ferr
 	} else if okFold {
 		return p, t, true, nil
+	}
+	// The field IS a print in disguise: `f"{d[1]}|{xs[0]}"` renders the same slots that `print(d[1])` renders,
+	// so it asks the same dispatch — a dict/list literal's element, an element of a mixed list, an entry of a
+	// dict whose values mix kinds, a slot read through a slot — and gets the payload together with the tag the
+	// object keeps beside it. Until this arm existed the field asked none of them: `f"{d[1]}"` over
+	// `d = {1: 3.5}` printed the `@float_box` handle `5`, `f"{d[2]}"` over a text entry printed its
+	// `@str_tab` index, and the line above it printed `3.5` and `x` (roadmap Gap R.283, ADR 0356; ADR 0331's
+	// docstring named the field a door position the code never filled in). An element whose kind cannot travel
+	// without its tag is REFUSED here, as it is in print, rather than rendered as a number nobody wrote.
+	if ix, isIndex := e.(*Index); isIndex {
+		if v, t, okPair, xerr := g.subscriptPairOf(b, ix); xerr != nil {
+			return "", "", false, xerr
+		} else if okPair {
+			return v, t, true, nil
+		}
 	}
 	if g.taggedVars == nil {
 		return "", "", false, nil

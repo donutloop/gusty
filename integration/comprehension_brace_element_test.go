@@ -317,59 +317,75 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 	}
 }
 
-// TestComprehensionOverAMixedContainerStillRefusesHonestly keeps the shapes the tagged loop variable
-// does not reach. Each is answered by CPython and by the record; the compiled backend declines by
-// naming the promise it is missing, and never by exiting 2.
-func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
+// TestAComprehensionOverAContainerTheAnalysisOnceDeletedAnswers holds the shapes that used to sit in
+// `TestComprehensionOverAMixedContainerStillRefusesHonestly`, demanding a refusal that named the missing
+// half. They answer now, and the sentence they refused with — `xs is a list the compiler kept as a
+// compile-time constant, so a comprehension cannot walk it at runtime` — was the sound of a different
+// bug: the escape analysis walked a `switch` of the expression node types someone had listed, never
+// reached `Comp.Iter`, so the iterable did not count as a READ, the binding's allocation was deleted, and
+// the comprehension was handed a container with no object behind it. A refusal can be a symptom of a
+// wrong deletion, and paying the deletion pays the refusal with it (ADR 0356, roadmap Gap R.289).
+func TestAComprehensionOverAContainerTheAnalysisOnceDeletedAnswers(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			// A name the escape analysis kept as a compile-time list has no heap object to walk at all,
-			// and emitting the load is the module `llc` rejects.
 			"compile_time_list_as_iterable",
 			"xs = [1, \"a\", None]\nout = [x for x in xs]\nprint(out)\n",
-			"kept as a compile-time constant",
+			"[1, 'a', None]\n",
 		},
 		{
 			"literal_bound_text_list_read_by_slot",
 			"names = [\"a\", \"b\"]\nout = [n for n in names]\nprint(out[0])\n",
-			"kept as a compile-time constant",
+			"a\n",
 		},
-		// (A third row sat here demanding that `out[1] == "a"` refuse: "the slot's tag is carried but a
-		// `==` against text needs it as an operand the comparison lowering cannot build yet." It was
-		// right when written and wrong afterwards — the pair the printer already had is exactly the
-		// operand an equality needs — so the row moved to TestSlotEqualityMatchesCPython
-		// (`comprehension_slot_against_text`) and is asserted against CPython on the compiled path there
-		// (roadmap Gap R.79, ADR 0247).)
+		{
+			"comprehension_over_a_copy",
+			"xs = [1, 2, 3]\nprint([x * 2 for x in xs[0:2]])\n",
+			"[2, 4]\n",
+		},
+		{
+			// The spelling the capability registry keeps as the sample for
+			// `lower.unsupported.comprehension-over-constant-list`: the read lives in a function body,
+			// which the analysis does not count, so the refusal still stands — and has to stay honest.
+			"comprehension_over_a_constant_list_from_a_function_body",
+			"xs = [1, 2]\ndef f():\n    return [v for v in xs]\nprint(f())\n",
+			"__refuse__",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			path := writeSrc(t, t.TempDir(), "comp_tagged_refuse.gy", tc.src)
-			if py, ok := cpythonOut(t, path); !ok || py == "" {
+			path := writeSrc(t, t.TempDir(), "comp_deleted_binding.gy", tc.src)
+			py, ok := cpythonOut(t, path)
+			if !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
 			}
-			// CPython answers, which is what makes this row's refusal a limit of this backend rather
-			// than a limit of the language. The claim, then, is the two-way one: the compiled path
-			// answers, or it refuses with the missing half named — and the row's own `want` column
-			// checks the sentence, so an honest refusal is checked and a mute one fails.
 			if _, code := cliRunCode(t, "--aot", path); code == exitIRVerify {
 				t.Fatalf("--aot: exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", path))
-			} else if code != 0 {
-				combined := cliRun(t, "--aot", path)
-				if code != 1 || !refusesHonestly(combined) {
-					t.Fatalf("--aot exited %d on a program CPython answers, without naming the missing half: %s", code, combined)
+			}
+			if tc.want == "__refuse__" {
+				// The shape the registry still claims: it must refuse, at exit 1, naming the missing half.
+				// The sentence is on stderr, so the exit code and the message are read from the two helpers
+				// that give them — `cliRunCode` captures stdout only, and a refusal that checks out on an empty
+				// string is a refusal nobody read.
+				if _, code := cliRunCode(t, "--aot", path); code != 1 {
+					t.Fatalf("--aot exited %d where the capability registry claims a refusal: %s", code, cliRun(t, "--aot", path))
 				}
-				noteCompiledGap(t, tc.src, combined)
+				out := cliRun(t, "--aot", path)
+				if !refusesHonestly(out) {
+					t.Fatalf("--aot exited 1 without naming the missing half: %s", out)
+				}
+				noteCompiledGap(t, tc.src, out)
+				return
 			}
 			out, code := cliRunCode(t, "--aot", path)
-			if code == 2 {
-				t.Fatalf("--aot rejected the compiler's own module (exit 2): %s", cliRun(t, "--aot", path))
+			if code != 0 {
+				if code == 1 && refusesHonestly(out) {
+					t.Fatalf("--aot refuses %q where the row records the answer %q — the refusal is the defect this row is about", out, py)
+				}
+				t.Fatalf("--aot exited %d: %s", code, out)
 			}
-			if code == 0 {
-				t.Fatalf("--aot answered %q where this row is about a refusal", out)
-			}
-			if combined := cliRun(t, "--aot", path); !strings.Contains(combined, tc.want) {
-				t.Fatalf("refusal %q does not name %q", combined, tc.want)
+			if out != py {
+				t.Fatalf("--aot printed %q, CPython prints %q", out, py)
 			}
 		})
 	}

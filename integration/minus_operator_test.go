@@ -193,8 +193,13 @@ func programFunctionBodies(t *testing.T, ir string) string {
 // identically before and after ADR 0338 — they are not this row's regressions — and each is pinned with what
 // the backend says today and what the reference says, so the day a road grows the answer the row fails and the
 // row moves. A `+` before an operand is Python's grammar and the parser has no rule for it at all (roadmap Gap
-// R.244, filed by this row); a comprehension whose iterable is a list the compiler kept as a compile-time
-// constant is the tagged value word's own row (roadmap **L11.1**; the refusal's text cites `L11.2, ADR 0192`).
+// R.244, filed by this row).
+//
+// The comprehension row used to be here, refusing `xs is a list the compiler kept as a compile-time constant`
+// for `[x*2 for x in xs]`. It is answered now: the escape analysis had been deleting the list because the only
+// read of it sat in a construct its walkers did not visit, and once the read counted (ADR 0356, roadmap
+// **Gap R.289**) the iterable is a real object the loop walks. The row stays, as an answer, because the
+// direction it was found in matters: a filed refusal that quietly becomes an answer must fail something first.
 func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -216,8 +221,8 @@ func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 		},
 		{
 			"a comprehension over a constant list", "xs = [1, 2, 3]\nys = [x*2 for x in xs]\nprint(ys)",
-			"compile-time constant", "[2, 4, 6]",
-			"roadmap L11.1 (the tagged value word makes every container a runtime object; ADR 0192 is the comprehension's own record)",
+			"", "[2, 4, 6]",
+			"roadmap Gap R.289 (paid, ADR 0356 — the read the escape walk could not see had deleted the iterable; L11.1 remains the row that makes every container a runtime object)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

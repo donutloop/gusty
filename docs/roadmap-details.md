@@ -12931,3 +12931,233 @@ Both refusals are pinned with their exact current text — `or run it interprete
 `integration/dict_none_bool_key_test.go::TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker`, so the day the
 sentence changes, a case notices in each direction: a rewrite that only deletes the offer still fails the pin,
 and so does the offer reappearing.
+
+### Gap R.289 — a read in a construct the escape walk did not visit deleted the container it reads
+
+`deadListAssignments` is not a report. Its answer is a permission: a top-level name that comes back unread has
+its heap allocation skipped by the `deadLists` road in codegen, and every later read of a slot then asks an
+object that was never built. So the analysis' failure mode is not a missing line in a listing — it is a program
+whose binding is gone from under it, and the two ways that surfaces are a wrong answer and a sentence that is
+false about the source.
+
+Measured with the walk as it was (a `switch` over the node types someone had listed):
+
+| program | the compiled backend said | CPython |
+|---|---|---|
+| `xs = [1.5, "a"]` / `print(f"{xs[0]}")` | printed nothing for the field | `1.5` |
+| `xs = [1.5, "a"]` / `print(f"len={len(xs)}")` | `len of a non-string variable` | `len=2` |
+| `xs = [1.5, "a"]` / `def show(k): print(k)` / `show(k=xs)` | `undefined name "xs" … assign it before use` | `['1.5', 'a']` |
+| `xs = [1, 2, 3]` / `ys = [x for x in xs]` / `print(ys)` | `xs is a list the compiler kept as a compile-time constant` | `[1, 2, 3]` |
+| `xs = [1, 2, 3]` / `print(0 < xs[0] < 5)` | refused, or the payload | `True` |
+
+Each of those sentences blames a construct the program does not contain, which is what makes the class worth a
+row of its own: the compiler inspected an incomplete view of the source and reported on the source it had seen.
+
+**Root cause.** Four separate expression walkers, each a `switch`, each maintained separately: the container
+environment (`pkg/lang/container_env.go`), the escape analysis, the print road's read scan and the literal-read
+scan. `FString` was in none of them — and `FStringPart` is not itself an `Expr`, so a walker that descends only
+into node types stops at the wrapper and loses the field. `KeywordArg`, `ChainCompare`, `AssignExpr`,
+`AwaitExpr`, `Comp.Iter`/`.Cond`, `Generator.Cond`, `MatchCase.Guard`/`.Or` were missing at the expression end;
+`RaiseStmt`, `WithStmt`, `YieldFromStmt`, a `ClassDef` body and bases, and a `def`'s decorators and parameter
+defaults were missing at the statement end.
+
+**The fix, and why reflection rather than a longer switch.** `pkg/lang/escape.go` now walks the tree through
+`reflect`, descending every exported field of every node and recursing into anything that is, or holds, an
+`Expr` or a `Stmt`. A new AST node is then walked by default, which is the only direction that is safe for an
+analysis that deletes allocations. The two places where the walk *must* make a policy decision — `*Lambda`
+(walked into: a closure's free names are reads of this scope) and `*FuncDef` (walked up to, its body never: a
+compiled body cannot read module state, Gap R.35) — are matched in **both** spellings, value and pointer,
+because a node reached through a pointer has already been dereferenced and a policy that matches one spelling
+quietly does not apply.
+
+**The guard, and what it is over.** `TestEveryExpressionInASTHasAReadSetRow` parses `ast.go` with `go/parser`,
+takes the receiver types of every `exprNode()` method — that marker *is* the `Expr` interface — and fails if the
+read-set table has no row for one. `TestTheReadSetKeepsAReadHeldByEveryExpressionShape` then builds, for each
+of those 25 types, a program whose only read of a list sits inside that node, and asks the analysis directly.
+`TestTheWalkerIsDrivenFromFieldTypesNotNodeNames` invents a node (`oddHolder`) that no walker in the package has
+ever named and requires its `Expr` fields to be walked anyway — the mechanism, not the enumeration, is what the
+row claims.
+
+**Why the elimination half stays.** `TestAListNothingReadsIsStillNotAllocated` pins `xs = [1, 2, 3]` /
+`print(7)` emitting no `rt_set_elem` at all, so the analysis remains a decision and not a surrender. Making the
+walk conservatively "everything is read" would also have hidden the bug, and would have cost every dead
+container its allocation.
+
+### Gap R.290 — a container read only from inside a `def` body is still not a read
+
+The asymmetry ADR 0356's walk adopts, and the one row that owns the day it goes away.
+
+```gusty
+xs = [1, 2, 3]
+def f():
+    return xs[0]
+print(1)
+```
+
+Counting `f`'s body as a read would keep `xs` allocated for a program that never observes it, and the module
+body that *does* read `xs` would then be the program that pays; not counting it means a body that could read
+the name — if Gap R.35 ever lets it — has nothing to read. The backend currently refuses the read outright
+(`Gap R.35`: reading module state from a compiled body is not built), so the second half is not a live loss
+today, and the first half is why the policy is written down instead of discovered.
+
+The measurement that keeps the two halves apart is a pair of controls in
+`pkg/lang/dead_binding_test.go::TestALambdaBodyIsAReadAndADefBodyIsNot`: `f = lambda v: xs[1]` / `print(f(0))`
+**keeps** the allocation (a lambda is an expression the module evaluates here), and `def f(): return xs[0]`
+does **not**. A third row pins that a parameter *default* is walked even though the body is not, because the
+default is evaluated where the `def` statement runs.
+
+Rejected: making the walk symmetric. It would have been one line, and it would have made the lambda row and
+the `def` row agree — by taking allocation away from the programs that genuinely read the name, which is the
+direction this project's ladder puts above every consistency argument.
+
+### Gap R.291 — a call as a comprehension's iterable was enumerated by reading the call's own argument
+
+See [ADR 0357](adr/0357-a-comprehension-walks-what-a-call-answers-and-refuses-what-nothing-can-prove.md). The
+three measurements, taken against the binary at HEAD before the route was written:
+
+| program | HEAD | CPython |
+|---|---|---|
+| `def g(): return [1,2,3]` / `print([x for x in g()])` | `panic: index out of range [0] with length 0`, **exit 2** | `[1, 2, 3]` |
+| `def z(): return {"a": 1}` / `print([k for k in z()])` | same panic, **exit 2** | `['a']` |
+| `def h(n): return [n*n]` / `print([x for x in h(3)])` | `[0, 1, 2]` at exit 0 | `[9]` |
+| `def h(n): return n + 1` / `print([x for x in h(3)])` | `[0, 1, 2]` at exit 0 | `TypeError: 'int' object is not iterable` |
+
+The last two are why HEAD's `[0, 1, 2]` for a range-returning `h` is not an answer worth protecting: the rule
+that produced it read `Args[0]` as the loop bound for **any** one-argument call, and got the right digits for
+`h(3)` by the same accident that got the wrong ones for `h(3)` in every other case.
+
+### Gap R.292 — a format spec over a field the spec engine could not read aligned an empty text
+
+`formatFieldConst` (`pkg/lang/fmtfield.go`) reads a field at compile time to feed ADR 0299's spec engine. It
+recognised three literals and nothing else, and the shape of the function let an unrecognised field fall through
+both branches:
+
+```go
+text := ""            // stays "" for anything that is not IntLit / FloatLit / StrLit
+…
+if numeric { … }                       // not taken
+// falls to the TEXT branch
+return applyAlign(text, sp), true      // six spaces, ok=true
+```
+
+so `x = 5` / `print(f"{x:>6}")` wrote `'      '`, and `print(f"{[1,2,3][0]:>6}")` wrote the same six spaces —
+both at exit 0, both with a format string that looks entirely reasonable in `--emit-llvm`. ADR 0299 had already
+decided this case (`the format spec %q needs a value this backend can read at compile time`) for the *numeric*
+arm; the text arm simply never asked whether it had a value.
+
+The fix is one flag (`readable`) and one refusal. The alternative that would have made the row pass — routing
+the field through the pair door and formatting the rendered text — is L12.8 / Gap R.60 / Gap R.186's own scope
+(honouring a spec over a run-time value), and answering it here would have folded a feature into a bug fix and
+put a second renderer beside the module's one printer.
+
+### Gap R.293 — a `range` is not a value
+
+`def h(n): return range(n)` / `print(h(3))` prints `3`. The reference prints `range(0, 3)`. A `range` exists in
+this backend only as a loop the compiler can see through — `rangeBounds` reads its arguments at the loop — and
+never as an object with a length, a kind, or a printing. It is the same hole as Gap R.261/R.197 (a container the
+tag table declines to type) one construct over, and it is why Gap R.291's accident was able to look like an
+answer for as long as it did.
+
+### Gap R.294 — an f-string field that begins with whitespace was a syntax error
+
+```gusty
+x = 5
+print(f"{ x }")
+# gustyc: parse error at 1:2: unexpected token
+```
+
+`buildFString` re-lexes the text between the braces (`Lex(exprSrc)` then `parseExpr`). The lexer is
+indentation-aware: it looks at a line's leading blanks and emits `INDENT` before it reads a token, so the two
+spaces after `{` became a block start and the sub-parser met a token where an expression should begin. Nothing
+about the message points at the real cause, which is why the shape went unfound: `f"{x}"` works, `f"{ x}"` does
+not, and the difference is invisible in the source.
+
+Two consequences worth writing down:
+
+* Every padded field was a syntax error, and the padded spelling is the one PEP 8 pushes people toward inside
+  a dense interpolation.
+* Every field that **opens with a brace** was unreachable for the same reason, because the unpadded spelling of
+  a dict or set literal in a field is not something anyone writes deliberately: `f"{ {'a': 1.5}['a'] }"` was a
+  parse error, so the whole family of dict-literal fields was invisible rather than missing.
+
+`lexFieldSrc` trims only the *ends* of the fragment — leading `INDENT`, trailing `DEDENT`/`NEWLINE` — and keeps
+every surviving token's column, so `f"{ x }"`'s name still claims column 2 and a diagnostic about it points at
+the token that exists. The token-set is pinned for eight fragments in `pkg/lang/fstring_field_pad_test.go`,
+including the empty and all-whitespace fragment (which must still yield its `EOF`).
+
+### Gap R.295 — a tuple is not an expression the call road can carry
+
+`print((xs[0], 7))` → `codegen: unsupported expression *lang.Tuple`. Two rows in one sentence, and the second
+is Gap R.116's: the message names an AST type at a person who wrote a tuple. The read is on file in
+`pkg/lang/dead_binding_test.go::TestAReadCountsEvenWhereTheBackendHasNoAnswerYet`, which pins *both* that the
+escape analysis keeps the container and that the refusal is still this sentence — so a fix that only changes the
+message cannot make the row look closed.
+
+### Gap R.296 — a generator passed to a builtin is not the sequence the builtin asks for
+
+`sum(x for x in xs)` is refused by the *grammar* (`expected ")"` at the call's paren), and `sum((x for x in xs))`
+is refused by the *door* (`sum requires an inline list/set/dict literal`). Both refusals are pinned, in both
+spellings, in the same table as Gap R.295. The reduction idioms are the reference's most common; the row's
+`Blocked on` names the iterable route that already exists (Gap R.291, paid) so the next cycle starts from the
+door rather than from the parser.
+
+### Gap R.297 — a class attribute read through the class name has no road
+
+The class *body* runs and now counts as a read (`first = xs[0]` keeps `xs` allocated, which is Gap R.289's fix
+reaching a class body). The read back — `print(C.first)` — has no road: `unsupported attr expression`. The
+instance road knows a field, the class object does not exist as a value with a member table (L11.1 again).
+
+### Gap R.298 — the `for` road and the comprehension road normalise their iterable in two places
+
+ADR 0357 gave `runtimeCompLoop` the `for` road's three iterable questions as `normaliseCompIterable`, beside the sequence it duplicates rather than sharing it. That is the same defect shape
+ADR 0356 just closed for a subscript (`print` and the field road each had their own list of arms), solved there
+by extracting one function; here the merge was left out to keep the commit to one feature. The row exists so the
+merge is owed to a tracker rather than to memory, and so that nobody re-derives the order a third time.
+
+### Gap R.299 — a call as a `for` iterable is walked as `range(Args[0])` whatever the callee returns
+
+The control pair that turned up while measuring Gap R.291, and the reason the comprehension's `[0, 1, 2]` was
+allowed to be called an accident:
+
+```gusty
+def h(n):
+    return n          # or: return [n*n]
+for v in h(2):
+    print(v)
+```
+
+HEAD and the fixed backend both print `0` and `1` at exit 0. CPython raises `TypeError: 'int' object is not
+iterable` for the first and prints `4` for the second. The `for` road reaches `rangeBounds` with the call's own
+argument and never asks the callee what it answers — the exact rule ADR 0357 removed from the comprehension
+side. Pinned here rather than only in prose so the fix inherits a measured pair: the int-returning control (the
+wrong answer) and the square-returning control (the wrong answer that looks like data).
+
+### Gap R.300 — a set the program builds prints the order elements arrived in
+
+The row that the set-comprehension rows of ADR 0357 exposed, and the reason one shape was kept out of the
+answer tables:
+
+```gusty
+print({3, 1, 2})                     # gy: {3, 1, 2}   py: {1, 2, 3}
+
+sa = set()
+for x in [3, 1, 2]:
+    sa.add(x)
+print(sa)                            # gy: {3, 1, 2}   py: {1, 2, 3}
+
+print({x for x in [3, 1, 2]})        # gy: {3, 1, 2}   py: {1, 2, 3}
+```
+
+Three roads — a literal, a runtime `add`, a comprehension — and one printer: the set arm of `rt_print_value`
+walks the object's slots, and the slots are in the order `rt_set_add_tagged` (ADR 0234) put them there. CPython
+prints a set in hash-table order, which for small non-negative ints is ascending because an int hashes to
+itself. That coincidence is what makes `xs = [1, 2, 3, 2]` / `{x for x in xs}` agree: the four elements arrive in
+ascending order and dedup keeps the first three. It is a coincidence, not a property, and a test that pinned the
+reference's bytes for `[3, 1, 2]` would be a red test whose only crime is the language's own "sets are
+unordered" guarantee.
+
+So the answer tables carry the four rows whose two orders agree, and this row carries the fifth. The fix has a
+cheap half and an honest half: order the printed elements for the kinds whose hash is the value (int, bool), and
+leave everything else alone — which is the same "label it from the object, not from a static guess" move
+ADR 0232 and L12.8 keep making. What the row forbids in the meantime is the quiet version of the fix: changing a
+test's expectation to the bytes the compiler produces.

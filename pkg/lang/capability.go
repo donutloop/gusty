@@ -122,9 +122,13 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Code:       "lower.unsupported.comprehension-over-constant-list",
 		Shape:      "a comprehension over a list the compiler kept as a compile-time global",
 		Suggestion: "materialise the list first (append to an empty one, or iterate it with `for`) — a comprehension needs slots to walk, and a global has none to hand",
-		Rows:       []string{"L11.1", "Gap R.247"},
+		Rows:       []string{"L11.2", "Gap R.290"},
 		Markers:    []string{"is a list the compiler kept as a compile-time constant"},
-		Sample:     "xs = [1, 2]\nprint([v for v in xs])",
+		// A module-level list whose ONLY reader is a comprehension is no longer kept static — the read now
+		// counts, the object is built, and `[v for v in xs]` answers (ADR 0356). What still reaches this
+		// refusal is the same read from inside a function body, whose names the analysis does not count as
+		// reads at all (roadmap Gap R.290, beside Gap R.35's refusal of module reads from a body).
+		Sample: "xs = [1, 2]\ndef f():\n    return [v for v in xs]\nprint(f())",
 	},
 	{
 		Code:       "lower.unsupported.comprehension-key-not-constant",

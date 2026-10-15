@@ -274,11 +274,15 @@ func TestTheNoneKeyRoadAnswersWhatTheReferencePrintsInEveryDoorPosition(t *testi
 		{"list/measured", "[1, 2]", "print(len(d[K]))", "2\n", "", ""},
 		{"list/looped", "[1, 2]", "for v in d[K]:\n    print(v)", "1\n2\n", "", ""},
 		{"list/rendered", "[1, 2]", "print(str(d[K]))", "[1, 2]\n", "", ""},
+		{"list/fstring_field", "[1, 2]", "print(f\"{d[K]}\")", "[1, 2]\n", "", ""},
+		{"list/fstring_repr", "[1, 2]", "print(f\"{d[K]!r}\")", "[1, 2]\n", "", ""},
 		{"list/compared", "[1, 2]", "print(d[K] == [1, 2])", "True\n", "", ""},
 		{"list/in_a_list", "[1, 2]", "print([d[K], 1])", "[[1, 2], 1]\n", "", ""},
 		{"float/printed", "3.5", "print(d[K])", "3.5\n", "", ""},
 		{"float/bound", "3.5", "x = d[K]\nprint(x)", "3.5\n", "", ""},
 		{"float/rendered", "3.5", "print(str(d[K]))", "3.5\n", "", ""},
+		{"float/fstring_field", "3.5", "print(f\"{d[K]}\")", "3.5\n", "", ""},
+		{"float/fstring_repr", "3.5", "print(f\"{d[K]!r}\")", "3.5\n", "", ""},
 		{"float/compared", "3.5", "print(d[K] == [1, 2])", "False\n", "", ""},
 		{"float/in_a_list", "3.5", "print([d[K], 1])", "[3.5, 1]\n", "", ""},
 		{"float/measured", "3.5", "print(len(d[K]))", "", "TypeError: object of type 'float' has no len()", ""},
@@ -288,6 +292,8 @@ func TestTheNoneKeyRoadAnswersWhatTheReferencePrintsInEveryDoorPosition(t *testi
 		{"text/measured", `"hi"`, "print(len(d[K]))", "2\n", "", ""},
 		{"text/looped", `"hi"`, "for v in d[K]:\n    print(v)", "h\ni\n", "", "Gap R.16"},
 		{"text/rendered", `"hi"`, "print(str(d[K]))", "hi\n", "", ""},
+		{"text/fstring_field", `"hi"`, "print(f\"{d[K]}\")", "hi\n", "", ""},
+		{"text/fstring_repr", `"hi"`, "print(f\"{d[K]!r}\")", "'hi'\n", "", ""},
 		{"text/compared", `"hi"`, "print(d[K] == [1, 2])", "False\n", "", "Gap R.83"},
 		{"text/in_a_list", `"hi"`, "print([d[K], 1])", "['hi', 1]\n", "", ""},
 	} {
@@ -368,13 +374,10 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		reference   string // what CPython does, kept in the failure text
 		row         string
 	}{
-		{
-			name:      "an_fstring_field_of_the_entry",
-			src:       "d = {None: 3.5}\nprint(f\"{d[None]}\")\n",
-			wantOut:   "3\n",
-			reference: `f"{d[None]}" is 3.5`,
-			row:       "Gap R.283",
-		},
+		// The f-string FIELD of the entry sat here, printing the payload — `f"{d[None]}"` over
+		// `d = {None: 3.5}` wrote `3`, the `@float_box` handle, while `print(d[None])` on the line above wrote
+		// `3.5`. It is paid: the field now asks the one subscript dispatch print asks (`subscriptPairOf`),
+		// and the three spellings are asserted as answers in the ladder above (roadmap Gap R.283, ADR 0356).
 		{
 			name:      "the_truth_of_the_entry",
 			src:       "d = {None: \"hi\"}\nprint(bool(d[None]))\n",

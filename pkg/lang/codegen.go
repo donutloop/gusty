@@ -12638,6 +12638,32 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	if nm, ok := c.Iter.(*Name); ok && !g.allocd[nm.Value] && !g.listVars[nm.Value] && !g.mixedLists[nm.Value] && !g.runtimeSets[nm.Value] && !g.runtimeDicts[nm.Value] {
 		return "", fmt.Errorf("codegen: %s is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)", nm.Value)
 	}
+	// A call as the iterable is the one iterable this loop cannot take on trust: the handle is the callee's
+	// `ret`, and if the scan never saw a container there, lowering the call through the one-word road hands
+	// back a plain `0` that `rt_list_len` happily measures as empty. `def h(n): return range(n)` /
+	// `[x for x in h(3)]` therefore printed `[]` at exit 0 where CPython prints `[0, 1, 2]` — a wrong answer,
+	// the class this project ranks above every refusal. So the loop asks the SAME permission the container-handle
+	// door asks (`callAnswersContainer`) and, failing that, the permission its own type already grants; what it
+	// may not do is walk an object it never proved exists (roadmap Gap R.67, ADR 0333, Gap R.291).
+	if _, isCallIter := c.Iter.(*Call); isCallIter {
+		// A call as the iterable is the one iterable this loop cannot take on trust: the handle is the callee's
+		// `ret`, and if nothing proved a container there, lowering the call through the one-word road hands back
+		// a plain `0` that `rt_list_len` happily measures as empty. `def h(n): return range(n)` /
+		// `[x for x in h(3)]` printed `[]` at exit 0 where CPython prints `[0, 1, 2]` — a wrong answer, the class
+		// this project ranks above every refusal.
+		//
+		// The `for` road has been answering this shape for cycles, because it asks its iterable three questions
+		// before lowering it. The comprehension asks them too, in the same order (roadmap Gap R.291, ADR 0357);
+		// that the two roads keep their own copies of the sequence — rather than one normalisation, as the
+		// subscript door finally got — is itself filed (Gap R.298).
+		iter, okIter := g.normaliseCompIterable(b, c.Iter)
+		if !okIter {
+			return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove, so the "+
+				"comprehension walking it has nothing to measure; a call answers a container only where the scan can "+
+				"see every arm of the callee answer one (roadmap Gap R.67, ADR 0333)", exprSnippet(c.Iter))
+		}
+		c.Iter = iter
+	}
 	var src string
 	var err error
 	lowered, lerr := g.value(b, c.Iter)
@@ -13045,6 +13071,13 @@ func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
 		return items, itemExprs, nil
 	}
 	if r, ok := c.Iter.(*Call); ok {
+		// The caller only asks for items from a range(); anything else has no compile-time length to
+		// enumerate, and reaching here with a call that is not one is a routing bug, not an input to
+		// guess at. The zero-argument shape is the one that used to fall through to the `Args[0]`
+		// below and panic (roadmap Gap R.291, ADR 0356).
+		if !compIterIsStaticRange(r) {
+			return nil, nil, fmt.Errorf("codegen: comprehension iterable has no compile-time length")
+		}
 		// range(stop), range(start, stop) or range(start, stop, step)
 		start := int64(0)
 		stop, ok := g.foldConstInt(r.Args[0])
@@ -13210,6 +13243,45 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 	return nil, false
 }
 
+// compIterIsStaticRange reports whether a comprehension's iterable is a range() call the compiler can
+// enumerate: the callee has to be the plain name `range` and it has to carry at least one argument, the
+// stop. A zero-argument call is not range() at all, and a call to anything else is a value the program
+// computes rather than a bound the compiler reads (roadmap Gap R.291, ADR 0356).
+func compIterIsStaticRange(e Expr) bool {
+	r, ok := e.(*Call)
+	if !ok || len(r.Args) == 0 {
+		return false
+	}
+	fn, ok := r.Fn.(*Name)
+	return ok && fn.Value == "range"
+}
+
+// normaliseCompIterable asks a comprehension's iterable the three questions the `for` road asks of its own,
+// in the same order: fold it if the compiler already knows every element, materialise a `sorted`/`reversed`
+// over a walkable list into the heap, or read a proven container answer into a name the loop can hold. It is
+// the same sequence, spelled once here, that codegen's `for` arm applies before it picks a route; the two
+// copies are why `[x for x in h(3)]` could answer on one road and print `[]` on the other (roadmap Gap R.291,
+// Gap R.298, ADR 0357).
+func (g *irGen) normaliseCompIterable(b *strings.Builder, e Expr) (Expr, bool) {
+	if folded, ok := g.foldedForIterable(e); ok {
+		return folded, true
+	}
+	if named, ok := g.materializeSortedReversedForLoop(b, e); ok {
+		return named, true
+	}
+	if ansName, _, okAns := g.containerAnswerOperandRead(b, e, containerReadWalk); okAns {
+		return ansName, true
+	}
+	return nil, false
+}
+
+// isCallExpr reports whether an expression is a call — the shape a comprehension has to walk at runtime,
+// because nothing here knows the container's length until the program computes it.
+func isCallExpr(e Expr) bool {
+	_, ok := e.(*Call)
+	return ok
+}
+
 // comp lowers a list comprehension over a constant iterable (inline list
 // literal or range(n)) into a dedicated global struct, unrolled at compile
 // time. Returns the global's name.
@@ -13230,11 +13302,20 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	// (a container variable) needs the real loop (roadmap L11.7, ADR 0192).
 	iterStatic := false
 	switch c.Iter.(type) {
-	case *ListLit, *Call:
+	case *ListLit:
 		iterStatic = true
+	case *Call:
+		// Only `range(...)` is enumerable at compile time. Every other call is a value the program
+		// has to compute, so the comprehension walking it belongs to the runtime loop: classifying
+		// *every* call as static is how `[x for x in g()]` died with `index out of range [0] with
+		// length 0` inside compItems — which opens `Args[0]` to read a bound that a zero-argument
+		// call never had — and how `[y for y in f([1, 2, 3])]` refused "range bound must be a
+		// constant" while the selfsame comprehension over a variable of the same list answered
+		// (roadmap Gap R.291, ADR 0356).
+		iterStatic = compIterIsStaticRange(c.Iter)
 	}
 	iterKind := containerKindFromTy(exprTyName(c.Iter))
-	if !iterStatic && (g.isContainerExpr(c.Iter) || iterKind == "list" ||
+	if !iterStatic && (g.isContainerExpr(c.Iter) || iterKind == "list" || isCallExpr(c.Iter) ||
 		(c.Kind != CompList && (iterKind == "set" || iterKind == "dict"))) {
 		return g.runtimeCompLoop(b, c)
 	}
@@ -15087,69 +15168,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 			}
 			if ix, ok := a.(*Index); ok {
-				// print({"a": "x"}["a"]) reads a dict the program spelled out and never bound: the entry is
-				// built, the key is compared as a (payload, tag) pair, and the answer is printed from the pair
-				// the object hands back — so an int entry prints a number, a text entry its word, a float
-				// entry its decimal and a container entry its own contents. The fold still answers what it can
-				// read, so this arm runs exactly where the fold cannot (roadmap Gap R.215, ADR 0327).
-				if dl, isLit := ix.Obj.(*DictLit); isLit && !g.dictLiteralFoldAnswers(dl, ix.Idx) {
-					val, tag, derr := g.literalDictPair(b, dl, ix.Idx, ix.Span())
-					if derr != nil {
-						return "", derr
-					}
-					g.heapUsed = true
-					g.floatFmtUsed = true
-					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
-					continue
-				}
-				// print(xs[i]) reads the element *and* its tag, so the printer dispatches on
-				// what the slot holds instead of on what the compiler guessed: the same
-				// (value, tag) pair a tagged variable carries, produced at the read site
-				// (roadmap L11.1, ADR 0187).
-				// The same door, one container over: a list literal's element whose kind lives in the tag —
-				// a text's @str_tab index, a float's @float_box handle, None, a bool — prints through the
-				// printer that dispatches on the tag, which is what the same element read off a *variable*
-				// has always done. The fold still answers the all-integer shape, so this arm runs exactly
-				// where the fold cannot (roadmap Gap R.218, ADR 0331).
-				if ll, isLit := ix.Obj.(*ListLit); isLit && !g.listLiteralFoldAnswers(ll, ix.Idx) {
-					val, tag, okPair := g.listLiteralPair(b, ll, ix.Idx, ix.Span())
-					if !okPair {
-						return "", listLiteralOneWordErr(ll, ix.Idx)
-					}
-					g.heapUsed = true
-					g.floatFmtUsed = true
-					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
-					continue
-				}
-				if listName, mixed := g.mixedIndexRead(ix); mixed {
-					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
-					if err != nil {
-						return "", err
-					}
-					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
-					continue
-				}
-				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
-					// The value's slot carries its own tag, and that is the only thing that can
-					// tell "x" from the number 2 (ADR 0232).
-					val, tag, err := g.mixedDictPair(b, dictName, ix.Idx, ix.Span())
-					if err != nil {
-						return "", err
-					}
-					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
-					continue
-				}
-				// print(xs[0][1]), print(d["a"][0]), print(m[0][1]): the container being indexed is
-				// itself a read, so its kind is in the object and not in the spelling. The slot's
-				// payload and tag are read together and handed to the one printer that can read a
-				// tag, which renders a number, unboxes a float, looks up interned text and — for the
-				// case that started this — prints a nested container as its own contents
-				// (roadmap L11.1, ADR 0241).
-				if val, tag, okRead, rerr := g.taggedContainerRead(b, ix); rerr != nil {
-					return "", rerr
-				} else if okRead {
-					g.heapUsed = true
-					g.floatFmtUsed = true
+				// The subscript's five pair arms — a dict literal, a list literal, an element of a mixed
+				// list, an entry of a mixed dict, a slot of a container that is itself a read — are one
+				// door, in one order, asked by this road and by the f-string field and by nothing else, so
+				// `print(x)` and `f"{x}"` of one read cannot answer differently. The arms, their order and
+				// the runtime flags they set live in `subscript_pair.go` (roadmap Gap R.283, where the
+				// field asked NONE of them and printed a payload; ADR 0187's pair, ADR 0232's one question).
+				if val, tag, okPair, perr := g.subscriptPairOf(b, ix); perr != nil {
+					return "", perr
+				} else if okPair {
 					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
 					continue
 				}

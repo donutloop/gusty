@@ -352,6 +352,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_comp_folded_iter",
+        "name": "probe_comp_folded_iter.gy",
+        "source": "# A comprehension over a list the compiler keeps as a compile-time constant has no slot to load, so the\n# walk materialises the list first — which is what `for` over the same list has always done. The answer\n# used to be a refusal (and, before that, a build that stopped): the escape analysis was deleting the\n# binding while its only read sat in a construct the old walkers did not visit (roadmap Gap R.289,\n# ADR 0356), and the route that walks a computed container is ADR 0357's. Both legs print [2, 4, 6].\nxs = [1, 2, 3]\nprint([x * 2 for x in xs])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[2, 4, 6]\n",
+      "python_ok": true,
+      "python_stdout": "[2, 4, 6]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_and_or_the_test_skips",
         "name": "probe_and_or_the_test_skips.gy",
         "source": "# probe_and_or_the_test_skips.gy — the operand the test did not choose never runs.\n#\n# The reference short-circuits: `x and boom()` never calls boom when x is false, `y or (1 // 0)` never\n# divides when y is true, and `if xs and xs[0] \u003e 0:` never subscript the empty list. Both engines used to\n# evaluate both operands and choose afterwards — which is all a `select` can do — so the skipped operand's\n# print ran, its division raised, and a call on the left of the operator ran twice on the compiled leg\n# because its truth and its value each evaluated it. The row is roadmap Gap R.149, ADR 0275; the operator\n# answering with an *operand* rather than a verdict is the ADR 0269 half beside it.\n#\n# Three things are pinned in one program, because they are one promise: the effects the reference never\n# performs do not happen (the boom lines below are printed only for the operand the test reached), a\n# trap inside the operand the test skipped is never raised, and a trap inside the operand it *did* choose\n# still raises the ordinary catchable error. The last two lines are the other half of the same rule: the\n# operand the test reaches runs exactly once, whatever it is.\ndef boom():\n    print(\"boom\")\n    return 9\nx = 0\ny = 1\nprint(x and boom())\nprint(y or boom())\nv = x and boom()\nprint(v)\nw = y or boom()\nprint(w)\nif x and boom():\n    print(\"then\")\nif y or boom():\n    print(\"or-then\")\nwhile x and boom():\n    print(\"loop\")\n    break\nprint(\"loop ended\")\nprint(x and (1 // 0))\nprint(y or (1 // 0))\ntry:\n    print(y and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the chosen operand raised\")\ntry:\n    print(x or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the other chosen operand raised\")\nprint(boom() and 2)\nprint(boom() or 2)\n",
@@ -4198,7 +4219,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/172/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/173/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4212,7 +4233,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/172/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/173/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4748,42 +4769,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_comp_folded_iter",
-        "name": "probe_comp_folded_iter.gy",
-        "source": "# Oracle probe (ADR 0192) — a comprehension over a list the escape analysis kept as a compile-time\n# constant has nothing to walk at runtime. The interpreter answers; AOT refuses (it must not emit\n# the load of a slot that was never allocated, which is the module llc rejects). Iterating the same\n# list with `for`, or mutating it first, materialises it and the comprehension works.\nxs = [1, 2, 3]\nprint([x * 2 for x in xs])\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
-        "ref": "roadmap L11.2 (the tagged value word makes every container a runtime object)",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "compile-time constant",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: xs is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)",
-      "python_ok": true,
-      "python_stdout": "[2, 4, 6]\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
-      "oracle_ref": "roadmap L11.2 (the tagged value word makes every container a runtime object)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: xs is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_async_eager",
         "name": "probe_async_eager.gy",
         "source": "async def work(x):\n    print(\"effect\", x)\n    return x * 2\n\nasync def run():\n    pending = work(1)\n    print(\"between\")\n    return await pending\n\nprint(await run())\n",
@@ -4819,11 +4804,11 @@
     }
   ],
   "rows": 197,
-  "skipped": 33,
-  "pass": 164,
+  "skipped": 32,
+  "pass": 165,
   "fail": 0,
-  "oracle_match": 150,
-  "oracle_debt": 26,
+  "oracle_match": 151,
+  "oracle_debt": 25,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

@@ -718,9 +718,59 @@ the object, so `5 in f()` is `True`. A position that reads a slot back through t
 index, a slice, a comparison, a loop's iterable — refuses naming the missing half and the way around it
 (`bind it to a name and print that`), because a notebook nobody filled is a fabricated number: `print(f()[0])`
 and `for v in f(): print(v)` are **Gap R.262**'s, the second of which printed nothing at exit 0 before the row.
-A comprehension over a value the compiler cannot see at compile time — a text, or a container built by
-running the program — is refused naming its missing runtime door (`Gap I.2`), where the retired engine
+A comprehension over a **text** is refused naming its missing runtime door (`Gap I.2`), where the retired engine
 evaluated it and the record still holds its answer.
+
+### What a comprehension's iterable may be (LLVM codegen)
+
+A comprehension has two routes, and which one runs is a fact about the iterable (ADR 0192, ADR 0357):
+
+| the iterable | the route | example |
+|---|---|---|
+| an inline list literal of constants, or `range(start, stop[, step])` with constant bounds | **unrolled** at compile time | `[x * 2 for x in range(3)]` → `[0, 2, 4]` |
+| a container variable, a container a function answered, a `sorted`/`reversed` over a walkable list | **walked** by a runtime loop | `xs = [1, 2, 3]` / `[x for x in xs]` → `[1, 2, 3]` |
+| anything else a call returns that no scan can call a container | **refused**, naming the missing proof | `[x for x in list([1, 2])]` |
+
+Only `range(...)` — the name, with at least one argument — has a compile-time length. Every other call is a value
+the program computes, so the loop that walks it asks the object the questions a `for` statement asks it, and what
+it cannot prove is a container it refuses rather than measures:
+
+```
+def g():
+    return [1, 2, 3]
+print([x for x in g()])            # [1, 2, 3]   (this panicked the toolchain before ADR 0357)
+
+def z():
+    return {"a": 1}
+print([k for k in z()])            # ['a']       walking a dict walks its keys
+
+def h(n):
+    return [n * n]
+print([x for x in h(3)])           # [9]
+
+print([x for x in sorted([3, 1, 2])])   # [1, 2, 3]
+
+print({x for x in [1, 2, 3, 2]})        # {1, 2, 3}   the set drops the fourth element in the object
+print({x: x * 2 for x in [1, 2]})       # {1: 2, 2: 4}
+```
+
+A set or a dict comprehension walks the same road, and the set's answer is not a list with braces: the dedup
+happens in the object, through the tagged add that finds a slot by (payload, tag) together (ADR 0234). What the
+printer then shows is the order the slots were filled, which for small ascending ints is the order CPython prints
+too — and which is **Gap R.300** for `[3, 1, 2]`, where the reference prints `{1, 2, 3}` and this backend prints
+`{3, 1, 2}`. A set has no order the language promises, so the rows that are asserted are the ones whose two
+orders agree, and the disagreement is a roadmap row rather than an expectation written down wrong.
+
+Reading a call's own argument as the loop bound is the defect this route exists to end: `[x for x in h(3)]` printed
+`[0, 1, 2]` for *any* one-argument `h` — where the reference prints `[9]` for the body above and raises
+`TypeError: 'int' object is not iterable` for `return n + 1` (roadmap **Gap R.291**, paid). A call the container
+scan does not vouch for is refused with
+`does not name a container the compiled backend can prove … a call answers a container only where the scan can see
+every arm of the callee answer one` (`Gap R.67`, ADR 0333) rather than walked as an empty object — walking one is
+how `[x for x in h(3)]` over `return range(n)` came to print `[]` at exit 0 during this row's own work. A `range`
+is still not a value anywhere else in the language (`print(h(3))` writes `3`, not `range(0, 3)`: **Gap R.293**),
+the `for` road still reads a call's argument as a bound (**Gap R.299**), and a generator passed to a builtin is
+refused by the grammar in its bare spelling and by the door in its parenthesised one (**Gap R.296**).
 
 
 ### Multi-argument range iterables (comprehensions)
@@ -1547,6 +1597,41 @@ refuses, at exit 1, the mutators it cannot lower over a variable (`extend`, `ins
 dict `pop`, `popitem`, `s.remove(1)` over a name) — those methods do not exist there yet and are owed to
 `L12.11` / `Gap R.63`; what changed here is that the ones which do exist answer correctly.
 
+### An f-string field reads a value the way `print` does
+
+A field is a `print` in disguise: `f"{d[1]}"` renders the slot `print(d[1])` renders, and the two cannot answer
+differently, because they ask the same subscript door (`subscriptPairOf`, ADR 0356). A slot holds a *value*, and
+the kind of that value is a fact about the object, so reading it yields a payload **and the tag that says what it
+is** (ADR 0187):
+
+```
+d = {1: 3.5, 2: "x", 3: None, 4: True, 5: [2], 6: {"k": 1}}
+print(f"{d[1]}|{d[2]}|{d[3]}|{d[4]}|{d[5]}|{d[6]}")   # 3.5|x|None|True|[2]|{'k': 1}
+print(f"{d[1]!r}|{d[2]!r}")                            # 3.5|'x'      the repr of the same read
+xs = [1.5, "a", None, True, [7]]
+print(f"v={xs[1]} and {xs[0]}!")                       # v=a and 1.5!
+print(f"{ {'a': 1.5}['a'] }")                          # 1.5        a literal read by its key, in a field
+print(f"{xs[0] + 1}")                                  # 2.5        arithmetic over a slot
+```
+
+Before ADR 0356 the field road asked none of the pair door's arms and read the payload word alone, so
+`f"{d[1]}"` printed the `@float_box` handle (`5`), `f"{d[2]}"` printed the text's index into `@str_tab` (`0`) and
+`f"{d[5]}"` printed a heap slot — all at exit 0, with `print(d[1])` on the line above printing `3.5`
+(roadmap `Gap R.283`). A field that renders a value goes to the module's ONE tag-reading printer
+(`@rt_str_of_value` → `@rt_print_mixed_value`, ADR 0303); a field the compiler can fold at compile time still
+emits a constant and pays for no object at all.
+
+**A field may be padded.** `f"{ x }"`, `f"{ x}"` and `f"{x }"` are the same field, and so is a field that opens
+with a brace (`f"{ {'a': 1.5}['a'] }"`, `f"{ {1, 2} }"`). An interpolation is a *fragment* of a line, and the
+fragment lexer drops the indentation tokens its own padding invents while keeping every column, so a diagnostic
+still points at the token the author wrote (`Gap R.294`, ADR 0356). Until that row was paid, every padded field
+— and with them every dict- or set-literal field — was `parse error at 1:2: unexpected token`.
+
+**What a field still cannot hold.** A field that *is* a container (`f"{[1, 2]}"`, `f"{ {1,2} }"`) refuses at exit
+1: this road builds one `printf` format string, and neither of the two words it can hand `printf` — an `i32` or an
+`i8*` — renders `[1, 2]`. Emitting the handle as `%d` is the invalid-module shape ADR 0166 put out of reach, so the
+refusal is the answer, and the container's own printing is owed to `L11.1`.
+
 ### An f-string's format spec and conversion
 
 A field may carry a **format spec** after a `:` and a **conversion** `!r` / `!s` before it. Both are part
@@ -1580,10 +1665,14 @@ honour (`!a`, `#`, `;`-grouping, `n`, a `.q`, a spec on a value that is not a nu
 reference's own sentence; `format([1,2], ">8")` answers
 `TypeError: unsupported format string passed to list.__format__`, because a list has no `__format__`
 beyond the object default. On the compiled leg, a field whose value it cannot read at compile time
-(`f"{n:05d}"` over a variable, `f"{3.5 + 1:.2f}"`) and a field that is a **container** both refuse at
+(`f"{n:05d}"` over a variable, `f"{3.5 + 1:.2f}"`, `f"{xs[0]:>6}"` over a slot, `f"{max(1,2):>6}"`) and a field
+that is a **container** both refuse at
 exit 1 naming the spec — owed to `L12.8` with `L11.1`, whose tagged word will make a field's kind
 readable. Neither ever emits the unformatted number, and neither reaches exit 2: `f"{[1,2]}"` used to
-hand a list's *global address* to `printf`'s `%d`, which `llc` rejected as an invalid module.
+hand a list's *global address* to `printf`'s `%d`, which `llc` rejected as an invalid module. The spec engine
+also never formats a value it did not read: a field it recognised as neither number nor text used to fall
+through as an empty **text** and get aligned, so `x = 5` / `print(f"{x:>6}")` wrote six spaces at exit 0 where
+the reference writes `     5` (`Gap R.292`, ADR 0356).
 
 ### A text iterates one character at a time
 

@@ -213,6 +213,19 @@ func (e *containerEnv) expr(x Expr) {
 		for _, v := range n.Vals {
 			e.expr(v)
 		}
+	case *FString:
+		// An f-string field is an EXPRESSION that happens to be written inside a text. The scan that
+		// decides whether a container's slots still hold what the literal said has to look through the
+		// braces like it looks through parentheses: with no arm here, `xs = [...]` beside
+		// `print(f"{xs[0]}")` looked like a container with no readers at all, the binding was folded
+		// statically, no builder wrote a tag for a single slot, and the read — which now asks the
+		// object, because the field asks the pair door — had no object to ask (roadmap Gap R.283, and
+		// the reason `f"{xs[0]}"` refused with `index of a non-literal variable` while `print(xs[0])`
+		// on the very line above answered 1.5). ADR 0232's rule again: one question, and every road
+		// that reaches it asks it.
+		for _, p := range n.Parts {
+			e.expr(p.Expr)
+		}
 	}
 }
 

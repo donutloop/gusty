@@ -11442,3 +11442,184 @@ what makes the `TestTheRoadmapSnapshotIsMeasuredNotRemembered` failure in this c
 the most valuable red the run produced: the guard counted the file, found a one-entry ledger where the
 Snapshot row said 339, and refused to let a clobbered artifact become the truth. **Counting the artifact is
 what caught destroying the artifact.**
+
+## Round 6 — the f-string field, the walk that issued permissions, and the answer that was an accident
+
+_Cycle: Gap R.283 + R.289 + R.292 + R.294 (ADR 0356), Gap R.291 (ADR 0357). 2026-10-16._
+
+### A claim in a docstring is the most expensive kind of test
+
+`pkg/lang/list_literal_read.go` says, in its own words, that the positions which read a value by its kind are
+"print, `str`/`repr`, **an f-string field**, a binding, a `len`, a membership test, a loop", and that each "asks
+the door for the pair". The field asked no arm of any door. `print(d[1])` printed `3.5`; `print(f"{d[1]}")` printed
+`5` — the `@float_box` handle — at exit 0, and no case anywhere noticed.
+
+The lesson is ADR 0317's with the volume up: a claim written in the file a future cycle will read is *trusted*, and
+the trust is what lets the missing arm survive. When a docstring enumerates call sites, either the enumeration is a
+table some case walks, or the sentence is a bug report sitting in a place that reads like a spec. The fix here was
+not "add an arm", it was "make the two roads call one function" (`subscriptPairOf`), because two roads each keeping
+their own list of arms is the mechanism that produced this.
+
+### Build the HEAD binary into a worktree before you call anything a regression
+
+`git worktree add /tmp/headbase HEAD` plus `go build -tags=llvm20 -o /tmp/gustyc-head ./cmd/gustyc`, then a table of
+`head=` / `new=` / `ref=` for a dozen probes, changed the shape of two decisions in this cycle and is now the
+cheapest tool in the loop:
+
+* It caught a **real** regression I was about to ship: the comprehension gate turned
+  `def h(n): return range(n)` / `[x for x in h(3)]` from `[0, 1, 2]` into a refusal.
+* It caught the opposite: what *looked* like an answer for that row was produced by a rule that read the call's own
+  argument as the loop bound — proven by changing only the callee (`return [n*n]` → HEAD printed `[0, 1, 2]` where
+  CPython prints `[9]`; `return n + 1` → HEAD printed `[0, 1, 2]` where CPython raises). Controls, not argument.
+* It showed `[x for x in sorted(xs)]` had **never** answered (HEAD refused with `range bound must be a constant`),
+  so the "regression" I thought I saw in `sorted` was a new answer, not a lost one — and that is why the gate keeps
+  a `sorted` row as its own guard.
+* It found a bug I did not set out to find, and filed it honestly as `Gap R.299`: `for v in h(2)` has the same
+  read-the-argument-as-a-bound rule, still live.
+
+### An analysis whose output is a permission cannot be a `switch`
+
+`deadListAssignments` decides whether a container's allocation is emitted. A name that comes back **unread** has
+its `rt_alloc` deleted, and the program then reads slots that were never written. So every construct the walkers
+did not enumerate was not a name missing from a listing — it was a program with its binding removed from under it,
+reported by a sentence blaming a construct the source never contained:
+
+```gusty
+xs = [1.5, "a"]
+def show(k): print(k)
+show(k=xs)     # codegen: undefined name "xs" (no binding for it; assign it before use)
+```
+
+Reflection over the AST's own field types is the fix, and the guard is what makes it durable: parse `ast.go`, take
+the receiver types of every `exprNode()` method (that marker *is* the `Expr` interface), fail when the read-set
+table has no row for one. Write the guard as a census of the real file, not of someone's memory of it.
+
+Two things that reflection nearly lost me, both caught by writing the policy as a test first: a `*Lambda` reached
+through a pointer and a `*Lambda` reached as a value are **the same node arriving two ways** (the walker
+dereferences, so a `case Lambda:` alone is a policy that silently never fires) — match both spellings; and the
+`def`-body asymmetry has to stay, because counting a compiled body's reads would take the allocation away from the
+module body that genuinely reads the name in order to serve a read the backend refuses to compile at all.
+
+### Widening a road creates new wrong answers; ship its gate in the same change
+
+Routing call iterables to the runtime comprehension loop *was* the fix, and on its own it introduced a defect that
+had never existed: the loop lowered the call through the one-word road, got `0`, asked `rt_list_len` of it and
+printed `[]` at exit 0 for a program whose answer is `[0, 1, 2]`. An unexamined object and an empty container are
+indistinguishable at a runtime call site, so the proof has to happen where the type is known — in the compiler. Any
+change that makes the backend *try harder* on a shape it used to refuse needs its "…and otherwise refuse" half in
+the same commit.
+
+### The record's silence is evidence, and silence can be pinned
+
+Of 7008 recorded sources exactly one interpolated a subscript into an f-string field (a `max([True, 0])` call, not a
+slot). That is why the defect survived the record leg: no record ever put a slot read in a field, so no record could
+notice what the field did with one. The leg therefore asks the record about the **read** (`print(d[False])` →
+`3.5`) and the compiler about the **field**, and a separate case asserts the artifact still holds exactly one such
+source — so nobody later claims the record witnessed the field, and nobody "repairs" the count by minting an answer
+the retired engine never produced. A missing record fails; an invented record is worse.
+
+### Toolchain notes, each one cost me a run
+
+* Adjacent string literals in an **argument list** do not concatenate across a newline — `fmt.Errorf("a "\n"b ")`
+  is `expected ';', found ...`. Put the `+` at the end of every continuation line. I hit this twice, once in
+  source and once in a test.
+* Inside `package lang`, `import "go/parser"` collides with the package's own `parser` type, and `"go/ast"`/
+  `"go/token"` are one rename away from the same: alias them (`goparser`, `goast`, `gotoken`).
+* `runGoldenStdout`/`evalGolden` **fail** on a source with no record (via `goldenLookup`), they do not return an
+  error you can turn into a `t.Skipf`. A record-leg table must be sourced from the artifact; I picked three
+  candidate sources by hand and two of them did not exist.
+* A `-run`-filtered run still adjudicates the **drift ledger over the whole artifact**, so a filtered run can fail
+  with "N divergence(s) reported, 339 on the ledger" purely because the filter excluded the cases that own the
+  ledger rows. Expect that message on every filtered pass; the re-record is a `make test` job.
+* Roadmap bookkeeping is guarded, so it is measurement: adding rows obliges the Snapshot's `Rows owed` counts and
+  its `ADRs` count (`150 of 203` → `156 of 214`, `346/0355` → `348/0357`), and `go run ./tools/captable` prints the
+  table `docs/operations.md` must carry verbatim.
+
+### The artifact-writing modes are per-package, and `make test` runs packages in parallel
+
+`GUSTY_GOLDEN_UPDATE=1 GUSTY_GOLDEN_MISSING=… make test` rewrote `pkg/lang`'s drift ledger down to **one** row
+and left `docs/operations.md` claiming 339 — the same trap the last cycle recorded for `integration`, now with the
+other package as the victim. `go test ./...` starts one **process per package**, each with its own accumulated
+`Divergences()`, and every ledger path is package-relative; the last writer wins on whichever file it resolves to.
+The safe form is one package at a time:
+
+```
+GUSTY_GOLDEN_UPDATE=1 go test -tags=llvm20 -count=1 -parallel 1 ./pkg/lang/
+```
+
+which took 594 s and rewrote the ledger to its true 335 rows. `TestTheArtifactTableCountsAreTheFilesOwn` and
+`TestTheRoadmapSnapshotIsMeasuredNotRemembered` are what turn a clobbered artifact from an invisible loss into a red
+case — they counted the file, found a one-entry ledger where the docs said 339, and refused. Then the counts in
+`docs/operations.md` and the roadmap Snapshot (rows owed, ADRs, matrix rows, oracle verdicts, ledger sizes) are all
+the artifact's, and each had to be re-measured rather than typed.
+
+### A paid record row is not a deleted line, it is a story
+
+Four rows left `interpreter-golden-drift.json` this cycle and seven changed *shape* (from "the compiled backend
+cannot build a program the engine ran" to "the echoed value differs from the record"). Deleting them silently would
+have been the same sin as keeping a paid row: the number is evidence. Both the ledger's cell in
+`docs/operations.md` and the roadmap row now name which programs went paid and which merely changed shape, in the
+row that owns the change — that is the guard's own instruction ("if it was the FILE that changed, say so in the row
+it is recorded in"), read as a writing rule instead of an error message.
+
+### A filed refusal that becomes an answer has to be *moved*, four times over
+
+`[x * 2 for x in xs]` went from refusal to answer, and four separate tables were asserting the refusal:
+`integration/comprehension_test.go` (must-not-compile), `integration/minus_operator_test.go` (filed-refusal row),
+`integration/slice_bounds_test.go` (a *divergence* row whose compiled answer had caught up with its reference —
+that table refuses to hold a row where the two agree), and `pkg/lang/capability.go`'s sample for
+`lower.unsupported.comprehension-over-constant-list`. Plus the conformance ledger, where the same program was
+declared `debt` with a pin saying "the aot leg fails" — and a probe that now matches CPython must be **promoted**
+(`conformanceProbes` → `conformanceStandalone`, ledger row deleted), not left declared. Grep the ID and the shape
+before declaring a refusal fixed; and when editing the case lists, check which list you are in — `conformanceStandalone`
+and `conformanceProbes` are two `names := []string{…}` blocks in one file, and an anchor-based edit put my entry in
+the wrong one and ate four probe rows until `git diff` showed me.
+
+### A remembered failure message is the most expensive kind of guess
+
+Twice this cycle I went to fix a failure I "knew" about — a conformance row `declared debt but the oracle matched`,
+a helper called `InspectGoldenAnswer`, a test that asked the record leg for nine sources — and each one was a
+projection of a compacted summary rather than a fact about the tree. None of those strings exist. The fix each time
+started the same way: `grep -rn` for the message I was told to expect, and read the function that was supposedly
+failing. The 20 minutes that feel wasted are the 20 minutes that stop a "fix" for a bug the repository does not
+have, which is how a test gets edited to satisfy a story.
+
+### An edit tool that says "applied" is not a witness
+
+One multi-edit call reported every edit applied; `git diff --stat` afterwards showed 92 insertions where the call
+had promised ~150, because one large `oldText` (a whole loop rewrite) had already been invalidated by an earlier
+`python - <<PY` rewrite of the same lines and quietly did not match. The rewrite I had "made" — a restructured
+comprehension loop — was never in the file, and the only reason nothing broke is that the loop I meant to rewrite
+had already been fixed by an earlier cycle (its `comp.pre`/`comp.cond`/`comp.merge` blocks and its `appendElem`) and
+did not need me. Two rules came out of it: after any structural edit, `git diff --stat` the file and read the region
+back; and prefer a small anchor to a large `oldText`, because a large one is a claim about a file you last read a
+dozen edits ago.
+
+### Promote a program only with its record in hand
+
+Moving `probe_comp_folded_iter.gy` from the probe list to `conformanceStandalone` makes it an *asserted* matrix row,
+and `TestGCCorpusCollectsAndAgrees` walks the asserted rows asking each for its record (`HasGoldenAnswer`) — so the
+promotion is two changes, not one: the registry move **and** the `tools/recmerge` entry (7008 → 7009, reference leg
+recorded, compiled leg cross-checked). The suite told me this in one line and one line only, and the same trap will
+catch any promotion: check what the asserted list obliges before editing it. The corpus program's header comment also
+had to be rewritten — it explained why the backend refuses a program that now answers, which is the kind of lie a
+probe carries into promotion unnoticed.
+
+### When a road opens, sweep the refusal tables before the suite does
+
+Three "must not compile" rows in two files went *xpass* the moment the comprehension route landed: the list
+comprehension over a constant list, the set spelling of the same, and a slice-bounds twin. A refusal expectation is a
+claim about the compiler, and a claim that stops being true is not a green test — it is a test that has stopped
+asking anything. `t.Fatalf("%q must not compile")` with an `err == nil` branch is honest about this, but only if
+someone runs it, so the sweep is part of the change: `grep -rn "must not compile\|refus" integration/ pkg/lang/` over
+the construct's own files, and the answered spellings get new rows (the set row is worth its weight — it is the only
+one that asks whether the dedup happened in the object or in the printer).
+
+### Where two orders can differ, do not copy the reference's bytes into an expectation
+
+`{x for x in [1, 2, 3, 2]}` agrees with CPython; `{x for x in [3, 1, 2]}` does not — the runtime set prints insertion
+order, CPython prints hash order, and the two coincide for small ascending ints. The temptation is to write the
+answer I saw from Python and let the suite be red, or worse, to write the answer I saw from gusty and let the
+divergence be invisible. The row took the third road: assert the four shapes whose orders agree, file the fifth
+(**Gap R.300**) with both outputs in the row, and say in the test comment *why* the shape is missing from the table.
+A set is unordered by contract, so a test that pins its order is testing the reference's hash function.

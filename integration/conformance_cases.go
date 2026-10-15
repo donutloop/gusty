@@ -61,6 +61,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
 		"and_or_answer_like_python",
+		// A comprehension over a list the compiler used to keep as a compile-time constant: the binding was being
+		// deleted (its only read sat in a construct the escape walkers did not visit), so the loop had no object to
+		// walk and the build stopped. `xs = [1, 2, 3]` / `[x * 2 for x in xs]` is `[2, 4]` now, on the compiled leg
+		// and the reference's — a paid debt, promoted out of the probe ledger (roadmap Gap R.289, ADR 0356; the
+		// iterable route is Gap R.291, ADR 0357, and the copy-as-iterable half beside it is Gap R.239).
+		"probe_comp_folded_iter",
 		// …and the half of the same operator the print door cannot answer: the operand the test did not choose
 		// is not in the program at all. `x and boom()` with x false does not call boom, `y or (1 // 0)` with y
 		// true does not divide, `if x and boom():` branches without running boom, and the operand the test
@@ -850,7 +856,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		// Pinned by the runtime-comprehension work (ADR 0192): two honest refusals and one
 		// llc rejection that is a compiler bug, all recorded rather than remembered.
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
-		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
+		// `probe_comp_folded_iter` (L11.2 — iterating a list the compiler had folded away) is a paid debt and
+		// lives in conformanceStandalone now: the escape analysis was deleting the iterable while the only read
+		// of it sat in a construct the old walkers did not visit, and a comprehension walks a materialised list
+		// (roadmap Gap R.289, ADR 0356; the copy-as-iterable half of the family is Gap R.239, paid beside it).
 
 		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
 		// dishonest async programs, so what is left is the honest one that still disagrees.
@@ -1190,10 +1199,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "runtime reduction"}}},
-	"programs/probe_comp_folded_iter": {oracle: lang.OracleDebt,
-		reason: "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
-		ref:    "roadmap L11.2 (the tagged value word makes every container a runtime object)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "compile-time constant"}}},
 	"programs/probe_async_eager": {oracle: lang.OracleNA,
 		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",

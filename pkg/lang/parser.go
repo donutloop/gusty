@@ -2139,8 +2139,49 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	return &SetLit{Elems: elems, Src: t.Span}, nil
 }
 
-// buildFString parses the raw inner content of an f-string token into an
-// FString AST node. The raw content keeps escape sequences intact; literal
+// lexFieldSrc lexes the inside of ONE f-string field — a fragment of another line's source, not a line.
+//
+// The lexer is indentation-aware: it measures a line's leading blanks before it looks at a single token.
+// A field spelled `{ x }` therefore opens with the two spaces its author put after the brace, the lexer
+// reads them as the start of a block, and hands the parser an INDENT where the expression's first token
+// belongs: `parse error at 1:2: unexpected token`, for a spelling CPython prints and `f"{x}"` prints. Every
+// field with a leading space was a syntax error, and so was every field that opens with a dict or set
+// literal — `f"{ {'a': 1.5}['a'] }"` — because the only reason anyone writes that field without its padding
+// is that the padded spelling does not parse. The fragment's own padding is dropped here, at the ENDS only:
+// interior whitespace separates tokens and is not indentation, and the columns of every token that survives
+// are kept so a diagnostic still points at the source it was cut from (roadmap Gap R.294, ADR 0356).
+func lexFieldSrc(src string) ([]Token, error) {
+	toks, err := Lex(src)
+	if err != nil {
+		return nil, err
+	}
+	// The EOF terminator is the sub-parser's "the fragment ended"; it is not padding, so it is set aside
+	// while the ends are trimmed and put back afterwards.
+	end := len(toks)
+	var eof Token
+	if end > 0 && toks[end-1].Kind == TokEOF {
+		end--
+		eof = toks[end]
+	}
+	isPadding := func(t Token) bool {
+		return t.Kind == TokIndent || t.Kind == TokDedent || t.Kind == TokNewline
+	}
+	first := 0
+	for first < end && isPadding(toks[first]) {
+		first++
+	}
+	for end > first && isPadding(toks[end-1]) {
+		end--
+	}
+	out := append([]Token{}, toks[first:end]...)
+	if eof.Kind == TokEOF {
+		out = append(out, eof)
+	}
+	return out, nil
+}
+
+// buildFString parses the raw inner content of an f-string token into an FString AST node. The raw content
+// keeps escape sequences intact; literal
 // segments are unescaped (backslash dropped, matching the lexer) and each
 // `{expr}` segment is re-lexed and re-parsed as a full expression. A format
 // spec (`:` suffix) is stripped before parsing the expression.
@@ -2188,7 +2229,7 @@ func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
 			if serr != nil {
 				return nil, &ParseError{Span: sp, Msg: serr.Error()}
 			}
-			toks, err := Lex(exprSrc)
+			toks, err := lexFieldSrc(exprSrc)
 			if err != nil {
 				return nil, err
 			}
