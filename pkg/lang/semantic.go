@@ -199,9 +199,14 @@ func bodyBoundNames(body []Stmt) map[string]bool {
 			}
 		case *MatchStmt:
 			for _, c := range n.Cases {
-				expr(c.Pattern)
-				for _, orp := range c.Or {
-					expr(orp)
+				// A capture is a binding of the frame the match sits in, exactly as an assignment inside
+				// the arm is, so the names a pattern writes have to be in the same census (roadmap Gap R.68,
+				// ADR 0358). Asking the pattern as an expression instead saw a bare `case x` and a name list,
+				// and missed the class pattern, the mapping pattern and anything behind an `|`.
+				for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+					for nm := range matchCaptureNames(p) {
+						out[nm] = true
+					}
 				}
 				for _, s := range c.Body {
 					walk(s)
@@ -926,9 +931,12 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 					// every-path rule can say `possibly unbound` when another arm skips it.
 					an.scope.define(n, TDyn())
 					an.markDefinite(n)
-					if an.inFunc {
-						an.markLocal(n)
-					}
+					// The frame owns the name whether the match sits in a function or in the module's own
+					// statements — ADR 0220's "the module is a frame too" is about writes as much as reads, and
+					// with the `inFunc` test alone a module-level capture was never a local, so isDefinite
+					// answered "certain", no written-flag was attached and the read printed the top-level
+					// alloca's word (roadmap Gap R.68, ADR 0358).
+					an.markLocal(n)
 				}
 			}
 			bound := map[string]bool{}
@@ -1868,35 +1876,19 @@ func unionAllString(t *Type) bool {
 	return true
 }
 
-// matchPatternNames returns the set of pattern-bound names (non-wildcard)
-// introduced by a match pattern expression.
+// matchPatternNames is the checker's view of the capture positions of one pattern. It IS
+// matchCaptureNames — the census written beside the emitter that decides which positions a capture
+// reaches (codegen.go, `bindPat`) — because the checker, the written-flag eligibility rule and the
+// lowering asking one function about which names a pattern writes is the difference between a capture
+// that traps when no arm bound it and a capture that answers whatever word the pattern evaluation left
+// in the slot (roadmap Gap R.68, ADR 0358).
+//
+// It is NOT recursive into sub-patterns, because bindPat is not called for a sub-pattern: the emitter
+// matches a nested sequence or class sub-pattern by value and binds nothing, so calling its inner names
+// captures is what made `case [[a]]:` / `print(a)` a program the checker vouched for and codegen could
+// not build.
 func matchPatternNames(p Expr) map[string]bool {
-	names := map[string]bool{}
-	switch pat := p.(type) {
-	case *Name:
-		if pat.Value != "_" {
-			names[pat.Value] = true
-		}
-	case *ListLit:
-		for _, e := range pat.Elems {
-			for n := range matchPatternNames(e) {
-				names[n] = true
-			}
-		}
-	case *DictLit:
-		for _, v := range pat.Vals {
-			for n := range matchPatternNames(v) {
-				names[n] = true
-			}
-		}
-	case *Call:
-		for _, a := range pat.Args {
-			for n := range matchPatternNames(a) {
-				names[n] = true
-			}
-		}
-	}
-	return names
+	return matchCaptureNames(p)
 }
 
 // ---------------------------------------------------------------------------

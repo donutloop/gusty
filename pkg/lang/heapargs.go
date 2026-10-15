@@ -1051,7 +1051,7 @@ func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, o
 	}
 	switch n := e.(type) {
 	case *Name:
-		payload, tag = g.numericPairRegs(b, n.Value)
+		payload, tag = g.numericPairRegs(b, n.Value, n.Span())
 		return payload, tag, true
 	case *Index:
 		// The one subscript door, the same call `print(xs[i])`, `v = xs[i]` and ADR 0331's literal read
@@ -1736,6 +1736,7 @@ func (g *irGen) elemsTaggable(elems []Expr) bool {
 // compares as the wrong kind (ADR 0232).
 func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok bool) {
 	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
+		g.checkBound(b, nm.Value, nm.Span()) // the pair may not have been written (Gap R.68, ADR 0228)
 		v := g.newTmp()
 		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, nm.Value)
 		t := g.newTmp()
@@ -1979,7 +1980,7 @@ func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag stri
 	// asking it for the payload alone is the mistake Gap R.76 refuses to make, so the read goes through
 	// the two allocas together and the tag that arrives is the object's own, not a guess.
 	if nm, isName := e.(*Name); isName {
-		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+		if p, t, ok := g.taggedLoopVarRead(b, nm.Value, nm.Span()); ok {
 			return p, t, false, nil
 		}
 		// A name the pair road bound — `n = xs[0]` over a container the program built, or an arithmetic
@@ -1987,7 +1988,7 @@ func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag stri
 		// name for a payload alone is the mistake ADR 0185 forbids and Gap R.146 refuses: the word beside
 		// no tag is a number wearing another object's bits (roadmap L11.1).
 		if g.taggedVars[nm.Value] && g.taggedOrigin != nil {
-			p, t := g.numericPairRegs(b, nm.Value)
+			p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 			return p, t, false, nil
 		}
 	}
@@ -2028,10 +2029,17 @@ func (g *irGen) mixedElemTag(b *strings.Builder, e Expr) (payload, tag string, e
 // rule is that one without the other means nothing: an i32 that is 1 could be the integer 1 or the
 // interned index of some text. So the only way to ask for the payload is to ask for both, and the
 // caller gets the tag as the object wrote it rather than as the compiler guessed it.
-func (g *irGen) taggedLoopVarRead(b *strings.Builder, name string) (payload, tag string, ok bool) {
+func (g *irGen) taggedLoopVarRead(b *strings.Builder, name string, sp Span) (payload, tag string, ok bool) {
 	if !g.taggedVars[name] || !g.allocd[name+"_tag"] {
 		return "", "", false
 	}
+	// Every road that reads a tagged name's pair comes through here, so this is the one place the
+	// written-flag can be tested for all of them. It used to be tested only on the ordinary slot read,
+	// which meant a name whose only writer was a `match` capture printed its payload and its tag from
+	// the two allocas on a path where no arm had bound them — `print(got)` answered `0` at exit 0 where
+	// the reference raises NameError, because the print dispatch took the tagged arm and never asked
+	// whether the slot had been written (roadmap Gap R.68, ADR 0358; the flag itself is ADR 0228's).
+	g.checkBound(b, name, sp)
 	p := g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", p, "_"+name)
 	t := g.newTmp()
@@ -2264,6 +2272,7 @@ func (g *irGen) elemTagOperand(b *strings.Builder, e Expr, interned bool) string
 		return strconv.FormatInt(int64(t), 10)
 	}
 	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
+		g.checkBound(b, nm.Value, nm.Span()) // whose pair's tag this is, the flag says (Gap R.68)
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s_tag\n", t, nm.Value)
 		return t
@@ -4512,7 +4521,7 @@ func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
 	}
 	if s.pairName != "" {
 		// A pair-bound name already carries both words; the door reads them from the name's own slots.
-		payload, tag := g.numericPairRegs(b, s.pairName)
+		payload, tag := g.numericPairRegs(b, s.pairName, Span{})
 		s.payload, s.tag = payload, tag
 		return true
 	}
@@ -5523,7 +5532,7 @@ func (g *irGen) pairDoubleInCtx(b *strings.Builder, e Expr) (string, bool, error
 	if !isName {
 		return "", false, nil
 	}
-	payload, tag := g.numericPairRegs(b, nm.Value)
+	payload, tag := g.numericPairRegs(b, nm.Value, nm.Span())
 	return g.taggedDoubleFromPair(b, payload, tag, e.Span(), n, e, other, sentence)
 }
 
@@ -5934,7 +5943,7 @@ func (g *irGen) callAnswersContainer(n *Call) bool {
 // Gap R.146's rendering positions; ADR 0303's one printer, ADR 0265's per-kind door).
 func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok bool, err error) {
 	if nm, isName := e.(*Name); isName && (g.numericPairVar(nm.Value) || (g.taggedVars != nil && g.taggedVars[nm.Value])) {
-		payload, tag = g.numericPairRegs(b, nm.Value)
+		payload, tag = g.numericPairRegs(b, nm.Value, nm.Span())
 		return payload, tag, true, nil
 	}
 	// The answer of a fold the run time decided: `f"{min(n, 3)}"` prints the WINNER, whose kind is the
@@ -6198,7 +6207,11 @@ func (g *irGen) numericPairVar(name string) bool {
 }
 
 // numericPairRegs loads the two words a pair-bound name lives in.
-func (g *irGen) numericPairRegs(b *strings.Builder, name string) (string, string) {
+func (g *irGen) numericPairRegs(b *strings.Builder, name string, sp Span) (string, string) {
+	// The same rule as taggedLoopVarRead: a name that holds a pair is read by its two allocas, and a
+	// slot no path wrote must not answer either of them. CheckBound is a no-op for a name the checker
+	// proved was written, so this costs nothing on the road every program walks (roadmap Gap R.68).
+	g.checkBound(b, name, sp)
 	p, t := g.newTmp(), g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", p, "_"+name)
 	fmt.Fprintf(b, "  %s = load i32, i32* %%%s_tag\n", t, "_"+name)
@@ -6218,7 +6231,7 @@ func (g *irGen) numericPairLift(b *strings.Builder, e Expr) string {
 	if !ok || !g.numericPairVar(nm.Value) {
 		return ""
 	}
-	p, t := g.numericPairRegs(b, nm.Value)
+	p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 	return g.liftPair(b, p, t)
 }
 
@@ -6227,7 +6240,7 @@ func (g *irGen) numericPairLift(b *strings.Builder, e Expr) string {
 // product is what the pair door already knows how to build.
 func (g *irGen) numericExprPair(b *strings.Builder, e Expr) (string, string, bool, error) {
 	if nm, ok := e.(*Name); ok && g.numericPairVar(nm.Value) {
-		p, t := g.numericPairRegs(b, nm.Value)
+		p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 		return p, t, true, nil
 	}
 	if g.arithWouldRefuse(e) {
@@ -6508,6 +6521,7 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 		return "", "", false, nil
 	case *Name:
 		if g.taggedVars[n.Value] {
+			g.checkBound(b, n.Value, n.Span()) // the pair may not have been written (Gap R.68, ADR 0228)
 			v, t := g.newTmp(), g.newTmp()
 			fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, n.Value)
 			fmt.Fprintf(b, "  %s = load i32, i32* %%_%s_tag\n", t, n.Value)

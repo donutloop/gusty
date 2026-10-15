@@ -5233,6 +5233,10 @@ type irGen struct {
 	boundFlags map[string]bool
 	boundSlots map[string]string
 	boundOrder []string
+	// matchBinds holds the captures the pattern being lowered computed a value for, waiting for the
+	// block the branch puts them in. A pattern is evaluated to decide WHICH arm runs, so until the
+	// branch has run nothing here is bound (roadmap Gap R.68, ADR 0358).
+	matchBinds []pendingMatchBind
 	// decoratorNames holds the names used as decorators anywhere in the program (`@add1` -> add1).
 	// While emitting such a function, a nested closure body that cannot be lowered is reported in the
 	// module comment instead of refusing: the decorated call goes through the trampoline, whose own
@@ -12798,7 +12802,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 			// static answer it always had, including the message for a kind the compiler cannot name.
 			dictPair := func(e Expr) (payload, tag string, interned, dynamic bool, err error) {
 				if nm, isName := e.(*Name); isName {
-					if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+					if p, t, ok := g.taggedLoopVarRead(b, nm.Value, nm.Span()); ok {
 						return p, t, false, true, nil
 					}
 					// The loop variable of a text container holds an index into @str_tab, and the tag has
@@ -15113,6 +15117,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 			}
 			if nm, ok := a.(*Name); ok && g.taggedVars[nm.Value] {
+				// print() of a name whose pair the OBJECT decides reads both allocas — and both are
+				// unread unless some path wrote them. The written-flag test sat only on the ordinary
+				// slot load, so a capture no arm bound printed its zero instead of trapping (Gap R.68).
+				g.checkBound(b, nm.Value, nm.Span())
 				vt := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", vt, nm.Value))
 				tg := g.newTmp()
@@ -16446,7 +16454,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// an interned text, or the number, and only the tag says which. `rt_lift_num` answers the double and
 		// raises CPython's own sentence for a kind that has no number in it (roadmap L11.1, Gap R.148).
 		if nm, isName := c.Args[0].(*Name); isName && g.taggedVars[nm.Value] {
-			p, t := g.numericPairRegs(b, nm.Value)
+			p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 			return g.liftPair(b, p, t), nil
 		}
 		if il, ok := c.Args[0].(*IntLit); ok {
@@ -18601,14 +18609,93 @@ func (g *irGen) orCond(b *strings.Builder, a, c string) string {
 	return t
 }
 
+// pendingMatchBind is one capture whose VALUE a pattern computed and whose BINDING the branch has
+// not yet earned. roadmap Gap R.68, ADR 0358.
+type pendingMatchBind struct {
+	name string
+	val  string
+}
+
+// bindPat records a capture: the slot is allocated where the pattern is lowered (so the alloca
+// dominates the arm block the store lands in, and the register holding the value dominates too), and
+// the store itself is deferred to the arm the branch takes.
+//
+// Deferring it is the whole of Gap R.68. `matchPattern` is called to decide WHICH arm runs — every
+// arm's pattern is lowered, in order, before any arm's body — so a store written here runs for the
+// arms that do not match as much as for the one that does. `match v: case Point(x): ... case 5:
+// print(x)` therefore wrote the class check's `rt_inst_get` answer into `%_x` on the way to deciding
+// that the subject is not a Point, marked the slot written while deciding it, and printed whatever
+// word that read left behind where the reference raises NameError at the exit code of a handled trap.
+// It was not a missing check: the flag, the alloca and the read-side test were all in place (ADR
+// 0228) — the flag was simply being set by a pattern evaluation, which is not a binding.
+//
+// What this file does NOT decide is what the captured word MEANS. A slot of a container whose slots
+// carry their own tags denotes a (payload, tag) pair, and the assignment road binds both words where
+// the pattern road binds one — so `case [a]: print(a)` over `["eight"]` prints the `@str_tab` index
+// where `a = xs[0]` prints `eight`. That is a different decision from this one and is filed with its
+// measurement as roadmap Gap R.305; making a capture a pair also lands it in Gap R.146's territory, the
+// positions that keep one word for an operand, which is why the two are not bundled.
 func (g *irGen) bindPat(b *strings.Builder, name, val string) {
 	if !g.allocd[name] {
+		b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
 		g.allocd[name] = true
-		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", name))
 	}
-	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, name))
-	// A capture binds, and bindPat is the only writer of that slot: the flag follows (ADR 0228).
-	g.markBound(b, name)
+	g.matchBinds = append(g.matchBinds, pendingMatchBind{name: name, val: val})
+}
+
+// emitArmCaptures writes the captures of the arm the branch just entered, and marks each one bound.
+// It is called exactly once per arm, in the block the `br i1 <pattern>` on-line branches to, before
+// the guard is lowered — the guard reads the captures, so this is the first position where they must
+// answer (roadmap Gap R.68, ADR 0358).
+//
+// The store lands HERE and not while the pattern was being lowered, for the same reason the flag does:
+// a pattern that does not fit the subject is a match that failed, not an error. What the reference does
+// with a capture whose pattern DID match and whose guard then failed is keep the binding — measured —
+// and that is why the store sits in front of the guard rather than after it.
+func (g *irGen) emitArmCaptures(b *strings.Builder) {
+	binds := g.matchBinds
+	g.matchBinds = nil
+	for _, pb := range binds {
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", pb.val, "_"+pb.name))
+		g.markBound(b, pb.name)
+	}
+}
+
+// matchCaptureNames is the ONE census of the positions this lowering hands to bindPat — the capture
+// positions of one pattern. Three roads need the same answer and used to keep three: the checker,
+// which decides which names are locals of the frame and definite on which path (semantic.go's
+// matchPatternNames is this function), the eligibility rule that decides which names may carry a
+// written-flag (boundflags.go), and matchPattern itself. A name one of them lists and another does not
+// is either a silent zero (flag never set) or a spurious trap (flag set by a writer nobody hooked),
+// so the census is written beside the emitter it describes and read by all three.
+//
+// It mirrors matchPattern arm for arm, including the two places the emitter treats `_` as a wildcard
+// rather than a name.
+func matchCaptureNames(p Expr) map[string]bool {
+	out := map[string]bool{}
+	capture := func(e Expr) {
+		if nm, ok := e.(*Name); ok && nm.Value != "_" {
+			out[nm.Value] = true
+		}
+	}
+	switch pat := p.(type) {
+	case nil:
+	case *Name:
+		capture(pat)
+	case *ListLit: // a sequence pattern: each name element captures its position
+		for _, e := range pat.Elems {
+			capture(e)
+		}
+	case *DictLit: // a mapping pattern: each name value captures the entry
+		for _, v := range pat.Vals {
+			capture(v)
+		}
+	case *Call: // a class pattern: each name argument captures the attribute of that name
+		for _, a := range pat.Args {
+			capture(a)
+		}
+	}
+	return out
 }
 
 func (g *irGen) hasBase(bases []string, class string) bool {
@@ -18647,6 +18734,29 @@ func (g *irGen) classChainCond(b *strings.Builder, cid, class string) string {
 	return cond
 }
 
+// heapKindInCond answers "is the subject one of these heap kinds?" with an i1. A pattern that reads a
+// container through @heap has to ask this before it asks anything of the container: the length word, the
+// pair table and the element array are the same few words at different offsets, so a kind the pattern was
+// not written for answers with a plausible number rather than a refusal (roadmap Gap R.306, ADR 0358).
+func (g *irGen) heapKindInCond(b *strings.Builder, sub string, kinds []int32) string {
+	kind := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
+	var cond string
+	for _, kd := range kinds {
+		c := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", c, kind, kd))
+		if cond == "" {
+			cond = c
+		} else {
+			cond = g.orCond(b, cond, c)
+		}
+	}
+	if cond == "" {
+		return "false"
+	}
+	return cond
+}
+
 // matchPattern answers "does this pattern match the subject?" with an i1 value, and binds the
 // capture names it matched. The answer is a truth value in LLVM's own vocabulary: `true`/`false`
 // fold in andCond/orCond instead of reaching `br i1` as an integer (ADR 0235).
@@ -18664,11 +18774,18 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) (string, 
 		return "true", nil
 	case *ListLit:
 		n := len(p.Elems)
+		// A sequence pattern is a KIND test before it is a length test. @heap keeps a dict's entry
+		// count in the same word a list keeps its element count, so `case [a]` over a one-entry dict
+		// read `rt_list_len`'s answer as "one element", took the arm, and captured whatever word slot
+		// 0 happened to hold — where the reference fails the arm (`match {"k": 1}: case [a]: …` prints
+		// the wildcard arm's branch). The length was never the question; `is this a sequence` was.
+		// (roadmap Gap R.306; the reference accepts list and set, not dict, str or int.)
+		cond := g.heapKindInCond(b, sub, []int32{HeapKindList, HeapKindSet})
 		ln := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, sub))
 		lc := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", lc, ln, n))
-		cond := lc
+		cond = g.andCond(b, cond, lc)
 		for i, e := range p.Elems {
 			er := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %d)\n", er, sub, i))
@@ -18686,7 +18803,10 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) (string, 
 		}
 		return cond, nil
 	case *DictLit:
-		cond := "true"
+		// The mapping pattern's twin: `case {"k": v}` must first establish the subject HAS entries,
+		// because `rt_dict_has` over a list reads the key/value array as a pair table and a miss
+		// becomes a word, not a refusal (roadmap Gap R.306, ADR 0358).
+		cond := g.heapKindInCond(b, sub, []int32{HeapKindDict})
 		for i, k := range p.Keys {
 			kv, err := g.value(b, k)
 			if err != nil {
@@ -19826,21 +19946,49 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if i < len(n.Cases)-1 {
 				fallL = g.newLabel("match.next")
 			}
+			// The captures of the arm that runs are written in the block the branch enters, and only by
+			// that arm: deciding which arm matches is not binding anything (Gap R.68, ADR 0358).
+			savedBinds := g.matchBinds
+			g.matchBinds = nil
 			patterns := append([]Expr{c.Pattern}, c.Or...)
-			var orTmp string
-			for _, p := range patterns {
-				pc, perr := g.matchPattern(b, sub, p)
+			if len(patterns) == 1 {
+				pc, perr := g.matchPattern(b, sub, patterns[0])
 				if perr != nil {
 					return perr
 				}
-				if orTmp == "" {
-					orTmp = pc
-				} else {
-					orTmp = g.orCond(b, orTmp, pc)
+				b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", pc, bodyL, fallL))
+				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+				// The arm is the one that matched: this is where its captures bind.
+				g.emitArmCaptures(b)
+			} else {
+				// An arm written `case p0 | p1 | …` is decided one alternative at a time, and each
+				// alternative enters the arm's body carrying ITS captures. Folding the alternatives into one
+				// `or i1` and writing every alternative's captures made a name bound by the alternative that
+				// did not match answer the value the other one computed — `case [a] | {"k": a}:` over [3]
+				// printed the interred `k`, because the mapping pattern's `rt_dict_get` ran last and won.
+				// One arm block cannot hold that, since the stores differ per alternative.
+				for k, p := range patterns {
+					altFalse := g.newLabel("match.alt")
+					last := k == len(patterns)-1
+					if last {
+						altFalse = fallL
+					}
+					pc, perr := g.matchPattern(b, sub, p)
+					if perr != nil {
+						return perr
+					}
+					enterL := g.newLabel("match.alt.enter")
+					b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", pc, enterL, altFalse))
+					b.WriteString(fmt.Sprintf("%s:\n", enterL))
+					g.emitArmCaptures(b) // this alternative's captures, and no other's
+					b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
+					if !last {
+						b.WriteString(fmt.Sprintf("%s:\n", altFalse))
+					}
 				}
+				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 			}
-			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", orTmp, bodyL, fallL))
-			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+			g.matchBinds = savedBinds
 			if c.Guard != nil {
 				gok, gerr := g.truthyValue(b, c.Guard)
 				if gerr != nil {

@@ -239,10 +239,18 @@ func boundEligible(body []Stmt) (ok, bad map[string]bool) {
 			}
 		case *MatchStmt:
 			for _, c := range n.Cases {
-				// A capture binds through bindPat, which sets the flag.
-				note(c.Pattern)
-				for _, orp := range c.Or {
-					note(orp)
+				// A capture binds through bindPat, which sets the flag — and the census of what bindPat is
+				// handed is matchCaptureNames, the same one the checker asks and the emitter follows. Asking
+				// the pattern for its names the way an assignment target is asked saw a bare `case x` and a
+				// name list, missed the class pattern and the mapping pattern, and left those captures with no
+				// flag at all: the read answered the slot instead of trapping (roadmap Gap R.68, ADR 0358).
+				for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+					for nm := range matchCaptureNames(p) {
+						if bad[nm] {
+							continue
+						}
+						ok[nm] = true
+					}
 				}
 				for _, s := range c.Body {
 					walk(s)

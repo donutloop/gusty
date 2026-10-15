@@ -1,0 +1,84 @@
+# A `match` capture is a BINDING, and a binding happens where the arm that made it runs — nowhere
+# else (roadmap Gap R.68, ADR 0358).
+#
+# Every pair of arms below has a capture that the arm which did NOT run would have computed. The
+# compiled backend used to print the capture's slot — `0`, `16`, a stale heap handle — and exit 0,
+# because the store was emitted while the pattern was being lowered to DECIDE which arm runs, so the
+# arm that lost performed it anyway. The written-flag machinery was in place; the flag was simply
+# being set by a pattern evaluation, which is not a binding.
+#
+# What the reference does, and what both legs of this program must keep doing: raise NameError in the
+# module's own statements, raise UnboundLocalError inside a function, let `except` catch either by
+# class, and — the half a placement fix could easily break — still answer for a capture the arm that
+# matched really did bind. A sequence pattern is also a KIND test here: `case [a]` over a dict is a
+# match that failed, not a one-element list (Gap R.306) — which is why the dict below answers the
+# wildcard arm and prints `caught`, not a word read out of the dict's element array.
+#
+# A class pattern is not in this program: `case Point(x):` needs `__match_args__`, which the reference
+# demands and this backend does not ask for (roadmap Gap R.304), so the shape cannot be shared.
+
+
+def only_a_list(v):
+    match v:
+        case [a]:
+            pass
+        case 5:
+            pass
+    return a
+
+
+def entry_never_taken(v):
+    match v:
+        case {"k": got}:
+            pass
+        case 5:
+            pass
+    try:
+        return got
+    except UnboundLocalError:
+        return -1
+
+
+def arm_that_matched(v):
+    match v:
+        case [a, b]:
+            return a + b
+        case 5:
+            return 0
+
+
+def either_alternative(v):
+    match v:
+        case [a] | {"k": a}:
+            return a
+        case _:
+            return -1
+
+
+d = {"k": 1}
+match d:
+    case [a]:
+        print("dict read as a list", a)
+    case _:
+        pass
+
+try:
+    print(a)
+except NameError:
+    print("caught")
+
+xs = [4]
+match xs:
+    case [y]:
+        pass
+    case _:
+        pass
+
+print(y)
+print(arm_that_matched([10, 20]))
+print(arm_that_matched(5))
+print(entry_never_taken(5))
+print(only_a_list([7]))
+print(either_alternative([3]))
+print(either_alternative({"k": 8}))
+print(only_a_list(5))

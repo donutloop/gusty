@@ -51,10 +51,10 @@ func (f ValueForm) QuotesText() bool { return f == FormRepr }
 func (g *irGen) pairForEcho(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
 	if nm, isName := e.(*Name); isName {
 		if g.numericPairVar(nm.Value) {
-			p, t := g.numericPairRegs(b, nm.Value)
+			p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 			return p, t, true
 		}
-		if p, t, okTag := g.taggedLoopVarRead(b, nm.Value); okTag {
+		if p, t, okTag := g.taggedLoopVarRead(b, nm.Value, nm.Span()); okTag {
 			return p, t, true
 		}
 	}
@@ -85,7 +85,7 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 	// `print(n)` cannot disagree about `14` versus `14.0` the way the two number formatters used to
 	// disagree about a container (ADR 0258's rule, one statement later; roadmap L11.1, Gap R.143).
 	if nm, isName := e.(*Name); isName && g.numericPairVar(nm.Value) {
-		p, t := g.numericPairRegs(b, nm.Value)
+		p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
 	}
 
@@ -96,7 +96,7 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 	// three ask the same door (ADR 0258, extended to the slot-bound name this road used to refuse;
 	// roadmap L11.1, Gap R.171).
 	if nm, isName := e.(*Name); isName {
-		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+		if p, t, ok := g.taggedLoopVarRead(b, nm.Value, nm.Span()); ok {
 			return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
 		}
 	}

@@ -134,8 +134,9 @@ in `pkg/lang/codegen.go`.
 `match` supports list-destructuring patterns: `case [a, b]:` matches a list
 subject element-wise, binding Name pattern elems to the subject's elements
 (e.g. `match x: case [a, b]: a + b` unpacks to 30 for `x = [10, 20]`). A
-non-Name element is compared element-wise; mismatched arity/kind falls through
-to later cases. See ADR 0091.
+non-Name element is compared element-wise; mismatched arity or kind falls through
+to later cases — the subject has to *be* a sequence for a sequence pattern to
+apply (ADR 0358). See ADR 0091.
 
 A bare-name pattern (`case y:`) is *irrefutable*: it always matches and binds
 the subject. `case _:` is a wildcard: it always matches and binds nothing.
@@ -146,16 +147,47 @@ refutable (literal) cases is non-exhaustive: `gusty check` emits a mypy-style
 warning, so you know to add a `case _:` fallback. Warnings don't fail the
 check (only errors do).
 
-**Definite assignment (ADR 0154).** A name bound by an irrefutable case that
-fires on *every* path is definitely assigned and readable after the match.
-A name bound on only *some* paths (an earlier refutable case can skip it) is
-not definitely assigned, and reading it after the match is an `undefined
-name` error.
+**Definite assignment (ADR 0154, ADR 0228, ADR 0358).** A name bound by an irrefutable case that
+fires on *every* path is definitely assigned and readable after the match. A name bound on only
+*some* paths is not, and reading it where no arm bound it is a **run-time trap**, not a compile-time
+error and not a value: `NameError: name 'y' is not defined` in the module's own statements,
+`UnboundLocalError: cannot access local variable 'y' where it is not associated with a value` inside
+a function, each catchable by its own class (`ADR 0212`'s rule for a built-in trap, and the
+reference's own split of the two events — which frame owns the name decides the class).
 
-**AOT lowering.** Guards, or-patterns, and the `_` wildcard lower to native
-code (`codegen.go`); dict-pattern and class-pattern matching does not — the retired engine answered them,
-the compiler refuses by naming the missing lowering, and the shapes are tracked with `L11.1`'s tagged
-value word, which is what a pattern that asks a value what it is needs.
+**A capture is a binding, so it happens where the arm that made it runs (ADR 0358).** `matchPattern`
+is called to decide *which* arm runs — every arm's pattern is lowered, in order, before any arm's
+body — so the store that binds a capture lives in the block the branch enters, not where the pattern
+was lowered. `v = 5` / `case [y]: pass` / `case 5: pass` / `print(y)` therefore raises; until ADR
+0358 it printed `0` and exited 0, because the arm that lost had stored the capture on its way past.
+Two placements the reference decides rather than the implementation:
+
+* a pattern that **matched** whose `if` guard then failed **keeps** its binding — `match 5:` /
+  `case z if False: pass` / `case _: pass` / `print(z)` prints `5` — so the binding lands in front
+  of the guard, and a guard may read the capture its own pattern bound (`case z if z == 5`);
+* an arm written `case p0 | p1 | …` is decided one alternative at a time, and the alternative that
+  matched binds the captures — `case [a] | {"k": a}:` over `[3]` binds `3` and over `{"k": 8}` binds
+  `8`. One arm block cannot hold both stores, which is why each alternative ends in its own entry
+  block.
+
+**A pattern asks what the object *is* before it asks the object anything (ADR 0358).** A sequence
+pattern requires a list or a set, and a mapping pattern requires a dict. `d = {"k": 1}` /
+`case [a]:` is a match that **failed** — the reference falls through to the next arm — and not a
+one-element list whose element is the dict's first slot.
+
+**What the pattern road does not answer.** A nested sub-pattern binds nothing (`case [[a]]:` is
+refused — `Gap R.301`), a parenthesised tuple pattern is not a pattern at all (`case (a,):` —
+`Gap R.302`, blocked on L11.3), a class pattern's keyword attribute does not parse
+(`case Point(x=1):` — `Gap R.303`), and a positional class-pattern argument names an attribute
+instead of asking the class for its `__match_args__` (`Gap R.304`). A capture of a container slot
+whose slot carries its own tag binds the payload word and not the `(payload, tag)` pair, so a captured
+text prints as a number (`Gap R.305`). Each of these is refused in words or pinned with today's
+answer beside the reference's — none of them answers silently.
+
+**AOT lowering.** Guards, or-patterns, the `_` wildcard, list-destructuring patterns, dict patterns
+and class patterns (subclass walk, per-capture presence test, aliases resolved by the front end) all
+lower to native code (`codegen.go`, ADR 0235). What a pattern still cannot ask a value is a question
+about L11.1's tagged value word, which is the shape the four refused forms above are waiting for.
 
 ## Standard library
 

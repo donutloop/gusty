@@ -40,13 +40,5 @@
     "compiled": "stdout \"0\\n\"",
     "roadmap": "roadmap Gap R.97",
     "why": "an ordering between two values whose kinds are run-time facts"
-  },
-  {
-    "source": "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n",
-    "python": "raises NameError: name 'y' is not defined",
-    "compiled": "stdout \"16\\n\"",
-    "roadmap": "roadmap Gap K.x (a match value pattern must evaluate its name in the enclosing scope)",
-    "why": "the compiled matcher binds the pattern name instead of evaluating it, and the slot it reads back is uninitialised — the number printed is heap garbage and differs run to run, so the row pins the shape (it answers at all) and not the digits",
-    "unstable": true
   }
 ]

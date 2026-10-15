@@ -1,5 +1,274 @@
 {
  "entries": {
+"def go(v):\n    match v:\n        case 1:\n            print(\"one\")\n        case [a]:\n            print(\"seq\", a)\n    print(\"after\", a)\n    return 0\ngo(5)\n": {
+    "err": "UnboundLocalError: cannot access local variable 'a' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'a' where it is not associated with a value"
+   },
+"class Point:\n    def __init__(self, x):\n        self.x = x\n\nmatch 5:\n    case Point(x):\n        pass\n    case 5:\n        pass\nprint(x)\n": {
+    "err": "NameError: name 'x' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'x' is not defined"
+   },
+
+"d = {\"k\": 1}\nmatch d:\n    case [a]:\n        print(\"list\", a)\n    case _:\n        print(\"no\")\n": {
+    "stdout": "no\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    match v:\n        case [a] | {\"k\": a}:\n            print(a)\n            return 0\n    return 0\n\nf([3])\nf({\"k\": 8})\nf(5)\n": {
+    "stdout": "3\n8\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    match v:\n        case {\"k\": a} | [a]:\n            print(a)\n            return 0\n    return 0\n\nf({\"k\": 8})\nf([3])\n": {
+    "stdout": "8\n3\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case [a]:\n            pass\n        case 5:\n            pass\n    return a\n\nprint(go(5))\n": {
+    "err": "UnboundLocalError: cannot access local variable 'a' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'a' where it is not associated with a value"
+   },
+"class Point:\n    def __init__(self, x):\n        self.x = x\n\ndef go(v):\n    match v:\n        case Point(x):\n            pass\n        case 5:\n            pass\n    return x\n\nprint(go(5))\n": {
+    "err": "UnboundLocalError: cannot access local variable 'x' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'x' where it is not associated with a value"
+   },
+
+"class Point:\n    def __init__(self, x):\n        self.x = x\n\nx = 5\nmatch x:\n    case Point(x):\n        pass\n    case 5:\n        pass\nprint(x)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+"d = {\"k\": 7}\nmatch d:\n    case {\"k\": got}:\n        print(got)\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def go():\n    x = 5\n    match x:\n        case [x]:\n            pass\n        case 5:\n            pass\n    return x\n\nprint(go())\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case {\"k\": got}:\n            pass\n        case 5:\n            pass\n    return got\n\nprint(go(5))\n": {
+    "err": "UnboundLocalError: cannot access local variable 'got' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'got' where it is not associated with a value"
+   },
+
+"match 5:\n    case 1 | 2:\n        print(\"small\")\n    case y:\n        print(y)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"match 5:\n    case [y]:\n        pass\n    case _:\n        pass\ntry:\n    print(y)\nexcept NameError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"match 5:\n    case y:\n        print(y)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"match 5:\n    case z if False:\n        pass\n    case _:\n        pass\nprint(z)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"match 5:\n    case z if z == 5:\n        print(z)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"match 9:\n    case 1 | 2:\n        print(\"small\")\n    case y:\n        print(y)\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"v = 5\nmatch v:\n    case [y]:\n        pass\n    case 5:\n        pass\nprint(y)\n": {
+    "err": "NameError: name 'y' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'y' is not defined"
+   },
+
+"v = {}\nmatch v:\n    case {\"k\": got}:\n        pass\n    case _:\n        pass\nprint(got)\n": {
+    "err": "NameError: name 'got' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'got' is not defined"
+   },
+
+"x = 5\nmatch x:\n    case _:\n        print(\"wild\")\n": {
+    "stdout": "wild\n",
+    "hasStdout": true
+   },
+
+"x = 99\nxs = [4]\nmatch xs:\n    case [x]:\n        print(x)\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"xs = [10, 20]\nmatch xs:\n    case [a, b]:\n        print(a + b)\n": {
+    "stdout": "30\n",
+    "hasStdout": true
+   },
+
+"xs = [4]\nmatch xs:\n    case [y]:\n        pass\nprint(y)\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"xs = [4]\nmatch xs:\n    case [y]:\n        print(y + 1)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"xs = [4]\nmatch xs:\n    case [y]:\n        print(y)\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+"def go(v):\n    match v:\n        case 1:\n            print(\"one\")\n        case [a]:\n            print(\"seq\", a)\n    print(\"after\", a)\n    return 0\ngo(1)\n": {
+    "err": "UnboundLocalError: cannot access local variable 'a' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'a' where it is not associated with a value"
+   },
+
+"def go(v):\n    match v:\n        case 5:\n            print(\"five\")\n        case [a]:\n            print(\"seq\", a)\n    print(\"tail\")\n    return 0\ngo(5)\n": {
+    "stdout": "five\ntail\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case [a]:\n            pass\n    print(a)\n    return 0\ngo(5)\n": {
+    "err": "UnboundLocalError: cannot access local variable 'a' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'a' where it is not associated with a value"
+   },
+
+"def go(v):\n    match v:\n        case [a]:\n            pass\n    print(a)\n    return 0\ngo([4])\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case [a]:\n            pass\n    try:\n        print(a)\n    except UnboundLocalError:\n        print(\"caught\")\n    return 0\ngo(5)\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case [a]:\n            print(\"first\", a)\n        case 5:\n            a = 3\n            print(\"second\", a)\n    return 0\ngo(5)\n": {
+    "stdout": "second 3\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case x if x \u003e 3:\n            print(\"big\", x)\n        case x:\n            print(\"small\", x)\n    return 0\ngo(7)\ngo(1)\n": {
+    "stdout": "big 7\nsmall 1\n",
+    "hasStdout": true
+   },
+
+"def go(v):\n    match v:\n        case {\"k\": got}:\n            pass\n    print(got)\n    return 0\ngo(5)\n": {
+    "err": "UnboundLocalError: cannot access local variable 'got' where it is not associated with a value",
+    "exnType": "UnboundLocalError",
+    "exnMsg": "cannot access local variable 'got' where it is not associated with a value"
+   },
+
+"def go(x, v):\n    match v:\n        case [x]:\n            pass\n    print(x)\n    return 0\ngo(9, 5)\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"def go(x, v):\n    match v:\n        case [x]:\n            pass\n    print(x)\n    return 0\ngo(9, [4])\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def go(xs):\n    for v in xs:\n        match v:\n            case 1:\n                w = 10\n        print(\"w\", w)\n    return 0\ngo([1, 1])\n": {
+    "stdout": "w 10\nw 10\n",
+    "hasStdout": true
+   },
+
+"def show(n):\n    return n + 1\ndef go(v):\n    match v:\n        case [a]:\n            print(show(a))\n    return 0\ngo([7])\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"v = 5\nmatch v:\n    case [a]:\n        pass\nprint(a)\n": {
+    "err": "NameError: name 'a' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'a' is not defined"
+   },
+
+"v = 5\nmatch v:\n    case [a]:\n        pass\ntry:\n    print(a)\nexcept NameError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"v = 5\nmatch v:\n    case x:\n        pass\nprint(x)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"v = 5\nmatch v:\n    case x:\n        print(\"cap\", x)\n": {
+    "stdout": "cap 5\n",
+    "hasStdout": true
+   },
+
+"v = 5\nmatch v:\n    case {\"k\": got}:\n        pass\nprint(got)\n": {
+    "err": "NameError: name 'got' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'got' is not defined"
+   },
+
+"v = [1, 2]\nmatch v:\n    case [a, b]:\n        pass\nprint(a, b)\n": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"v = [1, 2]\nmatch v:\n    case [a, b]:\n        print(\"seq\", a, b)\n": {
+    "stdout": "seq 1 2\n",
+    "hasStdout": true
+   },
+
+"v = [1, 2]\nmatch v:\n    case [a, b]:\n        print(a + b)\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"v = [7]\nmatch v:\n    case [a] if False:\n        print(\"never\", a)\nprint(\"after\", a)\n": {
+    "stdout": "after 7\n",
+    "hasStdout": true
+   },
+
+"v = [7]\nmatch v:\n    case [a]:\n        match a:\n            case 7:\n                print(\"inner\", a)\n": {
+    "stdout": "inner 7\n",
+    "hasStdout": true
+   },
+
+"v = [7]\nmatch v:\n    case [a]:\n        print(\"arm\", a)\n    case [b]:\n        print(\"second\", b)\nprint(\"after\", a, b)\n": {
+    "err": "NameError: name 'b' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'b' is not defined"
+   },
+
+"v = [7]\nmatch v:\n    case [a]:\n        print([a, 1])\n": {
+    "stdout": "[7, 1]\n",
+    "hasStdout": true
+   },
+
+"v = {\"k\": 9}\nmatch v:\n    case {\"k\": got}:\n        pass\nprint(got)\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"v = {\"k\": 9}\nmatch v:\n    case {\"k\": got}:\n        print(\"map\", got)\n": {
+    "stdout": "map 9\n",
+    "hasStdout": true
+   },
+
+"z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n": {
+    "err": "NameError: name 'y' is not defined",
+    "exnType": "NameError",
+    "exnMsg": "name 'y' is not defined"
+   },
 "# A comprehension over a list the compiler keeps as a compile-time constant has no slot to load, so the\n# walk materialises the list first — which is what `for` over the same list has always done. The answer\n# used to be a refusal (and, before that, a build that stopped): the escape analysis was deleting the\n# binding while its only read sat in a construct the old walkers did not visit (roadmap Gap R.289,\n# ADR 0356), and the route that walks a computed container is ADR 0357's. Both legs print [2, 4, 6].\nxs = [1, 2, 3]\nprint([x * 2 for x in xs])\n": {
     "stdout": "[2, 4, 6]\n",
     "hasStdout": true

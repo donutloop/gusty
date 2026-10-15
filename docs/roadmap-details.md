@@ -13161,3 +13161,269 @@ cheap half and an honest half: order the printed elements for the kinds whose ha
 leave everything else alone — which is the same "label it from the object, not from a static guess" move
 ADR 0232 and L12.8 keep making. What the row forbids in the meantime is the quiet version of the fix: changing a
 test's expectation to the bytes the compiler produces.
+
+---
+
+### Gap R.68 — closed by ADR 0358: a capture binds in the arm the branch entered, and deciding which arm runs binds nothing
+
+Six programs, measured against the binary at HEAD before anything was touched. Every one of them is the same
+event — a name no arm bound, read — and every one of them left the compiled backend at **exit 0** having printed
+something:
+
+```gusty
+v = 5
+match v:
+    case [y]:
+        pass
+    case 5:
+        pass
+print(y)                # gy: 0  at exit 0        py: NameError: name 'y' is not defined
+
+v = {}
+match v:
+    case {"k": got}:
+        pass
+    case _:
+        pass
+print(got)              # gy: 0  at exit 0        py: NameError: name 'got' is not defined
+
+d = {"k": 1}
+match d:
+    case [a]:
+        print("list", a)
+    case _:
+        print("no")     # gy: list 0              py: no
+
+def f(v):
+    match v:
+        case [a] | {"k": a}:
+            print(a)
+            return 0
+    return 0
+f([3])                  # gy: 0                   py: 3
+f({"k": 8})             # gy: 8                   py: 8
+```
+
+The row said the fix was "that graph, not a new analysis" — put the arm bindings into the definite-assignment
+graph `UnwrittenReads` already asks of a function body. ADR 0228 had already built that graph, and it answered this
+program correctly the whole time: `y` is *possibly unbound*, so the emitter attached a written-flag to `%_y`, the
+entry block cleared it, and the read of `%_y` tested it and raised. All of that is verbatim true of the binary that
+printed `0`.
+
+What was also true is that the flag was already set before the read. `bindPat` emitted
+`store i32 %t3, i32* %_y` and `markBound` while the pattern was being lowered, and `matchPattern` is called to
+answer **which arm runs** — every arm's pattern, in order, before any arm's body. A store placed there is executed
+by the arms that lose as much as by the one that wins, and so is the `store i8 1` that makes the slot look written.
+The check was sound; the thing setting the bit was not a binding.
+
+That distinction is the whole of the row, and it is why the fix is a placement rather than a check:
+
+```
+  %t3 = call i32 @rt_get_elem(i32 %_xs, i32 0)      ; pattern evaluation — runs either way
+  store i32 %t3, i32* %_y                           ; ← was here: the arm that lost performed it
+  store i8 1, i8* %bnd_y                            ; ← and this, which is why the read answered the slot
+  br i1 %t2, label %match.case, label %match.next
+match.case:
+  …
+```
+
+moved to
+
+```
+  br i1 %t2, label %match.case, label %match.next
+match.case:
+  store i32 %t3, i32* %_y                           ; the arm the branch entered, and only it
+  store i8 1, i8* %bnd_y
+  …
+```
+
+with `bindPat` keeping the `alloca` where the pattern is lowered — so the slot and the register holding the value
+both dominate the block the store lands in — and deferring only the store, through `g.matchBinds` /
+`emitArmCaptures`.
+
+**Three causes, not one.** The store was the loud one; two more had to go with it or each would have kept a silent
+zero standing on its own:
+
+* **Three roads kept three lists of what a capture is.** The checker's `matchPatternNames`, the eligibility rule
+  `boundEligible` and the emitter `matchPattern` each decided which positions of a pattern are captures, and they
+  disagreed: the checker's census had no arm for a class pattern or a mapping pattern. A name one of the three
+  lists and another does not is either a silent zero — the flag was never attached — or a spurious trap — the flag
+  exists and no writer ever sets it. `matchCaptureNames` is now that one answer, written beside the emitter it
+  describes and read by all three, and
+  `TestMatchCaptureNamesIsTheOneCensus` fails if the checker's census and the emitter's ever come to disagree.
+  It is deliberately *not* recursive into sub-patterns, because `matchPattern` never binds a nested sub-pattern's
+  names — listing them would have had the checker vouch for a program codegen cannot build, which is Gap R.301's
+  pinned refusal rather than an answer.
+* **A module-level capture was not a local of anything.** `semantic.go` called `markLocal` for a capture only when
+  `inFunc` was set. Inside a function, everything above worked; at module level the checker answered "certain",
+  `boundEligible` handed the name no flag, and the read printed the top-level alloca. That is why three of the six
+  programs at the top are module-level and print `0`, and the fourth — the same shape inside a `def` — already had
+  the machinery to trap and still did not, because of the store.
+* **Every road that reads a name has to test the flag, not just the roads ADR 0228 visited.** A capture is an
+  ordinary local afterwards, and a local that became tagged- or pair-bound is read through `taggedLoopVarRead`,
+  `numericPairRegs` and the direct tagged-name loads. Each now calls `checkBound`. A flag some reader forgot is a
+  silent zero wearing ADR 0228's costume, which is a worse failure than the one it replaces.
+
+**Two placements the reference decides, not the implementation.** Measured rather than reasoned:
+
+* a pattern that **matched** whose `if` guard then failed **keeps** its binding — `match 5:` / `case z if False:` /
+  `case _:` / `print(z)` prints `5`, and the record agrees — so the store goes *in front of* the guard, which is
+  also where a guard that reads its own capture (`case z if z == 5`) needs it;
+* an arm written `case p0 | p1 | …` is decided one alternative at a time, and each alternative carries its own
+  captures into the shared body through its own entry block. Folding the alternatives into one `or i1` and writing
+  every alternative's captures is what made `case [a] | {"k": a}:` over `[3]` print `0`: the mapping alternative's
+  `rt_dict_get` ran last and won the slot, and which store "won" was the position they were written in rather than
+  which alternative matched.
+
+**And one thing the fix would have broken.** With one block per alternative, `case [a]` matching a *dict* stopped
+being overwritten by the later store and started *deciding* the answer — which is how the fifth program above became
+visible. @heap keeps a dict's entry count in the same word a list keeps its element count, so `rt_list_len` of a
+one-entry dict is 1, the arm was taken, and the capture came out of the element array. A pattern that reads a
+container has to ask what the object **is** before it asks the object anything: `heapKindInCond` puts
+`rt_heap_kind ∈ {list, set}` in front of a sequence pattern and `rt_heap_kind == dict` in front of a mapping one.
+That is not a second feature bolted onto this one — *which arm runs* is the question this row is about, and a
+pattern that matched what it was never written for answers that question wrongly (Gap R.306, paid beside this row).
+
+**What was left, and why it is not in this commit.** A capture binds one word; the assignment road binds a
+`(payload, tag)` pair. `xs = ["eight"]` / `case [a]: print(a)` prints `0` where `a = xs[0]` in the same program
+prints `eight`. That fix was written, measured correct on the print, and **reverted**: binding the pair through
+`bindPat` moves a capture onto the pair road, which lands it in Gap R.146's territory — the positions that keep one
+word for an operand — in arithmetic and call positions, so the capture would print right and compute wrong. Two
+decisions are not one commit, and the row that owns the second is Gap R.305, pinned with today's answer beside the
+reference's so nobody can claim it by editing a test.
+
+`integration/programs/match_binding_edges.gy` is the whole-program witness: both legs print `caught / 4 / 30 / 0 /
+-1 / 7 / 3 / 8` and then raise `UnboundLocalError` from the same line — the module-level `NameError` caught by class
+on the way there, the sequence, mapping and or-pattern captures bound by the arm that matched, and the dict that is
+not a list. `integration/scoping_test.go` lost the pinned-garbage test Gap R.36's own comment told it to delete when
+the compiled leg started trapping, and the `cpython-debt.json` row that said the compiled side prints `16` is gone
+rather than re-measured — which is a paid debt behaving as the ledger says it must.
+
+<a id="gap-r-306"></a>
+
+### Gap R.306 — a pattern asks the object's kind before it asks the object anything (closed by ADR 0358)
+
+The row that the or-pattern half of ADR 0358 exposed. Under the old single-block arm the wrong match was
+harmless-to-invisible: both alternatives' stores sat in one block and the last one written won, so the alternative
+that matched was answered correctly by accident. Give each alternative its own entry block — which is what "binds
+only the captures of the alternative that matched" requires — and the alternative that matched *wrongly* is the one
+that answers.
+
+```gusty
+d = {"k": 1}
+match d:
+    case [a]:
+        print("list", a)      # gy (HEAD): list 0     py: (this arm does not match)
+    case _:
+        print("no")
+```
+
+`rt_list_len` reads the length word, and a dict's entry count lives in it too. The element array then yields a
+word — `0`, here, because the pair table is at a different offset than the elements — and the program reports a
+value for a name in an arm the reference never entered, at exit 0.
+
+The reference accepts **list and set** for a sequence pattern and **dict** alone for a mapping one (measured, not
+read out of the PEP: `match {"k": 1}: case [a]: …` takes the wildcard arm in CPython 3.12). `heapKindInCond` is the
+gate, and it is placed inside `matchPattern` rather than in the arm lowering so that every caller of a pattern asks
+it — including the or-pattern alternatives, which are the case where forgetting it changes the answer.
+
+<a id="gap-r-301"></a>
+
+### Gap R.301 — a nested sub-pattern binds nothing (filed by ADR 0358)
+
+```gusty
+match [[2, 3]]:
+    case [[a]]:
+        print(a)      # refused: undefined name "a"        py: prints nothing
+match {2: {"b": 7}}:
+    case {2: {"b": v}}:
+        print(v)      # refused: undefined name "v"        py: 7
+```
+
+`matchPattern` has no arm that descends into a sub-pattern, so no name inside one is ever handed to `bindPat`. The
+tempting one-line "fix" is to make `matchCaptureNames` recursive — and that is the wrong direction, because the
+checker would then call `a` possibly-bound, the emitter would attach a flag nobody writes, and the first program
+would **trap** where the reference prints nothing. The refusal is the honest state until the emitter can bind the
+name: it is pinned as a refusal, and the case is written so that moving either half alone fails.
+
+<a id="gap-r-302"></a>
+
+### Gap R.302 — a parenthesised tuple pattern is not a pattern (filed by ADR 0358, blocked on L11.3)
+
+`match (5,):` / `case (a,): print(a)` — the reference prints `5`. The parser hands `matchPattern` a `*lang.Tuple`,
+which has no arm there, so `a` is never bound and the program dies on `undefined name "a"`; compiled through
+`Compile`, the same program refuses as `codegen: unsupported expression *lang.Tuple`. Two refusals for one missing
+form, and neither names the form — they blame a variable the program never wrote, which is ADR 0166's second
+clause. The real blocker is L11.3: a tuple is not a value in this backend, so a tuple pattern has nothing to match
+against.
+
+<a id="gap-r-303"></a>
+
+### Gap R.303 — a class pattern's keyword attribute does not parse (filed by ADR 0358)
+
+`case Point(x=1):` dies at `expected ')' in class pattern`. `matchInstance` already reads the attribute named by
+the pattern's argument, so the keyword spelling is the same question with the expected value attached — and it is
+the spelling a reader writes once the positional order stops being `__match_args__`'s (Gap R.304).
+
+<a id="gap-r-304"></a>
+
+### Gap R.304 — a positional class-pattern argument names an attribute instead of asking the class (filed by ADR 0358)
+
+```gusty
+class Point:
+    def __init__(self, x):
+        self.x = x
+
+match Point(5):
+    case Point(x):
+        print(x)     # gy: 5     py: TypeError: Point() accepts 0 positional sub-patterns (1 given)
+```
+
+This is a parity failure in the **accepting** direction: the backend answers a program the reference refuses. PEP
+634 asks the class what its positional pattern arguments are; ADR 0235 landed the class pattern as "one question
+about a class and the instance" and never asked the class this one. Because there is no reference answer to
+compare against, the row is not a debt row — it is pinned with the reference's refusal beside the compiled answer,
+in `TestMatchCaptureShapesTheReferenceItselfRefuses`, so it cannot be closed by deleting the measurement.
+
+<a id="gap-r-305"></a>
+
+### Gap R.305 — a capture binds one word where the assignment road binds a pair (filed by ADR 0358)
+
+```gusty
+xs = ["eight"]
+match xs:
+    case [a]:
+        print(a)     # gy: 0     py: eight      (and `a = xs[0]` in this program prints eight too)
+
+d = {"k": "nine"}
+match d:
+    case {"k": w}:
+        print(w)     # gy: 1     py: nine
+```
+
+The word that comes back is a `@str_tab` index, and it prints as a number — so the program is not merely wrong, it
+is wrong in a way a reader cannot distinguish from a wrong number. The two roads disagree because the assignment
+road binds a container slot as a `(payload, tag)` pair (ADR 0267) and the pattern road binds the payload alone.
+
+The fix was written in this cycle: hand the capture to the same binding door an assignment uses. It printed `eight`
+and `nine`. It was reverted, because a capture bound through the pair road meets Gap R.146's rule — the positions
+that keep one word for an operand — in arithmetic and call positions, so `print(a)` would start answering and
+`print(a + 1)` would stop. The row therefore stands as filed, and both shapes are pinned as `stillWrong` rows
+carrying today's answer beside the reference's.
+
+<a id="gap-r-307"></a>
+
+### Gap R.307 — an or-pattern whose alternatives bind different names is accepted (filed by ADR 0358)
+
+```gusty
+match 5:
+    case 1 | a:
+        print(a)     # gy: 5     py: SyntaxError: alternative patterns bind different names
+```
+
+PEP 634 rejects the program at compile time, because no single name can mean both alternatives' bindings. This
+backend can answer it — the arm runs once, the alternative that matched decided the value, and ADR 0358's
+per-alternative entry blocks are what make that answer *coherent* rather than whichever store was written last.
+Answering is a design choice, and a choice has to be stated, priced and tested rather than arrived at; the row is
+the statement, and `TestAnOrPatternBindsOnlyTheAlternativeThatMatched` — run in both alternative orders — is the
+test that the choice, if kept, is at least a consistent one.

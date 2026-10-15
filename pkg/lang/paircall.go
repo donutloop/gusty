@@ -2056,7 +2056,7 @@ func (g *irGen) pairReturnWords(b *strings.Builder, e Expr) (payload, tag string
 		return p, t, nil
 	}
 	if nm, isName := e.(*Name); isName && g.numericPairVar(nm.Value) {
-		p, t := g.numericPairRegs(b, nm.Value)
+		p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 		return p, t, nil
 	}
 	// `return g(x)`: the callee answered a pair and stored its tag beside its own return, so the pair

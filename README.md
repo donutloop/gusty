@@ -325,7 +325,7 @@ is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min`
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
 Gap R.111's promoted program was recorded the same way, to 6882 with Gap R.132's signed-zero rows, to 6888 with Gap Q.2's
-growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes, and to 7009 with Gap R.221's seventy-seven key×value readings, its corpus program and Gap R.291's promoted comprehension-over-a-folded-list program — the count is the file's
+growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes, to 7009 with Gap R.221's seventy-seven key×value readings, its corpus program and Gap R.291's promoted comprehension-over-a-folded-list program, and to 7061 with Gap R.68's fifty-two capture readings and its corpus program — the count is the file's
 own and not this sentence's, and `recmerge` refuses to write an entry whose compiled leg disagrees with the reference). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
@@ -1840,6 +1840,28 @@ falls back to dynamic dispatch.
   filed instead of pinned: a set the program builds prints the order the elements arrived in, so `{3, 1, 2}` comes
   out `{3, 1, 2}` where the reference prints `{1, 2, 3}` — unordered in the language, visible in a file, and owned by
   **R.300** rather than by a test expectation copied from the wrong leg.
+- **A `match` capture binds in the arm the branch entered (Gap R.68; ADR 0358)** — `v = 5` / `match v:` /
+  `case [y]: pass` / `case 5: pass` / `print(y)` printed `0` and **exited 0**, where CPython raises `NameError: name
+  'y' is not defined` (`UnboundLocalError` inside a function, catchable by either class). ADR 0228's written-flag
+  machinery was present, correct and untouched: the flag was being set by `matchPattern`, which is asked **which arm
+  runs** and is therefore called for the arms that lose too, so the capture's store and its `store i8 1` ran on the
+  way to a decision that is not a binding. A capture is now queued where the pattern computes it and stored first
+  thing in the block the `br i1 <pattern>` branches to — in front of the guard, because a pattern that matched and
+  whose guard then failed *keeps* its binding (measured, both legs). Three causes went together or each kept a silent
+  zero: the store sat in the decision; the checker's capture census, the written-flag eligibility rule and the
+  emitter disagreed about the class and mapping positions; and a module-level capture was never a local of anything,
+  so no flag was attached to it at all. An or-pattern is now decided one alternative at a time and each alternative
+  carries only its own captures (`case [a] | {"k": a}:` over `[3]`, `{"k": 8}` prints `3`, `8`, not `0`, `8`), and a
+  pattern asks the object's **kind** before it asks the object anything — `case [a]` over a one-entry dict is a match
+  that failed, not a one-element list (**R.306**, paid beside the row, because which arm runs *is* this row's
+  question). What the row declines to bundle is filed with its measurement rather than fixed quietly: a capture binds
+  one word where the assignment road binds a `(payload, tag)` pair, so a captured text prints as a number
+  (**R.305**); nested sub-patterns, the parenthesised tuple pattern and the class pattern's keyword and positional
+  spellings are refused in words (**R.301**–**R.304**); and two forms this backend accepts where the reference refuses
+  the program are pinned as parity failures in the accepting direction (**R.307**). `programs/match_binding_edges.gy`
+  is the whole-program witness — both legs print `caught / 4 / 30 / 0 / -1 / 7 / 3 / 8` and then raise
+  `UnboundLocalError` from the same line — and `gustyc --lang`'s `patterns:` line now states the rule, because a
+  binding rule an agent cannot discover is one it cannot rely on.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

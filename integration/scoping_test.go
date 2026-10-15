@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,22 +90,53 @@ func TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend(t *testing
 	// NameError — the class CPython raises. Widening the checker's scope did not paper over a
 	// real bug, and that is the assertion that matters here.
 	//
+	// This used to be a reference-debt row: the compiled leg printed `16` — the module slot's
+	// leftover word — and exited 0 while the reference raised. A capture now binds in the arm the
+	// branch ENTERED (ADR 0358, which closes Gap R.68 and the match row of Gap R.36), both legs
+	// raise the reference's own class and message, and the ledger row that described the garbage is
+	// deleted rather than re-measured. What is asserted below is the parity itself; the reason it is
+	// spelled out here instead of going through `requireReferenceTrapOrHonestRefusal` is that the
+	// trap's sentence is on stderr, and a case that wants to say both "it raised the right thing"
+	// and "it printed nothing" needs the two streams kept apart.
+	//
 	// This leg goes through the real CLI: `runCompiled` treats any eval error as a test failure,
 	// and here the trap IS the expected outcome.
 	src := "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n"
+	const trap = "NameError: name 'y' is not defined"
+
+	// The record leg holds this answer too (ADR 0302). Asking first is what keeps the case from
+	// rotting into a compiled-only assertion if the entry is ever deleted.
+	if !lang.HasGoldenAnswer(src) {
+		t.Fatalf("the record holds nothing for %q — one witness leg is not a parity claim", src)
+	}
+
 	path := filepath.Join(t.TempDir(), "unbound_match.gy")
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The reference raises NameError: `case y:` is a value pattern, so the pattern evaluates the outer
-	// `y`, which nothing has bound. One backend means one thing to check — whether this program does
-	// that — so the row is a reference-debt row: trap with the reference, refuse by name, or have the
-	// divergence on the ledger with the roadmap row that owes it. Answering plainly is the outcome the
-	// ledger exists to keep visible.
-	iout, icode := cliRunCode(t, "--file", path)
-	requireReferenceTrapOrHonestRefusal(t, src, "NameError: name 'y' is not defined", iout, icode,
-		"roadmap Gap K.x (a match value pattern must evaluate its name in the enclosing scope)",
-		"the compiled matcher binds the pattern name instead of evaluating it")
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(cliBin(t), "--file", path)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
+	code := 0
+	if runErr != nil {
+		ee, ok := runErr.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("gustyc --file %s: %v", path, runErr)
+		}
+		code = ee.ExitCode()
+	}
+	if code != 3 {
+		t.Fatalf("compiled exit %d, want 3 (an uncaught trap, ADR 0211)\nstdout %q\nstderr %q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), trap) {
+		t.Fatalf("the compiled trap does not carry the reference's sentence\nstderr %q", stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "" {
+		t.Fatalf("compiled printed %q before trapping — the read must raise, not answer the slot", stdout.String())
+	}
+
 	py, pyErrText, perr := lang.PythonRun(src)
 	if perr == nil {
 		t.Fatalf("CPython accepted an unbound read, so our expectation is wrong: %q", py)
@@ -116,15 +149,12 @@ func TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend(t *testing
 	}
 }
 
-// TestUnboundAfterPartialMatchReadsGarbageInCompiled pins a KNOWN compiled-backend defect, roadmap
-// Gap R.36: a module-level slot whose only assignment never ran is loaded as-is and printed, so the
-// program reports a number the source never wrote instead of trapping. the record leg above is
-// correct; only this leg is wrong, which is why it is asserted rather than skipped.
-//
-// DELETE THIS TEST when Gap R.36 is fixed, and fold the program into the record test above:
-// once the compiled leg traps with NameError too, asserting the garbage would be asserting a bug
-// that no longer exists.
-func TestUnboundAfterPartialMatchReadsGarbageInCompiled(t *testing.T) {
+// TestUnboundAfterPartialMatchTrapIsEmittedNotSkipped is the same program one layer in, through the
+// compiler API rather than the CLI. Gap R.36's own note asked for its pinned-garbage test to be
+// deleted once the compiled leg trapped; this is what replaces it — the IR is asserted to carry the
+// trap and the written-flag test in front of the read, which is the shape the defect lacked. An
+// uncaught trap is an ordinary typed raise (ADR 0212), so the module still has to verify.
+func TestUnboundAfterPartialMatchTrapIsEmittedNotSkipped(t *testing.T) {
 	t.Parallel()
 	src := "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n"
 	res, err := lang.Compile(src)
@@ -132,19 +162,12 @@ func TestUnboundAfterPartialMatchReadsGarbageInCompiled(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 	if _, err := lang.VerifyModuleIR(res.IR, 0); err != nil {
-		t.Fatalf("module does not verify: %v", err)
+		t.Fatalf("module does not verify: %v\n%s", err, res.IR)
 	}
-	out, cerr := runAOTWithTimeout(t, src, 60*time.Second)
-	if cerr != nil {
-		t.Fatalf("compiled leg trapped — if it now raises NameError, Gap R.36 is fixed and this test must go: %v\n%s", cerr, out)
+	if !strings.Contains(res.IR, "NameError: name 'y' is not defined") {
+		t.Fatalf("the module carries no NameError sentence, so the read would answer the slot\n%s", res.IR)
 	}
-	if strings.TrimSpace(out) == "" {
-		t.Fatalf("compiled leg printed nothing; if it now traps, Gap R.36 is fixed — see this test's note")
-	}
-	// The defect's signature is that it prints something confidently. There is no correct value to
-	// compare against — the arm that would bind `y` did not run — so the one thing that must never
-	// appear is a plausible answer: 1 is `z`, not `y`.
-	if strings.TrimSpace(out) == "1" {
-		t.Fatalf("compiled leg printed %q, which is not a possible value of y", out)
+	if !strings.Contains(res.IR, "%bnd_y = alloca i8") || !strings.Contains(res.IR, "load i8, i8* %bnd_y") {
+		t.Fatalf("the read is not guarded by a written-flag test (ADR 0228)\n%s", res.IR)
 	}
 }

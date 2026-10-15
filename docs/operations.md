@@ -823,8 +823,11 @@ They are fully represented in the JSON AST dump (`--emit-ast`) with no schema ch
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
 - `--lang`: self-describing feature list for agents — one line per aspect of the surface, including
   `patterns:` (every `match` case form: literal, `_`, capture, or-pattern, guard, sequence, mapping,
-  and the class pattern with its aliasing rule; ADR 0235), `ordering:` (`sorted`/`min`/`max` read
-  `key=` and `reverse=` by name, and a callable key is called through the ordinary call road; roadmap
+  and the class pattern with its aliasing rule; and the capture's **binding rule** — a capture binds in
+  the arm the branch entered, so reading one no arm bound raises `NameError` at the top level or
+  `UnboundLocalError` in a function, a guard may read the capture its own pattern bound, a failed guard
+  does not unbind it, and a sequence pattern needs a list or a set while a mapping pattern needs a dict;
+  ADR 0235, ADR 0358), `ordering:` (`sorted`/`min`/`max` read `key=` and `reverse=` by name, and a callable key is called through the ordinary call road; roadmap
   L11.7, Gap R.249, ADR 0340) and `containers:` (a list/dict/set variable asks its LAST binding what it
   is — the binding that takes the name over settles its kind, whether its slots describe themselves and
   what they hold; roadmap L11.1, Gap Q.1, ADR 0341)
@@ -1102,10 +1105,10 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 7009 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 7061 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (335 rows — four went paid with **ADR 0356/0357** on 2026-10-16: the comprehension over a list the escape analysis had been deleting, the two `s[0] = …` store-to-immutable traps whose class and sentence the compiled backend now raises, and `show(1 == 1)` / `show(True)` whose print of a parameter the pair road now renders the record's way; seven more changed *shape*, from "cannot build a program the engine ran" to a named divergence, which is the ratchet doing its job rather than rows disappearing) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (24 rows — two of them are Gap L.5's, where the record holds the interleaved line and CPython agrees with the compiled leg: there the record is the debt, ADR 0302) | `integration`'s `TestMain` |
-| `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
+| `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (6 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
 ### Adding sources to the record leg: `tools/recmerge` (ADR 0318)
 

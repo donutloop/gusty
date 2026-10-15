@@ -591,7 +591,7 @@ func (g *irGen) logicFormOf(b *strings.Builder, e Expr, bud *logicBudget) (logic
 	}
 	if nm, ok := e.(*Name); ok {
 		if g.numericPairVar(nm.Value) {
-			p, t := g.numericPairRegs(b, nm.Value)
+			p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 			return logicForm{payload: p, tag: t}, nil
 		}
 		if g.taggedVars[nm.Value] {

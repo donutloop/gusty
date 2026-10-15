@@ -839,8 +839,12 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_percent_format",   // Gap R.31 — no `%` string formatting; both legs refuse
 		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
-		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
-		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		// A capture is a binding, so it happens in the arm that matched and nowhere else: the arms that
+		// did not run used to write the slot on their way past it, and the read afterwards answered it
+		// (roadmap Gap R.68, ADR 0358).
+		"match_binding_edges",
+		"probe_math_const", // L11.6 — a stdlib float constant folds to int
+		"probe_enumerate",  // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
 		// A declared name is not a variable, and a function is not a number: reading a `def`'d name is no
 		// longer a NameError, so a function flows through a parameter on the interpreter, and the numeric
 		// door raises CPython's `'function'`/`'module'` sentence instead of handing `llc` a load of a slot
@@ -1154,6 +1158,16 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; the compiled leg prints the same first line and raises the same class, which it did not before ADR 0228 -- it printed 0 for the unbound call and exited 0",
 		ref:    "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n", Missing: true, Err: "exit status 3"}}},
+
+	// Gap R.68 closed (ADR 0358): the same shape one level into the language. Every arm pair here has a
+	// capture the arm that did NOT run would have computed, and the program ends on the read of one.
+	// Both legs raise the reference's class from the same line, so CPython has no answer to compare and
+	// the row is not_applicable with both legs pinned -- which is the whole point: the compiled leg used
+	// to exit 0 having printed a word from the capture's slot.
+	"programs/match_binding_edges": {oracle: lang.OracleNA,
+		reason: "a `match` capture whose arm did not run is never bound: `case [a]` over 5 decides the arm and binds nothing, and reading `a` afterwards raises UnboundLocalError on both legs. The compiled leg used to answer 0 and exit 0, because the store sat where the pattern was lowered rather than in the arm the branch entered",
+		ref:    "roadmap Gap R.68 (the capture-binding edge left by Gap B) + Gap R.306 (a sequence pattern is a kind test); ADR 0358",
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "caught\n4\n30\n0\n-1\n7\n3\n8\n", Missing: true, Err: "exit status 3"}, {Backend: "python", Stdout: "caught\n4\n30\n0\n-1\n7\n3\n8\n", Missing: true, Err: "exit status 1"}}},
 
 	// Gap R.48 (found while closing R.36, ADR 0228's probe pass).
 	"programs/probe_global_statement": {oracle: lang.OracleNA,

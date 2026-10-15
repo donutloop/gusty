@@ -11623,3 +11623,63 @@ answer I saw from Python and let the suite be red, or worse, to write the answer
 divergence be invisible. The row took the third road: assert the four shapes whose orders agree, file the fifth
 (**Gap R.300**) with both outputs in the row, and say in the test comment *why* the shape is missing from the table.
 A set is unordered by contract, so a test that pins its order is testing the reference's hash function.
+
+## Cycle: Gap R.68 — a `match` capture binds in the arm the branch entered (ADR 0358)
+
+### When a check is correct and still wrong, look at who sets the bit
+
+The row was filed as "the capture-binding edge is missing from the definite-assignment graph". ADR 0228's graph was
+in place, answered `y` in `v = 5; match v: case [y]: pass; case 5: pass; print(y)` as *possibly unbound*, attached a
+`%bnd_y`, cleared it at entry and tested it at the read — and the program printed `0` at exit 0. Every component was
+right; the flag had simply been set by `matchPattern`, which is asked **which arm runs** and is therefore called for
+every arm, including the ones that lose. The lesson generalises past this row: a witness is only as good as the act
+that records it, so when a guard is in place and the bug survives, the first question is *who wrote the bit, and was
+that act the thing the bit claims?* "The flag was set" is not evidence of a binding; a pattern evaluation set it.
+
+### A placement bug needs an artifact-level case, because behaviour alone cannot tell the two apart
+
+`case [y]: … case 5: … print(y)` printing `0` and printing `0` *after the branch* look identical from stdout. The
+only case that distinguishes the fix from a coincidence is over the emitted module: the capture's `store i32` and
+its `store i8 1` must both sit below the `br i1 <pattern>`, and the flag's zeroing above it. Writing that case
+taught me the cheap lesson too — the first version scanned the **whole module** for the first `br i1`, and the
+runtime preamble (`rt_die`'s frame walk) contains branches above every function, so the assertion passed for a
+module that was still wrong. Scope an IR assertion to the function under test and to the labels the lowering mints
+(`label %match.`), or it asserts the preamble.
+
+### When a fix reveals a second bug, the revealed bug decides the commit's shape
+
+Per-alternative entry blocks for or-patterns were correct and immediately made a *pre-existing* wrong match decide
+an answer: `case [a]` matches a one-entry dict because `rt_list_len` reads the same word a dict's entry count lives
+in. Under the old single-block arm the mistake was invisible — both alternatives' stores sat in one block and the
+last written won, so the arm that matched happened to be the one that answered. I fixed the kind check in the same
+commit (Gap R.306) rather than shipping a "fix" that traded one wrong answer for another, and said why in the ADR:
+*which arm runs* is this ADR's own question, so a pattern that matched what it was never written for is not an
+unrelated defect. The distinguishing test was running the same arm in both alternative orders (`[a] | {"k": a}` and
+`{"k": a} | [a]`) — an order-sensitive answer is the signature of "whichever store was written last" posing as
+"whichever alternative matched".
+
+### Revert the half that opens a door onto somebody else's row
+
+The pair-binding half of the capture fix was written, printed `eight` for `case [a]: print(a)` over `["eight"]`, and
+was reverted. It moved a capture onto the pair road, which lands it in Gap R.146's positions-that-keep-one-word-for-
+an-operand, so `print(a)` would have started answering and `print(a + 1)` would have stopped. Two semantic decisions
+in one commit produces a commit whose test suite cannot say which half broke. Filed as Gap R.305 with both outputs
+in the row, pinned as a `stillWrong` case that fails the day the answer changes for the better.
+
+### Three copies of one rule is three answers
+
+The checker's census, the written-flag eligibility rule and the emitter each decided which pattern positions are
+captures, and the checker's copy had no arm for a class pattern or a mapping pattern — which is exactly the pair of
+shapes that printed a slot. The census is now one function (`matchCaptureNames`) written beside the emitter it
+describes, and a unit case fails if the checker's copy and the emitter's disagree. Recursing into sub-patterns was
+the trap: the checker would vouch for a name the emitter never binds, buying a spurious trap for a program the
+reference answers. A census describes the emitter, not the ambition.
+
+### Paid debts must leave the ledger, and the ledger tells you in its own words
+
+`z = 1; match z: case 1: pass; case y: pass; print(y)` was a `cpython-debt` row saying the compiled side prints
+`16`. Once the compiled side raises `NameError` the harness reports *"the ledger row no longer describes what either
+side does"* — and the right move is to delete the row and assert the parity directly, not to re-record it. Same for
+the pinned-garbage test whose own comment said "DELETE THIS TEST when Gap R.36 is fixed": a test that pins a bug you
+just fixed is not stale, it is a red light, and the fix is the test's replacement (assert the trap is *emitted*, and
+that the read is guarded), not its relaxation.

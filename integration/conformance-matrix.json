@@ -4628,6 +4628,50 @@
     },
     {
       "case": {
+        "id": "programs/match_binding_edges",
+        "name": "match_binding_edges.gy",
+        "source": "# A `match` capture is a BINDING, and a binding happens where the arm that made it runs — nowhere\n# else (roadmap Gap R.68, ADR 0358).\n#\n# Every pair of arms below has a capture that the arm which did NOT run would have computed. The\n# compiled backend used to print the capture's slot — `0`, `16`, a stale heap handle — and exit 0,\n# because the store was emitted while the pattern was being lowered to DECIDE which arm runs, so the\n# arm that lost performed it anyway. The written-flag machinery was in place; the flag was simply\n# being set by a pattern evaluation, which is not a binding.\n#\n# What the reference does, and what both legs of this program must keep doing: raise NameError in the\n# module's own statements, raise UnboundLocalError inside a function, let `except` catch either by\n# class, and — the half a placement fix could easily break — still answer for a capture the arm that\n# matched really did bind. A sequence pattern is also a KIND test here: `case [a]` over a dict is a\n# match that failed, not a one-element list (Gap R.306) — which is why the dict below answers the\n# wildcard arm and prints `caught`, not a word read out of the dict's element array.\n#\n# A class pattern is not in this program: `case Point(x):` needs `__match_args__`, which the reference\n# demands and this backend does not ask for (roadmap Gap R.304), so the shape cannot be shared.\n\n\ndef only_a_list(v):\n    match v:\n        case [a]:\n            pass\n        case 5:\n            pass\n    return a\n\n\ndef entry_never_taken(v):\n    match v:\n        case {\"k\": got}:\n            pass\n        case 5:\n            pass\n    try:\n        return got\n    except UnboundLocalError:\n        return -1\n\n\ndef arm_that_matched(v):\n    match v:\n        case [a, b]:\n            return a + b\n        case 5:\n            return 0\n\n\ndef either_alternative(v):\n    match v:\n        case [a] | {\"k\": a}:\n            return a\n        case _:\n            return -1\n\n\nd = {\"k\": 1}\nmatch d:\n    case [a]:\n        print(\"dict read as a list\", a)\n    case _:\n        pass\n\ntry:\n    print(a)\nexcept NameError:\n    print(\"caught\")\n\nxs = [4]\nmatch xs:\n    case [y]:\n        pass\n    case _:\n        pass\n\nprint(y)\nprint(arm_that_matched([10, 20]))\nprint(arm_that_matched(5))\nprint(entry_never_taken(5))\nprint(only_a_list([7]))\nprint(either_alternative([3]))\nprint(either_alternative({\"k\": 8}))\nprint(only_a_list(5))\n",
+        "asserted": false,
+        "oracle": "not_applicable",
+        "reason": "a `match` capture whose arm did not run is never bound: `case [a]` over 5 decides the arm and binds nothing, and reading `a` afterwards raises UnboundLocalError on both legs. The compiled leg used to answer 0 and exit 0, because the store sat where the pattern was lowered rather than in the arm the branch entered",
+        "ref": "roadmap Gap R.68 (the capture-binding edge left by Gap B) + Gap R.306 (a sequence pattern is a kind test); ADR 0358",
+        "pins": [
+          {
+            "backend": "aot",
+            "stdout": "caught\n4\n30\n0\n-1\n7\n3\n8\n",
+            "error": "exit status 3",
+            "missing": true
+          },
+          {
+            "backend": "python",
+            "stdout": "caught\n4\n30\n0\n-1\n7\n3\n8\n",
+            "error": "exit status 1",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "caught\n4\n30\n0\n-1\n7\n3\n8\n",
+      "aot_error": "exit status 3",
+      "python_ok": false,
+      "python_stdout": "caught\n4\n30\n0\n-1\n7\n3\n8\n",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "a `match` capture whose arm did not run is never bound: `case [a]` over 5 decides the arm and binds nothing, and reading `a` afterwards raises UnboundLocalError on both legs. The compiled leg used to answer 0 and exit 0, because the store sat where the pattern was lowered rather than in the arm the branch entered",
+      "oracle_ref": "roadmap Gap R.68 (the capture-binding edge left by Gap B) + Gap R.306 (a sequence pattern is a kind test); ADR 0358",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_math_const",
         "name": "probe_math_const.gy",
         "source": "# Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the\n# on-disk fold: print(math.PI) is 3.141592653589793 on every engine now, where the\n# compiled leg printed the integer underneath the double — 3 — at exit 0 (L11.6,\n# ADR 0272). The reference spells the same two numbers math.pi and math.e.\nimport math\n\nprint(math.PI)\nprint(math.E)\n",
@@ -4803,12 +4847,12 @@
       ]
     }
   ],
-  "rows": 197,
-  "skipped": 32,
+  "rows": 198,
+  "skipped": 33,
   "pass": 165,
   "fail": 0,
   "oracle_match": 151,
   "oracle_debt": 25,
-  "oracle_not_applicable": 21,
+  "oracle_not_applicable": 22,
   "oracle_drift": 0
 }
