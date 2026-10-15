@@ -545,13 +545,26 @@ print("a", "b", sep="|", end="?")   # a|b?  — `end` replaces the newline entir
   uses. What it must never print is its own representation: not the handle (`0`), not the static
   elements global, and not the interned indices a recycled heap slot happened to inherit — all
   of which happened here, in programs that compiled, verified and exited 0.
-- **Known divergence (Gap L.5, pinned by `programs/probe_print_atomic.gy`):** an argument
-  whose own evaluation prints — a call that prints — does *not* keep its place in the line.
-  The compiled backend write each argument as they evaluate it, so
-  `print("got", twice(21))` where `twice` prints `<< 21 >>` emits `got << 21 >>` then `42`,
-  where Python emits `<< 21 >>` then `got 42`: Python evaluates every argument and only then
-  writes one line. the compiled backend interleave it identically, which is exactly why parity
-  could not see it; the CPython oracle leg can (ADR 0186).
+- **A `print` statement writes one line, and writes it after every argument has been evaluated**
+  (Gap L.5, ADR 0355). An argument whose own evaluation prints — a call whose body prints — writes
+  **its own line first**, exactly as Python does: with `def twice(v): print("<<", v, ">>")` /
+  `return v + v`,
+
+  ```gusty
+  print("got", twice(21))
+  ```
+
+  prints `<< 21 >>` then `got 42`. The same rule gives `print("a", boom())` a line that **never
+  appears** when `boom()` raises: the statement's writes are held until the whole argument list has
+  been evaluated, so a trap in a later argument leaves no half-written line ahead of the traceback.
+- **One shape still interleaves, and says so.** When an argument's *rendering* is itself conditional
+  — a union-annotated value printed from its tagged arm, as in `x: int | str = 1` and
+  `print("a", x, p())` where `p` prints — the write belongs to the arm that ran, and moving it to the
+  end of the statement would print it on the arm that did not. That statement keeps the ordering it
+  always had (`a 1 S` / `2` where Python writes `S` / `a 1 2`), the gate names its reason
+  (`an argument writes inside a block its own lowering opened`), and the shape is pinned
+  filed-not-fixed in `TestWhatTheRewriteStillCannotReachIsFiledNotFixed`. What it owes is the union
+  box's printer writing its line once from the merge block, which is L11.1's tagged value word.
 - `sep` and `end` must be keyword arguments; any other keyword is an error
   (`print got an unexpected keyword argument "junk"`). In the AOT backend they
   must be compile-time string constants — the compiler says so

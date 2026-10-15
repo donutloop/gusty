@@ -66,14 +66,17 @@ func TestCLIOracleReportsBothLegs(t *testing.T) {
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	t.Parallel()
-	// A `print` whose argument list contains a call that itself prints interleaves on the compiled
-	// backend and does not in CPython (roadmap Gap L.5): the program is valid, it ran, and the answer
-	// is wrong. That class is exit 6 — not a compile error (1) and not a crash (3). This fixture has
-	// been migrated three times — `print(True)` until ADR 0257, `print([True, 1])` until ADR 0259,
-	// `show(1 == 1)` until Gap R.111 carried a verdict across the call boundary — because a fixture
-	// pointed at a paid-off debt asserts a contract nothing violates.
-	const printIsNotAtomic = "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n"
-	out, code := benchCLI(t, "--json", "--oracle", printIsNotAtomic)
+	// A valid program that ran, printed the wrong thing, and owes an open debt: a `min`/`max` fold can
+	// say what its answer is only when it can say which candidate won, and a candidate the compiler has
+	// not folded to a constant is decided by a run-time `select` that keeps the payload and nothing
+	// beside it that came from `True` (roadmap Gap R.124, pinned by
+	// `programs/probe_minmax_candidate_unreadable`). The class is exit 6 — not a compile error (1) and
+	// not a crash (3). This fixture has been migrated four times — `print(True)` until ADR 0257,
+	// `print([True, 1])` until ADR 0259, `show(1 == 1)` until Gap R.111 carried a verdict across the
+	// call boundary, and a `print` whose argument prints until ADR 0355 made the line atomic — because
+	// a fixture pointed at a paid-off debt asserts a contract nothing violates.
+	const foldCannotNameItsWinner = "i = 0\nprint(max([True, i]))\n"
+	out, code := benchCLI(t, "--json", "--oracle", foldCannotNameItsWinner)
 	if code != exitOracleDivergence {
 		t.Fatalf("--oracle on a print whose argument prints: exit = %d, want %d\n%s", code, exitOracleDivergence, out)
 	}
@@ -87,11 +90,11 @@ func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	if p.Legs[0].Matches {
 		t.Errorf("the compiled leg claims a match on a program the reference answers differently: %+v", p.Legs)
 	}
-	human, hcode := benchCLICombined(t, "--oracle", printIsNotAtomic)
+	human, hcode := benchCLICombined(t, "--oracle", foldCannotNameItsWinner)
 	if hcode != exitOracleDivergence {
 		t.Errorf("human form exit = %d, want %d", hcode, exitOracleDivergence)
 	}
-	for _, want := range []string{"oracle: debt", lang.BackendName, "python", "<< 21 >>", "got", "rules:"} {
+	for _, want := range []string{"oracle: debt", lang.BackendName, "python", "True", "rules:"} {
 		if !strings.Contains(human, want) {
 			t.Errorf("human --oracle output should mention %q:\n%s", want, human)
 		}

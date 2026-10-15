@@ -14734,10 +14734,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			emitText(end)
 			return last, nil
 		}
+		// Gap L.5: the line is written after the arguments, not during them. Each argument's
+		// lowering is recorded so the statement's writes can be threaded past the whole argument
+		// list — a call that prints is an *evaluation*, and the caller's own bytes must not be on
+		// the stream before it runs (roadmap Gap L.5, ADR 0355; `pkg/lang/print_atomic.go`).
+		argMarks := make([]int, 0, len(args)+1)
 		for i, a := range args {
+			// The separator is written *after* the argument it follows, so it belongs to that
+			// argument's chunk and not to the one coming next: the mark is taken once the
+			// separator is on the stream, which is what keeps a chunk's writes behind its own
+			// argument's evaluation and the line's writes in order.
 			if i > 0 {
 				emitText(sep)
 			}
+			argMarks = append(argMarks, b.Len())
 			// `print(a or b)` prints an **operand**, and the operand it prints is the one the test chooses —
 			// a fact about a value, not about a verdict, so the printer is asked of the operand rather than
 			// of the operator (ADR 0261's rule, roadmap Gap R.147, ADR 0269). Two roads: when the source
@@ -15392,6 +15402,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if i == len(args)-1 {
 				last = t
 			}
+		}
+		argMarks = append(argMarks, b.Len())
+		if rewritten, moved, _ := deferPrintLineWrites(b.String(), argMarks); moved {
+			b.Reset()
+			b.WriteString(rewritten)
 		}
 		emitText(end)
 		return last, nil

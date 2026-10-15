@@ -560,14 +560,15 @@ func TestCLIExitCodeContract(t *testing.T) {
 		// own class, and "the oracle could not judge" is a third one. Neither may share a
 		// code with a compile error or a runtime trap.
 		{"oracle: conformant program", []string{"--oracle", "print(1 + 1)"}, 0},
-		// `print` evaluating its arguments as it writes them is the divergence this case needs
-		// (Gap L.5): the compiled path interleaves the callee's line into the caller's, CPython
-		// evaluates every argument and then writes one line. The row has been migrated twice
-		// already — it was `print(True)` until ADR 0257 paid that debt, then `print([True, 1])`
-		// until ADR 0259 gave a container slot its bool tag, then `show(1 == 1)` until Gap R.111
-		// carried the verdict across the call — because a contract row pointed at a paid-off debt
+		// A fold that cannot name which candidate won prints the number underneath a verdict: the
+		// compiled leg answers `1` where the reference answers `True`, at exit 0, on a program CPython
+		// runs (Gap R.124, `programs/probe_minmax_candidate_unreadable`). The row has been migrated
+		// four times already — it was `print(True)` until ADR 0257 paid that debt, then
+		// `print([True, 1])` until ADR 0259 gave a container slot its bool tag, then `show(1 == 1)`
+		// until Gap R.111 carried the verdict across the call, then a `print` whose argument prints
+		// until ADR 0355 made the line atomic — because a contract row pointed at a paid-off debt
 		// asserts a contract nothing violates.
-		{"oracle: divergence from CPython", []string{"--oracle", "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))"}, 6},
+		{"oracle: divergence from CPython", []string{"--oracle", "i = 0\nprint(max([True, i]))"}, 6},
 		{"oracle: no verdict (gusty-only surface)", []string{"--oracle", "async def f():\n    return 1\n\nprint(await f())"}, 7},
 		{"oracle: usage error on a missing file", []string{"--oracle-file", filepath.Join(dir, "nope.gy")}, 4},
 	}

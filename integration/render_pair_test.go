@@ -140,14 +140,15 @@ func TestPairAgreesWithTheOracle(t *testing.T) {
 
 	// The divergence this row needs has to be one the backend still owes. It was a bool inside a
 	// container until ADR 0259 paid that debt, and a bool through a call until Gap R.111 carried the
-	// verdict across the boundary — both moved to the agreeing leg above, where they belong. What is
-	// left open is `print` evaluating its arguments as it writes them (Gap L.5): the callee's line
-	// interleaves into the caller's here and not in CPython, so the pair still has an opinion to
-	// disagree with and the oracle still has a divergence to report.
-	const printIsNotAtomic = "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n"
-	out, code = cliRunCode(t, "--oracle", printIsNotAtomic)
+	// verdict across the boundary — both moved to the agreeing leg above, where they belong — and then
+	// a `print` whose argument prints, until ADR 0355 made the line atomic. What is open now is a
+	// `min`/`max` fold whose winning candidate the compiler cannot read (Gap R.124): the run-time
+	// select keeps the payload and nothing beside it says it came from `True`, so the pair still has an
+	// opinion to disagree with and the oracle still has a divergence to report.
+	const foldCannotNameItsWinner = "i = 0\nprint(max([True, i]))\n"
+	out, code = cliRunCode(t, "--oracle", foldCannotNameItsWinner)
 	if code != 6 {
-		t.Errorf("the oracle scored a print whose argument prints as %d, want 6 (a divergence, Gap L.5):\n%s", code, out)
+		t.Errorf("the oracle scored a fold that prints the number underneath its verdict as %d, want 6 (a divergence, Gap R.124):\n%s", code, out)
 	}
 }
 

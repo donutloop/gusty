@@ -617,7 +617,11 @@ func TestExecStringInClassMethod(t *testing.T) {
 	// stream (g.globals held both globals and method bodies), producing
 	// malformed IR that failed the llc step. String constants are now emitted
 	// into a dedicated builder at the top of the module.
-	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "r inside method\n42\n")
+	// The expectation is CPython's ordering, not the compiled backend's old one: `a.m()` prints while
+	// the argument list is being evaluated, and `print("r", 42)` is one line written afterwards. The
+	// row used to pin `r inside method` / `42`, which is the interleaving roadmap Gap L.5 exists to
+	// end — a test that agreed with the bug because both engines had it (ADR 0186's point exactly).
+	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "inside method\nr 42\n")
 }
 
 func TestExecForOverGeneratorList(t *testing.T) {

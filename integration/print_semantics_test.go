@@ -53,11 +53,13 @@ func TestPrintSeparationParity(t *testing.T) {
 			"s = {7}\n",
 		},
 		{
-			// The argument is written after the separator, then its evaluation may
-			// print of its own accord; the compiled path interleave identically.
+			// The argument is written after the separator, and its evaluation may print of
+			// its own accord — but the callee's line is its own, and the caller's line is
+			// written once the whole argument list has been evaluated (roadmap Gap L.5,
+			// ADR 0355). This is the row that pinned the interleaving for six rounds.
 			"an argument that prints keeps its place in the line",
 			"def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
-			"got << 21 >>\n42\n",
+			"<< 21 >>\ngot 42\n",
 		},
 		{
 			"floats keep their numeric form when joined",

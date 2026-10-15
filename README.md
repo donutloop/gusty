@@ -1314,9 +1314,13 @@ falls back to dynamic dispatch.
 - **`print` behaves like Python's** — `print("n =", 42)` writes `n = 42`, not two
   lines: arguments are joined with `sep=" "` and terminated by `end="\n"` (both
   honoured for every argument kind, including runtime containers, whose printers
-  take the newline as a flag rather than baking it in). Interpreter and AOT agree
-  byte-for-byte, including how an argument that prints interleaves with its line
-  (ADR 0165).
+  take the newline as a flag rather than baking it in). And the line is **one unit**:
+  every argument is evaluated first, so an argument whose own body prints writes its
+  line before the caller's — `print("got", twice(21))` writes `<< 21 >>` then `got 42`,
+  exactly as CPython does — and a statement whose later argument raises writes nothing
+  at all, so no half-line precedes the traceback (Gap L.5, ADR 0355; the one shape still
+  interleaved, a union-annotated argument printed from its tagged arm, names its own reason
+  in `docs/language.md`).
 - **Containers are references everywhere** — pass a `list`, `dict` or `set` to a
   function as a literal, variable, keyword argument, default, comprehension or
   generator result and the callee sees the same live object on the compiled backend:

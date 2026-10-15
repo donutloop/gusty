@@ -2239,32 +2239,40 @@
         "name": "print_args.gy",
         "source": "n = 41\nprint(\"n =\", n + 1)\nprint(\"a\", 1, \"b\", 2)\nprint()\nprint(\"csv\", 1, 2, 3, sep=\", \")\nprint(\"tick\", end=\"!\")\nprint(\"tock\")\nxs = [1, 2, 3]\nprint(\"xs =\", xs)\nm = {1: 2}\nprint(\"m =\", m, \"len\", len(xs))\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
         "asserted": true,
-        "oracle": "debt",
-        "reason": "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
-        "ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-        "pins": [
-          {
-            "backend": "aot",
-            "stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n"
-          }
-        ]
+        "oracle": "match"
       },
       "aot_ok": true,
-      "aot_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n",
+      "aot_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\n\u003c\u003c 21 \u003e\u003e\ngot 42\n",
       "python_ok": true,
       "python_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\n\u003c\u003c 21 \u003e\u003e\ngot 42\n",
-      "aot_matches_python": false,
+      "aot_matches_python": true,
       "conformant": true,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
-      "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order",
         "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_print_atomic",
+        "name": "probe_print_atomic.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — print writes one line as a unit: every argument is\n# evaluated first, and only then is the line written. Today the argument loop writes\n# as it evaluates, so a call that itself prints interleaves into the caller's line.\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\nprint(\"after\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "\u003c\u003c 21 \u003e\u003e\ngot 42\nafter\n",
+      "python_ok": true,
+      "python_stdout": "\u003c\u003c 21 \u003e\u003e\ngot 42\nafter\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
       ]
     },
     {
@@ -4190,7 +4198,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/171/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/172/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4204,7 +4212,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/171/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/172/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4704,40 +4712,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_print_atomic",
-        "name": "probe_print_atomic.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — print writes one line as a unit: every argument is\n# evaluated first, and only then is the line written. Today the argument loop writes\n# as it evaluates, so a call that itself prints interleaves into the caller's line.\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\nprint(\"after\")\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
-        "ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-        "pins": [
-          {
-            "backend": "aot",
-            "stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n"
-          }
-        ]
-      },
-      "aot_ok": true,
-      "aot_stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n",
-      "python_ok": true,
-      "python_stdout": "\u003c\u003c 21 \u003e\u003e\ngot 42\nafter\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
-      "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_comp_runtime_reduce",
         "name": "probe_comp_runtime_reduce.gy",
         "source": "# Oracle probe (ADR 0192) — the consumers of a comprehension whose elements are computed at\n# runtime have no compile-time element set to fold, so sum/min/max refuse rather than add up\n# nothing and answer 0. Needs a runtime reduction over the built list.\ndef sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n",
@@ -4845,11 +4819,11 @@
     }
   ],
   "rows": 197,
-  "skipped": 34,
-  "pass": 163,
+  "skipped": 33,
+  "pass": 164,
   "fail": 0,
-  "oracle_match": 148,
-  "oracle_debt": 28,
+  "oracle_match": 150,
+  "oracle_debt": 26,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

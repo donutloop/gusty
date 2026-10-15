@@ -323,7 +323,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// Containers compare by value on the compiled path, and the row is checked against
 		// CPython like every other parity case (roadmap L11.1, ADR 0189).
 		"container_equality",
+		// `print` writes its line as a unit: every argument is evaluated, and only then are the
+		// separator, the arguments and the terminator written (roadmap Gap L.5, ADR 0355). The
+		// program spent the oracle's whole life as a `debt` row — its last line interleaves a
+		// callee's print into the caller's — and the row is deleted rather than rewritten, which is
+		// what the ledger's promotion rule calls "done".
 		"print_args",
+		// The probe beside it, found by ADR 0186's sweep and pinned as debt ever since: the callee's
+		// line now lands before the caller's on both legs, so the program is asserted against
+		// CPython like every other case instead of carrying a ledger row.
+		"probe_print_atomic",
 		"truthiness",
 		"subscript_assign",
 		"container_methods",
@@ -835,8 +844,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// the reference answers — defaults, keywords out of order, recursion, a method, a lambda read out of
 		// a name — whole on the compiled path. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
 		// (roadmap Gap R.168, ADR 0284).
-		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
-		"probe_print_atomic", // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -1064,10 +1071,10 @@ var oracleLedger = map[string]oracleDecl{
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
 
 	// ---- measured divergences: valid CPython programs that print something else --
-	"programs/print_args": {oracle: lang.OracleDebt,
-		reason: "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
-		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}}},
+	// `print_args` used to open this list with Gap L.5: its last line let a callee's print fall
+	// into the caller's. The statement writes its line as a unit now (ADR 0355), the program is an
+	// asserted row, and a paid debt that stayed on the list would fail the build — that is the
+	// ledger's promotion rule doing the work the docs used to do.
 
 	// ---- Phase 11 probes: measured, owned, and not yet paid ----------------------
 	// A bool handed to a function is no longer a probe: the call site's verdict reaches the
@@ -1191,8 +1198,4 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call where the record leg recorded the print at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
-	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
-		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
-		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "got << 21 >>\n42\nafter\n"}}},
 }

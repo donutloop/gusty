@@ -76,31 +76,32 @@ func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
 // Python disagree, and requires the CPython leg to disagree: if the oracle ever
 // quietly reported gusty's own answer, every debt row would turn into a match and the
 // build would go green for the wrong reason.
-// Its subject is Gap L.5: a `print` whose argument list contains a call that itself prints. The
-// compiled backend writes each argument as it evaluates it, so the callee's line interleaves into
-// the caller's; CPython evaluates every argument and then writes one line. (It has been migrated
-// twice: `probe_bool_in_a_container` until ADR 0259 paid that debt and `probe_bool_through_a_call`
-// until Gap R.111 carried a verdict across the call boundary. A stub check has to be pointed at a
-// debt that is still open, or it proves nothing — that is the rule, not the choice of program.)
+// Its subject is a debt the backend still owes: a `min`/`max` fold can say what its answer is only
+// when it can say which candidate won, and a candidate the compiler has not folded to a constant is
+// settled by a run-time `select` that keeps the payload with nothing beside it saying it came from
+// `True` — the compiled leg prints `1`, the reference prints `True` (roadmap Gap R.124,
+// `programs/probe_minmax_candidate_unreadable`). (The subject has been migrated three times:
+// `probe_bool_in_a_container` until ADR 0259 paid that debt, `probe_bool_through_a_call` until Gap
+// R.111 carried a verdict across the call boundary, and `print_args` until ADR 0355 made a `print`
+// line atomic. A stub check has to be pointed at a debt that is still open, or it proves nothing —
+// that is the rule, not the choice of program.)
 func TestOracleThirdLegIsNotAStub(t *testing.T) {
 	t.Parallel()
-	c := lang.ConformanceCase{ID: "programs/print_args", Name: "print_args.gy", Source: readProgramSrc("print_args")}
+	c := conformanceCaseByID(t, "programs/probe_minmax_candidate_unreadable")
 	row := runLegs(t, c)
 
 	if !row.PythonOK {
 		t.Fatalf("the CPython leg failed: %s", row.PythonErr)
 	}
-	// The interleaving is the whole disagreement: the callee writes `<< 21 >>`, and only the compiled
-	// leg lands it inside the caller's line. CPython evaluates every argument first, so its `got` and
-	// its `42` share a line and the callee's output is on a line of its own.
-	if strings.Contains(row.PythonOut, "\ngot << 21 >>") {
-		t.Errorf("CPython may not interleave the callee into the caller's line: %q", row.PythonOut)
+	// The program has two lines, and only the first is the debt: the candidate the compiler can read
+	// (an element a literal wrote) is parity, the one it cannot read prints the number underneath the
+	// verdict. A reference that came back with the compiler's answer on the first line would mean the
+	// third leg is echoing the module instead of running the program.
+	if row.PythonOut != "True\nTrue\n" {
+		t.Errorf("CPython prints the verdict on both lines, got %q", row.PythonOut)
 	}
-	if !strings.Contains(row.PythonOut, "\ngot 42") {
-		t.Errorf("CPython should evaluate the argument first and write one line, got %q", row.PythonOut)
-	}
-	if !strings.Contains(row.AOTOut, "\ngot << 21 >>") {
-		t.Errorf("the compiled leg is expected to interleave the callee's line into the caller's (that is the debt); got %q", row.AOTOut)
+	if row.AOTOut != "1\nTrue\n" {
+		t.Errorf("the compiled leg is expected to print the number for the candidate it cannot read (that is the debt); got %q", row.AOTOut)
 	}
 	if row.PythonOut == row.AOTOut {
 		t.Errorf("the reference leg returned the compiler's answer — it is not an independent opinion")
@@ -118,14 +119,14 @@ func TestOracleThirdLegIsNotAStub(t *testing.T) {
 // cannot fail is not a harness.
 func TestOracleHarnessCanFail(t *testing.T) {
 	t.Parallel()
-	c := conformanceCaseByID(t, "programs/probe_print_atomic")
+	c := conformanceCaseByID(t, "programs/probe_minmax_candidate_unreadable")
 	row := runLegs(t, c)
 	if len(row.OracleDrift) != 0 {
 		t.Fatalf("the registry row is accurate today, so it should report no drift: %v", row.OracleDrift)
 	}
 
 	// Same program, same legs, one wrong pin: drift must appear.
-	c.Pins = []lang.OraclePin{{Backend: "aot", Stdout: "<< 21 >>\ngot 42\nafter\n"}}
+	c.Pins = []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}
 	bad := runLegs(t, c)
 	if len(bad.OracleDrift) == 0 {
 		t.Fatalf("a wrong pin produced no drift — the pin is not being checked")
@@ -135,7 +136,7 @@ func TestOracleHarnessCanFail(t *testing.T) {
 	}
 
 	// And a row declared conformant for a program that is not: drift too.
-	c = conformanceCaseByID(t, "programs/probe_print_atomic")
+	c = conformanceCaseByID(t, "programs/probe_minmax_candidate_unreadable")
 	c.Oracle = lang.OracleMatch
 	c.Reason, c.Ref, c.Pins = "", "", nil
 	if drift := runLegs(t, c).OracleDrift; len(drift) == 0 {

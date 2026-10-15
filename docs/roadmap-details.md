@@ -1119,7 +1119,11 @@ to it (ADR 0224). `probe_str_loop_eq` and `probe_comp_str_filter` were promoted 
     harness is tested against its own ability to fail), and `cmd/gustyc/oracle_test.go` plus the
     extended `TestCLIExitCodeContract` for the payload and the two new codes.
 <a id="gap-l-5"></a>
-- **Gap L.5 — `print` is not atomic** ⏳ PLANNED (found by the L11.9 oracle leg, ADR 0186) —
+- **Gap L.5 — `print` is not atomic** ✅ `DONE` — closed 2026-10-15 by **ADR 0355**: the statement's
+  writes are threaded past its whole argument list, and the gate that authorises the thread refuses
+  any write that a block the argument itself opened could reach — the line is moved only where moving
+  it is the same execution. Found by the L11.9 oracle leg (ADR 0186), open for nine rounds because the
+  fix as written had no shape anyone trusted.
   `print` writes each argument **as it evaluates it**, so an argument whose own evaluation prints
   interleaves into the caller's line: with `def twice(v): print("<<", v, ">>")
   return v + v`, `print("got", twice(21))` emits `got << 21 >>` / `42` where CPython emits
@@ -1131,6 +1135,72 @@ to it (ADR 0224). `probe_str_loop_eq` and `probe_comp_str_filter` were promoted 
   `programs/print_args` ledger row — both pins have to be rewritten when it is fixed. DoD: the
   probe is promoted into `conformanceStandalone()` and the print bullet in `docs/language.md`
   that describes the interleaving is deleted.
+  ↳ **The cell's plan was right and its system was wrong, and that is why the row sat.** "Evaluate all
+  arguments into values first, then emit the line" is the semantics; implemented as written it means a
+  value-returning twin of the argument switch in `(*irGen).call`, which is **1425 lines, 20 `return`
+  roads and 1481 appends into the builder the line is assembled in** — measured, not estimated. Either
+  two paths through 1425 lines that must agree forever, or a runtime line buffer, and the buffer is
+  worse than it looks: ADR 0258's capture sink is `@rt_cap` with `@rt_cap_len` and one `@rt_capturing`
+  flag, and a print statement is not the only thing that can be mid-line when something else writes — a
+  call inside an argument runs a *nested* print whose flush would write the outer line too, and `str()`
+  zeroes the same length the moment it starts. Making that sound needs a stack of marks, ownership of a
+  mark across an unwind, and a trustworthy depth counter after a trap raised inside an argument: state a
+  program gets wrong by losing a line at exit 0.
+  ↳ **What ships has no state: `pkg/lang/print_atomic.go`, two pure functions over the emitted text of
+  one statement.** The argument list's IR is already a straight line of *evaluations* with a handful of
+  *writes* threaded through it, so thread the writes to the end. An `@printf` in the trailing
+  straight-line run of an argument sits in the block the emitter stands in when that argument is
+  finished, and the block the statement finishes in is its descendant on one straight-line path — so the
+  write runs **exactly when the line is printed at all**, and no value's dominance moves. The gate
+  (`printWriteDeferralReason`) answers five refusals in words and refuses anything whose write sits
+  before a label, `br`, `switch` or `invoke` inside its argument, or whose returned register is read
+  elsewhere in the statement (a write whose byte count is used as a value is an evaluation wearing a
+  write). The sink list is an 18-entry whitelist, and what is not on it stays where it was — yesterday's
+  interleaving, never a lost line; `@rt_die` (the raise's own report, to stderr) and `@rt_echo_*` (the
+  REPL channel, ADR 0204) are deliberately off it.
+  ↳ **What the gate will not reach is filed, not fixed.** `x: int | str = 1` / `print("a", x, p())`
+  still writes `a 1 S` / `2` where Python writes `S` / `a 1 2`, and the module says why: printing `x` is
+  the union box's tagged-arm printer, so its write lives in `sbr4`/`ibr5`/`fbr1` and only `join3` is
+  straight-line — deferring an arm's write to the tail prints it on the arm that did not run. That owes
+  L11.1's tagged value word, not this row.
+  ↳ **The record leg could not see this bug, and both ledgers were diffed rather than trusted.**
+  `goldenRepr` flattens a rendered line — it drops empty components and trims trailing spaces — so the
+  record compares a line's *contents* and not the instant its bytes were written; sorting the print
+  statements before flattening would have made the record unable to see ordering at all, which is
+  self-certification (ADR 0302, ADR 0164). `pkg/lang`'s drift ledger regenerated **byte-identical**,
+  339 rows, none new and none vanished. `integration`'s gained **two rows**, 22 → 24, and those two are
+  the row's honest centre: `print("got", twice(21))` and the `print_args` program are sources where the
+  record holds the interleaved line and CPython agrees with the *new* compiled answer — so the record is
+  the debt (ADR 0302), the rows carry the record's `expected` beside the compiled `actual`, and
+  `docs/operations.md`'s artifact table says which two. The regeneration also corrected a field nobody
+  had re-derived: a refusal row's `actual` still read `int on non-integer string` while a HEAD binary
+  built in a clean worktree refuses that program with `tuple assignment length mismatch` — the ledger was
+  stale at HEAD, and only a regeneration could say so. The witness for the ordering itself is the
+  reference leg, on 25 programs each run against `python3` and against the compiled leg, plus the five
+  trap rows that make the row's second half — a statement whose later argument raises must write
+  **nothing**, which the old emission could not do: it had already written the leading arguments, so the
+  reader got half a line of program output ahead of the traceback, at the exit code the reference
+  reserves for the trap.
+  ↳ **A paid debt takes the fixtures that were pointing at it.** Five contract checks used this gap as
+  their example of "a valid program that ran, printed the wrong thing, and owes a row": the CLI's
+  `--oracle` exit-6 test and its human-output assertions, the exit-code contract's `oracle: divergence
+  from CPython` row, the harness's third-leg-is-not-a-stub check, its harness-can-fail check, and the
+  rendering pair's oracle agreement. All five went red the moment the debt was paid — which is the
+  correct behaviour and the house rule: *a fixture pointed at a paid-off debt asserts a contract nothing
+  violates*. They now point at Gap R.124's `print(max([True, i]))` (a fold that cannot name which
+  candidate won prints the number underneath the verdict, exit 0, still open, owned by L11.1's tagged
+  word), and each carries the migration chain in its comment — this row is the fourth stop for two of
+  them, after `print(True)` (ADR 0257), `print([True, 1])` (ADR 0259), `show(1 == 1)` (Gap R.111) and the
+  non-atomic `print` (here). The two ledger probes themselves were **deleted** from `oracleLedger` and
+  promoted into `conformanceStandalone()`, so a paid debt left on the list fails the build ("oracle debt
+  is paid … update the registry") and the closure is enforced by the harness rather than by prose; the
+  artifact regenerated to 150 `match` / 26 `debt` / 164 parity-asserted with `oracle_drift: 0`, numbers
+  `pkg/lang/roadmap_snapshot_test.go` reads out of the JSON rather than out of this prose. And the interleaving paragraph is gone from
+  `docs/language.md` § print, replaced by what is actually true — including the one shape that still
+  interleaves. Two tests had been *pinning the bug* because both engines shared it
+  (`TestPrintSeparationParity`'s `got << 21 >>\n42\n` row, `TestExecStringInClassMethod`'s
+  `r inside method\n42\n`): they carry CPython's expectations now, and a suite that has to be lied to is
+  the thing that was broken.
 <a id="gap-l-6"></a>
 - **Gap L.6 — a container printed as its handle, its global, or its predecessor's strings** ✅ DONE
   (found by the L11.9 oracle leg, ADR 0188) — the most ordinary program in the corpus did not

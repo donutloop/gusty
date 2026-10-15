@@ -11310,3 +11310,135 @@ module it always shipped, byte for byte.
   `traceback` string and the `frames` array cannot drift, and `TestTheJSONFramesMemberAgreesWithTheTerminalReport`
   asserts they are equal. `col` is 0 everywhere: the runtime keeps lines, and a column the compiler does not track
   would be a number the report invented.
+
+---
+
+## Round: Gap L.5 — `print` is atomic (ADR 0355)
+
+The row ADR 0186 found on its first run and nobody could open for nine rounds. Measured again before
+anything was touched: `print("got", twice(21))` wrote `got << 21 >>` / `42`, CPython wrote `<< 21 >>` /
+`got 42`.
+
+### What the row taught
+
+- **A roadmap cell's plan can be right and its system wrong, and that is a reason the row stays open.**
+  "Evaluate all arguments to values, then emit the line" is exactly the semantics — and implemented as
+  written it means a value-returning twin of the argument switch in `(*irGen).call`. That switch is
+  **1425 lines, 20 `return` roads, 1481 appends into the builder the line is assembled in** — those are
+  measured numbers (`awk` range + `grep -c`), not an impression. The cycle's idea is the one with no
+  state: the argument list's IR is already a straight line of evaluations with a few writes threaded
+  through it, so thread the writes to the end. Nobody had written that down, so the row read as
+  "restructure the print lowering" for nine rounds and nobody restructured 1425 lines for a reordering.
+- **The dominance argument is the whole safety case, and it fits in a sentence.** A write in an
+  argument's trailing straight-line run is in the block the emitter stands in when that argument is
+  finished; the block the statement finishes in is its descendant on one straight-line path. So the
+  write executes *exactly when the line is printed at all*. Anything earlier is a write the argument's
+  own lowering made conditional, and moving it would print it on paths that never chose it. The gate is
+  that sentence, executable: `printWriteDeferralReason`, five refusals in words.
+- **The record leg could not see this bug, and saying so out loud is what kept it honest.** `goldenRepr`
+  flattens a rendered line — it drops empty components and trims trailing spaces — so the record
+  compares a line's *contents*, never the instant its bytes were written. Sorting print statements before
+  flattening would have made the record blind to ordering *forever* to certify a change to ordering:
+  self-certification. The bar instead was **regenerate the drift ledger and diff it against HEAD** —
+  byte-identical, 339 rows, none new, none vanished. Absence of movement is the claim the record leg can
+  actually support here.
+- **The bug had allies in the suite.** `TestPrintSeparationParity` carried the row
+  `"an argument that prints keeps its place in the line"` with the interleaved stdout, and
+  `TestExecStringInClassMethod` asserted `r inside method` / `42`. They were written when there were two
+  engines and both legs agreed. The fix had to *break two green tests that were pinning the bug*, and the
+  honest move was to ask CPython which of the two answers was the language's — it was the one neither leg
+  gave. A suite that has to be lied to is a witness that was bribed.
+- **The gate's reach is a fact about the emitter, so the whitelist is a whitelist.** Eighteen sinks:
+  `@printf`, the two `rt_out_*` writers, six scalar/tag printers, three container families × three
+  spellings. `@rt_die` is off it (a raise's report belongs to the raise and goes to stderr) and
+  `@rt_echo_*` is off it (the REPL channel, ADR 0204). A printer added later without a line there keeps
+  yesterday's interleaving — wrong in the direction of the old answer, never in the direction of a lost
+  line. The classifier's own table carries the two decoys that make the claim real (`@rt_print_list_lengths`,
+  a `load` of `@rt_print_list_count`), because the callee is read from after the *last* `call` and not at
+  the first `@`: a print line's operands name `@.fmt3` and `@.fmtdictkeys` of their own.
+- **A substring test on register names is a bug that turns the feature off silently.** `%t1` is a
+  "mention" of `%t10`, so "does the statement read this write's answer?" fires on any statement with
+  eleven `printf`s in it — and the visible symptom is that nothing reorders, while every stdout test that
+  happens not to look still passes. `TestARegisterMentionIsAWholeRegister` is the guard on the guard.
+- **Filed-not-fixed beats quietly partial.** `x: int | str = 1` / `print("a", x, p())` still interleaves,
+  because printing `x` is the union box's tagged-arm printer: its write sits in `sbr4`/`ibr5`/`fbr1` and
+  only `join3` is straight-line. Deferring an arm's write to the statement's tail prints it on the arm
+  that did *not* run — losing a line to buy an ordering. The shape is pinned with its answer, CPython's
+  answer beside it, and a test that fails if the divergence ever disappears unannounced. What it owes is
+  L11.1's tagged value word, named in the row.
+- **Promotion is the closure, and the ledger enforces it.** Both pins (`probe_print_atomic`,
+  `print_args`) were *deleted* from `oracleLedger` and moved into `conformanceStandalone()`. A paid debt
+  left on the ledger fails the build with "oracle debt is paid … update the registry", so the row cannot
+  be closed in prose and left open in the harness. The artifact's counters — 148→150 `match`, 28→26
+  `debt`, 163→164 asserted — are then read back out of the JSON by `roadmap_snapshot_test.go`; the numbers
+  in `roadmap.md`'s Snapshot are generated, not typed.
+
+### Process lesson (the ugly one)
+
+Parts of this cycle's verification narrative were written down from memory of outputs that had never
+actually been read: file names that do not exist (`codegen_print_atomic.go`,
+`integration/testdata/parity/print_atomic.json`), test names that were never in the file, an ADR slug
+invented rather than listed, a sink family (`@fputs`) that is not in the whitelist. All of it was caught
+by re-measuring — `git status`, `ls`, reading the test file back, `ls docs/adr`, and by the guards that
+generate their own expectations (`TestTheRoadmapsCitationsResolve` fails on an Evidence cell that names a
+file that is not in the tree; `TestTheRoadmapSnapshotIsMeasuredNotRemembered` fails on a Snapshot number
+the artifact disagrees with). The rules that made it catchable:
+
+- a claim about an artifact is taken **from the artifact** (ADR 0164), including a claim about a test
+  file's contents — read it back after writing it;
+- a citation guard is worth more than a careful author, so put paths in Evidence cells and let the build
+  check them;
+- never say "the suite passed" from a run whose tail was truncated and never re-read. The gate is
+  `make testparallel`, launched **after the last edit**, and the log is read to its last line.
+
+### The debt was paid, and five green tests went red
+
+`make testparallel` after the promotion: `pkg/lang` green, and five cases red —
+`TestCLIOracleExitCodeIsTheDivergence`, the exit-code contract's `oracle: divergence from CPython` row,
+`TestOracleThirdLegIsNotAStub`, `TestOracleHarnessCanFail`, `TestPairAgreesWithTheOracle`. Every one of
+them had been using *this gap* as its example of "a valid program that ran, printed the wrong thing, and
+owes a ledger row", because it was the cheapest divergence in the corpus. Their own comments already
+recorded two or three earlier migrations of the same fixture (`print(True)` → `print([True, 1])` →
+`show(1 == 1)` → non-atomic `print`) and the rule that forces them to move: **a fixture pointed at a
+paid-off debt asserts a contract nothing violates**. So the closing work is not only the fix — it is
+re-pointing every witness that had been borrowing this bug, at a debt that is genuinely still open.
+They now borrow Gap R.124's `i = 0` / `print(max([True, i]))` (the fold cannot say which candidate won,
+so it prints `1` where the reference prints `True`, exit 0 — owned by L11.1's tagged word, so it will not
+be paid by the next cycle), and each comment records where it has been. Measured before migrating: the
+new fixture prints `True` under `python3`, `1` under the compiled leg, and `--oracle` exits **6**.
+
+### A ledger field nobody re-derives is a field that lies
+
+Regenerating `integration`'s record-leg ledger moved 22 → 24 rows as expected — the two new rows being
+the sources whose **record** held the interleaved line, where CPython agrees with the new compiled answer
+and the record is therefore the debt (ADR 0302). It also silently corrected an unrelated row's `actual`:
+a refusal that the ledger said was `jit: codegen: int on non-integer string` is answered by a HEAD binary
+*and* by the working one as `tuple assignment length mismatch`. Verified by building HEAD in a clean
+`git worktree` and running the same program through both binaries, so the correction is attributable to
+staleness and not to this change. `expected`/`actual` on a ledger is an observation, and an observation
+with no owner is a rumour.
+
+### What counting the artifacts again caught
+
+Two claims in this cycle's own write-up were wrong in the way only a re-measure can fix: "the record leg
+is untouched" (true of `pkg/lang`'s ledger, **false** of `integration`'s, which gained two rows) and a
+count of behaviour rows quoted from memory instead of from the table (25, not 14). Both were caught by
+running the guards that compute their own expectations — `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+and `TestTheRoadmapsCitationsResolve` — and by reading the artifact with `git diff --stat` instead of
+asserting its shape. The lesson is the same one in the section above, one layer down: **a claim about an
+artifact comes from the artifact, including a claim about your own change to it.**
+
+### `GUSTY_GOLDEN_UPDATE` is per-run, and a run of one package rewrites another package's ledger
+
+Regenerating `integration`'s record-leg ledger (`GUSTY_GOLDEN_UPDATE=1 go test ./integration/`,
+`-parallel 1`, whole package — the sanctioned mode) also rewrote
+`pkg/lang/testdata/interpreter-golden-drift.json`, down to **one** row: the divergences that process had
+actually accumulated. `golden.go`'s writer takes a path relative to the repo, not relative to the package
+whose tests set the variable, so the artifact-writing modes are only safe as a *full, single-process run* —
+which is exactly why AGENTS keeps them out of `make testparallel` and puts them behind `make test`. The
+recovery is cheap if you look: `git checkout --` the ledger, then let the suite's two-way ratchet re-prove
+it (a new divergence fails, a vanished one fails). The recovery is invisible if you do not look, which is
+what makes the `TestTheRoadmapSnapshotIsMeasuredNotRemembered` failure in this cycle ("the artifact says 1")
+the most valuable red the run produced: the guard counted the file, found a one-entry ledger where the
+Snapshot row said 339, and refused to let a clobbered artifact become the truth. **Counting the artifact is
+what caught destroying the artifact.**
