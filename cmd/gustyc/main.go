@@ -146,7 +146,7 @@ func run() int {
 	debugInfoF := fs.String("debug-info", "", "print the DWARF line-table document for a source string: compile unit, one entry per function, IR-line-to-source-line rows (--json for the machine document; L8.5)")
 	debugInfoFile := fs.String("debug-info-file", "", "same as --debug-info, for a source file")
 	sourceMapOut := fs.String("source-map-out", "", "write a JSON source map (source fn -> IR symbol+line) to this path")
-	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
+	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON (a trap's report arrives as data too: exception, traceback, frames)")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
 	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
@@ -620,6 +620,15 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 			members = append(members, fmt.Sprintf("\"exception\": %q, \"exception_message\": %q", class, message))
 		}
 		members = append(members, fmt.Sprintf("\"traceback\": %q", res.Stderr))
+		// The same report as data: the frames the terminal saw, outermost first, each one named
+		// by the function the program wrote and the line it was on (Gap K.8, ADR 0354). An agent
+		// that wants to branch on "did this die in the loop or in the helper" should not have to
+		// scrape the prose `traceback` member for it.
+		if frames := lang.ParseTrapFrames(res.Stderr); len(frames) > 0 {
+			if fb, ferr := json.Marshal(frames); ferr == nil {
+				members = append(members, "\"frames\": "+string(fb))
+			}
+		}
 	}
 	// The snippet's answer, if the pair named a form for it. `result` is the text the one str/repr
 	// table produced (ADR 0258) and `type` the kind the expression could prove.

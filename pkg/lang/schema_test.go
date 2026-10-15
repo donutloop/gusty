@@ -281,3 +281,51 @@ func TestGCStatsLineRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestSchemaDeclaresTrapFrames keeps the traceback's machine path honest (Gap K.8, ADR 0354): the
+// `frames` member a --json run result carries is a []Frame, and every name one marshals under has
+// to be declared by definitions.trapFrame. The consumer this guards is an agent validating a run's
+// JSON against the schema instead of reading Go structs — and a member that exists in the payload
+// and not in the schema is the same lie in reverse.
+func TestSchemaDeclaresTrapFrames(t *testing.T) {
+	t.Parallel()
+	var doc struct {
+		Definitions struct {
+			TrapFrames struct {
+				Type  string `json:"type"`
+				Items struct {
+					Ref string `json:"$ref"`
+				} `json:"items"`
+			} `json:"trapFrames"`
+			TrapFrame struct {
+				Required   []string       `json:"required"`
+				Properties map[string]any `json:"properties"`
+			} `json:"trapFrame"`
+		} `json:"definitions"`
+	}
+	if err := json.Unmarshal([]byte(ASTIRSchema), &doc); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	if doc.Definitions.TrapFrames.Type != "array" || doc.Definitions.TrapFrames.Items.Ref != "#/definitions/trapFrame" {
+		t.Fatalf("definitions.trapFrames is not an array of $ref trapFrame: %+v", doc.Definitions.TrapFrames)
+	}
+	// What the shipped payload actually looks like, taken from a Frame rather than from a wish.
+	wire, err := json.Marshal([]Frame{{Name: "bump", Line: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for name := range decoded[0] {
+		if _, ok := doc.Definitions.TrapFrame.Properties[name]; !ok {
+			t.Errorf("a frame marshals %q and the schema does not declare it", name)
+		}
+	}
+	for _, want := range []string{"name", "line", "col"} {
+		if _, ok := doc.Definitions.TrapFrame.Properties[want]; !ok {
+			t.Errorf("definitions.trapFrame declares no %q", want)
+		}
+	}
+}

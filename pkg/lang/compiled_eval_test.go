@@ -1492,35 +1492,42 @@ print(g.__doc__)`)
 //
 // The retired engine built the frame stack as it walked: every call pushed a frame, and a raise
 // collected them, so these three cases could read `bar` at line 2 out of the error. The compiled
-// backend has no such stack — the target raises with the class and the message the runtime was
-// given, and the frames are Gap K.8's to emit (its metadata design landed with ADR 0231, and the
-// CLI already reads a `traceback` member of the JSON result, so the seam is in place).
+// backend reports the class and the message on the tool channel and the frames the raise
+// travelled through (Gap K.8, ADR 0354) — the program carries a shadow stack, the raise copies
+// it, and rt_die prints it, so what the host reads is what the target knew.
 //
-// What is testable now is the two halves that exist, and they are the ones a reader judges: the
-// trap arrives named — the class an `except IndexError:` would match, the message the raise
-// carried — through every shape a program can fail in; and the host's renderer, given a frame
-// stack, writes Python's shape rather than a paraphrase of it. Both are asserted below, per shape.
-// When Gap K.8 fills in, the frames join the same three cases without rewriting them.
+// Two things are asserted per shape: the trap arrives named — the class an `except IndexError:`
+// would match, the message the raise carried — through every shape a program can fail in; and
+// the frames that arrive are the ones the source says, not a stack the host invented. The
+// renderer is checked through the same frames, because the shape a reader greps is the point.
 func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, src, wantClass, wantMsg string
 		frame                         Frame
+		stack                         []Frame
 	}{
 		{
 			name:  "a call nested two deep",
 			src:   "def bar(x):\n  return x // 0\ndef foo(x):\n  return bar(x)\nfoo(10)\n",
 			frame: Frame{Name: "bar", Line: 2, Col: 10},
+			// Outermost first, exactly as the reference prints them: the module called foo from
+			// the last line, foo called bar from its `return`, and bar is where it died.
+			stack: []Frame{{Name: "<module>", Line: 5}, {Name: "foo", Line: 4}, {Name: "bar", Line: 2}},
 		},
 		{
 			name:  "a method body",
 			src:   "class C:\n  def m(self):\n    return 1 // 0\nc = C()\nc.m()\n",
 			frame: Frame{Name: "m", Line: 3, Col: 12},
+			// A method's frame names the method the way the reference does — `in m`, not `in C.m`.
+			// The class-qualified name is the line table's (ADR 0231), not the traceback's.
+			stack: []Frame{{Name: "<module>", Line: 5}, {Name: "m", Line: 3}},
 		},
 		{
 			name:  "the module's own statement",
 			src:   "x = 1 // 0\n",
 			frame: Frame{Name: "<module>", Line: 1, Col: 5},
+			stack: []Frame{{Name: "<module>", Line: 1}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1542,14 +1549,25 @@ func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
 			if tc.wantClass != "" && ee.ExnType != tc.wantClass {
 				t.Errorf("class = %q, want %q", ee.ExnType, tc.wantClass)
 			}
-			// No frames may be invented: a stack the compiler cannot name is worse than none,
-			// because it reads as evidence. Gap K.8 will supply real ones.
-			if len(ee.Traceback) != 0 {
-				t.Errorf("a frame stack arrived from a backend that does not emit one yet (Gap K.8): %v", ee.Traceback)
+			// The frames are reported, not imagined: the target wrote them and the host read them
+			// back, so a stack that disagrees with the source is a bug in the report rather than a
+			// detail of presentation (Gap K.8, ADR 0354).
+			if len(ee.Traceback) != len(tc.stack) {
+				t.Fatalf("frame stack = %v, want %v", ee.Traceback, tc.stack)
 			}
-			// The host's rendering, given a stack, keeps Python's shape: header, one line per
-			// frame, and the class and message last — the line that tells a reader what to grep.
-			ee.Traceback = []Frame{tc.frame}
+			for i, want := range tc.stack {
+				got := ee.Traceback[i]
+				if got.Name != want.Name || got.Line != want.Line {
+					t.Errorf("frame %d = %s at line %d, want %s at line %d", i, got.Name, got.Line, want.Name, want.Line)
+				}
+			}
+			// The innermost frame is the raise's own — the line a reader opens the file at.
+			if got := ee.Traceback[len(ee.Traceback)-1]; got.Name != tc.frame.Name || got.Line != tc.frame.Line {
+				t.Errorf("the raise reported %s at line %d, want %s at line %d", got.Name, got.Line, tc.frame.Name, tc.frame.Line)
+			}
+			// The host's rendering of the stack it was given keeps Python's shape: header, one
+			// line per frame, and the class and message last — the line that tells a reader what
+			// to grep.
 			rendered := ee.RenderTraceback()
 			for _, want := range []string{
 				"Traceback (most recent call last):",
@@ -1566,14 +1584,11 @@ func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
 
 func TestTrapReportNamesTheCallThatFailed(t *testing.T) {
 	t.Parallel()
-	// What a trap owes the reader: its class, its message, and the frames it travelled through. The
-	// engine used to build that frame stack itself, and this case read it back out of Go. The
-	// compiled backend reports the class and the message on the tool channel and not yet the frames
-	// — that half is Gap K.8, whose metadata design landed with ADR 0231, and the CLI already reads
-	// a `traceback` member of the JSON result, so the seam is here and waiting for it.
-	//
-	// What this case holds today is the half the target does deliver, plus the two things the host
-	// must never do: invent a class the program did not raise, or invent a frame it cannot name.
+	// What a trap owes the reader: its class, its message, and the frames it travelled through.
+	// The frames are the target's to report and no longer the engine's to imagine (Gap K.8,
+	// ADR 0354): the program carries a shadow stack, the raise copies it, rt_die prints it, and
+	// this case reads it back out of the run that produced it. What the host still must never do
+	// is invent a class the program did not raise, or a frame the target did not name.
 	err := goldenRunError(t, "def foo(x):\n  return x // 0\nfoo(1)\n")
 	if err == nil {
 		t.Fatal("the division by zero should have propagated")
@@ -1585,14 +1600,21 @@ func TestTrapReportNamesTheCallThatFailed(t *testing.T) {
 	if ee.ExnType == "" || ee.ExnMsg == "" {
 		t.Fatalf("the trap arrived without a class or a message: %+v", ee)
 	}
-	if len(ee.Traceback) != 0 {
-		t.Fatalf("a frame stack came from a backend that does not build one yet (Gap K.8): %v", ee.Traceback)
+	if len(ee.Traceback) != 2 {
+		t.Fatalf("the trap arrived with %d frames, want the caller's and the raise's: %v", len(ee.Traceback), ee.Traceback)
 	}
-	// The host's rendering, once a stack exists: Python's shape, with the class on the last line —
-	// the line that tells a reader what an `except IndexError:` would have matched.
-	rendered := (&TrapError{Msg: ee.ExnMsg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
-		Traceback: []Frame{{Name: "foo", Line: 2, Col: 1}}}).RenderTraceback()
-	for _, want := range []string{"Traceback (most recent call last):", "line 2, in foo", ee.ExnType + ": " + ee.ExnMsg} {
+	if ee.Traceback[0].Name != "<module>" || ee.Traceback[0].Line != 3 {
+		t.Errorf("the outer frame is %q at line %d, want <module> at the line the call is written on (3)",
+			ee.Traceback[0].Name, ee.Traceback[0].Line)
+	}
+	if ee.Traceback[1].Name != "foo" || ee.Traceback[1].Line != 2 {
+		t.Errorf("the inner frame is %q at line %d, want foo at line 2", ee.Traceback[1].Name, ee.Traceback[1].Line)
+	}
+	// The host's rendering of the stack the target reported: Python's shape, with the class on
+	// the last line — the line that tells a reader what an `except IndexError:` would have
+	// matched.
+	rendered := ee.RenderTraceback()
+	for _, want := range []string{"Traceback (most recent call last):", "line 3, in <module>", "line 2, in foo", ee.ExnType + ": " + ee.ExnMsg} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered traceback %q is missing %q", rendered, want)
 		}

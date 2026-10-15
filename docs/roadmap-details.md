@@ -1520,7 +1520,8 @@ Each is a concrete, reproducible defect with the shape to fix it.
   codes, clean stdout, catchability on both backends, statically-impossible assignments)
   plus new membership cases in `integration/dict_iteration_test.go`.
 <a id="gap-k-8"></a>
-- **Gap K.8 — tracebacks had no usable source location** — 🟨 PARTIAL (ADR 0171).
+- **Gap K.8 — tracebacks had no usable source location** — ✅ DONE (ADR 0171 spans, ADR 0231 line
+  tables, ADR 0354 the frame stack).
   Two bugs, one of them predating the AOT report entirely:
   - **the parser never gave `raise` a span**, so every traceback — interpreter included —
     said `File "prog", line 0`. `RaiseStmt` now carries the `raise` keyword's position.
@@ -1531,10 +1532,59 @@ Each is a concrete, reproducible defect with the shape to fix it.
   string ended the LLVM literal early and the module failed to verify with a nonsense
   array length ("got type '[7 x i8]' but expected '[31 x i8]'") — a traceback frame, which
   contains quotes, was the first thing to trip it. Quotes are now `\22` (tabs/CR too).
-  Still open: the AOT report shows only the raise site's own frame, where the interpreter
-  prints one frame per stack level. Its prerequisite has since landed — L8.5 put a real line
-  table in the module (ADR 0231), so the frames an unwinder could read are there; what is
-  missing is the runtime half, an explicit frame stack pushed at each call site to walk.
+
+  **The long half, and why it landed as a shadow stack (ADR 0354).** The row's remaining claim was
+  the one a reader actually reads: a report that names the raise's own frame and nobody else blames
+  the innermost line for a bug that lives in the interaction of three statements. The artifact was
+  asked before anything was invented, and `testdata/interpreter-golden.json` has no frames anywhere
+  in it — the retired engine's answer was stored as repr, stdout, trap class and message — so this
+  row has a record leg that is silent and a reference leg that is not: under ADR 0302 the compiled
+  report has to *be* CPython's report, not merely resemble it.
+
+  Alternatives rejected, with the reason each fails: a **native backtrace** names `gy_outer` and the
+  closure trampolines rather than `outer`, because the lifted-closure and defunctionalisation passes
+  have already rewritten which define a statement becomes — the native stack belongs to a different
+  program. A **DWARF walk** needs `--debug`, and a trap is exactly when a reader wants the frames
+  whatever the build asked for. **Popping at the callee's exits** is correct and fragile: the emitter
+  has many `ret` roads, and one that forgets its pop leaks a frame per call for the rest of the run;
+  popping at the call site costs one stale frame on a road nobody thought of, which is why the
+  instrumentation is one pass over the assembled module rather than eleven edits in the emitter. And
+  **printing the live stack in `rt_die`** prints nothing, because a compiled raise has already
+  returned out of every frame — hence the snapshot the raise takes.
+
+  Four things the witnesses decided, none of them in the plan:
+
+  - the pass **owns the offsets it broke**. ADR 0231 resolves every `!dbg` record against byte
+    positions in the finished module, so inserting pushes without shifting the statement marks left
+    a line table that was complete, verified, and attributed every statement after the first call to
+    the line above it. No verifier can see that error; the guard is a coverage assertion over the
+    *last* line of a program whose calls sit above it.
+  - a method's frame says `bump`, not `Counter.bump`, because that is what CPython prints. The
+    qualified name is not lost — it is the `DISubprogram`'s (ADR 0231), where the audience is a
+    debugger. Two channels, each stating its own convention, because one reader greps a traceback and
+    the other sets a breakpoint.
+  - the reference **collapses** a run of identical frames — three copies and `[Previous line
+      repeated N more times]` — which is why the compaction lives in `rt_frames_snapshot` (it is a
+      fact about the stack, not about its layout) and why a 200-deep recursion no longer answers one
+      question 200 times.
+  - the 64-frame table had to be a **window**, not a clamp. The first cut clamped writes at slot 63,
+      so the deepest frames carried line 0, and the printer skips a frame whose line is unknown: a
+      120-deep recursion printed one frame too few, and the frames it dropped were the ones that
+      mattered. The assertion that caught it was "the innermost frame names the raise's own line".
+
+  The gate is `raiseUsed`, set by `setExn` — the door every raise goes through, the program's own
+  `raise` and the machine-detected index, key and conversion traps alike — so a program that can never
+  report a trap ships the module it always shipped, IR line numbers included, which is what keeps ADR
+  0166's fold-purity pins and ADR 0231's line-table rows describing the module they describe. The
+  caption-length bug of ADR 0171 is treated as a class rather than an event: a `getelementptr` restates
+  the array type it indexes, so every report string is generated from one Go string and its uses are
+  substituted into the raise block, and no caption's length is typed by a human again.
+
+  The machine path came with the feature and not after it: `--json` grows a `frames` member beside
+  `traceback`, built by `ParseTrapFrames` reading the target's own bytes back — the same frames the
+  terminal saw, so the array and the prose cannot tell two stories about one run (ADR 0214's rule for
+  the class, extended to the stack) — shaped by `definitions.trapFrames` in `gustyc --schema`, with
+  `col` always 0 because the runtime keeps lines and an untracked column would be an invention.
 <a id="gap-k-7"></a>
 - **Gap K.7 — `--build` could fail with no stated reason** — ✅ DONE. The error branch
   printed the diagnostics *or* the failure line, never both, so a build that died in
@@ -4208,7 +4258,7 @@ remaining steps ((1c) floats in containers, (1d) retiring `@estr[h]`, and the ta
 itself), L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
 (code-point strings), L11.6 (numerics), L11.7 (functions as values), then L11.8 (refusals and
 exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
-Gap K.8 part 2 — full AOT tracebacks, Gap M.2 — flipping `--file` to the compiled backend,
+Gap M.2 — flipping `--file` to the compiled backend,
 Gap L.5 — print atomicity, Gaps N.2, P.1, P.2) are absorbed by Phase 11 where they are
 representation decisions, and stay their own work where they are not (K.8's prerequisite
 landed with L8.5's line tables (ADR 0231) — what is left there is the frame stack, not the

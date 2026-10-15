@@ -1643,7 +1643,9 @@ falls back to dynamic dispatch.
   `g.stmt` returned, so any construct the compiler refuses inside a method became half a function and
   an `llc` rejection: exit 2, blaming the compiler for a source error (ADR 0166's rule). Methods now
   own their unwind path (which closes the GC frame they opened), clear the enclosing statement's
-  handler/deferred state, name their traceback frame `Class.method`, report their refusals as compile
+  handler/deferred state, name their traceback frame after the method the program wrote (ADR 0354
+  prints `bump`, the way the reference does, and leaves the class-qualified `Counter.bump` to the
+  line table, ADR 0231), report their refusals as compile
   errors, and every call site into program code — static dispatch, `super()`, the class-id `switch`,
   and a constructor's `__init__` — checks the flag. Inside the `switch` the check had to finish the
   arm and the join's `phi` name the check's continuation: a call site that can raise cannot also be a
@@ -1762,6 +1764,32 @@ falls back to dynamic dispatch.
   they are rows and not clauses. The tempting `NoneLit` arm on the *static* key door was built, measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
+- **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls
+  reported one frame. `def inner(x): return x // 0` / `def outer(x): return inner(x)` / `outer(7)`
+  printed the header, `File "prog", line 2, in inner` and the class, and the reader had to guess who
+  called `inner`; the reference prints three frames, and a report that blames the innermost line for
+  a bug living in the interaction of three statements is not a report. The record has no frames at
+  all — a scan of `testdata/interpreter-golden.json` for `File "prog"` returns nothing, it stores a
+  trap's class, message and stdout — so this is a reference-leg feature and CPython is its
+  definition. What shipped is a **shadow stack the program keeps itself**: `pkg/lang/frame_stack.go`
+  carries the runtime (two parallel 64-slot tables, a depth, a snapshot the report prints from) and
+  the post-pass that instruments the module, putting a push before every call to a program function
+  and its line beside it, and a pop after it. A pass rather than a hunt through the emitter's
+  eleven call roads — a `def`, a method, `super()`, a constructor, the dispatch `switch`, a hoisted
+  hook lambda, a closure `_impl` — because a feature that depends on remembering all eleven has a
+  missing frame in it. The frame keeps the name the *program* wrote, not the symbol the module holds:
+  `bump` for a method (the reference's shape; the qualified `Counter.bump` is what the line table
+  says, ADR 0231), `inner` for a lifted closure, `<module>` for the top level. A run of identical
+  frames is printed three times and counted (`[Previous line repeated 61 more times]`), the way the
+  reference does it, and the table is a window on the newest 64 frames — both stated in
+  `docs/language.md`. The whole thing is gated on `raiseUsed`, so a program that can never report a
+  trap ships the module it always shipped, byte for byte. The agent path came with it rather than
+  after it: `--json` grows a `frames` member beside `traceback`, read back off the target's own
+  bytes by `ParseTrapFrames` so the prose and the array cannot disagree, shaped by
+  `definitions.trapFrames` in `gustyc --schema`. Eight programs — nested calls, a method, an index
+  through a helper, a recursion shallow and a recursion deep enough to collapse, an escape after a
+  handled exception, a comprehension's helper, the module's own statement — are compared to CPython
+  frame by frame, by name **and** line, in `integration/traceback_test.go`.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

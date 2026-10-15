@@ -137,7 +137,11 @@ func TestUncaughtTrapStillTrapsOnTheCompiledBackend(t *testing.T) {
 	if !strings.Contains(aout, "ZeroDivisionError") {
 		t.Fatalf("compiled program did not report ZeroDivisionError: %s", aout)
 	}
-	if strings.Contains(aout, "1") {
+	// What the program must never print is its own line, not merely a digit: the report on the
+	// tool channel now names every frame the raise travelled through, and a frame line is full of
+	// digits that say where, not whether (Gap K.8, ADR 0354). `print(a, b)` is the half that must
+	// not appear — it sits after the uncaught call, and a program that died never reached it.
+	if strings.Contains(aout, "1 0") {
 		t.Fatalf("compiled program printed %q; the uncaught call comes before any output", aout)
 	}
 	_, pyErrText, perr := lang.PythonRun(src)

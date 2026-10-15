@@ -688,7 +688,15 @@ func recordedTrap(want goldenEntry, res *JITResult) error {
 	if msg == "" {
 		msg = "the program trapped"
 	}
-	return &TrapError{Msg: msg, ExnType: class, ExnMsg: message}
+	tee := &TrapError{Msg: msg, ExnType: class, ExnMsg: message}
+	// The frames are the target's to report, not the host's to imagine: rt_die wrote them to
+	// fd 2 and this reads them back, so a case can ask which function a trap travelled through
+	// (Gap K.8, ADR 0354). A run that reported none — a refusal, or a trap the tool channel
+	// carried without a report — keeps the empty stack rather than a fabricated one.
+	if res != nil {
+		tee.Traceback = ParseTrapFrames(res.Stderr)
+	}
+	return tee
 }
 
 // trapLine is the sentence the target wrote about the trap, for the ledger row that has to say why

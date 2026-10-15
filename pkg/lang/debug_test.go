@@ -417,6 +417,11 @@ func runtimeIRBlocks() []string {
 	return []string{
 		raiseRuntimeIR, floatRuntimeIR, heapRuntimeIR,
 		rootRuntimeIR, rootGlobalsIR,
+		// The shadow frame stack is runtime code with a name the program never wrote, and it is
+		// emitted with the raise block rather than by the pass that instruments calls (Gap K.8,
+		// ADR 0354) — so it belongs in the exempt set for the same reason the raise block does,
+		// and the guard stays derived from the blocks instead of a hand-written exemption.
+		frameRuntimeIR,
 		// The instance renderers are emitted per module, but they are runtime code and their names
 		// never come from the program. Asking the generator with no classes is what keeps this list
 		// derived from the blocks themselves rather than a hand-written exemption (roadmap Gap R.209).

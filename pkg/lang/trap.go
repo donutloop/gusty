@@ -19,17 +19,68 @@ type TrapError struct {
 	Msg     string
 	ExnType string
 	ExnMsg  string
-	// Traceback is the frame stack the trap was reported through. The compiled backend does
-	// not build one yet — that is Gap K.8, whose metadata landed with ADR 0231 — so the field
-	// is where an emitted frame stack will go, and the CLI's `traceback` member reads it.
+	// Traceback is the frame stack the trap was reported through. The compiled backend builds
+	// one: the program carries a shadow stack of its own, the raise copies it, and rt_die prints
+	// it (Gap K.8, ADR 0354). ParseTrapFrames is the host reading that report back, so the CLI's
+	// `traceback` and `frames` members are the same frames the terminal saw, in the same order.
 	Traceback []Frame `json:"traceback,omitempty"`
 }
 
 // Frame is one entry of a trap's frame stack: the function, and the position in the source.
+//
+// Col is zero for every frame the compiled runtime reports: the shadow stack stores the line
+// the call is written on, which is the position a traceback is read for, and a column the
+// compiler does not track would be a number the report invented.
 type Frame struct {
 	Name string `json:"name"`
 	Line int    `json:"line"`
 	Col  int    `json:"col"`
+}
+
+// frameLineRe is the shape rt_die writes a frame: the caption the reference trained everyone
+// to read, with the file the module names, the line, and the function the program wrote.
+//
+// ParseTrapFrames reads the frames back that ParseTrapReport skips: the same transcript, the
+// class read by the one door and the history read by this one, so the two can never tell two
+// stories about one run (ADR 0214's machine-readable exception, extended by ADR 0354).
+func ParseTrapFrames(stderr string) []Frame {
+	var out []Frame
+	for _, raw := range strings.Split(stderr, "\n") {
+		l := strings.TrimSpace(raw)
+		if !strings.HasPrefix(l, "File \"") {
+			continue
+		}
+		// File "prog", line 5, in outer
+		rest := l[len("File \""):]
+		q := strings.Index(rest, "\"")
+		if q < 0 {
+			continue
+		}
+		rest = rest[q+1:]
+		const lineCaption = ", line "
+		i := strings.Index(rest, lineCaption)
+		if i < 0 {
+			continue
+		}
+		num := rest[i+len(lineCaption):]
+		j := strings.Index(num, ", in ")
+		if j < 0 {
+			continue
+		}
+		line := 0
+		for _, c := range num[:j] {
+			if c < '0' || c > '9' {
+				line = -1
+				break
+			}
+			line = line*10 + int(c-'0')
+		}
+		if line < 0 {
+			continue
+		}
+		out = append(out, Frame{Name: num[j+len(", in "):], Line: line})
+	}
+	return out
 }
 
 func (e *TrapError) Error() string { return "program traps: " + e.Msg }

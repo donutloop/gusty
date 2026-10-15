@@ -1470,6 +1470,21 @@ const astIRSchemaTemplate = `{
         "defect": { "type": "string", "description": "Set when the module's own metadata disagrees with what the emitter meant to write \" \u2014 a record a debugger would misread. Empty means the two agree." }
       }
     },
+    "trapFrames": {
+      "type": "array",
+      "description": "The frames an uncaught exception travelled through, as the compiled program reported them: the frames member of a --json run result (roadmap Gap K.8, ADR 0354). The program carries a shadow frame stack, the raise copies it, the runtime prints it, and this is that same report read back as data — outermost frame first, the order the terminal shows it — so a caller can ask which function failed without scraping the traceback prose. A run that reported no frames (a front-end refusal, or a trap the tool channel carried without a report) has no member at all rather than an invented one.",
+      "items": { "$ref": "#/definitions/trapFrame" }
+    },
+    "trapFrame": {
+      "type": "object",
+      "required": ["name", "line", "col"],
+      "description": "One frame of a trap's history: what the program called, and where it stood when the raise ran.",
+      "properties": {
+        "name": { "type": "string", "description": "The function as the program wrote it, not the symbol the module holds: bump for a method (the shape the reference prints), inner for a lifted closure whose define is inner_impl, <module> for the program's own top level." },
+        "line": { "type": "integer", "description": "The line that frame was executing: the line the call it was waiting on is written on, for a frame that only led to the raise; the raise's own line for the innermost frame." },
+        "col": { "type": "integer", "description": "Always 0 from the compiled runtime, which keeps lines and not columns; a column the compiler does not track would be a number the report invented." }
+      }
+    },
     "dwarfReport": {
       "type": "object",
       "required": ["tool", "ran", "skipped", "ok", "line_rows"],

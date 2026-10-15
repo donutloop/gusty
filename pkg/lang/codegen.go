@@ -4503,7 +4503,11 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// omitted while the emitted code mentions one of its names.
 	bodyText := b.String()
 	if g.raiseUsed || g.heapUsed || runtimeBlockReferenced(raiseRuntimeIR, bodyText) {
+		// The frame stack travels with the raise block rather than with the pass that instruments
+		// calls: rt_die reads the tables, so a module that has the reporter must have the tables
+		// whether or not a push ever filled them (ADR 0173).
 		g.globals.WriteString(raiseRuntimeIR)
+		g.globals.WriteString(frameRuntimeIR)
 	}
 	// rt_fmt_double is only referenced by Python-style float rendering, so it travels in its own
 	// block: a program that never prints a float does not pay for the snprintf/strtod
@@ -4612,12 +4616,26 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// relocations (e.g. R_X86_64_32) that the default PIE link (cc) rejects.
 	out.WriteString("!llvm.module.flags = !{!0}\n")
 	out.WriteString("!0 = !{i32 2, !\"PIC Level\", i32 2}\n")
+	// The shadow frame stack goes in over the finished text and before the line table: it is the
+	// one pass that may *add instructions*, so it runs ahead of attachDebugInfo resolving its
+	// `!dbg` records against the statement marks, and it hands those marks back shifted by what
+	// it inserted (Gap K.8, ADR 0354; the offset discipline is ADR 0231's).
+	//
+	// The gate is `raiseUsed` and nothing else. It is set by `setExn` — the door every raise goes
+	// through, the program's own `raise` and the machine-detected index, key and conversion traps
+	// alike — so a program that can never report a trap keeps the module it always had, IR line
+	// numbers and all, which is what the fold-purity and line-table guards check.
+	moduleText := out.String()
+	marks := g.dbgMarks
+	if g.raiseUsed {
+		moduleText, marks, _ = attachFrameStack(moduleText, g.dbgMarks, g.dbgFuncs, globalsPrefix, bodyPrefix)
+	}
 	// The line table is added to the module as assembled text, before the slot hoisting that
 	// moves allocation instructions to the top of their function: a hoisted `alloca` keeps the
 	// `!dbg` it was tagged with, so the slot stays attributed to the assignment that created it
 	// rather than to the `def` (ADR 0231, and ADR 0181 for the hoisting itself).
 	if opts != nil && opts.Debug != nil {
-		text, art := attachDebugInfo(out.String(), g.dbgMarks, g.dbgFuncs, globalsPrefix, bodyPrefix, opts.Debug)
+		text, art := attachDebugInfo(moduleText, marks, g.dbgFuncs, globalsPrefix, bodyPrefix, opts.Debug)
 		// Slot hoisting first, *then* the account of the table: hoisting moves allocation
 		// lines to the top of their function, and a line table whose rows were counted
 		// before that happened would publish IR positions the shipped module does not have.
@@ -4626,7 +4644,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	// Every variable slot has to be allocated once per call for its *address* to
 	// identify it — see hoistAllocas (ADR 0181).
-	return hoistAllocas(out.String()), nil, nil
+	return hoistAllocas(moduleText), nil, nil
 }
 
 // iterableIsRuntimeString reports whether a `for … in` right-hand side is text that codegen
@@ -16686,7 +16704,13 @@ done:
 
 `
 
-const raiseRuntimeIR = `
+// raiseRuntimeIR is the raise block as shipped: the template below with the frame-report captions
+// filled in from the strings the frame stack declares. The substitution exists because an LLVM
+// getelementptr has to state the array type it indexes, and a length typed twice is a length that
+// can disagree with itself (ADR 0171, and frameCaptionRefs).
+var raiseRuntimeIR = strings.NewReplacer(frameCaptionRefs()...).Replace(raiseRuntimeIRTemplate)
+
+const raiseRuntimeIRTemplate = `
 declare i64 @strlen(i8*)
 
 ; @exn_msg travels with the flag: a raise statement and a compiler-generated raise
@@ -16706,15 +16730,76 @@ entry:
   %hdr = getelementptr inbounds [36 x i8], [36 x i8]* @.rt_die.hdr, i32 0, i32 0
   %hlen = call i64 @strlen(i8* %hdr)
   call i64 @write(i32 2, i8* %hdr, i64 %hlen)
+  ; Every frame the raise travelled through, outermost first, the way the reference prints
+  ; them (roadmap Gap K.8, ADR 0354). The frames come from the snapshot the raise took, not
+  ; from the live stack: by here every one of them has returned.
+  %n = load i32, i32* @rt.frames.tb.n
+  %any = icmp sgt i32 %n, 0
+  br i1 %any, label %walk, label %oneframe
+walk:
+  %i = phi i32 [ 0, %entry ], [ %nx, %step ], [ %sx, %skip ]
+  %lp = getelementptr inbounds [64 x i32], [64 x i32]* @rt.frames.tb.line, i32 0, i32 %i
+  %line = load i32, i32* %lp
+  %known = icmp sgt i32 %line, 0
+  br i1 %known, label %frame, label %skip
+frame:
+  %pre = %%PRE%%
+  %plen = call i64 @strlen(i8* %pre)
+  call i64 @write(i32 2, i8* %pre, i64 %plen)
+  %ds = call i8* @rt_frame_digits(i32 %line)
+  %dlen = call i64 @strlen(i8* %ds)
+  call i64 @write(i32 2, i8* %ds, i64 %dlen)
+  %mid = %%MID%%
+  %mlen = call i64 @strlen(i8* %mid)
+  call i64 @write(i32 2, i8* %mid, i64 %mlen)
+  %np = getelementptr inbounds [64 x i8*], [64 x i8*]* @rt.frames.tb.name, i32 0, i32 %i
+  %nm = load i8*, i8** %np
+  %noname = icmp eq i8* %nm, null
+  %unk = %%UNK%%
+  %use = select i1 %noname, i8* %unk, i8* %nm
+  %nlen = call i64 @strlen(i8* %use)
+  call i64 @write(i32 2, i8* %use, i64 %nlen)
+  call i64 @write(i32 2, i8* %nlpre, i64 1)
+  ; Three copies of a frame and a count of the rest, which is what the reference prints for a
+  ; recursion; the count was made when the snapshot was taken, not here.
+  %cp = getelementptr inbounds [64 x i32], [64 x i32]* @rt.frames.tb.coll, i32 0, i32 %i
+  %spared = load i32, i32* %cp
+  %hidden = icmp sgt i32 %spared, 0
+  br i1 %hidden, label %repeated, label %step
+repeated:
+  %rp = %%REP%%
+  %rlen = call i64 @strlen(i8* %rp)
+  call i64 @write(i32 2, i8* %rp, i64 %rlen)
+  %rds = call i8* @rt_frame_digits(i32 %spared)
+  %rdlen = call i64 @strlen(i8* %rds)
+  call i64 @write(i32 2, i8* %rds, i64 %rdlen)
+  %isonce = icmp eq i32 %spared, 1
+  %r1 = %%REP1%%
+  %rN = %%REPN%%
+  %tail = select i1 %isonce, i8* %r1, i8* %rN
+  %tlen = call i64 @strlen(i8* %tail)
+  call i64 @write(i32 2, i8* %tail, i64 %tlen)
+  br label %step
+step:
+  %nx = add i32 %i, 1
+  %nxmore = icmp slt i32 %nx, %n
+  br i1 %nxmore, label %walk, label %message
+skip:
+  %sx = add i32 %i, 1
+  %sxmore = icmp slt i32 %sx, %n
+  br i1 %sxmore, label %walk, label %message
+; Nothing was named — a raise whose statement carried no position, in a program that never
+; called. The single frame the raise site spelled out is better than no frame at all.
+oneframe:
   %fp = load i8*, i8** @exn_frame
   %hasframe = icmp ne i8* %fp, null
-  br i1 %hasframe, label %withframe, label %withoutframe
+  br i1 %hasframe, label %withframe, label %message
 withframe:
   %flen = call i64 @strlen(i8* %fp)
   call i64 @write(i32 2, i8* %fp, i64 %flen)
   call i64 @write(i32 2, i8* %nlpre, i64 1)
-  br label %withoutframe
-withoutframe:
+  br label %message
+message:
   %isnull = icmp eq i8* %msg, null
   %none = getelementptr inbounds [26 x i8], [26 x i8]* @.rt_die.none, i32 0, i32 0
   %m = select i1 %isnull, i8* %none, i8* %msg
@@ -16741,14 +16826,22 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	} else {
 		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
 	}
-	// the record prints one frame per stack level; the compiled report prints the
-	// raise site's own frame, which is the line that answers "where". Full call stacks
-	// need the debug line tables of L8.5 (roadmap Gap K.8).
+	// the record prints one frame per stack level; the compiled report used to print the
+	// raise site's own frame alone. That string is still stored — it is what rt_die falls back
+	// to when the shadow stack has nothing to say about a raise whose statement carried no
+	// position — and beside it the raise now leaves its line in the live frame and copies the
+	// stack out, which is the half Gap K.8 owed (ADR 0354).
 	if frame := g.raiseFrame(sp); frame != "" {
 		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_frame\n", g.strConst(frame)))
 	} else {
 		b.WriteString("  store i8* null, i8** @exn_frame\n")
 	}
+	line := 0
+	if !sp.IsZero() && sp.Line > 0 {
+		line = sp.Line
+	}
+	b.WriteString(fmt.Sprintf("  call void @rt_frame_here(i32 %d)\n", line))
+	b.WriteString("  call void @rt_frames_snapshot()\n")
 }
 
 // printsAsInternedStr reports whether an expression's value is an index into the runtime

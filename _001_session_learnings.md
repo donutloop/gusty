@@ -11250,3 +11250,63 @@ whole bug.
 - **`no tests to run` is a result, not a pause.** A targeted `-run` filter came back green twice because the tests
   had been renamed earlier in the session; `-list` costs a second and is the only way to tell an empty match from a
   passing suite.
+
+## Gap K.8 — a traceback names the calls the program made, because the program keeps the stack (`ADR 0354`)
+
+`def inner(x): return x // 0` / `def outer(x): return inner(x)` / `outer(7)` printed two lines: the header, the
+raise's own frame and the class. The reference prints three frames, and a report that names one blames the
+innermost line for a bug that lives in the interaction of three statements. What landed is a shadow stack the
+program keeps itself — two parallel 64-slot tables, a push at each call site with the call's line beside it, a pop
+after it, a snapshot taken at the raise, and `rt_die` printing the copy — laid over the assembled module by one
+post-pass (`pkg/lang/frame_stack.go`), gated on `raiseUsed` so a program that can never report a trap ships the
+module it always shipped, byte for byte.
+
+- **Ask the record what it knows before promising a witness.** `testdata/interpreter-golden.json` has no frames at
+  all — a scan for `File "prog"` across the artifact returns nothing, because the retired engine's answer was
+  stored as repr, stdout, trap class and message. A feature with no record leg is not a feature with no test: it is
+  a feature whose definition is the reference alone, and AGENTS' rule then says the compiled report has to *be*
+  CPython's report, not merely a plausible one. Everything in `integration/traceback_test.go` is a comparison and
+  nothing is a hardcoded expectation.
+- **A feature that adds instructions has to be free for the programs that do not need it, or the IR guards move.**
+  The gate is `raiseUsed` — set by `setExn`, the one door every raise goes through, the program's `raise` and the
+  machine-detected index, key and conversion traps alike. Without it, ADR 0166's fold-purity pins and ADR 0231's
+  line-table rows would both have started describing a module nobody asked for. The "costs nothing" claim is tested
+  as an artifact question (`frameCalleePushes`), not as a belief about the gate.
+- **A pass over the module beats eleven roads through the emitter.** A `def`, a method, `super()`, a constructor,
+  the dispatch `switch`, a module function, a hoisted hook lambda, a closure `_impl` and a clone's trampoline all
+  call program code, and a design that has to remember them is a design with a missing frame in it. The pass asks
+  the same question the line table asks — which defines did `dbgDefine` register a display name for — so the two can
+  never disagree about what the program wrote.
+- **A pass that inserts text owns the offsets it broke.** ADR 0231 resolves every `!dbg` record against byte
+  positions in the finished module; inserting pushes without shifting the statement marks leaves a line table that
+  is intact, verifies, and attributes every statement after the first call to the line above it. No verifier sees
+  that. The pass returns its marks already shifted, and the guard asserts coverage of the *last* line of a program
+  whose calls sit above it.
+- **`llc` is the one that told me the module frame push was in the wrong place**: an instruction between `define …
+  {` and `entry:` is exit 2, "expected instruction". The `<module>` push goes after the label.
+- **ADR 0171's bug is a class, not an event.** `getelementptr` restates the array type it indexes, so a report
+  string's length appears in its declaration and at every use — the pair that once said `[31 x i8]` about 32 bytes.
+  The captions are now generated from Go strings (`frameStrGlobal`) and their uses are substituted by
+  `frameCaptionRefs` into `raiseRuntimeIRTemplate`, so the pair cannot disagree again by being typed twice.
+- **The reference leg found two things the row did not mention.** A method's frame had to lose its class —
+  `in bump`, not `in Counter.bump`, because CPython prints `in bump` and an unverifiable report is a wrong report;
+  the qualified name stays where a debugger reads it (the `DISubprogram`). And CPython collapses a run of
+  identical frames: three copies and `[Previous line repeated N more times]`. Both are now matched byte for byte,
+  and neither would have been found by reading the roadmap row.
+- **A limit has to fail loudly in a test or it becomes a silent truncation.** The first cut clamped writes at
+  slot 63, which left the deepest frames with line 0 — and the printer skips an unknown line, so a 120-deep
+  recursion quietly reported one frame too few, with the missing frames being the ones that mattered. The guard was
+  the assertion nobody thought of first: *the innermost frame must name the raise's own line*. The clamp became a
+  sliding window: a full table ejects its oldest frame, because a traceback is read from the inside out.
+- **Do not assert "no instrumentation" where the truth is "no callee frame".** `xs = [1, 2, 3]` / `print(xs)` sets
+  `raiseUsed` — the container printer has a raise in it — so that module does open the `<module>` frame. The claim
+  that survives is the one about the artifact: no *callee* frame is opened and no pop is missing.
+- **A stale suite log is a green you did not earn.** The run whose four failures started this cycle had been
+  launched before the edits landed and finished after them, and the run before that reported `EXIT=0` while the
+  tree was being changed underneath it. Both readings were wrong; the only honest gate is a run that starts after
+  the last edit — `make testparallel`, with a timestamp on the log you actually read.
+- **The machine path is the same frames or it is a second story.** `--json`'s `frames` member is produced by
+  `ParseTrapFrames` reading the target's bytes back, not by the host reconstructing a stack it cannot see, so the
+  `traceback` string and the `frames` array cannot drift, and `TestTheJSONFramesMemberAgreesWithTheTerminalReport`
+  asserts they are equal. `col` is 0 everywhere: the runtime keeps lines, and a column the compiler does not track
+  would be a number the report invented.

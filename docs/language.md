@@ -764,7 +764,8 @@ This is a language guarantee rather than an implementation detail, because three
 behaviours are built on it and each of them fails silently without it:
 
 - **diagnostics** point at the statement they mean (`--verify`, `--check`);
-- **tracebacks** name the line of the `raise` and the function around it (Gap K.6, Gap K.8);
+- **tracebacks** name every frame the raise travelled through, each with the line that frame was
+  on and the function the program wrote (Gap K.6, Gap K.8, ADR 0354);
 - **the compiled line table** — `--debug` puts `!dbg` records in the module, so `llc` writes a
   `.debug_line` table a real debugger can stop at, and `--debug-info` prints the table the
   compiler wrote (ADR 0231).
@@ -2070,11 +2071,38 @@ for i in range(n):
   1
   ```
 
-  The compiled backend agree on the frame line for the raise itself —
-  `  File "prog", line 3, in boom` — where `boom` is the enclosing function
-  (`<module>` at top level). the record prints one such frame per stack level; the
-  compiled report shows the raise site's own frame until the call-stack line tables of
-  L8.5 land.
+  The report names **every frame the raise travelled through**, outermost first, in the shape the
+  reference prints — which ADR 0302 makes the definition (Gap K.8, ADR 0354). The compiled program
+  keeps a shadow frame stack of its own, the raise copies it, and the runtime prints the copy:
+
+  ```console
+  $ gusty prog.gy; echo $?
+  Traceback (most recent call last):
+    File "prog", line 7, in <module>
+    File "prog", line 5, in outer
+    File "prog", line 2, in inner
+  ZeroDivisionError: integer division or modulo by zero
+  3
+  ```
+
+  Each frame is the function **as the program wrote it**, which is not the symbol the module holds:
+  a method's frame says `in bump` and not `in Counter.bump` (the reference's shape — the qualified
+  name is what `--debug-info` reports, for a debugger), a lifted closure's frame says `inner` and
+  not `inner_impl`, and the program's own top level is `<module>`. The line beside a frame is the
+  line that frame was executing: the line the call it is waiting on is written on, and the raise's
+  own line in the innermost frame.
+
+  Two limits, both stated rather than discovered by a reader who needed more:
+
+  - the stack is a **window of 64 frames**. A recursion deeper than that reports its newest 64 —
+    the frames a traceback is read for — and the module frame falls out of the top of the window;
+  - a run of identical frames is printed **three times and then counted**, in the reference's own
+    words: `[Previous line repeated 61 more times]`. A recursion is one fact, and a report that
+    states it 200 times is not more true for that.
+
+  A program that can never report a trap pays for none of this: the instrumentation is laid over a
+  module only when something in it can raise, and every other module ships byte for byte as it
+  did before.
 - One deliberate divergence: an assignment whose *target kind* is known statically to be
   impossible (`s[0] = "z"` on a string, `s[0] = 1` on a set) is a compile-time diagnostic
   in the AOT backend (ADR 0166) and a catchable `TypeError` on the record.
@@ -5066,7 +5094,9 @@ Three consequences, each with a test: a `raise` in a method (or in a method it c
 `__init__`) propagates to the call site rather than leaving the method to return a plausible value;
 a construct the compiler cannot lower reports a compile error from inside a method exactly as it does
 from inside a `def` — it is never quietly dropped, which used to produce half a function and a
-toolchain rejection; and the traceback frame says `Class.method`. Known limit: a method whose result
+toolchain rejection; and a method's frame in a traceback says what the program called, `bump`, the
+way the reference prints it — the qualified `Counter.bump` is what the line table reports instead
+(ADR 0231, ADR 0354). Known limit: a method whose result
 is a `str` is still broken in the compiled backend (roadmap Gap R.42).
 
 ### A method and a helper may share a name

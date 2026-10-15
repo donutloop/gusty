@@ -269,17 +269,24 @@ previously looked successful to a script:
 
 ```
 Traceback (most recent call last):
-  File "prog", line 3, in boom
-IndexError: index out of range
+  File "prog", line 7, in <module>
+  File "prog", line 5, in outer
+  File "prog", line 2, in inner
+ZeroDivisionError: integer division or modulo by zero
 ```
 
-The frame line names the file, the line of the raise, and the enclosing function
-(`<module>` at top level), and the compiled backend agrees on it: the record prints one frame
-per stack level (so a raise inside a called function shows the call site too), while the
-compiled report shows the raise site's own frame — the call-stack frames need the line
-tables of L8.5 (roadmap Gap K.8). The last line is identical on both. stdout stays clean, so
+Every frame the raise travelled through is named, outermost first, and each line names the file, the
+line that frame was executing, and the function **as the program wrote it** — `<module>` at the top
+level, the method's own name for a method (`in bump`, the reference's shape; the class-qualified
+`Counter.bump` is what `--debug-info` reports, for a debugger), the closure's own name for a lifted
+closure (`in inner`, not `in inner_impl`). A frame that only led to the raise shows the line its call
+is written on; the innermost frame shows the raise's own line. Two limits are documented rather than
+hidden: the stack is a window of the newest **64** frames, and a run of identical frames is printed
+three times and then counted in the reference's words — `[Previous line repeated 61 more times]`
+(roadmap Gap K.8, ADR 0354). The last line is identical on both legs; stdout stays clean, so
 `prog 2>/dev/null | ...` sees only program output. With `--json` the eval path emits
-`{"error": ..., "traceback": ..., "exit": 3}` on stdout. Runtime errors are typed
+`{"error": ..., "traceback": ..., "frames": [...], "exit": 3}` on stdout — `frames` being the same
+report the terminal saw, as data (§ JSON output for agents). Runtime errors are typed
 (`IndexError` / `KeyError` / `TypeError` / …), so `except IndexError:` catches them on
 the compiled backend — see `docs/language.md` § Exceptions.
 
@@ -1604,6 +1611,14 @@ not comments, so a future re-recording cannot silently undo them.
   would have matched with `except TypeError:`, as data, so a caller branches on a name instead of
   on prose. Every built-in trap has a class now (roadmap Gap R.25, ADR 0214); where the field is
   absent the error came from a front-end gate, not from a running program
+- an uncaught exception additionally carries `"frames": [{"name": "bar", "line": 2, "col": 0}, …]`
+  — every frame the raise travelled through, outermost first, the same report the terminal saw read
+  back off the target's own bytes rather than reconstructed by the host (roadmap Gap K.8, ADR 0354).
+  An agent asking "did this die in the loop or in the helper" branches on that array instead of
+  scraping the `traceback` prose; the two members are the same frames, and a run that reported none
+  has no `frames` member at all rather than an invented one. The shape is `definitions.trapFrames`
+  and the item shape is `definitions.trapFrame` in `gustyc --schema`; `col` is always 0, because the
+  compiled runtime keeps lines and a column it does not track would be a number the report invented
 - `--json --verify-llvm <src>` → the `irVerification` record, e.g.
   `{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}`
   (see [Module verification](#module-verification-irverification-l82))
