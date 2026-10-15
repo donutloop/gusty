@@ -6,22 +6,32 @@ import (
 	"strings"
 )
 
-// The compiled heap is one fixed arena: `@heap` is `[HeapCapacity x {i32, i32, [256 x i32]}]`, and
-// `rt_alloc` hands back an index into it — or, when the arena is full, `-1`. That -1 was the defect
-// (roadmap Gap Q.2, ADR 0347): no caller asked, so a program with more live containers than the arena
-// holds stored -1 as a handle and the object arithmetic that followed read and wrote the words *before*
-// the arena. Measured, at exit 0, with nothing on stderr:
+// The compiled heap is one arena that **grows**. `@heap` is `[HeapCapacity x {i32, i32, [256 x i32]}]`
+// — one zero-filled table per parallel array — and `@heap_cap` is how much of it this RUN has
+// committed, starting at `HeapInitialCapacity` and doubled by `rt_alloc` on the way to a slot the window
+// has not committed yet. A handle is an index, so widening the window moves nothing: no reference in a
+// running program has to be fixed up, and the seven tables that share the index space cannot drift apart
+// because they are widened by the same store to the same global.
+//
+// What the ceiling still means, and what `-1` meant, are ADR 0347's half of this row: an exhausted arena
+// answers `-1`, and until that cycle no caller asked, so a program with more live containers than the
+// arena holds stored -1 as a handle and the object arithmetic that followed read and wrote the words
+// *before* the arena. Measured, at exit 0, with nothing on stderr:
 //
 //	v0 = [0, 0] … v1029 = [1029, 1029] / r = r + len(v_i) … / print(r)
 //	  compiled: 2120        CPython: 2060
 //
 // The wrong number is the whole argument for this file. A handle is not an integer: -1 is not "no
-// object", it is the object below the objects.
+// object", it is the object below the objects. Growth does not retire the guard — it moves the wall
+// out to `HeapCapacity`; the door still has to answer for the program that reaches even that.
 //
 // ## What ships here
 //
-// Two facts, kept apart on purpose:
+// Three facts, kept apart on purpose:
 //
+//   - **rt_alloc commits what the run asks for** (`@heap_cap`, doubled in `@HEAPGROW@` steps to the
+//     reservation), because how big the arena needs to be is a fact about the run and not about the
+//     program — the same source grows on one machine's workload and not on another's.
 //   - **rt_alloc counts exhaustion** (`@heap_exhausted`, reported by `--gc-stats` as `exhausted=`),
 //     because the count is a fact about the run and the run is what the tool report describes.
 //   - **the caller raises** — `emitHeapCall` emits, beside every call that hands back a handle, the
@@ -61,24 +71,41 @@ import (
 //
 // ## What the run reports
 //
-// `--gc-stats` prints `capacity=`, `headroom=` and `exhausted=` beside the collector's own numbers
-// (docs/operations.md § The tool report). Capacity is the backend's fact and headroom is capacity minus
-// the slots the arena holds, so a caller can tell "this program is too big for this backend" from "this
-// program is wrong" without knowing 1024 by heart — and `exhausted=` is non-zero exactly when a guard
-// had something to raise for.
+// `--gc-stats` prints `capacity=`, `headroom=`, `grown=` and `exhausted=` beside the collector's own
+// numbers (docs/operations.md § The tool report). Capacity is the window this run committed, headroom is
+// that window minus the slots it holds, and `grown=` is how many doublings it took to get there — so a
+// caller can tell "this program is too big for this backend" from "this program is wrong" and from "this
+// program needed an arena three times the size it started with" without knowing either number by heart,
+// and `exhausted=` is non-zero exactly when a guard had something to raise for.
 
-// HeapCapacity is the arena's size. It is spelled in the array types above and in the allocator's
-// bound; a third spelling — the raise's sentence and the self-report's `capacity=` — is derived from
-// this constant so the three cannot disagree with the allocator.
-// HeapCapacity is exported so a test, the CLI and docs/operations.md can name the arena
-// without repeating the constant; TestTheArenaSpellsItsCapacityOnce is what keeps the
-// IR, the sentence and this number one fact.
-const HeapCapacity = 1024
+// HeapCapacity is the arena's ceiling: the size every parallel table is DECLARED with, and the number
+// `rt_alloc` may grow the committed window to. HeapInitialCapacity is the window a run starts with — the
+// size a program that never needs more than it is measured against, and the size the collector's
+// mark-clear walk costs it. Both are spelled once each: the array types and the allocator's bound read
+// `@HEAPSLOTS@`/`@HEAPINIT@` (codegen.go's arena template), and the raise's sentence and the self-report
+// read these constants, so a module cannot allocate from one arena and report another.
+//
+// The ceiling is a reservation, not an allocation: the tables are `.bss`, so an ordinary program touches
+// the pages it uses and pays nothing for the pages it does not. Growing by `realloc` was rejected for
+// the reason ADR 0347's own discovery gives — a block that had to be copied would have to be re-read by
+// every accessor in seven tables (roadmap Gap Q.2, ADR 0350).
+const HeapCapacity = 8192
+
+// HeapInitialCapacity is the arena a run starts in. It is the number a program that fits never exceeds,
+// and it is the collector's per-collection mark-clear cost, so growing on demand is what keeps a small
+// program small (roadmap Gap Q.2, ADR 0350).
+const HeapInitialCapacity = 1024
+
+// HeapGrowthFactor is how the window widens: each commit doubles it until it reaches the reservation.
+const HeapGrowthFactor = 2
 
 // heapExhaustedMessage is the trap's message. The reference has no stable wording for MemoryError (the
 // platform's allocator decides it), so the sentence here is written for the reader who has to act on
-// it: what ran out, how big the thing that ran out was, and the row that owns growing it.
-var heapExhaustedMessage = fmt.Sprintf("out of memory: the compiled heap holds %d live containers (roadmap Gap Q.2)", HeapCapacity)
+// it: what ran out, how big the thing that ran out was, how big it started, and the row that owns it.
+var heapExhaustedMessage = fmt.Sprintf(
+	"out of memory: the compiled heap holds %d live containers, having grown from %d (roadmap Gap Q.2)",
+	HeapCapacity, HeapInitialCapacity,
+)
 
 // HeapExhaustedMessage is the trap's sentence, exported so the CLI's documentation test and the
 // integration witness can assert the words rather than copy them.

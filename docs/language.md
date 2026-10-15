@@ -1900,8 +1900,9 @@ for i in range(n):
   `UnboundLocalError` (ADR 0228) and `OverflowError` (ADR 0264 — the class CPython uses for
   `int(inf)`, which is what makes `except OverflowError:` around a `floor`/`ceil` of a huge double mean
   the same thing on both legs). `MemoryError` (ADR 0347) is the compiled arena saying no: the
-  backend's heap holds `lang.HeapCapacity` (1024) containers, and the container-taking door that finds
-  it full raises this class rather than handing the program a slot number that does not exist — see
+  backend's heap is one arena that **grows** (ADR 0350) from `lang.HeapInitialCapacity` (1024) containers to
+  the reservation `lang.HeapCapacity` (8192), and the container-taking door that finds even the reservation
+  full raises this class rather than handing the program a slot number that does not exist — see
   § The compiled arena. A bare
   `raise` raises `Exception`. `raise IndexError` (the class itself, no call) raises that
   class with no message, and a class derived from an exception is raisable too:
@@ -4490,10 +4491,11 @@ literals (`s = {1, 2}`) allocate runtime heap set objects: `len(s)` via
 `rt_set_len` and `print(s)` via `rt_set_print`. Inline sets in expressions and
 module-imported sets stay compile-time globals. Rebinding a var across collection
 kinds (list -> dict -> set -> scalar) frees the old heap slot via `rt_free`,
-so long-running programs don't leak slots on rebind. When the 1024-slot heap
-is truly full (more live collections than slots), `rt_alloc` returns a -1
-sentinel instead of writing out of bounds, so pathological programs can't
-corrupt memory. See ADR 0009.
+so long-running programs don't leak slots on rebind. The arena the slots come out of grows
+(ADR 0350): `rt_alloc` doubles the window it has committed until it reaches the reservation,
+and only when even that is full does it return a -1 sentinel instead of writing out of bounds —
+which the caller turns into `MemoryError` (§ The compiled arena, ADR 0347), so pathological
+programs can't corrupt memory and can name why they stopped. See ADR 0009.
 
 ## Containers across function boundaries (AOT)
 
@@ -5080,13 +5082,29 @@ The LSP uses incremental text sync (kind 2): `textDocument/didChange`
 converts each change range into a `lang.Edit` and calls `Update`, falling
 back to a full re-parse only for whole-document replacements.
 
-## The compiled arena (Gap Q.2, ADR 0347)
+## The compiled arena (Gap Q.2, ADR 0347, ADR 0350)
 
-The compiled backend allocates containers out of one fixed arena, `@heap`, which holds
-`lang.HeapCapacity` — 1024 — objects. A list, a dict, a set, a tuple, an instance, a class, a
-closure, a runtime-built string and a boxed float each take a slot. A program that asks for a
-1025th live container is telling you something about its live set, and the backend answers with a
-trap rather than an invention:
+The compiled backend allocates containers out of one arena, `@heap`. A list, a dict, a set, a tuple, an
+instance, a class, a closure, a runtime-built string and a boxed float each take a slot, and a slot number —
+a *handle* — is the only thing a program holds. The arena has two sizes, and the difference between them is
+the whole design:
+
+- **`lang.HeapCapacity` (8192) is the reservation** — how many of them the module reserves. The tables are
+  zero-filled globals, so this is `.bss`: a program that never needs the room never touches those pages.
+- **`lang.HeapInitialCapacity` (1024) is the window a run starts in**, held in `@heap_cap`. The allocator
+  hands out slots inside the window, and when a program asks for one the window has not committed, `rt_alloc`
+  doubles the window (up to the reservation) and carries on. Because a handle is an index and not an address,
+  widening commits nothing and relocates nothing.
+
+So a program with a large live set is answered rather than refused:
+
+```py
+groups = []
+fill(groups, 40, 200)   # 8000 containers, all of them reachable
+print(len(groups), len(groups[0]))   # 40 200
+```
+
+What still runs out is the reservation, and the backend answers that with a trap rather than an invention:
 
 ```py
 def push_n(grown, n):
@@ -5097,15 +5115,17 @@ def push_n(grown, n):
     return i
 
 bucket = []
-push_n(bucket, 4000)              # MemoryError, exit 3
+push_n(bucket, 9000)              # MemoryError, exit 3
 ```
 
 `MemoryError` is a class like the others (`docs/operations.md` § Exit codes): `except MemoryError:`
 reaches it, `except Exception:` covers it, an uncaught one prints a traceback and exits 3, and
-`--gc-stats` reports `capacity=`, `headroom=` and `exhausted=` so the condition is visible to a
-caller who was not looking for it.
+`--gc-stats` reports `capacity=`, `headroom=`, `grown=` and `exhausted=` so the condition is visible to a
+caller who was not looking for it. `capacity=` is the window this run committed — not a constant — and
+`grown=` is how many doublings it took to get there, which is the only way a caller can tell "this arena
+widened" from "this arena was always that big".
 
-Three things about it are worth knowing before you write against it:
+Four things about it are worth knowing before you write against it:
 
 - **The trap fires where the memory was asked for, not where the wrong answer appeared.** The
   allocation door that found the arena full is the statement that raises, so the traceback points at
@@ -5116,12 +5136,18 @@ Three things about it are worth knowing before you write against it:
   bodies run a collection at their top, and that safe point is also where a full arena is noticed.
   A loop whose body cannot take a slot — `while i < n: i = i + 1` — gets neither the collection nor
   the guard, so the promise costs nothing where it cannot be needed.
+- **Growth is a run fact, so the collector follows it.** The mark-clear walk sweeps the committed window,
+  not the reservation, and every handle-range question asks the window too: a slot above the window is one
+  the allocator never handed out. A program that fits in the window it started in is measured against 1024
+  in every direction and reports `grown=0`.
 - **Handling it does not create capacity.** The containers you hold are still held, so the next
   container raises again; recover by dropping data, not by retrying. This matches CPython closely
   enough to be the same habit and is the reason `integration/programs/gc_heap_exhaustion.gy` ends at
   its two caught arms.
 
-The arena's size is spelled once (`HeapCapacity` in `pkg/lang/heap_guard.go`), and the array types,
-the allocator's bound, the report's `capacity=` and the trap's sentence are all generated from it. The
-roadmap's second half for this row — a heap that grows instead of trapping — is still open; the
-diagnostic came first because an arena that grows invisibly has the same bug with a longer fuse.
+The arena's two sizes are spelled once each (`HeapCapacity`, `HeapInitialCapacity`, `HeapGrowthFactor` in
+`pkg/lang/heap_guard.go`), and the array types, the allocator's bound and doubling, the report's
+`capacity=`/`grown=` and the trap's sentence are all generated from them — a module cannot allocate from one
+arena and report another. The ceiling that remains is a *container* count: an object owns 256 element words,
+so eight thousand small containers is a program and one eight-thousand-element list is a different question
+(`docs/roadmap-details.md` § Gap Q.2).

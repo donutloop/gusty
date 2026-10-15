@@ -1,33 +1,46 @@
-# integration/programs/gc_heap_exhaustion.gy — roadmap Gap Q.2, ADR 0347.
+# integration/programs/gc_heap_exhaustion.gy — roadmap Gap Q.2, ADR 0347, ADR 0350.
 #
-# The compiled arena holds heapCapacity containers. This program asks for more than
-# that, twice, and the two halves of the promise are both visible here:
+# The compiled arena grows — `rt_alloc` doubles the window it has committed until it
+# reaches the reservation — so this program asks for more containers than even that can
+# hold, and the two halves of the promise are both visible here:
 #
 #   * the condition is a trap the program can NAME, so `except MemoryError:` catches
 #     it and `except Exception:` covers it too — the program carries on and exits 0;
 #   * `--gc-stats` says how full the arena was when it happened (`capacity=`,
-#     `headroom=`, `exhausted=1`), so the condition is not a silent fact.
+#     `headroom=`, `grown=`, `exhausted=1`), so the condition is not a silent fact —
+#     `grown=` is what tells a caller this arena widened three times before it filled.
 #
 # The shape that exhausts the arena honestly is a growing container that is never
 # dropped: every element stays reachable, so no collection can give a slot back. The
 # churn loop of ADR 0337's footnote is the same shape with the retention removed, which
-# is why it reaches the ceiling while a loop that drops each value does not.
+# is why it reaches the ceiling while a loop that drops each value does not. Two details
+# keep it a program rather than a walk over the arena's edge: no container is grown past
+# the 256 element words one object owns, and no name is aliased and then rebound, which is
+# the retention bug Gap R.257 files.
 #
 # `integration/programs/gc_heap_uncaught.gy` is the other half: the same condition,
 # nobody catching it, exit code 3 with a MemoryError traceback.
 
-def push_n(grown, n):
+def make_group(size, base):
+    g = []
     i = 0
-    while i < n:
-        grown.append([1, 2, 3])
+    while i < size:
+        g.append([base + i, (base + i) * 2])
         i = i + 1
-    return i
+    return g
+
+def fill(groups, count, size):
+    k = 0
+    while k < count:
+        groups.append(make_group(size, k * size))
+        k = k + 1
+    return count
 
 # Act one — the arena is gone, and the program was told in words it can match on.
 first = "not raised"
 try:
-    bucket = []
-    push_n(bucket, 4000)
+    groups = []
+    fill(groups, 42, 200)
     first = "no trap"
 except MemoryError:
     first = "MemoryError caught"
@@ -38,16 +51,17 @@ print(first)
 # binds the exception value here.)
 second = "not raised"
 try:
-    bucket2 = []
-    push_n(bucket2, 4000)
+    more = []
+    fill(more, 8, 200)
     second = "no trap"
 except Exception:
     second = "Exception caught"
 print(second)
 
-# There is deliberately no third act that allocates: the two buckets are still live, so
-# the arena is still full, and the next container the program builds raises again —
+# There is deliberately no third act that allocates: the containers act one built are still
+# live, so the arena is still full, and the next container the program builds raises again —
 # which is the right semantics for an exhausted arena (handling the condition does not
-# create capacity) and the reason this file cannot demonstrate "the program carried on
-# normally" without first dropping its data. `gc_heap_uncaught.gy` is the exit-3 half;
+# create capacity, and neither does a grown window that has already reached its ceiling) and
+# the reason this file cannot demonstrate "the program carried on normally" without first
+# dropping its data. `gc_heap_uncaught.gy` is the exit-3 half;
 # integration/gc_heap_trap_test.go drives both and checks the exit codes.

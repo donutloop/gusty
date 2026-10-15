@@ -1081,7 +1081,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6882 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 6888 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (339 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1975,9 +1975,10 @@ the payload as `"gc": { … }` — see `definitions.gcStats` in `--schema`:
 | `frames` | call frames in the root set at the last collection (0 = a top-level boundary) |
 | `protected` | objects the watermark kept alive without tracing |
 | `generational` | true for a young (nursery) pass, false for a full sweep |
-| `capacity` | how many containers the compiled arena holds (`lang.HeapCapacity`, 1024 today) — the denominator `headroom` is measured against; 0 on a backend with no arena (roadmap Gap Q.2, ADR 0347) |
-| `headroom` | `capacity − live`, clamped at zero; how much room is left before the next container traps (Gap Q.2) |
-| `exhausted` | how many times this run asked the arena for a slot and was refused; non-zero means a `MemoryError` was raised somewhere in the program, whether or not an arm caught it (Gap Q.2) |
+| `capacity` | how many containers the compiled arena holds for THIS RUN — the window `rt_alloc` has committed, which starts at `lang.HeapInitialCapacity` (1024) and doubles at the allocator until it reaches the reservation `lang.HeapCapacity` (8192). It is the denominator `headroom` is measured against; 0 on a backend with no arena (roadmap Gap Q.2, ADR 0347, ADR 0350) |
+| `headroom` | `capacity − live`, clamped at zero; how much room is left in the window before the next container triggers a widening (Gap Q.2) |
+| `grown` | how many times this run widened the window: 0 on a program that fitted in the one it started in, 3 by the time the arena is living on its reservation. `capacity=` alone cannot tell "this arena grew" from "this arena was always that big" (Gap Q.2, ADR 0350) |
+| `exhausted` | how many times this run asked the arena for a slot and was refused — which, since ADR 0350, means it asked past the reservation, not past the window it began with; non-zero means a `MemoryError` was raised somewhere in the program, whether or not an arm caught it (Gap Q.2) |
 | `backend` | `interpreter` or `aot` |
 
 ### The compiled backend's report
@@ -1987,7 +1988,7 @@ The counters live inside the compiled program, so its own runtime prints the lin
 
 ```
 $ gustyc --aot --gc-stats --file integration/programs/gc_precise.gy
-gc: backend=aot collections=4607 roots=2 skipped=0 marked=1 freed=1 total_freed=4520 live=1 top=16 capacity=1024 headroom=1023 exhausted=0
+gc: backend=aot collections=4607 roots=2 skipped=0 marked=1 freed=1 total_freed=4520 live=1 top=16 capacity=1024 headroom=1023 grown=0 exhausted=0
 130
 56850
 719400
@@ -2000,28 +2001,53 @@ program that exhausts it stops itself rather than run with an unrooted handle). 
 to scrape it. `lang.ParseGCStatsLine` and `GCStats.String` are one documented shape read
 both ways, tested for round-tripping.
 
+#### How big the arena is, and how it gets bigger
+
+The compiled heap is one arena that **grows** (roadmap Gap Q.2's second half, ADR 0350). A handle is an
+index into `@heap`, `@heap_tags`, `@estr`, `@float_box`, `@inst_set`, `@gc_mark` and `@free_next` rather
+than a pointer into any of them, so widening the window the allocator may hand out is one store to
+`@heap_cap`: no reference in a running program is fixed up, and the seven tables cannot disagree because
+they share one index space and one bound. The window starts at `lang.HeapInitialCapacity` (1024),
+doubles at the door that allocates, and stops at the reservation `lang.HeapCapacity` (8192). The tables
+are zero-filled globals, so a program that never reaches a slot never pays for its pages, and the
+collector's per-collection mark-clear walks the committed window rather than the reservation — a program
+that fits in the window it started in is measured against 1024 in every direction.
+
+```
+$ gustyc --aot --gc-stats --file integration/programs/gc_heap_growth.gy
+5 205
+gc: backend=aot collections=1054 roots=4 skipped=0 marked=1031 freed=0 total_freed=0 live=1031 top=11 capacity=2048 headroom=1017 grown=1 exhausted=0
+```
+
+That program holds 1025 containers, one more than the arena used to stop at; on the commit before
+ADR 0350 it died at exit 3 with a `MemoryError` while CPython printed `5 205`. `grown=1` is the field
+that says this window widened — the same `capacity=2048` printed by a run that had never needed to widen
+would be a different fact, and there is no such run: a program that fits reports `capacity=1024
+grown=0` (`integration/gc_heap_growth_test.go` pins both sides of that).
+
 #### When the arena runs out
 
-The compiled heap is a fixed arena of `lang.HeapCapacity` (1024) containers. When a program asks for
-one more, it is a trap and not a wrong answer (roadmap Gap Q.2, ADR 0347):
+The window still has a far side. When a program asks for a container past the reservation, it is a trap
+and not a wrong answer (roadmap Gap Q.2, ADR 0347):
 
 ```
 $ gustyc --file integration/programs/gc_heap_uncaught.gy --gc-stats
-gc: backend=aot collections=1028 roots=5 skipped=0 marked=1024 freed=0 total_freed=0 live=1024 top=5 capacity=1024 headroom=0 exhausted=1
+gc: backend=aot collections=8318 roots=11 skipped=0 marked=8192 freed=0 total_freed=0 live=8192 top=11 capacity=8192 headroom=0 grown=3 exhausted=1
 Traceback (most recent call last):
-MemoryError: out of memory: the compiled heap holds 1024 live containers (roadmap Gap Q.2)
+MemoryError: out of memory: the compiled heap holds 8192 live containers, having grown from 1024 (roadmap Gap Q.2)
 $
 ```
 
 Exit code 3, like any other uncaught trap (ADR 0211) — the report is emitted first, so a program that
-dies on a traceback still says how full the arena was. The class is `MemoryError`, a subclass of
+dies on a traceback still says how full the arena was, how big the window had got, and how many times it
+widened to get there. The class is `MemoryError`, a subclass of
 `Exception`, so both of these arms reach it and the program finishes at exit 0
 (`integration/programs/gc_heap_exhaustion.gy`, `integration/gc_heap_trap_test.go`):
 
 ```python
 try:
-    bucket = []
-    push_n(bucket, 4000)
+    groups = []
+    fill(groups, 42, 200)
 except MemoryError:
     print("the arena is full")
 ```
@@ -2029,8 +2055,8 @@ except MemoryError:
 Catching it does not create capacity: the containers you were holding are still held, so the next
 container the program builds raises again. `exhausted=` is the field that tells an agent which of the
 two situations it is in — a program that never touched the ceiling, and one that hit it and recovered.
-The row's second half (a heap that grows) is still open in `roadmap.md`; the capacity is a
-compile-time constant spelled once, so growing it grows the report and the trap's sentence with it.
+No flag tunes the ceiling: the reservation is the one number the tables are declared with, so growing it
+grows the report, the trap's sentence and the collector's walk with it.
 
 `GUSTY_GC_STRESS=1` forces a collection at every statement boundary: the conformance
 corpus is run that way in `integration/gc_stress_test.go`, so a root the record

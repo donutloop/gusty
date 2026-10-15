@@ -11036,3 +11036,65 @@ those sites: sign bit set → `bitcast i64 <bits> to double`, otherwise the addi
   — named the exact cells (`AGENTS.md`, `docs/operations.md`, `roadmap.md`, and the matrix/oracle tallies). The
   rule the failure text prints is the rule: edit the cell to the number the guard read, and say in the row
   that the file changed.
+
+## Gap Q.2's second half — the arena grows, and the ceiling was hiding a quadratic collector (`ADR 0350`)
+
+ADR 0347 made exhaustion speak and left the wall at 1024. This cycle moved the wall, and most of what is
+worth recording is about what moving a limit costs.
+
+- **One store was the whole implementation, and the reason was somebody else's decision.** Growing `@heap`
+  is a `store i32 %cap1, i32* @heap_cap` because a handle in this runtime is an *index into parallel arrays*,
+  not an address — the property ADR 0334 bought for the root stack. I spent the first hour of the cycle
+  sketching `realloc` (needs a handle table, prices every read for a road only big programs take) and
+  segmentation (turns every accessor into a divide and a modulo) before asking the question that settles it:
+  *does anything in a running program hold a position?* Nothing does. Two ADRs of prior work paid for this
+  feature and neither of them knew it. When a change looks structurally hard, the cheapest thing to audit is
+  the representation, not the algorithm.
+- **A ceiling can be load-bearing for a performance bug.** `rt_gc` walked an outer counter to `@heap_count`
+  with the whole object scan inside it — `pass.loop` around `k.loop`, both bounded by the same load, O(slots²)
+  per collection. It was invisible because the 1024 ceiling bounded the outer walk and because a churn loop's
+  sweeps kept pulling the high-water mark down. The moment the arena could hold 2400 containers the same
+  program took **15.76s** to print two numbers. I did not want to write that number into an ADR from memory,
+  so I built the counterfactual: a scratch tree with the room *and* the outer loop restored (`HeapInitialCapacity`
+  pinned to the reservation so growth never fires), which measured 15.76s at 2400 containers and 2.07s at 1200,
+  against **0.12s** for both on the single-scan build. A number in a `roadmap.md` row is a claim; the way to
+  keep it honest is to run the build that would have been wrong.
+- **Raising a limit silently turns other people's tests into tautologies.** ADR 0347's two exhaustion programs
+  (`integration/programs/gc_heap_exhaustion.gy`, `gc_heap_uncaught.gy`) and the example in `docs/language.md`
+  were all written to fill a 1024 arena. With an 8192 reservation they no longer even approach it — they print
+  numbers and exit 0, and the tests that asserted a `MemoryError` would have been asserting a `MemoryError`
+  that nothing caused. Every "the limit is now N" change needs a pass over the suite for programs *sized to the
+  old limit*, and the fix is to size them to the new one, not to delete them.
+- **The record leg cannot be asked of a trap that only this backend can produce.** `runGoldenStdout` fails a
+  case with no record entry, so the growth programs needed entries — and `tools/recmerge` refused the first one
+  I handed it (`jit: codegen: unsupported attr expression`), which is the recorder doing its job: an entry is
+  what the reference answers, cross-checked against the compiled leg, and a program the compiled backend refuses
+  has no entry to record. The 1025-container program is recordable (CPython prints `5 205`); the
+  9000-container exhaustion program is not — the reference has no answer for "you ran out at 8192", so that
+  case is witnessed by the compiled leg's own trap text and exit class, and by `--gc-stats`. Recording is not
+  a formatting step.
+- **The stale binary in the tree lied to me twice.** `./gustyc` in the repo root is from an old build, and
+  `go build -tags=llvm20 .` does not rebuild it — the root has **no Go files**; the CLI is `./cmd/gustyc`. Two
+  probe results in this session were therefore about a binary from three weeks ago, one of them a "defect"
+  (a 4000-container program trapping) that exists only on the retired engine. Rule adopted: build to a private
+  path (`go build -tags=llvm20 -o /tmp/…/gustyc ./cmd/gustyc`) and probe that, never a binary the tree happens
+  to be holding.
+- **Measuring the neighbour you did not intend to touch is where the gaps are.** I came to write a growth
+  test, needed a program that reads an element back, and found two defects that neither roadmap row covers:
+  `print(rows[0][0])` answers `[258, 516]` — a *sibling's* object — at exit 0 once the outer list passes 258
+  entries, and prints the whole outer list at 257/258 (**Gap R.271**); and the attribute door refuses every
+  base that is not a plain name, so `objs[0].v`, `n = objs[1]` then `n.v`, `for o in objs: print(o.v)` and
+  `d["a"].v` all stop the build while `print(objs[0])` prints the object's identity happily (**Gap R.272**).
+  The 256 boundary in R.271 is the interesting part: `@heap`'s object is `{i32, i32, [256 x i32]}`, so the
+  symptom names the representation. And R.271 is ADR 0344's shape again — the doors that ask the object are
+  sound, the doors that ask the notebook answer wrongly, and one door refusing beside a door that lies is how
+  a wrong value reaches exit 0.
+- **A growth field is only worth adding if it separates two states `capacity=` cannot.** `capacity=2048` from
+  a backend that always had 2048 and a backend that doubled to get there are different diagnoses, so `grown=`
+  went into the line, `GCStats`, `ParseGCStatsLine` and `--schema`'s required list in the same commit. A run
+  that fits reports `capacity=1024 grown=0` and the integration suite pins *that* side too, because "it grew"
+  is unfalsifiable unless something is asserted not to.
+- **The artifact guards all fire together, by design.** Adding one ADR, one program and five record entries
+  moved the Snapshot's ADR count and high-water, its conformance-program count and the record count; the matrix
+  and oracle tallies only become true after `go test ./integration` rewrites `conformance-matrix.json`. Running
+  the guards and reading their failure text is faster than predicting which cells they read.

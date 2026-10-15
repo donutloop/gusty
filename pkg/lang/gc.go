@@ -89,11 +89,19 @@ type GCStats struct {
 	// the point where a handle could not be rooted.
 	Top          int  `json:"top"`
 	Generational bool `json:"generational"`
-	// Capacity is how many objects the compiled heap can hold at once — the arena's size. A program
-	// that needs more than this of them *live at the same time* does not get an answer, it gets
-	// `MemoryError`; knowing the number is what lets a caller tell "this program is too big for this
-	// backend" from "this program is wrong" (roadmap Gap Q.2, ADR 0347).
+	// Capacity is how many objects the compiled heap holds at once — the size of the window this RUN has
+	// committed, which starts at `HeapInitialCapacity` and doubles at the allocator until it reaches
+	// `HeapCapacity`. A program that needs more than the window can ever reach of them *live at the same
+	// time* does not get an answer, it gets `MemoryError`; knowing the number is what lets a caller tell
+	// "this program is too big for this backend" from "this program is wrong" (roadmap Gap Q.2,
+	// ADR 0347, ADR 0350).
 	Capacity int `json:"capacity"`
+	// Grown is how many times the arena widened its window during the run: zero on every run that fitted
+	// in the window it started with, one by the time a program is living on doubled slots. `capacity`
+	// alone cannot tell "this arena grew" from "this arena was always that size", which is the
+	// distinction a caller needs when the program it is compiling is one allocation away from the
+	// ceiling (roadmap Gap Q.2, ADR 0350).
+	Grown int `json:"grown"`
 	// Headroom is how many more objects the run could have allocated at the moment of the report:
 	// capacity minus the slots the arena has handed out, plus the ones the collector has already
 	// recycled through the free list. It is the number a caller acts on — capacity alone says what the
@@ -152,6 +160,8 @@ func (s GCStats) String() string {
 		b.WriteString(strconv.Itoa(s.Capacity))
 		b.WriteString(" headroom=")
 		b.WriteString(strconv.Itoa(s.Headroom))
+		b.WriteString(" grown=")
+		b.WriteString(strconv.Itoa(s.Grown))
 		b.WriteString(" exhausted=")
 		b.WriteString(strconv.Itoa(s.Exhausted))
 	}
@@ -214,6 +224,8 @@ func ParseGCStatsLine(line string) (GCStats, bool) {
 			st.Capacity = num(v)
 		case "headroom":
 			st.Headroom = num(v)
+		case "grown":
+			st.Grown = num(v)
 		case "exhausted":
 			st.Exhausted = num(v)
 		}

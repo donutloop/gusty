@@ -1881,6 +1881,46 @@ are named in ADR 0347 so they are not mistaken for regressions from this change:
 `@gc_roots`, the un-rooted container element handle, and the fact that a body's mid-trip garbage waits
 for the next trip's safe point.
 
+**Closed by ADR 0350 (2026-10-15): the arena grows, and the collector stops paying for the room.**
+
+The row's own program is now the corpus: 1025 containers, all reachable from one name. It printed
+
+```
+MemoryError: out of memory: the compiled heap holds 1024 live containers (roadmap Gap Q.2)
+```
+
+at exit 3 on the commit ADR 0347 landed, and prints `5 205` at exit 0 today, which is what CPython has
+always printed. The growth is one global: `@heap_cap` is the window the run committed, `rt_alloc` bounds a
+fresh slot by the window rather than by the ceiling, and when a program asks for a slot the window has not
+committed, the door doubles the window (clamped to the reservation), bumps `@heap_grown`, and continues.
+
+Why one store is the whole implementation: **a handle in this runtime is an index into parallel arrays, not
+a pointer** (ADR 0334). Nothing in a running program — not a root slot, not a container's element word, not
+a tag word — holds an address, so widening what the allocator may hand out invalidates nothing, and the
+seven tables that share the handle space cannot drift because they are bounded by one number. `realloc` was
+rejected for exactly that reason: it would require a handle table to bounce through, and every read in every
+program would pay for a road only big programs take. Segmentation was rejected because it makes every
+accessor a divide and a modulo to buy the same user-visible behaviour.
+
+What the ceiling had been hiding is the part of this cycle worth keeping in the tracker. `rt_gc`'s sweep ran
+an outer counter up to `@heap_count` with the entire object scan inside it — `pass.loop` around `k.loop`,
+both bounded by the same load. A collection was therefore O(slots²). Two things hid it: the 1024-slot ceiling
+bounded the outer walk, and a churn loop's sweeps kept pulling the high-water mark back down so most
+collections scanned tens of slots. Rebuilt with the room and the outer loop restored, the growth table's
+2400-container program took **15.76s** to print two numbers and its 1200-container sibling **2.07s**; on the
+single-scan build both take **0.12s**. A growable arena without that fix would have shipped a backend that
+can hold your data and cannot finish counting it.
+
+The machine path grew with it. `capacity=` is now the *committed window* rather than a constant, so it
+describes the run; `grown=` is the field that lets a caller tell "this arena widened" from "this arena was
+always that big", which `capacity=` alone cannot say; `headroom=` is measured against the window; and
+`exhausted=` now means "asked past the reservation". `--schema`'s `definitions.gcStats` carries all four, and
+`lang.GCStats`/`ParseGCStatsLine` read the same line back.
+
+The ceiling is a container count, and 256 element words per object is a second limit the row does not reach:
+that is why the programs here build in groups of 200 and 256-and-change rather than one 8000-element list,
+and why reading a slot of a container whose siblings pushed past one object's row is Gap R.271.
+
 <a id="gap-r"></a>
 ## Gap R — async code that could not mean what it said (found while starting L7.6)
 
@@ -12028,3 +12068,102 @@ first-class function values (roadmap L11.7)`. The sentence was true when written
 ADR 0345 supplies the name, and ADR 0340's key road is the road. The unkeyed `xs.sort()` answers; the
 run-time-element half remains Gap R.254. The row's definition of done includes deleting the sentence for the
 shapes that answer, because a refusal that has outgrown its reason is a lie with a citation in it.
+
+### Gap R.271 — a chained subscript reads a sibling's object once the container outgrows one object's 256-word row
+
+Measured while writing ADR 0350's growth tables, on `57f8d4f`, with the pre-ADR-0350 binary built beside it
+so the answer cannot be blamed on the arena's new size. The program is the growth table's own, minus the
+grouping:
+
+```gusty
+def live(count):
+    out = []
+    i = 0
+    while i < count:
+        out.append([i, i * 2])
+        i = i + 1
+    return out
+
+rows = live(300)
+print(rows[0][0])      # CPython: 0
+```
+
+The compiled backend prints `[258, 516]` — which is `rows[258]`, a container this program never asked to see —
+and exits 0. It is not a tie of a fair race: `print` is honestly rendering an object, and the object is the
+wrong one. Measured boundary, one program per size, everything else equal:
+
+| `count` | CPython | compiled `print(rows[0][0])` |
+|---|---|---|
+| 8 … 256 | `0` | `0` — correct |
+| 257 | `0` | the **whole outer list**, 257 entries, its first element rendering as nothing |
+| 258 | `0` | the whole outer list again, one entry rendering as a stale `[84]` |
+| 259 … 1024 | `0` | `[258, 516]` — a sibling's payload, at exit 0 |
+
+Two things make this a defect and not a missing feature. The first is that a *wrong value at exit 0* is the
+class of failure this language reserves for bugs — every neighbour of this shape either answers or refuses
+(ADR 0210's bounds words, ADR 0251's `'int' object is not subscriptable`, ADR 0247's pair equality). The
+second is the inconsistency inside the backend: the same program with the read bound to a name,
+
+```gusty
+v = rows[0][0]
+print(v)
+```
+
+refuses with `index cannot reach into rows's slots: the name was rebound, mutated, or handed to a function`
+at exit 1, and so does `print(rows[0][0] + 1)`. One door answers wrongly where the door beside it declines to
+answer at all, which is the same disagreement ADR 0344 settled for the declined container answer — the doors
+that ask the object are sound, the doors that ask the notebook are not.
+
+The 256 boundary is the thing a fix has to explain rather than tune: `@heap`'s object is
+`{i32, i32, [256 x i32]}`, so 256 is exactly where one object's element row ends, and ADR 0350's seven
+parallel tables are all indexed by the same handle. The read that works for 256 rows is asking the right
+question; the read that answers for 259 is asking the arena something the outer position, not the object,
+decides. The row's `Next concrete action` is therefore phrased as a hand-off, not a patch: the outer read
+already computes a (payload, tag) pair (ADR 0251), and the inner subscript should ask the object at *that*
+handle what it holds.
+
+Why the growth tables do not trip over it: they read `len(groups[0])`, not `groups[0][0]`, and they build in
+groups of 200 and 205 because one object owns 256 element words — which is a second, unrelated limit that
+`docs/roadmap-details.md`'s Gap Q.2 section already names.
+
+### Gap R.272 — the attribute road asks names, not expressions, so an instance in a list has no attributes
+
+The same probe session that measured Gap R.271 tried to write the program the growth record entries were
+built from, and could not write it at all:
+
+```gusty
+class Node:
+    def __init__(self, v):
+        self.v = v
+
+objs = []
+objs.append(Node(1))
+print(objs[0].v)          # CPython: 1
+```
+
+`codegen: unsupported attr expression`, exit 1. The refusal is not about the subscript being unbound — the
+bound form refuses identically:
+
+| shape | CPython | compiled |
+|---|---|---|
+| `print(objs[0].v)` | `1` | `unsupported attr expression`, exit 1 |
+| `n = objs[1]` then `print(n.v)` | `2` | `unsupported attr expression`, exit 1 |
+| `for o in objs: print(o.v)` | `1`, `2` | `unsupported attr expression`, exit 1 |
+| `print(show(objs[0]))`, `show` returning `o.v` | `1` | `unsupported attr expression`, exit 1 |
+| `d["a"] = Node(3)` then `print(d["a"].v)` | `3` | `unsupported attr expression`, exit 1 |
+| `print(objs[0])` | `<__main__.Node object at 0x…>` | the same sentence (ADR 0325) |
+
+The last row is the whole argument. ADR 0325 taught the print, `len`, `in` and `for` doors to ask an element's
+tag what the element is, and ADR 0306 put the (payload, tag) pair on every container-element read; the backend
+knows the base is an instance well enough to print its identity, and the attribute door does not ask. So the
+door reads a *name*, recognises a variable whose declaration says instance, and refuses anything else —
+including a name whose last binding, and only its last binding, was an element read.
+
+The consequence is not a corner: putting objects in containers is how Python programs are written. A queue, a
+tree of nodes, a bucket of records, a list of parsed tokens — every one of them is unwritable, and the
+workaround (a parallel list of attribute values) is a different program from the one the author meant. The fix
+is the same hand-off as Gap R.271's: the attribute road lowers through the instance road the plain-name case
+already uses, and reads the base's kind from the pair the print door reads. Where the base's kind genuinely
+cannot be settled the row keeps a refusal, but a refusal that names the base's origin — `attribute read on a
+value the notebook does not describe` — rather than `unsupported attr expression`, which says what the door
+could not do and not what the program asked (ADR 0346's rule for a refusal's sentence).

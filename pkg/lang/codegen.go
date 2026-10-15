@@ -12,17 +12,25 @@ import (
 )
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
-const heapRuntimeIR = `@heap_count = internal global i32 0
+//
+// The three blocks that touch the arena are templates, not final text: every declaration of an arena
+// table spells its ceiling as @HEAPSLOTS@ and every question about the size the RUN has committed reads
+// @heap_cap. The ceiling is a link-time fact — the tables are one zero-filled block each — and the
+// committed size is a run-time fact that `rt_alloc` doubles when a program asks for a slot the window
+// has not committed yet (roadmap Gap Q.2, ADR 0350). `fillRootTemplate` renders them once per process
+// from the constants in heap_guard.go, so the reservation, the initial window and the growth factor
+// have one spelling each.
+const heapRuntimeIRTmpl = `@heap_count = internal global i32 0
 ; Cached handle for the None singleton (heap kind 4). None cannot be an immediate the way
 ; ints are: any i32 value is a legal integer, so no bit pattern is free to mean "no value".
 ; The handle is allocated once and never freed, so "x = None" and "x == None" behave the
 ; same in the compiled backend and the record (ADR 0172).
 @none_h = internal global i32 -1
-@gc_mark = internal global [1024 x i8] zeroinitializer
+@gc_mark = internal global [@HEAPSLOTS@ x i8] zeroinitializer
 @gc_urgent = internal global i32 0
 @free_head = internal global i32 -1
-@free_next = internal global [1024 x i32] zeroinitializer
-@heap = internal global [1024 x {i32, i32, [256 x i32]}] zeroinitializer
+@free_next = internal global [@HEAPSLOTS@ x i32] zeroinitializer
+@heap = internal global [@HEAPSLOTS@ x {i32, i32, [256 x i32]}] zeroinitializer
 ; The two facts about the arena that a run reports — how many slots it is holding, and how many times
 ; it ran out — are deliberately NOT declared here. They live with the collector's other self-report
 ; numbers in rootGlobalsIR, because rt_gc_report reports capacity and headroom for a module that never
@@ -37,8 +45,37 @@ entry:
   br i1 %isneg, label %alloc_new, label %alloc_reuse
 alloc_new:
   %c = load i32, i32* @heap_count
-  %oob = icmp sge i32 %c, 1024
-  br i1 %oob, label %full, label %newok
+  ; The window this RUN has committed, not the ceiling the module reserves. A program that never asks
+  ; for more than HeapInitialCapacity slots never leaves the window it started in; a program that does
+  ; asks the door below for another generation of slots and keeps going (roadmap Gap Q.2, ADR 0350).
+  %cap0 = load i32, i32* @heap_cap
+  %oob = icmp sge i32 %c, %cap0
+  br i1 %oob, label %maybe_grow, label %newok
+maybe_grow:
+  ; Growing the arena is a commit, not a relocation: a handle is an INDEX into the tables, so nothing
+  ; the program holds has to move when the window widens — which is why the growth fits in this door
+  ; and why the seven parallel tables cannot drift apart (they share one index space and one bound).
+  ; The window doubles until it reaches the reservation; past that there is nothing left to commit and
+  ; the run is out of memory in the sense ADR 0347 made a MemoryError.
+  %room = icmp slt i32 %cap0, @HEAPSLOTS@
+  br i1 %room, label %grow, label %full
+grow:
+  %doubled = mul i32 %cap0, @HEAPGROW@
+  %wide = icmp sgt i32 %doubled, @HEAPSLOTS@
+  %cap1 = select i1 %wide, i32 @HEAPSLOTS@, i32 %doubled
+  store i32 %cap1, i32* @heap_cap
+  ; The newly committed slots are the zero-filled tail of the reservation, so nothing has to be cleared
+  ; for them: @heap[k]'s kind and length are written by this door, @estr[k] is cleared here, an element
+  ; tag is written beside every payload that needs one (ADR 0187) and an instance row is cleared by
+  ; rt_inst_clear (ADR 0235). A slot the window has never held has therefore never been read.
+  %grew = load i32, i32* @heap_grown
+  %grew1 = add i32 %grew, 1
+  store i32 %grew1, i32* @heap_grown
+  ; One doubling is enough by construction — the count only ever reaches the window it was committed
+  ; in, so after a widening it sits below it — but the door re-asks rather than assumes, because the
+  ; alternative is handing out an index outside the window on the first day the arithmetic is wrong.
+  %again = icmp sge i32 %c, %cap1
+  br i1 %again, label %full, label %newok
 full:
   ; Exhaustion is counted here and raised by the caller's guard, not here: rt_alloc is called from
   ; inside the other helpers too (rt_list_copy, rt_float_new, rt_slice, rt_none), and a helper that
@@ -52,7 +89,7 @@ full:
   store i32 %e1, i32* @heap_exhausted
   ret i32 -1
 newok:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   store i32 %kind, i32* %kp
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -63,7 +100,7 @@ newok:
   ; followed by print({1, 2}) render the numbers through the string table as {(null), (null)}.
   ; Clearing the tag array would be a 256-entry memset and is covered by writing tags in pairs
   ; with payloads (ADR 0187); this flag is one store, so clear it (ADR 0188).
-  %eslot = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %c
+  %eslot = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %c
   store i32 0, i32* %eslot
   %c1 = add i32 %c, 1
   store i32 %c1, i32* @heap_count
@@ -75,15 +112,15 @@ newok:
   store i32 %lv1, i32* @heap_live
   ret i32 %c
 alloc_reuse:
-  %rn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %fh
+  %rn = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @free_next, i32 0, i32 %fh
   %next = load i32, i32* %rn
   store i32 %next, i32* @free_head
-  %obj2 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %fh
+  %obj2 = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %fh
   %kp2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj2, i32 0, i32 0
   store i32 %kind, i32* %kp2
   %lp2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj2, i32 0, i32 1
   store i32 0, i32* %lp2
-  %eslot2 = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %fh
+  %eslot2 = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %fh
   store i32 0, i32* %eslot2
   %lv2 = load i32, i32* @heap_live
   %lv21 = add i32 %lv2, 1
@@ -94,7 +131,7 @@ alloc_reuse:
 define internal void @rt_free(i32 %h) {
 entry:
   %fh = load i32, i32* @free_head
-  %fn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %h
+  %fn = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @free_next, i32 0, i32 %h
   store i32 %fh, i32* %fn
   store i32 %h, i32* @free_head
   ; One slot less in use. Clamped, because rt_free has never owned a double-free contract: freeing the
@@ -110,7 +147,7 @@ entry:
 }
 define internal void @rt_set_elem(i32 %h, i32 %i, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   store i32 %v, i32* %ep
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -124,7 +161,7 @@ entry:
 ; rt_set_elem this must NOT bump the length, which is what appends do.
 define internal void @rt_put_elem(i32 %h, i32 %i, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   store i32 %v, i32* %ep
   ret void
@@ -132,7 +169,7 @@ entry:
 
 define internal i32 @rt_list_len(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   ret i32 %len
@@ -140,7 +177,7 @@ entry:
 
 define internal i32 @rt_get_elem(i32 %h, i32 %i) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   %v = load i32, i32* %ep
   ret i32 %v
@@ -151,7 +188,7 @@ entry:
 ; index is already normalised for negatives.
 define internal i32 @rt_pop(i32 %h, i32 %i) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -178,7 +215,7 @@ done:
 
 define internal void @rt_append(i32 %h, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %len
@@ -216,13 +253,13 @@ entry:
 ; strings, bit 1 = dict keys are, bit 2 = dict values are. Whether a container holds strings
 ; is a property of the *object*, not of the variable — a helper can fill a list its caller
 ; created — so the printers read this instead of trusting a static guess (Gap I.2/J.5).
-@estr = internal global [1024 x i32] zeroinitializer
+@estr = internal global [@HEAPSLOTS@ x i32] zeroinitializer
 ; A float box is a heap object of kind HeapKindFloat whose bits live here, indexed by handle.
 ; It is parallel to @heap rather than inside it for one reason: an element slot is one i32 word
 ; and a double does not fit in one, so a float that goes into a slot goes in as the handle of a
 ; box (roadmap L11.1, ADR 0233). The collector marks and sweeps by index rather than by kind, so a
 ; box is live exactly as long as the container that holds it and is recycled with it.
-@float_box = internal global [1024 x double] zeroinitializer
+@float_box = internal global [@HEAPSLOTS@ x double] zeroinitializer
 ; @heap_tags is the per-element half of the value model (roadmap L11.1). @estr[h] says one
 ; thing about a whole container -- "its elements are interned strings" -- which is why a
 ; heterogeneous xs = [1, "a"] had to be refused rather than printed (ADR 0175). This array
@@ -230,7 +267,7 @@ entry:
 ; value.go, so no new vocabulary), letting one list hold numbers and interned strings
 ; together. Only scalars and interned strings are taggable: a nested container would have to
 ; be marked by the collector, and that case stays refused.
-@heap_tags = internal global [1024 x [256 x i32]] zeroinitializer
+@heap_tags = internal global [@HEAPSLOTS@ x [256 x i32]] zeroinitializer
 ; @inst_set is the instance half of the same idea (roadmap Gap B, ADR 0235): @inst_set[h][slot] is 1
 ; once something has been WRITTEN to that attribute slot of instance h. A class pattern binds capture
 ; names to attributes and a missing attribute is documented to FAIL the pattern, but @heap's data
@@ -238,7 +275,7 @@ entry:
 ; "case Point(a, b):" matched an instance that had no "a" and bound 0. rt_inst_clear zeroes the row
 ; when a heap slot becomes a new instance, because heap slots are reused and a stale 1 would be the
 ; previous tenant's answer.
-@inst_set = internal global [1024 x [256 x i32]] zeroinitializer
+@inst_set = internal global [@HEAPSLOTS@ x [256 x i32]] zeroinitializer
 declare i32 @strcmp(i8*, i8*)
 
 ; Strings are compile-time globals, so a container slot cannot hold one directly (it is an
@@ -343,7 +380,7 @@ entry:
 ; array is 256 deep, so the quadratic cost is bounded by the representation, not by luck.
 define internal void @rt_sort(i32 %h, i32 %mode) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %n = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -368,8 +405,8 @@ jbody:
 iswap:
   store i32 %vb, i32* %pa
   store i32 %va, i32* %pb
-  %ta = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %jm
-  %tb = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  %ta = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %jm
+  %tb = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
   %gta = load i32, i32* %ta
   %gtb = load i32, i32* %tb
   store i32 %gtb, i32* %ta
@@ -386,7 +423,7 @@ done:
 ; rt_reverse flips a heap list in place — the compiled xs.reverse().
 define internal void @rt_reverse(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %n = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -404,8 +441,8 @@ body:
   %vb = load i32, i32* %pb
   store i32 %vb, i32* %pa
   store i32 %va, i32* %pb
-  %ta = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
-  %tb = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %hi2
+  %ta = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %tb = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %hi2
   %gta = load i32, i32* %ta
   %gtb = load i32, i32* %tb
   store i32 %gtb, i32* %ta
@@ -443,7 +480,7 @@ done:
 ; dict can gain string keys and later string values.
 define internal void @rt_mark_estr(i32 %h, i32 %bits) {
 entry:
-  %slot = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %slot = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
   %old = load i32, i32* %slot
   %both = or i32 %old, %bits
   store i32 %both, i32* %slot
@@ -1260,7 +1297,7 @@ num:
 ; {'a', 'b'} otherwise, matching the record's Repr.
 define internal void @rt_set_print_str(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -1305,7 +1342,7 @@ fin:
 ; flags say which, so {'a': 1} and {1: 'a'} and {'a': 'b'} all print like the record.
 define internal void @rt_dict_print_s(i32 %h, i32 %nl, i32 %ks, i32 %vs) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -1348,7 +1385,7 @@ fin:
 
 define internal void @rt_tag_elem(i32 %h, i32 %i, i32 %t) {
 entry:
-  %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %p = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   store i32 %t, i32* %p
   ret void
 }
@@ -1360,12 +1397,12 @@ entry:
 ; (roadmap L11.1, ADR 0187).
 define internal void @rt_append_tagged(i32 %h, i32 %v, i32 %t) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %len
   store i32 %v, i32* %ep
-  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
   store i32 %t, i32* %tp
   %len1 = add i32 %len, 1
   store i32 %len1, i32* %lp
@@ -1373,7 +1410,7 @@ entry:
 }
 
 define internal i32 @rt_tag_of(i32 %h, i32 %i) {entry:
-  %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %p = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %v = load i32, i32* %p
   ret i32 %v
 }
@@ -1388,7 +1425,7 @@ entry:
   %bad = icmp slt i32 %h, 0
   br i1 %bad, label %fail, label %put
 put:
-  %p = getelementptr [1024 x double], [1024 x double]* @float_box, i32 0, i32 %h
+  %p = getelementptr [@HEAPSLOTS@ x double], [@HEAPSLOTS@ x double]* @float_box, i32 0, i32 %h
   store double %d, double* %p
   ret i32 %h
 fail:
@@ -1399,7 +1436,7 @@ fail:
 ; comparison below able to say anything about numbers.
 define internal double @rt_float_of(i32 %h) {
 entry:
-  %p = getelementptr [1024 x double], [1024 x double]* @float_box, i32 0, i32 %h
+  %p = getelementptr [@HEAPSLOTS@ x double], [@HEAPSLOTS@ x double]* @float_box, i32 0, i32 %h
   %d = load double, double* %p
   ret double %d
 }
@@ -1498,15 +1535,15 @@ unequal:
 ; (roadmap L11.1, ADR 0189 and ADR 0233).
 define internal i32 @rt_slot_eq(i32 %h1, i32 %i1, i32 %h2, i32 %i2) {
 entry:
-  %o1 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h1
+  %o1 = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h1
   %e1 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o1, i32 0, i32 2, i32 %i1
   %v1 = load i32, i32* %e1
-  %o2 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h2
+  %o2 = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h2
   %e2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o2, i32 0, i32 2, i32 %i2
   %v2 = load i32, i32* %e2
-  %t1p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h1, i32 %i1
+  %t1p = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h1, i32 %i1
   %t1 = load i32, i32* %t1p
-  %t2p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h2, i32 %i2
+  %t2p = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h2, i32 %i2
   %t2 = load i32, i32* %t2p
   %r32 = call i32 @rt_payload_eq(i32 %v1, i32 %t1, i32 %v2, i32 %t2)
   ret i32 %r32
@@ -1519,13 +1556,17 @@ entry:
 ; which is also the right answer for [1] == 1 (ADR 0189).
 define internal i32 @rt_container_eq(i32 %a, i32 %b) {
 entry:
-  %rangeA = icmp slt i32 %a, 1024
-  %rangeB = icmp slt i32 %b, 1024
+  ; A handle is only a container if the run committed the slot it names: the window, not the
+  ; reservation, is what separates a slot the allocator handed out from one it never did
+  ; (roadmap Gap Q.2, ADR 0350).
+  %capq = load i32, i32* @heap_cap
+  %rangeA = icmp slt i32 %a, %capq
+  %rangeB = icmp slt i32 %b, %capq
   %bothrange = and i1 %rangeA, %rangeB
   br i1 %bothrange, label %kinds, label %no
 kinds:
-  %oa = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
-  %ob = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
+  %oa = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
+  %ob = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
   %kap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 0
   %kbp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 0
   %ka = load i32, i32* %kap
@@ -1631,7 +1672,7 @@ no:
 ; is how a nested list of text came to print its interned indexes (roadmap L11.1).
 define internal void @rt_print_container_value(i32 %h, i32 %quote) {
 entry:
-  %o = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %o = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o, i32 0, i32 0
   %kind = load i32, i32* %kp
   %isList = icmp eq i32 %kind, 1
@@ -1744,7 +1785,7 @@ num:
 ; between "this list is the string list" and "this slot holds a string".
 define internal void @rt_print_list_mixed(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
@@ -1757,7 +1798,7 @@ body:
   %is0 = icmp eq i32 %i, 0
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   %e = load i32, i32* %ep
-  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %t = load i32, i32* %tp
   br i1 %is0, label %first, label %sep
 first:
@@ -1785,7 +1826,7 @@ fin:
 ; quoting: ['a', 'b'].
 define internal void @rt_print_list_str(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -1838,7 +1879,7 @@ hit:
 ; length query on a None handle reports 0 instead of reading an uninitialised word.
 define internal i32 @rt_is_none(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   %k = load i32, i32* %kp
   %isnone = icmp eq i32 %k, 4
@@ -1891,13 +1932,13 @@ entry:
 
 define internal void @rt_print_list(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   ; Whether the elements are interned strings is read from the object, not from a static
   ; guess: a helper like "def fill(out, v): out.append(v)" can fill a list its caller created,
   ; and the caller's scope has no idea what the callee stored (Gap J.5).
-  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %fsp = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
   %flags = load i32, i32* %fsp
   ; bit 8 says the slots describe themselves: a list that mixes kinds, or whose elements are
   ; handles into other containers, has no single kind to report, so it prints element by element
@@ -1959,7 +2000,7 @@ fin:
 ; keep printing and comparing as the old one (ADR 0187's rule, applied to dicts by ADR 0189).
 define internal void @rt_dict_put_tagged(i32 %h, i32 %k, i32 %v, i32 %kt, i32 %vt) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -1979,7 +2020,7 @@ upd:
   %idx2 = add i32 %idx, 1
   %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
   store i32 %v, i32* %vp
-  %utg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
+  %utg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
   store i32 %vt, i32* %utg
   ret void
 cont:
@@ -1992,9 +2033,9 @@ add:
   %idx4 = add i32 %idx3, 1
   %vp4 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx4
   store i32 %v, i32* %vp4
-  %ktg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx3
+  %ktg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx3
   store i32 %kt, i32* %ktg
-  %vtg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx4
+  %vtg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx4
   store i32 %vt, i32* %vtg
   %len2 = add i32 %len, 1
   store i32 %len2, i32* %lp
@@ -2003,7 +2044,7 @@ add:
 
 define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -2045,7 +2086,7 @@ add:
 ; consulted). rt_contains stays for a needle whose kind the compiler cannot prove.
 define internal i32 @rt_contains_tagged(i32 %h, i32 %v, i32 %t) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   %kind = load i32, i32* %kp
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -2076,7 +2117,7 @@ miss:
 
 define internal i32 @rt_contains(i32 %h, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   %kind = load i32, i32* %kp
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -2109,7 +2150,7 @@ miss:
 
 define internal i32 @rt_dict_get(i32 %h, i32 %k) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -2145,10 +2186,10 @@ miss:
 ; equality carried the tag, lookup and dedup did not.
 define internal i32 @rt_slot_matches(i32 %h, i32 %i, i32 %v, i32 %t) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   %e = load i32, i32* %ep
-  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %et = load i32, i32* %tp
   %m = call i32 @rt_payload_eq(i32 %e, i32 %et, i32 %v, i32 %t)
   ret i32 %m
@@ -2159,7 +2200,7 @@ entry:
 ; ask this same question, and they must ask the same way or they disagree about the dict.
 define internal i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   br label %check
@@ -2191,7 +2232,7 @@ entry:
 miss:
   ret i32 0
 found:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %slot = mul i32 %i, 2
   %vslot = add i32 %slot, 1
   %vp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %vslot
@@ -2210,7 +2251,7 @@ entry:
 ; rt_set_find is rt_dict_find for a set, whose members occupy slots 0..len-1 rather than pairs.
 define internal i32 @rt_set_find(i32 %h, i32 %v, i32 %t) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   br label %check
@@ -2244,7 +2285,7 @@ miss:
 found:
   %slot = mul i32 %i, 2
   %vslot = add i32 %slot, 1
-  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %vslot
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %vslot
   %t = load i32, i32* %tp
   ret i32 %t
 }
@@ -2330,7 +2371,7 @@ entry:
   %absent = icmp slt i32 %at, 0
   br i1 %absent, label %done, label %work
 work:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %last = sub i32 %len, 1
@@ -2345,9 +2386,9 @@ shiftdo:
   %sv = load i32, i32* %sp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %j
   store i32 %sv, i32* %dp
-  %st = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %src
+  %st = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %src
   %stv = load i32, i32* %st
-  %dt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  %dt = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
   store i32 %stv, i32* %dt
   %jnext = add i32 %j, 1
   br label %shift
@@ -2363,7 +2404,7 @@ done:
 ; difference between {"a": 1} and {"a": 1, "b": "x"} — the second has no kind.
 define internal void @rt_dict_print_mixed(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
@@ -2379,9 +2420,9 @@ body:
   %k = load i32, i32* %kp
   %vp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %idx2
   %v = load i32, i32* %vp
-  %kt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx
+  %kt = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx
   %keyTag = load i32, i32* %kt
-  %vt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
+  %vt = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
   %valTag = load i32, i32* %vt
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
@@ -2411,7 +2452,7 @@ fin:
 ; set(), and {} is a dict, so the empty case cannot fall through to the general loop.
 define internal void @rt_set_print_mixed(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %isEmpty = icmp eq i32 %len, 0
@@ -2429,7 +2470,7 @@ loop:
 body:
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   %e = load i32, i32* %ep
-  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %t = load i32, i32* %tp
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
@@ -2455,7 +2496,7 @@ fin:
 
 define internal i32 @rt_dict_len(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   ret i32 %len
@@ -2466,7 +2507,7 @@ entry:
 ; filled inside a helper that received it as a parameter (roadmap Gap J.5).
 define internal void @rt_dict_print(i32 %h, i32 %nl) {
 entry:
-  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %fsp = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
   %flags = load i32, i32* %fsp
   ; bit 8 says the slots describe themselves: a dict that mixes kinds has no single kind to
   ; report, so it prints position by position (roadmap L11.1 (1b), ADR 0232).
@@ -2500,7 +2541,7 @@ static:
 ; with (ADR 0189).
 define internal void @rt_set_add_tagged(i32 %h, i32 %v, i32 %t) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -2523,7 +2564,7 @@ cont:
 add:
   %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %len
   store i32 %v, i32* %kp2
-  %tg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
+  %tg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
   store i32 %t, i32* %tg
   %len2 = add i32 %len, 1
   store i32 %len2, i32* %lp
@@ -2532,7 +2573,7 @@ add:
 
 define internal void @rt_set_add(i32 %h, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
@@ -2563,7 +2604,7 @@ add:
 ; value is a no-op (that is what distinguishes discard from remove).
 define internal void @rt_set_clear(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   store i32 0, i32* %lp
   ret void
@@ -2571,7 +2612,7 @@ entry:
 
 define internal void @rt_set_discard(i32 %h, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   ; Computed here so it dominates the done block, which is reachable both when the
@@ -2612,7 +2653,7 @@ done:
 
 define internal i32 @rt_set_len(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   ret i32 %len
@@ -2620,12 +2661,12 @@ entry:
 
 define internal void @rt_set_print(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
   ; bit 8: the members describe themselves, so ask each slot instead of the object (ADR 0232)
-  %fsp0 = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %fsp0 = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
   %flags0 = load i32, i32* %fsp0
   %mixedBit = and i32 %flags0, 8
   %isMixed = icmp ne i32 %mixedBit, 0
@@ -2636,7 +2677,7 @@ mixed:
 notMixed:
   ; members are interned strings when the object says so (see rt_mark_estr), not when a
   ; static guess in this scope said so (roadmap Gap J.5)
-  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %fsp = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
   %flags = load i32, i32* %fsp
   %mb = and i32 %flags, 1
   %msb = icmp ne i32 %mb, 0
@@ -2690,7 +2731,7 @@ fin:
 
 define internal i32 @rt_inst_get(i32 %h, i32 %slot) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %p = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %slot
   %v = load i32, i32* %p
   ret i32 %v
@@ -2698,11 +2739,11 @@ entry:
 
 define internal void @rt_inst_put(i32 %h, i32 %slot, i32 %v) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %p = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %slot
   store i32 %v, i32* %p
   ; writing the value writes its presence, the way a container write writes its tag (ADR 0175)
-  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
+  %sp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
   store i32 1, i32* %sp
   ret void
 }
@@ -2717,7 +2758,7 @@ loop:
   %more = icmp slt i32 %i, %n
   br i1 %more, label %body, label %done
 body:
-  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %i
+  %sp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %i
   store i32 0, i32* %sp
   %in = add i32 %i, 1
   br label %loop
@@ -2729,7 +2770,7 @@ done:
 ; capture name, and the question Gap R.19 will ask of a plain attribute read.
 define internal i32 @rt_inst_has(i32 %h, i32 %slot) {
 entry:
-  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
+  %sp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
   %v = load i32, i32* %sp
   ret i32 %v
 }
@@ -2742,7 +2783,7 @@ entry:
   %bad = or i1 %neg, %big
   br i1 %bad, label %ret0, label %chk
 chk:
-  %m = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %h
+  %m = getelementptr [@HEAPSLOTS@ x i8], [@HEAPSLOTS@ x i8]* @gc_mark, i32 0, i32 %h
   %mv = load i8, i8* %m
   %is = icmp eq i8 %mv, 0
   br i1 %is, label %mark, label %ret0
@@ -2788,10 +2829,13 @@ entry:
   br label %cl.loop
 cl.loop:
   %i = phi i32 [ 0, %entry ], [ %i.nxt, %cl.inc ]
-  %i.end = icmp sge i32 %i, 1024
+  ; Clear the marks the window holds, not the marks the reservation could hold: a program that never
+  ; grew is not paying per-slot for an arena it never asked for (roadmap Gap Q.2, ADR 0350).
+  %capcl = load i32, i32* @heap_cap
+  %i.end = icmp sge i32 %i, %capcl
   br i1 %i.end, label %fl.init, label %cl.body
 cl.body:
-  %cm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %i
+  %cm = getelementptr [@HEAPSLOTS@ x i8], [@HEAPSLOTS@ x i8]* @gc_mark, i32 0, i32 %i
   store i8 0, i8* %cm
   br label %cl.inc
 cl.inc:
@@ -2805,9 +2849,9 @@ fl.loop:
   %fh.end = icmp slt i32 %fh, 0
   br i1 %fh.end, label %roots.init, label %fl.body
 fl.body:
-  %fm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %fh
+  %fm = getelementptr [@HEAPSLOTS@ x i8], [@HEAPSLOTS@ x i8]* @gc_mark, i32 0, i32 %fh
   store i8 2, i8* %fm
-  %fnp = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %fh
+  %fnp = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @free_next, i32 0, i32 %fh
   %fn = load i32, i32* %fnp
   br label %fl.loop
 roots.init:
@@ -2847,21 +2891,22 @@ roots.inc:
   %j.nxt = add i32 %j, 1
   br label %roots.loop
 pass.init:
-  br label %pass.loop
-pass.loop:
-  %p = phi i32 [ 0, %pass.init ], [ %p.nxt, %pass.inc ]
+  ; ONE scan of the arena per collection. This used to be an outer pass.loop walking a counter to
+  ; @heap_count with the object scan inside it — an accidental O(slots squared) per collection, invisible
+  ; while the arena's own ceiling was 1024 and while a churn loop's sweep pulled the high-water mark
+  ; back down, and the whole cost of a program that keeps thousands of containers alive once the arena
+  ; could grow to meet them (measured: 2400 live containers, 15s; roadmap Gap Q.2, ADR 0350).
   %hc1 = load i32, i32* @heap_count
-  %p.end = icmp sge i32 %p, %hc1
-  br i1 %p.end, label %sweep.init, label %k.init
+  br label %k.init
 k.init:
   br label %k.loop
 k.loop:
   %k = phi i32 [ 0, %k.init ], [ %k.nxt, %k.inc ]
   %k.end = icmp sge i32 %k, %hc1
-  br i1 %k.end, label %pass.inc, label %k.body
+  br i1 %k.end, label %sweep.init, label %k.body
 k.body:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %k
-  %km = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %k
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %k
+  %km = getelementptr [@HEAPSLOTS@ x i8], [@HEAPSLOTS@ x i8]* @gc_mark, i32 0, i32 %k
   %kmv = load i8, i8* %km
   %kmk = icmp eq i8 %kmv, 1
   br i1 %kmk, label %e.init, label %k.inc
@@ -2892,7 +2937,7 @@ e.body:
   ; over lst = [i] pinned one dead object per iteration and walked the arena to its 1024th slot
   ; (roadmap Gap Q.2, ADR 0347). The tag is the same word the printers and the comparisons read (ADR
   ; 0184, ADR 0187), so the collector and the program cannot disagree about what a slot holds.
-  %etp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %k, i32 %e
+  %etp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %k, i32 %e
   %etg = load i32, i32* %etp
   %eobj = call i32 @rt_gc_tag_is_obj(i32 %etg)
   %emust = icmp ne i32 %eobj, 0
@@ -2906,9 +2951,6 @@ e.inc:
 k.inc:
   %k.nxt = add i32 %k, 1
   br label %k.loop
-pass.inc:
-  %p.nxt = add i32 %p, 1
-  br label %pass.loop
 sweep.init:
   br label %sw.loop
 sw.loop:
@@ -2917,7 +2959,7 @@ sw.loop:
   %w.end = icmp sge i32 %w, %hc2
   br i1 %w.end, label %done, label %sw.body
 sw.body:
-  %wm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %w
+  %wm = getelementptr [@HEAPSLOTS@ x i8], [@HEAPSLOTS@ x i8]* @gc_mark, i32 0, i32 %w
   %wmv = load i8, i8* %wm
   %walive = icmp eq i8 %wmv, 1
   br i1 %walive, label %sw.live, label %sw.check
@@ -2936,7 +2978,7 @@ sw.free:
   %ft0 = load i32, i32* @gc.stat_total_freed
   %ft1 = add i32 %ft0, 1
   store i32 %ft1, i32* @gc.stat_total_freed
-  %fhp = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %w
+  %fhp = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @free_next, i32 0, i32 %w
   %fhc = load i32, i32* @free_head
   store i32 %fhc, i32* %fhp
   store i32 %w, i32* @free_head
@@ -2981,7 +3023,7 @@ bret:
 
 define internal i32 @rt_slice(i32 %h, i32 %low, i32 %high, i32 %step, i32 %hasLow, i32 %hasHigh, i32 %hasStep) {
 entry:
-  %p = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %p = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 1
   %len = load i32, i32* %lenp
   %kindp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 0
@@ -3073,7 +3115,7 @@ build:
   %tt = phi i32 [ %t, %p_done ], [ %nt2, %n_done ]
   %stp = phi i32 [ %step, %p_done ], [ %step, %n_done ]
   %nh = call i32 @rt_alloc(i32 %kind)
-  %np = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %nh
+  %np = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %nh
   %nlenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %np, i32 0, i32 1
   store i32 0, i32* %nlenp
   %ci = alloca i32
@@ -3100,13 +3142,13 @@ body:
   ; slot payload writes its tag. rt_slice copied payloads into the new handle and left heap_tags
   ; at whatever the reused heap slot held last, so a slice of texts rendered the interned INDEX as
   ; a number where the reference prints the quoted text (roadmap Gap R.179).
-  %srctgtp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %srctgtp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %sv = load i32, i32* %srctgtp
   %dstp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %np, i32 0, i32 2
   %c = load i32, i32* %cd
   %dst = getelementptr [256 x i32], [256 x i32]* %dstp, i32 0, i32 %c
   store i32 %v, i32* %dst
-  %dsttgtp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %nh, i32 %c
+  %dsttgtp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %nh, i32 %c
   store i32 %sv, i32* %dsttgtp
   %c1 = add i32 %c, 1
   store i32 %c1, i32* %cd
@@ -3157,7 +3199,7 @@ entry:
 
 define internal i32 @rt_heap_kind(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %kf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   %k = load i32, i32* %kf
   ret i32 %k
@@ -3165,7 +3207,7 @@ entry:
 
 define internal i32 @rt_heap_len(i32 %h) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %l = load i32, i32* %lf
   ret i32 %l
@@ -3173,7 +3215,7 @@ entry:
 
 define internal i32 @rt_heap_get(i32 %h, i32 %i) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %arr = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
   %p = getelementptr [256 x i32], [256 x i32]* %arr, i32 0, i32 %i
   %v = load i32, i32* %p
@@ -3182,7 +3224,7 @@ entry:
 
 define internal i32 @rt_dict_has(i32 %h, i32 %k) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lf
   ; A dict stores [key, value] pairs, so scanning keys means walking the flat element
@@ -3231,7 +3273,7 @@ miss:
 // The int arm is guarded before the `fptosi`, for the reason Gap R.133 learned the day it was filed:
 // out of the compiled `int` word the truncation is poison, not a wrong number, so an answer that would
 // not fit raises rather than wrapping (L12.12 owns the word; until then it owns the message).
-const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
+const numArithRuntimeIRTmpl = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
 @rt.num.negfmt = private constant [46 x i8] c"TypeError: bad operand type for unary -: '%s'\00"
 @rt.num.absfmt = private constant [44 x i8] c"TypeError: bad operand type for abs(): '%s'\00"
 @rt.num.ofmt = private constant [121 x i8] c"OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)\00"
@@ -3525,7 +3567,7 @@ fin:
 // a sum, which orders nothing, answers without ever naming an ordering. It rides with the arithmetic block,
 // because rt_pair_fold asks that block's rt_lift_num and rt_kind_name and writes into its rt.num.msg
 // buffer: a referenced internal function that was never emitted is the module llc rejects (ADR 0173).
-const pairFoldRuntimeIR = `@rt.o.lt = private constant [2 x i8] c"<\00"
+const pairFoldRuntimeIRTmpl = `@rt.o.lt = private constant [2 x i8] c"<\00"
 @rt.o.gt = private constant [2 x i8] c">\00"
 ; The sentence a fold raises when the two values it was asked to order have no ordering: CPython writes
 ; the OPERATOR the fold used and the two kinds in the order the comparison had them — the candidate first,
@@ -3713,8 +3755,8 @@ notlist:
   br i1 %isset, label %set, label %bad
 list:
   store i32 0, i32* %outcmp
-  %oa = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
-  %ob = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
+  %oa = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
+  %ob = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
   %lap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 1
   %lbp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 1
   %la = load i32, i32* %lap
@@ -3729,11 +3771,11 @@ lcheck:
 lbody:
   %eap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 2, i32 %i
   %ev1 = load i32, i32* %eap
-  %tap = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %a, i32 %i
+  %tap = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %a, i32 %i
   %et1 = load i32, i32* %tap
   %ebp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 2, i32 %i
   %ev2 = load i32, i32* %ebp
-  %tbp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %b, i32 %i
+  %tbp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %b, i32 %i
   %et2 = load i32, i32* %tbp
   ; The element pair is asked in three steps, and the ORDER of them is the reference's own.
   ;
@@ -3802,8 +3844,8 @@ set:
   ; The subset operator, both directions: A ⊆ B and B ⊆ A is equality; one direction alone is the proper
   ; subset, which is the reference's <; neither is the pair that answers False to both < and >.
   store i32 0, i32* %outcmp
-  %sa = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
-  %sb = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
+  %sa = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
+  %sb = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
   %salp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %sa, i32 0, i32 1
   %sblp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %sb, i32 0, i32 1
   %sal = load i32, i32* %salp
@@ -3819,7 +3861,7 @@ sabody:
   ; subset, which is what {True} == {1} already answers elsewhere (ADR 0259's bool rule).
   %amp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %sa, i32 0, i32 2, i32 %ai
   %amv = load i32, i32* %amp
-  %atp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %a, i32 %ai
+  %atp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %a, i32 %ai
   %amt = load i32, i32* %atp
   %ahit = call i32 @rt_set_contains_tagged(i32 %b, i32 %amv, i32 %amt)
   %ahit1 = trunc i32 %ahit to i1
@@ -3834,7 +3876,7 @@ sbcheck:
 sbbody:
   %bmp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %sb, i32 0, i32 2, i32 %bi
   %bmv = load i32, i32* %bmp
-  %btp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %b, i32 %bi
+  %btp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %b, i32 %bi
   %bmt = load i32, i32* %btp
   %bhit = call i32 @rt_set_contains_tagged(i32 %a, i32 %bmv, i32 %bmt)
   %bhit1 = trunc i32 %bhit to i1
@@ -3919,6 +3961,13 @@ const rootGlobalsIR = `
 ; report is (roadmap Gap Q.2, ADR 0347).
 @heap_live = internal global i32 0
 @heap_exhausted = internal global i32 0
+; The arena's third fact: how big the window this run has COMMITTED is. It starts at HeapInitialCapacity
+; and doubles at the door that allocates until it reaches HeapCapacity, so capacity= is a fact about the
+; run rather than a constant a program is measured against (roadmap Gap Q.2, ADR 0350). @heap_grown counts
+; the widenings, which is the difference between "this arena grew" and "this arena was always that big" —
+; a distinction a caller cannot recover from capacity alone.
+@heap_cap = internal global i32 @HEAPINIT@
+@heap_grown = internal global i32 0
 @.gcrootmsg = private unnamed_addr constant [@MSGLEN@ x i8] c@MSG@
 @.gcreport = private unnamed_addr constant [@FMTLEN@ x i8] c@FMT@
 `
@@ -4030,17 +4079,21 @@ entry:
   %f = load i32, i32* @gc.stat_freed
   %t = load i32, i32* @gc.stat_total_freed
   %l = load i32, i32* @gc.stat_live
-  ; The arena half: how big the ceiling is, how much of it this run has left, and how many times it hit
-  ; the wall. Headroom is capacity minus the slots held, clamped at zero — a negative headroom would mean
-  ; the occupancy counter drifted, and the honest reading of that is "none left", not a negative number
-  ; of objects (roadmap Gap Q.2, ADR 0347).
+  ; The arena half: how big the window this run has committed is, how much of it is left, how many times
+  ; it widened, and how many times it hit the wall. Headroom is the committed capacity minus the slots
+  ; held, clamped at zero — a negative headroom would mean the occupancy counter drifted, and the honest
+  ; reading of that is "none left", not a negative number of objects (roadmap Gap Q.2, ADR 0347, ADR 0350).
+  ; grown= is the witness that capacity= is a run fact and not a constant: a run that never needed
+  ; more than the window it started with reports the initial one and grown=0.
   %hlive = load i32, i32* @heap_live
-  %hr0 = sub i32 @HEAPCAP@, %hlive
+  %hcap = load i32, i32* @heap_cap
+  %hr0 = sub i32 %hcap, %hlive
   %hrneg = icmp slt i32 %hr0, 0
   %hr = select i1 %hrneg, i32 0, i32 %hr0
   %hex = load i32, i32* @heap_exhausted
+  %hgrown = load i32, i32* @heap_grown
   %fmt = getelementptr [@FMTLEN@ x i8], [@FMTLEN@ x i8]* @.gcreport, i32 0, i32 0
-  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 256, i8* %fmt, i32 %c, i32 %r, i32 %s, i32 %m, i32 %f, i32 %t, i32 %l, i32 %topmax, i32 @HEAPCAP@, i32 %hr, i32 %hex)
+  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 256, i8* %fmt, i32 %c, i32 %r, i32 %s, i32 %m, i32 %f, i32 %t, i32 %l, i32 %topmax, i32 %hcap, i32 %hr, i32 %hgrown, i32 %hex)
   %bad = icmp slt i32 %n, 0
   br i1 %bad, label %rdone, label %rwrite
 rwrite:
@@ -4080,7 +4133,7 @@ func llvmCString(s string) string {
 
 // gcRootReportLine is what the compiled backend prints for --gc-stats, mirroring the
 // record's report so one assertion can read either backend.
-const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d capacity=%d headroom=%d exhausted=%d\n"
+const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d capacity=%d headroom=%d grown=%d exhausted=%d\n"
 
 // gcRootOverflowMessage is the loud failure for a root stack that ran out. A handle
 // that cannot be pushed may be swept while still live, so the alternative to
@@ -4113,8 +4166,23 @@ func fillRootTemplate(t string) string {
 	// all read `HeapCapacity`, so a run cannot report a headroom against a different arena than the one
 	// that raised (roadmap Gap Q.2, ADR 0347).
 	t = strings.ReplaceAll(t, "@HEAPCAP@", strconv.Itoa(HeapCapacity))
+	// The arena's two sizes are the same pair everywhere: the reservation the tables are declared with
+	// and the window a run starts in. Both are read from heap_guard.go, so a module cannot allocate from
+	// one arena and report another (roadmap Gap Q.2, ADR 0350).
+	t = strings.ReplaceAll(t, "@HEAPSLOTS@", strconv.Itoa(HeapCapacity))
+	t = strings.ReplaceAll(t, "@HEAPINIT@", strconv.Itoa(HeapInitialCapacity))
+	t = strings.ReplaceAll(t, "@HEAPGROW@", strconv.Itoa(HeapGrowthFactor))
 	return t
 }
+
+// arenaRuntimeVars renders the runtime blocks that touch the arena. They are package-level because
+// the text is a pure function of the two constants and every consumer — the emitter, the block-usage
+// probe, the IR-shape tests — must read the same string.
+var (
+	heapRuntimeIR     = fillRootTemplate(heapRuntimeIRTmpl)
+	numArithRuntimeIR = fillRootTemplate(numArithRuntimeIRTmpl)
+	pairFoldRuntimeIR = fillRootTemplate(pairFoldRuntimeIRTmpl)
+)
 
 // GenerateIR runs codegen and returns the module. No debug records are emitted:
 // every caller that wants them asks for them (GenerateIRWithOptions /

@@ -131,6 +131,15 @@ projection of them
 interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
 definition documents the numbering (ADR 0182).
 
+A container lives in one arena, and a handle is an **index** into its parallel tables rather than an address —
+which is why the arena can **grow**: the allocator commits a window of slots when the run asks for one past
+the window it has (`@heap_cap`), doubling it from `HeapInitialCapacity` (1024) to the reservation
+`HeapCapacity` (8192) with no reference fixed up anywhere, and reports the run's size as `capacity=` and the
+number of widenings as `grown=` (`--gc-stats`, the `--json` `gc` member, `--schema`'s `gcStats`). Past the
+reservation the answer is a trap the program can name — `MemoryError`, catchable, exit 3 uncaught — and never
+again the handle `-1` painted as an object (**Gap Q.2**, paid by **ADR 0347** for the diagnostic and
+**ADR 0350** for the growth; `docs/language.md` § The compiled arena).
+
 A float keeps the sign the program gave it, whoever wrote it: `print(-0.0)` writes `-0.0` — through a binding,
 a container slot, `str()` and a function's parameter too — while the operations that remove a sign remove it,
 so `abs(-0.0)`, `-(-0.0)` and `abs(n)` over a slot the run time owns all write `0.0`. A signed constant is
@@ -315,7 +324,7 @@ is the honest one that was already written. `twice(d2, 3)` is `12`, `apply1(inc,
 is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min` with a `key=lambda` likewise —
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
-Gap R.111's promoted program was recorded the same way, and to 6882 with Gap R.132's — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
+Gap R.111's promoted program was recorded the same way, and to 6888 with Gap Q.2's growth programs — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
 the tests now hold shut: names were minted from `%p`, which Go randomises per process, so one program compiled to
@@ -1809,7 +1818,7 @@ gustyc --variance                             # JSON variance table (list/dict i
 gustyc --capabilities                         # JSON refusal registry: every lower.unsupported.<shape> code, its suggestion, and the roadmap rows that own it (L11.8, ADR 0346)
 gustyc --effects <src> | effects file1.gy ...  # per-function effect signatures: effects performed, return shape, termination (--json for the document)
 gustyc --jit "..."                           # in-process dlopen JIT path
-gustyc --gc-stats --file prog.gy             # report what the collector did, and the compiled arena: capacity, headroom, exhausted (stderr; --json adds a gc member) — Gap Q.2, ADR 0347
+gustyc --gc-stats --file prog.gy             # report what the collector did, and the compiled arena: capacity, headroom, grown, exhausted — how big the run's window got and how many times it doubled (stderr; --json adds a gc member) — Gap Q.2, ADR 0347, ADR 0350
 gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark
 gustyc --fmt <src> | --fmt-check <src> | --fmt-file <path>  # canonical formatter
 gustyc --lsp                                  # stdio language server (hover, completion, diagnostics)

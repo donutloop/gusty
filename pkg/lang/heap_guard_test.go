@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-// The compiled heap is one fixed arena, and `rt_alloc` answers -1 when it cannot hand out a slot. That
+// The compiled heap is one arena that grows — `rt_alloc` doubles the window it has committed until it
+// reaches the reservation — and it answers -1 when even that cannot hand out a slot. That
 // -1 was roadmap Gap Q.2: no caller asked, so a program with more live containers than the arena holds
 // stored -1 as a handle and the object arithmetic after it read and wrote the words *before* the arena —
 // measured at exit 0, printing a number the program never wrote:
@@ -55,7 +56,11 @@ var (
 	dstOfCallRe  = regexp.MustCompile(`^+\s*(%[a-zA-Z_0-9.]+) = call`)
 	statusOfRe   = regexp.MustCompile(`^+\s*(%[a-zA-Z_0-9.]+) = call i32 @([a-z_0-9]+)\(`)
 	arenaArrayRe = regexp.MustCompile(`@(heap|gc_mark|free_next|estr|heap_tags|inst_set) = internal global \[(\d+) x `)
-	allocBoundRe = regexp.MustCompile(`icmp sge i32 %c, (\d+)`)
+	// heapCapDeclRe reads the window a run starts in; allocHardBoundRe is the negative half of the
+	// same question — an allocator still comparing the count against a literal has no growth road
+	// (roadmap Gap Q.2, ADR 0350).
+	heapCapDeclRe    = regexp.MustCompile(`@heap_cap = internal global i32 (\d+)`)
+	allocHardBoundRe = regexp.MustCompile(`icmp sge i32 %c, (\d+)`)
 )
 
 // programBodies returns just the module's own code — @main and the emitted @gy_* functions — because the
@@ -244,11 +249,13 @@ func TestTheGuardIsNotEmittedWhereTheHeapNeverRunsOut(t *testing.T) {
 	}
 }
 
-// TestTheArenaSpellsItsCapacityOnce is the drift tripwire. The raise's sentence and the report's
-// `capacity=` are generated from HeapCapacity; the arena's arrays and the allocator's bound are written
-// into the runtime by hand. One of those two groups changing alone is how a backend ends up reporting a
-// headroom against an arena that is not the one it allocates from, so they are pinned together here —
-// and the row that grows the arena (Gap Q.4) starts by having to change this constant.
+// TestTheArenaSpellsItsCapacityOnce is the drift tripwire for a growing arena. The reservation every
+// table is declared with, the window a run starts in, the factor the window widens by, the report's
+// capacity=/grown= and the raise's sentence are five spellings of two numbers, and one of them changing
+// alone is how a backend ends up reporting a headroom against an arena it does not allocate from. The
+// negative half matters as much as the positive: an allocator that bounds itself against a literal rather
+// than against @heap_cap has stopped growing, and will say so by answering MemoryError to a program the
+// window could still have widened for (roadmap Gap Q.2, ADR 0350).
 func TestTheArenaSpellsItsCapacityOnce(t *testing.T) {
 	t.Parallel()
 	ir := mustIR(t, "xs = [1, 2]\nys = {'k': 1}\nss = {3}\nprint(len(xs) + len(ys) + len(ss))\n")
@@ -256,7 +263,7 @@ func TestTheArenaSpellsItsCapacityOnce(t *testing.T) {
 	for _, m := range arenaArrayRe.FindAllStringSubmatch(ir, -1) {
 		seen[m[1]]++
 		if m[2] != fmt.Sprint(HeapCapacity) {
-			t.Errorf("@%s is declared with capacity %s, but HeapCapacity is %d", m[1], m[2], HeapCapacity)
+			t.Errorf("@%s is declared with %s slots, but the reservation is %d", m[1], m[2], HeapCapacity)
 		}
 	}
 	for _, name := range []string{"heap", "gc_mark", "free_next", "heap_tags"} {
@@ -264,20 +271,47 @@ func TestTheArenaSpellsItsCapacityOnce(t *testing.T) {
 			t.Errorf("the tripwire saw no @%s declaration, so it cannot check it", name)
 		}
 	}
-	bounds := allocBoundRe.FindAllStringSubmatch(ir, -1)
-	if len(bounds) == 0 {
-		t.Fatal("the allocator's bound is not where the test can reach it")
+	// The window a run starts in is the arena's other number, spelled once as well.
+	m := heapCapDeclRe.FindStringSubmatch(ir)
+	if m == nil {
+		t.Error("@heap_cap is not declared, so nothing in the module knows how big the arena is")
+	} else if m[1] != fmt.Sprint(HeapInitialCapacity) {
+		t.Errorf("@heap_cap starts at %s, but HeapInitialCapacity is %d", m[1], HeapInitialCapacity)
 	}
-	for _, b := range bounds {
-		if b[1] != fmt.Sprint(HeapCapacity) {
-			t.Errorf("rt_alloc bounds the arena at %s while HeapCapacity says %d", b[1], HeapCapacity)
+	if !strings.Contains(ir, "@heap_grown = internal global i32 0") {
+		t.Error("@heap_grown is missing: capacity= alone cannot tell a grown arena from a big one")
+	}
+	// The allocator asks the committed window, never the reservation, for permission to hand out a slot.
+	if !strings.Contains(ir, "icmp sge i32 %c, %cap0") {
+		t.Error("rt_alloc does not bound the count against @heap_cap, so the arena cannot grow")
+	}
+	if hard := allocHardBoundRe.FindStringSubmatch(ir); hard != nil {
+		t.Errorf("rt_alloc bounds the arena at the literal %s instead of the committed window", hard[1])
+	}
+	// The growth itself: double the window, clamp it at the reservation, and count the widening.
+	for _, want := range []string{
+		fmt.Sprintf("icmp slt i32 %%cap0, %d", HeapCapacity),
+		fmt.Sprintf("mul i32 %%cap0, %d", HeapGrowthFactor),
+		fmt.Sprintf("select i1 %%wide, i32 %d", HeapCapacity),
+		"store i32 %cap1, i32* @heap_cap",
+		"store i32 %grew1, i32* @heap_grown",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Errorf("the growing door is missing %q", want)
 		}
 	}
-	if !strings.Contains(ir, "capacity=%d") || !strings.Contains(ir, "headroom=%d") || !strings.Contains(ir, "exhausted=%d") {
-		t.Error("--gc-stats' self-report line does not carry the arena's three facts")
+	for _, f := range []string{"capacity=%d", "headroom=%d", "grown=%d", "exhausted=%d"} {
+		if !strings.Contains(ir, f) {
+			t.Errorf("--gc-stats' self-report line does not carry the arena's fact %s", f)
+		}
 	}
-	if want := fmt.Sprintf("out of memory: the compiled heap holds %d live containers", HeapCapacity); !strings.Contains(ir, want) {
-		t.Errorf("the trap's sentence does not name the capacity the allocator bounds at: %q", heapExhaustedMessage)
+	for _, want := range []string{
+		fmt.Sprintf("the compiled heap holds %d live containers", HeapCapacity),
+		fmt.Sprintf("having grown from %d", HeapInitialCapacity),
+	} {
+		if !strings.Contains(ir, want) {
+			t.Errorf("the trap's sentence does not name %q: %q", want, heapExhaustedMessage)
+		}
 	}
 }
 

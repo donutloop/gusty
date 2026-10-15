@@ -1,0 +1,34 @@
+# integration/programs/gc_heap_growth.gy — roadmap Gap Q.2's second half, ADR 0350.
+#
+# One container more than the arena used to stop at. Until ADR 0350 this program died at
+# exit 3 with `MemoryError: out of memory: the compiled heap holds 1024 live containers`
+# while CPython printed `5 205`; the ceiling was the defect, not the condition. It is the
+# row's Definition of done in one file — a 1025-live-container program that must succeed
+# rather than trap — and the reference leg of `integration/gc_heap_growth_test.go`.
+#
+# Every container stays reachable from `groups`, so no collection can hand a slot back:
+# the arena has to have grown to answer this at all. The containers are built in groups
+# of 205 because one object owns 256 element words, and nothing here is aliased and then
+# rebound, which is the retention bug roadmap Gap R.257 files.
+
+def make_group(size, base):
+    g = []
+    i = 0
+    while i < size:
+        g.append([base + i, (base + i) * 2])
+        i = i + 1
+    return g
+
+def fill(groups, count, size):
+    k = 0
+    while k < count:
+        groups.append(make_group(size, k * size))
+        k = k + 1
+    return count
+
+groups = []
+fill(groups, 5, 205)
+shown = 0
+for gr in groups:
+    shown = shown + 1
+print(shown, len(groups[0]))

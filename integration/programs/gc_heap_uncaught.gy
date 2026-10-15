@@ -1,18 +1,34 @@
-# integration/programs/gc_heap_uncaught.gy — roadmap Gap Q.2, ADR 0347.
+# integration/programs/gc_heap_uncaught.gy — roadmap Gap Q.2, ADR 0347, ADR 0350.
 #
-# The same condition as gc_heap_exhaustion.gy with nobody catching it: the arena is
-# full, the guard raises, no arm covers it, so the program dies on the uncaught path
-# with a MemoryError traceback and exit code 3 (ADR 0211) — and rt_gc_report still
-# runs first, so `--gc-stats` prints capacity=1024 headroom=0 exhausted=1 on the way
-# out. Before this cycle this program printed `[]` at exit 0.
+# The same condition as gc_heap_exhaustion.gy with nobody catching it: the arena has
+# grown as far as it can, the guard raises, no arm covers it, so the program dies on the
+# uncaught path with a MemoryError traceback and exit code 3 (ADR 0211) — and
+# rt_gc_report still runs first, so `--gc-stats` prints capacity=8192 headroom=0
+# grown=3 exhausted=1 on the way out. Before ADR 0347 this program printed `[]` at exit 0.
+#
+# The arena is no longer the 1024-slot ceiling this file was written against: ADR 0350
+# doubled it out of `rt_alloc` until it reached the reservation, so reaching the wall now
+# takes more than `HeapCapacity` containers held at once. The shape is the same as the
+# churn loop ADR 0347 measured — every container stays reachable, so no collection can
+# hand a slot back — with two differences that keep it an honest program rather than a
+# lucky one: no container is grown past the 256 element words an object owns, and nothing
+# is aliased and rebound, so the retention the program intends is the retention it gets.
 
-def push_n(grown, n):
+def make_group(size, base):
+    g = []
     i = 0
-    while i < n:
-        grown.append([1, 2, 3])
+    while i < size:
+        g.append([base + i, (base + i) * 2])
         i = i + 1
-    return i
+    return g
 
-bucket = []
-push_n(bucket, 4000)
-print(len(bucket))
+def fill(groups, count, size):
+    k = 0
+    while k < count:
+        groups.append(make_group(size, k * size))
+        k = k + 1
+    return count
+
+groups = []
+fill(groups, 42, 200)
+print(len(groups))

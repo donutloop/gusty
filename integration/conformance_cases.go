@@ -527,6 +527,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
 		"gc_precise",
+		// The arena's growing half (roadmap Gap Q.2, ADR 0350): 1025 containers, every one of them
+		// reachable from `groups`, so no collection can hand a slot back and the allocator has to have
+		// widened its window to answer at all. On the commit before this row the same file printed
+		// `MemoryError: … holds 1024 live containers` at exit 3 while CPython printed `5 205`; it is the
+		// row's Definition of done as one program, and the reference leg of the matrix.
+		"gc_heap_growth",
 		// A key the language refuses to hash, at the three doors a dict is consulted through. The
 		// read said `KeyError: key not found`, the membership test answered `False` at exit 0 and the
 		// store built the entry and printed `{[1]: 2}`; the reference raises `TypeError: unhashable

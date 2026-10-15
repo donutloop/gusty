@@ -1,5 +1,33 @@
 {
  "entries": {
+"# integration/programs/gc_heap_growth.gy — roadmap Gap Q.2's second half, ADR 0350.\n#\n# One container more than the arena used to stop at. Until ADR 0350 this program died at\n# exit 3 with `MemoryError: out of memory: the compiled heap holds 1024 live containers`\n# while CPython printed `5 205`; the ceiling was the defect, not the condition. It is the\n# row's Definition of done in one file — a 1025-live-container program that must succeed\n# rather than trap — and the reference leg of `integration/gc_heap_growth_test.go`.\n#\n# Every container stays reachable from `groups`, so no collection can hand a slot back:\n# the arena has to have grown to answer this at all. The containers are built in groups\n# of 205 because one object owns 256 element words, and nothing here is aliased and then\n# rebound, which is the retention bug roadmap Gap R.257 files.\n\ndef make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 5, 205)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "5 205\n",
+    "hasStdout": true
+   },
+"def make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 12, 200)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "12 200\n",
+    "hasStdout": true
+   },
+
+"def make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 4, 200)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "4 200\n",
+    "hasStdout": true
+   },
+
+"def make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 40, 200)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "40 200\n",
+    "hasStdout": true
+   },
+
+"def make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 5, 205)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "5 205\n",
+    "hasStdout": true
+   },
+
+"def make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 6, 200)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
+    "stdout": "6 200\n",
+    "hasStdout": true
+   },
 "# What CPython prints for all four lines here (python3, 3.12):\n#\n#   -0.0\n#   -0.0\n#   -0.0\n#   -0.0\n#\n# Negative zero is a float with a sign, and Python renders it with that sign. This program is the\n# boundary between the two roads a compiled double can arrive by: the first two lines are values the\n# COMPILER wrote (a literal, and a name bound to one), the last two are values the TARGET computes (a\n# product, a rounding). The sign used to survive only on the second road, because the emitter\n# materialised a folded constant with `fadd double 0.0, \u003cconst\u003e` and IEEE answers -0.0 + +0.0 with\n# +0.0 — the minus was gone before the module existed, and `rt_fmt_double`, which renders the sign\n# correctly, was never handed anything to render.\n#\n# All four lines print -0.0 on the compiled backend now (roadmap Gap R.132, ADR 0349): a signed\n# constant is stated by its IEEE bits, so one value's property is one value's property whoever wrote\n# it. The neighbour this row keeps beside it is the sign-removing side — `abs(-0.0)`, `-(-0.0)` and\n# `abs()` over a slot the run time owns all print 0.0 — pinned in pkg/lang/negative_zero_test.go,\n# because a sign that finally survives has to be removable on purpose and not by accident.\nprint(-0.0)\ny = -0.0\nprint(y)\nprint(0.0 * -1)\nprint(round(-0.5, 0))\n": {
     "stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
     "hasStdout": true
