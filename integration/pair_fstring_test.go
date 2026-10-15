@@ -52,6 +52,15 @@ func TestCLIAFStringFieldAgreesWithCPython(t *testing.T) {
 		{"repr of a text literal field", "print(f\"{'a'!r}\")\n"},
 		{"repr inside brackets", "s = \"hi\"\nprint(f\"[{s!r}]\")\n"},
 		{"a format spec over a literal", "print(f\"{3.5:.2f}\")\n"},
+		// Three shapes the value road took over (ADR 0359): an interpolation standing where a VALUE goes —
+		// bound, concatenated, given a method. Each of these refused with “f-string requires a constant
+		// expression (AOT backend)” until the interpolation became a text rather than a printing
+		// instruction, so they are reference-leg rows now, not refusal rows.
+		{"an f-string used as a value", fsCLISlot + "s = f\"x{n}\"\nprint(s)\n"},
+		{"an f-string concatenated", fsCLISlot + "print(f\"{n}\" + f\"{n}\")\n"},
+		{"a method on an f-string", fsCLISlot + "print(f\"v={n}\".upper())\n"},
+		{"an interpolation bound and measured", "n = 3\ns = f\"a{n}b\"\nprint(s, len(s))\n"},
+		{"an interpolation as a container element", "n = 3\nprint([f\"a{n}\", 1])\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -91,9 +100,12 @@ func TestCLIAFStringFieldStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 		{"a product the door will not prove", fsCLISlot + "print(f\"{n + 1}\")\n"},
 		{"a modulo over a slot", fsCLISlot + "print(f\"{n % 3}\")\n"},
 		{"a format spec over a slot", fsCLISlot + "print(f\"{n:>.2f}\")\n"},
-		{"an f-string used as a value", fsCLISlot + "s = f\"x{n}\"\nprint(s)\n"},
-		{"an f-string concatenated", fsCLISlot + "print(f\"{n}\" + f\"{n}\")\n"},
-		{"a method on an f-string", fsCLISlot + "print(f\"v={n}\".upper())\n"},
+		// The three shapes this file used to pin as refusals — an interpolation bound, concatenated, or
+		// given a method — answer now, and their rows moved up to the reference-leg table (ADR 0359). What
+		// is still refused is the spec over a value the compiler cannot read, and the two string methods
+		// whose run-time road has not been built.
+		{"a method over an interpolation the receiver road cannot read", "n = 3\nprint(f\"a{n}b\".replace(\"b\", \"c\"))\n"},
+		{"a split of an interpolation", "n = 3\nprint(f\"a{n}b\".split(\"b\"))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

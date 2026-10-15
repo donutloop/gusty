@@ -11683,3 +11683,70 @@ side does"* — and the right move is to delete the row and assert the parity di
 the pinned-garbage test whose own comment said "DELETE THIS TEST when Gap R.36 is fixed": a test that pins a bug you
 just fixed is not stale, it is a red light, and the fix is the test's replacement (assert the trap is *emitted*, and
 that the read is guarded), not its relaxation.
+
+## Round 8 — an interpolation becomes a text value (ADR 0359, L11.1 / Gap R.146 / Gap R.114)
+
+### When a construct knows how to be printed and not how to be a value, the refusals and the wrong answers are the same bug
+
+`s = f"x{n}"` refused with "f-string requires a constant expression (AOT backend)" while `print(f"x{n}")` answered —
+and `print(f"v={None}")` wrote `v=0`, `print(f"{xs}")` wrote `0` for `[1, 2]`, at exit 0. Three symptoms, one design:
+an interpolation had been built as the print road's *printf arguments*, and a printf argument is an `i32` or an `i8*`.
+The void has no digits and a container's text is its slots, so both went out as numbers. The fix was not an arm for
+`None` and an arm for a list: it was making the interpolation answer the word a text literal answers — an `@str_tab`
+index — and letting the field go to `renderPair`, the door `str()`/`repr()`/`print()` already share. Diagnosing this
+as "the type of the road's answer" rather than "three missing cases" is what kept it to one door.
+
+### A gate and a builder that ask different questions ship a segfault, and the second time it ships a wrong number
+
+Two defects in one cycle, same shape. (1) The container literal's element-kind census did not fold an interpolation
+while the element builder interned it: `[f"a1", 1]` built an object labelled "every member is interned text", read
+the integer `1` through `@str_tab`, and the program died with **SIGSEGV — exit 2**. (2) After that fix,
+`heapListFrom`'s *pre-scan* for mixed kinds read each element's spelling through `stringConstOf`; a run-time
+interpolation has no spelling, so `[f"a{n}", 1]` printed `['a3', '3']` — the integer as a quoted text, exit 0. Both
+were "the label is decided somewhere the value is not". The rule that closes them: take the census from the words the
+builder's own loop writes (`sawStr`/`sawOther` inside the loop), not from a second scan that asks a similar question.
+This is the fourth time this tracker has had to write ADR 0232's rule down; each time the failure mode was a plausible
+number, never a compile error.
+
+### Probe with two legs or don't probe — a scratch harness that compares one side invents green
+
+A throwaway harness that printed "OK" for `print([f"a{n}", 1])` while the compiled leg printed `['a3', '3']` and
+CPython printed `['a3', 1]`. Nothing in it lied on purpose; it compared the wrong pair of strings. Every probe from
+that point ran the same file through `python3` and through the CLI and printed *both* outputs whether they matched or
+not. A harness whose OK is cheap is worse than no harness: it retires the suspicion that made you probe.
+
+### A paid record row is as loud as a new one, because it un-skips the test that was hiding the next gap
+
+Three drift rows went paid (`f"hello"`, `f"plain"`, `f"a{1}b"` as values). Removing them surfaced something better:
+`TestEvalFString` had been *skipping on its own first line* — `evalGolden(t, 'f"hello"')` diverged, and the golden
+funnel skips the case that diverges — so its whole body had never run since the interpreter was retired. With
+`f"hello"` answering, the body ran, asked the record about `print(f"val={n:>3}")`, and produced a divergence nobody
+had ever witnessed. The refusal sentence had been in the shipped binary since ADR 0299; what was missing was a witness.
+Filed as **Gap R.308**, ledger row and all, with the refusal pinned in the meantime. The general lesson: when a whole
+test has been skipping, its green is not evidence — and paying the row at its top is what makes the rest of it testify.
+
+### A loop's knowledge is the loop's, and ends when the loop does
+
+A field over a loop counter (`f"x{i}"` inside `for i in range(2)`) needs digits, and a loop variable has no *binding*
+for the `str` door to read — the loop wrote the slot, no assignment did. The answer is a claim the loop makes about
+the names it binds, taken back at the loop's end, and voided for a name the program also assigns to — including an
+assignment *inside* that loop. Three probes pinned the edges: inside the loop answers `x0`/`x1`; the same field after
+the loop refuses; and `for i in range(2): i = i * 100; print(f"x{i}")` refuses rather than printing the digits of a
+value the body wrote. Deleting the claim's lifetime is a one-line diff whose failure mode is a wrong number, which is
+how Gap R.252 and Gap I.2 both got written in the first place.
+
+### Quoting is somebody's job — say whose
+
+`f"{'a'!r}"` answered `"a"` until the fold stopped quoting text literals in Go and delegated to the renderer, which
+already knows Python's quote preference and the swap rule for a text that contains one. The Go-side helper passed the
+obvious case and was wrong in a way only the reference could catch — Gap R.192's exact story at a second fold site.
+Rendering decisions that live next to the AST get copied; copies drift; the printer is a door, not a convention.
+
+### The record cannot witness a shape that had never been answered, and `tools/recmerge` is how you get one
+
+58 of the 59 answer rows in this feature had no entry in `interpreter-golden.json` — they had never been asked. A
+missing record *fails* the case (deliberately), so the answer cannot be self-certified: the recorder asks CPython and
+then refuses to write the entry if the compiled leg disagrees. That is ADR 0302's rule implemented as a tool, and it
+means the record grew 7061 → 7119 only through programs where the reference and the compiler already agree. Where they
+do not agree, the entry does not exist — which is precisely why the CLI/reference-leg file re-derives every
+expectation from `python3` instead of trusting a `want` someone typed.

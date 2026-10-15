@@ -34,7 +34,9 @@ package lang
 // pay for the general one.
 
 import (
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -169,33 +171,147 @@ func TestTheRecordLegAnswersTheFstringFieldReads(t *testing.T) {
 // No row in the record ever interpolated a slot read, and that silence is the reason this defect lived.
 // Pinning it stops a later reader (or a later test) from claiming the record leg witnessed the field, and
 // stops someone from "fixing" the count by minting a record the engine never produced.
+//
+// The question is asked of the AST, not of the bytes. The regex this row first ran counted any field
+// containing a `[` — which called `f"{[n]}"` (a list literal) and `f"{max([True, 0])}"` (a call) subscript
+// fields, and would have called ADR 0359's `print(f"{[n]}")` a third one, turning a guard about the program
+// into a guard about punctuation. ADR 0317's rule asked of a guard: read the thing, not a sketch of it.
 func TestTheRecordNeverInterpolatedASlotReadSoTheFieldIsWitnessedByItsPrintTwinAlone(t *testing.T) {
 	t.Parallel()
 	src := recordedFStringSlotReadSources(t)
-	if len(src) != 1 {
-		t.Fatalf("the record holds %d f-string sources with a subscript inside a field, expected the one the "+
-			"probes left: %v\nMinting another record is the compiled backend testifying about itself (ADR 0302)",
-			len(src), src)
+	if len(src) != 0 {
+		t.Fatalf("the record holds %d f-string sources whose field reads a slot: %v\nMinting one is the compiled "+
+			"backend testifying about itself (ADR 0302): the field is witnessed by its print twin, or by a record "+
+			"the REFERENCE answered and tools/recmerge cross-checked.", len(src), src)
 	}
-	if !strings.Contains(src[0], "max([True, 0])") {
-		t.Fatalf("the one recorded f-string subscript field changed shape: %q", src[0])
+	// The sources the byte heuristic used to call subscript fields are a list literal and a call. They are
+	// still in the artifact, and they are still not reads — asserted so nobody "repairs" the AST question by
+	// going back to matching punctuation.
+	if nonReads := fstringFieldBracketNonReadSources(t); len(nonReads) < 2 {
+		t.Fatalf("the record's bracket-in-a-field, not-a-read sources went missing (%d): the AST question is now "+
+			"the only thing standing between a loose regex and a false claim", len(nonReads))
 	}
 }
 
-var fstringFieldWithSubscript = regexp.MustCompile(`f["']\{[^{}]*\[`)
+// fstringFieldWithBracketishText is the cheap pre-filter for the AST question: a field whose bytes contain a
+// `[` is the only shape that can hold a read, and the handful of recorded sources it reaches are then parsed.
+var fstringFieldWithBracketishText = regexp.MustCompile(`f["']\{[^{}]*\[`)
 
-// recordedFStringSlotReadSources lists the recorded sources that interpolate a subscript into an f-string
-// field, straight out of the artifact.
+// recordedFStringSlotReadSources lists the recorded sources that interpolate a genuine READ — an *Index node
+// below a field's expression — into an f-string field, straight out of the artifact.
 func recordedFStringSlotReadSources(t *testing.T) []string {
 	t.Helper()
 	g := loadGolden(t)
 	var out []string
 	for src := range g {
-		if fstringFieldWithSubscript.MatchString(src) {
+		if !fstringFieldWithBracketishText.MatchString(src) {
+			continue
+		}
+		prog, err := Parse(src)
+		if err != nil {
+			continue // a source the shared front end refuses has no field for anything to read
+		}
+		if fstringsInterpolateARead(prog) {
 			out = append(out, src)
 		}
 	}
+	sort.Strings(out)
 	return out
+}
+
+// fstringFieldBracketNonReadSources lists the recorded sources the byte heuristic would have called subscript
+// fields and the AST declines to: a `[` inside a field that is a literal or a call, not a read.
+func fstringFieldBracketNonReadSources(t *testing.T) []string {
+	t.Helper()
+	g := loadGolden(t)
+	var out []string
+	for src := range g {
+		if !fstringFieldWithBracketishText.MatchString(src) {
+			continue
+		}
+		prog, err := Parse(src)
+		if err != nil {
+			continue
+		}
+		if !fstringsInterpolateARead(prog) {
+			out = append(out, src)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// fstringsInterpolateARead asks the program whether any interpolation's field reads a slot. It walks the AST
+// the way ADR 0356's escape walk does — by reflection over the node's exported fields — because an
+// enumeration of node types is the defect that walk was written to end.
+func fstringsInterpolateARead(prog *Program) bool {
+	fstringType := reflect.TypeOf((*FString)(nil))
+	indexType := reflect.TypeOf((*Index)(nil))
+	var found []reflect.Value
+	collectAstNodes(reflect.ValueOf(prog), fstringType, &found)
+	for _, fs := range found {
+		if fs.Kind() == reflect.Pointer {
+			fs = fs.Elem()
+		}
+		if fs.Kind() != reflect.Struct {
+			continue
+		}
+		parts := fs.FieldByName("Parts")
+		for i := 0; i < parts.Len(); i++ {
+			if astNodeOfType(parts.Index(i).FieldByName("Expr"), indexType) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func collectAstNodes(v reflect.Value, target reflect.Type, out *[]reflect.Value) {
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		if v.Type() == target {
+			*out = append(*out, v)
+			return
+		}
+		collectAstNodes(v.Elem(), target, out)
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			collectAstNodes(v.Field(i), target, out)
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			collectAstNodes(v.Index(i), target, out)
+		}
+	}
+}
+
+func astNodeOfType(v reflect.Value, target reflect.Type) bool {
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return false
+		}
+		if v.Type() == target {
+			return true
+		}
+		return astNodeOfType(v.Elem(), target)
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if astNodeOfType(v.Field(i), target) {
+				return true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if astNodeOfType(v.Index(i), target) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // The module has ONE printer, and a field that renders a value goes to it. `rt_str_of_value` points the

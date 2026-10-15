@@ -3537,6 +3537,27 @@
     },
     {
       "case": {
+        "id": "programs/fstring_value",
+        "name": "fstring_value.gy",
+        "source": "# An interpolation is a TEXT value, not only a printing instruction (roadmap L11.1, Gap R.146's value\n# half; ADR 0359). Every line below is a position that lowers an expression to a word and was refused\n# with \"f-string requires a constant expression (AOT backend)\" while `print(f\"...\")` answered the same\n# interpolation: a binding, a concatenation, a method, a length, a comparison, a subscript, a slice, a\n# return, a text parameter, a container slot, a dict key, a set member, a loop over the text — plus the\n# two fields the print road's one printf could not state at all: the void, which has no digits, and a\n# container, whose text is its slots and not its heap handle. Every line is what the reference prints.\nn = 3\ns = f\"x{n}\"\nprint(s)\nprint(f\"a{n}\" + \"!\")\nprint(f\"a{n}\" + f\"b{n}\")\nprint(f\"v={n}\".upper())\nprint(len(f\"a{n}b\"))\nprint(f\"a{n}\" == \"a3\")\nprint(f\"a{n}\" \u003c \"b\")\nprint(\"3\" in f\"a{n}\")\nprint(f\"a{n}b\"[1])\nprint(f\"a{n}b\"[1:])\ndef greet():\n    return f\"hi {n}\"\nprint(greet())\nclass C:\n    def m(self):\n        return f\"m{2}\"\nprint(C().m())\ndef show(t):\n    print(t)\nshow(f\"x{n}\")\nprint([f\"a{n}\", 1])\nprint({\"k\": f\"a{n}\"})\nd = {f\"k{n}\": 1}\nprint(d)\ne = {}\ne[f\"v{n}\"] = 1\nprint(e)\nprint({f\"a{n}\"})\nfor c in f\"ab{n}\":\n    print(c)\nprint(str(f\"a{n}\"), repr(f\"a{n}\"))\nprint(f\"v={None}\")\nxs = [1, 2]\nprint(f\"{xs}\")\ndef build():\n    return [1, 2]\nprint(f\"{build()}\")\nprint(f\"{1.5}\")\nb = True\nprint(f\"{b}\")\nprint(f\"100%{n}\")\nprint(f\"a{{b}}c\")\nlow = min(f\"a{n}\", \"b\")\nhigh = max(f\"a{n}\", \"b\")\nprint(low, high, low in [f\"a{n}\"], f\"a{n}\" == f\"a{n}\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "x3\na3!\na3b3\nV=3\n3\nTrue\nTrue\nTrue\n3\n3b\nhi 3\nm2\nx3\n['a3', 1]\n{'k': 'a3'}\n{'k3': 1}\n{'v3': 1}\n{'a3'}\na\nb\n3\na3 'a3'\nv=None\n[1, 2]\n[1, 2]\n1.5\nTrue\n100%3\na{b}c\na3 b True True\n",
+      "python_ok": true,
+      "python_stdout": "x3\na3!\na3b3\nV=3\n3\nTrue\nTrue\nTrue\n3\n3b\nhi 3\nm2\nx3\n['a3', 1]\n{'k': 'a3'}\n{'k3': 1}\n{'v3': 1}\n{'a3'}\na\nb\n3\na3 'a3'\nv=None\n[1, 2]\n[1, 2]\n1.5\nTrue\n100%3\na{b}c\na3 b True True\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4219,7 +4240,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/173/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/174/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4233,7 +4254,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/173/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/174/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4847,11 +4868,11 @@
       ]
     }
   ],
-  "rows": 198,
+  "rows": 199,
   "skipped": 33,
-  "pass": 165,
+  "pass": 166,
   "fail": 0,
-  "oracle_match": 151,
+  "oracle_match": 152,
   "oracle_debt": 25,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

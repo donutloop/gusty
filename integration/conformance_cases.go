@@ -685,6 +685,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// leg (roadmap L11.7, ADR 0345; these two probes recorded the debt).
 		"probe_fn_value", // L11.7 — a lambda called through a parameter
 		"probe_fn_name",  // L11.7 — a declared function called through a parameter
+		// An interpolation standing where a VALUE goes: bound, concatenated, given a method, measured,
+		// compared, subscripted, sliced, returned, passed to a text parameter, stored in each of the three
+		// containers, and looped over — with the void and the container field the one printf could never
+		// have stated (roadmap L11.1, Gap R.146's value half; ADR 0359). Line for line CPython.
+		"fstring_value",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -46,6 +46,11 @@ var containerAnswerAnswered = []string{
 	"def build():\n    return [1, 2]\n\ndef g():\n    return build()\n\nprint(g())",
 	"def build(n):\n    return [n, n + 1]\n\nprint(build(4))",
 	"def build():\n    return [1, 2]\n\nprint(str(build()), repr(build()))",
+	// An interpolation of a container answer is the same value standing in a TEXT position: the field is
+	// rendered by the module's one container renderer, and since ADR 0359 the interpolation is a text, so
+	// the bound form prints it too. Both used to refuse with this row's own sentence.
+	"def build():\n    return [1, 2]\n\nprint(f\"{build()}\")",
+	"def build():\n    return [1, 2]\n\nt = f\"{build()}\"\nprint(t)",
 	"def build():\n    return [1, 2]\n\nprint(len(build()), 2 in build(), 7 in build(), 7 not in build())",
 	"def build():\n    return [1, 2]\n\nfor v in build():\n    print(v)",
 	"def build():\n    return {\"a\": 1, \"b\": 2}\n\nfor k in build():\n    print(k)",
@@ -98,7 +103,6 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 	}{
 		{"a container literal's element", "def build():\n    return [1, 2]\n\nprint([build(), 3])", true},
 		{"an answer added to another container", "def build():\n    return [1, 2]\n\nprint(build() + [9])", true},
-		{"a format field", "def build():\n    return [1, 2]\n\nprint(f\"{build()}\")", true},
 		// Two positions the container answer never reached: the method road and the length road each
 		// refused this program in their own words before this row existed, and they keep those words —
 		// the row's contract is that a refusal names what is missing, not that every refusal is this

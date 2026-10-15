@@ -4089,14 +4089,68 @@ print(f"{x!r}")        # 2.5 — a conversion of a variable used to print nothin
 
 What still refuses is a position that keeps one word for the value — `float(n)`, `min(n, 3)`, a literal
 `sum`/`min`/`max` folds into a static array (`sum([n])`), a pair handed across a call into a body whose
-parameter is not a pair (`Gap R.154`), and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
-— all owned by Gap R.146, each refusing in a sentence that names the missing half. A **dict entry and a set
+parameter is not a pair (`Gap R.154`) — all owned by Gap R.146, each refusing in a sentence that names the
+missing half. An f-string used as a **value** is no longer in that list: since **ADR 0359** an interpolation is
+an ordinary text (see *An interpolation is a text, not only a printing instruction* below). A **dict entry and a set
 member** are not in that list any more (ADR 0310): the dict and the set each have one builder that takes the tag
 with the payload, so `print({"k": n})` is `{'k': 'a'}`, `print({n: 1})` is `{'a': 1}`, `print({n})` is `{'a'}`
 and everything that reads the bound object back asks the same tag — `d = {"k": n}` answers `d["k"]`, `len(d)`,
 `k in d`, `d[k]`, `str(d)`, `d == {"k": "a"}` and a `for k in d`, and `s = {n}` answers `7 in s`, `len(s)` and a
 `for v in s`. A key or a member that cannot be hashed raises CPython's `TypeError: unhashable type: 'list'`, catchable
 by the program's own `except TypeError:` (`Gap R.81`, ADR 0228).
+
+### An interpolation is a text, not only a printing instruction
+
+`print(f"x{n}")` has answered since this backend had one. The same source standing where a **value** goes now
+answers too (**ADR 0359**, roadmap L11.1 / Gap R.146's value half): an f-string builds its parts in the runtime
+string table and hands back an `@str_tab` index — the very word a text literal answers — so every road that
+takes a text takes it, without knowing what built it.
+
+```python
+n = 3
+s = f"x{n}"
+print(s)                    # x3
+print(f"a{n}" + "!")        # a3!
+print(f"a{n}" + f"b{n}")    # a3b3
+print(f"v={n}".upper())     # V=3
+print(len(f"a{n}b"))        # 3
+print(f"a{n}" == "a3")      # True
+print(f"a{n}b"[1:])         # 3b
+def greet():
+    return f"hi {n}"        # a return, a method's return, a text parameter…
+print([f"a{n}", 1])         # ['a3', 1]      — a mixed container, each slot its own kind
+print({f"k{n}": 1})         # {'k3': 1}      — and a key, and a member, and a `for c in f"ab{n}"`
+```
+
+A field is rendered by the module's **one** tag-reading printer — the door `str()`, `repr()` and `print()`
+share (ADR 0258, ADR 0303) — so a field, `str(x)` and `print(x)` cannot disagree about `7` versus `7.0`, and
+nothing interpolates a `@str_tab` index, a float box handle or a heap slot. Two fields used to do exactly that,
+because the print road builds one printf and can hand it an integer or a byte pointer: `print(f"v={None}")`
+wrote `v=0` and `print(f"{xs}")` wrote `0` for `[1, 2]`. Both write the reference's bytes now, and they write
+them whether the interpolation is printed directly or bound first — `print(f"{xs}")` and
+`t = f"{xs}"; print(t)` are one answer.
+
+An interpolation the AST already states is constant is **folded** — `f"a{1}b"` *is* `"a1b"`, and the fold is one
+function asked by the three roads that would otherwise disagree about it (`value`, `stringVal`, and a container
+literal's element-kind census). Quoting is not folded: `f"{'a'!r}"` goes to the printer, because choosing the
+quote character is the printer's job (`Gap R.192`).
+
+A **loop** vouches for the numbers it binds itself, and stops at the loop's end:
+
+```python
+for i in range(2):
+    print(f"x{i}")           # x0, x1 — the counter's digits, written by the same helper `str()` uses
+for i in range(2):
+    i = i * 100
+    print(f"x{i}")           # refused: the value is no longer the loop's alone
+print(f"x{i}")             # refused: no claim survives the loop that earned it
+```
+
+What still refuses, in words, with a row apiece: a **format spec** over a value the compiler cannot read
+(`f"{n:>6}"`, `f"{v:.2f}"`, `f"{10:#x}"` — ADR 0299's engine reads literals, and the runtime half is **Gap
+R.308**; a spec over a literal answers, `print(f"{3.5:.2f}")` is `3.50`), the string methods whose run-time road
+has not been built (`f"a{n}b".replace(...)`, `.split(...)`, `.center(...)`) and repeating a text,
+`f"x{n}" * 2` (**Gap R.33**).
 
 The same two words travel through the **mutation roads** — the statements that change a container the program
 already built (ADR 0311):

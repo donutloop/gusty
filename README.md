@@ -1259,11 +1259,13 @@ literal into the bounds check's `icmp slt` and making `llc` reject the module at
 reserves for a compiler bug (ADR 0329, Gap R.222; `unhashable_key.gy` and `list_index_kind.gy` are corpus
 surface, byte-identical to CPython). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,
-a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call, and an f-string used as a
-value — and the refusal names
+a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
-R.115, a tuple is L11.3's, `print(f"{xs}")` is Gap
-R.114, and an unrelated container's nested slot read refusing is Gap R.191's). `--json --eval 'repr("hi")'` reports
+R.115, a tuple is L11.3's, and an unrelated container's nested slot read refusing is Gap R.191's). An
+**interpolation** is no longer in that list: since **ADR 0359** `s = f"x{n}"`, `f"a{n}" + "!"`,
+`f"v={n}".upper()`, `[f"a{n}", 1]`, `{f"k{n}": 1}` and `for c in f"ab{n}"` answer, `print(f"{xs}")` writes
+`[1, 2]` instead of the handle (Gap R.114 paid with the same change), and what the interpolation still owes is a
+format spec over a value the compiler cannot read (**Gap R.308**). `--json --eval 'repr("hi")'` reports
 `{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on both legs.
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and

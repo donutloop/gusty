@@ -4899,6 +4899,14 @@ type irGen struct {
 	// internedVars records names bound to an interned-string index (element reads and loop
 	// variables over string containers), so print renders the text rather than the index.
 	internedVars map[string]bool
+	// digitLoopVars records a loop variable that THIS loop bound from a number the compiler can
+	// see — the counter of a numeric loop, or an element of a container whose recorded element kind
+	// is integer. It is the loop's own claim, taken back when the loop ends and never set for a
+	// name the program also assigns to, which is what makes it a fact about the value rather than a
+	// guess from the spelling (roadmap L11.1, ADR 0339's per-loop question; ADR 0359 uses it where
+	// an interpolated field needs its digits and the str door has no arm for a name no binding
+	// describes).
+	digitLoopVars map[string]bool
 	// mixedLists records list variables whose elements carry per-element tags (more than
 	// one kind, all taggable: numbers, interned strings, None). Printing them works; every
 	// other element-wise use refuses rather than reading a tag through one static kind
@@ -6726,6 +6734,14 @@ func stringConst(e Expr, shadowed func(string) bool) (string, bool) {
 	if sl, ok := e.(*StrLit); ok {
 		return sl.Value, true
 	}
+	if fs, ok := e.(*FString); ok {
+		// An interpolation with nothing to interpolate is a constant text. The fold lives in
+		// pkg/lang/fstring_value.go beside the value road's, because the container literal's kind
+		// census asks the same question through this door and a census that disagrees with the
+		// builder is how [f"a1", 1] came to print an interned string's index for the integer 1
+		// (roadmap L11.1, ADR 0359).
+		return fstringConstTextOf(fs)
+	}
 	if b, ok := e.(*BinOp); ok && b.Op == "+" {
 		ls, lok := stringConst(b.L, shadowed)
 		rs, rok := stringConst(b.R, shadowed)
@@ -7266,6 +7282,15 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		return "", false
 	case *StrLit:
 		return n.Value, true
+	case *FString:
+		// An interpolation every of whose fields the AST already states is a constant text: `f"a{1}b"`
+		// IS "a1b", and folding it is what lets the print road, the comparison folds and `len` treat it
+		// as the text it is instead of lowering an interpolation the road has never seen (roadmap
+		// Gap R.173's rule for a constant-test ternary, applied by ADR 0359 to an interpolation).
+		if txt, ok := g.fstringConstText(n); ok {
+			return txt, true
+		}
+		return "", false
 	case *CondExpr:
 		// A ternary hands back one of its arms, so a constant test settles the value: `"y" if 1 else "n"`
 		// IS "y", and folding it lets the print road write the word instead of the @str_tab POSITION the
@@ -9927,6 +9952,7 @@ func (g *irGen) beginScope() func() {
 	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
+	savedDigit := g.digitLoopVars
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
 	g.listVars = map[string]bool{}
@@ -9946,6 +9972,7 @@ func (g *irGen) beginScope() func() {
 	g.mixedDicts = map[string]bool{}
 	g.mixedSets = map[string]bool{}
 	g.internedVars = map[string]bool{}
+	g.digitLoopVars = map[string]bool{}
 	return func() {
 		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
 		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
@@ -9957,6 +9984,7 @@ func (g *irGen) beginScope() func() {
 		g.listElemInt, g.setElemInt = savedLNum, savedSNum
 		g.dictKeyInt, g.dictValInt = savedKNum, savedVNum
 		g.mixedDicts, g.mixedSets = savedMixDict, savedMixSet
+		g.digitLoopVars = savedDigit
 	}
 }
 
@@ -11241,7 +11269,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// strings -- go through g.strConst directly, never through value().
 		return g.internStr(b, n.Value), nil
 	case *FString:
-		return "", fmt.Errorf("codegen: f-string requires a constant expression (AOT backend)")
+		// An interpolation is a TEXT value, not only a printing instruction: it builds its parts
+		// through the runtime string table and answers an @str_tab index, the same shape a StrLit
+		// answers, so a binding, a concatenation, a string method, len, ==, a subscript, a slice, a
+		// for-iterable, a return and a string argument all take it (roadmap L11.1, Gap R.146's value
+		// half, ADR 0359; the door is pkg/lang/fstring_value.go).
+		return g.fstringValue(b, n)
 	case *ListLit:
 		// inline list literal: emit a dedicated global struct and return its name.
 		// Two questions open the heap path, not one: literalNeedsHeap asks whether a payload fits
@@ -14530,6 +14563,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if nm, ok := a.(*Name); ok && g.internedVars[nm.Value] {
 					return g.value(b, a)
 				}
+				// An interpolation IS a text: the value road interns its parts and answers the index the
+				// parameter's i32 slot holds, so `g(f"x{n}")` reaches the callee as any other text does
+				// (roadmap Gap J.5's string parameter, L11.1's interpolation; ADR 0359).
+				if _, isFs := a.(*FString); isFs {
+					return g.value(b, a)
+				}
 				if txt, ok := g.stringVal(a); ok {
 					g.heapUsed = true
 					t := g.newTmp()
@@ -14893,6 +14932,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// All parts are combined into a single printf call so the output
 			// matches the interpreter's one-string Repr.
 			if fs, ok := a.(*FString); ok {
+				// Two fields the one printf below cannot state: the void, which has no digits, and a
+				// container, whose text is its slots rather than its handle. Both used to answer a number
+				// (`f"v={None}"` wrote `v=0`, `f"{xs}"` wrote `0` for `[1, 2]`) because the format string's
+				// only words are an i32 and an i8*. Such an interpolation is built by the VALUE road — the
+				// same door a binding, a concatenation and `str()` use — and handed to the module's string
+				// printer, so the print of a program and the same program with the text named are one answer
+				// (roadmap L11.1, ADR 0359).
+				if g.fstringNeedsRenderer(fs) {
+					if err := g.emitFStringPrint(b, fs); err != nil {
+						return "", err
+					}
+					continue
+				}
 				var fmtLit string
 				var operands []string
 				for _, part := range fs.Parts {
@@ -16920,6 +16972,12 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// A text literal prints as its text, via rt_print_str on the index `value()` interns it to.
 		// This case looks obvious in hindsight and was missing, which is why the ternary arm below
 		// could ask "are both arms text?" of two StrLits and be told no (Gap R.173, ADR 0290).
+		return true
+	case *FString:
+		// An interpolation answers an @str_tab index — the same word a text literal answers — so a
+		// name bound from one (`s = f"x{n}"`) prints as its text and not as the index underneath it
+		// (roadmap L11.1, ADR 0359). The binding road records this predicate, which is the only reason
+		// the binding and the direct print of one interpolation cannot disagree about which is a text.
 		return true
 	case *Name:
 		return g.internedVars[v.Value]
@@ -20128,8 +20186,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// text or as a number, which is what lets a mixed literal print correctly.
 				if isStr {
 					g.internedVars[loopSlot] = true
+					g.releaseDigitLoopVar(loopSlot)
 				} else {
 					delete(g.internedVars, loopSlot)
+					if _, isInt := el.(*IntLit); isInt {
+						// This element IS a number the program wrote, for this pass through the loop
+						// only (roadmap L11.1, ADR 0359).
+						g.claimDigitLoopVar(loopSlot)
+					} else {
+						g.releaseDigitLoopVar(loopSlot)
+					}
 				}
 				// The element decides what the loop variable is, exactly as it decides whether
 				// it is text: a name that once held a verdict is bound by the iterable to a
@@ -20294,17 +20360,32 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				case "list", "set":
 					if mixedIter {
 						// left alone above: the tag decides
+						g.releaseDigitLoopVar(loopVar)
 					} else if g.listElemStr[name.Value] || g.setElemStr[name.Value] {
 						g.internedVars[loopVar] = true
+						g.releaseDigitLoopVar(loopVar)
+					} else if g.listElemInt[name.Value] || g.setElemInt[name.Value] {
+						// The container records its elements as integers, so the name this loop binds
+						// holds one — the claim the digits road needs and no spelling can give
+						// (roadmap L11.1, ADR 0359; Gap R.246's per-loop question).
+						g.claimDigitLoopVar(loopVar)
+						delete(g.internedVars, loopVar)
 					} else {
 						delete(g.internedVars, loopVar)
+						g.releaseDigitLoopVar(loopVar)
 					}
 				case "dict":
 					if mixedIter {
+						g.releaseDigitLoopVar(loopVar)
 					} else if g.dictKeyStr[name.Value] {
 						g.internedVars[loopVar] = true
+						g.releaseDigitLoopVar(loopVar)
+					} else if g.dictKeyInt[name.Value] {
+						g.claimDigitLoopVar(loopVar)
+						delete(g.internedVars, loopVar)
 					} else {
 						delete(g.internedVars, loopVar)
+						g.releaseDigitLoopVar(loopVar)
 					}
 				}
 			} else if !mixedIter {
@@ -20582,6 +20663,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// The counter the iterator produced is what the name holds for this pass, verdict
 		// status included: it is a number however the name began (ADR 0172, ADR 0257).
 		g.forgetVarBool(loopVarName(n.Var))
+		// The loop bound this name from the counter: a number the compiler can see, for as long as
+		// this body is being lowered. Taken back below, so the claim never outlives the loop that
+		// earned it (roadmap Gap R.252's rule, ADR 0339's per-loop question; ADR 0359 reads it where
+		// an interpolated field needs the field's digits).
+		g.claimDigitLoopVar(loopVarName(n.Var))
 		// A counter loop's back edge carries numbers only — the counter slot and the loop variable, both
 		// rooted — so its body is a safe point with nothing further to park.
 		g.loopSafePoint(b, n.Body)
@@ -20591,6 +20677,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				return err
 			}
 		}
+		g.releaseDigitLoopVar(loopVarName(n.Var)) // the loop's claim ends with the loop (Gap R.252)
 		g.loopStack = g.loopStack[:len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
 		b.WriteString(fmt.Sprintf("%s:\n", incL))

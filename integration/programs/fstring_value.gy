@@ -1,0 +1,54 @@
+# An interpolation is a TEXT value, not only a printing instruction (roadmap L11.1, Gap R.146's value
+# half; ADR 0359). Every line below is a position that lowers an expression to a word and was refused
+# with "f-string requires a constant expression (AOT backend)" while `print(f"...")` answered the same
+# interpolation: a binding, a concatenation, a method, a length, a comparison, a subscript, a slice, a
+# return, a text parameter, a container slot, a dict key, a set member, a loop over the text — plus the
+# two fields the print road's one printf could not state at all: the void, which has no digits, and a
+# container, whose text is its slots and not its heap handle. Every line is what the reference prints.
+n = 3
+s = f"x{n}"
+print(s)
+print(f"a{n}" + "!")
+print(f"a{n}" + f"b{n}")
+print(f"v={n}".upper())
+print(len(f"a{n}b"))
+print(f"a{n}" == "a3")
+print(f"a{n}" < "b")
+print("3" in f"a{n}")
+print(f"a{n}b"[1])
+print(f"a{n}b"[1:])
+def greet():
+    return f"hi {n}"
+print(greet())
+class C:
+    def m(self):
+        return f"m{2}"
+print(C().m())
+def show(t):
+    print(t)
+show(f"x{n}")
+print([f"a{n}", 1])
+print({"k": f"a{n}"})
+d = {f"k{n}": 1}
+print(d)
+e = {}
+e[f"v{n}"] = 1
+print(e)
+print({f"a{n}"})
+for c in f"ab{n}":
+    print(c)
+print(str(f"a{n}"), repr(f"a{n}"))
+print(f"v={None}")
+xs = [1, 2]
+print(f"{xs}")
+def build():
+    return [1, 2]
+print(f"{build()}")
+print(f"{1.5}")
+b = True
+print(f"{b}")
+print(f"100%{n}")
+print(f"a{{b}}c")
+low = min(f"a{n}", "b")
+high = max(f"a{n}", "b")
+print(low, high, low in [f"a{n}"], f"a{n}" == f"a{n}")

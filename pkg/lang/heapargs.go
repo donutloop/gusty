@@ -628,6 +628,16 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 			return v, true, err
 		}
 	}
+	if _, isFs := e.(*FString); isFs {
+		// An interpolation IS a text: the value road builds it through the runtime string table and
+		// answers the index a slot holds, so `[f"a{n}"]`, `{f"k{n}": 1}` and `d[f"v{n}"] = 1` store the
+		// text rather than the word underneath it. This is the same word `xs.append(t)` stores once the
+		// program has named the interpolation, which is the only reason naming a value cannot change
+		// what it is (roadmap L11.1, ADR 0359; Gap I.2's runtime string table).
+		g.heapUsed = true
+		v, ferr := g.value(b, e)
+		return v, true, ferr
+	}
 	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
 		return "", false, err
 	}
@@ -702,6 +712,14 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	h := g.newTmp()
 	g.emitRtAllocKind(b, h, HeapList, Span{})
 	bits := 0
+	// The census the object is labelled with is taken from the words this loop actually writes, not
+	// from a pre-scan that asks a different question. The pre-scan below (`literalMixedKinds`) reads
+	// each element's SPELLING through `stringConstOf`, and an interpolation has no spelling to read —
+	// `f"a{n}"` is a text to the builder (`heapElemKind` interns it) and a non-text to the pre-scan, so
+	// [f"a{n}", 1] was labelled bit 1 ("every member is interned text"), printed the integer through
+	// @str_tab and answered `['a3', '3']` where the record and the reference both answer `['a3', 1]`
+	// (roadmap L11.1, ADR 0359; ADR 0232's rule that the slots are the truth).
+	sawStr, sawOther := false, false
 	for i, el := range ln.Elems {
 		// A pair-bound element (`[n]` with `n = xs[0]`) is the element the static layout has no
 		// representation for and the ordinary path asks for one word: both words come from the
@@ -710,6 +728,7 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
 			fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pv)
 			fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pt)
+			sawOther = true
 			continue
 		}
 		v, interned, err := g.heapElemKind(b, el)
@@ -718,9 +737,12 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 		}
 		if interned {
 			bits |= 1
+			sawStr = true
 			if name != "" {
 				g.listElemStr[name] = true
 			}
+		} else {
+			sawOther = true
 		}
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 		// Every builder writes the tag with the payload, not only the mixed-list one: a slot
@@ -739,10 +761,17 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	// different sink, and a renderer that asks the object can be handed a handle the builder's
 	// scope never saw. Answering [0, 1] for ["a", 1] was the object not saying what it holds
 	// (roadmap L11.2, ADR 0258 — Gap L.2's shape one level down).
-	if g.literalNeedsTags(ln) || literalMixedKinds(ln) || g.literalHasPairElement(ln) {
+	if g.literalNeedsTags(ln) || literalMixedKinds(ln) || g.literalHasPairElement(ln) || (sawStr && sawOther) {
 		// A slot whose tag came from a register says so on the object too, or the printer reads
 		// the list's single kind and answers the payload of a text slot as a number.
 		bits |= 8
+		if name != "" && sawStr && sawOther {
+			// The variable stops claiming one element kind for the same reason the object does: the name
+			// that held [f"a{n}", 1] has no single kind for `for x in xs` to read back (ADR 0232).
+			g.mixedLists[name] = true
+			delete(g.listElemStr, name)
+			delete(g.listElemInt, name)
+		}
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -1941,6 +1970,12 @@ func exprSnippet(e Expr) string {
 		return "a float literal"
 	case *StrLit:
 		return "a string literal"
+	case *FString:
+		// The words the sentence needs are the words the program wrote: an interpolation is a TEXT here,
+		// and `%T` would say `(*lang.FString)` — Go where the source belongs (Gap R.232's disease, Gap
+		// R.249's rule). It is the same phrase `exprSummary` chose for the same construct, so the two
+		// doors cannot describe one thing two ways (ADR 0232).
+		return "an interpolated text"
 	case *NoneLit:
 		return "None"
 	case *ListLit:
@@ -2135,6 +2170,12 @@ func (g *irGen) exprSummary(e Expr) string {
 		return n.Value
 	case *StrLit:
 		return "a string"
+	case *FString:
+		// A refusal that names its receiver answers "which door?"; one that names nothing sends the
+		// reader looking for a bug the program does not have. An interpolation is a text the compiler
+		// builds at run time, and that is what a sentence about it should say (roadmap ADR 0249's rule
+		// for a refusal sentence, ADR 0359's new reach; Gap R.232 measured the same disease)
+		return "an interpolated text"
 	case *IntLit:
 		return "a number"
 	case *FloatLit:

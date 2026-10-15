@@ -13427,3 +13427,111 @@ per-alternative entry blocks are what make that answer *coherent* rather than wh
 Answering is a design choice, and a choice has to be stated, priced and tested rather than arrived at; the row is
 the statement, and `TestAnOrPatternBindsOnlyTheAlternativeThatMatched` — run in both alternative orders — is the
 test that the choice, if kept, is at least a consistent one.
+
+<a id="l11-1-adr-0359"></a>
+
+### L11.1 (ADR 0359, 2026-10-17) — an interpolation is a text, not only a printing instruction
+
+The measurement that opened the cycle was four lines of the most ordinary code in the language:
+
+```python
+n = 3
+print(f"x{n}")        # x3       — answered, and always had
+s = f"x{n}"           # refused: f-string requires a constant expression (AOT backend)
+print(f"a{n}" + "!")  # refused: the same sentence
+print(f"v={n}".upper())
+```
+
+and two that were worse than refused because they ran:
+
+```python
+print(f"v={None}")    # v=0      at exit 0
+xs = [1, 2]
+print(f"{xs}")        # 0        at exit 0
+```
+
+**Root cause, one sentence each.** The refusal: `value()` had no arm for `*FString`, because an interpolation was
+invented as a *printing instruction* — the print road's single printf and its format string — and nobody ever asked
+what it should answer where an expression is expected. The wrong answers: that same single printf can be handed an
+`i32` or an `i8*`, and neither of them renders `None` or a container's slots, so the void became `0` and a heap
+handle became `0`. The two defects are one design: a construct that knows how to be *printed* and not how to be a
+*value*.
+
+**The choice.** Make the interpolation an ordinary text. `fstringValue` builds the parts with `rt_str_cat` — the
+builder `s + t` already used — and hands back an `@str_tab` index, the identical shape a `*StrLit` answers. Every
+downstream road (`+`, `==`, `<`, `len`, `in`, a subscript, a slice, a `for`, a container slot, a dict key, `return`,
+a string parameter, a method) then takes an interpolation without knowing what built it, which is the only reason
+those roads cannot disagree with each other about it. A field is rendered by `renderPair`, the door `str()`, `repr()`
+and `print()` share (ADR 0258, ADR 0303): four sinks, one printer, one tag read.
+
+**What the cycle measured on the way, in the order it was found.**
+
+1. The census and the builder must ask *one* question about an element. First `stringConst` did not fold an
+   interpolation while `heapElemKind` did, so `[f"a1", 1]` built an object that claimed every member is interned
+   text, printed the integer `1` through `@str_tab`, and the program died with **SIGSEGV — exit 2**, the code a
+   compiler bug owns. Fixed by making the fold one function (`fstringConstTextOf`) asked by all three roads.
+2. Then `[f"a{n}", 1]` printed `['a3', '3']`: `heapListFrom`'s mixed-kind census was a *pre-scan* reading each
+   element's spelling through `stringConstOf`, and a run-time interpolation has no spelling — a text to the builder,
+   a non-text to the pre-scan, and the object got bit 1 ("every member is interned text") instead of bit 8 ("the
+   slots are the truth"). The pre-scan is gone; the census now comes from the words the builder's own loop writes.
+   This is ADR 0232's rule one file further along, and it is the fourth time this tracker has had to write it.
+3. `f"{'a'!r}"` answered `"a"` where the reference answers `'a'`: the fold had been quoting the text in Go. Quoting
+   is the printer's act (quote preference, and the swap when the text contains one), so a field the fold cannot state
+   goes to the renderer. Gap R.192 measured the same sentence at the print door.
+4. A container is asked *before* the numeric arm, which otherwise lowers anything it can and answers a handle.
+5. A loop variable has no binding for the `str` door to read, because the loop wrote the slot rather than an
+   assignment. The loop now vouches for the numbers it bound itself — per loop, taken back at the loop's end, and
+   voided by any assignment to the name, including one inside the loop's own body. The two refusals around that
+   claim are pinned as refusals: a claim that outlives its loop, or survives a rebind, prints the digits of a value
+   some other statement wrote.
+
+**Why the refusals stayed refusals.** A format spec over a run-time value (`f"{n:>6}"`) is still refused by ADR
+0299's compile-time engine. Answering it from this road would have meant a second formatter next to the module's one
+spec engine — and Gap R.186 exists precisely because a spec was interpreted twice. The row is filed (**Gap R.308**),
+the drift ledger took its row the same day, and the next cycle's `rt_str_format` closes it. `f"a{n}b".replace(…)`
+and `f"a{n}b".split(…)` keep the string-method roads' own sentences, and `f"x{n}" * 2` keeps Gap R.33's.
+
+**The ratchet that made the filing necessary.** Three ledger rows went paid (`f"hello"`, `f"plain"`, `f"a{1}b"` as
+values). Paying them is what un-skipped `TestEvalFString`, which had been skipping on its *first line* since the
+engine was retired and had therefore never asked the record about the rest of its own body; the first thing it asked
+was `print(f"val={n:>3}")`, and the divergence appeared. That is the two-way ratchet working — a row going paid is as
+loud as a row going new — and it is the reason the cycle files a gap rather than quietly trimming the test.
+
+**Witnesses.** 59 answer rows on the record leg (`pkg/lang/fstring_value_test.go`), 58 of those sources recorded from
+the reference by `tools/recmerge` and never from the compiler (ADR 0302's rule, asked of every one: the record went
+7061 → 7119); 37 CLI programs in `integration/fstring_value_test.go` whose expectation is whatever `python3` printed
+for the same file; 5 refusal rows and 4 IR rows; `integration/programs/fstring_value.gy` as an asserted `match` row;
+and the four refusals in `integration/pair_fstring_test.go` that name the rows they are waiting on.
+
+<a id="gap-r-308"></a>
+
+### Gap R.308 — a format spec over a value the compiler cannot read (filed by ADR 0359)
+
+```python
+n = 7
+print(f"val={n:>3}")   # gy: refused — the record and py both write `val=  7`
+```
+
+The record's bytes for that program are `val=  7\n`; CPython's are the same; the compiled backend stops the build
+with `codegen: the format spec ">3" needs a value this backend can read at compile time (AOT backend)`, and the same
+sentence stops `f"{v:.2f}"`, `f"{n:>8.2f}"` and `f"{10:#x}"` over anything that is not a literal.
+
+This is not a new defect — the sentence has been in the shipped binary since ADR 0299 — and it is not new *evidence*
+either, which is the part worth writing down. It had never been **witnessed**: no case asked that source of the
+record, because the test that contains it skipped on its first line, and had done so since the engine was retired.
+`TestEvalFString` skipped on `f"hello"`. ADR 0359 made `f"hello"` answer, the test ran through to its body, the
+source met the record for the first time, and the divergence surfaced the same afternoon.
+
+ADR 0299's engine (`pkg/lang/fmtfield.go`) is compile-time by construction: `formatFieldConst` reads
+`IntLit`/`FloatLit`/`StrLit` and records whether it *read* the field at all, refusing where it did not. That refusal
+is right for a value the road cannot see — it is what killed Gap R.292's blank-padding, where `f"{x:>6}"` printed six
+spaces by formatting an empty text — and wrong for a program the reference runs.
+
+The fix is a run-time half, not a second engine: `rt_str_format(payload, tag, spec, quote)` taking the same grammar
+`parseSpec` reads today, applied to the value the module's ONE printer renders, so the print road, the value road and
+`str.format` ask one interpreter for the meaning of a spec. Width, fill, alignment, `,`, `0`, a sign and `.N` over a
+number or a text come out of the tagged pair the road already has; a base or a presentation type the tag cannot carry
+stays a refusal with a sentence that names it. Until then the row's four shapes are pinned as refusals in
+`TestAnFStringAsAValueRefusesAtTheCLIWithARow` and `TestAnFStringFieldStillRefusesInWordsThatNameTheOrigin`, the
+drift ledger carries its row, and `TestEvalFString`'s `val=  7` pin stays a skip rather than becoming an expectation
+anyone grows used to.
