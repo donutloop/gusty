@@ -1,0 +1,79 @@
+# integration/programs/lambda_default_param.gy — roadmap Gap R.263, ADR 0352.
+#
+# A `lambda`'s parameter list is spelled the same way a `def`'s is. Before this row the parser's lambda loop
+# read plain names and stopped at `=`:
+#
+#   f = lambda x, y=1: x + y
+#   print(f(1))           # parse error at 1:16: expected ":"   ← this toolchain
+#                         # 2                                     ← the reference
+#
+# `def` got its defaults from `parseParam()` and `lambda` got a hand-written loop, because a lambda's body
+# separator and an annotation's introducer are the same `:` — a real worry, and no worry at all for an `=`,
+# which is not an operator and so stops `parseExpr()` on its own. Everything past the grammar was already
+# built: the function-value pass hoists the lambda, ADR 0322's rule that a callable's options live at the
+# call reads the default there, and the arity check already counted `to N`.
+#
+# The shapes are deliberately crossed. A default that is a call, a module name, a conditional, a dict
+# literal and a text containing a colon each exercise a different part of "the default is an expression";
+# the keyword call, the omitted call and the full call exercise the three ways a call site can answer. The
+# `def` rows beside them are the parity claim — this row moves a `lambda` to where a `def` already was, so a
+# `def` that moved would mean the two roads were never the same road.
+#
+# Two families are absent on purpose. A default that is not a number or a text (`y=None`, `xs=[]`, `w={}`)
+# prints `0` here where the reference prints `None`, `[]` and `{}` (roadmap Gap R.277), and a `lambda` that
+# reads a name from the function it is written inside refuses with `undefined name` while the identical
+# nested `def` answers (roadmap Gap R.276). A corpus row that refuses, or that prints a number for an object,
+# cannot be compared with the reference — so they are filed, with today's answer, in
+# `pkg/lang/lambda_default_param_test.go`.
+
+f = lambda x, y=1: x + y
+print(f(1))                                     # 2   — the row: omitted
+print(f(1, 5))                                  # 6   — supplied
+print(f(1, y=9))                                # 10  — by keyword
+
+g = lambda x=2, y=3: x * y
+print(g(), g(2), g(2, 5))                       # 6 6 10
+
+def two():
+    return 2
+
+h = lambda n, v=two(): n * v
+print(h(3), h(3, 4))                            # 6 12
+
+STEP = 2
+scale = lambda n, k=STEP: n * k
+print(scale(3), scale(3, 5))                    # 6 15
+
+flag = True
+cond = lambda n, w=1 if flag else 2: n + w
+print(cond(10))                                 # 11
+
+greet = lambda who, tag="?": who + tag
+print(greet("z"))                               # z?
+
+# a name in a default resolves where a `def`'s default would resolve it: module scope, not the caller's
+k = 100
+shadow = lambda n, k=3: n * k
+print(shadow(2), k)                             # 6 100
+
+# the bodies that already worked must keep working. The hook lambda is written INLINE on purpose: bind the
+# same lambda to a name and pass the name, and the call lands on the payload word instead of a callable —
+# `TypeError: 'int' object is not callable` where a `def` in the same position answers [3, 2, 1] (roadmap Gap
+# R.281, filed with today's answer in pkg/lang/lambda_default_param_test.go).
+print(sorted([3, 1, 2], key=lambda v: 0 - v))    # [3, 2, 1]
+pick = lambda v: 1 if v else 2
+print(pick(True), pick(False))                  # 1 2
+plain = lambda: 5
+print(plain())                                  # 5
+
+def apply(fn, v):
+    return fn(v, 2)
+
+print(apply(lambda a, b: a * b, 4))             # 8
+
+# the `def` road beside it — the parity claim
+def d(a=2, b=3):
+    return a * b
+
+print(d(), d(5), d(5, 5))                       # 6 15 25
+print(d(1, b=9))                                # 9

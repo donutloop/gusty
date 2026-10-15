@@ -12347,3 +12347,205 @@ The shape is cheap for a user and expensive for us: `def`-after-`def` under the 
 revises a helper without deleting it, and how a test overrides a function for one case. It is also reachable
 by a `while` or `if` that defines a function conditionally — a loop that redefines a helper each iteration is
 Gap R.49's neighbour, and both fail before the program starts rather than at the read.
+
+### Gap R.276 — a `lambda` binds no capture list, so it cannot read the function it is written in
+
+Measured on `85af7d5` while writing ADR 0352's tables, and filed rather than bundled because it is the
+function-value pass's business and not the grammar's.
+
+```gusty
+def outer():
+    b = 42
+
+    f = lambda: b
+    return f()
+
+print(outer())          # CPython: 42      this toolchain: refuses, exit 1
+```
+
+```
+gustyc: jit: codegen: undefined name "b" (no binding for it; assign it or declare it global)
+```
+
+The control is the whole diagnosis, and it is in the same test file on the same build:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `def outer(): b = 42 / def inner(): return b / return inner()` | `42` | `42` |
+| `def outer(): b = 42 / f = lambda: b / return f()` | `42` | **refuses** `undefined name "b"` |
+| `def outer(v): f = lambda: v * 2 / return f()` | `6` | **refuses** `undefined name "v"` |
+| `b = 42` at module level, `f = lambda: b` | `42` | `42` |
+| `f = lambda b: b * 2` | `42` | `42` |
+
+A nested `def` gets a capture list; a `lambda` in the identical position gets none, and its free name then
+falls through to the module table — where `b` is not — and is reported as unbound. A `lambda` reading a
+*module* name works, which is why the refusal is not a name-lookup bug: it is the enclosing frame that never
+arrives. ADR 0345's pass mints both shapes, hoists both to a top-level symbol, and carries the frame for one
+of them.
+
+The fix is the capture list, not a global: making the module hold `b` would answer this program by breaking
+the per-scope rule ADR 0351 spent a cycle establishing (`def g(y): return y` is a body's own binding, not
+module state), which is the reason the two rows are cited against each other.
+
+### Gap R.277 — a default argument that is not a scalar is never bound: the parameter reads `0`
+
+The priority-1 class on the most ordinary surface in the language, and it is not a `lambda` defect — the
+`def` road does it too, which is why ADR 0352's Definition of done is `def`-parity for the grammar and
+explicitly not CPython-parity for these defaults.
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `def d(y=None): return y` / `print(d())` | `None` | **`0`** at exit 0 |
+| `def d(y=None): return y is None` / `print(d())` | `True` | **`False`** at exit 0 |
+| `def d(xs=[]): return xs` / `print(d())` | `[]` | **`0`** |
+| `def d(w={}): return w` / `print(d())` | `{}` | **`0`** |
+| `f = lambda xs=[]: xs` / `print(f())` | `[]` | **`0`** |
+| `def d(x=5): return x` | `5` | `5` |
+| `def d(s="hi"): return s` | `hi` | `hi` |
+| `def d(b=True): return b` | `True` | `True` |
+| `def d(xs=[]): return len(xs)` / `print(d([1, 2, 3]))` | `3` | `3` |
+
+The bottom four rows are the diagnosis. Every *scalar* default binds. A container default **supplied by the
+caller** binds. What does not bind is a default the *caller omitted*, when the default's value is not a number
+or a text: the parameter then holds `0`, the payload word of a value that was never written into it. It is not
+the `None` sentinel misread (the `is None` question answers `False`), and it is not the container road alone.
+
+The nastiest row is `len(xs)` on an `xs=[]` default: it prints `0`, which is what CPython prints, for the
+wrong reason — an empty container's length and an unwritten slot's payload are both `0`. A parity corpus that
+happened to measure a length would have certified this.
+
+The road to fix is the one ADR 0322 built for reading a callable's options: the default is evaluated in the
+definition's scope and, at a call that omits the argument, must be **bound through the same door an argument
+goes through** — a pair (payload, tag) for a container, not a folded literal. Python's own semantics say the
+default object is created once, at definition, and shared by every call (so `def d(x=[]): x.append(1)` returns
+`[1]` then `[1, 1]`); that is a definition-time allocation stored beside the prototype, which is exactly where
+ADR 0322 already keeps it, and the number case has been taking the shortcut all along.
+
+### Gap R.278 — no parameter list has `*args` or `**kwargs`
+
+`def d(*a): return len(a)` / `print(d(1, 2, 3))` is the reference's `3`; this toolchain answers `2 parse
+errors`. `def d(**kw): return len(kw)` / `print(d(a=1))` is `1` there and a parse error here; the `lambda`
+spellings (`lambda *a: len(a)`, `lambda **kw: len(kw)`) fail with `expected ":"` because the `*` is not a
+parameter name and the loop falls into the body separator.
+
+The message is the second half of the defect: a parse error naming a bracket, for a construct the reference
+has. `gustyc --lang` cannot list what the grammar cannot read, so an agent has no way to ask for the shape and
+no code that generates source (a template, a formatter, a test harness splicing parameters) can emit it.
+
+The lower is not free: the leftover positional arguments are a container and the keywords a dict, which is
+L11.1's value word for the general case, and the binding door is **Gap R.277**'s — pay that row first and
+`*args` is a tail on it rather than a new mechanism. ADR 0352's grammar guard
+(`TestTheLambdaGrammarStillDeclinesWhatNoRowHasPaid`) fails if the parser starts accepting the spelling before
+this row is paid: a grammar change and the semantics it presumes must not be split apart by accident.
+
+### Gap R.279 — a trailing comma in a parameter list is a parse error
+
+`def d(x, y=1,): return x + y` / `print(d(1))` is the reference's `2`; here it is `2 parse errors`. The
+`lambda` spelling `lambda x, y=1, :` answers `lambda param must be a name`.
+
+Trivially small and squarely in the class of thing that blocks a machine rather than a person: the trailing
+comma is what source *generators* emit (a parameter list built by joining with `,` and appending a separator),
+and Python's grammar accepts it in both directions. The container literals and the call sites of this language
+already allow a trailing comma, so the rule exists and the parameter list is the one place that forgot it.
+
+Filed and guarded the same way as Gap R.278 — the refusal stays until the row is paid, and the refusal that
+must remain is the genuinely missing shape (`def d(,)`, `lambda ,:`), which today names the wrong token.
+
+### Gap R.280 — a `lambda`'s arity is refused by codegen where a `def`'s is diagnosed by the front end
+
+Two doors, same exit code, and only one of them speaks to the caller:
+
+| call | the reference | this toolchain |
+|---|---|---|
+| `def d(x, y=1)` called `d()` | `TypeError: d() missing 1 required positional argument: 'x'` | `error at 4:8: function "d" expects 2 arguments, got 0` — the checker |
+| `f = lambda x, y=1` called `f()` | `TypeError: <lambda>() missing 1 required positional argument: 'x'` | `codegen: missing argument "x" for f$lambda$5dc96ed3_0` |
+| `f(1, 2, 3)` on the same lambda | `TypeError: <lambda>() takes from 1 to 2 positional arguments but 3 were given` | `codegen: too many arguments for <lambda>` |
+
+Neither sentence is the reference's (that half is Gap R.17's standing rule), but the interesting difference is
+the door: a `def`'s arity is a diagnostic with a file:line and a name the source contains, and the `lambda`'s
+is a codegen refusal carrying a **minted symbol that appears in no source line**. For a human that is
+annoying; for an agent mapping a diagnostic back to a position in its program it is a dead end — the name it
+is handed is not in the file it wrote.
+
+Under `Compile` both roads reach codegen (the unit table pins that, so the claim is not overstated); through
+the CLI, which runs the analysis first, only the `def` reaches the front end. That is the altitude the CLI
+test asserts, because it is the altitude a caller reads.
+
+### Gap R.281 — a `lambda` bound to a name and passed to a hook is called as an `int`
+
+```gusty
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))     # CPython: [3, 2, 1]
+```
+
+```
+Traceback (most recent call last):
+TypeError: 'int' object is not callable
+```
+
+…at exit 3, with no hint that a callable was ever involved. Two controls in the same program localise it:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `sorted([3,1,2], key=lambda v: 0 - v)` (inline) | `[3, 2, 1]` | `[3, 2, 1]` |
+| `def neg(v): return 0 - v` / `sorted(…, key=neg)` | `[3, 2, 1]` | `[3, 2, 1]` |
+| `neg = lambda v: 0 - v` / `sorted(…, key=neg)` | `[3, 2, 1]` | **raises** `'int' object is not callable` |
+
+The hoist works and the call works: ADR 0345 mints `neg$lambda$…` and the hook specialisation calls it, as the
+inline row proves. What is missing is the **name**: after the hoist, `neg` in the module still reads the
+payload word `0` — the same number Gap R.277's omitted defaults read — so the hook receives `0` and asks an
+`int` to be a function. The same shape written with a `def` binds the name to a callable, which is the control
+that says the fault is in the lambda's binding road and not in `sorted`.
+
+It is also why `integration/programs/lambda_default_param.gy` writes its hook inline and says so in its header:
+a corpus row has to run, and the alternative was to drop the shape without naming it.
+
+### Gap R.282 — a container default in a program with a higher-order call stops the pass
+
+The corpus program for ADR 0352 died on this, and the way it was found is the useful part of the story. The
+file with a container-default lambda in it refused to build:
+
+```
+gustyc: jit: codegen: "fn" is called but is not a function this backend can build a call to: …
+```
+
+…for a program where `fn` is `def apply(fn, v)`'s parameter, `apply` is called with an explicit
+`lambda a, b: a * b`, and the container default sits in an **unrelated** `lambda` defined 20 lines earlier.
+
+Each half alone answers:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `def apply(fn, v): return fn(v, 2)` / `print(apply(lambda a, b: a * b, 4))` | `8` | `8` |
+| `lookup = lambda n, d={"a": 1}: n + d["a"]` / `print(lookup(1))` | `2` | `2` |
+| both in one file | `8` (and `2`) | **refuses** on `fn` |
+
+The pass is all-or-nothing by ADR 0345's design, so one shape it cannot take refuses the whole program — but
+here the refusal lands on a parameter of a *different* callable, which is both the wrong message and the wrong
+blame.
+
+The repro is pinned at five statements in `TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed`, and how
+it was shrunk matters as a method note: the first shrink collapsed to a six-line program with **no call in it
+at all** — which fails for a completely different reason, since a higher-order `def` nobody calls is exactly
+the shape the pass refuses on purpose. A shrink that does not pin the *message* files fiction. Re-run with
+`"fn" is called but is not a function` as the invariant, the answer is:
+
+```gusty
+def two():
+    return 2
+
+lookup = lambda n, d={"a": 1}: n + d["a"]
+
+def apply(fn, v):
+    return fn(v, 2)
+
+print(apply(lambda a, b: a * b, 4))
+
+def d(a=2, b=3):
+    return a * b
+```
+
+…five statements, each individually removable and the whole thing refused. The first thing to test is
+**Gap R.277**'s road: `{"a": 1}` is a value the answer table declines to type, and the suspicion is that a
+default it cannot type makes the pass decline the *program* rather than the *callable*, which is the difference
+between a refusal an agent can act on and a mystery.

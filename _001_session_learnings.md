@@ -11151,3 +11151,40 @@ only one of the two places that had to agree.
   `AGENTS.md`/`docs/operations.md`, the roadmap Snapshot's ADR/conformance/matrix/queue tallies, and the
   gc-stress requirement that every conformance program has a *recorded* answer (which is why a new
   `integration/programs/*.gy` must be run through `tools/recmerge` before the corpus accepts it).
+
+## Gap R.263 — a `lambda`'s parameter list is spelled the way a `def`'s is (`ADR 0352`)
+
+A parse error is the most easily forgotten kind of missing feature: nothing looks broken, because the program
+that would have shown it cannot be written. `lambda x, y=1: x + y` died at `expected ":"`, and the row had sat in
+L11.7's next-action list ever since the function-value pass landed.
+
+- **Read the comment that explains the constraint before concluding the code is wrong.** The lambda's parameter
+  loop carried one: `parseParam()` would read the `:` body separator as a type annotation. That constraint is real
+  — a lambda's body separator and an annotation's introducer are the same token — and it explained why the loop
+  had to exist, not why it had to stop at `=`. The fix kept the disambiguation and grew one arm. Sharing
+  `parseParam()` after all would have broken `lambda x: x + 1` by annotating `x` with the type `x`.
+- **A grammar row can be a no-op downstream, and that is a finding rather than a disappointment.** `Param` already
+  carried `Default`, ADR 0322 already read a callable's options at the call, and the hook specialisation and the
+  `to N` arity check already handled them: codegen changed by zero lines. On a small row the temptation is to
+  "help" the pass along, and the witnesses would then certify work nobody did.
+- **A shrink that does not pin the message files fiction.** The corpus program died with `"fn" is called but is not
+  a function`; the first greedy line-shrink collapsed it to six lines with *no call in them at all*, which fails
+  for a completely different reason (an uncalled higher-order `def` is exactly the shape the pass refuses on
+  purpose). Re-running the shrink with the refusal's text as the invariant produced a real five-statement repro,
+  and the honest claim changed from "the corpus row can't contain it" to "a container default in a program with a
+  higher-order call stops the pass" (Gap R.282).
+- **Separate a refusal from a wrong answer, and pin the door as well as the sentence.** `def d(y=None): return y`
+  printing `0` at exit 0 (Gap R.277) is a different severity from a refusal at exit 1 — and `def` does it too,
+  which is why ADR 0352's Definition of done is `def`-parity for the grammar and explicitly *not*
+  CPython-parity for its defaults. The same care applied to arity: under `Compile` both roads reach codegen;
+  through the CLI only the `def` reaches the front end. A claim about "which door" is worth only its measurement
+  altitude, so the unit pins `Compile` and the integration file pins the CLI.
+- **Guard the refusals you leave behind.** `TestTheLambdaGrammarStillDeclinesWhatNoRowHasPaid` fails if the parser
+  starts accepting `*args`, `**kwargs` or a trailing comma while Gaps R.278/R.279 are unpaid — the only place the
+  grammar change and its unshipped semantics are held apart.
+- **The recorder refuses to launder a wrong answer.** `tools/recmerge` took the 21 defaulted-`lambda` sources
+  because both legs agreed, and refused the hook-lambda and non-scalar-default sources; that is why those shapes
+  live in a pinned filed table (18 rows, controls included) rather than in the record.
+- **A corpus row shows its absences.** `lambda_default_param.gy` writes its `sorted` hook inline and says so in its
+  header, naming the Gap beside every family it omits. A corpus that quietly drops an awkward shape is claiming
+  the shape works.

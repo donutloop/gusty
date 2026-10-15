@@ -325,7 +325,7 @@ is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min`
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
 Gap R.111's promoted program was recorded the same way, to 6882 with Gap R.132's signed-zero rows, to 6888 with Gap Q.2's
-growth programs and to 6909 with Gap R.49's twenty module-scope crossings and its corpus program — the count is the file's
+growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes — the count is the file's
 own and not this sentence's, and `recmerge` refuses to write an entry whose compiled leg disagrees with the reference). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
@@ -1729,6 +1729,20 @@ falls back to dynamic dispatch.
   `def`s sharing a name collide on one arena slot and `llc` rejects the module (Gap R.274), and a module name
   defined twice collides in the function table (Gap R.275) — the last two leaving an ordinary program at exit
   **2**, which is ADR 0166's code for a compiler bug.
+- **A `lambda`'s parameter list is spelled the way a `def`'s is (Gap R.263, ADR 0352)** — `f = lambda x, y=1:
+  x + y` / `print(f(1))` was a *parse error* (`expected ":"`), so the program did not exist and nothing looked
+  broken. `def` read its defaults from `parseParam()` and `lambda` had a hand-written loop that stopped at `=`,
+  with a comment explaining that sharing the routine would read the body separator as a type annotation — true,
+  and no reason at all to refuse an `=`: `:` is no operator, so a default's expression stops at the separator by
+  itself, even when the default contains one (`d={"a": 1}`, `s="a:b"`). One parser arm, **no codegen change** —
+  ADR 0322's rule that a callable's options live at the call, the hook specialisation and the `to N` arity check
+  already answered for a `def`. The probe session that built the tables found seven shapes the reference answers
+  and this build does not, and filed each instead of absorbing it: the parameter that reads `0` because a
+  non-scalar default was never bound (**Gap R.277** — a wrong number at the exit code of success, `def` included),
+  the `lambda` that cannot read the function it is written in while the nested `def` beside it can (**R.276**), a
+  hook lambda bound to a name and called as an `int` (**R.281**), `*args`/`**kwargs` (**R.278**), a trailing comma
+  (**R.279**), the arity door a `lambda` reaches that a `def` does not (**R.280**), and a container default that
+  stops the pass for an unrelated higher-order call (**R.282**).
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

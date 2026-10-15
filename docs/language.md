@@ -2836,8 +2836,24 @@ its own parameter. What the rewrite did not change is what ADR 0283 promises abo
 changed is that a function the program *calls* no longer needs a word to travel in. A clone reports the name the
 program wrote — a traceback and `--debug-info` say `twice`, and a hoisted `lambda` says `<lambda>`, the
 reference's own word for it. `gustyc --callables <src>` prints the pass's own account of a source (what it
-specialised, and the shape it declined), and the shapes still refused are Gaps R.255, R.263, R.264, R.265,
-R.266, R.267, R.268 and R.269.
+specialised, and the shape it declined). A **`lambda`'s parameter list is spelled the same way a `def`'s
+is** — `f = lambda x, y=1: x + y` / `print(f(1))` is `2`, and the call may omit `y`, supply it positionally, or
+name it (`f(1, y=9)` is `10`) — since **ADR 0352** closed Gap R.263, which had been a parse error. The default
+is an ordinary expression, so a call (`y=two()`), a module name (`k=STEP`), a conditional and a value with a
+`:` inside its own brackets (`d={"a": 1}`, `s="a:b"`) all work, and the default resolves against the
+*definition's* scope, not the caller's. What still refuses is Gaps R.255, R.264, R.265, R.266, R.267, R.268
+and R.269, plus the shapes ADR 0352 measured and filed rather than absorbed: a `lambda` that reads a variable
+of the function it is written in (**Gap R.276**), `*args`/`**kwargs` and a trailing comma in any parameter
+list (**Gap R.278**, **Gap R.279**), and a container default beside a higher-order call (**Gap R.282**).
+
+One default shape does not merely refuse — it **answers wrongly**, and is called out here rather than
+discovered by chance: a default whose value is not a number or a text is never bound to the parameter, so the
+parameter reads the payload word `0`. `def d(y=None): return y` prints `0` where the reference prints `None`,
+`def d(xs=[]): return xs` prints `0` for `[]` and `def d(w={}): return w` prints `0` for `{}` — at exit 0, with
+no diagnostic. Every *scalar* default answers (`x=5` → `5`, `s="hi"` → `hi`, `b=True` → `True`), and a container
+default the *caller supplies* answers, which is what localises it to the omitted-argument road (**Gap R.277**;
+the same on both `def` and `lambda`). Bewise `len(xs)` on an `xs=[]` default: it prints `0`, which is what
+CPython prints, for entirely the wrong reason.
 
 Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
 printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print

@@ -1888,6 +1888,18 @@ func (p *parser) parseLambda() (Expr, error) {
 				}
 				param.Annot = ty
 			}
+			// Optional `= default`, exactly as `def` spells one (roadmap Gap R.263,
+			// ADR 0322's rule that a callable's options live at the call). The body
+			// separator is `:`, which no expression operator consumes, so the default
+			// parse stops there on its own.
+			if p.peek().IsOp("=") {
+				p.next()
+				def, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				param.Default = def
+			}
 			lm.Params = append(lm.Params, param)
 			if p.peek().IsOp(",") {
 				p.next()

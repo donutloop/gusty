@@ -533,6 +533,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `MemoryError: … holds 1024 live containers` at exit 3 while CPython printed `5 205`; it is the
 		// row's Definition of done as one program, and the reference leg of the matrix.
 		"gc_heap_growth",
+		// A `lambda`'s parameter list is spelled the way a `def`'s is, so its defaults are a program and not
+		// a parse error (roadmap Gap R.263, ADR 0352). The rows are crossed — an omitted argument, a supplied
+		// one, a keyword one, a default that is a call, a module name, a conditional and a text with a `:` in
+		// it — and the `def` rows beside them are the parity claim the row is built on.
+		"lambda_default_param",
 		// A module name is bound in one slot whichever statement binds it (roadmap Gap R.49, ADR 0351).
 		// The program reuses one name across the module, a `def`'s parameter and a `for` target, which is
 		// the crossing that made the loop bind a main-frame alloca while every read consulted the name's

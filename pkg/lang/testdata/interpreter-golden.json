@@ -1,5 +1,113 @@
 {
  "entries": {
+"# integration/programs/lambda_default_param.gy — roadmap Gap R.263, ADR 0352.\n#\n# A `lambda`'s parameter list is spelled the same way a `def`'s is. Before this row the parser's lambda loop\n# read plain names and stopped at `=`:\n#\n#   f = lambda x, y=1: x + y\n#   print(f(1))           # parse error at 1:16: expected \":\"   ← this toolchain\n#                         # 2                                     ← the reference\n#\n# `def` got its defaults from `parseParam()` and `lambda` got a hand-written loop, because a lambda's body\n# separator and an annotation's introducer are the same `:` — a real worry, and no worry at all for an `=`,\n# which is not an operator and so stops `parseExpr()` on its own. Everything past the grammar was already\n# built: the function-value pass hoists the lambda, ADR 0322's rule that a callable's options live at the\n# call reads the default there, and the arity check already counted `to N`.\n#\n# The shapes are deliberately crossed. A default that is a call, a module name, a conditional, a dict\n# literal and a text containing a colon each exercise a different part of \"the default is an expression\";\n# the keyword call, the omitted call and the full call exercise the three ways a call site can answer. The\n# `def` rows beside them are the parity claim — this row moves a `lambda` to where a `def` already was, so a\n# `def` that moved would mean the two roads were never the same road.\n#\n# Two families are absent on purpose. A default that is not a number or a text (`y=None`, `xs=[]`, `w={}`)\n# prints `0` here where the reference prints `None`, `[]` and `{}` (roadmap Gap R.277), and a `lambda` that\n# reads a name from the function it is written inside refuses with `undefined name` while the identical\n# nested `def` answers (roadmap Gap R.276). A corpus row that refuses, or that prints a number for an object,\n# cannot be compared with the reference — so they are filed, with today's answer, in\n# `pkg/lang/lambda_default_param_test.go`.\n\nf = lambda x, y=1: x + y\nprint(f(1))                                     # 2   — the row: omitted\nprint(f(1, 5))                                  # 6   — supplied\nprint(f(1, y=9))                                # 10  — by keyword\n\ng = lambda x=2, y=3: x * y\nprint(g(), g(2), g(2, 5))                       # 6 6 10\n\ndef two():\n    return 2\n\nh = lambda n, v=two(): n * v\nprint(h(3), h(3, 4))                            # 6 12\n\nSTEP = 2\nscale = lambda n, k=STEP: n * k\nprint(scale(3), scale(3, 5))                    # 6 15\n\nflag = True\ncond = lambda n, w=1 if flag else 2: n + w\nprint(cond(10))                                 # 11\n\ngreet = lambda who, tag=\"?\": who + tag\nprint(greet(\"z\"))                               # z?\n\n# a name in a default resolves where a `def`'s default would resolve it: module scope, not the caller's\nk = 100\nshadow = lambda n, k=3: n * k\nprint(shadow(2), k)                             # 6 100\n\n# the bodies that already worked must keep working. The hook lambda is written INLINE on purpose: bind the\n# same lambda to a name and pass the name, and the call lands on the payload word instead of a callable —\n# `TypeError: 'int' object is not callable` where a `def` in the same position answers [3, 2, 1] (roadmap Gap\n# R.281, filed with today's answer in pkg/lang/lambda_default_param_test.go).\nprint(sorted([3, 1, 2], key=lambda v: 0 - v))    # [3, 2, 1]\npick = lambda v: 1 if v else 2\nprint(pick(True), pick(False))                  # 1 2\nplain = lambda: 5\nprint(plain())                                  # 5\n\ndef apply(fn, v):\n    return fn(v, 2)\n\nprint(apply(lambda a, b: a * b, 4))             # 8\n\n# the `def` road beside it — the parity claim\ndef d(a=2, b=3):\n    return a * b\n\nprint(d(), d(5), d(5, 5))                       # 6 15 25\nprint(d(1, b=9))                                # 9\n": {
+    "stdout": "2\n6\n10\n6 6 10\n6 12\n6 15\n11\nz?\n6 100\n[3, 2, 1]\n1 2\n5\n8\n6 15 25\n9\n",
+    "hasStdout": true
+   },
+"STEP = 2\nf = lambda x, k=STEP: x * k\nprint(f(3))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def apply(g, v):\n    return g(v, 2)\n\nprint(apply(lambda x, k: x * k, 4))": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def d(a=2, b=3):\n    return a * b\n\nprint(d(), d(5), d(5, 5))": {
+    "stdout": "6 15 25\n",
+    "hasStdout": true
+   },
+
+"def d(x, y=1):\n    return x + y\n\nprint(d(1, y=9))": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"def two():\n    return 2\n\nf = lambda x, y=two(): x * y\nprint(f(3))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, d={\"a\": 1}: x + d[\"a\"]\nprint(f(1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, s=\"a:b\": x + s\nprint(f(\"z\"))": {
+    "stdout": "za:b\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, tag=\"?\": x + tag\nprint(f(\"a\"))": {
+    "stdout": "a?\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, y=(2): x * y\nprint(f(3))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, y=1: x + y\nprint(f(1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, y=1: x + y\nprint(f(1, 5))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"f = lambda x, y=1: x + y\nprint(f(1, y=9))": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"f = lambda x: 1 if x else 2\nprint(f(True), f(False))": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"f = lambda x: x + 1\nprint(f(1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"f = lambda x: {\"a\": x}\nprint(f(1))": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"f = lambda x=2, y=3: x * y\nprint(f(), f(2), f(2, 5))": {
+    "stdout": "6 6 10\n",
+    "hasStdout": true
+   },
+
+"f = lambda x=7: x\nprint(f())": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"f = lambda: 5\nprint(f())": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"flag = True\nf = lambda x, y=1 if flag else 2: x + y\nprint(f(1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"k = 100\nf = lambda x, k=3: x * k\nprint(f(2), k)": {
+    "stdout": "6 100\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2], key=lambda v: 0 - v))": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
 "# integration/programs/module_slot_scope.gy — roadmap Gap R.49, ADR 0351.\n#\n# A module name has ONE slot, whichever statement binds it, and a `def`'s parameter is not a module\n# binding. Before this row the same program had two faces, both wrong:\n#\n#   * `y = 2` / `for y in [10, 20]: print(y)` printed `2`, `2` at exit 0 — the loop bound its\n#     variable to a main-frame `%_y` while every read consulted the module's `@gy_mod_y`, a global\n#     the module had been handed for a mention of `y` that was a PARAMETER of an earlier `def`;\n#   * `y += 3` on such a name stored to an `%_y` that had never been allocated, `llc` rejected the\n#     module, and an ordinary program left the toolchain as exit 2 — the code the exit-code contract\n#     reserves for a compiler bug (ADR 0166).\n#\n# Every shape below is one the reference runs to completion; the expectation is what CPython prints,\n# line for line. The names are deliberately reused across the module, the parameters and the loop\n# targets: that crossing is where the two defects lived, and a program that renamed its way around it\n# would certify nothing. Two families are absent on purpose — a module name rebound over a literal TEXT\n# by a call or by a loop (roadmap Gap R.273), and a body reading a module name whose bindings are not\n# scalars (roadmap Gap R.35's remaining half) — because both refuse, and a corpus row that refuses\n# cannot be compared with the reference.\n\ncount = 0\n\ndef bump(count):          # a parameter named like the module's variable: its own binding\n    count = count + 1\n    return count\n\ndef read_count():         # a body that reads the module's variable WITHOUT binding it\n    return count\n\n# The row's own program: the parameter's name, the module's, and true division.\ndef twice(x):\n    return x * 2\n\nx = 8\nx /= 2\nprint(x)                                     # 4.0\nprint(twice(3))                              # 6\n\n# The augmented assignment that stored to a slot which had never existed.\ny = 1\ny += 3\nprint(y)                                     # 4\n\n# The loop that bound its variable where nobody reading the name was looking.\ny = 2\nfor y in [10, 20]:\n    print(y)                                 # 10, 20\nprint(y)                                     # 20\n\n# A loop that binds a parameter's name and accumulates into the module's counter — the road whose\n# stores the collector's reads never saw.\nfor y in [1, 2, 3]:\n    count += y\nprint(count, read_count())                   # 6 6\n\n# A body's own assignment to its parameter leaves the module's name of that name alone.\nprint(bump(1), count)                        # 2 6\n\n# A while loop's accumulator beside a name a body reads.\nk = 0\nwhile k \u003c 3:\n    k += 1\nprint(k, count)                              # 3 6\n": {
     "stdout": "4.0\n6\n4\n10\n20\n20\n6 6\n2 6\n3 6\n",
     "hasStdout": true
