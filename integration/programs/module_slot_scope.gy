@@ -1,0 +1,63 @@
+# integration/programs/module_slot_scope.gy — roadmap Gap R.49, ADR 0351.
+#
+# A module name has ONE slot, whichever statement binds it, and a `def`'s parameter is not a module
+# binding. Before this row the same program had two faces, both wrong:
+#
+#   * `y = 2` / `for y in [10, 20]: print(y)` printed `2`, `2` at exit 0 — the loop bound its
+#     variable to a main-frame `%_y` while every read consulted the module's `@gy_mod_y`, a global
+#     the module had been handed for a mention of `y` that was a PARAMETER of an earlier `def`;
+#   * `y += 3` on such a name stored to an `%_y` that had never been allocated, `llc` rejected the
+#     module, and an ordinary program left the toolchain as exit 2 — the code the exit-code contract
+#     reserves for a compiler bug (ADR 0166).
+#
+# Every shape below is one the reference runs to completion; the expectation is what CPython prints,
+# line for line. The names are deliberately reused across the module, the parameters and the loop
+# targets: that crossing is where the two defects lived, and a program that renamed its way around it
+# would certify nothing. Two families are absent on purpose — a module name rebound over a literal TEXT
+# by a call or by a loop (roadmap Gap R.273), and a body reading a module name whose bindings are not
+# scalars (roadmap Gap R.35's remaining half) — because both refuse, and a corpus row that refuses
+# cannot be compared with the reference.
+
+count = 0
+
+def bump(count):          # a parameter named like the module's variable: its own binding
+    count = count + 1
+    return count
+
+def read_count():         # a body that reads the module's variable WITHOUT binding it
+    return count
+
+# The row's own program: the parameter's name, the module's, and true division.
+def twice(x):
+    return x * 2
+
+x = 8
+x /= 2
+print(x)                                     # 4.0
+print(twice(3))                              # 6
+
+# The augmented assignment that stored to a slot which had never existed.
+y = 1
+y += 3
+print(y)                                     # 4
+
+# The loop that bound its variable where nobody reading the name was looking.
+y = 2
+for y in [10, 20]:
+    print(y)                                 # 10, 20
+print(y)                                     # 20
+
+# A loop that binds a parameter's name and accumulates into the module's counter — the road whose
+# stores the collector's reads never saw.
+for y in [1, 2, 3]:
+    count += y
+print(count, read_count())                   # 6 6
+
+# A body's own assignment to its parameter leaves the module's name of that name alone.
+print(bump(1), count)                        # 2 6
+
+# A while loop's accumulator beside a name a body reads.
+k = 0
+while k < 3:
+    k += 1
+print(k, count)                              # 3 6

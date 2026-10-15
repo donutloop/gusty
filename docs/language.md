@@ -2192,14 +2192,29 @@ for i in range(n):
   (`@gy_mod_<name>`) that the top level writes and any function, method or closure loads when it runs —
   so the lookup really does happen at call time:
 
+  Two rules decide that sentence, and both are the reference's (ADR 0351). *Which* names are state is
+  asked per scope: a `def`'s parameters, a body's own assignments, its loop variables and its `with … as`
+  names bind the name **inside that body**, so `def g(y): return y` never makes the module's `y` into
+  state — a body has to read the name without binding it. And *every* statement that binds such a name
+  at module level writes the global, whether it is a plain assignment, an augmented assignment (`y += 1`)
+  or a loop variable (`for y in […]`), because a name with two slots is a program that reads a value no
+  statement produced:
+
   ```py
   LATE = 0
 
   def read() -> int:
       return LATE          # whichever value the module held when read() was called
 
+  def show(LATE):          # a parameter named LATE is show()'s OWN binding…
+      return LATE
+
   LATE = 3
-  print(read())            # 3
+  print(read(), show(9))   # 3 9   — the parameter never became module state
+
+  for LATE in [7, 8]:      # …and a loop's variable IS the module's, so a body sees it
+      print(LATE)          # 7, 8
+  print(read(), LATE)      # 8 8
   ```
 
   What a body still cannot reach is module *containers* (`len(xs)`, `xs.append(v)` for a module-level

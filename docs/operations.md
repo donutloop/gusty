@@ -396,12 +396,23 @@ to tell a program-defined function from a host or runtime symbol, look for the p
 source map or a debugger, `name` is what the source says and `symbol` is what the linker sees —
 never strip the prefix by hand, and never assume the two are equal.
 
-**Module bindings in the module** (Gap R.35, ADR 0227). A name the module binds once to a literal and
+**Module bindings in the module** (Gap R.35, ADR 0227, ADR 0351). A name the module binds once to a literal and
 never rebinds is emitted as a constant wherever a function body reads it, so it leaves no symbol. A
 module name that the module rebinds *and* a body reads becomes module state:
 `@gy_mod_<name> = global i32 0`, stored by the top level and loaded by the callee at call time. A tool
 that wants to know which of a program's names are module state can grep `@gy_mod_`; the name after the
 prefix is the source spelling, and it is prefixed like every other program-owned symbol (ADR 0198).
+
+Two properties of that symbol are load-bearing for anyone reading the IR (ADR 0351). A name is module
+state only if some body reads it **without binding it** — a `def`'s parameter, a body's own assignment,
+its loop variable and its `with … as` name all shadow the module inside that body, so `def g(y): return y`
+contributes no `@gy_mod_y`; a tool that sees no such symbol has not found a missing optimisation. And every
+module-level statement that binds a name which *does* have the symbol writes it: the plain assignment, the
+augmented assignment and both `for` roads share one decision, so `store i32 …, i32* @gy_mod_y` appears once
+per element of a loop that targets the name. A `for` additionally keeps its rooted alloca (an element can be
+a heap handle, and the collector traces root entries rather than globals), so expect the alloca store and the
+global store side by side; a store to a `%_name` with no `%_name = alloca` in the same definition is a
+compiler bug and belongs in a gap row, not in a module an agent should have to tolerate.
 
 A closure body that could not be lowered, in the single case where it provably does not run — a closure
 nested in a function used as a decorator, whose decorated call goes through the trampoline — is said in
@@ -1081,7 +1092,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6888 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 6909 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (339 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |

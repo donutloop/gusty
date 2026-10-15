@@ -324,7 +324,9 @@ is the honest one that was already written. `twice(d2, 3)` is `12`, `apply1(inc,
 is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min` with a `key=lambda` likewise —
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
-Gap R.111's promoted program was recorded the same way, and to 6888 with Gap Q.2's growth programs — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
+Gap R.111's promoted program was recorded the same way, to 6882 with Gap R.132's signed-zero rows, to 6888 with Gap Q.2's
+growth programs and to 6909 with Gap R.49's twenty module-scope crossings and its corpus program — the count is the file's
+own and not this sentence's, and `recmerge` refuses to write an entry whose compiled leg disagrees with the reference). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
 the tests now hold shut: names were minted from `%p`, which Go randomises per process, so one program compiled to
@@ -1711,6 +1713,22 @@ falls back to dynamic dispatch.
   legs of `programs/module_scope_in_functions.gy` and `programs/module_calltime_lookup.gy` print
   CPython's line now; a body reading a module *container* is still refused, with the reason that names
   module state rather than blaming a string.
+- **A module name has one slot, whichever statement binds it (Gap R.49, ADR 0351)** — the row was filed as
+  `llc` rejecting a module (`y += 3` storing to a `%_y` nothing had allocated: an ordinary program leaving
+  as exit **2**), and it had grown a silent face nobody measured: an unrolled `for` bound its variable to a
+  main-frame alloca while every read consulted the name's `@gy_mod_y`, so `y = 2` / `for y in [10, 20]: print(y)`
+  printed `2`, `2`, `2` at exit 0 where CPython prints `10`, `20`, `20`. One name had two slots and three
+  writers because two questions each had one answer: *which names need a global* (the walk over bodies
+  counted a `def`'s **parameter** as a module read — now shadowed away, per scope, as the reference scopes
+  it) and *which roads bind a name that has one* (only the plain assignment asked; `+=` and both `for` roads
+  now call the same helper). A loop keeps its rooted alloca beside the global, because an element can be a
+  handle and the collector traces root entries, not globals. `programs/module_slot_scope.gy` is `match` on
+  the matrix, reusing one name across the module, a parameter and a loop target on purpose. Three neighbours
+  the same probe session measured stay **open** and are pinned with today's answer rather than quietly
+  skipped: a module name rebound over a literal text keeps printing the literal (Gap R.273), two nested
+  `def`s sharing a name collide on one arena slot and `llc` rejects the module (Gap R.274), and a module name
+  defined twice collides in the function table (Gap R.275) — the last two leaving an ordinary program at exit
+  **2**, which is ADR 0166's code for a compiler bug.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

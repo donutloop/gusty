@@ -3151,6 +3151,27 @@
     },
     {
       "case": {
+        "id": "programs/module_slot_scope",
+        "name": "module_slot_scope.gy",
+        "source": "# integration/programs/module_slot_scope.gy — roadmap Gap R.49, ADR 0351.\n#\n# A module name has ONE slot, whichever statement binds it, and a `def`'s parameter is not a module\n# binding. Before this row the same program had two faces, both wrong:\n#\n#   * `y = 2` / `for y in [10, 20]: print(y)` printed `2`, `2` at exit 0 — the loop bound its\n#     variable to a main-frame `%_y` while every read consulted the module's `@gy_mod_y`, a global\n#     the module had been handed for a mention of `y` that was a PARAMETER of an earlier `def`;\n#   * `y += 3` on such a name stored to an `%_y` that had never been allocated, `llc` rejected the\n#     module, and an ordinary program left the toolchain as exit 2 — the code the exit-code contract\n#     reserves for a compiler bug (ADR 0166).\n#\n# Every shape below is one the reference runs to completion; the expectation is what CPython prints,\n# line for line. The names are deliberately reused across the module, the parameters and the loop\n# targets: that crossing is where the two defects lived, and a program that renamed its way around it\n# would certify nothing. Two families are absent on purpose — a module name rebound over a literal TEXT\n# by a call or by a loop (roadmap Gap R.273), and a body reading a module name whose bindings are not\n# scalars (roadmap Gap R.35's remaining half) — because both refuse, and a corpus row that refuses\n# cannot be compared with the reference.\n\ncount = 0\n\ndef bump(count):          # a parameter named like the module's variable: its own binding\n    count = count + 1\n    return count\n\ndef read_count():         # a body that reads the module's variable WITHOUT binding it\n    return count\n\n# The row's own program: the parameter's name, the module's, and true division.\ndef twice(x):\n    return x * 2\n\nx = 8\nx /= 2\nprint(x)                                     # 4.0\nprint(twice(3))                              # 6\n\n# The augmented assignment that stored to a slot which had never existed.\ny = 1\ny += 3\nprint(y)                                     # 4\n\n# The loop that bound its variable where nobody reading the name was looking.\ny = 2\nfor y in [10, 20]:\n    print(y)                                 # 10, 20\nprint(y)                                     # 20\n\n# A loop that binds a parameter's name and accumulates into the module's counter — the road whose\n# stores the collector's reads never saw.\nfor y in [1, 2, 3]:\n    count += y\nprint(count, read_count())                   # 6 6\n\n# A body's own assignment to its parameter leaves the module's name of that name alone.\nprint(bump(1), count)                        # 2 6\n\n# A while loop's accumulator beside a name a body reads.\nk = 0\nwhile k \u003c 3:\n    k += 1\nprint(k, count)                              # 3 6\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "4.0\n6\n4\n10\n20\n20\n6 6\n2 6\n3 6\n",
+      "python_ok": true,
+      "python_stdout": "4.0\n6\n4\n10\n20\n20\n6 6\n2 6\n3 6\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/unhashable_key",
         "name": "unhashable_key.gy",
         "source": "d = {\"a\": 1, 5: \"five\"}\nprint(d[\"a\"], d[5])\nprint(\"a\" in d, 2 in d)\nprint({\"a\": 1}[\"a\"], {5: \"five\"}[5])\nprint(1 in {\"a\": 1}, \"a\" in {\"a\": 1})\nprint([1] in [[1], [2]], [3] in [[1], [2]])\nprint({1} in [{1}])\nprint({\"a\": 1} in [{\"a\": 1}])\ntry:\n    print({\"a\": 1}[[1]])\nexcept TypeError:\n    print(\"a list key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1: 2}])\nexcept TypeError:\n    print(\"a dict key raises TypeError\")\ntry:\n    print({\"a\": 1}[{1}])\nexcept TypeError:\n    print(\"a set key raises TypeError\")\ntry:\n    print([1] in {\"a\": 1})\nexcept TypeError:\n    print(\"a list needle raises TypeError\")\ntry:\n    store = {}\n    store[[1]] = 2\n    print(\"the store answered\", store)\nexcept TypeError:\n    print(\"a list store key raises TypeError\")\nx = [7]\ntry:\n    print(d[x])\nexcept TypeError:\n    print(\"a bound name key raises TypeError\")\ny = {\"k\": 1}\ntry:\n    print(y in {1, 2})\nexcept TypeError:\n    print(\"a dict needle raises TypeError\")\nprint(len(d))\n",
@@ -4127,7 +4148,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/168/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/169/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4141,7 +4162,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/168/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/169/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4781,11 +4802,11 @@
       ]
     }
   ],
-  "rows": 194,
+  "rows": 195,
   "skipped": 34,
-  "pass": 160,
+  "pass": 161,
   "fail": 0,
-  "oracle_match": 145,
+  "oracle_match": 146,
   "oracle_debt": 28,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

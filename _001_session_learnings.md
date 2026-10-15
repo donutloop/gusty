@@ -11098,3 +11098,56 @@ worth recording is about what moving a limit costs.
   moved the Snapshot's ADR count and high-water, its conformance-program count and the record count; the matrix
   and oracle tallies only become true after `go test ./integration` rewrites `conformance-matrix.json`. Running
   the guards and reading their failure text is faster than predicting which cells they read.
+
+## Gap R.49 — a module name had two slots and three writers (`ADR 0351`)
+
+A two-year-old exit-2 row turned out to have a silent twin. Both came from one sentence being answered in
+only one of the two places that had to agree.
+
+- **The row said "compiler bug, exit 2"; the worse face printed a number.** `y += 3` on a module name
+  stored to `%_y` with no `%_y = alloca` and `llc` refused the module — that was the filed symptom, and
+  curing it by *allocating the slot* would have been a green test over a wrong program. The same name,
+  bound by a `for` instead, wrote the alloca while every read loaded `@gy_mod_y`: `y = 2` /
+  `for y in [10, 20]: print(y)` printed `2`, `2`, `2` at exit 0. Reading the emitted IR (`--emit-llvm`
+  takes the source as its argument, not a file) was faster than any amount of reasoning: five lines show
+  two slots, three writers, and which reads went to which.
+- **A gate that asks "does any body mention this name?" is asking the wrong question, and the reference
+  has the right one.** A `def`'s parameters, its own assignments, its loop variables and its `with … as`
+  names bind the name *inside* that body — Python's rule, and the reason `def g(y): return y` says nothing
+  about a module-level `y`. Shadowing the read-collection by scope removed a whole class of spurious
+  globals. Keep the *other* direction asserted too: a name a body reads without binding must still get its
+  global, or the gate can "fix" the row by answering nothing.
+- **Ask the decision as a function, not only as printed answers.** `moduleSlotNames(prog, consts, all)` is
+  called directly in a table whose rows say both "this name must have a global" and "this name must not".
+  Answer tables can be satisfied by accidents; the AST-level table fails when the *criterion* moves. This
+  is the pattern ADR 0271/0273 established and it has now caught a wrong design twice in two cycles.
+- **Make the structural claim an invariant over the whole module, not an example.** The Definition of done
+  said "an IR-shape test asserts the module's slots are allocated once, per scope"; what I actually wrote
+  walks every `define`, collects the `%_x = alloca` names, and fails on any `store …, %_x` without one.
+  That row would have caught this bug from any road, including roads nobody has written yet.
+- **Pin the neighbour you measured and did not fix, with today's answer in the row.** The same probe session
+  found that `m = "n"` / `m = f()` / `print(m)` prints `n` (and a loop variant prints a *number* for a name
+  holding text) — the store is in the IR and the read is folded to the interned text. Different road
+  (the module's constant/interned records are never retracted by those bindings, unlike the plain
+  assignment's `forgetTaggedBinding`), so it became Gap R.273 and a `…FiledNotFixed` table that fails if
+  the pinned answer moves — including if someone fixes it and forgets to delete the row.
+- **A corpus program cannot contain the shape you just refused to fix.** My first `module_slot_scope.gy`
+  used a module text and a body reading a module container, and died as a Gap R.35 refusal: an oracle row
+  needs a program the reference *and* this backend both run. Rewriting it to count in `count` (a scalar the
+  module rebinds, so it earns a global) kept the point — the names still collide across module, parameter
+  and loop target — and said so in its header, with the two absent families named.
+- **The reference-leg recorder is a guard, not a service.** `tools/recmerge` refused the Gap R.273 and Gap
+  R.274/275 sources — `the compiled leg prints other bytes than the reference's` — which is the record's whole
+  epistemics in one sentence: an entry is the reference's answer and a backend may not certify its own mistake.
+  The three broken shapes therefore live in *tests* (`…FiledNotFixed` tables pinning today's answer), not in
+  the record, and the twenty answered crossings could be recorded because the fix made them agree.
+- **Two more exit-2 shapes fell out of testing the fix, and neither was bundled.** `def a(): … def h() …`
+  beside `def b(): … def h() …` dies with `redefinition of global '@h_slot'`, and `def h()` written twice dies
+  with `invalid redefinition of function 'gy_h'`; renaming the inner functions makes the first compile, which is
+  the control that says a definition was being identified by its spelling. Both became rows (Gap R.274, Gap
+  R.275) with today's `llc` text pinned, because ADR 0166 makes exit 2 on a program the reference runs
+  unambiguous — and because a fix that mangles names to dodge a collision is the same mistake one step down.
+- **Guards that recompute documented numbers fired exactly as designed**: the record's source count in
+  `AGENTS.md`/`docs/operations.md`, the roadmap Snapshot's ADR/conformance/matrix/queue tallies, and the
+  gc-stress requirement that every conformance program has a *recorded* answer (which is why a new
+  `integration/programs/*.gy` must be run through `tools/recmerge` before the corpus accepts it).

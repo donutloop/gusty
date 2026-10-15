@@ -3344,6 +3344,59 @@ count as an allocation the module can reuse. Fix with the binding-scope rules th
 tagged slots land on, and pin it with a parity program plus an IR-shape test that the module
 allocas are hoisted and per-scope.
 
+**Closed by ADR 0351 (2026-10-15), two years later and one defect wider than the row describes.**
+
+The row is written as an exit-2 story, and by the time anyone looked again the exit-2 face was only the
+loud half. Measured on `9b60ed4` with the previous cycle's binary beside the fixed one:
+
+```gusty
+def g(y):
+    return y
+
+y = 2
+for y in [10, 20]:
+    print(y)
+print(y)          # CPython: 10, 20, 20     this toolchain: 2, 2, 2   exit 0
+```
+
+A wrong value at the code that means the program ran, on the most ordinary construct in the language —
+a loop. The emitted module says why in five lines: the loop stored `10` and `20` to a main-frame
+`%_y`, and the two reads loaded `@gy_mod_y`. Two independent questions had each been answered in
+exactly one of the places that had to agree:
+
+| question | who answered it | who did not |
+|---|---|---|
+| which module names need real storage? | `moduleSlotNames`, walking every body and marking every name it *mentioned* — parameters included | anything asking whether that body **binds** the name |
+| which roads bind a name that has storage? | the plain assignment, which consults `moduleSlots` | `y += 3`, and both `for` roads (the unrolled-literal one and the container walk) |
+
+The row's own `x /= 2` case had been passing for two years precisely because the float road takes a
+`double` slot and never reached the missing store; `x += 2` on the same name still reached it, and the
+store went to an `%_x` nothing had allocated — which is where `llc` said *use of undefined value* and the
+toolchain answered with exit 2, ADR 0166's code for a compiler bug, on three statements of arithmetic.
+
+The fix is therefore two decisions, not one patch. The storage gate now carries a **shadow set** per
+body — parameters, the body's own assignments, its loop variables, its `with … as` name, its match
+captures — nested, so an inner `def` shadows what encloses it as well as what it binds, which is the
+scoping rule the reference applies; a name still earns its global when *any* body reads it without
+binding it. And `storeModuleScalar` is now the single answer to "where does this module name go", called
+by the plain assignment, the augmented assignment and both loop roads. A loop's rooted alloca is kept
+beside the global rather than removed: an element can be a heap handle, and ADR 0181's collector follows
+root entries, not globals — what was missing was the second store, never the first.
+
+Two tempting fixes are worth recording as rejected, because both would have shipped the wrong answer in
+different packaging. *Allocate `%_y` in the augmented-assignment road* cures the `llc` failure and leaves
+the split — the name would then have two slots and three writers. *Mangle the emitter's parameter symbols*
+so a parameter's name can never collide with a module's hides the collision without asking why the
+module's own store was going to the wrong place. And *refusing the shape* was refused: the reference runs
+every one of these programs, and a front-end refusal is a diagnostic an agent branches on, not a way to
+make a hard case invisible (ADR 0166).
+
+What the row leaves open, measured in the same session and filed instead of smuggled in: a module name
+rebound **over a literal text** keeps printing the literal (**Gap R.273**) — the store is there in the IR
+and the read is *folded*, `printf` handed the interned text the name began with — and a body reading a
+module name whose bindings are not scalars still refuses (**Gap R.35**'s remaining half), which is why
+this row's corpus program counts in `count` rather than reading back a text.
+
 <a id="gap-r-50"></a>
 
 ### Gap R.50 — `round` ties away from zero; CPython ties to even (found by the 2026-10-01 sweep)
@@ -12167,3 +12220,130 @@ already uses, and reads the base's kind from the pair the print door reads. Wher
 cannot be settled the row keeps a refusal, but a refusal that names the base's origin — `attribute read on a
 value the notebook does not describe` — rather than `unsupported attr expression`, which says what the door
 could not do and not what the program asked (ADR 0346's rule for a refusal's sentence).
+
+### Gap R.273 — a module name rebound over a literal text keeps printing the literal
+
+Found while writing ADR 0351's tables, and kept out of that commit because it is a different road's
+business: the slot is right there in the IR and correctly written; the *read* is the fold.
+
+```gusty
+def f():
+    return "z"
+
+m = "n"
+m = f()
+print(m)          # CPython: z     this toolchain: n     exit 0
+```
+
+The emitted module has the store — `%t5 = call i32 @gy_f()` / `store i32 %t5, i32* %_m` — and then hands
+`printf` the global `@.str3`, the interned `"n"` the name began with. The loop road is worse, because it
+shows the fold choosing between two tables:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `m = "n"` / `m = f()` / `print(m)` | `z` | `n` |
+| `label = "n"` / `for label in ["p", "q"]: print(label)` / `print(label)` | `p`, `q`, `q` | `n`, `n`, `n` |
+| `for label in ["p", "q"]: print(label)` / `print(label)` (no first binding) | `p`, `q`, `q` | `p`, `q`, **`1`** |
+| `m = 1` / `m = 5` / `print(m)` | `5` | `5` |
+| `m = 1` / `m = f()` / `print(m)` (`f` returns `5`) | `5` | `5` |
+
+The integer rows answering correctly is the whole diagnosis: this is not the module's constant table in
+general (`moduleEnvFor` does disqualify a name the module rebinds), it is the *text* road — a name that
+once held an interned string is printed through the interned table whatever the slot now holds. The plain
+assignment keeps that honest with `forgetTaggedBinding` and the ADR 0172 latest-binding rule (a binding
+that is not a pair retires the tag, which is what makes `n = xs[0][0] * 2` then `n = [1, 2]` print the
+list); the call-result binding and the module-level `for` roads never call it, so the record outlives the
+value it describes.
+
+The third row is the one to watch: the fold did not merely keep the old text, it answered a **number** for
+a name holding text, which means the record it consulted was not even the same table. That is what the
+pair (payload, tag) is for, and why the fix is the retraction rather than a print-time guess.
+
+### Gap R.274 — two nested `def`s that share a name collide on one arena slot (exit 2)
+
+Measured on `9b60ed4` (the commit before ADR 0351) while testing that row's tables, and filed rather than
+fixed: it is the same *instinct* as Gap R.49 — a definition is minted an IR name out of its own spelling, as
+if a name were an identity — applied to a different object, and ADR 0351's commit is about variables.
+
+```gusty
+def a():
+    x = 1
+
+    def h():
+        return x
+
+    return h()
+
+def b():
+    x = 2
+
+    def h():
+        return x
+
+    return h()
+
+print(a(), b())         # CPython: 1 2      this toolchain: exit 2
+```
+
+```
+llc-20: error: …:15:1: error: redefinition of global '@h_slot'
+@h_slot = internal global i32 0
+```
+
+The two controls locate the fault on the name and nowhere else:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| two outer functions, both with an inner `def h` | `1 2` | **exit 2** — `redefinition of global '@h_slot'` |
+| the same, inner names `h1` and `h2` | `1 2` | `1 2` at exit 0 |
+| one outer function, its inner `def h` called twice (`print(a(), a())`) | `1 1` | `1 1` at exit 0 |
+| two outer functions whose inner `def h` reads a *differently-named* outer variable | `1 2` | **exit 2** |
+
+The fourth row says the closure's *content* is irrelevant: the collision is purely `irSymbol(name + "_slot")`
+being asked to identify a definition, and two definitions may share a spelling. The same file therefore
+emits `@h_slot` twice, and `llc` — which is allowed to reject a module, but not by us — rejects it.
+
+Why exit 2 is the interesting part: ADR 0166 reserves 2 for a compiler bug, and this is one in the strict
+sense — three ordinary functions, none of them anything the language refuses, and the toolchain is the party
+that failed. The CLI says so rather than blaming the program, which is the diagnostic half of that ADR
+working as designed; the missing half is that the program should have run.
+
+The fix is identity, not renaming: the enclosing function already has a unique id where the nested `def` is
+hoisted, and the slot global should carry it (`@h_slot_3`, say) exactly as ADR 0351 made a module *variable*
+have one slot decided once per name rather than per road. What must not happen is the cheaper edit —
+allocating the second `@h_slot` under a mangled name only where `llc` complains — because the fault is a
+collision that will be reached from whichever road asks next.
+
+### Gap R.275 — a module name defined twice collides in the function table (exit 2)
+
+Also measured on `9b60ed4`, and the more honest of the two to file separately, because Python's rule here is
+not "two definitions need two identities" but "one binding is *replaced*".
+
+```gusty
+def h():
+    return 1
+
+def h():
+    return 2
+
+print(h())              # CPython: 2         this toolchain: exit 2
+```
+
+```
+llc-20: error: …:3976:12: error: invalid redefinition of function 'gy_h'
+define i32 @gy_h() {
+```
+
+Arity does not save it (`def h(x)` twice fails the same way), nor does the number of definitions, nor whether
+anything calls the first — the second body is dead code from the reference's point of view, and this backend
+emits both bodies under one IR name.
+
+This is the module namespace being what it is: a name bound twice holds the later value, which is the same
+rule that makes Gap R.49's `y = 2` then `for y in …` one binding in one slot, and the same rule Gap R.6 and
+Gap R.12 had to apply to built-ins that a `def` shadows. The difference is that a function's IR symbol is
+minted from its name once, at its definition, and nothing retires the first one.
+
+The shape is cheap for a user and expensive for us: `def`-after-`def` under the same name is how a program
+revises a helper without deleting it, and how a test overrides a function for one case. It is also reachable
+by a `while` or `if` that defines a function conditionally — a loop that redefines a helper each iteration is
+Gap R.49's neighbour, and both fail before the program starts rather than at the read.

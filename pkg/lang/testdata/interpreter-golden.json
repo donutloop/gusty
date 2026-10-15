@@ -1,5 +1,108 @@
 {
  "entries": {
+"# integration/programs/module_slot_scope.gy — roadmap Gap R.49, ADR 0351.\n#\n# A module name has ONE slot, whichever statement binds it, and a `def`'s parameter is not a module\n# binding. Before this row the same program had two faces, both wrong:\n#\n#   * `y = 2` / `for y in [10, 20]: print(y)` printed `2`, `2` at exit 0 — the loop bound its\n#     variable to a main-frame `%_y` while every read consulted the module's `@gy_mod_y`, a global\n#     the module had been handed for a mention of `y` that was a PARAMETER of an earlier `def`;\n#   * `y += 3` on such a name stored to an `%_y` that had never been allocated, `llc` rejected the\n#     module, and an ordinary program left the toolchain as exit 2 — the code the exit-code contract\n#     reserves for a compiler bug (ADR 0166).\n#\n# Every shape below is one the reference runs to completion; the expectation is what CPython prints,\n# line for line. The names are deliberately reused across the module, the parameters and the loop\n# targets: that crossing is where the two defects lived, and a program that renamed its way around it\n# would certify nothing. Two families are absent on purpose — a module name rebound over a literal TEXT\n# by a call or by a loop (roadmap Gap R.273), and a body reading a module name whose bindings are not\n# scalars (roadmap Gap R.35's remaining half) — because both refuse, and a corpus row that refuses\n# cannot be compared with the reference.\n\ncount = 0\n\ndef bump(count):          # a parameter named like the module's variable: its own binding\n    count = count + 1\n    return count\n\ndef read_count():         # a body that reads the module's variable WITHOUT binding it\n    return count\n\n# The row's own program: the parameter's name, the module's, and true division.\ndef twice(x):\n    return x * 2\n\nx = 8\nx /= 2\nprint(x)                                     # 4.0\nprint(twice(3))                              # 6\n\n# The augmented assignment that stored to a slot which had never existed.\ny = 1\ny += 3\nprint(y)                                     # 4\n\n# The loop that bound its variable where nobody reading the name was looking.\ny = 2\nfor y in [10, 20]:\n    print(y)                                 # 10, 20\nprint(y)                                     # 20\n\n# A loop that binds a parameter's name and accumulates into the module's counter — the road whose\n# stores the collector's reads never saw.\nfor y in [1, 2, 3]:\n    count += y\nprint(count, read_count())                   # 6 6\n\n# A body's own assignment to its parameter leaves the module's name of that name alone.\nprint(bump(1), count)                        # 2 6\n\n# A while loop's accumulator beside a name a body reads.\nk = 0\nwhile k \u003c 3:\n    k += 1\nprint(k, count)                              # 3 6\n": {
+    "stdout": "4.0\n6\n4\n10\n20\n20\n6 6\n2 6\n3 6\n",
+    "hasStdout": true
+   },
+"STEP = 2\n\ndef f(a=STEP):\n    return a\n\nprint(f(), f(5))": {
+    "stdout": "2 5\n",
+    "hasStdout": true
+   },
+
+"def f(a=2):\n    return a\n\na = 9\nprint(a, f())": {
+    "stdout": "9 2\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return x * 2\n\nx = 8\nx += 2\nprint(x)": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return x * 2\n\nx = 8\nx /= 2\nprint(x)": {
+    "stdout": "4.0\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return i\n\ni = 0\nfor i in [7, 8]:\n    pass\nprint(i)": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return s\n\ns = \"a\"\ns = \"b\"\nprint(s)": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return total\n\ntotal = 1\nwhile total \u003c 4:\n    total += 1\nprint(total)": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return y\n\ny = 0\nfor y in [1, 2]:\n    print(y)\nprint(y)": {
+    "stdout": "1\n2\n2\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return y\n\ny = 1\ny += 3\nprint(y)": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g(n):\n    return n\n\ncount = 0\nfor k in [1, 2, 3]:\n    count += k\nprint(count, g(9))": {
+    "stdout": "6 9\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ndef h():\n    return y\n\ny = 4\nprint(g(9), h(), y)": {
+    "stdout": "9 4 4\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\nfor y in [1, 2]:\n    print(y)\nprint(y)": {
+    "stdout": "1\n2\n2\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ntotal = 0\nfor y in [1, 2]:\n    total += y\nprint(total, y)": {
+    "stdout": "3 2\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ny = 0\nfor y in [1, 2, 3]:\n    y += 1\n    print(y)\nprint(y)": {
+    "stdout": "2\n3\n4\n4\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ny = 2\nfor e in [10, 20]:\n    y = y + e\nprint(y)": {
+    "stdout": "32\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ny = 2\nfor y in [10, 20]:\n    print(y)\nprint(y)": {
+    "stdout": "10\n20\n20\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\ny = 4\ny += 1\nprint(y)": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    return y\n\nys = [1, 2]\nfor y in ys:\n    print(y)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def g(y):\n    y = y + 1\n    return y\n\ny = 1\nprint(g(1), y)": {
+    "stdout": "2 1\n",
+    "hasStdout": true
+   },
+
+"total = 0\n\ndef add(total, v):\n    return total + v\n\ntotal = add(total, 3)\nprint(total)\ntotal += 4\nprint(total)": {
+    "stdout": "3\n7\n",
+    "hasStdout": true
+   },
 "# integration/programs/gc_heap_growth.gy — roadmap Gap Q.2's second half, ADR 0350.\n#\n# One container more than the arena used to stop at. Until ADR 0350 this program died at\n# exit 3 with `MemoryError: out of memory: the compiled heap holds 1024 live containers`\n# while CPython printed `5 205`; the ceiling was the defect, not the condition. It is the\n# row's Definition of done in one file — a 1025-live-container program that must succeed\n# rather than trap — and the reference leg of `integration/gc_heap_growth_test.go`.\n#\n# Every container stays reachable from `groups`, so no collection can hand a slot back:\n# the arena has to have grown to answer this at all. The containers are built in groups\n# of 205 because one object owns 256 element words, and nothing here is aliased and then\n# rebound, which is the retention bug roadmap Gap R.257 files.\n\ndef make_group(size, base):\n    g = []\n    i = 0\n    while i \u003c size:\n        g.append([base + i, (base + i) * 2])\n        i = i + 1\n    return g\n\ndef fill(groups, count, size):\n    k = 0\n    while k \u003c count:\n        groups.append(make_group(size, k * size))\n        k = k + 1\n    return count\n\ngroups = []\nfill(groups, 5, 205)\nshown = 0\nfor gr in groups:\n    shown = shown + 1\nprint(shown, len(groups[0]))\n": {
     "stdout": "5 205\n",
     "hasStdout": true

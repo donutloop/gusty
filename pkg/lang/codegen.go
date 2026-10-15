@@ -6121,6 +6121,32 @@ func (g *irGen) gcClearRoot(b *strings.Builder, allocaName string) {
 // loop never terminated: the object under the variable had been reused). Because the
 // runtime dedups within a frame, pushing on every handle store costs a scan of a
 // handful of entries and cannot grow the stack.
+// storeModuleScalar emits the store that binds a MODULE-level name to an `i32` value, and reports
+// whether it emitted one. It exists because the read road (`g.value` on a `*Name`) prefers
+// `g.moduleSlots[name]` — the `@gy_mod_name` global that a compiled body reads when the module also
+// rebinds the name — so every road that BINDS that same name at module level has to write the same
+// slot or the program reads a value that no statement produced.
+//
+// Before ADR 0351 only the plain-assignment road asked the question, and the two roads that did not
+// each gave a different face to the same defect: an unrolled `for` wrote its loop variable to a
+// main-frame `%_y` that the reads never consulted (CPython's `10`, `20`, `20` became `2`, `2`, `2` at
+// exit 0), and `y += 3` wrote an `%_y` that had never been allocated at all, which `llc` rejected —
+// exit 2, the code the exit-code contract reserves for a compiler bug (roadmap Gap R.49).
+//
+// A name with no module slot is the ordinary case and returns false: the caller keeps its own alloca,
+// which is what a function body's local has always been and what a module temporary still is.
+func (g *irGen) storeModuleScalar(b *strings.Builder, name, val string) bool {
+	if g.inFunc {
+		return false
+	}
+	sym, ok := g.moduleSlots[name]
+	if !ok {
+		return false
+	}
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* @%s\n", val, sym))
+	return true
+}
+
 func (g *irGen) gcStoreHandle(b *strings.Builder, h, name string) {
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", h, name))
 	g.markBound(b, name) // a handle store binds the name too (ADR 0228)
@@ -8339,97 +8365,140 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool)
 			scalar[nm.Value] = scalar[nm.Value] && scalarValue(as.Value)
 		}
 	}
-	// Which names do bodies read?
+	// Which names do bodies read? — asked per SCOPE, not per program.
+	//
+	// A `def`'s parameter is a binding of that body, and a body's own assignment shadows the module for
+	// the whole body exactly as it does in the reference. So `def g(y): return y` reads its PARAMETER and
+	// says nothing whatsoever about a module-level `y`. Asked without the scope, this walk handed every
+	// name that any body mentioned a module global (`@gy_mod_y`) — including the names the module itself
+	// binds to a main-frame alloca — and the read road then consulted a slot no store ever visited:
+	// `y = 2` / `for y in [10, 20]: print(y)` printed `2` twice at the exit code of success, and `y += 3`
+	// stored to an `%_y` that had never been allocated and left `llc` rejecting the module at exit 2
+	// (roadmap Gap R.49, ADR 0351). A name still gets its global when ANY body reads it without binding
+	// it — `def g(y): pass` and `def h(): return y` in one program both need what `h` asks for.
 	reads := map[string]bool{}
-	var walk func(node interface{})
-	var mark func(e Expr)
-	mark = func(e Expr) {
+	var walk func(node interface{}, shadow map[string]bool)
+	var mark func(e Expr, shadow map[string]bool)
+	mark = func(e Expr, shadow map[string]bool) {
 		switch n := e.(type) {
 		case *Name:
-			if all[n.Value] {
+			if all[n.Value] && !shadow[n.Value] {
 				reads[n.Value] = true
 			}
 		case *BinOp:
-			mark(n.L)
-			mark(n.R)
+			mark(n.L, shadow)
+			mark(n.R, shadow)
 		case *UnOp:
-			mark(n.X)
+			mark(n.X, shadow)
 		case *Index:
-			mark(n.Obj)
-			mark(n.Idx)
+			mark(n.Obj, shadow)
+			mark(n.Idx, shadow)
 		case *Call:
-			mark(n.Fn)
+			mark(n.Fn, shadow)
 			for _, a := range n.Args {
-				mark(a)
+				mark(a, shadow)
 			}
 		case *Attr:
-			mark(n.Obj)
+			mark(n.Obj, shadow)
 		case *Tuple:
 			for _, el := range n.Elems {
-				mark(el)
+				mark(el, shadow)
 			}
 		}
 	}
-	walk = func(node interface{}) {
+	// outerScope copies the enclosing body's bindings into the set the inner body shadows with; a
+	// nested `def` therefore shadows what encloses it as well as what it binds itself, which is the
+	// scoping the reference applies (and the closures that depend on reading *through* it are refused,
+	// roadmap Gap R.68).
+	outerScope := func(shadow map[string]bool) map[string]bool {
+		inner := make(map[string]bool, len(shadow)+2)
+		for k := range shadow {
+			inner[k] = true
+		}
+		return inner
+	}
+	walk = func(node interface{}, shadow map[string]bool) {
 		switch n := node.(type) {
 		case *FuncDef:
-			for _, st := range n.Body {
-				walk(st)
+			inner := outerScope(shadow)
+			for _, pa := range n.Params {
+				inner[pa.Name] = true
 			}
+			for _, st := range n.Body {
+				moduleBindingNames(st, inner)
+			}
+			// A default expression is evaluated where the `def` statement is, not in the body, so it
+			// is asked of the enclosing scope: `STEP = 1` / `def f(a=STEP)` reads the module.
 			for _, pa := range n.Params {
 				if pa.Default != nil {
-					mark(pa.Default)
+					mark(pa.Default, shadow)
 				}
 			}
-		case *ClassDef:
 			for _, st := range n.Body {
-				walk(st)
+				walk(st, inner)
+			}
+		case *ClassDef:
+			// A class body's own names are attributes of the class, not bindings the methods shadow —
+			// the reference does not let a method read a class-level name either — so the methods are
+			// walked in the scope their own bodies create, over the shadow they inherit.
+			for _, st := range n.Body {
+				walk(st, shadow)
 			}
 		case []Stmt:
 			for _, st := range n {
-				walk(st)
+				walk(st, shadow)
 			}
 		case *AssignStmt:
-			mark(n.Value)
+			mark(n.Value, shadow)
 		case *AugAssignStmt:
-			mark(n.Value)
-			mark(n.Target)
+			mark(n.Value, shadow)
+			mark(n.Target, shadow)
 		case *ExprStmt:
-			mark(n.Expr)
+			mark(n.Expr, shadow)
 		case *ReturnStmt:
-			mark(n.Expr)
+			mark(n.Expr, shadow)
 		case *IfStmt:
-			mark(n.Cond)
-			walk(n.Then)
-			walk(n.Else)
+			mark(n.Cond, shadow)
+			walk(n.Then, shadow)
+			walk(n.Else, shadow)
 		case *WhileStmt:
-			mark(n.Cond)
-			walk(n.Body)
-			walk(n.Else)
+			mark(n.Cond, shadow)
+			walk(n.Body, shadow)
+			walk(n.Else, shadow)
 		case *ForStmt:
-			mark(n.Iter)
-			walk(n.Body)
-			walk(n.Else)
+			mark(n.Iter, shadow)
+			// The loop variable is a binding of the scope the loop lives in, so inside the body it is
+			// local: `for i in xs: print(i)` reads the element, not a module `i` of the same name.
+			body := outerScope(shadow)
+			moduleBindingNames(n, body)
+			walk(n.Body, body)
+			walk(n.Else, shadow)
 		case *TryStmt:
-			walk(n.Body)
+			body := outerScope(shadow)
+			moduleBindingNames(n, body)
+			walk(n.Body, body)
 			for _, arm := range n.Excepts {
-				walk(arm.Body)
+				walk(arm.Body, body)
 			}
-			walk(n.Finally)
+			walk(n.Finally, shadow)
 		case *WithStmt:
-			mark(n.Expr)
-			walk(n.Body)
+			mark(n.Expr, shadow)
+			body := outerScope(shadow)
+			moduleBindingNames(n, body)
+			walk(n.Body, body)
 		case *MatchStmt:
-			mark(n.Subject)
+			mark(n.Subject, shadow)
+			body := outerScope(shadow)
+			moduleBindingNames(n, body)
 			for _, c := range n.Cases {
-				walk(c.Body)
+				walk(c.Body, body)
 			}
 		}
 	}
 	for _, st := range prog.Stmts {
 		switch st.(type) {
 		case *FuncDef, *ClassDef:
-			walk(st)
+			walk(st, nil)
 		}
 	}
 	for nm := range reads {
@@ -19302,16 +19371,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.forgetTaggedBinding(nm.Value) // the union's own tag word is the record now (Gap R.142)
 				return nil
 			}
-			if !g.inFunc {
-				if sym, ok := g.moduleSlots[nm.Value]; ok {
-					// The module's state lives in a module global, so a body called later reads what
-					// the module assigned by then -- which is what "look the name up when the call
-					// runs" means once a frame's allocas are gone (ADR 0220, implemented compiled-side
-					// by ADR 0227). A main-frame alloca could not do that.
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* @%s\n", v, sym))
-					g.forgetTaggedBinding(nm.Value) // the module global holds the value now (Gap R.142)
-					return nil
-				}
+			if g.storeModuleScalar(b, nm.Value, v) {
+				// The module's state lives in a module global, so a body called later reads what
+				// the module assigned by then -- which is what "look the name up when the call
+				// runs" means once a frame's allocas are gone (ADR 0220, implemented compiled-side
+				// by ADR 0227). A main-frame alloca could not do that.
+				g.forgetTaggedBinding(nm.Value) // the module global holds the value now (Gap R.142)
+				return nil
 			}
 			isFloat := g.isFloat(n.Value)
 			// Whether the name had a slot before this statement is what separates the float that arrives
@@ -19527,7 +19593,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.floatVars = map[string]bool{}
 				}
 				g.floatVars[nm.Value] = true // `t += 1.5` as the first write had no table to note it in
-			} else {
+			} else if !g.storeModuleScalar(b, nm.Value, v) {
+				// A name the module rebinds has one slot, the global every read consults; writing a
+				// main-frame `%_y` here is the store that made `llc` reject the module for a slot that
+				// was never allocated (roadmap Gap R.49, ADR 0351).
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 			}
 			return nil
@@ -19795,6 +19864,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				bodyL := g.newLabel("for.list.body")
 				contL = g.newLabel("for.list.cont")
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, loopVarName(n.Var)))
+				// The loop variable is a binding like any other: a module name that some body reads
+				// lives in its global, and the alloca above (rooted, because an element can be a handle)
+				// is not the slot the reads consult (roadmap Gap R.49, ADR 0351).
+				g.storeModuleScalar(b, loopVarName(n.Var), v)
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
 				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 				// An unrolled loop mints no container for the elements it walks, but its body allocates every
@@ -20216,6 +20289,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", cbd, ctr))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", cbd, loopVarName(n.Var)))
+		// …and a module name that some body reads is bound in its global too, because that is the slot
+		// the read road consults (roadmap Gap R.49, ADR 0351).
+		g.storeModuleScalar(b, loopVarName(n.Var), cbd)
 		// The name now holds the counter, a number: whatever the slot carried before — including a root
 		// entry this loop registered on an earlier shape — stops being a handle the collector may follow
 		// (ADR 0181's root/tag pairing; roadmap Gap Q.2, ADR 0347).

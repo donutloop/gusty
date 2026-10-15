@@ -533,6 +533,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `MemoryError: … holds 1024 live containers` at exit 3 while CPython printed `5 205`; it is the
 		// row's Definition of done as one program, and the reference leg of the matrix.
 		"gc_heap_growth",
+		// A module name is bound in one slot whichever statement binds it (roadmap Gap R.49, ADR 0351).
+		// The program reuses one name across the module, a `def`'s parameter and a `for` target, which is
+		// the crossing that made the loop bind a main-frame alloca while every read consulted the name's
+		// module global — `y = 2` / `for y in [10, 20]: print(y)` printed `2`, `2` at exit 0 — and made
+		// `y += 3` store to a slot that had never been allocated, which `llc` rejected at exit 2.
+		"module_slot_scope",
 		// A key the language refuses to hash, at the three doors a dict is consulted through. The
 		// read said `KeyError: key not found`, the membership test answered `False` at exit 0 and the
 		// store built the entry and printed `{[1]: 2}`; the reference raises `TypeError: unhashable
