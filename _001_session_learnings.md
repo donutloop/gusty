@@ -10993,3 +10993,46 @@ again from inside the callee.
   `docs/operations.md` and `roadmap.md`'s snapshot row all carry the record's size. The rule the failure text
   prints is the rule to follow: *edit the cell to N, and if it was the FILE that changed, say so in the row it is
   recorded in* — which is why the Gap R.111 narrative now carries the 6879 → 6880 sentence.
+
+## Gap R.132 — the sign of −0.0 was being eaten by a "no-op" addition, and the fix's own regression was caught by the record (ADR 0349)
+
+Thirteen sites materialised a compile-time double as `%t = fadd double 0.0, <const>`. IEEE answers
+`−0.0 + +0.0` with `+0.0`, so `print(-0.0)` and `x = -0.0; print(x)` printed `0.0` at exit 0 while
+`print(0.0 * -1)` — computed by the target, not folded by the compiler — printed `-0.0`. One helper now owns
+those sites: sign bit set → `bitcast i64 <bits> to double`, otherwise the addition stays.
+
+- **A fix can unmask a bug rather than be the only story.** The runtime `abs` door computed its magnitude as
+  `select (fcmp olt %af, 0.0) %neg %af`. `fcmp olt` is false for −0.0, so the door handed −0.0 back where
+  CPython answers `0.0` — and *nothing had ever seen it*, because while the emitter destroyed the constant's
+  sign on the way to the store, the float box never held a −0.0 to ask about. ADR 0349 made the sign honest
+  and the drift adjudicator immediately reported `xs.append(-0.0) / print(abs(n))` as a NEW divergence: owed
+  `0.0`, got `-0.0`. Ship without a record leg and that is a new silently-wrong answer delivered inside a
+  commit whose subject line is about removing silently-wrong answers. The witness legs are not ceremony: one
+  of them is the only thing standing between this class of change and main.
+- **A hand-typed mask is a silent bug that can pass the test written for it.** The first version cleared
+  `0x7FEFFFFFFFFFFFFF` instead of `0x7FFFFFFFFFFFFFFF`. It still printed `0.0` for `abs(-0.0)` — the case the
+  fix was written for — and printed `2` for `abs(-4)`, `3` for `abs(7)`, `0` for `abs(True)`, because it had
+  eaten the exponent too. Two habits follow: state such a constant once, as a named test constant
+  (`signClearMaskBits`), and pin the *neighbouring families* of the door you touched (the int and bool rows
+  beside the float one), because the extra bits only show up on the values you did not think about.
+- **Two textual-IR/Go spelling traps that cost real time.** (1) LLVM's lexer reads a bare `0x…` token as a
+  *floating-point* constant whatever type token precedes it, so `bitcast i64 0x8000000000000000 to double` is
+  an `llc` failure — "floating point constant invalid for type" — on a module the emitter believed: exit 2,
+  ADR 0166's forbidden class. Integer positions take decimal. (2) The runtime-IR blocks in `codegen.go` are Go
+  **raw strings**; a comment inside one that contains a backtick ends the literal and the package stops
+  compiling with a syntax error pointing at IR text. Neither is in any doc I had read; both belong to the
+  file, not to a chat log.
+- **Promotion ages a contract table.** `integration/bool_element_test.go` enumerates the bool shapes that
+  must *still* diverge (exit 6) and named this probe. The day the debt is paid that row is a green test
+  asserting nothing — the file already says so about `probe_bool_chosen_by_an_operator` and
+  `probe_builtin_without_arguments`, and said it correctly about a third row only after this cycle. When you
+  promote a program, grep for the tables that named it as a debt.
+- **`-0.0` in Go source is the constant `0`.** Negating an untyped constant is still that constant, so a test
+  table written `{-0.0, …}` silently asserts the unsigned case. Signed zeros in tests come from
+  `math.Float64frombits(0x8000000000000000)`.
+- **The record's size moved twice in one session** (6879 → 6880 → 6881) as two programs were promoted, and
+  both times the guard that recomputes it — `TestTheArtifactTableCountsAreTheFilesOwn`,
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered`, `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn`
+  — named the exact cells (`AGENTS.md`, `docs/operations.md`, `roadmap.md`, and the matrix/oracle tallies). The
+  rule the failure text prints is the rule: edit the cell to the number the guard read, and say in the row
+  that the file changed.

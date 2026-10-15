@@ -111,12 +111,17 @@ func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 		{"probe_ternary_container_arms", 6},        // Gap R.128 (the compiled leg rejects the module)
 		{"probe_round_digit_count_kind_unseen", 6}, // Gap R.129 (the compiled leg's leg)
 		{"probe_float_loop_variable_as_number", 6}, // Gap R.130 (the compiled leg's leg)
-		{"probe_negative_zero_constant", 6},        // Gap R.132 (the compiled renderer)
+		// probe_negative_zero_constant left this table with ADR 0349: the emitter states a signed constant
+		// by its IEEE bits instead of adding +0.0 to it (which IEEE answers for -0.0 with +0.0), so all four
+		// lines print CPython's -0.0 and the program is parity surface (conformanceStandalone). A contract
+		// row left here expecting exit 6 for a paid debt passes forever without asserting anything — the
+		// rule this file already wrote for probe_bool_chosen_by_an_operator and probe_builtin_without_arguments.
+		// The runtime abs door's own half of the same promise is pinned by
+		// TestTheRuntimeAbsDoorClearsTheSignBit, where it can fail rather than merely not-contradict.
+		//
 		// probe_builtin_without_arguments left this table when ADR 0287 paid it: int(), float(), bool()
-		// and str() are constructors answering 0, 0.0, False and the empty text on all three legs, so the
-		// program is parity surface now (conformanceStandalone). A contract row left here expecting exit 6
-		// for a paid debt passes forever without asserting anything — the rule ADR 0261 wrote for
-		// probe_bool_chosen_an_operator and ADR 0260 for the dict comprehension.
+		// and str() are constructors answering 0, 0.0, False and the empty text on every leg, so the
+		// program is parity surface now (conformanceStandalone) — the same reason as the paragraph above.
 		{"probe_slot_order_in_a_ternary", 7}, // Gap R.119 (CPython raises, so there is no opinion)
 	} {
 		src := readProgramSrc(tc.name)

@@ -2731,6 +2731,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_negative_zero_constant",
+        "name": "probe_negative_zero_constant.gy",
+        "source": "# What CPython prints for all four lines here (python3, 3.12):\n#\n#   -0.0\n#   -0.0\n#   -0.0\n#   -0.0\n#\n# Negative zero is a float with a sign, and Python renders it with that sign. This program is the\n# boundary between the two roads a compiled double can arrive by: the first two lines are values the\n# COMPILER wrote (a literal, and a name bound to one), the last two are values the TARGET computes (a\n# product, a rounding). The sign used to survive only on the second road, because the emitter\n# materialised a folded constant with `fadd double 0.0, \u003cconst\u003e` and IEEE answers -0.0 + +0.0 with\n# +0.0 — the minus was gone before the module existed, and `rt_fmt_double`, which renders the sign\n# correctly, was never handed anything to render.\n#\n# All four lines print -0.0 on the compiled backend now (roadmap Gap R.132, ADR 0349): a signed\n# constant is stated by its IEEE bits, so one value's property is one value's property whoever wrote\n# it. The neighbour this row keeps beside it is the sign-removing side — `abs(-0.0)`, `-(-0.0)` and\n# `abs()` over a slot the run time owns all print 0.0 — pinned in pkg/lang/negative_zero_test.go,\n# because a sign that finally survives has to be removable on purpose and not by accident.\nprint(-0.0)\ny = -0.0\nprint(y)\nprint(0.0 * -1)\nprint(round(-0.5, 0))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
+      "python_ok": true,
+      "python_stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_chosen_by_an_operator",
         "name": "probe_bool_chosen_by_an_operator.gy",
         "source": "# What CPython prints for every line here (python3, 3.12):\n#\n#   True       (max chooses the verdict)\n#   False      (min chooses the verdict)\n#   True       (the tie keeps the FIRST candidate — `max([True, 1])`)\n#   1          (…and `max([1, True])` keeps the number, because the comparison is strict)\n#   0          (`min([0, False])`, the same tie the other way round)\n#   True       (the varargs spelling chooses the same candidate)\n#   False\n#   True       (str() of the chosen candidate — one renderer, one rule)\n#   [True]     (the chosen candidate stored in a container slot)\n#   2          (the number is still underneath: max([True, 0]) + 1)\n#   1.5        (a verdict beside a double: the double wins, and prints as a double)\n#   1          (`and` hands back the operand, and CPython prints its number — this row must NOT move)\n#\n# `min` and `max` choose one of their candidates, so the answer's kind is the chosen candidate's own\n# kind. ADR 0256 made the fold return the candidate rather than the comparison; ADR 0257/0259 made a\n# verdict printable as a value and as a slot; what was missing was the candidate's kind crossing the\n# comparison with it, and the compiled leg printed the 0/1 underneath — `1` where CPython prints `True`\n# (roadmap Gap R.117, ADR 0261).\n#\n# The tie rows are the ones no “are the elements bools?“ answer can produce, and the last row is the\n# constraint: an operand CPython prints as a number has to keep printing as a number.\nprint(max([True, 0]))\nprint(min([False, 1]))\nprint(max([True, 1]))\nprint(max([1, True]))\nprint(min([0, False]))\nprint(max(True, 0))\nprint(min(False, 1))\nprint(str(max([True, 0])))\nprint([max([True, 0])])\nprint(max([True, 0]) + 1)\nprint(max([True, 1.5]))\nys = [True, 1]\nprint(ys[0] and ys[1])\n",
@@ -4068,40 +4089,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_negative_zero_constant",
-        "name": "probe_negative_zero_constant.gy",
-        "source": "# What CPython prints for all four lines here (python3, 3.12):\n#\n#   -0.0\n#   -0.0\n#   -0.0\n#   -0.0\n#\n# Negative zero is a float with a sign, and Python renders it with that sign. The compiled leg drops\n# the sign wherever the value is one the *compiler* wrote and keeps it wherever the target computed it:\n# the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e`, and IEEE says\n# -0.0 + +0.0 = +0.0 — so the minus is gone before the module exists, and the runtime formatter\n# (`rt_fmt_double`, which handles the sign correctly) is never given anything to render. The lines\n# below are the boundary: a literal, and a name bound to that literal, lose it; a product the target\n# multiplies keeps it, and so does a rounding — both roads of it, since ADR 0263's digit-count fold\n# hands back the constant instead of re-additioning it.\n#\n# One idiom, thirteen sites, one answer (roadmap Gap R.132). Same shape as ADR 0236's lesson about\n# round's ties: two renderers of one value, one rule, implemented twice — owned by L11.6.\nprint(-0.0)\ny = -0.0\nprint(y)\nprint(0.0 * -1)\nprint(round(-0.5, 0))\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
-        "ref": "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
-        "pins": [
-          {
-            "backend": "aot",
-            "stdout": "0.0\n0.0\n-0.0\n-0.0\n"
-          }
-        ]
-      },
-      "aot_ok": true,
-      "aot_stdout": "0.0\n0.0\n-0.0\n-0.0\n",
-      "python_ok": true,
-      "python_stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
-      "oracle_ref": "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_ternary_container_arms",
         "name": "probe_ternary_container_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers reaches the assembler with the containers themselves in the\n# choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position, so\n# the compiled leg exits 2 on a program whose answer the interpreter and the reference both print in\n# one line. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time —\n# and the answer is the tagged value word's handle, chosen as a value rather than as a global name\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# Both legs are pinned: the compiled one because the toolchain rejection is what has to be visible in\n# the ledger, and the interpreter one because the answer it prints is the answer the compiled leg owes.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\n",
@@ -4774,11 +4761,11 @@
     }
   ],
   "rows": 193,
-  "skipped": 35,
-  "pass": 158,
+  "skipped": 34,
+  "pass": 159,
   "fail": 0,
-  "oracle_match": 143,
-  "oracle_debt": 29,
+  "oracle_match": 144,
+  "oracle_debt": 28,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

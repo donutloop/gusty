@@ -1244,8 +1244,17 @@ print(f + 1.0)`)
 		t.Fatalf("float comparison should emit fcmp, got:\n%s", ir)
 	}
 	ir = llcCompiles(t, `print(-2.5)`)
-	if !strings.Contains(ir, "-2.5e+00") {
-		t.Fatalf("print(-2.5) should emit a negative double literal, got:\n%s", ir)
+	// The sign reaches the module intact, and the shape is now the exact bit pattern rather than a
+	// `-2.5e+00` literal: the materialisation used to be `fadd double 0.0, <const>`, which is exact for
+	// every value except a signed zero, and that one was enough to make `print(-0.0)` print `0.0` at
+	// exit 0 (roadmap Gap R.132, ADR 0349). 0xC004000000000000 is -2.5 — the sign bit is visible in the
+	// emitted word, which is the property the old `-2.5e+00` substring stood for.
+	if !strings.Contains(ir, "bitcast i64 13836183955189006336 to double") {
+		t.Fatalf("print(-2.5) should materialise the double by its exact bits (0xC004000000000000), got:\n%s", ir)
+	}
+	// And the idiom that ate the sign may not come back: no signed constant is ever handed to `+ 0.0`.
+	if strings.Contains(ir, "fadd double 0.0, -") {
+		t.Fatalf("a signed double must not be materialised by adding +0.0 — that is how -0.0 lost its sign (Gap R.132):\n%s", ir)
 	}
 	ir = llcCompiles(t, `print(int(3.7))`)
 	if !strings.Contains(ir, "i32 3") {

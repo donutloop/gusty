@@ -2370,6 +2370,14 @@ a container slot writes its tag with it (ADR 0187), including the builders a cal
   compared with a `float` is one question about two values, not a comparison of representations;
   the interpreter used to answer `1 == 1.0` with False while answering `1.0 == 1` with True.
   This coercion reaches only numbers: `1 == [1]` and `1.0 == "a"` are False, not errors.
+- **A zero carries the sign the program gave it, and the sign-removing operations remove it** (ADR 0349,
+  closing roadmap Gap R.132): `print(-0.0)` writes `-0.0`, and so does `x = -0.0` / `print(x)`, a container
+  slot, `str(-0.0)`, a loop binding and a function's parameter — on the compiled backend, where a folded
+  constant used to arrive as `+0.0` because the emitter materialised it by adding zero to it and IEEE answers
+  −0.0 + +0.0 with +0.0. Meanwhile `abs(-0.0)`, `-(-0.0)` and `abs(n)` over a slot the run time owns all write
+  `0.0`, exactly as CPython does: the sign is one value's property, stated by its IEEE bits on the way out of
+  the compiler and cleared bit-by-bit by the runtime's signless `abs` — not asked about with a comparison
+  against zero, which is the question that is false for `-0.0`.
 - Lists compare position by position; sets and dicts by containment — a positional walk would make
   `{1, 2} == {2, 1}` False. Because element equality is this same predicate, `[1] == [1.0]` and
   `{"a": 1} == {"a": 1.0}` are True too.

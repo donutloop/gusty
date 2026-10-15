@@ -4215,7 +4215,7 @@ Two exit-code decisions, both ADR 0166's and neither obvious:
 
 And one small trap in the fold: the first version emitted `%t = fadd double 0.0, <const>` to get a name for
 the constant, which is where `round(-0.5, 0)` lost the sign of its zero. A constant is a value; it travels as
-itself. The *literal* spelling of that sign question is still broken and is Gap R.132 below.
+itself. The *literal* spelling of that sign question was paid later, by ADR 0349 (Gap R.132 below).
 
 What is left is not the rounding. `round(x, ndigits)` follows the kind of `x`, and the compiled backend can
 only follow a kind the module can see — which is why Gaps R.129 and R.130 are filed with each engine's number
@@ -6231,14 +6231,14 @@ contract row still expecting exit 6 for a paid debt passes forever while asserti
 `panic: runtime error: index out of range [0] with length 0`. Suite green; 164-file sweep against the pre-cycle
 binary moved nothing except the promoted probe; exit-2 coverage is now a 21-spelling integration table rather
 than a hope.
-### Gap R.132 — a negative zero the compiler wrote has no sign (OPEN, measured landing ADR 0263)
+### Gap R.132 — closed by ADR 0349: a negative zero the compiler wrote keeps its sign
 
 ```gusty
-print(-0.0)             # CPython -0.0 · --interp -0.0 · --aot 0.0
+print(-0.0)             # CPython -0.0 · ADR 0263-era --aot 0.0 · now -0.0
 y = -0.0
-print(y)                # CPython -0.0 · --interp -0.0 · --aot 0.0
-print(0.0 * -1)         # CPython -0.0 · --interp -0.0 · --aot -0.0
-print(round(-0.5, 0))   # CPython -0.0 · --interp -0.0 · --aot -0.0
+print(y)                # CPython -0.0 · ADR 0263-era --aot 0.0 · now -0.0
+print(0.0 * -1)         # CPython -0.0 · every leg -0.0
+print(round(-0.5, 0))   # CPython -0.0 · every leg -0.0
 ```
 
 The boundary is the interesting part, and it is one instruction wide. Where the *target* computes the value
@@ -6263,6 +6263,43 @@ here is the other twelve sites, and the fix is the same one-line idea applied to
 Recorded in `programs/probe_negative_zero_constant.gy`, whose four lines are chosen as the boundary rather
 than as a list of complaints: two lose the sign, two keep it, and the day all four keep it the row leaves the
 ledger.
+
+**That day is 2026-10-15, and the row paid with ADR 0349.** One helper now owns the thirteen sites —
+`materialiseFloat(b, t, v)` in `pkg/lang/codegen.go` — and its rule is the sign bit: a value with its sign set
+is written as `bitcast i64 <bits> to double`, the number stated rather than derived, on the road ADR 0264
+already used for the two values a decimal spelling cannot write. The unsigned cases keep the addition, because
+`+0.0 + x` is `x` exactly there and no pinned IR had to be re-earned for a promise the row does not make. The
+bits are written in decimal: LLVM's lexer reads a bare `0x…` as a *floating-point* constant whatever type
+precedes it, and `bitcast i64 0x8000000000000000 to double` is an llc failure on a module the emitter believed
+— exit 2, which ADR 0166 forbids.
+
+Two things the row's own analysis had not counted, and both were the witness legs' discovery rather than the
+fix's.
+
+**The runtime abs door was wrong in the same way, and its bug had been hidden by this row's.** `abs` over a
+slot the run time owns is `rt_num_arith`'s signless call, and its magnitude was
+`select (fcmp olt %af, 0.0) %neg %af` — `fcmp olt` is *false* for −0.0, so the door handed −0.0 back where
+CPython and the record answer `0.0`. Nobody could see it while every constant's sign was being destroyed
+upstream: the box never held a −0.0 to ask about. `xs = []` / `xs.append(-0.0)` / `n = xs[0]` /
+`print(abs(n))` went from the record's `0.0` to a wrong `-0.0` the moment ADR 0349 landed, and the drift
+adjudicator caught it as a NEW divergence. The magnitude is now the operand's bits with the sign cleared —
+`and i64 %abits, 9223372036854775807` — which is what `llvm.fabs` means, leaves NaN's payload alone, and is
+false-proof in the way a comparison against zero is not.
+
+**A hand-typed mask is a bug that prints nothing.** The first version of that mask was
+`0x7FEFFFFFFFFFFFFF` rather than `0x7FFFFFFFFFFFFFFF`. It still printed `0.0` for `abs(-0.0)` — clearing more
+bits than intended still clears the sign — and printed `2` for `abs(-4)`, `3` for `abs(7)` and `0` for
+`abs(True)`, because it had also eaten the exponent. A test that pinned only the case the fix was written for
+would have gone green. `TestAConstantNegativeZeroKeepsItsSignWhenPrinted` therefore pins the int and bool
+families of the same door beside the float one, and `TestTheRuntimeAbsDoorClearsTheSignBit` pins the mask by
+name.
+
+`programs/probe_negative_zero_constant.gy` left the debt ledger for the parity corpus (its row deleted, the
+program recorded from the reference through `tools/recmerge`: record 6880 → 6882, the second entry the
+program's header rewritten to describe the paid debt rather than the debt), and
+`integration/bool_element_test.go`'s "these shapes must still diverge" table lost its row for it, following
+the rule that file already wrote for `probe_bool_chosen_by_an_operator` and `probe_builtin_without_arguments`:
+a contract row left pointing at a paid debt passes forever without asserting anything.
 
 <a id="gap-r-133"></a>
 ### Gap R.133 — the whole number past the compiled `int` word: the guard raises, and the two engines disagree (OPEN, owner L12.12, measured landing ADR 0264)

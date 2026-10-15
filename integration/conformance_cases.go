@@ -411,6 +411,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// here (roadmap Gap R.111, ADR 0348; the program left the debt ledger with that row, the same
 		// promotion rule ADR 0259 used for the container slot).
 		"probe_bool_through_a_call",
+		// A negative zero keeps its sign whoever wrote it, both legs on one source: the sign is a
+		// property of the number and not of the road that made it, so the emitter states a signed
+		// constant by its IEEE bits instead of adding +0.0 to it (which IEEE answers for -0.0 with
+		// +0.0) and the one runtime renderer that handles signs — `rt_fmt_double` — is finally handed
+		// the value (roadmap Gap R.132, ADR 0349; the program left the debt ledger with that row, the
+		// promotion rule ADR 0257 and ADR 0259 used for the bool renderings before this one).
+		"probe_negative_zero_constant",
 		// The operator that chooses an operand, both legs on one source: `max([True, 1])` is the
 		// verdict and `max([1, True])` is the number, because the strict comparison keeps the first
 		// candidate and the chosen candidate decides what prints — str(), a container slot, an f-string
@@ -763,10 +770,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// a literal container of doubles used as a number multiplies the element handle (roadmap Gap
 		// R.130, ADR 0261's read paid for the subscript, the loop binding never followed).
 		"probe_float_loop_variable_as_number",
-		// A negative zero the *compiler* wrote loses its sign on the way to the printer (the folded
-		// constant is materialised with `fadd double 0.0, …`), while one the program computed keeps
-		// it (roadmap Gap R.132, ADR 0263).
-		"probe_negative_zero_constant",
 		// The ternary's *number* half is paid (ADR 0262 emitted the double `select`) and so is its
 		// TEXT half (ADR 0290 emitted the i32 select over interned indices, and taught the print
 		// road and the `strFuncs` pre-scan to ask about a ternary's arms). What stays filed is the
@@ -1074,10 +1077,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
 		ref:    "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0\n1\n0.0\n"}}},
-	"programs/probe_negative_zero_constant": {oracle: lang.OracleDebt,
-		reason: "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, <const>` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
-		ref:    "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0.0\n0.0\n-0.0\n-0.0\n"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",

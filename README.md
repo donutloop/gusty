@@ -131,6 +131,13 @@ projection of them
 interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
 definition documents the numbering (ADR 0182).
 
+A float keeps the sign the program gave it, whoever wrote it: `print(-0.0)` writes `-0.0` — through a binding,
+a container slot, `str()` and a function's parameter too — while the operations that remove a sign remove it,
+so `abs(-0.0)`, `-(-0.0)` and `abs(n)` over a slot the run time owns all write `0.0`. A signed constant is
+stated by its IEEE bits on its way out of the compiler (the old idiom added `+0.0` to it, which IEEE answers
+for `−0.0` with `+0.0`), and the runtime's signless `abs` clears the bit rather than asking whether the value
+is below zero — the question that is false for `-0.0` (ADR 0349, closing roadmap Gap R.132).
+
 A compiled container can mix numbers, strings and `None`: `print([1, "a", None])` prints
 `[1, 'a', None]` on the compiled backend, because each element slot carries its own tag (ADR 0184). Dicts
 and sets take the same rule, so `print({"a": 1, "b": "x", "c": None})` and `print({1, "a", None})`
@@ -307,8 +314,8 @@ safe answer, and the reason it can run before the front end's own tools are aske
 is the honest one that was already written. `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`, `g = d2` / `g(4)`
 is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min` with a `key=lambda` likewise —
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
-now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, and to 6880 when
-Gap R.111's promoted program was recorded the same way — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
+now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
+Gap R.111's promoted program was recorded the same way, and to 6882 with Gap R.132's — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
 the tests now hold shut: names were minted from `%p`, which Go randomises per process, so one program compiled to

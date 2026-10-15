@@ -5,17 +5,19 @@
 #   -0.0
 #   -0.0
 #
-# Negative zero is a float with a sign, and Python renders it with that sign. The compiled leg drops
-# the sign wherever the value is one the *compiler* wrote and keeps it wherever the target computed it:
-# the emitter materialises a folded float constant with `fadd double 0.0, <const>`, and IEEE says
-# -0.0 + +0.0 = +0.0 — so the minus is gone before the module exists, and the runtime formatter
-# (`rt_fmt_double`, which handles the sign correctly) is never given anything to render. The lines
-# below are the boundary: a literal, and a name bound to that literal, lose it; a product the target
-# multiplies keeps it, and so does a rounding — both roads of it, since ADR 0263's digit-count fold
-# hands back the constant instead of re-additioning it.
+# Negative zero is a float with a sign, and Python renders it with that sign. This program is the
+# boundary between the two roads a compiled double can arrive by: the first two lines are values the
+# COMPILER wrote (a literal, and a name bound to one), the last two are values the TARGET computes (a
+# product, a rounding). The sign used to survive only on the second road, because the emitter
+# materialised a folded constant with `fadd double 0.0, <const>` and IEEE answers -0.0 + +0.0 with
+# +0.0 — the minus was gone before the module existed, and `rt_fmt_double`, which renders the sign
+# correctly, was never handed anything to render.
 #
-# One idiom, thirteen sites, one answer (roadmap Gap R.132). Same shape as ADR 0236's lesson about
-# round's ties: two renderers of one value, one rule, implemented twice — owned by L11.6.
+# All four lines print -0.0 on the compiled backend now (roadmap Gap R.132, ADR 0349): a signed
+# constant is stated by its IEEE bits, so one value's property is one value's property whoever wrote
+# it. The neighbour this row keeps beside it is the sign-removing side — `abs(-0.0)`, `-(-0.0)` and
+# `abs()` over a slot the run time owns all print 0.0 — pinned in pkg/lang/negative_zero_test.go,
+# because a sign that finally survives has to be removable on purpose and not by accident.
 print(-0.0)
 y = -0.0
 print(y)

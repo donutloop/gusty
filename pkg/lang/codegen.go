@@ -3476,10 +3476,15 @@ have:
   %c3 = select i1 %o3, double %neg, double %c2
   %c4 = select i1 %o4, double %fl, double %c3
   %c5 = select i1 %o5, double %md, double %c4
-  ; abs is the signless call: a number out, or the reference's raise. The magnitude is the lifted
-  ; value with its sign removed, which is the honest test for -0.0 too (abs answers 0.0).
-  %isnegv = fcmp olt double %af, 0.000000e+00
-  %absv = select i1 %isnegv, double %neg, double %af
+  ; abs is the signless call: a number out, or the reference's raise. The magnitude is the operand's
+  ; bits with the sign cleared — NOT an fcmp-olt-against-zero with a select, which is false for -0.0
+  ; and therefore handed -0.0 back where CPython answers 0.0. Nothing noticed while the constant's sign
+  ; was being eaten upstream (Gap R.132's fadd-double-zero idiom turned the box's -0.0 into +0.0 before
+  ; it was stored); with ADR 0349 stating the sign honestly, the door's own rule had to become the
+  ; honest one. Clearing the bit is what llvm.fabs means, and it leaves NaN's payload alone.
+  %abits = bitcast double %af to i64
+  %amagbits = and i64 %abits, 9223372036854775807
+  %absv = bitcast i64 %amagbits to double
   %r = select i1 %o6, double %absv, double %c5
   %hi = fcmp oge double %r, 2147483648.000000e+00
   %lo = fcmp olt double %r, -2147483648.000000e+00
@@ -7405,6 +7410,33 @@ func floatConst(v float64) string {
 	return f
 }
 
+// materialiseFloat writes one compile-time double into a register, and the reason it exists is the
+// one number the obvious idiom gets wrong. All thirteen sites used to say
+// `fadd double 0.0, <const>` — a no-op addition to land a constant in an SSA value — and IEEE answers
+// `-0.0 + +0.0` with `+0.0`. The sign of a negative zero the COMPILER wrote was therefore gone before
+// the module existed: `print(-0.0)` printed `0.0` and `x = -0.0` / `print(x)` printed `0.0`, both at
+// exit 0, while a product the target itself multiplied kept its sign because nothing folded it
+// (roadmap Gap R.132, ADR 0349 — the runtime formatter `rt_fmt_double` renders the sign correctly and
+// was never handed the value).
+//
+// A value with its sign bit set takes the road ADR 0264 opened for the two values a decimal spelling
+// cannot write: the IEEE bit pattern, bitcast. It states the number and nothing else — no fold, no
+// rounding, no addition that can decide what the sign meant. Every other value keeps the addition,
+// because `+0.0 + x` is `x` exactly for every finite value, infinity and NaN, and a large body of
+// pinned IR knows that shape; the promise this makes is about the sign, not about the idiom.
+func materialiseFloat(b *strings.Builder, t string, v float64) {
+	if math.Signbit(v) {
+		// Decimal, not `0x…`: LLVM's lexer reads a bare hex token as a *floating-point* constant
+		// whatever type token precedes it, and `bitcast i64 0x8000000000000000 to double` dies in
+		// llc with "floating point constant invalid for type" — an assembler failure on a module
+		// the emitter believed, which is exit 2 and the one outcome this compiler is never allowed
+		// to produce (ADR 0166's rule, read by ADR 0264's hex-for-double exception).
+		fmt.Fprintf(b, "  %s = bitcast i64 %d to double\n", t, math.Float64bits(v))
+		return
+	}
+	fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(v))
+}
+
 // powerAnswersDouble is the `**` answer kind, asked of the same table the arithmetic roads use. It is a
 // method rather than a call into power_kind.go's free function because the answer depends on what the
 // RECORDS know about a name: `x ** -1` where `x = 2` is the float 0.5, and a name this pass cannot name is
@@ -7975,7 +8007,8 @@ func (g *irGen) emitScalarMinMax(b *strings.Builder, args []Expr, wantMin bool, 
 	if v, isF, ok := g.minMaxFoldedWinner(args, wantMin); ok {
 		if isF {
 			t := g.newTmp()
-			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(v))
+			materialiseFloat(b, t, v)
+
 			return t, nil
 		}
 		return fmt.Sprintf("%d", int64(v)), nil
@@ -8513,7 +8546,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	switch n := e.(type) {
 	case *FloatLit:
 		t := g.newTmp()
-		fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(n.Value))
+		materialiseFloat(b, t, n.Value)
+
 		return t
 	case *CondExpr:
 		// The double domain's ternary: `select i1 %c, double %a, double %b` — the instruction roadmap
@@ -8660,7 +8694,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					}
 					if okAll {
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
+						materialiseFloat(b, t, total)
+
 						return t
 					}
 				}
@@ -8686,7 +8721,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					}
 					if okAll && len(fe) > 0 {
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fe[numericWinner(fe, id.Value == "min")]))
+						materialiseFloat(b, t, fe[numericWinner(fe, id.Value == "min")])
+
 						return t
 					}
 					// The elements fold to numbers even when not every one of them is a float
@@ -8698,7 +8734,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 							return ""
 						}
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(vals[best]))
+						materialiseFloat(b, t, vals[best])
+
 						return t
 					}
 				}
@@ -8711,7 +8748,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 							return ""
 						}
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(v))
+						materialiseFloat(b, t, v)
+
 						return t
 					}
 					allDouble := true
@@ -8762,7 +8800,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 						}
 					}
 					t := g.newTmp()
-					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(best))
+					materialiseFloat(b, t, best)
+
 					return t
 				}
 			}
@@ -8834,7 +8873,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			// so nothing downstream can tell the two apart.
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 0 && !g.builtinShadowed(id.Value) {
 				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(0))
+				materialiseFloat(b, t, 0)
+
 				return t
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
@@ -8850,7 +8890,8 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				case *StrLit:
 					if fv, okF := floatFromText(a.Value); okF {
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
+						materialiseFloat(b, t, fv)
+
 						return t
 					}
 					// The fold has no answer, which is not the same as the operand having no number: the
@@ -8859,7 +8900,7 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					// silent sibling of the refusal the i32 road used to print).
 					g.constantTrap(b, "ValueError", floatLiteralSentence(a.Value), n.Span())
 					t := g.newTmp()
-					fmt.Fprintf(b, "  %s = fadd double 0.0, 0.0\n", t)
+					materialiseFloat(b, t, 0)
 					return t
 				}
 				if kind := g.unconvertibleArg(arg); kind != "" {
@@ -8868,7 +8909,7 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					// printed an empty line for a program the reference stops (roadmap Gap R.37, ADR 0326).
 					g.constantTrap(b, "TypeError", convertArgumentSentence("float", kind), n.Span())
 					t := g.newTmp()
-					fmt.Fprintf(b, "  %s = fadd double 0.0, 0.0\n", t)
+					materialiseFloat(b, t, 0)
 					return t
 				}
 				t := g.newTmp()
@@ -15561,7 +15602,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					total += fv
 				}
 				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
+				materialiseFloat(b, t, total)
+
 				return t, nil
 			}
 			// Some element is computed at runtime and the answer is a float: there is no i32
@@ -15711,7 +15753,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					fv = -fv
 				}
 				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
+				materialiseFloat(b, t, fv)
+
 				return t, nil
 			}
 		}
