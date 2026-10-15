@@ -1081,8 +1081,8 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 6879 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (338 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden.json` | 6880 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (339 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (22 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (7 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
 
@@ -2086,10 +2086,12 @@ the expression that produced it, which the compiled backend ask of one shared AS
 the storage that holds it (ADR 0257). Where the expression is gone — a slot in a container — the slot
 carries the answer itself: an element whose value is a verdict is tagged `bool`, so `print([True, 1])`
 is `[True, 1]`, `print({"k": True})` is `{'k': True}`, `print({True, 1})` is `{True}` and the ordering
-trap names `'bool'`, on the compiled backend (ADR 0259, closing Gap R.112). What neither rule reaches is a
-value crossing a binding the caller's expression does not travel with: **a bool passed to a function
-prints `1`** (Gap R.111), because the parameter is a fresh slot and the tag would have to ride with the
-argument.
+trap names `'bool'`, on the compiled backend (ADR 0259, closing Gap R.112). A verdict crossing a binding the
+caller's expression does not travel with is answered by the **call sites**: the front end reads every call to a
+callable before its body is emitted, and a parameter every call fills with a verdict is a verdict to the print,
+`str`, `repr`, f-string, container and `--json` roads — so `def show(f): print(f)` / `show(True)` prints `True`
+(ADR 0348, closing Gap R.111). A position the call sites contradict — `show(True)` and `show(1)` — keeps
+yesterday's answer, the number, until a tag rides with the argument (Gap R.270).
 
 What L11.1 has opened since, in the LLVM backend, is element-level tagging: a mixed list
 literal tags each slot, `xs.append(v)` appends payload-and-tag together

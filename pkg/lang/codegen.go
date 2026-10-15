@@ -4143,12 +4143,17 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	if err != nil {
 		return "", nil, err
 	}
+	// The verdict facts of this program, read once: which parameter every call site fills with a
+	// bool, and which name a body's own bindings hold as a bool. Both are AST questions, and both
+	// are asked before any IR exists so a define and its call sites cannot disagree about what a
+	// name is (roadmap Gap R.111, L11.1's remaining bool item).
+	verdict := verdictFacts(prog)
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		boolVars:    map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, calleeBoolVars: verdict.of, strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
@@ -4832,6 +4837,16 @@ type irGen struct {
 	// strParamOf maps a function name to the parameter indices that receive strings; the
 	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
 	strParamOf map[string]map[int]bool
+
+	// calleeBoolVars is the same reading seen from the calling side: what a called body's own
+	// bindings hold, so `def isit(): b = True; return b` answers True and not 1 (Gap R.111).
+	calleeBoolVars func(string) map[string]bool
+
+	// boolParamOf is the verdict twin of strParamOf: which parameters every call site in the
+	// program fills with a bool, read from the AST by boolArgKinds. A position contradicted by
+	// any call site is absent, and the body then prints the number it always printed
+	// (roadmap Gap R.111, ADR 0257's unfinished edge, L11.1's remaining bool item).
+	boolParamOf map[string]map[int]bool
 	// strFuncs names the functions that return a string, so `print(echo("yo"))` prints text
 	// and `xs.append(make_key())` stores an interned element rather than a raw index.
 	strFuncs map[string]bool
@@ -5401,6 +5416,18 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	defer doneMethodBody()
 	for i := 1; i < len(fd.Params); i++ {
 		g.params[fd.Params[i].Name] = fmt.Sprintf("%%p%d", i)
+		// A method parameter every call site hands a verdict to is a verdict inside the body, by the
+		// same reading `funcDef` applies to a `def`: the call site saw `z.m(True)`, and the body's
+		// `print(f)` asks the print road a question about a name it never assigned
+		// (roadmap Gap R.111, L11.1's remaining bool item).
+		if g.boolParamOf[fd.Name][i] {
+			if g.boolVars == nil {
+				g.boolVars = map[string]bool{}
+			}
+			g.boolVars[fd.Params[i].Name] = true
+		} else {
+			delete(g.boolVars, fd.Params[i].Name)
+		}
 	}
 	g.selfClass = className
 	// A method is a call like any other, so it needs what `funcDef` gives a `def`: its own
@@ -16678,7 +16705,7 @@ func (g *irGen) forgetVarBool(name string) {
 // pkg/lang/boolvalue.go, so both legs cannot disagree about what is a bool
 // (roadmap L11.1 step 2, ADR 0257).
 func (g *irGen) printsAsBool(e Expr) bool {
-	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate})
+	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate, CalleeVars: g.calleeBoolVars})
 }
 
 // instanceOperand is the compiled side of the dunder question the bool predicate asks:
@@ -18118,6 +18145,24 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	for i, p := range fd.Params {
 		if g.strParamOf[g.fnName(fd)][i] {
 			g.internedVars[p.Name] = true
+		}
+		// A parameter every call site hands a verdict to behaves inside the body exactly like a
+		// name the body itself assigned a verdict to. The print, str, repr, container and --json
+		// roads all ask IsBoolExpr of the expression in front of them, and inside a body the
+		// argument *is* the name — which is why `def show(f): print(f)` / `show(True)` answered 1:
+		// the table had nothing to say about a name the body never assigned. The call site read
+		// the verdict; this is where the body finds out (roadmap Gap R.111, L11.1's bool item).
+		if g.boolParamOf[g.fnName(fd)][i] {
+			if g.boolVars == nil {
+				g.boolVars = map[string]bool{}
+			}
+			g.boolVars[p.Name] = true
+		} else {
+			// Authoritative, not additive: the parameter's own call sites are the only evidence
+			// about this name inside this body, and a name inherited from an enclosing body (a
+			// nested def, a method emitted while a `def` was in flight) must not print a verdict
+			// the argument never was.
+			delete(g.boolVars, p.Name)
 		}
 	}
 	// The call sites decide a parameter's kind, so this is the first moment the body's own

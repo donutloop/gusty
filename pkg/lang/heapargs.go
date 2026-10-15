@@ -80,6 +80,12 @@ type heapASTWalker struct {
 	scope  string
 	call   func(scope, fn string, args []Expr)
 	assign func(scope, target string, value Expr, annot *Type)
+	// attrCall, when set, is told about `obj.method(args)` as well as `f(args)`. Only the
+	// analyses that need a method's *arguments* set it (roadmap Gap R.111: a verdict handed
+	// to `z.m(True)` crosses the same boundary as one handed to `m(True)`, and the
+	// parameter-kind inference cannot see a call it is never told about). It is nil for every
+	// existing user, which is why adding it changes nothing but this file's readers.
+	attrCall func(scope, method string, args []Expr)
 }
 
 func (w heapASTWalker) stmts(ss []Stmt) {
@@ -167,6 +173,9 @@ func (w heapASTWalker) expr(e Expr) {
 	case *Call:
 		if nm, ok := n.Fn.(*Name); ok && w.call != nil {
 			w.call(w.scope, nm.Value, n.Args)
+		}
+		if at, ok := n.Fn.(*Attr); ok && w.attrCall != nil && at.Name != nil {
+			w.attrCall(w.scope, at.Name.Value, n.Args)
 		}
 		w.expr(n.Fn)
 		for _, a := range n.Args {

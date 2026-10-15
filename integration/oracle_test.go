@@ -76,23 +76,31 @@ func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
 // Python disagree, and requires the CPython leg to disagree: if the oracle ever
 // quietly reported gusty's own answer, every debt row would turn into a match and the
 // build would go green for the wrong reason.
-// Its subject is Gap R.111: a bool handed to a function. Python renders the parameter as True and
-// gusty renders the 1 the caller's comparison produced, because nothing carries the verdict across
-// the call boundary. (It used to be probe_bool_in_a_container, whose disagreement ADR 0259 paid —
-// a stub check has to be pointed at a debt that is still open, or it proves nothing.)
+// Its subject is Gap L.5: a `print` whose argument list contains a call that itself prints. The
+// compiled backend writes each argument as it evaluates it, so the callee's line interleaves into
+// the caller's; CPython evaluates every argument and then writes one line. (It has been migrated
+// twice: `probe_bool_in_a_container` until ADR 0259 paid that debt and `probe_bool_through_a_call`
+// until Gap R.111 carried a verdict across the call boundary. A stub check has to be pointed at a
+// debt that is still open, or it proves nothing — that is the rule, not the choice of program.)
 func TestOracleThirdLegIsNotAStub(t *testing.T) {
 	t.Parallel()
-	c := lang.ConformanceCase{ID: "programs/probe_bool_through_a_call", Name: "probe_bool_through_a_call.gy", Source: readProgramSrc("probe_bool_through_a_call")}
+	c := lang.ConformanceCase{ID: "programs/print_args", Name: "print_args.gy", Source: readProgramSrc("print_args")}
 	row := runLegs(t, c)
 
 	if !row.PythonOK {
 		t.Fatalf("the CPython leg failed: %s", row.PythonErr)
 	}
-	if !strings.Contains(row.PythonOut, "True") {
-		t.Errorf("CPython should render a bool parameter as True, got %q", row.PythonOut)
+	// The interleaving is the whole disagreement: the callee writes `<< 21 >>`, and only the compiled
+	// leg lands it inside the caller's line. CPython evaluates every argument first, so its `got` and
+	// its `42` share a line and the callee's output is on a line of its own.
+	if strings.Contains(row.PythonOut, "\ngot << 21 >>") {
+		t.Errorf("CPython may not interleave the callee into the caller's line: %q", row.PythonOut)
 	}
-	if !strings.Contains(row.AOTOut, "1") || strings.Contains(row.AOTOut, "True") {
-		t.Errorf("the compiled program is expected to print the stored number here (that is the debt); got %q", row.AOTOut)
+	if !strings.Contains(row.PythonOut, "\ngot 42") {
+		t.Errorf("CPython should evaluate the argument first and write one line, got %q", row.PythonOut)
+	}
+	if !strings.Contains(row.AOTOut, "\ngot << 21 >>") {
+		t.Errorf("the compiled leg is expected to interleave the callee's line into the caller's (that is the debt); got %q", row.AOTOut)
 	}
 	if row.PythonOut == row.AOTOut {
 		t.Errorf("the reference leg returned the compiler's answer — it is not an independent opinion")

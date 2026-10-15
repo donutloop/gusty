@@ -124,19 +124,28 @@ func TestDunderComparisonIsNotAVerdict(t *testing.T) {
 	}
 }
 
-// The one shape that still prints the number a bool is stored as, pinned as it answers today: a
-// parameter is a fresh binding the caller's expression never travels with, so ADR 0257's predicate
-// has nothing to read across the call (Gap R.111 — ADR 0256's Gap R.110 and Gap R.80's container
-// argument in bool clothing). The container shape this test used to pin is closed: a slot now
-// carries a bool tag of its own, and programs/probe_bool_in_a_container.gy pins CPython's answer
-// on every engine (Gap R.112, ADR 0259).
-func TestBoolThroughACallIsStillANumber(t *testing.T) {
+// A verdict handed to a function writes its name on the compiled backend, and a position the call sites
+// contradict keeps the number: the front end reads a parameter's callers before its body is emitted, and
+// marks a position only when no call site disagrees about it (Gap R.111, ADR 0348; the declined half is
+// Gap R.270 and the shapes `integration/bool_call_boundary_test.go` pins as declines).
+//
+// Both halves read the COMPILED answer directly (`negBuildRun`), not through `captureStdout`: the first
+// program is in `testdata/interpreter-golden.json` with the retired engine's `1\n1\n`, and a record hit
+// makes that helper return the record and skip — a test that silently skips over the exact case it exists
+// to pin is how a closed gap stays red in the ledger and green in the suite. The record's side of the
+// disagreement is registered in `testdata/interpreter-golden-drift.json`, and CPython is the definition
+// (AGENTS.md: where the record and the reference disagree, the record is the debt).
+//
+// The container shape this test used to pin is closed: a slot now carries a bool tag of its own, and
+// programs/probe_bool_in_a_container.gy pins CPython's answer (Gap R.112, ADR 0259).
+func TestAVerdictAcrossACallWritesItsNameAndAContradictedOneDoesNot(t *testing.T) {
 	t.Parallel()
-	call := "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
-	if got, want := boolRun(t, call), "1\n1\n"; got != want {
-		t.Errorf("bool through a call = %q, want %q (Gap R.111)", got, want)
+	closed := "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
+	if code, out := negBuildRun(t, "bool_call_closed", closed); code != 0 || out != "True\nTrue\n" {
+		t.Errorf("compiled bool through a call = %q (exit %d), want %q (Gap R.111)", out, code, "True\nTrue\n")
 	}
-	if code, out := negBuildRun(t, "bool_call", call); code == 0 && out != "1\n1\n" {
-		t.Errorf("compiled bool through a call = %q, want %q (Gap R.111)", out, "1\n1\n")
+	contradicted := "def show(f):\n    print(f)\n\nshow(True)\nshow(1)\n"
+	if code, out := negBuildRun(t, "bool_call_contradicted", contradicted); code != 0 || out != "1\n1\n" {
+		t.Errorf("a contradicted parameter position = %q (exit %d), want %q (Gap R.270)", out, code, "1\n1\n")
 	}
 }

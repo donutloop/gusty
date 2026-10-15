@@ -951,9 +951,13 @@ printed, stored (`flag = a < b`) and re-tested. A verdict writes its own name �
 carries its own tag, so `print([True, 1])` is `[True, 1]`, `print({"k": True})` is `{'k': True}` and
 `print({True, 1})` is `{True}` — while every numeric, ordering, equality and membership question about
 that same slot keeps answering as the number, which is why `[True] == [1]`, `1 in {True}`, `d[True]`
-and `sum([True, 1])` are CPython's answers too (ADR 0259, closing roadmap Gap R.112). One rendering
-is still owed: **a bool passed to a function prints `1`**, because a parameter is a fresh binding and
-nothing travels with the argument saying it was a verdict (roadmap Gap R.111).
+and `sum([True, 1])` are CPython's answers too (ADR 0259, closing roadmap Gap R.112). A verdict handed
+to a function writes its name as well — `def show(f): print(f)` / `show(1 == 1)` prints `True`, and so do a
+bound name, a keyword argument, a default, a method's parameter and a verdict the callee computed — because
+the front end reads the parameter's callers before the body asks what the name means (ADR 0348, closing
+roadmap Gap R.111). What that reading declines stays a number: a position two call sites fill differently
+(`show(True)` and `show(1)`), or a method name two classes both define, prints the number the value is
+stored as until a tag rides with the argument (roadmap Gap R.270).
 
 How each backend gets there is an implementation detail, but a load-bearing one
 (ADR 0167): in IR a value is either an `i32` or the `i1` result of a comparison, and
@@ -1172,9 +1176,10 @@ Rules that the compiled backend implement:
   see the expression — inside a container, where only the slot is left — the slot carries the tag that
   says so, so `print([True, 1])` is `[True, 1]`, `print({"k": True})` is `{'k': True}`,
   `print({True, 1})` is `{True}` and `str([True, 1])` is the same text, because print and the pair are
-  one table (ADR 0258, ADR 0259; Gap R.112). One rendering is still owed for the reason ADR 0257
-  records: **a bool passed to a function prints `1`** (a parameter is a fresh binding the caller's
-  expression never travels with — Gap R.111). Inside containers strings are quoted as Python does.
+  one table (ADR 0258, ADR 0259; Gap R.112). A verdict handed to a function writes its name too: the
+  call sites answer whether the parameter holds one, so `show(True)` prints `True` (ADR 0348; Gap R.111),
+  and only a position the call sites contradict prints the number it was stored as (Gap R.270).
+  Inside containers strings are quoted as Python does.
   Sets iterate in **insertion order** in the compiled backend — deterministic, and identical between
   them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
 
@@ -3538,10 +3543,12 @@ declines, Gap R.94) — all of which need the value word that carries its own ta
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
-value that *is* a tag: a compiled float still has no word to hold it (L11.6), and a bool reaching a
-printer through a call still prints as the number it is stored as — `show(True)` says `1` (Gap R.111;
-the print *rule* landed in ADR 0257, the container tag in ADR 0259, and what neither can reach is the
-argument crossing the boundary) — while a bool in a container slot says `True` on the compiled backend and
+value that *is* a tag: a compiled float still has no word to hold it (L11.6), and a verdict handed to a
+function prints `True` only because the front end read its call sites and told the print road what the
+parameter holds (ADR 0348, closing Gap R.111) — a position the call sites contradict still prints the
+number it is stored as (Gap R.270; the print *rule* landed in ADR 0257, the container tag in ADR 0259, and
+what neither can reach is a tag that would have to ride with the argument) — while a bool in a container
+slot says `True` on the compiled backend and
 still answers every numeric question as its number. A container inside a
 container is still a handle in a slot built for a word (L11.1 (5), the tagged value word, which
 also collapses the parallel tag array into the value itself).

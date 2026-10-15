@@ -1,7 +1,12 @@
-# A bool that travels through a call. Verdicts print True/False where they are written
-# (probe_bool_value.gy), but a function's parameter holds the 1 the comparison produced
-# and nothing says what it used to be, so this prints 1 where CPython prints True
-# (roadmap Gap R.111, filed by ADR 0257).
+# A bool that travels through a call. Verdicts printed True/False where they were written
+# (probe_bool_value.gy, ADR 0257) and inside a container (probe_bool_in_a_container.gy,
+# ADR 0259), but a function's parameter held the 1 the caller's comparison produced and
+# nothing said what it used to be: this printed 1 1 where CPython prints True True
+# (roadmap Gap R.111, filed by ADR 0257 and closed by the call-site reading in
+# pkg/lang/boolargs.go).
+#
+# It is the witness that the verdict crosses: the call site read `True`, and the body's
+# `print(f)` is allowed to ask the front end what the name means.
 def show(f):
     print(f)
 

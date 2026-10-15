@@ -1,5 +1,9 @@
 {
  "entries": {
+"# A bool that travels through a call. Verdicts printed True/False where they were written\n# (probe_bool_value.gy, ADR 0257) and inside a container (probe_bool_in_a_container.gy,\n# ADR 0259), but a function's parameter held the 1 the caller's comparison produced and\n# nothing said what it used to be: this printed 1 1 where CPython prints True True\n# (roadmap Gap R.111, filed by ADR 0257 and closed by the call-site reading in\n# pkg/lang/boolargs.go).\n#\n# It is the witness that the verdict crosses: the call site read `True`, and the body's\n# `print(f)` is allowed to ask the front end what the name means.\ndef show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
 "# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The\n# interpreter maps with a lambda; the compiled backend answers `unsupported call \"f\"`\n# because there is no fnptr operand or indirect call lowering (L11.7).\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(lambda v: v * 3, [1, 2]))\n": {
     "stdout": "[3, 6]\n",
     "hasStdout": true

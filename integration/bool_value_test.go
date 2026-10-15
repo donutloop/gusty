@@ -96,10 +96,15 @@ const boolValueProbeSrc = "print(True)\n" +
 // still calls it a divergence, so a closure has to change a verdict as well as a number. The
 // container shape used to be here too — ADR 0259 gave a slot its bool tag, and
 // programs/probe_bool_in_a_container.gy left the ledger for the parity corpus with it.
-func TestOracleStillCallsTheBoolThroughACallADivergence(t *testing.T) {
+func TestOracleAgreesOnTheBoolThroughACall(t *testing.T) {
 	t.Parallel()
+	// This is the row that pinned Gap R.111 as a debt: it required --oracle to exit 6, because the
+	// parameter held the 1 the caller's verdict was made from and nothing said what it used to be.
+	// The call-site reading in pkg/lang/boolargs.go paid it, so the same program must now agree with
+	// the reference — and if the inference ever narrows again, this row goes red rather than a user
+	// finding the wrong print.
 	out, code := cliRunCode(t, "--oracle", "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n")
-	if code != 6 {
-		t.Errorf("a bool through a call still diverges, but --oracle exited %d, want the divergence code\n%s", code, out)
+	if code != 0 {
+		t.Errorf("a bool through a call now agrees with the reference, but --oracle exited %d, want the conformant code\n%s", code, out)
 	}
 }

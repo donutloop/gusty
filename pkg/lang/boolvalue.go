@@ -77,6 +77,12 @@ type BoolEnv struct {
 	// Lookup resolves a called name to its FuncDef, or nil. A function's answer is
 	// determined by what its body does (ADR 0254's rule, read the other way round).
 	Lookup func(string) *FuncDef
+	// CalleeVars reports the names whose own bindings inside a called function produced a
+	// verdict. Without it, `def isit(): b = True; return b` is asked with the CALLER's names,
+	// where `b` was never assigned, so the call was not a verdict and `print(isit())` printed 1
+	// (roadmap Gap R.111, the return half). nil means "ask with what you have", which is the
+	// behaviour every caller had before the parameter table existed.
+	CalleeVars func(string) map[string]bool
 	// Shadowed reports whether a builtin name has been redefined by the program, in which
 	// case that name's verdict comes from the program's body and not from the table above.
 	Shadowed func(string) bool
@@ -455,7 +461,31 @@ func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 		return true
 	}
 	sawReturn := false
+	// Ask the body what ITS names hold. The caller's Vars describe the caller's bindings, and a
+	// verdict the callee assigned to a local is invisible there — the same loss of information
+	// that made a verdict parameter print as a number, seen from the calling side (Gap R.111).
+	if env.CalleeVars != nil {
+		if sub := env.calleeEnv(nm.Value); sub != nil {
+			env = *sub
+		}
+	}
 	return bodyReturnsOnlyBools(fd.Body, env, depth+1, &sawReturn) && sawReturn
+}
+
+// calleeEnv re-asks the question with the callee's own verdict-names in place of the caller's.
+// It returns nil to mean "no better answer than the caller's env", which is what a function with
+// nothing to report gives — and the caller then keeps its own, as it always did.
+func (env BoolEnv) calleeEnv(fn string) *BoolEnv {
+	if env.CalleeVars == nil {
+		return nil
+	}
+	vars := env.CalleeVars(fn)
+	if len(vars) == 0 {
+		return nil
+	}
+	sub := env
+	sub.Vars = vars
+	return &sub
 }
 
 // bodyReturnsOnlyBools walks a function body's return statements. A body that returns

@@ -2710,6 +2710,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_bool_through_a_call",
+        "name": "probe_bool_through_a_call.gy",
+        "source": "# A bool that travels through a call. Verdicts printed True/False where they were written\n# (probe_bool_value.gy, ADR 0257) and inside a container (probe_bool_in_a_container.gy,\n# ADR 0259), but a function's parameter held the 1 the caller's comparison produced and\n# nothing said what it used to be: this printed 1 1 where CPython prints True True\n# (roadmap Gap R.111, filed by ADR 0257 and closed by the call-site reading in\n# pkg/lang/boolargs.go).\n#\n# It is the witness that the verdict crosses: the call site read `True`, and the body's\n# `print(f)` is allowed to ask the front end what the name means.\ndef show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "True\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "True\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_chosen_by_an_operator",
         "name": "probe_bool_chosen_by_an_operator.gy",
         "source": "# What CPython prints for every line here (python3, 3.12):\n#\n#   True       (max chooses the verdict)\n#   False      (min chooses the verdict)\n#   True       (the tie keeps the FIRST candidate — `max([True, 1])`)\n#   1          (…and `max([1, True])` keeps the number, because the comparison is strict)\n#   0          (`min([0, False])`, the same tie the other way round)\n#   True       (the varargs spelling chooses the same candidate)\n#   False\n#   True       (str() of the chosen candidate — one renderer, one rule)\n#   [True]     (the chosen candidate stored in a container slot)\n#   2          (the number is still underneath: max([True, 0]) + 1)\n#   1.5        (a verdict beside a double: the double wins, and prints as a double)\n#   1          (`and` hands back the operand, and CPython prints its number — this row must NOT move)\n#\n# `min` and `max` choose one of their candidates, so the answer's kind is the chosen candidate's own\n# kind. ADR 0256 made the fold return the candidate rather than the comparison; ADR 0257/0259 made a\n# verdict printable as a value and as a slot; what was missing was the candidate's kind crossing the\n# comparison with it, and the compiled leg printed the 0/1 underneath — `1` where CPython prints `True`\n# (roadmap Gap R.117, ADR 0261).\n#\n# The tie rows are the ones no “are the elements bools?“ answer can produce, and the last row is the\n# constraint: an operand CPython prints as a number has to keep printing as a number.\nprint(max([True, 0]))\nprint(min([False, 1]))\nprint(max([True, 1]))\nprint(max([1, True]))\nprint(min([0, False]))\nprint(max(True, 0))\nprint(min(False, 1))\nprint(str(max([True, 0])))\nprint([max([True, 0])])\nprint(max([True, 0]) + 1)\nprint(max([True, 1.5]))\nys = [True, 1]\nprint(ys[0] and ys[1])\n",
@@ -3655,40 +3676,6 @@
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_bool_through_a_call",
-        "name": "probe_bool_through_a_call.gy",
-        "source": "# A bool that travels through a call. Verdicts print True/False where they are written\n# (probe_bool_value.gy), but a function's parameter holds the 1 the comparison produced\n# and nothing says what it used to be, so this prints 1 where CPython prints True\n# (roadmap Gap R.111, filed by ADR 0257).\ndef show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
-        "ref": "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
-        "pins": [
-          {
-            "backend": "aot",
-            "stdout": "1\n1\n"
-          }
-        ]
-      },
-      "aot_ok": true,
-      "aot_stdout": "1\n1\n",
-      "python_ok": true,
-      "python_stdout": "True\nTrue\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
-      "oracle_ref": "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -4787,11 +4774,11 @@
     }
   ],
   "rows": 193,
-  "skipped": 36,
-  "pass": 157,
+  "skipped": 35,
+  "pass": 158,
   "fail": 0,
-  "oracle_match": 142,
-  "oracle_debt": 30,
+  "oracle_match": 143,
+  "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

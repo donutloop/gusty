@@ -66,16 +66,16 @@ func TestCLIOracleReportsBothLegs(t *testing.T) {
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	t.Parallel()
-	// A bool handed to a function prints 1 on the compiled backend and True in CPython (roadmap Gap
-	// R.112): the program is valid, it ran, and the answer is wrong. That class is exit 6 — not a
-	// compile error (1) and not a crash (3). This fixture used to be `print([True, 1])`, which stopped
-	// being a divergence when ADR 0259 gave a container slot its bool tag; the debt had to move to a
-	// program that really still owes one, or the test would have been asserting a contract nothing
-	// violates — the same reason it moved off `print(True)` when ADR 0257 landed.
-	const boolThroughACall = "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
-	out, code := benchCLI(t, "--json", "--oracle", boolThroughACall)
+	// A `print` whose argument list contains a call that itself prints interleaves on the compiled
+	// backend and does not in CPython (roadmap Gap L.5): the program is valid, it ran, and the answer
+	// is wrong. That class is exit 6 — not a compile error (1) and not a crash (3). This fixture has
+	// been migrated three times — `print(True)` until ADR 0257, `print([True, 1])` until ADR 0259,
+	// `show(1 == 1)` until Gap R.111 carried a verdict across the call boundary — because a fixture
+	// pointed at a paid-off debt asserts a contract nothing violates.
+	const printIsNotAtomic = "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n"
+	out, code := benchCLI(t, "--json", "--oracle", printIsNotAtomic)
 	if code != exitOracleDivergence {
-		t.Fatalf("--oracle on a bool through a call: exit = %d, want %d\n%s", code, exitOracleDivergence, out)
+		t.Fatalf("--oracle on a print whose argument prints: exit = %d, want %d\n%s", code, exitOracleDivergence, out)
 	}
 	var p oraclePayload
 	if err := json.Unmarshal([]byte(out), &p); err != nil {
@@ -87,11 +87,11 @@ func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	if p.Legs[0].Matches {
 		t.Errorf("the compiled leg claims a match on a program the reference answers differently: %+v", p.Legs)
 	}
-	human, hcode := benchCLICombined(t, "--oracle", boolThroughACall)
+	human, hcode := benchCLICombined(t, "--oracle", printIsNotAtomic)
 	if hcode != exitOracleDivergence {
 		t.Errorf("human form exit = %d, want %d", hcode, exitOracleDivergence)
 	}
-	for _, want := range []string{"oracle: debt", lang.BackendName, "python", "True", "rules:"} {
+	for _, want := range []string{"oracle: debt", lang.BackendName, "python", "<< 21 >>", "got", "rules:"} {
 		if !strings.Contains(human, want) {
 			t.Errorf("human --oracle output should mention %q:\n%s", want, human)
 		}

@@ -5589,26 +5589,118 @@ kind is chosen by data rather than written in the `return`. Pinned at the wrong 
 answer beside it, so the day the pair arrives the row flips to parity instead of being rewritten.
 
 
-### Gap R.111 — a verdict handed to a function loses its name on the way in (OPEN, measured landing ADR 0257)
+### Gap R.111 — closed by ADR 0348: a verdict handed to a function keeps its name, because the call sites are asked
 
 ```gusty
 def show(f):
     print(f)
 
-show(1 == 1)   # CPython True · --interp 1 · --aot 1
-show(True)     # CPython True · --interp 1 · --aot 1
+show(1 == 1)   # CPython True · ADR 0257-era --aot 1 · now True
+show(True)     # CPython True · ADR 0257-era --aot 1 · now True
 ```
 
 ADR 0257's predicate answers a *print site*: it looks at the expression in the argument position and says
 whether that expression answers a question. Inside `show` there is no such expression any more — there is a
 parameter, bound to whatever arrived, and the value that arrived is an immediate `0`/`1` with nothing
-attached. Every engine in the repo that has ever tried to carry a kind across a call has hit the same wall:
-Gap R.80 (a container argument prints `[1]`), ADR 0256's Gap R.110 (a fold's winner settled by a call site),
-Gap R.67 (a container returned from a function). The closure is not a better question at the print site — it
-is the `(payload, tag)` pair arriving with the argument, which is L11.1's tagged value word and nothing less.
+attached. Every attempt before this row had ever made to carry a kind across a call hit the same wall: Gap
+R.80 (a container argument prints `[1]`), ADR 0256's Gap R.110 (a fold's winner settled by a call site), Gap
+R.67 (a container returned from a function). The expected closure was the `(payload, tag)` pair arriving with
+the argument — L11.1's tagged value word. It is not what paid this row, and the reason is worth keeping: the
+information was never lost. The call site had already read the verdict; nobody had thought to ask it again
+from inside the callee.
 
-Pinned twice so it cannot drift quietly: the probe program's row in the oracle ledger carries each leg's exact
-`1\n1\n`, and the unit table pins the same answer with the gap named in the failure text.
+Nine shapes, measured against `python3` before the change, all answering with the number: a literal
+(`show(True)`), a bound name (`b = True; show(b)`), a comparison (`show(1 == 1)`), a second position
+(`show(1, True)`), a keyword (`show(f=True)`), a default (`def show(f=True)` called bare), a method's
+parameter (`z.m(True)`), a verdict forwarded through a closure (`def outer(f): inner(f)`), and a verdict the
+callee computed itself (`def isit(): b = True; return b`). One cause, one fix: `pkg/lang/boolargs.go` walks
+the program once before any IR exists and answers, per callable, which parameter positions **every** call
+site fills with a verdict, and which names its own body binds to one. The first registers on the compiled
+backend's per-body verdict table where parameters are bound (`funcDef`, and `emitClassMethod`, which binds
+its own parameters and so needed its own registration); the second goes into `BoolEnv.CalleeVars`, which is
+why the ninth shape works — `bodyReturnsOnlyBools` had been asking with the *caller's* table, in which the
+callee's `b` had never existed.
+
+Three rules made it safe enough to ship without a runtime representation, and they are the row's real
+content rather than the diff:
+
+1. **All call sites or none.** One `show(1)` anywhere unmarks the position, and the body prints the number it
+   always printed. An uncertain answer degrades to yesterday's behaviour, never to a new wrong one. (Getting
+   the contradicted case *right* needs the travelling tag — Gap R.270 below.)
+2. **Per scope.** A forwarded variable stays marked only while nothing in the scope that owns it stores a
+   non-verdict, so `a(True)` and `b(1)` mark `a`'s parameter and not `b`'s. This is the lesson ADR 0255's
+   sibling analysis wrote down after one function's `s` leaked onto another's.
+3. **A closed negative, not a negation.** `definitelyNotABool` lists the shapes that are known *not* to be a
+   verdict (literals of every kind, containers, an index, arithmetic, a container's method). Anything the
+   analysis cannot judge — a name it has not learned, a call it cannot resolve, an attribute it cannot see
+   through — is silent, and silence means the program prints what it printed before. `TestDefinitelyNotABool
+   IsClosed` fails if an unresolved shape ever becomes a refusal, because a decline invented from ignorance
+   is as much a bug as a guess.
+
+Two details were the difference between this working and quietly marking the wrong parameter. **A method's
+receiver is not an argument**: the parser puts `self` in the method's `Params` and a call site does not pass
+it, so a call that arrived through an attribute offsets its positional arguments by one — which needed a new
+`heapASTWalker.attrCall` hook, because the walker reported `f(args)` and an analysis cannot mark a call it is
+never told about. **A parameter's registration is authoritative, not additive**: bodies are emitted
+sequentially against one `irGen` and `enterBody` saves and restores the table, so an unmarked parameter
+explicitly *deletes* its name rather than keeping whatever an enclosing body had recorded.
+
+Nothing about the value word changed, and an IR row (`TestBoolThroughCallKeepsTheVerdictOutOfTheValueWord`)
+fails if a boxed verdict or a tag word beside an argument ever appears. `programs/probe_bool_through_a_call.gy`
+left the debt ledger for the parity corpus, which is the corpus's way of saying the case is expected to behave
+exactly like the reference. Four contract rows that had used this gap as their example of an open divergence
+(`--oracle` must exit 6) moved to `print_args`' interleaving (Gap L.5) — each of them already carried a note
+recording its two previous migrations, off `print(True)` when ADR 0257 landed and off `print([True, 1])` when
+ADR 0259 landed, which is the rule those rows were following and not an invention of this cycle.
+`integration/bool_value_test.go`'s "still calls it a divergence" row was inverted into "the oracle agrees", so
+a future narrowing goes red in the suite rather than in a user's program.
+
+The **record leg** diverges and should. The retired engine had the same bug, so the record owes `1\n1\n` for
+the program above while the compiled backend now gives `True\nTrue\n` — CPython's answer. The divergence is
+registered in `pkg/lang/testdata/interpreter-golden-drift.json` and `TestMain` holds it there: an answer that
+quietly disappeared is as loud a failure as a new one. Where the record and the reference disagree, the record
+is the debt (AGENTS.md), and this row is the one that owns paying it.
+
+Promoting the program out of the debt ledger also made it an asserted corpus case, and the corpus asks every
+asserted program of the record (`TestGCCorpusCollectsAndAgrees`: "no recorded answer for this corpus program —
+the retired engine's answer is the expectation, so record it"). The record leg grew by one row for it — 6879 →
+6880 — written by `tools/recmerge`, which asks the reference and refuses to let the compiled leg author an
+answer; the entry is CPython's `True\nTrue\n`, cross-checked against the compiled run by the conformance matrix
+(`match` on both legs). That is the artifact's own `meta.added_after_0302` rule — a source first asked after the
+engine was retired is recorded from the reference and is never self-certifying — and it is why the same program
+can sit in the drift ledger with `1\n1\n` owed: the ledger row is the comment-free source the unit tests ask,
+which the retired engine answered when it existed, while the corpus asks the commented one, which nobody ever
+asked before. Both are true of their own source text, and the two artifacts say which is which.
+
+### Gap R.270 — what the call-site reading will not guess (OPEN, opened closing Gap R.111)
+
+```gusty
+def show(f):
+    print(f)
+
+show(True)     # CPython True · ADR 0348 1   ← declined: the position is contradicted
+show(1)        # CPython 1    · ADR 0348 1
+```
+
+```gusty
+class A:
+    def m(self, v): print(v)
+class B:
+    def m(self, v): print(v * 1)
+
+print(A().m(True))   # CPython True · ADR 0348 1   ← declined: two classes name the same method
+```
+
+ADR 0348 marks a parameter position only when every call site supports it, and a position with two answers —
+or a callable the call-site index cannot attribute, because the name is not unique across classes — has no
+answer to give, so the print road takes the number. That is the conservative half of the same promise, and
+both shapes are pinned **as declines** (`TestBoolThroughCallStaysANumberWhenTheEvidenceIsThin`,
+`TestAVerdictAcrossACallWritesItsNameAndAContradictedOneDoesNot`'s second half) so that widening the
+inference past `all call sites agree` fails a test instead of shipping a guess about which path ran. The only
+thing that distinguishes the two calls at one slot is a tag that rides with the argument — L11.1's tagged value
+word, which Gap R.80 asks for from the container side and ADR 0256's Gap R.110 from the parameter-kind side.
+The call-site reading stays as the fallback for whatever the tag does not reach; this row closes when the tag
+arrives, not when the inference grows brave.
 
 ### Gap R.112 — closed by ADR 0259: a verdict stored in a container says `True`
 

@@ -307,8 +307,8 @@ safe answer, and the reason it can run before the front end's own tools are aske
 is the honest one that was already written. `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`, `g = d2` / `g(4)`
 is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min` with a `key=lambda` likewise —
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
-now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, which is the file's own
-count and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
+now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, and to 6880 when
+Gap R.111's promoted program was recorded the same way — the count is the file's own and not this sentence's). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
 the tests now hold shut: names were minted from `%p`, which Go randomises per process, so one program compiled to
@@ -889,9 +889,13 @@ rather than be read off an expression. A bool in a container used to be one of t
 printed `[1, 1]` on the compiled backend, because the element tag vocabulary had no bool to read back — and is
 paid: the slot now carries a bool tag, the container printer, the set dedup and the ordering sentence all
 read `bool`, and `[True, 1]`, `{'k': True}` and `{True}` come out as CPython writes them while every
-numeric question about the same slot still answers as its number (ADR 0259, closing Gap R.112). What stays
-filed is the shape no tag can reach from the caller's side: a bool handed to a function prints the number it
-is stored as (Gap R.111), and the comprehension and fold shapes that sweep measured are filed with
+numeric question about the same slot still answers as its number (ADR 0259, closing Gap R.112). A verdict
+handed to a function was the next one, and is paid the same way the print rule was: the front end reads the
+call sites and tells the print road what the parameter holds, so `show(1 == 1)` says `True` instead of the `1`
+the comparison produced (ADR 0348, closing Gap R.111). What stays filed is what that reading will not guess
+about — a position two call sites fill differently, or a method name two classes share, prints the number it
+is stored as until a tag rides with the argument (Gap R.270) — and the comprehension and fold shapes that
+sweep measured are filed with
 their per-engine answers — Gaps R.116, R.117 and R.119, since R.118 turned out to be a dict story and was
 paid by ADR 0260 the same day. `--json` names the
 type `bool`, and `--eval '1 == 1'` echoes `True`.

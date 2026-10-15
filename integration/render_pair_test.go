@@ -138,14 +138,16 @@ func TestPairAgreesWithTheOracle(t *testing.T) {
 		t.Fatalf("the oracle called a matching pair program a divergence (exit %d):\n%s", code, out)
 	}
 
-	// A bool the program hands to a function is Gap R.111's, not this row's: the pair renders the
-	// argument, and the parameter holds the 1 the caller's verdict was made from because no tag
-	// travels across the call. The oracle must still say so — the shape this row used to pin, a bool
-	// inside a container, is the one ADR 0259 closed, so it now belongs to the agreeing leg above.
-	const boolThroughACall = "def show(f):\n    print(str(f))\n\nshow(True)\n"
-	out, code = cliRunCode(t, "--oracle", boolThroughACall)
+	// The divergence this row needs has to be one the backend still owes. It was a bool inside a
+	// container until ADR 0259 paid that debt, and a bool through a call until Gap R.111 carried the
+	// verdict across the boundary — both moved to the agreeing leg above, where they belong. What is
+	// left open is `print` evaluating its arguments as it writes them (Gap L.5): the callee's line
+	// interleaves into the caller's here and not in CPython, so the pair still has an opinion to
+	// disagree with and the oracle still has a divergence to report.
+	const printIsNotAtomic = "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n"
+	out, code = cliRunCode(t, "--oracle", printIsNotAtomic)
 	if code != 6 {
-		t.Errorf("the oracle scored a bool through a call as %d, want 6 (a divergence, Gap R.111):\n%s", code, out)
+		t.Errorf("the oracle scored a print whose argument prints as %d, want 6 (a divergence, Gap L.5):\n%s", code, out)
 	}
 }
 

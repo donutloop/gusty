@@ -403,6 +403,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// d[True]) on every leg (roadmap Gap R.112, ADR 0259; the program left the debt ledger with
 		// that row, which is the promotion rule of ADR 0186).
 		"probe_bool_in_a_container",
+		// A bool handed to a function, both legs on one source: the call sites answer what the parameter
+		// holds, so `show(1 == 1)` prints True where it used to print the 1 the comparison produced. The
+		// reading is the front end's (every call site, literal or bound name, asked before the parameter
+		// is called a verdict), and a position the front end cannot answer keeps yesterday's number —
+		// which is why the mixed-call-site rows live in integration/bool_call_boundary_test.go and not
+		// here (roadmap Gap R.111, ADR 0348; the program left the debt ledger with that row, the same
+		// promotion rule ADR 0259 used for the container slot).
+		"probe_bool_through_a_call",
 		// The operator that chooses an operand, both legs on one source: `max([True, 1])` is the
 		// verdict and `max([1, True])` is the number, because the strict comparison keeps the first
 		// candidate and the chosen candidate decides what prints — str(), a container slot, an f-string
@@ -704,10 +712,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// answered [] and the whole string; it now answers the characters the reference answers, and the
 		// compiled leg's refusal is RECORDED rather than pinned as a limit. Gap R.185 / ADR 0298.
 		"probe_a_text_iterates_one_character_at_a_time",
-		// A bool handed to a function and printed there. The parameter's slot holds the 1 the
-		// comparison produced and nothing says it was ever a verdict, so the compiled path print 1
-		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
-		"probe_bool_through_a_call",
 		// The same value's *kind*, chosen by `and`/`or`: the print door renders a chosen operand by its tag,
 		// and the positions that keep one word for a value still decline (roadmap Gap R.147's owed half,
 		// owned by L11.1 and Gap R.146, ADR 0269).
@@ -1041,10 +1045,11 @@ var oracleLedger = map[string]oracleDecl{
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}}},
 
 	// ---- Phase 11 probes: measured, owned, and not yet paid ----------------------
-	"programs/probe_bool_through_a_call": {oracle: lang.OracleDebt,
-		reason: "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
-		ref:    "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}},
+	// A bool handed to a function is no longer a probe: the call site's verdict reaches the
+	// parameter and the compiled path prints CPython's answer, so the program lives under the
+	// agreeing leg with no ledger row of its own — which is the corpus's way of saying a case is
+	// expected to behave exactly like the reference (roadmap Gap R.111, closed this cycle).
+	"programs/probe_bool_through_a_call": {oracle: lang.OracleMatch},
 	// A bool stored in a container is no longer a probe: it prints CPython's answer on the compiled path
 	// and lives in conformanceStandalone (roadmap Gap R.112, ADR 0259).
 	"programs/probe_bool_in_a_container":        {oracle: lang.OracleMatch},

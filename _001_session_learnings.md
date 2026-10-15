@@ -10913,3 +10913,83 @@ suggestion, owning roadmap rows — read by `--json`'s `capability` member, by `
   iteration's list. The ADR now carries that table (reference / before / after) instead of only the
   cases where the trap is an improvement, because a decision documented only by its best cases is a
   decision nobody can audit six months later.
+
+## Gap R.111 — a verdict crossing a call keeps its name because somebody thought to ask the call sites (ADR 0348)
+
+`def show(f): print(f)` + `show(True)` printed `1`. Nine shapes of that one program printed the number
+against CPython's `True`, and the row had been sitting in the open queue since the print rule landed. It
+closed without touching the value word — no boxed verdict, no tag word beside an argument, no hidden tag
+parameter — and that is the part worth writing down, because the row's own `Free text` said the opposite:
+*"it closes when a tag travels with the argument instead of being read off the expression behind it."* The
+information had never been lost. The call site had already read the verdict; nobody had thought to ask it
+again from inside the callee.
+
+- **A parameter's verdict-ness is a fact about the program, not about its body.** `pkg/lang/boolargs.go`
+  answers `boolArgKinds` (which positions *every* call site fills with a verdict) and `boolLocalsOf` (which
+  names a body binds to one) from one walk over the AST, before any IR exists. `pkg/lang/strargs.go`'s
+  `strArgKinds` has been doing this since Gap J.5; the bool row stayed "needs the tagged value word" for
+  thirteen ADRs because nobody read the sibling. Before accepting a row's own explanation of why it is hard,
+  grep for the shape having been solved next door.
+- **Asking with the wrong table looks exactly like a missing feature.** `def isit(): b = True; return b`
+  printed `1` even after the parameter work, because `bodyReturnsOnlyBools` consulted the *caller's* verdict
+  names, in which the callee's `b` had never existed. `BoolEnv.CalleeVars` is the whole fix. A "hard" shape
+  that survives its own fix is usually a scoping bug in the question, not a second cause.
+- **Two details that decide whether an inference is right or merely plausible.** A method's receiver is not
+  an argument: the parser puts `self` in `Params` and no call site passes it, so positional arguments are
+  offset by one when the call arrived through an attribute — which required a new `attrCall` hook on the
+  shared `heapASTWalker`, because an analysis cannot mark a call it is never told about. And a parameter's
+  registration is *authoritative, not additive*: bodies are emitted sequentially against one `irGen`, so an
+  unmarked parameter has to DELETE its name or it inherits whatever an enclosing body recorded.
+- **Conservatism needs a closed list, or it becomes a guess with a better reputation.** `definitelyNotABool`
+  enumerates what is provably not a verdict; everything else is silence, which means yesterday's answer.
+  `TestDefinitelyNotABoolIsClosed` fails if an unresolved shape ever turns into a *refusal* — a decline
+  invented from ignorance is as much a bug as a guess, and a test that only checks the marks would let it
+  in. Same discipline as ADR 0255's scope-keyed tables: the failure mode is one function's `f` leaking onto
+  another's.
+- **A test that consults the record before the compiler can certify a closed gap by skipping it.**
+  `captureStdout` (and so `boolRun`) returns `goldenStdout` when the source is in
+  `testdata/interpreter-golden.json` — and `goldenStdout` *skips the test* when the compiled answer diverges.
+  `TestBoolThroughACallIsStillANumber` therefore "passed" for a whole cycle by never running the compiled
+  program at all, its second half inert behind `code == 0 && out != …`. It is now
+  `TestAVerdictAcrossACallWritesItsNameAndAContradictedOneDoesNot`, reading the linked binary via
+  `negBuildRun`. Rule for any behavioural row: know which leg your helper answers, and if the record leg can
+  swallow it, assert the compiled leg directly.
+- **A contract fixture must point at a debt that is still open.** Four rows (`--oracle` exit 6 in
+  `integration/build_test.go`, `cmd/gustyc/oracle_test.go`, `integration/render_pair_test.go`,
+  `integration/oracle_test.go`'s stub check) used this gap as their example. Each already carried a comment
+  recording its two previous migrations — off `print(True)` when ADR 0257 landed, off `print([True, 1])`
+  when ADR 0259 landed. The comments were the rule; the fixtures were the drift. All four moved to
+  `print_args`' interleaving (Gap L.5), and the inverted `bool_value_test.go` row now demands agreement, so a
+  future narrowing fails here instead of in a user's program.
+- **Ground truth beats an assertion's prose.** The migrated stub check failed, and its comment *explained*
+  the failure: it asserted CPython interleaves and the compiled leg does not, which is the reverse of what
+  `print("got", twice(21))` does. `python3` and `--file` disagreed with the test, so the test was the bug.
+  `git worktree add /tmp/gusty-head HEAD` then re-running the same test there is the cheap way to separate
+  "pre-existing" from "mine" without stashing a dirty tree — it said PASS at HEAD, so the inversion was mine.
+- **Artifact-derived counters are the last thing you notice.** Promoting
+  `programs/probe_bool_through_a_call.gy` from the debt ledger to the parity corpus moved the matrix from
+  157/36 to 158/35 and the oracle tally to 143/29/21, and only `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+  knew. The snapshot row is captioned "measured, not remembered" precisely so the file cannot keep an old
+  number; when a case changes class, run the snapshot test before guessing the new one.
+- **The residue gets a fresh ID, not a footnote.** The shapes the reading declines — a position two call
+  sites fill differently, a method name two classes share — are Gap R.270, pinned *as declines*. A row that
+  quietly absorbs "we fixed the common case" is how an inference grows brave: the only thing that can tell
+  `show(True)` from `show(1)` at one slot is a tag that rides with the argument, and this row closes when the
+  tagged value word arrives, not when the analysis gets confident.
+- **Promotion has a price, and the corpus sends the bill.** Moving
+  `programs/probe_bool_through_a_call.gy` from the debt ledger into `conformanceStandalone` made it an
+  *asserted* case, and `TestGCCorpusCollectsAndAgrees` requires every asserted corpus program to have a record:
+  `no recorded answer for this corpus program — the retired engine's answer is the expectation, so record it`.
+  The sanctioned recorder is `go run -tags=llvm20 ./tools/recmerge -sources sources.json`, which asks the
+  reference and **refuses to let the compiled leg author an answer**; the file's `meta.added_after_0302` rule
+  says the same thing in one line ("a source first asked after ADR 0302 retired the engine is recorded from the
+  reference"). The record went 6879 → 6880. Note what the two artifacts are actually keyed on: the drift ledger's
+  row is the comment-free source the unit tests ask (the retired engine answered that one when it existed) and
+  the corpus asks the commented one, so both can be right about their own source text.
+- **Artifact counts are re-derived, never "corrected" by hand.** The count guard failed with *two* mismatches
+  after the promotion, and one of them was self-inflicted: an earlier step in this cycle had "fixed"
+  `docs/operations.md`'s drift-ledger cell from 338 to 337 to stop a red run, which made the document lie about
+  a file it does not own. The cell moved to 339 when the row was legitimately added, and `AGENTS.md`,
+  `docs/operations.md` and `roadmap.md`'s snapshot row all carry the record's size. The rule the failure text
+  prints is the rule to follow: *edit the cell to N, and if it was the FILE that changed, say so in the row it is
+  recorded in* — which is why the Gap R.111 narrative now carries the 6879 → 6880 sentence.
