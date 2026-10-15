@@ -2386,11 +2386,10 @@ func (g *irGen) mixedDictIndexRead(ix *Index) (string, bool) {
 	if !ok || !g.mixedDicts[nm.Value] {
 		return "", false
 	}
-	switch ix.Idx.(type) {
-	case *Name, *IntLit, *StrLit, *FloatLit:
-		// A float key belongs here: its payload is a box handle, and the untagged read compares
-		// payloads, so it would answer with whichever entry happened to hold the same little
-		// integer. The tagged read is the only one that can find a float key (roadmap L11.1, ADR 0233).
+	// Which keys the door can be asked with is its own question, asked of its own file — the one
+	// that keeps the key kinds with tags beside the key kinds without, so the print door, the binding
+	// door and the `and`/`or` doors cannot each grow a different list (roadmap Gap R.221, ADR 0353).
+	if dictKeyCarriesPair(ix.Idx) {
 		return nm.Value, true
 	}
 	return "", false
@@ -4021,6 +4020,16 @@ func (g *irGen) staticElemExpr(container Expr, key Expr) (Expr, bool) {
 // constKeysMatch is the key question of a literal dict read: the same kind and the same value. An
 // interned string and the integer it happens to be indexed by are the same bits and different keys
 // (ADR 0232), so the kind is checked before the number.
+//
+// There is no `None` arm here, and one is not simply missing: roadmap Gap R.285 measured what adding
+// it does, and the answer was that two roads which ask this door about an entry's kind start answering
+// wrong for a `None` key in four shapes — `"a" in d[None]` over a text answers False and over an
+// integer answers False where the reference raises `argument of type 'int' is not iterable`, and
+// `for x in d[None]` prints nothing over a text and `0 1 2` over the integer 5 where the reference
+// raises for both. A `None` also has no arm against an `IntLit`: the fold below reads a `NoneLit` as
+// the integer 0, so `{0: "a"}` read by `None` finds an entry the program never wrote — which is
+// harmless only because every road that reaches it still asks the *object*, whose tag-aware lookup
+// raises the reference's `KeyError: None`. Both halves, with the measurements, are that row's.
 func (g *irGen) constKeysMatch(a, b Expr) bool {
 	if ai, ok := a.(*IntLit); ok {
 		if isStringExpr(b) {

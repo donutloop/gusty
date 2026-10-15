@@ -11188,3 +11188,65 @@ L11.7's next-action list ever since the function-value pass landed.
 - **A corpus row shows its absences.** `lambda_default_param.gy` writes its `sorted` hook inline and says so in its
   header, naming the Gap beside every family it omits. A corpus that quietly drops an awkward shape is claiming
   the shape works.
+
+## Gap R.221 — a key is asked, not spelled: a `None` or bool key reaches the doors that read a dict slot's own tag (`ADR 0353`)
+
+`d = {None: 3.5}` / `print(d[None])` printed `3`, `d = {None: "hi"}` printed `0`, `d = {None: [2]}` printed `3`
+again. Three programs, three **exit 0**s, and every one of the numbers was something the machine had written
+rather than the program: a `@float_box` handle, an index into `@str_tab`, an allocator slot. The value of a dict
+entry is one word and its kind lives in the tag beside it; the road that reads the word without the tag was the
+whole bug.
+
+- **An asymmetry between two spellings of the same read is the diagnosis — go find the third spelling.** The
+  *bound* form (`x = d[None]` then `print(x)`) answered correctly, and an `int`/text/float key answered correctly,
+  on the same build. That rules out the door, the runtime and the printer before reading a line of IR: what is
+  left is the road in front of the door. `mixedDictIndexRead` had a `switch` of key spellings with no `NoneLit`
+  or `BoolLit` arm, and everything downstream of it was already correct. The change is four lines and no new
+  machinery — which is exactly why the row had survived eleven ADRs.
+- **A list of spellings kept by each of four callers is the defect; the missing arm is only its symptom.** The
+  gate became one function, `dictKeyCarriesPair`, asked by the print door, the binding door and both `and`/`or`
+  doors. The rule to take from this: when the same `switch` would have to be copied to the next caller, the
+  question it answers is a door and gets a file. Its own table then keeps it honest in both directions — a gate
+  that only ever answers `true` fails a case, which is the only way a gate stays a gate.
+- **The widening that felt like the fix regressed four shapes, and the measurement is now in the comment.**
+  Adding `*NoneLit` to `constKeysMatch` — the *static* door that answers "what kind is in this entry" — converts a
+  refusal into an answer (`print(d[None][0] + 1)` → `2`). It also turns `"a" in d[None]` over a text from `True` to
+  `False` and makes `for x in d[None]` over the integer `5` print `0 1 2` where the reference raises: two roads
+  ask that door to *label an operand*, and handing them a label they cannot honour is worse than the refusal. The
+  arm is reverted and the four rows are written above `constKeysMatch`, because the next cycle will find the same
+  inviting one-liner and is owed the measurement, not just the absence.
+- **Sweep the positions a value can be put into, not just the ones the row names.** The fix was print-and-bind;
+  the 301-shape probe (3 keys × 11 self-describing values × 9 positions) is what surfaced the f-string field, the
+  truth test, `+`/`*`, `abs` and the `None`-valued-name key. Five rows came out of that sweep and none of them
+  were in the row I set out to close.
+- **Run the key-independence control *before* filing.** `print(f"{d[None]}")` prints `3` — and so does
+  `print(f"{d[1]}")`. Once the int twin answers the same wrong thing, the key is not the variable, and the row is
+  about the f-string road (**R.283**), not about `None`. Filing it as a clause of the row I was closing would have
+  produced a "fix" that special-cased one key and left the other broken, green.
+- **Two roads disagreeing in opposite directions is one row.** `d[None] + "b"` refuses where the int-key twin
+  answers, and `d[None] * 2` answers a payload where the int-key twin refuses. Fixing either face alone would
+  have looked like progress and made the pair of roads harder to compare; the disagreement is the defect, so it
+  is one row (**R.285**) with an order of operations in its next-action cell.
+- **A refusal can be less honest than a wrong answer.** The concatenation refusal reads `CPython raises TypeError
+  for it`, which is false of that program — the reference answers `"ab"`. A refusal is only a safe harbour when
+  its sentence is true of the program being refused; the filed table asserts the sentence as well as the exit code.
+- **Pin the wrong answer, not the right one, in a filed table.** Every filed row asserts what this build prints
+  today (`3`, `0`, `False`, the refusal's text, the trap's class), so the day it changes the case fails — in both
+  directions, including the direction where a shape starts answering correctly and someone forgets to move it into
+  the answer tables.
+- **Ask the control on the side you did not fix, and read the refusal out loud.** The probe's untaggable-key arm —
+  *what does the gate do with a key it cannot tag* — came back with `…Build that inner value separately, or run it
+  interpreted`. Since ADR 0302 there is one backend and `--interp` is a usage error, so a refusal in `pkg/lang`
+  was still advertising the retired engine to whoever read it (and the same string rides in `--json`'s `message`).
+  The witness guard could not see it: it polices the tests, the CLI, the case registry and the agent-facing docs,
+  not the sentences the emitter emits. Filed as **Gap R.288** with both texts pinned verbatim, because "the tool
+  tells the user how to use the tool" is an interface claim and this one is a decade-old sentence about a binary
+  that is gone. The sibling refusal, `unsupported expression *lang.Tuple`, is the same family seen from the other
+  side: a message written for whoever wrote the emitter.
+- **The count guards are the cheapest witnesses in this repo — read their failure text instead of editing the
+  sentence.** Adding 77 record entries, one ADR, one corpus program and five tracker rows made six numbers stale
+  across four files; `roadmap_snapshot_test.go` and `golden_artifact_counts_test.go` named each file, both
+  numbers and the cell, and every one of the six was a copy-the-artifact edit rather than a decision.
+- **`no tests to run` is a result, not a pause.** A targeted `-run` filter came back green twice because the tests
+  had been renamed earlier in the session; `-list` costs a second and is the only way to tell an empty match from a
+  passing suite.

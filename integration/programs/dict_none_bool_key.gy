@@ -1,0 +1,50 @@
+# A `None`, `True` or `False` key is a key the dict doors can be asked with. The entry comes back as a
+# (payload, tag) pair and the printer, the binder, the loop and the `or` door read the kind the writer
+# left beside it — so no line below prints the allocator's slot number for a float, the interned text's
+# index for a word, or `0` for `None` (roadmap Gap R.221, ADR 0353). Every line is what the reference
+# prints, one for one.
+d = {None: 3.5}
+print(d[None])
+print(d[None] + 1)
+print(str(d[None]), repr(d[None]))
+print(d[None] == 3.5)
+print(d[None] or "fallback")
+t = {True: "hi"}
+print(t[True])
+print(len(t), True in t)
+f = {False: [1, 2]}
+print(f[False])
+print(len(f[False]))
+for v in f[False]:
+    print(v)
+print(1 in f[False])
+mixed = {None: 1.5, True: "a", False: [2]}
+print(mixed[None], mixed[True], mixed[False])
+print(mixed)
+n = {None: None}
+print(n[None])
+b = {False: True}
+print(b[False])
+z = {0: "zero"}
+print(z[False])
+o = {1: "one"}
+print(o[True])
+w = {True: 1.5, 1: "one"}
+print(w[True], len(w))
+g = {}
+g[None] = [7, 8]
+print(g[None])
+print(g[None][0])
+g[True] = "built"
+print(g[True])
+x = d[None]
+print(x)
+print([d[None], t[True], f[False]])
+try:
+    print(d[True])
+except KeyError:
+    print("no entry under True")
+try:
+    print(t[None])
+except KeyError:
+    print("no entry under None")

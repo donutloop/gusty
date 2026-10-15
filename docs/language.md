@@ -1092,6 +1092,37 @@ two engines disagreed about an ordinary dictionary, and no program in the corpus
 
 Rules that the compiled backend implement:
 
+- **A key is asked, not spelled** (ADR 0353, closing roadmap Gap R.221). The value of an entry is one word and
+  what that word means lives in the tag the writer left beside it (ADR 0232), so a subscript that needs the
+  entry's kind — the `print` door, a binding, `and`/`or` — asks the *pair* door, `rt_dict_get_tagged` beside
+  `rt_dict_value_tag` (ADR 0327). Which keys that door can be asked **with** is one question with one answer,
+  `dictKeyCarriesPair` (`pkg/lang/dict_key_pair.go`): a name, an `int`, a text, a float, `None`, `True`,
+  `False` — every key kind that has a tag in the runtime's table. A `None` or bool key was not on the gate's
+  list, so those three reads fell back to the one-word road and printed the **payload** at the exit code of
+  success: a `@float_box` handle, a text's `@str_tab` index, the allocator's slot.
+
+  ```py
+  d = {None: 3.5}
+  print(d[None])              # 3.5   (was 3 — the box handle)
+  d = {None: "hi"}
+  print(d[None])              # hi    (was 0 — the interned text's index)
+  d = {False: [2]}
+  print(d[False])             # [2]   (was 3 — the allocator's slot)
+  print({1: 1.5, True: "a", False: [2]}[True])   # a
+  print({0: "a"}[False])      # a     — a bool is the number the reference says it is,
+                              #        and that is the runtime's key-equality rule, not the gate's
+  ```
+
+  A key this backend cannot tag — a tuple, a container — is refused **before** the door: `d = {(1, 2): "x"}` /
+  `print(d[(1, 2)])` stops the build with `unsupported expression *lang.Tuple` (a tuple has no compiled object at
+  all — that is **L11.3**) and `d = {[1]: "x"}` says a
+  compiled container cannot hold a list literal (ADR 0327's untypable-key row; the class a container key raises
+  is **Gap R.217**'s, and the sentence's own wording is **Gap R.288**'s). What the same read still cannot reach is
+  five rows, each pinned with today's answer beside the reference's: an
+  f-string field of the entry (**Gap R.283**), the truth of it (**R.284**), `+`/`*` over it (**R.285**), `abs`
+  of it (**R.287**), and a **name** whose last binding was `None`, which arrives as an untagged word and raises
+  `KeyError` where the reference prints the entry (**R.286**).
+
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same
   token as a dict — one token, two kinds.

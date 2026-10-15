@@ -325,7 +325,7 @@ is `8`, `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]`, and `max`/`min`
 and the two oracle probes that recorded this debt, `probe_fn_value` and `probe_fn_name`, are conformance rows
 now, recorded from the reference through `tools/recmerge` (the record grew 6877 → 6879, to 6880 when
 Gap R.111's promoted program was recorded the same way, to 6882 with Gap R.132's signed-zero rows, to 6888 with Gap Q.2's
-growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes — the count is the file's
+growth programs and to 6931 with Gap R.49's twenty module-scope crossings, its corpus program and Gap R.263's twenty-one defaulted-`lambda` shapes, and to 7008 with Gap R.221's seventy-seven key×value readings and its corpus program — the count is the file's
 own and not this sentence's, and `recmerge` refuses to write an entry whose compiled leg disagrees with the reference). There is no `fnptr` word and no indirect `call`: the pass never puts a handle in
 a value slot, two test tables forbid `ptrtoint`/`inttoptr` across every probe, and `print(f)` still refuses —
 the boundary is *called* versus *read*, and the read half is L11.1's. Three things the first draft got wrong and
@@ -1743,6 +1743,25 @@ falls back to dynamic dispatch.
   hook lambda bound to a name and called as an `int` (**R.281**), `*args`/`**kwargs` (**R.278**), a trailing comma
   (**R.279**), the arity door a `lambda` reaches that a `def` does not (**R.280**), and a container default that
   stops the pass for an unrelated higher-order call (**R.282**).
+- **A dict key is asked, not spelled (Gap R.221, ADR 0353)** — `d = {None: 3.5}` / `print(d[None])` printed
+  `3`, `d = {None: "hi"}` printed `0`, `d = {None: [2]}` printed `3` again, and `d = {False: True}` printed
+  `1`: four programs, four **exit 0**s, and not one number in them that the program wrote. `3` is a
+  `@float_box` handle, `0` is a text's index in `@str_tab`, the other `3` is the allocator's slot — each the
+  **payload** of an entry whose **kind** stayed in the slot beside it. The door that reads a dict slot's tag
+  (`rt_dict_get_tagged` + `rt_dict_value_tag`, ADR 0327) was already built and already correct, and the bound
+  form of the same read already answered, which is what named the defect: the gate in front of the door.
+  `mixedDictIndexRead` kept a `switch` of key *spellings* — name, int, text, float — and a `None`, `True` or
+  `False` fell out of it onto the one-word road. The list became one function, `dictKeyCarriesPair`
+  (`pkg/lang/dict_key_pair.go`), asked by the four doors that read an entry rather than by each of them, and
+  **nothing in the runtime, the builder or the printers moved**. 36 of a 301-shape probe changed answer and
+  nothing else did. What the probe session found beside the fix stayed as rows, each pinned with today's answer
+  in a filed table: an f-string field of the entry prints the payload (**R.283**), the truth of it is asked of
+  the payload (**R.284**), the operator roads that label it disagree with the pair road in both directions
+  (**R.285**), a name whose last binding was `None` is a key that arrives untagged (**R.286**), and `abs` of it
+  truncates (**R.287**) — the first two of those answer the same wrong thing off an **int** key, which is why
+  they are rows and not clauses. The tempting `NoneLit` arm on the *static* key door was built, measured, and
+  reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
+  left in the comment above `constKeysMatch` for whoever writes that arm next.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

@@ -1,0 +1,26 @@
+3.5
+4.5
+3.5 3.5
+True
+3.5
+hi
+1 True
+[1, 2]
+2
+1
+2
+True
+1.5 a [2]
+{None: 1.5, True: 'a', False: [2]}
+None
+True
+zero
+one
+one 1
+[7, 8]
+7
+built
+3.5
+[3.5, 'hi', [1, 2]]
+no entry under True
+no entry under None

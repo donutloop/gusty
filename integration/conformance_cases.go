@@ -516,6 +516,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// answer here, where the same programs used to stop the build at exit 1 with `index must be a
 		// constant` (roadmap Gap R.215, ADR 0327).
 		"dict_literal_key",
+		// A `None`, `True` or `False` key is a key the dict read doors can be asked with: the entry arrives
+		// as a (payload, tag) pair and the printer, the binder, the loop and the `or` door read the kind the
+		// writer left beside it. Twenty-six lines, every one CPython's — where the same programs printed the
+		// float box's handle, the interned text's index or the digit `0` at exit 0 (roadmap Gap R.221, ADR 0353).
+		"dict_none_bool_key",
 		// The standard library answers the reference's NAME: `math.pi`, `math.e` and `math.tau` are the
 		// literals `stdlib/math.gy` declares and this language's `PI`/`E`/`TAU` are aliases of them, so the
 		// program below is one CPython runs and the two legs are compared rather than described

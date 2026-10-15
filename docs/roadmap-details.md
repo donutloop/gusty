@@ -10671,7 +10671,52 @@ variable road answers the reference's way, and today the variable road does not 
 argument road carries the pair, that case fails until both roads print `x`.
 
 
-### Gap R.221 — a dict variable whose key is `None` or a bool reads the wrong entry (OPEN, found by ADR 0328)
+### Gap R.221 — a dict variable whose key is `None` or a bool reads the wrong entry (CLOSED by ADR 0353, found by ADR 0328)
+
+**Closed 2026-10-16 by ADR 0353**, one line of gate and one new file, with the door it guards unchanged. The
+prediction written below — "the fix is not new machinery: it is the door `literalDictRead` already uses"
+— was right, and being right about the door is what made the diagnosis interesting: the door was never the
+fault, the **gate** in front of it was, and the gate's defect was a `switch` of key *spellings*.
+
+`mixedDictIndexRead` (`pkg/lang/heapargs.go`) is the ask in front of `mixedDictPair`, and its four callers are
+the print door, the binding door and the two `and`/`or` doors. It had arms for `*Name`, `*IntLit`, `*StrLit`
+and `*FloatLit` — the float arm ADR 0233 added, the other two left by ADR 0232 — and a `*NoneLit` or `*BoolLit`
+fell past all of them onto the road that hands a payload to the number printer. That is the whole of it:
+`None`, `True` and `False` each have a tag (`TagNone`, `TagBool`) and a payload (`0`, `1`, `0`), which is
+precisely what `taggedOperand` already hands the door for an int or a text key.
+
+The list of spellings moved out of the `switch` into one function, `dictKeyCarriesPair`
+(`pkg/lang/dict_key_pair.go`), whose arms are the key kinds that have a tag in the runtime's table. One
+function rather than four `switch`es is the point: four callers each keeping their own list is how a gate and
+a door grow apart, and ADR 0327's float-key row is the same story one file over. Nothing in the builder, the
+runtime or the printers changed — the entry was always written with its tag (ADR 0232's `bit 8`) and always
+read back with it, except on that road.
+
+Measured against a build of the commit before, over a 301-shape probe (three keys × eleven self-describing
+values, in print/binding/measurement/loop/`str`/`repr`/`==`/`and`/`or` positions, plus run-built and
+multi-key dicts): **36 programs change answer, none changes answer that did not need to**. The fifteen
+key×value shapes named below are among them, as are `d = {}` / `d[None] = 3.5` and `d = {None: 1.5, True:
+"a", False: [2]}`. `pkg/lang/dict_none_bool_key_test.go` is the unit witness and
+`integration/dict_none_bool_key_test.go` the CLI one; `programs/dict_none_bool_key.gy` is the matrix row and
+77 record entries (6931 → 7008) are the record leg.
+
+Two things this cycle measured and did **not** do, each of which is a row and not a clause:
+
+* **The tempting arm was a regression.** Adding `*NoneLit` to `constKeysMatch` — the *static* door that
+  answers "what kind is in this entry?" by walking the literal — converts one refusal into an answer
+  (`print(d[None][0] + 1)` over `[1, 2]` goes from refusing to `2`) and broke four others: `"a" in d[None]`
+  answers `False` over a text where the reference answers `True`, answers `False` over the integer `5` where
+  the reference raises, and `for x in d[None]` prints nothing over a text and `0 1 2` over `5` where the
+  reference raises for both. Two roads consult that door to *label an operand* and cannot read a `None` slot;
+  widening the door handed them a label they cannot honour. The arm is reverted and the measurement lives in
+  the comment above `constKeysMatch`, because the next cycle will find the same `NoneLit` folding to `0` and
+  will want to add exactly this arm. That is **Gap R.285**.
+* **The five shapes the probe found beside the fix are pinned, not absorbed**: an f-string field of the entry
+  (**R.283**), the truth of the entry (**R.284**), the operator roads that ask it (**R.285**), a name whose last
+  binding was `None` (**R.286**) and `abs` of it (**R.287**). R.283 and R.284 answer the same wrong thing with
+  an **int** key, which is why they are rows and not clauses of this one.
+
+The original measurement, kept as it was written:
 
 ADR 0328's conformance program began with two more probes than it finished with, and they came out
 because the program is required to match CPython line for line:
@@ -12549,3 +12594,220 @@ def d(a=2, b=3):
 **Gap R.277**'s road: `{"a": 1}` is a value the answer table declines to type, and the suspicion is that a
 default it cannot type makes the pass decline the *program* rather than the *callable*, which is the difference
 between a refusal an agent can act on and a mystery.
+
+### Gap R.283 — an f-string field of a self-describing dict entry answers the payload
+
+Found by ADR 0353's probe, which swept the positions a dict read can be *put into* rather than only the ones
+it was written to fix. Three fields, all at **exit 0**:
+
+```gusty
+d = {None: 3.5}
+print(f"{d[None]}")     # 3.5 in the reference;  3   here — a @float_box handle
+d = {None: None}
+print(f"{d[None]}")     # None in the reference; 0   here
+d = {None: [2]}
+print(f"{d[None]}")     # [2] in the reference;  3   here — an allocator slot
+```
+
+and the control that makes it a row of its own rather than a clause of **Gap R.221**:
+
+```gusty
+d = {1: 3.5}
+print(f"{d[1]}")        # 3.5 in the reference; 3 here — the int key answers the same wrong thing
+d = {1: [2]}
+print(f"{d[1]}")        # [2] in the reference; 3 here
+```
+
+**The key is not the variable.** The bare `print(d[1])` prints `[2]` — the print door asks
+`mixedDictPair` and hands `rt_print_mixed_value` a (payload, tag) pair. The f-string road never asks that
+door: it formats the read's payload word with the numeric formatter it would use for an `int`, which is the
+same shape as **Gap R.220** one boundary out and the same shape as ADR 0307's f-string field fix for a list
+element, one container over.
+
+The fix is therefore not in the key gate: give the field the pair the print door already asks (`mixedDictPair`
+— it is the same read), and let the field render through `rt_print_mixed_value` the way a bare `print` renders
+it. The rows to move are the three pinned in
+`pkg/lang/dict_none_bool_key_test.go::TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed` (`an_fstring_field_of_the_entry`)
+and their CLI twins in `integration/dict_none_bool_key_test.go`; the invariant is that a field and a bare
+print of the same read agree, which no table checks today.
+
+### Gap R.284 — the truth of a self-describing dict entry is asked of the payload
+
+```gusty
+d = {None: "hi"}
+if d[None]:
+    print("y")
+else:
+    print("n")          # y in the reference; n here — @str_tab index 0 tested against zero
+```
+
+with `bool()` asked directly it is the same fault and easier to see, and again the key is not the variable:
+
+| program | CPython | this toolchain |
+|---|---|---|
+| `d = {1: "hi"}` / `print(bool(d[1]))` | `True` | **`False`** |
+| `d = {None: "hi"}` / `print(bool(d[None]))` | `True` | **`False`** |
+| `d = {1: []}` / `print(bool(d[1]))` | `False` | **`True`** (the heap handle is nonzero) |
+
+A truth test over a pair-door read is testing the payload word against zero, so a text whose interned index
+is `0` is false and an empty list whose handle is `3` is true — the two wrong answers point in opposite
+directions, which is what makes them one row and not two. The door exists and is named: `@rt_pair_truth`
+(ADR 0331) is how a literal's element decides its truth, taking payload *and* tag. An `if`/`while`/ternary
+condition over such a read should ask it, exactly as ADR 0331 made a literal element ask it.
+
+Pinned with today's answer in the same filed table (`the_truth_of_the_entry`) and at the CLI; the empty-list
+row is pinned beside it, because a fix that makes the text case true by testing the handle nonzero would
+"fix" one row and leave the other wrong.
+
+### Gap R.285 — a `None`/bool key is invisible to the static key door, so the operator roads disagree with the pair door
+
+The row with two faces, and the reason it is one row is that both faces come from the same ask — *what kind is
+in this entry* — answered twice, once by the object and once by the literal.
+
+```gusty
+d = {None: "a"}
+print(d[None] + "b")    # "ab" in the reference; here: codegen refuses —
+                        #   "concatenating a string with a value that is not a string … CPython raises TypeError for it"
+d = {1: "a"}
+print(d[1] + "b")       # "ab" — the int-key twin answers
+```
+
+The refusal is worse than a wrong answer, because it is a sentence that is **false of this program**: the
+reference does not raise there. And the neighbouring program inverts which road is honest:
+
+```gusty
+print(d[None] * 2)      # "aa" in the reference; 0 at exit 0 here
+print(d[1] * 2)         # refused here ("operator \"*\" on a string")
+```
+
+so today the two roads disagree in *both* directions and neither disagreement is the reference's.
+
+The other face is the one that nearly shipped in ADR 0353. `constKeysMatch` is the static door that answers
+"*what kind is in this entry?*" by walking the dict's own literal, and it has no arm for a `*NoneLit`. Adding
+one is tempting — it converts a refusal into an answer, `print(d[None][0] + 1)` over `{None: [1, 2]}` going
+from `index cannot use an element of d as a plain number` to `2`. It was built and measured, and it **regressed
+four shapes**:
+
+| program | reference | with the arm |
+|---|---|---|
+| `d = {None: "a"}` / `print("a" in d[None])` | `True` | `False` |
+| `d = {None: 5}` / `print(1 in d[None])` | raises `argument of type 'int' is not iterable` | `False` |
+| `d = {None: "ab"}` / `for x in d[None]: print(x)` | raises `TypeError` | prints nothing |
+| `d = {None: 5}` / `for x in d[None]: print(x)` | raises `TypeError` | prints `0 1 2` |
+
+Two roads consult the static door to *label an operand* — the membership test and the loop — and neither can
+read a `None` slot. Widening the door handed them a label they cannot honour, which is ADR 0249's failure mode
+with the roles reversed: the refusal was wrong, and the answer is worse. The arm is reverted; the measurement
+lives in the comment above `constKeysMatch` so the next cycle does not repeat the attempt without the
+measurement.
+
+The order the fix has to go in is the order the two halves are one row for: first teach the roads that *label*
+an operand to ask the object's tag where the literal does not describe the slot (the same widening ADR 0323
+did for `in` and `for` over a slot), and only then open the static door's `None` arm — at which point the four
+rows above are controls and not regressions. The latent half to fix in the same stroke: `foldConstInt` reads a
+`NoneLit` as the integer `0`, so the door already says a `{0: …}` dict has an entry keyed by `None`. Today that
+is harmless because every road that reaches it still asks the *object*, whose tag-aware lookup raises the
+reference's `KeyError: None` — pin that too, so the day the static answer wins the argument, the crossing fails
+a case instead of printing `"a"`.
+
+### Gap R.286 — a name whose last binding was `None` is not a key the read carries a tag for
+
+```gusty
+d = {None: 3.5}
+k = None
+print(d[k])             # 3.5 in the reference; KeyError: key not found at exit 3 here
+```
+
+and the control that localises it to the *binding* and not the read:
+
+```gusty
+d = {True: 3.5}
+k = True
+print(d[k])             # 3.5 — this one answers
+```
+
+`*Name` has been on the gate since ADR 0233, so the read takes the pair door; what arrives is a payload and a
+tag, and the tag is the one the *binding* left behind. A bool binding leaves `TagBool`. A `None` binding leaves
+nothing the door can use, the same hole ADR 0267 patched for arithmetic answers and Gap R.143 names for
+containers. The fix is the binding road's: bind a `None` as the (payload, tag) pair the doors ask for, and this
+read — which already asks the right question — gets the right answer.
+
+Two sentences ride along, both owned elsewhere: the trap the program above dies with is the generic
+`key not found`, where the reference names the key (`KeyError: None`), which is **Gap R.189**'s wording row;
+and the same program with an int key is what `TestABooleanOrNoneKeyThatNamesNoEntryRaisesWhatTheReferenceRaises`
+keeps honest, since the missing-key raise is asserted by class *and* sentence on the rows this cycle did fix.
+
+### Gap R.287 — `abs` of a self-describing dict entry answers the payload
+
+```gusty
+d = {None: 3.5}
+print(abs(d[None]))     # 3.5 in the reference; 3 at exit 0 here
+d = {1: 3.5}
+print(abs(d[1]))        # 3 here too — key-independent, so the read is the road, not the key
+```
+
+ADR 0309 paid this door for a **pair-bound name** (`n = 3.5` / `abs(n)` answers `3.5`) and for a **list
+element** (`abs(xs[0])` answers), by handing `abs` the (payload, tag) pair instead of the payload word. The
+dict entry read is the third thing that produces a pair and is not given one: `mixedDictPair` is right there,
+`dictKeyCarriesPair` now says the key can travel, and the signless-builtin road still reads the payload as an
+`int`. `min`/`max` asked of the same read belong to the same row — ADR 0316's fold argument is the shape that
+already got the pair, so this is the read half of a door whose argument half is paid.
+
+Pinned with today's answer (`the_sign_of_a_float_entry`), key-independence included, so the fix cannot be
+"make the `None` key work" and stop with the int key still truncating.
+
+### Gap R.288 — a refusal still offers to run the program the way ADR 0302 retired
+
+The untaggable-key control asked this row by accident. Having opened the pair door for the keys that carry a
+tag, the probe asked what the backend says about a key that carries **none**:
+
+```gusty
+d = {[1]: "x"}
+print(d[[1]])
+# gustyc: jit: codegen: a compiled container cannot hold a list literal yet; a dict keyed by a container has
+#   no hashing rule, and an element nested deeper than every inner element can be tagged would be printed by
+#   handle and compared by address (roadmap L11.1). Build that inner value separately, or run it interpreted
+```
+
+The reference raises `TypeError: unhashable type: 'list'` there, so declining is this backend's honest answer
+— **Gap R.217** already owns the class and the sentence of that raise. What is not honest is the last five
+words. Since ADR 0302 there is one execution backend; `--interp` is a usage error rather than a silent no-op,
+`EvalExpr` and `InterpreterRun` are not callable, and `pkg/lang/jit.go` is deleted. A sentence that ends "or run
+it interpreted" therefore sends a reader — and an agent reading `--json`'s `message` field, which carries the
+same string — to a door that answers "unknown flag". It is not a convenience offered to a user with two options;
+it is a fact about the toolchain that stopped being true.
+
+The sibling shape shows the other half of the same carelessness:
+
+```gusty
+d = {(1, 2): "x"}
+print(d[(1, 2)])
+# gustyc: jit: codegen: unsupported expression *lang.Tuple
+```
+
+The reference prints `x` — a tuple is hashable — and the refusal names an **AST type** at the person being told.
+The missing tuple object is **L11.3**'s row and is not this one; what this row owns is that `unsupported
+expression *lang.Tuple` is a message written for whoever wrote the emitter.
+
+Why no guard caught either: `pkg/lang/witness_claim_test.go` reads the tests, the CLI, the conformance case
+registry and the ten agent-facing documents — the places a claim about a witness is *made*. These strings are
+emitted by `pkg/lang`, and nothing asks an emitted `codegen:` sentence whether it promises a witness that no
+longer exists. That is the gap's shape: the vocabulary rule was enforced where the documentation is, and the
+compiler's own sentences were left out of the corpus.
+
+The fix is subtraction plus a rule, not a rewording exercise:
+
+* delete the clause, and put the **missing half** where it was (ADR 0249's rule) — the sentence is trying to say
+  two different things at once, "a dict keyed by a container has no hashing rule" and "an element deeper than
+  every taggable element would print by handle", and which of them fired is what the program needs;
+* ask the phrase list of the emitter's own strings, so that putting a retired-engine offer back into a
+  `codegen:` error goes red the way one in `docs/language.md` already does;
+* and while the strings are open, the AST-node names (`unsupported expression *lang.Tuple`) belong to the same
+  family as **Gap R.17**'s diagnostics — the sentence is the program's, not the implementation's.
+
+Both refusals are pinned with their exact current text — `or run it interpreted` and
+`unsupported expression *lang.Tuple` — in
+`pkg/lang/dict_none_bool_key_test.go::TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed` and at the CLI in
+`integration/dict_none_bool_key_test.go::TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker`, so the day the
+sentence changes, a case notices in each direction: a rewrite that only deletes the offer still fails the pin,
+and so does the offer reappearing.
