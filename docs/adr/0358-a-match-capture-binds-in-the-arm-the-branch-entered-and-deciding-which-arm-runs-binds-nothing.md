@@ -149,8 +149,8 @@ against CPython's own text, 2 catchable-by-class rows, an or-pattern row run in 
 placement row (the capture's store and its flag store both below the match's own `br i1`, the flag cleared on entry
 exactly once, and the flag set after the value is stored), an 8-row frame/flag table that asks the checker and the
 emitter the same question, a 14-row unit table for `matchCaptureNames` that also fails if the checker's census and
-the emitter's ever disagree, a 5-row census-through-the-parser table, 19 record-leg rows read out of
-`testdata/interpreter-golden.json` (a missing entry fails the case), 5 refusal rows and 3 still-wrong rows carrying
+the emitter's ever disagree, a 5-row census-through-the-parser table, 17 record-leg rows read out of
+`testdata/interpreter-golden.json` (a missing entry fails the case), 5 refusal rows and 2 still-wrong rows carrying
 today's answer beside the reference's so a fix cannot be claimed by editing a test. `integration/programs/match_binding_edges.gy`
 is the whole-program row: both legs print `caught / 4 / 30 / 0 / -1 / 7 / 3 / 8` and then raise
 `UnboundLocalError` from the same line. `integration/scoping_test.go` lost the pinned-garbage test Gap R.36 told it
