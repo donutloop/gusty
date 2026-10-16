@@ -65,7 +65,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// only mentions the text (the `--opt-level=1` dead-global assertion). Skipping it is the
 		// same no-op it always was.
 		if _, isLit := n.Expr.(*StrLit); !isLit {
-			if _, err := g.value(b, n.Expr); err != nil {
+			// A call whose answer nobody reads is still a call: the statement asked for its effects, and
+			// the kind word the callee stored beside its payload is simply never read. The refusal that
+			// guards a position which READS one word would stop `main()` — a program the reference runs —
+			// at the compile door (roadmap L11.1, Gap R.146's rule, ADR 0368's statement position).
+			undo := g.grantDiscardedCallAnswer(n.Expr)
+			_, err := g.value(b, n.Expr)
+			undo()
+			if err != nil {
 				return err
 			}
 		}

@@ -408,9 +408,9 @@ func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"0", "x", "roadmap Gap R.221 (a dict variable's value is one word and its kind lives in the tag the write left)",
 		},
 		{
-			"a None handed back by a function",
+			"a None handed back by a function", // the answer direction stores the void's word on that road now
 			"def f():\n    return None\n\nprint(f())",
-			"0", "None", "roadmap Gap R.228 (the return-kind table this row grew, asked for None)",
+			"None", "None", "roadmap Gap R.228 (paid by ADR 0368: the return road stores TagNone beside its payload, and the print door asks the tag instead of printing the payload with %d)",
 		},
 		{
 			"the answer as another container's element",

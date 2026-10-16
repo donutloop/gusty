@@ -2024,7 +2024,12 @@ func (g *irGen) pairPayloadNeedsRoot(c *Call) (bool, bool) {
 	}
 	spec := g.pairSpecs[nm.Value]
 	if spec == nil || !spec.returnsPair {
-		return false, false
+		// A carried answer may be a container the callee built in its own frame, and that frame is closed
+		// the moment the call returns: without a root the object is recycled by the next allocation and the
+		// payload is a handle to somebody else's bits (ADR 0181's rule, ADR 0368's second user).
+		if !g.answer.carries(nm.Value) {
+			return false, false
+		}
 	}
 	return true, true
 }

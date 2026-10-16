@@ -10746,31 +10746,25 @@ sentence anywhere in the output.
 
 <a id="gap-r-228"></a>
 
-### Gap R.228 — a `None` handed back by a function answers the digit `0` (OPEN, found by ADR 0333)
+### Gap R.228 — a `None` handed back by a function answers the digit `0` (CLOSED by ADR 0368, found by ADR 0333)
 
-```python
-def f():
-    return None
+**Closed 2026-10-17 by ADR 0368.** The cure was the shape this section asked for — one whole-program scan, a
+verdict only where every road agrees — with one change of plan: the scan does not answer "is this body's answer
+the void", it answers "**how many kinds can this body hand back?**", and a body that can hand back more than one
+carries the kind of the arm that ran. `def f(): return None` is one arm; `def f(x): if x: return 7` is two (the
+`7` and the fall-off), and it is the second case the one-word road could never answer — the payload of a value
+whose kind nothing recorded, printed with `%d`. The word stored is the tag table's own (`TagNone` is `3`, and
+`pairTagNone` is the same digit, which `pkg/lang/answer_kind_test.go::TestTheAnswerKindWordsAreTheTagTable` holds
+the two to), the store goes into the global the pair road already declared, and the print door reads the pair
+rather than the payload. `print(f())` writes `None`; `def f(x): if x: return 7` writes `7` and `None`; and the
+same body's `True`/`2` and `{'k': 1}`/`3` arms arrive as bool and dict rather than as `1` and a slot number.
 
-print(f())      # 0 here;  the reference prints None
-```
-
-Exit 0, no diagnostic, and a number the program never wrote — the same signature Gap R.115 recorded for a
-container before ADR 0333 gave it a kind: the call hands back one word, nothing about that word says what
-it means, and the print road's fall-through writes it with `%d`. The void value's payload happens to be `0`,
-so the wrong answer is at least stable.
-
-This is not the container table's bug wearing a different hat. `containerReturningFuncs` declines a body
-whose arms are not all one container kind, which is correct — and it means a function returning `None` is
-left on the ordinary one-word road with no record at all. The cure is the same *shape* of record (a
-whole-program scan, a verdict only when every road agrees, ADR 0249's gate) with its own table and its own
-printer decision, because a `None` needs the void printer, not a container one. Gap R.103 is the standing
-reminder that a `print(f())` answering digits has more than one cause; it is why this row is filed instead
-of being folded into the one that found it.
-
-The definition of done is `None` on both witness legs and `f() is None` answering `True`; the row sits in
-`TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed` until then, so the day the door grows, a test
-fails rather than a right answer appearing without a record of the wrong one.
+What this row's own text said it would take — a void-specific table and a void-specific printer decision —
+turned out to be a narrower version of the same missing record, and building the wider one cost nothing extra: the
+container table's rule ("decline a body whose arms are not all one kind") is kept by the new scan too, and the
+void's arm joins the other arms rather than owning a table of its own. Gap R.103's warning stands, and is honoured
+the same way: the scan declines a kind it cannot spell out of the source rather than guessing, so a `print(f())`
+that still answers digits has a named cause and a row (Gap R.324) rather than a plausible number.
 
 <a id="gap-r-229"></a>
 
@@ -10810,14 +10804,37 @@ which is the distinction that makes them two owners instead of one: the value ex
 grow an arm to reach it.
 
 <a id="gap-r-219"></a>
-### Gap R.219 — a function is registered as returning text on the evidence of one arm (OPEN, found by ADR 0327)
+### Gap R.219 — a function is registered as returning text on the evidence of one arm (CLOSED by ADR 0368, found by ADR 0327)
 
-`def f(x):` / `    if x:` / `        return "x"` / `    return 0` with `print(f(1))` / `print(f(0))` prints `x`
-and `x` where the reference prints `x` and `0`. `returnsStringExpr`/`methodReturnsStr` set `strFuncs` when *any*
-return yields text, and the call site then renders the other arm's number through the text printer. Measured
-while probing this cycle's return-position gate — which is why that gate asks whether the entry is a plain
-integer and does not trust `strFuncs`: trusting it would have made `def f(): return {"a": 1}["a"]` compile and
-`def f(): return {"a": "x"}["a"]` answer `1`.
+**Closed 2026-10-17 by ADR 0368** — answering the shape this row asked us to refuse, and four more it did
+not name: `ys.append(f(1))`, `s.add(f(1))`, `d["k"] = f(1)` and `ys[0] = f(1)` over a body whose arms mix kinds
+were refused outright (*cannot put `f(...)` in a compiled list: the compiler cannot prove one kind for it*), and
+all four now answer the reference — `['a']`, `{'a'}`, `{'k': 'a'}`, `['a']` — because the three gates that decide
+whether a literal or a mutation needs per-element tags learned that an answer carrying its own kind is such an
+element (ADR 0249's rule about a gate and a door that disagree, read the other way: the door grew and the gate
+had to follow). The row's own plan was to
+register a function as text-returning only where *every* reachable return is text-valued and to refuse the mixed
+body; the reason to prefer answering it is that the refusal is unnecessary once the answer carries its kind, and the
+refusal would have cost programs the reference runs (`while f():`, `print(f(0))`) their one green leg. So
+`textReturningCallables` and `scanStringBindings` now ask one question before writing `strFuncs`: *does the answer
+direction carry this body?* A body whose arms all answer one kind is registered exactly as it always was — the
+table is correct for it, and `TestACarriedAnswerIsVisibleInTheEmittedModule` fails if a one-kind body is handed a
+kind word it does not need. A body whose arms answer two kinds gets **no entry**, because an entry is a claim about
+a single payload and there is no longer a single payload.
+
+The measurement that says the change is real: of a 25-shape probe of mixed-return bodies, **12 changed answer and
+none regressed** — the same probe run against a build of the parent commit prints 19 wrong. Root cause, in one
+sentence: `returnsStringExpr`/`methodReturnsStr` set `strFuncs` when *any* return yielded text, and the caller then
+handed `printf` an interned `@str_tab` index with `%d` for the arm that answered a number.
+
+Two rules were learned the hard way and are written into the scan rather than into a comment. The first is ADR
+0343's: the scan answers *to its caller* and is not left in a package variable, so two compiles in flight cannot be
+answered by one plan — `TestAnswerKindPlanIsNotAPackageVariable` keeps that honest. The second is ADR 0273's, and
+it is the difference between a gate and a trap: seeding the pair road's `pairRetDone` from the answer direction turns
+every arithmetic, comparison and call-argument position of a mixed body into an exit-1 refusal, which is what the
+first attempt did and what `value`'s gate now refuses to do (`!g.answer.carries(name)` is that exemption, with the
+reasoning in the comment above it). Those doors still read a bare payload; they are Gap R.324, filed the same day
+rather than smoothed over, and they are why this row's definition of done is not simply "everything agrees".
 
 <a id="gap-r-220"></a>
 ### Gap R.220 — a dict read handed to a call answers the payload, not the value (OPEN, found by ADR 0327)
@@ -14152,4 +14169,83 @@ evidence *against*), which leaves the call on the door it always used. `self.inn
 Both are refusals, so both are pinned as refusals: the last two rows of
 `TestWhatTheMethodAnswerStillOwesIsFiledNotFixed` assert the shape still refuses in words, names the missing
 half, and never reaches the verifier — so a cycle that answers has to move the row rather than delete it.
+
+<a id="gap-r-324"></a>
+### Gap R.324 — the kind word stops at the positions that read one word (OPEN, found by ADR 0368)
+
+ADR 0368 gives a call's answer a kind beside its payload, and 12 of the 25 shapes of its probe changed answer.
+These are 5 of the 7 that did not — the other 2 predate it (Gap R.83's unprovable comparison, the pair road's own
+one-word refusal) and stay on their rows. Every answer below was read off the compiled binary, not remembered.
+
+```python
+def f(x):
+    if x:
+        return "x"
+    return 0
+
+def g(v):
+    return v
+
+print(g(f(1)))              # 0 here, x in the reference — the argument keeps one word
+
+
+class C:
+    def m(self, x):
+        if x:
+            return "x"
+        return 0
+
+
+print(C().m(1), C().m(0))   # x and x;  a method answers through emitClassMethod
+
+
+def g2(x):
+    if x:
+        return 1.5
+    return 2
+
+
+print(g2(1), g2(0))         # 1.5 and 2.0 — the answer direction has no word for a double
+
+
+def g3(x):
+    if x:
+        return "a"
+    return 1.5
+
+
+print(g3(1), g3(0))         # refuses "a string cannot be lifted to a double"
+
+
+def g4(x):
+    return "x" if x else 0
+
+
+print(g4(1), g4(0))         # 0 and 0 — one road, two arms, and no constant word for either
+```
+
+Arithmetic and comparison against a **literal** are **not** in this row: `f(1) + 1` over a text arm raises
+CPython's own `unsupported operand type(s) for +: 'str' and 'int'`, `1 if f(0) == 0 else 0` prints `1`, and
+`pick(1) == "z"` is `True`. What the equality door will not do is compare one of these answers with a slot
+it cannot label: `xs[0] == pick(1)` over `xs = [1, "a"]` is refused naming the missing kind, which is what
+it was before this row, and what `TestSlotEqualityRefusesAnUnprovableKind` holds it to. A row that files what
+it never measured is the defect this file exists to remove.
+
+Five shapes, four causes: `answerCallPair` answers a `(payload, tag)` pair for a carried call, and the doors that
+call `value` on the operand take the payload and lose the tag. The argument door is Gap R.146's and Gap
+R.220's one-word position, unpaid for an operand the program never bound; the method door is a separate return road
+(`emitClassMethod`) that shares none of the roads `stmtReturn` walks, so the plan never sees its arms; and the float
+arm is the scan's own honest decline — it names a kind only when the spelling names it, and a double crosses this
+backend's call boundary as a `double` rather than an `i32` payload, so a body with a float arm is left where it was
+rather than given a word that would lie: `2.0` for `2` today. `return "a"` beside `return 1.5` still reaches the
+float-lift sentence and refuses, which is the good face of that family — words rather than a number the reference
+never prints. And the conditional `return` is the scan's boundary drawn in the other direction: one `return` road
+whose two arms answer different kinds cannot store a constant word, and storing the word the branch took is a
+run-time fact this pass does not emit.
+
+The row is filed rather than closed by a refusal for the reason ADR 0273 wrote and ADR 0368 read again: a gate that
+fires where no tag is read costs a program that compiles today, and the reference runs it. The witnesses are
+`integration/mixed_answer_kind_test.go::TestWhatTheAnswerDirectionStillCannotReachIsFiledNotFixed`, which pins
+CPython's answer beside the compiled one for all five shapes and fails on **either** side — if a door opens, the row
+must be deleted before the suite goes green.
 

@@ -781,7 +781,7 @@ func isStringAnnotation(t *Type) bool {
 // in the second table only when one callable owns its name (textMethods' ambiguity rule), and a `Name` call
 // is never answered out of it — `callAnswersText` and the `*Call` arm below read `defs` alone, so a variable
 // sharing a method's name cannot inherit the verdict (roadmap Gap R.315, ADR 0366).
-func textReturningCallables(prog *Program) (defs, methods map[string]bool) {
+func textReturningCallables(prog *Program, answer *answerKindPlan) (defs, methods map[string]bool) {
 	out := map[string]bool{}
 	methOut := map[string]bool{}
 	if prog == nil {
@@ -893,6 +893,13 @@ func textReturningCallables(prog *Program) (defs, methods map[string]bool) {
 		for _, name := range order {
 			fd := funcs[name]
 			if out[name] {
+				continue
+			}
+			if !isMethod[name] && answer.carries(name) {
+				// The body answers more than one kind, so there is no ONE kind to register: the first text
+				// seen anywhere in it used to be enough, and the caller then rendered the arm that answered
+				// a number through the text printer (roadmap Gap R.219, ADR 0368). Such a function carries
+				// its answer's kind instead of this table's verdict.
 				continue
 			}
 			w := returnCollector{}

@@ -381,6 +381,18 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// tag too. The arity is the scan's decision, so a call site emitted before this `define` agrees with
 	// it; only the binding half is narrowed by the convention this body is emitted under (ADR 0273).
 	pairSpec := g.pairSpecFor(fd, floatRet, g.strFuncs[g.fnName(fd)])
+	if g.answer.carries(g.fnName(fd)) {
+		// The answer direction and the double return cannot both own this body's `ret`: the pair the
+		// first stores is an i32 payload beside a kind word, and the second crosses a `double`. The
+		// scan excludes every arm that could make the body float-returning (a float literal, a name the
+		// body rebinds, anything whose kind is not written in the spelling), so reaching this point is
+		// the scan's mistake rather than the program's, and it is said as one (roadmap ADR 0166's rule,
+		// ADR 0368).
+		if floatRet {
+			return fmt.Errorf("codegen: %q answers more than one kind AND a double this backend can only cross as a float return word: the answer direction has no word for the float arm (roadmap L11.6, Gap R.219, ADR 0368)", g.fnName(fd))
+		}
+		g.answerDeclare(g.fnName(fd))
+	}
 	if pairSpec != nil && pairSpec.returnsPair {
 		// The tag word this body stores beside its answer. It is declared here, where the function's own
 		// `define` is emitted, and read by callers that may have been emitted already — so the read cannot
@@ -474,7 +486,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// returns can be judged: `def f(s): return s[1]` called with a string hands back a string
 	// index, and the caller has to read it as one (ADR 0229). Without this the value was
 	// correct and the print was not — the index leaked out as a number.
-	if !fd.Async && returnsStringExpr(g, fd) {
+	if !fd.Async && !g.answerOwns(g.fnName(fd)) && returnsStringExpr(g, fd) {
 		g.strFuncs[g.fnName(fd)] = true
 	}
 	isGen := containsYield(fd.Body)
@@ -656,6 +668,10 @@ func (g *irGen) stmtReturn(b *strings.Builder, st Stmt, n *ReturnStmt) error {
 		g.heapUsed = true
 		t := g.newTmp()
 		g.emitHeapHelperCall(b, t, "rt_none", "", Span{})
+		// A bare `return` answers the void, and a body whose answer carries its kind says so: without the
+		// store the caller reads whatever the previous answer of the same function left in the word
+		// (roadmap L11.1, ADR 0273's rule about an invented default, ADR 0368).
+		g.storePairTag(b, pairTagNone)
 		if err := g.runDeferred(b); err != nil {
 			return err
 		}
@@ -671,6 +687,17 @@ func (g *irGen) stmtReturn(b *strings.Builder, st Stmt, n *ReturnStmt) error {
 	// print, str()/repr(), an f-string field, a binding — is answered (roadmap Gap R.215, ADR 0327).
 	if dl, key, isLit := literalDictReadOf(n.Expr); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
 		return literalDictOneWordErr(key)
+	}
+	if g.answer.carries(g.curFunc) {
+		// This body answers more than one kind, so the arm that ran says which: the payload comes from the
+		// road that has always produced it and the kind is the constant this spelling carries, stored in
+		// the same word the pair road uses (roadmap Gap R.219, Gap R.228, ADR 0368).
+		if arm, ok := g.answer.armOf(n); ok {
+			return g.answerReturn(b, n, arm)
+		}
+		// A `return` the scan never saw: the body is carried, so every road owes a word, and inventing one
+		// here is how a value walks around wearing another kind's bits (ADR 0187's rule).
+		return fmt.Errorf("codegen: %q answers %s, a road the answer direction never saw, so the kind its payload means has no source (roadmap L11.1, Gap R.219, ADR 0368)", g.curFunc, exprSurface(n.Expr))
 	}
 	if g.floatFuncs[g.curFunc] {
 		// A pair-returning callee under a double return: the callee answered (payload, tag) beside its
@@ -928,7 +955,16 @@ func (g *irGen) callUserFunc(b *strings.Builder, c *Call, fnName string) (string
 	// handle as a number, which is the wrong answer this line of work exists to eliminate. The
 	// permission is this call's, and it is off while the arguments are lowered, so a nested call of
 	// the same shape inside an argument keeps its own honest refusal (roadmap L11.1, ADR 0273).
-	if g.pairRetDone[fnName] && !g.pairCallAsked[fnName] {
+	//
+	// A carried answer is exempt, and the exemption is the difference between a gate and a trap. The
+	// answer direction declares the same global the pair road does, so seeding this flag from it would
+	// refuse every `while f():`, every `x = f() + 1` and every `f(f(1))` of a mixed-return body at exit
+	// 1 — programs the reference runs, on the strength of a position that never asked about kinds at all.
+	// ADR 0273 wrote this rule for the pair road; the answer road reads it the same way. The positions
+	// that DO read a carried answer ask the pair door themselves, and the rest keep the answer they had
+	// before this cycle, wrong on one arm though that is — which is Gap R.229's open remainder rather
+	// than a compiler that stops compiling (roadmap Gap R.219, ADR 0368).
+	if g.pairRetDone[fnName] && !g.pairCallAsked[fnName] && !g.answer.carries(fnName) {
 		return "", fmt.Errorf("codegen: %s hands back the (payload, tag) pair its answer arrived in: print(...), a binding, and the positions that read one number ask the tag, and this position keeps one word for the value, so the tag has nowhere to go (roadmap L11.1, Gap R.146, ADR 0273)", fnName)
 	}
 	// A call whose answer is a container is lowered by the container door alone: the ordinary road

@@ -78,6 +78,18 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
 	}
 
+	// The answer of a call that carries its own kind is a pair before it is anything else: `str(f(1))`
+	// and `str(f(0))` of a body whose two arms answer a text and a number render two different forms from
+	// one door, which is what the number-shaped road underneath this one used to get wrong at exit 0
+	// (roadmap Gap R.219, ADR 0303's one printer, ADR 0368).
+	if p, t, okCall, cerr := g.answerCallPair(b, e); cerr != nil {
+		return "", true, cerr
+	} else if okCall {
+		g.heapUsed = true
+		g.floatFmtUsed = true
+		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
+	}
+
 	// A name the arithmetic door bound is a number whose family the objects chose, and it is asked
 	// first — ahead of the container question, whose probe lowers the name as a number and would
 	// refuse before this arm could speak. It is rendered by the printer every other form goes

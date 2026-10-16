@@ -346,6 +346,22 @@ unpacking one collection (**Gap R.321**); an interned text name that answers fro
 `None` returned out of a function, are the two wrong answers this row found and filed (**Gap
 R.322**).
 
+**A call that answers more than one kind carries its kind beside its payload** (roadmap Gap R.219, Gap
+R.228 — closed by ADR 0368). `def f(x):` / `    if x:` / `        return "x"` / `    return 0` with
+`print(f(1))` / `print(f(0))` printed `x` and `x`, because the first text seen anywhere in that body
+registered `f` as text-returning and the caller then handed `printf` an interned `@str_tab` index with `%d`
+for BOTH arms — the number being the answer nobody wrote. The same missing word printed `0` for CPython's
+`None` where a body fell off its end, `1` for its `True`, `0` for its `{'k': 1}`, and handed `llc` a
+`ret i32 @.lst1` for a container arm: exit 2, the exit ADR 0166 forbids. One program-wide scan
+(`pkg/lang/answer_kind.go`) now answers, before any IR exists, which bodies hand back more than one kind and
+what word each `return` road stores; the one-kind tables stop being the authority for such a body, and print,
+`str`/`repr`, a condition, a container element, a binding and an f-string field ask the tag instead of guessing
+the kind from the payload. Of a 25-shape probe measured against a build of the parent commit, **12 answers
+changed and none regressed**. What it still gets wrong is named rather than smoothed over — an answer into an
+ordinary parameter, a method's mixed arms, a float arm beside anything else, and `return "x" if x else 0`
+(**Gap R.324**) — and the word is visible to a tool without running the program: `--emit-llvm` shows
+`@gy_f.anst` declared, stored on each road and loaded by each caller (**ADR 0368**'s machine path).
+
 **A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
 named and left open. `print(build()[7])` is `IndexError: list index out of range` in the reference; here it was
 `codegen: index requires an inline list/dict/set literal` at exit 1 — while `ys = build()` / `print(ys[7])` had

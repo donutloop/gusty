@@ -1,5 +1,99 @@
 {
  "entries": {
+"def f():\n    return None\n\nprint(f())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return 2\n\nd = {}\nd[\"k\"] = f(1)\nprint(d)\n": {
+    "stdout": "{'k': 'a'}\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return 2\n\ns = set()\ns.add(f(1))\nprint(s)\n": {
+    "stdout": "{'a'}\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return 2\n\nys = [0]\nys[0] = f(1)\nprint(ys)\n": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return 2\n\nys = []\nys.append(f(1))\nprint(ys)\nprint(len(ys))\n": {
+    "stdout": "['a']\n1\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return [1, 2]\n\nif f(1):\n    print(\"t1\")\n\nif f(0):\n    print(\"t0\")\nelse:\n    print(\"f0\")\n": {
+    "stdout": "t1\nt0\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return [1, 2]\n\nprint(f(1))\nprint(f(0))\n": {
+    "stdout": "a\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"hi\"\n\nf(1)\nprint(\"done\")\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint([f(1), f(0)])\n": {
+    "stdout": "['x', 0]\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint(f\"{f(1)}\")\nprint(f\"{f(0)}\")\n": {
+    "stdout": "x\n0\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint(f(1))\n\nfor i in [1]:\n    print(f(0))\n": {
+    "stdout": "x\n0\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint(f(1))\nprint(f(0))\n": {
+    "stdout": "x\n0\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint(max(f(1), \"b\"))\nprint(max(f(0), 1))\n": {
+    "stdout": "x\n1\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\nprint(str(f(1)))\nprint(repr(f(1)))\nprint(str(f(0)))\nprint(repr(f(0)))\n": {
+    "stdout": "x\n'x'\n0\n0\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"x\"\n    return 0\n\ny = f(1)\nprint(y)\n\nz = f(0)\nprint(z)\n\nprint([y, z])\n": {
+    "stdout": "x\n0\n['x', 0]\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return 3\n    return {\"k\": 1}\n\nprint(f(1))\nprint(f(0))\n": {
+    "stdout": "3\n{'k': 1}\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return 7\n\nprint(f(1))\nprint(f(0))\n": {
+    "stdout": "7\nNone\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return True\n    return 2\n\nprint(f(1))\nprint(f(0))\n": {
+    "stdout": "True\n2\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return x * 2\n\nprint(f(3))\nprint(f(0))\n": {
+    "stdout": "6\n0\n",
+    "hasStdout": true
+   },
 "# probe_pair_from_a_tuple_unpack.gy — the row's own shape: the arithmetic the plain assignment answers is\n# bound by an unpacking through the same door. `print(a)` is `8` on the compiled leg and the reference's;\n# the tuple target used to bind its names through the ordinary road, which refused the slot it could not see\n# into at exit 1 (roadmap L11.1, Gap R.144, paid by ADR 0367 — this probe is that row's promotion).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n": {
     "stdout": "8\n",
     "hasStdout": true

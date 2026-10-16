@@ -110,6 +110,16 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 			return g.markI1(p), nil
 		}
 	}
+	// `if f():` where the callee answers more than one kind. Which arm ran is a run-time fact, so the
+	// truth is asked of the tag — the same helper `and` and `or` ask about the operand they test — and not
+	// of the payload, which is an @str_tab index for a text and a heap handle for a container: testing
+	// those is how `if f(1):` took the else arm for CPython's `a` (roadmap Gap R.219, ADR 0269's door,
+	// ADR 0368's second user).
+	if i1, answered, terr := g.answerTruthOf(b, e); terr != nil {
+		return "", terr
+	} else if answered {
+		return i1, nil
+	}
 	// `if build():` asks whether the container the callee built has anything in it. The ordinary road has
 	// no word for that object, so the condition is asked again of the name the container door materialised
 	// for it — and the road below (`heapContainerLenFn`) already knows how to ask a container name whether

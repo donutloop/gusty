@@ -1520,6 +1520,67 @@ def add(a, b):
   function/closure that takes the function value and returns the (possibly
   transformed) value bound to `f`. Decorators are implemented on the record and in AOT: identity decorators are fully supported, the canonical wrapping decorator (a decorator that returns a nested closure capturing the decorated function) is supported in AOT via compile-time specialization; other transform decorators are rejected (ADR 0157).
 
+### A function that answers more than one kind carries its kind (Gap R.219, Gap R.228, ADR 0368)
+
+A body may hand back values of different kinds on different roads, and the kind is part of the answer:
+
+```python
+def f(x):
+    if x:
+        return "x"
+    return 0
+
+print(f(1))          # x
+print(f(0))          # 0
+print(str(f(0)))     # 0
+print(repr(f(0)))    # 0        (repr of the int, not of a text)
+print([f(1), f(0)])  # ['x', 0]
+print(f"{f(0)}")     # 0
+if f(1):
+    print("t1")      # t1
+
+def g(x):
+    if x:
+        return 7
+
+print(g(1))          # 7
+print(g(0))          # None — reaching the end of a body answers None, not 0
+```
+
+Each `return` road stores the tag table's word for the kind it produced beside the payload it has always
+produced — `0` int, `2` bool, `3` None, `4` str, `5` list, `6` dict, `7` set — and a body that runs off its
+end stores the void's. The position that reads the answer then asks the **tag** rather than guessing the kind
+from the payload: `print`, `str`/`repr`, a condition, a container element, a binding and an f-string field all
+ask that one pair, which is why `print(f(0))`, `str(f(0))` and `f"{f(0)}"` cannot answer three different
+things. A body whose arms all answer **one** kind is compiled exactly as it always was — the tables keyed by
+the callee's name are correct for it, and this pass leaves them alone.
+
+What the compiled backend **still gets wrong** is Gap R.324, and the shapes are named here rather than
+smoothed over. An answer handed to an ordinary function keeps one word: `def g(v): return v` with
+`print(g(f(1)))` writes `0` where the reference writes `x`. A **method** whose arms mix kinds answers the text
+twice (`print(C().m(0))` writes `x` for `0`), because a method's answer travels `emitClassMethod` rather than
+the `return` roads above. An arm that answers a **float** beside any other arm is left on the old roads —
+`return 1.5` / `return 2` prints `1.5` and `2.0`, and `return "a"` / `return 1.5` refuses with *a string cannot
+be lifted to a double* — because the answer direction names a kind only where the source spells one, and a
+double crosses this backend's call boundary as a `double` rather than a payload. And a **conditional** answer,
+`return "x" if x else 0`, prints `0`/`0`: one road whose two arms answer different kinds needs the word the
+branch took, which is a run-time fact this pass does not emit. Arithmetic and comparison, measured, are not on
+that list.
+
+The machine path: `gustyc --emit-llvm` shows the decision. A carried body declares one internal global and
+every `return` road stores into it, so a caller — human or agent — can tell a carried answer from a one-word
+answer without running the program:
+
+```
+@gy_f.anst = internal global i32 0
+  store i32 4, i32* @gy_f.anst      ; return "x"  — TagStr
+  store i32 0, i32* @gy_f.anst      ; return 0    — TagInt
+  store i32 3, i32* @gy_f.anst      ; fall off    — TagNone
+  %t11 = load i32, i32* @gy_f.anst  ; the caller asks
+```
+
+A function that answers one kind declares no such global.
+
 ### Gradual typing
 
 Optional annotations appear on variables (`x: int = 1`), parameters

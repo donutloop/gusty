@@ -61,10 +61,29 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// are asked before any IR exists so a define and its call sites cannot disagree about what a
 	// name is (roadmap Gap R.111, L11.1's remaining bool item).
 	verdict := verdictFacts(prog)
+	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
+	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
+	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
+	// One scan answers both questions, and answers them *to the caller*: the closed-position set used to be
+	// left in a package variable for codegen to pick up, which two compiles in flight cannot share. ADR 0343.
+	pairSpecs, pairClosed := pairCallScan(prog)
+	pairReturns := map[string]bool{}
+	for fnName, spec := range pairSpecs {
+		if spec != nil && spec.returnsPair {
+			pairReturns[fnName] = true
+		}
+	}
+	// Which calls answer a value whose payload cannot say what it is. Asked BEFORE the tables that name a
+	// function's answer kind, because that is the defect this pass closes: `strFuncs` registered a body on
+	// the evidence of the first text it saw anywhere in it, and the caller then rendered every answer —
+	// including the arm that answered a number — with the text printer (roadmap Gap R.219, ADR 0368). A
+	// function the pair road already serves keeps it: its tag is a run-time fact, which beats the constant
+	// one this scan can write.
+	answer := answerKindPlanOf(prog, pairReturns)
 	// Which callables hand back a text: the module's `def`s and, in a table of its own, the methods. One
 	// question, asked once, over both — a method's body emits the same doors a function's body emits, and a
 	// caller that was never told prints the @str_tab POSITION under the answer (roadmap Gap R.315, ADR 0366).
-	strFuncTable, strMethodTable := textReturningCallables(prog)
+	strFuncTable, strMethodTable := textReturningCallables(prog, answer)
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
@@ -77,7 +96,8 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// One scan answers both questions, and answers them *to the caller*: the closed-position set used to be
 	// left in a package variable for codegen to pick up, which two compiles in flight cannot share. ADR 0343.
 	g.gcReport = gcReportWanted(opts)
-	g.pairSpecs, g.pairClosed = pairCallScan(prog)
+	g.pairSpecs, g.pairClosed = pairSpecs, pairClosed
+	g.answer = answer
 	g.pairRetDone = map[string]bool{}
 	// Seeded from the scan, not from what has been emitted so far: `def f(v): return other(v)` written
 	// above `def other(w): return w` asks whether other answers a pair while other's own body is still
@@ -90,6 +110,15 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			g.pairRetDone[fnName] = true
 		}
 	}
+	// The answer direction does NOT seed that flag, and the difference is load-bearing. pairRetDone is
+	// the pair road's permission for the positions it serves, and `value`'s gate reads it to REFUSE any
+	// other position that asks a call for one word; seeding it for a carried function would turn every
+	// `while f():`, `x = f() + 1` and `f(f(1))` of a mixed-return body into a compile error at exit 0 on
+	// a program the reference runs. The answer road is instead an OPT-IN: the positions that know how to
+	// read a carried answer — print, str()/repr(), a truth test, an f-string field, a container element
+	// — ask the answer door themselves, and every other position keeps the answer it had before this
+	// cycle, wrong on one arm though that is (roadmap L11.1, ADR 0273's rule about a refusal that costs
+	// a working program, Gap R.219's open remainder in Gap R.229 and Gap R.230, ADR 0368).
 	g.pairCallAsked = map[string]bool{}
 	g.pairTagDeclared = map[string]bool{}
 	// Which functions hand back a container, and which one: asked of the whole program, before any IR
@@ -153,7 +182,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			// `print(get()[1])` know that `get()` is a string at all. Methods were registered
 			// this way since ADR 0224; the module's own functions were not, which is why
 			// `s[1]` worked and `get()[1]` refused (ADR 0229).
-			if g.methodReturnsStr(fd) {
+			if !g.answerOwns(fd.Name) && g.methodReturnsStr(fd) {
 				g.strFuncs[fd.Name] = true
 			}
 		}
@@ -809,6 +838,11 @@ type irGen struct {
 	// strFuncs names the functions that return a string, so `print(echo("yo"))` prints text
 	// and `xs.append(make_key())` stores an interned element rather than a raw index.
 	strFuncs map[string]bool
+	// answer is the answer direction: which calls answer a value whose payload cannot say what it is,
+	// and what kind word each `return` road of such a body stores beside its payload. Read by the
+	// gates that register a function under ONE kind, by the `return` road that stores the word, and by
+	// every position that reads such an answer (roadmap L11.1, Gap R.219, Gap R.228, ADR 0368).
+	answer *answerKindPlan
 	// strMethodFuncs is the same verdict for a method, kept in its own table because a method's IR symbol is
 	// the mangled `Class_method` while its source name is what a call site spells: registerClass moves an
 	// entry from here into `strFuncs` under the mangled symbol. Keeping the two apart is what lets a `Name`

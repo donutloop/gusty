@@ -115,7 +115,11 @@ func (g *irGen) echoStmt(b *strings.Builder, e Expr) error {
 	// once, from the road the call already ran — and it needs the same tagged value word as print,
 	// str() and the calling side (roadmap L11.1), because the switch below reads i32 boxes only.
 	if c, isCall := e.(*Call); isCall && !g.echoIsPureBuiltin(c) {
+		// The same statement position's rule: the call runs, its answer is announced by no line, and the
+		// kind word the callee stored is therefore never read (roadmap L13.1, ADR 0368).
+		undo := g.grantDiscardedCallAnswer(e)
 		_, verr := g.value(b, e)
+		undo()
 		return verr
 	}
 	// A value the container answers for gets its kind from the tag, at run time, from the same table the

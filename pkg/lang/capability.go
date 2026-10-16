@@ -409,11 +409,15 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	},
 	{
 		Code:       "lower.unsupported.container-slot-kind-unprovable",
-		Shape:      "a container slot filled by a call that hands back text on one arm and a number on another",
-		Suggestion: "give the function one return kind, or bind the answer to a name and print it (print asks the question at print time and answers correctly) — a slot is labelled once, and labelling it either way misprints the other arm",
-		Rows:       []string{"L11.1", "Gap R.219"},
+		Shape:      "a container slot filled by a call whose answer the answer direction cannot label — an arm that answers a float beside an arm that answers anything else, or an arm that answers a name the source does not spell out",
+		Suggestion: "give the function arms whose kinds the source spells (an int, a text, a bool, None, a container literal), or print the answer instead of storing it — print, str/repr, a condition, a binding and a container literal all ask the answer's own kind word (ADR 0368)",
+		Rows:       []string{"L11.1", "Gap R.324", "Gap R.219"},
 		Markers:    []string{"the compiler cannot prove one kind for it"},
-		Sample:     "def f(x):\n    if x:\n        return \"a\"\n    return 2\n\nys = []\nys.append(f(1))\nprint(len(ys))",
+		// A body whose arms are a text and an int is carried by ADR 0368 and its slot is written with the
+		// arm's own tag, so this sample used to be that program and stopped refusing. What still refuses is
+		// the residue the row names: a double has no word in the answer direction, and `return y` hands the
+		// scan a kind no spelling gives it (roadmap Gap R.324).
+		Sample: "def f(x):\n    if x:\n        return \"a\"\n    return 1.5\n\nys = []\nys.append(f(1))\nprint(ys)",
 	},
 	{
 		Code:       "lower.unsupported.pair-return-word",

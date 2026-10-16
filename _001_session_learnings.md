@@ -12369,3 +12369,58 @@ printed by the tool for a source printed beside it.
   count (programs 219→220, rows 206→207, parity 172→174, `debt` 26→25, record 7739→7741) instead of letting me
   type a guess. And a temporary `zz_debug_test.go` in `pkg/lang` is fine only while you remember to delete it —
   the package's guards treat a stray test file as part of the language's evidence.
+
+## ADR 0368 — a call that answers more than one kind carries its kind beside its payload (Gap R.219, Gap R.228, 2026-10-17)
+
+- **A table keyed by a name is a claim about ONE payload.** `strFuncs` registered a function as
+  text-returning when *any* return yielded text, and the call site then rendered every answer with
+  `rt_print_str`. The bug was not the printer and not the call road: it was that the module recorded one
+  fact per function where the program had one fact per `return`. `pkg/lang/answer_kind.go` moves the
+  record from the name to the road, which is the whole fix; everything else in the commit is the four
+  readers learning to ask.
+- **The measurement had to be against the parent commit, not against memory.** The first version of the
+  ADR claimed "18 of 25 shapes changed answer". Rebuilding HEAD in a worktree (`git worktree add
+  --detach /tmp/head-wt HEAD`, then `go build -o /tmp/gustyc-head ./cmd/gustyc`) and running one probe
+  script over both binaries said **12 changed, 13 were already right, 7 remain**. The number in the
+  tracker is the measured one; a claim about a change that was never compared to the before-state is a
+  story, and this repo's guards exist precisely because stories drift. Two of the 7 are pre-existing
+  (Gap R.83's comparison, the pair road's own refusal) and stayed on their own rows rather than being
+  adopted to make the story tidier.
+- **The exit-2 face of a wrong answer is easy to miss.** `def f(x): if x: return "a"` / `    return [1, 2]`
+  did not print the wrong thing — it lowered `ret i32 @.lst1` and `llc` rejected the module. Measuring
+  "which answers differ from CPython" alone found it only because the probe recorded *how* each shape
+  failed. A shape that dies at exit 2 is a different severity from a shape that prints `0`, and ADR 0166's
+  ban makes it a defect even when nobody filed it.
+- **A gate that fires where nobody reads the fact is a trap, not a gate.** The first attempt seeded the
+  pair road's `pairRetDone` from the new plan, which is the obvious reuse — same global, same pair. It
+  turned `while f():` of a mixed body into an exit-1 refusal: ADR 0273's rule, met by a compiler that had
+  just been improved. The answer road is now an **opt-in**: the doors that read a tag (`print`,
+  `str`/`repr`, a truth test, an f-string field, a container element, an expression statement) ask
+  `answerCallPair`; the doors that keep one word carry `!g.answer.carries(name)` and answer as they always
+  did. Those five shapes are Gap R.324 with the reference's answer pinned beside the compiled one in
+  `TestWhatTheAnswerDirectionStillCannotReachIsFiledNotFixed`, which fails on either side — if a door
+  opens, its row has to be deleted before the suite goes green.
+- **Declining is a feature of the gate.** The scan names a kind only when the source spells it. A body
+  whose arm returns a *name*, a float, an attribute or an `if`-expression is left exactly where it was.
+  That is why `return 1.5` / `return 2` still prints `2.0` and `return "a"` / `return 1.5` still refuses:
+  a guess about a payload is the defect this cycle exists to remove, and re-introducing one in the gate
+  that removes the others would be worse than the debt.
+- **Write the plan as a value, not a global (ADR 0343, again).** `pairCallScan` learned this the hard way;
+  the answer scan is built by `answerKindPlanOf` and *returned*, so two compiles in flight cannot be
+  answered by one plan. `TestAnswerKindPlanIsNotAPackageVariable` is the cheap guard that keeps it true.
+- **A fixed point needs rounds.** `return other(...)` is answerable only once `other` is, and `other`'s
+  verdict may depend on a third body. One pass over the source answers `false` for a body written above
+  its callee and `true` for the same body written below it. Marking grows monotonically, so six rounds
+  settle; the test writes the program both ways and demands one answer.
+- **Guards over the tracker are guards over the truth.** Three of them bit during this cycle and all
+  three were right: `TestTheRoadmapSnapshotIsMeasuredNotRemembered` refused "ADRs 358" once
+  `docs/adr/0368-*.md` existed, and refused "158 of 229 queue rows" once two rows closed and one opened;
+  `TestTheRoadmapsCitationsResolve` reads every file and `::Test…` an Evidence cell cites; and
+  `queuePri`'s `^[0-9]+[a-z]?$` rejected a `26ab` priority outright — a row whose Pri column does not
+  match stops the queue tally dead in its tracks, silently hiding every row below it (46 counted instead
+  of 229). **A new queue row needs a single-letter suffix.**
+- **Verify a belief about the code before you reason from it.** Half-way through I was reasoning about
+  `pairCallSiteClaims`, `fnReturnsFloat` and `emitPrintln` — three functions that do not exist in this
+  repository. `grep` cost seconds each; the reasoning they were supporting was worth none of the time it
+  would have taken to "fix" them. Every claim in the ADR's consequences table is a line of measured output
+  from `/tmp/matrix/run.sh`, not a deduction from a function name I expected to find.

@@ -123,7 +123,7 @@ func (g *irGen) scanStringBindings(stmts []Stmt) {
 			// view — marking one made a caller read a handle as an index and llc rejected the
 			// module (the async repro, caught by the suite, ADR 0166's rule about blaming the
 			// compiler). Its body is still walked, because a def inside it can be ordinary.
-			if !n.Async && (g.methodReturnsStr(n) || returnsStringExpr(g, n)) {
+			if !n.Async && !g.answerOwns(n.Name) && (g.methodReturnsStr(n) || returnsStringExpr(g, n)) {
 				g.strFuncs[n.Name] = true
 			}
 			g.scanStringBindings(n.Body)

@@ -1047,24 +1047,24 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) || g.carriedCallIsPairElem(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) || g.carriedCallIsPairElem(el) {
 				return true
 			}
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if g.floatSlotExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) {
+			if g.floatSlotExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) || g.carriedCallIsPairElem(k) {
 				return true
 			}
 		}
 		for _, v := range n.Vals {
-			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) || g.instanceSlotExpr(v) {
+			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) || g.instanceSlotExpr(v) || g.carriedCallIsPairElem(v) {
 				return true
 			}
 		}
@@ -1115,6 +1115,20 @@ func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, o
 		// emit. Asking it rather than re-implementing the read is what keeps a slot stored by the
 		// builder and the same slot printed by the printer from ever meaning different things.
 		return g.taggedSlotPair(b, n)
+	case *Call:
+		// The answer of a call that carries its own kind: the callee stored the word beside its payload, so
+		// the position is handed to the builder as the two registers every other pair element arrives in
+		// (roadmap L11.1, Gap R.219, ADR 0368). A door that declines hands the element back to the road that
+		// stores one word, and that road refuses such a value by name rather than storing a payload without
+		// its tag (ADR 0273). A door that errors declines, the way `taggedOperand` declines for a container
+		// it cannot materialise: the element goes back to the one-word road, which refuses such a value by
+		// name rather than storing a payload without its tag (roadmap ADR 0166's rule that a broken module
+		// is never reported as the program's fault).
+		p, t, okPair, perr := g.pairCallPair(b, e)
+		if perr != nil || !okPair {
+			return "", "", false
+		}
+		return p, t, true
 	}
 	return "", "", false
 }
@@ -1246,7 +1260,10 @@ func (g *irGen) literalHasPairElement(e Expr) bool {
 		}
 		// An element that is itself a subscript denotes the pair the pair door reads, and the builder
 		// that never learns it will store one word and a tag the compiler invented (roadmap Gap R.224).
-		return g.subscriptIsPairElem(x)
+		// The third such element is the answer of a call that carries its own kind: its payload means a
+		// different thing per arm, so the slot has to be written with the callee's word beside it
+		// (roadmap Gap R.219, ADR 0368).
+		return g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -1589,6 +1606,14 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 	keyStr, keyOther, valStr, valOther := false, false, false, false
 	mustTag := false
 	for i := range dl.Keys {
+		if g.isPairElem(dl.Keys[i]) || g.isPairElem(dl.Vals[i]) {
+			// One gate for both sides, and it knows every shape whose kind arrives as a register: see
+			// elemsTaggable's rule, restated (roadmap L11.1, ADR 0368).
+			mustTag = true
+			keyOther = true
+			valOther = true
+			continue
+		}
 		kt, ok := g.elemKindTag(dl.Keys[i])
 		if !ok {
 			return false
@@ -1803,6 +1828,16 @@ func (g *irGen) elemsTaggable(elems []Expr) bool {
 	}
 	sawStr, sawOther, sawMustTag := false, false, false
 	for _, el := range elems {
+		if g.isPairElem(el) {
+			// The element's kind travels beside it in a register the objects wrote — a name the pair road
+			// bound (ADR 0306), a subscript the pair door reads (ADR 0332), or the answer of a call that
+			// carries its own kind (ADR 0368). That is the definition of a slot that must be tagged, and a
+			// gate that does not know the third shape refuses the program it builds (ADR 0249's rule about
+			// a gate and a door that disagree; roadmap L11.1, Gap R.219).
+			sawMustTag = true
+			sawOther = true
+			continue
+		}
 		t, ok := g.elemKindTag(el)
 		if !ok {
 			return false
@@ -2989,6 +3024,17 @@ func (g *irGen) isTaggedSlotRead(e Expr) bool {
 // expression whose kind the compiler can prove carries (taggedOperand, ADR 0232). Declining is the
 // caller's signal to leave the ordinary path in charge.
 func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	if c, isCall := e.(*Call); isCall {
+		// The answer of a call that carries its own kind is a run-time fact, and this door has no word
+		// for one yet: it would compare the payload — an @str_tab index for a text arm — against the other
+		// side's number and answer by coincidence, which is exactly the ADR 0232 collision the refusal
+		// below exists to prevent. Declining leaves the answer to `taggedCompareOperandErr`, so the
+		// program is refused in words rather than judged by whichever number sits in the slot
+		// (roadmap Gap R.83, Gap R.219, ADR 0368's open half in Gap R.324).
+		if nm, isName := c.Fn.(*Name); isName && g.answer.carries(nm.Value) {
+			return "", "", false
+		}
+	}
 	if g.isTaggedSlotRead(e) {
 		if _, isRead := e.(*Index).Obj.(*Index); isRead {
 			v, t, okPair := g.taggedSlotPair(b, e.(*Index))
@@ -6104,6 +6150,15 @@ func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok
 	if p, t, okFold, ferr := g.foldPairOf(b, e); ferr != nil {
 		return "", "", false, ferr
 	} else if okFold {
+		return p, t, true, nil
+	}
+	// The field of a call whose answer carries its kind is the same print in disguise as `print(f())`:
+	// `f"{f(1)}"` and `f"{f(0)}"` of a body that answers a text on one arm and a number on the other render
+	// two forms, and the field asks the one door print asks rather than the `%d` leg of the printf below
+	// (roadmap Gap R.219, ADR 0356's field, ADR 0368).
+	if p, t, okCall, cerr := g.answerCallPair(b, e); cerr != nil {
+		return "", "", false, cerr
+	} else if okCall {
 		return p, t, true, nil
 	}
 	// The field IS a print in disguise: `f"{d[1]}|{xs[0]}"` renders the same slots that `print(d[1])` renders,

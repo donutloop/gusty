@@ -74,5 +74,18 @@ func (g *irGen) subscriptIsPairElem(x Expr) bool {
 // tagged builder has to ask this question and not a narrower one, because a builder that is never opened
 // leaves the element to the road that stores one word (roadmap L11.1, Gap R.146, Gap R.224).
 func (g *irGen) isPairElem(x Expr) bool {
-	return g.nameIsPairElem(x) || g.subscriptIsPairElem(x)
+	return g.nameIsPairElem(x) || g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x)
+}
+
+// carriedCallIsPairElem is the third shape of pair element: the answer of a call that carries its own
+// kind. Its payload means a different thing per arm, so the position travels as the two words the callee
+// wrote — the same arrangement ADR 0306 built for a name the pair road bound and ADR 0332 for a read the
+// subscript door answers (roadmap L11.1, Gap R.219, ADR 0368).
+func (g *irGen) carriedCallIsPairElem(x Expr) bool {
+	c, isCall := x.(*Call)
+	if !isCall {
+		return false
+	}
+	nm, isName := c.Fn.(*Name)
+	return isName && g.answer.carries(nm.Value)
 }

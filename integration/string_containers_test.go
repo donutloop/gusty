@@ -208,10 +208,7 @@ func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
 // nested dict value ({"a": [1]}) and a set member that is a list — the first because the slot
 // carries the inner container's tag (TestNestedContainersAnswerOnTheCompiledBackend, ADR 0238), the
 // second because CPython *raises* for `s.add([2])` (unhashable), so it is not a three-engine row
-// and has no oracle to be pinned against.
-var mixedContainerCases = []string{
-	"def f(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = [f(1), 2]\nprint(xs)\n",
-}
+// and has no oracle to be pinned against. A third joined them with ADR 0368, below.
 
 // mixedFloatCases were the fourth entry above: a float appended to a list of numbers. ADR 0233 gave
 // the float a representation in a slot — the handle of a float box, tagged TagFloat — so the shape
@@ -254,7 +251,19 @@ var mixedLiteralCases = []struct {
 }{
 	{"print([1, \"a\"])\n", "[1, 'a']\n"},
 	{"xs = [1, \"a\"]\nprint(xs)\n", "[1, 'a']\n"},
+	// The element that is the answer of a body whose arms mix kinds is one of those positions now:
+	// the callee stores the kind beside its payload and the builder writes the slot with that word
+	// (roadmap Gap R.219, ADR 0368).
+	{"def f(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = [f(1), 2]\nprint(xs)\n", "['z', 2]\n"},
 }
+
+// mixedContainerCases are the mixed containers this backend still refuses in words rather than
+// answering or misprinting. It used to carry the entry above — an element that is the answer of a
+// `def` which returns text on one path and a number on the other — and ADR 0368 grew the door that
+// answers it (`pkg/lang/answer_kind.go` carries the kind beside the payload, and
+// `integration/string_containers_test.go`'s answered table above pins `['z', 2]`). The table stays so
+// the next shape filed here has somewhere to live.
+var mixedContainerCases = []string{}
 
 func TestMixedLiteralsPrintInsteadOfRefusing(t *testing.T) {
 	t.Parallel()

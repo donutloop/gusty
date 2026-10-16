@@ -321,6 +321,12 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 			return true
 		}
 		if nm, ok := v.Fn.(*Name); ok {
+			if g.answer.carries(nm.Value) && !g.answer.answersOnlyTheVoid(nm.Value) {
+				// Which arm ran is a run-time fact, and the word it stores says so: the print road that
+				// claims the void here would print `None` for the arm that answered `7` (roadmap Gap R.219,
+				// Gap R.228, ADR 0368).
+				return false
+			}
 			if fd, ok2 := g.fds[nm.Value]; ok2 && !fdReturnsValue(fd) {
 				return true
 			}
