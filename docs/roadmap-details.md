@@ -12296,6 +12296,54 @@ untagged word, and `len` of a *variable* is the door Gap R.104 names. The pass d
 declaration and is called by the ordinary road — and the body's own door is what is left. Filed separately so the
 key row (Gap R.255) and the tag row (L11.1) do not absorb each other.
 
+
+**Closed by ADR 0363 on 2026-10-17 — the missing word was not the tag, it was the call site.**
+
+The row's own diagnosis said the parameter arrives as one untagged word and `len` needs the tag. Measured
+against the two witnesses, that is half right, and the half that matters is elsewhere. `len` of a *literal*
+answered; `len` of a *parameter* answered whenever the program itself called the function
+(`def k(s): return len(s)` / `print(k("abc"))` → `3`); the identical body refused the moment the only call
+standing in the tree was the one the ordering builtin makes. The difference is not the word the parameter
+travels in — a claimed text parameter travels as an interned index either way — it is that `strArgKinds`, the
+scan that decides which parameters receive texts, reads **call sites out of the AST**, and the door's call is
+not in the AST. Codegen writes it at lowering time out of the element standing in front of the door
+(`keyCallReg` synthesises `key(element)`), so no source-level call site exists to be read. The parameter
+arrived unclaimed, and an unclaimed parameter turns every door in the body into a question about a variable
+the compiler cannot see: `len` refuses (`len of a non-string variable`), a method refuses (`string-method
+lower on a receiver that is not a text the compiler can read`), a subscript refuses (`index of a non-literal
+variable`), and a `min`/`max` key refuses through the same door. Twelve of the first fourteen programs in
+`pkg/lang/call_key_param_test.go`'s answer table were refusals at HEAD; the thirteenth was `café`, whose
+`len` is the same door asked in code points.
+
+One answer was worse than a refusal, and it is why this row is not simply "teach the key's body to ask":
+`xs = sorted(["bbb", "a"])` / `print(xs, xs[0])` printed **`['a', 'bbb'] 1`** at exit 0 — the reference's `a`
+beside the intern table's index. The assignment arm that decides what a bound container holds asked
+`call.Args[0]` only when it was a `*Name` (`g.listElemStr[src]`), and beside a key the argument is a literal
+the door copies itself. So the fix is one reading pointing two ways from the same place: `keyDoorOptions` is
+how both the door and the scan split `sorted`/`min`/`max` arguments (one reading, two askers — ADR 0232's
+rule), `keyDoorCallSites` hands the parameter scan the candidates the key will be called with, and
+`keyDoorCandidates` hands the variable census the same candidates together with the distinction the builtins
+draw — `sorted` answers a *container* of them, `min`/`max` answer *one* of them — which is why
+`best = max(words, key=len)` binds a text `best` (and `best.upper()` answers) while `xs = sorted(words,
+key=len)` binds a list of texts (and `print(xs)`, `xs[0]` and `for v in xs` all read the text). The claim
+predicate underneath is `strArgClaimOf`, the same one the ordinary call road uses, so ADR 0348's cancellation
+still fires: a parameter claimed text by the door and number by a real call site cancels to unclaimed, and
+the program is refused rather than half-answered.
+
+Three refusals stay, each naming its owner. The elements of a container the program built
+(`ys = ["bbb", "a"]` / `sorted(ys, key=…)`) exist only where the runtime puts them — Gap R.254, whose fix is
+L11.1's word, not a second census. Two candidates of two kinds (`max("bbb", 1, key=…)`) need the same word. A
+key the ordinary call road has no answer for (`key=round`) still raises the reference's `TypeError`, catchable
+by the program's own `except` — Gap R.255/R.248. And the door's answer indexed **inline**
+(`print(sorted(…, key=…)[0])`) still asks the index road for a name to read (L11.1), while the bound form of
+that same program answers `a`; the pair is pinned together in `TestWhatTheKeyDoorCannotCallStillRefusesByName`
+so the boundary is a measured line and not a story.
+
+The shape to remember for the next door that synthesises a call: the door that calls must register the call
+with the scan that reads call sites, or the body it calls will refuse with a sentence about a variable the
+program never left unproven. `TestTheKeyDoorsCallSitesAreReadByTheParameterScan` is the pattern — one claim per
+door, the contradictory pair beside it, and the program's own `sorted` shown not to be the builtin's.
+
 ### Gap R.265 — a `lambda` that calls a parameter, and a `lambda` inside a `lambda`
 
 `(lambda f: f(3))(lambda x: x * 2)` is `6` in the reference; here the parameter call is refused exactly as a

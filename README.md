@@ -70,7 +70,11 @@ gusty ships an indentation-based syntax covering:
   is cloned once per tuple of functions its call sites ask for, a `lambda` that needs a name is given a
   declaration of its own, and `g = f` is called as `f` — so `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`,
   `g = d2` / `g(4)` is `8`, and `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]` (**ADR 0345**,
-  roadmap L11.7). A function that is *read* rather than called — `print(f)`, `xs = [f]`, a function a call
+  roadmap L11.7). A hook key may ask its **element**: `sorted(["bbb", "a", "cc"], key=lambda s: len(s))` is
+  `['a', 'cc', 'bbb']`, `key=lambda s: s.lower()` orders by the text, `key=lambda s: s[0]` by a subscript, and
+  `xs = sorted(...)` then prints, indexes and walks as the list of texts it is — because the door that calls
+  the key registers that call with the scan which decides a parameter's kind (**ADR 0363**, roadmap Gap R.264).
+  The elements of a container the program built at run time still refuse, and say so (**Gap R.254**). A function that is *read* rather than called — `print(f)`, `xs = [f]`, a function a call
   returns — still refuses in words, because no `fnptr` word exists to hold it; `gustyc --callables <src>` prints
   what the pass decided about a program.
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`

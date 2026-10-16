@@ -1,5 +1,154 @@
 {
  "entries": {
+"best = max([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s))\nprint(best, best.upper(), len(best))\n": {
+    "stdout": "bbb BBB 3\n",
+    "hasStdout": true
+   },
+
+"def L(s):\n    return len(s)\nprint(sorted([\"bbbb\", \"a\", \"cc\"], key=L))\n": {
+    "stdout": "['a', 'cc', 'bbbb']\n",
+    "hasStdout": true
+   },
+
+"def first(s):\n    return s[0]\nprint(sorted([\"zz\", \"am\"], key=first))\n": {
+    "stdout": "['am', 'zz']\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return 0-len(s)\nprint(max([\"bbb\", \"a\", \"cc\"], key=k))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return 0-len(s)\nprint(min([\"bbb\", \"a\", \"cc\"], key=k))\n": {
+    "stdout": "bbb\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return len(s)\nprint(k(\"abc\"), k(\"a\"))\n": {
+    "stdout": "3 1\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return len(s)\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=k))\n": {
+    "stdout": "['a', 'cc', 'bbb']\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return s.strip()\nprint(sorted([\" b\", \"a\"], key=k))\n": {
+    "stdout": "['a', ' b']\n",
+    "hasStdout": true
+   },
+
+"def k(s):\n    return s[0]\nprint(sorted([\"ba\", \"ab\"], key=k))\n": {
+    "stdout": "['ab', 'ba']\n",
+    "hasStdout": true
+   },
+
+"def sorted(xs):\n    return [1]\nprint(sorted([3, 2]))\n": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"for v in sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s)):\n    print(v)\n": {
+    "stdout": "a\ncc\nbbb\n",
+    "hasStdout": true
+   },
+
+"print(len(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s))))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(max(\"bbb\", \"a\", \"cc\", key=lambda s: len(s)))\n": {
+    "stdout": "bbb\n",
+    "hasStdout": true
+   },
+
+"print(max([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s)))\n": {
+    "stdout": "bbb\n",
+    "hasStdout": true
+   },
+
+"print(min(\"bbb\", \"a\", key=lambda s: len(s)))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print(min([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s)))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"Z\", \"a\", \"Mb\"], key=lambda s: s.lower()))\n": {
+    "stdout": "['a', 'Mb', 'Z']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"aa\", \"bb\", \"c\", \"d\"], key=lambda s: len(s)))\n": {
+    "stdout": "['c', 'd', 'aa', 'bb']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"ab\", \"ba\"], key=lambda s: s[0]))\n": {
+    "stdout": "['ab', 'ba']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"b\", \"a\"]))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"b\", \"a\"], key=lambda s: s + \"!\"))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"b\", \"a\"], key=lambda s: s.upper()))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0-len(s)))\n": {
+    "stdout": "['bbb', 'cc', 'a']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s)))\n": {
+    "stdout": "['a', 'cc', 'bbb']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s), reverse=True))\n": {
+    "stdout": "['bbb', 'cc', 'a']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"bbb\", \"a\", \"cc\"], key=len))\n": {
+    "stdout": "['a', 'cc', 'bbb']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"café\", \"a\", \"ab\"], key=lambda s: len(s)))\n": {
+    "stdout": "['a', 'ab', 'café']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"z\", \"a\", \"Mb\"], key=lambda s: s.lower()))\n": {
+    "stdout": "['a', 'Mb', 'z']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2], key=lambda x: 0-x))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"xs = sorted([\"bbb\", \"a\"], key=lambda s: len(s))\nprint(xs, len(xs), xs[0])\n": {
+    "stdout": "['a', 'bbb'] 2 a\n",
+    "hasStdout": true
+   },
 "# Code-point strings: the case doors answer the reference (L11.5, ADR 0362).\n#\n# Every line below was a wrong value at exit 0. The fold borrowed Go's SIMPLE case mapping, so the\n# sharp s stayed a sharp s, the ligatures stayed ligatures and the conditional sigma went out\n# un-finalised; the runtime door — the one that answers a text the compiler cannot read — knew A–Z\n# and copied every other byte, and refused `title`, `capitalize` and `swapcase` outright.\n# Both halves now read one table, generated from the reference by tools/casetab.\nprint(\"straße\".upper())\nprint(\"ΑΣ\".lower())\nprint(\"ΣΣΣ\".lower())\nprint(\"ǅ\".title())\nprint(\"İ\".lower())\nprint(\"ﬁ\".upper())\nprint(\"é.é\".title())\nprint(\"aBC\".capitalize())\nprint(\"aÉ\".swapcase())\nprint(\"日本語\".upper())\n\n\ndef shout(s):\n    return s.upper()\n\n\ndef whisper(s):\n    return s.lower()\n\n\ndef headings(s):\n    return s.title()\n\n\ndef start(s):\n    return s.capitalize()\n\n\ndef flip(s):\n    return s.swapcase()\n\n\nprint(shout(\"straße\"))\nprint(whisper(\"STRASSE\"))\nprint(headings(\"é.é\"))\nprint(start(\"aBC\"))\nprint(flip(\"ǅ\"))\nprint(whisper(\"ΑΣ\"))\nprint(shout(\"ǳ\"))\nwords = [\"straße\", \"ΑΣ\", \"ǅ\"]\nfor w in words:\n    print(shout(w))\nprint(len(shout(\"ß\")))\n\n# Trimming is the same question asked of the same artifact. The fold asked Go's unicode.IsSpace, which\n# leaves the four separators U+001C..U+001F standing where the reference removes them; the runtime door\n# compared each byte against 32 SIGNED, so every byte from 0x80 up counted as whitespace and a Greek or\n# accented text trimmed to nothing at exit 0. A cutset argument was dropped on the floor on both roads.\nprint(\"  café \".strip())\nprint(\"\\x1cx\".strip())\nprint(\"ßﬁ\".strip())\nprint(\"  ΑΣ  \".lstrip())\nprint(\"hi xx\".rstrip(\"x\"))\nprint(\"café x\".strip(\"c\"))\nprint(\"   \".strip())\n\n\ndef bare(s):\n    return s.strip()\n\n\ndef left(s):\n    return s.lstrip()\n\n\ndef right(s):\n    return s.rstrip()\n\n\ndef cut(s, c):\n    return s.strip(c)\n\n\nprint(bare(\"  café \"))\nprint(bare(\"ßﬁ\"))\nprint(bare(\"\\x1cx\"))\nprint(left(\"  ΑΣ  \"))\nprint(right(\"hi xx\"))\nprint(cut(\"café x\", \"c\"))\nprint(bare(\"\"))\nprint(len(bare(\"  ß  \")))\n": {
     "stdout": "STRASSE\nας\nσσς\nǅ\ni̇\nFI\nÉ.É\nAbc\nAé\n日本語\nSTRASSE\nstrasse\nÉ.É\nAbc\nǅ\nας\nǱ\nSTRASSE\nΑΣ\nǄ\n2\ncafé\nx\nßﬁ\nΑΣ  \nhi \nafé x\n\ncafé\nßﬁ\nx\nΑΣ  \nhi xx\nafé x\n\n1\n",
     "hasStdout": true

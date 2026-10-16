@@ -4763,7 +4763,8 @@ argument — `sort(key=...)` has not been given the key road the **builtin** was
 ADR 0340, and refuses naming that reason (roadmap L11.7, **Gap R.269**; ADR 0191). The **builtin** `sorted` now reads
 `key=` and `reverse=` by name and calls an allowed key through the ordinary call road
 (roadmap L11.7; Gap R.249; ADR 0340), including a `key=lambda …` hook, which **ADR 0345** gives a
-declaration of its own so the door that calls a named callable has a name to call.
+declaration of its own so the door that calls a named callable has a name to call, and which **ADR 0363**
+registers with the scan that decides a parameter's kind, so the hook's body may ask the element doors.
 
 **What used to be wrong with the shape, and what it took to see it** (roadmap **Gap R.258**, paid by
 **ADR 0343**): `x = sorted([3, 1, 2], reverse=True)` followed by `x` died by `SIGSEGV` inside `@rt_alloc` while
@@ -4919,6 +4920,54 @@ the value word will carry (**Gap R.255**, roadmap L11.7 — a `key=lambda …` h
 declares the lambda and the ordinary call road answers the call), and
 a key returning a float needs the comparator the tagged value word owns (**Gap R.248**). The ordinary call
 road's existing parameter-kind refusals are not widened by this row.
+
+### A hook key asks the element, and the door answers for it (L11.7, Gap R.264, ADR 0363)
+
+The key is called by a call the program never wrote: the door synthesises `key(element)` at lowering time.
+The scan that decides which parameters receive texts reads call sites out of the tree, so the door registers
+that hidden call with it — which candidates the key will be handed, and in what shape. A hook's parameter
+therefore arrives **claimed**, and every door its body asks has the fact it needs:
+
+```python
+print(sorted(["bbb", "a", "cc"], key=lambda s: len(s)))       # ['a', 'cc', 'bbb']
+print(sorted(["Z", "a", "Mb"], key=lambda s: s.lower()))      # ['a', 'Mb', 'Z']
+print(sorted(["ab", "ba"], key=lambda s: s[0]))               # ['ab', 'ba']
+print(sorted(["bbb", "a", "cc"], key=lambda s: s + "!"))      # ['a', 'cc', 'bbb']
+print(sorted(["bbb", "a", "cc"], key=lambda s: 0 - len(s)))   # ['bbb', 'cc', 'a']
+print(min(["bbb", "a", "cc"], key=lambda s: len(s)))          # a
+print(max("bbb", "a", "cc", key=lambda s: len(s)))            # bbb
+
+def first(s):
+    return s[0]
+print(sorted(["zz", "am"], key=first))                         # ['am', 'zz']
+```
+
+A `def` used as a key is claimed the same way — the door's call and a call the program wrote are one claim
+road — so a parameter the door hands a text and a call site hands a number **cancels**, and that program is
+refused rather than half-answered (ADR 0348). `sorted` answers a *container* of its candidates and `min` and
+`max` answer *one* of them, which is why the bound forms read as the reference prints them:
+
+```python
+xs = sorted(["bbb", "a"], key=lambda s: len(s))
+print(xs, len(xs), xs[0])                                      # ['a', 'bbb'] 2 a
+for v in xs:
+    print(v)                                                   # a, then bbb
+
+best = max(["bbb", "a", "cc"], key=lambda s: len(s))
+print(best, best.upper(), len(best))                           # bbb BBB 3
+```
+
+Before this row every body above was refused with a sentence about a variable the program never left
+unproven (`len of a non-string variable`, `string-method lower on a receiver that is not a text the compiler
+can read`, `index of a non-literal variable`), and the bound container reached the screen as the intern
+table's numbering: `print(xs, xs[0])` answered `['a', 'bbb'] 1` at exit 0.
+
+What still refuses beside a key, each named with the row that owns it: the elements of a container the program
+built (`ys = ["bbb", "a"]` / `sorted(ys, key=…)`) exist only where the runtime puts them (**Gap R.254**,
+L11.1); candidates of two kinds (`max("bbb", 1, key=…)`) need the same word (**L11.1**); a key the ordinary
+call road has no answer for raises CPython's `TypeError` (**Gap R.255**, **Gap R.248**); and the door's answer
+indexed **inline** (`print(sorted(…, key=…)[0])`) asks the index road for a name to read (**L11.1**) — bind it
+to a name, as above, and it answers.
 
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,

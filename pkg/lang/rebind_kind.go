@@ -118,6 +118,26 @@ func containerKindOfLiteral(e Expr) string {
 // none of them writes `false`. A name that was a mixed list and is rebound to a homogeneous
 // literal would otherwise keep walking the per-slot-tag readers over tags nobody wrote — the
 // right answer for the wrong reason, which is the state ADR 0233 forbids.
+// allElemsPrintAsText asks whether every element of the container an ordering builtin was handed is a
+// TEXT — the same question the literal path asks of its own brackets, asked here of the candidates the
+// door copied into a heap. It is a claim, not a guess: one element that is not a text and the answer is
+// no, which leaves the container on the mixed road that can render every kind (ADR 0348's rule; the
+// print that showed the intern table's numbers instead of the texts is roadmap Gap R.264, L11.7).
+func (g *irGen) allElemsPrintAsText(elems []Expr) bool {
+	if len(elems) == 0 {
+		return false
+	}
+	for _, el := range elems {
+		if kw, isKw := el.(*KeywordArg); isKw {
+			el = kw.Value
+		}
+		if !g.exprIsString(el) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *irGen) settleContainerKind(name string, kind string) {
 	g.mixedLists[name] = false
 	g.mixedDicts[name] = false

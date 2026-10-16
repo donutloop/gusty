@@ -20200,14 +20200,24 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						} else if fn.Value == "sorted" || fn.Value == "reversed" || fn.Value == "list" {
 							g.settleContainerKind(nm.Value, containerKindList)
 							// Inherit what the elements are, so the printer and the sort
-							// comparator agree with the source container.
+							// comparator agree with the source container. The source is a NAME the
+							// program filled earlier, or the LITERAL the ordering builtin was handed —
+							// and beside a key= the literal is the only thing standing there, because
+							// the door built the copy itself. Asking only the first case printed
+							// `sorted(words, key=len)` as [1, 0]: the intern table's numbers, where the
+							// reference prints the texts (roadmap L11.7, Gap R.264).
 							if len(call.Args) > 0 {
-								if src, isName := call.Args[0].(*Name); isName {
+								switch src := call.Args[0].(type) {
+								case *Name:
 									if g.listElemStr[src.Value] {
 										g.listElemStr[nm.Value] = true
 									}
 									if g.mixedLists[src.Value] {
 										g.mixedLists[nm.Value] = true
+									}
+								case *ListLit:
+									if g.allElemsPrintAsText(src.Elems) {
+										g.listElemStr[nm.Value] = true
 									}
 								}
 							}

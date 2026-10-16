@@ -12023,3 +12023,62 @@ position of the stale number, which is Gap R.204 doing its job — and the disci
 re-running the measurement, never to edit the measurement to suit the cell. The same rule caught me writing
 "1400 code points" in a comment for a table that holds 1112064: a number in prose is a bug waiting to be believed,
 so it either comes from the artifact or it is not written at all.
+
+## Round 10 — the key door writes the call the AST never wrote (ADR 0363, Gap R.264, 2026-10-17)
+
+**The row's own diagnosis was half wrong, and the control experiment said so before any code.** `roadmap.md`
+said `sorted(['bbb','a','cc'], key=lambda s: len(s))` refused because the key's parameter arrives as one
+untagged word, so `len` of a variable has no kind to ask. The control is one keystroke away:
+`def k(s): return len(s)` / `print(k("abc"))` prints `3`, and the same `k` as `key=k` refuses. Same parameter,
+same body, same untagged word — the difference is only *who calls it*. So the tag was never the missing fact;
+the missing fact was that `strArgKinds`, the scan that decides which parameters receive texts, reads call sites
+**out of the AST**, and the door's call is not in the AST — `keyCallReg` synthesises `key(element)` at lowering
+time. Lesson: when a row hands you a cause, run the pair that differs by one thing and see whether the cause it
+names is the difference you measure. Half of this cycle would have been spent teaching a door to trust an
+unproven variable, which is ADR 0166's worst class wearing a fix.
+
+**A refusal can be the map to a wrong answer two files away.** While wiring the key's parameter I probed the
+bound form too — `xs = sorted(["bbb","a"])` then `print(xs, xs[0])` — and got `['a', 'bbb'] 1` at **exit 0**,
+the intern table's numbering where the reference prints `a`. That bug predated this row and had nothing to do
+with a lambda: the assignment arm that settles what a bound container holds asked `call.Args[0]` only when it
+was a `*Name` (`g.listElemStr[src]`), and beside a key the argument is the literal the door copies itself. One
+reading, `keyDoorOptions`, now serves both askers (ADR 0232): `keyDoorCallSites` hands the parameter scan the
+candidates the key will be called with, `keyDoorCandidates` hands the variable census the same candidates plus
+the distinction the builtins draw — `sorted` answers a *container* of them, `min`/`max` answer *one* of them —
+which is why `best = max(words, key=len)` binds a text and `best.upper()` answers, while
+`xs = sorted(words, key=len)` binds a list of texts and prints, indexes and walks as one. A door that builds a
+container has to register its element kind where the bindings are settled, or the print road renders a payload
+the reference renders as a value.
+
+**Claims, never guesses.** `strArgClaimOf` is now the single predicate under the ordinary call site and the
+door, so ADR 0348's cancellation still fires: `def k(s): return len(s)` called with `3` and used as a text key
+cancels to unclaimed and refuses, which is `TestTheKeyDoorsCallSitesAreReadByTheParameterScan`'s
+"contradictory evidence" row. `allElemsPrintAsText` is written the same way — one non-text element and the
+answer is *no*, which leaves the container on the mixed printer that can render every kind. A census that
+guesses is a census that prints an index at exit 0.
+
+**A guard that reads a counter written by parallel children cannot see the work.** Both record-leg guards —
+"the answer table matches no record row at all" / "not one of this row's programs is on the record" — failed on
+a run where every record was walked, because `t.Parallel()` subtests do not run until *after* the parent's
+function body returns, and `asked++` lives in the parent. The failure looked like missing records; the records
+were there (the file had 7636 entries and `HasGoldenAnswer` said so in a scratch test). Any parent-level
+"did the leg run at all" assertion must drop `t.Parallel()` on its children — and the counter pattern is worth
+checking in the tests I write from now on, because it fails *closed*, which is the direction that wastes an
+hour.
+
+**The record is written by the reference or not at all, and the count guards then collect the toll.** 30 new
+sources went in through `tools/recmerge`, which asks CPython and cross-checks the LLVM JIT and refuses an entry
+the two legs disagree on: 7606 → 7636. Four sentences then had to be recomputed from the file — the artifact
+table in `docs/operations.md`, the record-leg sentence in `AGENTS.md`, and two cells of `roadmap.md`'s Snapshot
+— and each guard named the file, the position and both numbers. That is Gap R.204 being paid on schedule rather
+than discovered late, and it is the cheapest possible reviewer: I did not decide those numbers, I read them off
+failures.
+
+**Read the module before asserting on it.** My IR-shape case asserted `call i32 @rt_str_order(` for
+`sorted(["z","a","Mb"], key=lambda s: s.lower())` and failed on a *correct* build: the keyed door orders texts
+with `call i32 @rt_elem_gt(i32 %a, i32 %b, i32 1)`, whose mode-1 arm does the `strcmp` inside the comparator,
+and `rt_str_order` belongs to the unkeyed `min`/`max` fold. The assertion was written from memory of the
+runtime's vocabulary instead of from the module in front of me; dumping the emitted IR fixed it in one step. The
+same discipline — build the pre-change binary (`/tmp/probe/gustyc_base`) beside the new one and diff answer for
+answer — is what proved the float and `reversed` wrongness in the neighbourhood (Gap R.248, Gap R.251) was
+already there and is not this commit's, which keeps one commit to one feature.

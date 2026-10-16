@@ -39,6 +39,15 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 
 	w := heapASTWalker{}
 
+	// The programs the census classifies arrive before this scan runs, so a name the program assigned a
+	// sorted list to is already known by the time the census asks what its elements are.
+	defines := map[string]bool{}
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			defines[fd.Name] = true
+		}
+	}
+
 	// Which plain variables hold a string? A name ever assigned a non-string is dropped from
 	// propagation, so a parameter called `s` cannot drag an unrelated numeric `s` along.
 	strVars := map[string]bool{}
@@ -49,7 +58,7 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	// container roads about a text (roadmap L11.5, ADR 0362).
 	strElemVars := map[string]bool{}
 	notStrElem := map[string]bool{}
-	allTextElems := func(e Expr) (bool, bool) {
+	literalTextElems := func(e Expr) (ok, bad, mine bool) {
 		var elems []Expr
 		switch v := e.(type) {
 		case *ListLit:
@@ -57,9 +66,30 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		case *SetLit:
 			elems = v.Elems
 		default:
-			return false, false
+			return false, false, false
 		}
 		if len(elems) == 0 {
+			return false, false, true
+		}
+		for _, el := range elems {
+			if !isStringExpr(el) {
+				return false, true, true
+			}
+		}
+		return true, false, true
+	}
+	// One reading of the ordering builtins, shared by every question the census asks about them. The
+	// candidates are what the key will be called with, and they answer the SAME question in both shapes:
+	// `sorted` hands back a CONTAINER of them, `min` and `max` hand back ONE of them — which is why this
+	// returns the candidates and lets each caller decide whether it is asking about a container's
+	// elements or about a single value (roadmap L11.7, Gap R.264).
+	candidates := keyDoorCandidates(defines)
+	allTextElems := func(e Expr) (bool, bool) {
+		if ok, bad, mine := literalTextElems(e); mine {
+			return ok, bad
+		}
+		elems, isScalar, ok := candidates(e)
+		if !ok || !isScalar || len(elems) == 0 {
 			return false, false
 		}
 		for _, el := range elems {
@@ -72,6 +102,19 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	w.assign = func(scope, target string, value Expr, annot *Type) {
 		key := scopeKey(scope, target)
 		if isStringAnnotation(annot) || isStringExpr(value) {
+			strVars[key] = true
+			return
+		}
+		// `best = max(words, key=len)` answers ONE of the candidates, so the variable holds a TEXT the
+		// program can ask a text door about, not a container: the same candidates, the other question
+		// (roadmap L11.7, Gap R.264).
+		if elems, isScalar, ok := candidates(value); ok && isScalar && len(elems) > 0 {
+			for _, el := range elems {
+				if !isStringExpr(el) {
+					notString[key] = true
+					return
+				}
+			}
 			strVars[key] = true
 			return
 		}
@@ -107,12 +150,6 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	// decides what REPRESENTATION a parameter takes, where a wrong "yes" would print a number through
 	// the string table — so it asks every path, not any path.
 	textFuncs := map[string]bool{}
-	defines := map[string]bool{}
-	for _, st := range prog.Stmts {
-		if fd, ok := st.(*FuncDef); ok {
-			defines[fd.Name] = true
-		}
-	}
 	var answerIsText func(fd *FuncDef, e Expr, depth int) bool
 	callAnswersText := func(c *Call) bool {
 		nm, ok := c.Fn.(*Name)
@@ -189,22 +226,62 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		}
 		return changed
 	}
-	w.call = func(scope, fn string, args []Expr) {
-		fd, ok := funcs[fn]
-		if !ok {
+	negOf := func(fn string, idx int) {
+		if idx < 0 {
 			return
 		}
-		neg := func(idx int) {
-			if idx < 0 {
-				return
-			}
-			m := notStrArg[fn]
-			if m == nil {
-				m = map[int]bool{}
-				notStrArg[fn] = m
-			}
-			m[idx] = true
+		m := notStrArg[fn]
+		if m == nil {
+			m = map[int]bool{}
+			notStrArg[fn] = m
 		}
+		m[idx] = true
+	}
+	// What one argument CLAIMS about the parameter that receives it: a text, definitely not a text,
+	// or nothing. One question, one answer, asked by both roads that hand a value to a function — the
+	// call the program wrote, and the call the `key=` door writes (roadmap L11.7, Gap R.264).
+	claim := func(scope, fn string, pos int, a Expr) {
+		fd := funcs[fn]
+		if fd == nil || pos < 0 || pos >= len(fd.Params) {
+			return
+		}
+		switch strArgClaimOf(a, scope, strVars, notString, strElemVars, notStrElem, callAnswersText) {
+		case claimString:
+			mark(fn, pos)
+		case claimNotAString:
+			negOf(fn, pos)
+		}
+	}
+
+	w.call = func(scope, fn string, args []Expr) {
+		// A `key=` option is a call the AST never writes: the door calls the key once per element of
+		// the container, so this scan is the only place in the compiler that can see those arguments.
+		// Until it did, the key's own body met the doors beside `len`, `s[0]` and `s.upper()` with no
+		// record of the text crossing the boundary, and a program the reference answers stopped with
+		// `len of a non-string variable` (roadmap L11.7, Gap R.264; ADR 0340's key door).
+		if _, isUser := funcs[fn]; !isUser {
+			if keyFn, elems, container, isKey := keyDoorCallSites(funcs, fn, args); isKey {
+				if elems != nil {
+					for _, el := range elems {
+						claim(scope, keyFn, 0, el)
+					}
+					return
+				}
+				// The container is a name the program wrote: the same census the ordinary call road
+				// reads answers what the key will be handed.
+				if nm, isName := container.(*Name); isName {
+					k := scopeKey(scope, nm.Value)
+					if strElemVars[k] && !notStrElem[k] {
+						mark(keyFn, 0)
+					} else if notStrElem[k] {
+						negOf(keyFn, 0)
+					}
+				}
+			}
+			return
+		}
+		fd := funcs[fn]
+		neg := func(idx int) { negOf(fn, idx) }
 		pos := 0
 		for _, a := range args {
 			if kw, ok := a.(*KeywordArg); ok {
@@ -345,6 +422,196 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		}
 	}
 	return out
+}
+
+// strArgClaim is what one argument says about the parameter that receives it.
+type strArgClaim int
+
+const (
+	claimNothing strArgClaim = iota
+	claimString
+	claimNotAString
+)
+
+// strArgClaimOf asks the one question every road that fills a parameter asks: does this argument
+// hand the parameter a text, definitely not a text, or nothing worth recording? The ordinary call
+// site and the `key=` door both ask it, so a key's parameter cannot be claimed a text by the road
+// that calls it and denied one by the scan that classifies it (roadmap L11.7, Gap R.264).
+func strArgClaimOf(a Expr, scope string, strVars, notString, strElemVars, notStrElem map[string]bool, callAnswersText func(*Call) bool) strArgClaim {
+	switch e := a.(type) {
+	case nil:
+		return claimNothing
+	case *Index:
+		// xs[0] of a container the program filled with texts is a text (ADR 0225's answer is a
+		// one-character text, and a slice of one is a text).
+		if nm, ok := e.Obj.(*Name); ok && strElemVars[scopeKey(scope, nm.Value)] && !notStrElem[scopeKey(scope, nm.Value)] {
+			return claimString
+		}
+		if isStringExpr(e.Obj) {
+			return claimString
+		}
+		if sl, ok := e.Obj.(*Slice); ok && isStringExpr(sl.Obj) {
+			return claimString
+		}
+		return claimNothing
+	case *Call:
+		// `f(g())` is a text argument exactly when g's answer is one (roadmap L11.5, ADR 0362).
+		if callAnswersText != nil && callAnswersText(e) {
+			return claimString
+		}
+	case *Name:
+		// forwarding a variable that is known to carry a string
+		if scopeHasString(strVars, notString, scope, e.Value) {
+			return claimString
+		}
+	}
+	if isStringExpr(a) {
+		return claimString
+	}
+	if definitelyNotAString(a) {
+		return claimNotAString
+	}
+	return claimNothing
+}
+
+// keyDoorCallSites reads a call to the ordering builtins the way their door reads it, and answers
+// WHICH function the door is about to call, WHICH expressions it will hand that function's first
+// parameter (nil when the caller must ask the container itself), and the container expression the
+// elements come from. `sorted` takes the iterable alone and calls the key on each element of it;
+// `min`/`max` take candidates, either written out or as one container. A door that would refuse the
+// call — a container built by appending at run time, a key that is not a name the program declared,
+// the identity `key=None` — answers "no call site", because the scan must not claim a parameter for
+// a call that will never be emitted (roadmap L11.7, Gap R.264; ADR 0340, ADR 0345).
+func keyDoorCallSites(funcs map[string]*FuncDef, fn string, args []Expr) (string, []Expr, Expr, bool) {
+	switch fn {
+	case "sorted", "min", "max":
+	default:
+		return "", nil, nil, false
+	}
+	pos, key, reads := keyDoorOptions(fn, args)
+	if !reads || key == nil {
+		return "", nil, nil, false
+	}
+	if _, isNone := key.(*NoneLit); isNone {
+		return "", nil, nil, false // the identity key: the door never calls it
+	}
+	nm, isName := key.(*Name)
+	if !isName {
+		return "", nil, nil, false
+	}
+	fd, isUser := funcs[nm.Value]
+	if !isUser {
+		return "", nil, nil, false // a builtin key needs no parameter claim: the door asks the ordinary road
+	}
+	// The door calls the key with exactly one argument, and refuses or raises when the definition
+	// cannot take one. The scan speaks only where the door will call.
+	required := 0
+	for _, p := range fd.Params {
+		if p != nil && p.Default == nil {
+			required++
+		}
+	}
+	if len(fd.Params) == 0 || required > 1 {
+		return "", nil, nil, false
+	}
+	switch fn {
+	case "sorted":
+		if len(pos) != 1 {
+			return "", nil, nil, false
+		}
+		if lit, isList := pos[0].(*ListLit); isList {
+			return nm.Value, lit.Elems, pos[0], true
+		}
+		return nm.Value, nil, pos[0], true
+	default: // min, max
+		if len(pos) == 1 {
+			if lit, isList := pos[0].(*ListLit); isList {
+				return nm.Value, lit.Elems, pos[0], true
+			}
+			if _, isName := pos[0].(*Name); isName {
+				return nm.Value, nil, pos[0], true
+			}
+			return "", nil, nil, false
+		}
+		if len(pos) >= 2 {
+			return nm.Value, pos, pos[0], true
+		}
+	}
+	return "", nil, nil, false
+}
+
+// keyDoorOptions splits an ordering builtin's arguments the way the door itself splits them: the
+// candidates, standing in the order the program wrote them, and the `key=`/`reverse=` options that
+// are not operands at all. An option the door raises for (`cmp`) is not an operand either, and a call
+// that is not one of these builtins answers "do not read me" (roadmap L11.7, Gap R.264; ADR 0340).
+func keyDoorOptions(fn string, args []Expr) (pos []Expr, key Expr, ok bool) {
+	switch fn {
+	case "sorted", "min", "max":
+	default:
+		return nil, nil, false
+	}
+	for _, a := range args {
+		kw, isKw := a.(*KeywordArg)
+		if !isKw {
+			pos = append(pos, a)
+			continue
+		}
+		switch kw.Name {
+		case "key":
+			key = kw.Value
+		case "reverse":
+			// `sorted` reads it; it is not an operand and not a candidate
+		default:
+			return nil, nil, false // `cmp` and anything else: the door raises, so there is no call
+		}
+	}
+	return pos, key, true
+}
+
+// keyDoorCandidates is the census's reading of the same three calls: the expressions the door will
+// compare, and whether the call answers ONE of them (`min`, `max`) rather than a CONTAINER of them
+// (`sorted`). A program that wrote its own `sorted` is not the builtin, and a container the compiler
+// cannot enumerate answers "no candidates" rather than a guess — the census claims a kind only when
+// every candidate says the same thing (ADR 0348's rule, roadmap L11.7, Gap R.264).
+func keyDoorCandidates(defines map[string]bool) func(Expr) ([]Expr, bool, bool) {
+	return func(e Expr) ([]Expr, bool, bool) {
+		c, isCall := e.(*Call)
+		if !isCall {
+			return nil, false, false
+		}
+		fn, isName := c.Fn.(*Name)
+		if !isName || defines[fn.Value] {
+			return nil, false, false
+		}
+		pos, _, reads := keyDoorOptions(fn.Value, c.Args)
+		if !reads {
+			return nil, false, false
+		}
+		one := func(list []Expr) ([]Expr, bool, bool) {
+			lit, isList := list[0].(*ListLit)
+			if !isList || len(lit.Elems) == 0 {
+				return nil, false, false
+			}
+			return lit.Elems, false, true
+		}
+		switch fn.Value {
+		case "sorted":
+			if len(pos) != 1 {
+				return nil, false, false
+			}
+			elems, _, ok := one(pos)
+			return elems, false, ok
+		case "min", "max":
+			if len(pos) == 1 {
+				elems, _, ok := one(pos)
+				return elems, true, ok
+			}
+			if len(pos) >= 2 {
+				return pos, true, true
+			}
+		}
+		return nil, false, false
+	}
 }
 
 // snapshotStrKinds renders the inference result as a string so the fixed point can compare
