@@ -12367,6 +12367,72 @@ body passes the *same* entry it was called with, so the clone it should call is 
 `runProgram` already runs exists for this shape, and the site walk simply does not own a call written inside a
 higher-order body. This is the one row on this list whose fix is inside the pass.
 
+**Closed (ADR 0364, 2026-10-18).** Eight shapes measured against a `git worktree` build of the commit before, all
+at exit 1, all answered by `python3`: the row's own `fact(4, lambda x: x)` (`24`), the same body entered twice —
+once by a `def`'d `dbl`, once by a `lambda` (`24 6`), `down` summing through a hook (`6`), `down` reached through
+a module alias (`18`), a predicate recursion counting (`3`), a recursion with TWO called parameters (`109`), a
+recursion over texts (`ababab`), and `run(21, inc)` (`22`, which is Gap R.313). One sentence covered all of them —
+`"f" is called but is not a function this backend can build a call to` — and it blamed the parameter for a
+decision the plan had made one pass earlier.
+
+The root cause was one missing coordinate, not one missing feature. `planDefunctionalization` builds a plan out of
+*call sites*, and a call written inside a higher-order body is not a call site: it is the body's own call. With no
+site, the recursion's callable position had no entry; with no entry, the plan declined; with the plan declined,
+`applyDefunctionalization` returned the program untouched (ADR 0345's all-or-nothing rule, which is right) and
+codegen met `f(n)` in an un-specialised body. The whole of the fix is that a self-call is a **site of the clone it
+lives inside** — the entry tuple it carries is the one that clone was minted for — so the clone calls itself.
+
+Two things the row's own prescription did not anticipate had to be decided:
+
+* **Handing the callable back to its own position is not a use as a value.** ADR 0345's eligibility rule is that a
+  called parameter which is also *read* is not substitutable, and `fact(n - 1, f)` mentions `f` outside callee
+  position. Without a carve-out the recursion makes its own parameter ineligible — the pass declines the shape
+  because of the very syntax that makes it a recursion. `callableSelfPassThrough` names the argument nodes the
+  recursion hands back to their own positions and the eligibility scan credits exactly those nodes, so
+  `print(f)`, `xs = [f]` and a return of `f` still make the function unrewritten while `fact(n - 1, f)` does not.
+  The safety net is unchanged and is where the promise is actually kept: `callableNoFunctionValuesLeft` inspects
+  the program that was produced, with the bodies the pass marked `SkipEmit` excluded, because those bodies no
+  longer exist to be emitted.
+* **Once the recursion is the pass's, refusing it is the pass's too.** Four shapes have no answer and each gets its
+  own sentence rather than codegen's one: the recursion hands the callable to something else, it does not fill every
+  parameter positionally, it is written inside a `lambda` (whose hoisted body has a declaration and no frame), and two
+  higher-order bodies that recurse into each other. The last of those is declined at the one place the pass knows nothing
+  else was rewritable — a decline that fired on a program with work to do would take an answer away from a higher-order
+  call unrelated to the pair, which is ADR 0273's rule wearing a different hat.
+
+Rejected, in favour of the clone calling itself: giving the callable a value word (that is L11.1, and it is what
+R.266/R.268/R.281 wait on — this row needs no value because the recursion hands the parameter the function it already
+arrived with); specialising the recursion as a second clone per recursion-tuple (the same fixed point as a bigger
+table, multiplying definitions for a coordinate that cannot vary); and following the recursion to a fixed point (which
+would have to *guess* what the recursion's callable will be, and guess wrong on `run(n - 1, other)` — the exact program
+the decline now names). Also fixed in the same commit, because the recursion cannot be expressed without it:
+**Gap R.313**, the entry tuple's ordinal.
+
+### Gap R.313 — a clone's entry tuple was indexed by the parameter's position, not by its ordinal
+
+Found while landing ADR 0364, which cannot write `fact(n - 1, f)` at all until the coordinate is right, and invisible to
+every program this suite had ever contained: `def run(v, fn): return fn(v)` / `print(run(21, inc))` is CPython's `22`
+and exits 1 here with `"fn" is called but is not a function this backend can build a call to`, while the same body with
+the callable first (`def apply1(fn, v): return fn(v)` / `apply1(inc, 41)` → `42`) has answered since ADR 0345 landed.
+
+A call of a parameter is two facts, and the pass had one field for both. `pos` answers *which parameter of the
+definition does this call evaluate*; `slot` answers *which entry of the clone's tuple is that parameter asked to be* —
+and the entries are laid out in the order the **called** parameters were collected, not the order the source wrote them.
+`applyDefunctionalization` read `pos` as the tuple index. The two agree whenever the called parameters come first, which
+is how every program in the suite is written — `twice(fn, v)`, `apply1(fn, v)`, `key=` on a builtin — so the suite had
+contained the bug's precondition thousands of times and never once its failure. Ask for the callable second and the clone
+asks for entry 1 of a one-entry tuple, bails out of its own rewrite (the rewrite checks its own coordinates rather than
+emitting a call to the wrong `define`, which is why the answer is the pre-pass refusal and not a wrong number), and the
+diagnostic blames the parameter.
+
+`callableInner` now carries both fields, the plan fills `slot` from `for slot, pos := range cf.calledPos`, and the
+rewrite reads `in.slot`. What makes this a coordinate bug rather than a missing check is the audit beside it:
+`callableInnerAgrees` asks whether the entries are declared for the calls the body makes, and it asked that question of
+`pos` — correct, complete, and blind. A guard that verifies the wrong field is the same failure as no guard, and it is
+quieter. The five-shape plan table (`TestTheSlotIsTheOrdinalNotTheParameterPosition`) is the guard that cannot pass on
+the old code: callable first, callable second, callable second with a recursion, two called parameters each keeping its
+own entry, and one body read at two sites asking two different tuples.
+
 ### Gap R.268 — a callable that is neither a `def` nor a `lambda`
 
 `key=K().neg` (a bound method) and `apply1(add, 1)` over a class with `__call__` both refuse where CPython

@@ -1,5 +1,252 @@
 {
  "entries": {
+"# A higher-order body that calls itself is answered by the clone calling ITSELF\n# (roadmap Gap R.267, Gap R.313, ADR 0364).\n#\n# `def fact(n, f): ... f(n) * fact(n - 1, f)` is the most ordinary recursion in a language where the\n# function is a parameter — and it refused, because the plan that specialises a higher-order body builds\n# its entry tuples out of CALL SITES, and a call written inside the body is not a call site. With no site\n# the recursion's callable slot had no entry, the plan declined, the tree came back untouched, and\n# codegen met `f(n)` in a body no clone had ever specialised: `\"f\" is called but is not a function this\n# backend can build a call to`, eight shapes, one sentence.\n#\n# The recursion hands each called parameter back to its OWN position, which is the one mention of a\n# called parameter that is not a use as a value — the clone it belongs to is the one already standing\n# there. `f` never becomes a value: no `fnptr`, no indirect `call`, no cast handle.\n#\n# The last group is the coordinate the recursion work needed and did not have: which parameter a call\n# evaluates is not which entry of the clone's tuple that parameter is asked to be. They agree whenever\n# the callable is written FIRST, which is how every higher-order program in this suite was written.\n# `run(v, fn)` reads entry 1 of a one-entry tuple, bails out of its own rewrite, and blames `fn`.\n\ndef fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\ndef down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef dbl(x):\n    return x * 2\n\ndef neg(v):\n    return 0 - v\n\nk = dbl\nprint(fact(4, lambda x: x))\nprint(fact(3, dbl), fact(3, lambda v: v))\nprint(down(3, neg), down(2, k))\ndef cat(n, f):\n    if n \u003c= 0:\n        return \"\"\n\n    return f(n) + cat(n - 1, f)\n\nprint(cat(3, lambda v: \"ab\"), len(cat(2, lambda v: \"x\")))\nprint(down(2, lambda v: v))\n\ndef run(v, fn):\n    return fn(v)\n\nprint(run(21, dbl))\n\ndef pick(a, f, g, b):\n    if a \u003c= 0:\n        return b\n\n    return f(a) + g(a) + pick(a - 1, f, g, b)\n\nprint(pick(2, lambda v: v, lambda v: v * 2, 100))\n\ndef count(n, pred):\n    if n \u003c= 0:\n        return 0\n\n    if pred(n):\n        return 1 + count(n - 1, pred)\n\n    return count(n - 1, pred)\n\nprint(count(5, lambda v: v \u003e 2))\n": {
+    "stdout": "24\n24 6\n-6 6\nababab 2\n3\n42\n109\n3\n",
+    "hasStdout": true
+   },
+"def apply2(v, f):\n    return f(f(v))\n\nprint(apply2(3, lambda x: x * 3))\n": {
+    "stdout": "27\n",
+    "hasStdout": true
+   },
+
+"def count(n, f):\n    if n \u003c= 0:\n        return 0\n\n    if f(n):\n        return 1 + count(n - 1, f)\n\n    return count(n - 1, f)\n\nprint(count(5, lambda v: v \u003e 2))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef sq(x):\n    return x * x\n\nprint(down(3, sq), down(2, lambda v: 0 - v))\n": {
+    "stdout": "14 -3\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(1 + down(3, lambda v: v), down(3, lambda v: v) * 2)\n": {
+    "stdout": "7 12\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(1 if down(3, lambda v: v) \u003e 5 else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(down(3, lambda v: v))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def each(n, f):\n    total = 0\n    for k in range(1, n + 1):\n        total = total + f(k)\n\n    if n \u003c= 0:\n        return total\n\n    return total + each(n - 1, f)\n\nprint(each(3, lambda v: v * 2))\n": {
+    "stdout": "20\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\ndef dbl(x):\n    return x * 2\n\nprint(fact(3, dbl))\n": {
+    "stdout": "24\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\nprint(fact(5, lambda v: v))\n": {
+    "stdout": "120\n",
+    "hasStdout": true
+   },
+
+"def pick(a, f, g, b):\n    if a \u003c= 0:\n        return b\n\n    return f(a) + g(a) + pick(a - 1, f, g, b)\n\nprint(pick(2, lambda v: v, lambda v: v * 2, 100))\n": {
+    "stdout": "109\n",
+    "hasStdout": true
+   },
+
+"def step(n, f):\n    if n \u003c= 0:\n        return 0 - 6\n\n    return abs(f(step(n - 1, f)))\n\nprint(step(3, lambda v: v))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\ndef neg(v):\n    return 0 - v\n\nprint(total(3, neg), total(2, lambda v: v))\n": {
+    "stdout": "-6 3\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\ndef outer(k):\n    return total(k, lambda v: v * 2)\n\nprint(outer(3))\n": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\nprint(total(4, lambda v: 0 - v))\n": {
+    "stdout": "-10\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, v):\n    return fn(v) + fn(v)\n\ndef down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef d2(x):\n    return x * 2\n\nprint(twice(d2, 3), down(3, d2))\n": {
+    "stdout": "12 12\n",
+    "hasStdout": true
+   },
+
+"def up(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + up(n - 1, f)\n\ndef dn(n, g):\n    if n \u003c= 0:\n        return 1\n\n    return g(n) * dn(n - 1, g)\n\nprint(up(3, lambda v: v), dn(3, lambda v: v))\n": {
+    "stdout": "6 6\n",
+    "hasStdout": true
+   },
+
+"def walk(n, f):\n    if n \u003c= 0:\n        return 0\n\n    print(f(n))\n    return walk(n - 1, f)\n\nprint(walk(3, lambda v: v * 10))\n": {
+    "stdout": "30\n20\n10\n0\n",
+    "hasStdout": true
+   },
+
+"def walk(n, f):\n    if n \u003c= 0:\n        return f(0)\n\n    return f(n) + walk(n - 1, f)\n\nprint(walk(3, lambda v: v))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def apply1(fn, v):\n    return fn(v)\n\ndef inc(x):\n    return x + 1\n\nprint(apply1(inc, 41))": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+
+"def apply1(fn, v):\n    return fn(v)\n\ndef inc(x):\n    return x + 1\n\nprint(apply1(inc, 41))\n": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+
+"def apply2(v, f):\n    return f(f(v))\n\nprint(apply2(3, lambda x: x * 3))": {
+    "stdout": "27\n",
+    "hasStdout": true
+   },
+
+"def count(n, f):\n    if n \u003c= 0:\n        return 0\n\n    if f(n):\n        return 1 + count(n - 1, f)\n\n    return count(n - 1, f)\n\nprint(count(5, lambda v: v \u003e 2))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef sq(x):\n    return x * x\n\nprint(down(3, sq), down(2, lambda v: 0 - v))": {
+    "stdout": "14 -3\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef treble(v):\n    return v * 3\n\nk = treble\nprint(down(3, k))": {
+    "stdout": "18\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(1 + down(3, lambda v: v), down(3, lambda v: v) * 2)": {
+    "stdout": "7 12\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(1 if down(3, lambda v: v) \u003e 5 else 0)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\nprint(down(3, lambda v: v))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def each(n, f):\n    total = 0\n    for k in range(1, n + 1):\n        total = total + f(k)\n\n    if n \u003c= 0:\n        return total\n\n    return total + each(n - 1, f)\n\nprint(each(3, lambda v: v * 2))": {
+    "stdout": "20\n",
+    "hasStdout": true
+   },
+
+"def fact(n):\n    if n \u003c= 1:\n        return 1\n\n    return n * fact(n - 1)\n\nprint(fact(5))": {
+    "stdout": "120\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\ndef dbl(x):\n    return x * 2\n\nprint(fact(3, dbl))": {
+    "stdout": "24\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\ndef dbl(x):\n    return x * 2\n\nprint(fact(3, dbl), fact(3, lambda v: v))": {
+    "stdout": "24 6\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\ndef dbl(x):\n    return x * 2\n\nprint(fact(3, dbl), fact(3, lambda v: v))\n": {
+    "stdout": "24 6\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\nprint(fact(4, lambda x: x))": {
+    "stdout": "24\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\nprint(fact(4, lambda x: x))\n": {
+    "stdout": "24\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    if n \u003c= 1:\n        return 1\n\n    return f(n) * fact(n - 1, f)\n\nprint(fact(5, lambda v: v))": {
+    "stdout": "120\n",
+    "hasStdout": true
+   },
+
+"def join(n, f):\n    if n \u003c= 0:\n        return \"\"\n\n    return f(n) + join(n - 1, f)\n\nprint(join(3, lambda v: \"ab\"))": {
+    "stdout": "ababab\n",
+    "hasStdout": true
+   },
+
+"def pick(a, f, g, b):\n    if a \u003c= 0:\n        return b\n\n    return f(a) + g(a) + pick(a - 1, f, g, b)\n\nprint(pick(2, lambda v: v, lambda v: v * 2, 100))": {
+    "stdout": "109\n",
+    "hasStdout": true
+   },
+
+"def pick(a, f, g, b):\n    if a \u003c= 0:\n        return b\n\n    return f(a) + g(a) + pick(a - 1, f, g, b)\n\nprint(pick(2, lambda v: v, lambda v: v, 100))\n": {
+    "stdout": "106\n",
+    "hasStdout": true
+   },
+
+"def run(v, fn):\n    return fn(v)\n\ndef inc(y):\n    return y + 1\n\nprint(run(21, inc))": {
+    "stdout": "22\n",
+    "hasStdout": true
+   },
+
+"def run(v, fn):\n    return fn(v)\n\ndef inc(y):\n    return y + 1\n\nprint(run(21, inc))\n": {
+    "stdout": "22\n",
+    "hasStdout": true
+   },
+
+"def step(n, f):\n    if n \u003c= 0:\n        return 0 - 6\n\n    return abs(f(step(n - 1, f)))\n\nprint(step(3, lambda v: v))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\ndef outer(k):\n    return total(k, lambda v: v * 2)\n\nprint(outer(3))": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\nprint(total(3, lambda v: v))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def total(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + total(n - 1, f)\n\nprint(total(4, lambda v: 0 - v))": {
+    "stdout": "-10\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, v):\n    return fn(v) + fn(v)\n\ndef d2(x):\n    return x * 2\n\nprint(twice(d2, 3))\n": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, v):\n    return fn(v) + fn(v)\n\ndef down(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + down(n - 1, f)\n\ndef d2(x):\n    return x * 2\n\nprint(twice(d2, 3), down(3, d2))": {
+    "stdout": "12 12\n",
+    "hasStdout": true
+   },
+
+"def up(n, f):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + up(n - 1, f)\n\ndef dn(n, g):\n    if n \u003c= 0:\n        return 1\n\n    return g(n) * dn(n - 1, g)\n\nprint(up(3, lambda v: v), dn(3, lambda v: v))": {
+    "stdout": "6 6\n",
+    "hasStdout": true
+   },
+
+"def walk(n, f):\n    if n \u003c= 0:\n        return 0\n\n    print(f(n))\n    return walk(n - 1, f)\n\nprint(walk(3, lambda v: v * 10))": {
+    "stdout": "30\n20\n10\n0\n",
+    "hasStdout": true
+   },
+
+"def walk(n, f):\n    if n \u003c= 0:\n        return f(0)\n\n    return f(n) + walk(n - 1, f)\n\nprint(walk(3, lambda v: v))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
 "best = max([\"bbb\", \"a\", \"cc\"], key=lambda s: len(s))\nprint(best, best.upper(), len(best))\n": {
     "stdout": "bbb BBB 3\n",
     "hasStdout": true

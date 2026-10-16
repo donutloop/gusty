@@ -12141,3 +12141,85 @@ runtime's vocabulary instead of from the module in front of me; dumping the emit
 same discipline — build the pre-change binary (`/tmp/probe/gustyc_base`) beside the new one and diff answer for
 answer — is what proved the float and `reversed` wrongness in the neighbourhood (Gap R.248, Gap R.251) was
 already there and is not this commit's, which keeps one commit to one feature.
+
+## Round 11 — a clone answers the recursion in its own body by calling itself (ADR 0364, Gap R.267, Gap R.313, 2026-10-18)
+
+**The most ordinary program in the language was refused, and the suite could not have seen it.** `def fact(n,
+f): … return f(n) * fact(n - 1, f)` / `print(fact(4, lambda x: x))` — CPython's `24` — exited 1 here with
+`"f" is called but is not a function this backend can build a call to`, the same sentence for eight shapes.
+ADR 0345's pass clones a higher-order body once per tuple of functions its call sites hand its parameters, and
+every program the suite contains has the recursion *removed*: `twice(fn, v)`, `apply1(fn, v)`, `key=lambda`.
+A feature that ships with a table of answered shapes also ships the shape nobody thought to write down; the
+missing row was not "higher-order functions" but "higher-order functions **that recurse**".
+
+**One missing coordinate, not one missing feature.** The plan builds entry tuples out of *call sites*, and a
+call written inside a higher-order body is not a call site — it is the body's own call. With no site the
+recursion's callable slot had no entry, the plan declined, `applyDefunctionalization` returned the tree
+untouched (correctly: all-or-nothing is what lets the pass run before the front end's own tools), and codegen
+met `f(n)` in an un-specialised body. The refusal therefore named the *parameter* for a decision a pass had
+made one stage earlier. ADR 0166 was being obeyed and still produced a diagnostic that pointed at the wrong
+thing — "the door that refuses must name the missing half" needs a second clause: *the door must be the one
+that knows*.
+
+**A rule can be right and still be the bug.** ADR 0345's eligibility rule — a called parameter that is also
+*read* is not substitutable — is what keeps `print(f)` refused. It also made `fact(n - 1, f)` ineligible,
+because the recursion mentions `f` in an argument position. The pass declined its own feature's canonical
+program because of the syntax that makes it that program. The carve-out had to be exact: not "a parameter may
+appear in the recursion" (which would let `run(n - 1, f + 1)` through), but "the argument at position i *is*
+the parameter i, by node identity" — `callableSelfPassThrough` returns the nodes, and only those nodes stop
+counting as reads. `xs = [f]`, `print(f)`, `return f` still make the function unrewritten, and the invariant
+`callableNoFunctionValuesLeft` is where that is actually verified — on the tree that was produced, with the
+bodies the pass marked `SkipEmit` excluded, because those bodies are gone rather than hiding.
+
+**Two fields for two questions, or a guard that verifies the wrong thing.** `def run(v, fn): return fn(v)`
+refused too, and it has no recursion at all: a call of a parameter records *which parameter it evaluates*
+(`pos`) and *which entry of the clone's tuple that parameter is* (`slot`, the order the called parameters were
+collected). The rewrite read `pos` as the tuple index. They agree whenever the callable comes first, which is
+how every program in this suite is written — the bug's precondition occurred thousands of times in the corpus
+and its failure never once. Worse, the audit beside it (`callableInnerAgrees`, "are the entries declared for
+the calls the body makes?") asked its correct, complete question of the wrong field. A guard that checks the
+wrong field is the same failure as no guard, and quieter. Filed as its own row (**Gap R.313**) rather than
+folded into the feature that found it, because a fixed coordinate needs a test that would have failed before.
+
+**Once the pass owns a shape, it owns its refusals.** Four recursions have no answer, and leaving them to
+codegen meant one sentence standing for four programs. Each now has its own: the recursion hands the callable
+to something else (`run(n - 1, other)` — the clone would need an entry for `other` too, chosen mid-recursion);
+it omits a parameter; it is written inside a `lambda` (whose hoisted body has a declaration and no frame); two
+higher-order bodies recurse into each other. The mutual case had to be declined at the one place the pass
+knows nothing else was rewritable — a decline that fires on a program with work to do would take an answer away
+from an unrelated higher-order call, which is ADR 0273's rule wearing a different hat.
+
+**No value word was needed, and saying so is half the ADR.** The temptation was to give the callable a tag (a
+`fnptr`, a symbol index) so the recursion could carry it. That is L11.1's row — what R.266/R.268/R.281 wait on
+— and this row does not need it: the recursion hands the parameter *the function it already arrived with*, so
+the entry is the one the clone was minted for. The result is `call i32 @gy_fact$callable$…(i32 %t9, i32 0)` — a
+call to a `define` whose name the pass wrote, no `ptrtoint`, no indirect `call`, nothing added to the runtime.
+Two rejections worth keeping: a second clone per recursion-tuple (the same fixed point as a bigger table,
+multiplying definitions for a coordinate that cannot vary), and following the recursion to a fixed point
+(which would have to *guess* what the recursion's callable will be, and guess wrong on exactly the program the
+decline now names).
+
+**The machine path grew one number that pays for itself.** `recursive_sites` in `--callables` says how many
+calls written inside a higher-order body now name that body's own clone. It is not decoration: a clone that
+recursed through the un-specialised entry — the bug class this row is about — cannot leave the field at a
+plausible value by accident. Schema (`definitions.callablePassReport`), `docs/operations.md`, the agentic
+doc and `gustyc --lang`'s `callable values:` line all moved with it, and the agentic example is a real document
+printed by the tool for a source printed beside it.
+
+**Test-writing lessons, each bought with a red run.**
+- *Compare decoded JSON, not bytes.* Three assertions failed on a correct build because the account is JSON and
+  a sentence inside it arrives as `hands \"f\" something`: `strings.Contains(doc, "hands \"f\" something")` is
+  false. Unmarshal into the report struct and compare the decoded field; a refusal the pass names exactly reads
+  as a pass that said nothing.
+- *Assert on the module you dumped, not the module you remember.* My IR rows wanted `call … @gy_module$lambda$…(i32
+  %t\d+)`; the clone calls the entry with its own parameter register (`%p0`). One dump settled both rows.
+- *A negative table must state which mouth speaks.* Two rows in the refusal table were front-end refusals
+  (`expects 2 arguments`) whose citation contract differs from a codegen refusal's; the "must point at a row"
+  assertion needed a flag rather than a fudge.
+- *Don't record a program no leg answers.* `tools/recmerge` stops at the first disagreement, which is right, and
+  made me build the answered/refused split myself first: 56 candidate sources → 50 records, the 6 dropped being
+  exactly the refusal rows. The corpus program's text recursion needs a base case that returns `""`, not `0` —
+  a mixed return type across arms is a *different* row, and pinning it here would have made a red test out of a
+  neighbour's work.
+- *The parent-counter trap again:* the two "did the leg run at all" guards need children without `t.Parallel()`;
+  I wrote them that way from the start this time and they passed the first run.

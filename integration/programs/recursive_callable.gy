@@ -1,0 +1,73 @@
+# A higher-order body that calls itself is answered by the clone calling ITSELF
+# (roadmap Gap R.267, Gap R.313, ADR 0364).
+#
+# `def fact(n, f): ... f(n) * fact(n - 1, f)` is the most ordinary recursion in a language where the
+# function is a parameter — and it refused, because the plan that specialises a higher-order body builds
+# its entry tuples out of CALL SITES, and a call written inside the body is not a call site. With no site
+# the recursion's callable slot had no entry, the plan declined, the tree came back untouched, and
+# codegen met `f(n)` in a body no clone had ever specialised: `"f" is called but is not a function this
+# backend can build a call to`, eight shapes, one sentence.
+#
+# The recursion hands each called parameter back to its OWN position, which is the one mention of a
+# called parameter that is not a use as a value — the clone it belongs to is the one already standing
+# there. `f` never becomes a value: no `fnptr`, no indirect `call`, no cast handle.
+#
+# The last group is the coordinate the recursion work needed and did not have: which parameter a call
+# evaluates is not which entry of the clone's tuple that parameter is asked to be. They agree whenever
+# the callable is written FIRST, which is how every higher-order program in this suite was written.
+# `run(v, fn)` reads entry 1 of a one-entry tuple, bails out of its own rewrite, and blames `fn`.
+
+def fact(n, f):
+    if n <= 1:
+        return 1
+
+    return f(n) * fact(n - 1, f)
+
+def down(n, f):
+    if n <= 0:
+        return 0
+
+    return f(n) + down(n - 1, f)
+
+def dbl(x):
+    return x * 2
+
+def neg(v):
+    return 0 - v
+
+k = dbl
+print(fact(4, lambda x: x))
+print(fact(3, dbl), fact(3, lambda v: v))
+print(down(3, neg), down(2, k))
+def cat(n, f):
+    if n <= 0:
+        return ""
+
+    return f(n) + cat(n - 1, f)
+
+print(cat(3, lambda v: "ab"), len(cat(2, lambda v: "x")))
+print(down(2, lambda v: v))
+
+def run(v, fn):
+    return fn(v)
+
+print(run(21, dbl))
+
+def pick(a, f, g, b):
+    if a <= 0:
+        return b
+
+    return f(a) + g(a) + pick(a - 1, f, g, b)
+
+print(pick(2, lambda v: v, lambda v: v * 2, 100))
+
+def count(n, pred):
+    if n <= 0:
+        return 0
+
+    if pred(n):
+        return 1 + count(n - 1, pred)
+
+    return count(n - 1, pred)
+
+print(count(5, lambda v: v > 2))

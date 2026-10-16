@@ -709,6 +709,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// containers, and looped over — with the void and the container field the one printf could never
 		// have stated (roadmap L11.1, Gap R.146's value half; ADR 0359). Line for line CPython.
 		"fstring_value",
+		// A higher-order body that calls itself: the clone answers its own recursion by calling itself,
+		// and the entry tuple is read by the called parameter's ORDINAL rather than by its position in the
+		// source, so `def run(v, fn)` calls `fn` by name too. Every group is line for line CPython
+		// (roadmap Gap R.267, Gap R.313; ADR 0364).
+		"recursive_callable",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

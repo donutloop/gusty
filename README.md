@@ -70,13 +70,16 @@ gusty ships an indentation-based syntax covering:
   is cloned once per tuple of functions its call sites ask for, a `lambda` that needs a name is given a
   declaration of its own, and `g = f` is called as `f` — so `twice(d2, 3)` is `12`, `apply1(inc, 41)` is `42`,
   `g = d2` / `g(4)` is `8`, and `sorted([3, 1, 2], key=lambda x: 0 - x)` is `[3, 2, 1]` (**ADR 0345**,
-  roadmap L11.7). A hook key may ask its **element**: `sorted(["bbb", "a", "cc"], key=lambda s: len(s))` is
+  roadmap L11.7). The body may call **itself**: `def fact(n, f): … return f(n) * fact(n - 1, f)` with
+  `print(fact(4, lambda x: x))` is `24`, because a clone answers the recursion inside its own body by calling
+  **itself**, and the callable need not come first — `def run(v, fn): return fn(v)` calls `fn` by name too
+  (**ADR 0364**, roadmap **Gap R.267** and the entry-tuple ordinal **Gap R.313**). A hook key may ask its **element**: `sorted(["bbb", "a", "cc"], key=lambda s: len(s))` is
   `['a', 'cc', 'bbb']`, `key=lambda s: s.lower()` orders by the text, `key=lambda s: s[0]` by a subscript, and
   `xs = sorted(...)` then prints, indexes and walks as the list of texts it is — because the door that calls
   the key registers that call with the scan which decides a parameter's kind (**ADR 0363**, roadmap Gap R.264).
   The elements of a container the program built at run time still refuse, and say so (**Gap R.254**). A function that is *read* rather than called — `print(f)`, `xs = [f]`, a function a call
   returns — still refuses in words, because no `fnptr` word exists to hold it; `gustyc --callables <src>` prints
-  what the pass decided about a program.
+  what the pass decided about a program, including how many self-calls it answered (`recursive_sites`).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local
@@ -378,7 +381,7 @@ account — clones, hoisted lambdas, minted symbols, and the shape it declined, 
 seven shapes still refused each got a row: **Gap R.263** (a `lambda` with a default parameter never reaches the
 pass because the parser refuses it), **R.264** (a hook lambda whose body asks a door the call site cannot answer),
 **R.265** (a `lambda` that calls its own parameter, and a `lambda` inside a `lambda`), **R.266** (a function a
-call produces), **R.267** (a higher-order body that calls itself), **R.268** (a bound method or a `__call__`
+call produces), **R.267** (a higher-order body that calls itself — closed since by **ADR 0364**), **R.268** (a bound method or a `__call__`
 object as a callable), **R.269** (`list.sort` still refusing the options `sorted` was taught to read).
 
 **A container the answer table declines is still a container, and the doors are told who they ask** — ADR 0344
@@ -1910,6 +1913,30 @@ falls back to dynamic dispatch.
   is the whole-program witness — both legs print `caught / 4 / 30 / 0 / -1 / 7 / 3 / 8` and then raise
   `UnboundLocalError` from the same line — and `gustyc --lang`'s `patterns:` line now states the rule, because a
   binding rule an agent cannot discover is one it cannot rely on.
+- **A clone answers the recursion inside its own body by calling itself (Gap R.267, Gap R.313; ADR 0364)** —
+  `def fact(n, f): if n <= 1: return 1` / `return f(n) * fact(n - 1, f)` / `print(fact(4, lambda x: x))` is
+  CPython's `24` and exited 1 here with `"f" is called but is not a function this backend can build a call to` —
+  the same sentence, eight shapes. ADR 0345 clones a higher-order body once per tuple of functions its call sites
+  hand its parameters, and the plan builds that tuple out of *call sites*; a call written inside the body is not a
+  call site, so the recursion's callable slot had no entry, the plan declined, the tree came back untouched, and
+  codegen met `f(n)` in a body no clone had ever specialised. The fix is one coordinate: a self-call is a **site of
+  the clone it lives inside**, recorded by walking the body the same way the clone's own calls are walked, and the
+  rewrite points it at the clone's `define` with the callable's slot filled the way an outside site fills it. Two
+  decisions the row's prescription did not anticipate had to be made: `fact(n - 1, f)` mentions `f` outside callee
+  position, and ADR 0345's rule is that a called parameter which is *read* is not substitutable — so the recursion
+  handing a parameter back to **its own position** is credited as not-a-read, while `print(f)` and `xs = [f]` still
+  make the function unrewritten and `callableNoFunctionValuesLeft` is what says so afterwards; and once the recursion
+  is the pass's, refusing it is the pass's — four shapes (`run(n - 1, other)`, a recursion that omits a parameter, a
+  recursion inside a `lambda`, two higher-order bodies recursing into each other) each got their own sentence naming
+  the parameter and the line, instead of one codegen sentence standing for all of them. Found on the way, and fixed in
+  the same commit because the recursion cannot be written without it: a call of a parameter records **which parameter
+  it evaluates** and **which entry of the clone's tuple that parameter is** — two facts, one field, read as the wrong
+  one. They agree whenever the callable is written first, which is how every program in the suite was written;
+  `def run(v, fn): return fn(v)` / `print(run(21, inc))` is CPython's `22` and read entry 1 of a one-entry tuple
+  (**Gap R.313**). The pass's account grew `recursive_sites`, because a clone that recursed through the
+  un-specialised entry could not leave that field at a plausible value by accident; and the ban holds — every clone
+  reaches its recursion with `call i32 @gy_fact$callable$…(i32 %t9, i32 0)`, a call to a `define`, and no
+  `ptrtoint`/`inttoptr` anywhere in the module.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

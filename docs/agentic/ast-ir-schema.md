@@ -162,19 +162,42 @@ diagnostic emitted when the rule is broken.
 ## The function-value pass: `gustyc --callables <src>` (L11.7, ADR 0345)
 
 `gustyc --callables` prints what the defunctionalisation pass decided about one source, as JSON — the same
-document the schema declares as `definitions.callablePassReport`:
+document the schema declares as `definitions.callablePassReport`. For the source
+
+```python
+def twice(fn, v):
+    return fn(fn(v))
+
+def down(n, f):
+    if n <= 0:
+        return 0
+
+    return f(n) + down(n - 1, f)
+
+xs = sorted([3, 1, 2], key=lambda x: 0 - x)
+print(twice(lambda x: x + 1, 1), down(3, lambda v: v), xs)   # 3 6 [3, 2, 1]
+```
+
+the document is:
 
 ```json
 {
   "tool": "callable-values",
   "pass": "defunctionalize-callables",
-  "hash": "37411cc8606393b5",
+  "hash": "f12e2d00a8653563",
   "rewritten": true,
-  "clones": 1,
-  "hoisted_lambdas": 1,
+  "clones": 2,
+  "hoisted_lambdas": 3,
   "rewritten_call_sites": 2,
-  "higher_order_functions": ["twice"],
-  "symbols": ["sorted$lambda$c4319c9a_0", "twice$callable$3edc3ceb_0"],
+  "recursive_sites": 1,
+  "higher_order_functions": ["twice", "down"],
+  "symbols": [
+    "down$callable$421441b4_0",
+    "module$lambda$2cef32aa_0",
+    "module$lambda$2def343d_0",
+    "sorted$lambda$c4319c9a_0",
+    "twice$callable$7946524_0"
+  ],
   "refused": []
 }
 ```
@@ -191,6 +214,11 @@ function:
 - `clones`, `hoisted_lambdas` and `rewritten_call_sites` say how much was rewritten, and `symbols` the internal
   names — which never appear in a diagnostic: a clone reports the function the program wrote (`twice`) and a
   hoisted lambda reports `<lambda>`, the reference's own word for it.
+- `recursive_sites` says how many calls written **inside a higher-order body** now name that body's own clone
+  (`down` recursing with `f` in hand is the one above). Zero means either that no higher-order function recursed,
+  or that the pass declined the recursion — in which case `refused` says which shape, naming the parameter and the
+  line (ADR 0364, roadmap Gap R.267). A clone that recursed through the un-specialised entry could not leave this
+  field at a plausible value by accident.
 - `hash` is a digest of the rewrite. One source gives one hash; two runs that disagree are a compiler that cannot
   compile the same program twice.
 

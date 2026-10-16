@@ -1149,6 +1149,7 @@ const astIRSchemaTemplate = `{
         "clones",
         "hoisted_lambdas",
         "rewritten_call_sites",
+        "recursive_sites",
         "higher_order_functions",
         "symbols",
         "refused"
@@ -1182,6 +1183,10 @@ const astIRSchemaTemplate = `{
         "rewritten_call_sites": {
           "type": "integer",
           "description": "How many call sites now name a function where they used to pass a value."
+        },
+        "recursive_sites": {
+          "type": "integer",
+          "description": "How many calls written inside a higher-order function's own body now name that function's own clone: the recursion a clone answers by calling itself, one per self-call the pass rewrote. Zero means no higher-order recursion was in the program, or that the pass declined it — in which case Refused says which. Counting the self-call is what makes the recursion auditable: a clone that recursed through the un-specialized entry would have taken the answer with it (roadmap L11.7, Gap R.267, ADR 0364)."
         },
         "higher_order_functions": {
           "type": "array",

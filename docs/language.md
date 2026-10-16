@@ -3019,8 +3019,10 @@ a call are asked, so `print(f)` and `xs = [f]` still refuse in words while `appl
 
 A **function used as a value** is a value this backend answers, as long as the program *calls* it (L11.7,
 ADR 0345). A higher-order function is cloned once per tuple of functions its call sites ask its parameters to be,
-a `lambda` that needs a name is given a declaration of its own, and a name that only ever aliases a function is
-pointed at the calls it makes:
+a `lambda` that needs a name is given a declaration of its own, a name that only ever aliases a function is
+pointed at the calls it makes, and **a higher-order body that calls itself is answered by the clone calling
+itself** (**ADR 0364**, roadmap **Gap R.267**) — the recursion hands the callable back to its own position, which
+is the one mention of a called parameter that is not a use as a value:
 
 ```python
 def twice(fn, v):
@@ -3032,6 +3034,20 @@ def d2(x: int) -> int:
 print(twice(d2, 3))                              # 12
 print(twice(lambda x: x * 3, 2))                 # 12
 
+def fact(n, f):
+    if n <= 1:
+        return 1
+
+    return f(n) * fact(n - 1, f)
+
+print(fact(4, lambda x: x))                      # 24 — the clone calls itself
+print(fact(3, d2), fact(3, lambda v: v))         # 24 6 — two clones, each its own recursion
+
+def run(v, fn):
+    return fn(v)
+
+print(run(21, d2))                               # 42 — the callable need not be the first parameter (Gap R.313)
+
 g = d2
 print(g(4))                                      # 8 — the alias is called as d2
 print(sorted([3, 1, 2], key=lambda x: 0 - x))    # [3, 2, 1] — the hook lambda gets a declaration
@@ -3041,19 +3057,23 @@ print(max([1, 3, 2], key=lambda x: 0 - x))       # 1
 The boundary is *called* versus *read*. A function that flows to a position which keeps one word for a value
 still refuses, in words, at exit 1: `print(f)`, `xs = [f]`, `print(g)` after `g = f`, a `lambda` returned from a
 function and then called, a `lambda` that reads a variable of an enclosing function, and a `lambda` that calls
-its own parameter. What the rewrite did not change is what ADR 0283 promises about reading a `def`'d name; what it
+its own parameter. A recursion the clone cannot follow is refused by **this** pass, in a sentence that names the
+parameter and the line: the recursion hands the callable to something else (`run(n - 1, other)`), it omits a
+parameter, or it is written inside a `lambda`. What the rewrite did not change is what ADR 0283 promises about
+reading a `def`'d name; what it
 changed is that a function the program *calls* no longer needs a word to travel in. A clone reports the name the
 program wrote — a traceback and `--debug-info` say `twice`, and a hoisted `lambda` says `<lambda>`, the
 reference's own word for it. `gustyc --callables <src>` prints the pass's own account of a source (what it
-specialised, and the shape it declined). A **`lambda`'s parameter list is spelled the same way a `def`'s
+specialised, how many self-calls it answered, and the shape it declined). A **`lambda`'s parameter list is spelled the same way a `def`'s
 is** — `f = lambda x, y=1: x + y` / `print(f(1))` is `2`, and the call may omit `y`, supply it positionally, or
 name it (`f(1, y=9)` is `10`) — since **ADR 0352** closed Gap R.263, which had been a parse error. The default
 is an ordinary expression, so a call (`y=two()`), a module name (`k=STEP`), a conditional and a value with a
 `:` inside its own brackets (`d={"a": 1}`, `s="a:b"`) all work, and the default resolves against the
-*definition's* scope, not the caller's. What still refuses is Gaps R.255, R.264, R.265, R.266, R.267, R.268
+*definition's* scope, not the caller's. What still refuses is Gaps R.255, R.264, R.265, R.266, R.268
 and R.269, plus the shapes ADR 0352 measured and filed rather than absorbed: a `lambda` that reads a variable
 of the function it is written in (**Gap R.276**), `*args`/`**kwargs` and a trailing comma in any parameter
-list (**Gap R.278**, **Gap R.279**), and a container default beside a higher-order call (**Gap R.282**).
+list (**Gap R.278**, **Gap R.279**), a hook read out of a name it was bound to (**Gap R.281**), and a container
+default beside a higher-order call (**Gap R.282**).
 
 One default shape does not merely refuse — it **answers wrongly**, and is called out here rather than
 discovered by chance: a default whose value is not a number or a text is never bound to the parameter, so the

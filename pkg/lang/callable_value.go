@@ -82,14 +82,18 @@ const (
 // a failing case can say which function was cloned, how many times, and which argument the choice
 // came from — the thing a bare `compileError` line cannot tell you.
 type callableReport struct {
-	Tool             string   `json:"tool"`
-	Pass             string   `json:"pass"`
-	Hash             string   `json:"hash"`
-	Rewritten        bool     `json:"rewritten"`
-	Clones           int      `json:"clones"`
-	HoistedLambdas   int      `json:"hoisted_lambdas"`
-	RewrittenCallNum int      `json:"rewritten_call_sites"`
-	HigherOrderFunc  []string `json:"higher_order_functions"`
+	Tool             string `json:"tool"`
+	Pass             string `json:"pass"`
+	Hash             string `json:"hash"`
+	Rewritten        bool   `json:"rewritten"`
+	Clones           int    `json:"clones"`
+	HoistedLambdas   int    `json:"hoisted_lambdas"`
+	RewrittenCallNum int    `json:"rewritten_call_sites"`
+	// RecursiveSites counts the calls of a higher-order function, written inside its own body, that a
+	// clone now answers by calling itself — the recursion the pass follows rather than declines
+	// (roadmap Gap R.267, ADR 0364).
+	RecursiveSites  int      `json:"recursive_sites"`
+	HigherOrderFunc []string `json:"higher_order_functions"`
 	// Symbols are the IR names the pass minted — clones and hoisted lambdas — so a caller that reads
 	// `--emit-llvm` can tell a definition this pass wrote from one the program wrote.
 	Symbols []string `json:"symbols"`
@@ -377,20 +381,144 @@ func (r *callableRead) occurrencesOf(name string) []*Name {
 }
 
 // onlyCalledInBody reports whether every occurrence of a higher-order function's parameter, in that
-// function's own body, is the callee of a call. A parameter that is also printed, stored, indexed or
-// returned is not a parameter this pass can substitute for — it is being used as a value.
-func (r *callableRead) onlyCalledInBody(fn *FuncDef, param string) bool {
+// function's own body, is the callee of a call — or the one argument of the function's own recursive
+// call that hands the parameter back to the position it came from (`passed`, which
+// `callableSelfCallsOf` fills). A parameter that is also printed, stored, indexed or returned is not a
+// parameter this pass can substitute for — it is being used as a value; the recursion is the single
+// position that is not a use as a value, because the clone that body becomes calls itself there
+// (roadmap Gap R.267, ADR 0364).
+func (r *callableRead) onlyCalledInBody(fn *FuncDef, param string, passed map[*Name]bool) bool {
 	seen, called := 0, 0
 	for i, n := range r.names {
 		if n.Value != param || r.nameEncs[i] != fn {
 			continue
 		}
 		seen++
-		if r.calleeNames[n] {
+		if r.calleeNames[n] || passed[n] {
 			called++
 		}
 	}
 	return seen > 0 && seen == called
+}
+
+// callableSelfCall is one call of a function's own name read out of that function's own body, with the
+// answer to "does this position receive the parameter it names?". The three flags are the three ways a
+// recursion is not the clone's to answer, and each has its own sentence so a reader is told which one
+// the program hit (ADR 0166's rule that a refusal names the missing half).
+type callableSelfCall struct {
+	rank     int    // index among the calls of the body's own preorder
+	line     int    // where the recursion is written
+	args     []Expr // the arguments the recursion passes, as the program wrote them
+	slots    []bool // slots[i]: the argument at position i is the parameter i, handed back to itself
+	bad      bool   // not a plain, full-arity, positional call of the function's own name
+	inLambda bool   // written inside a `lambda`, whose hoisted body has no frame for the recursion
+}
+
+// callableSelfCallsOf walks a function's body exactly the way `callableBodyCalls` does — the k-th call
+// of the body is the k-th call of its clone, which is the coordinate every rewrite in
+// `applyDefunctionalization` is written against — and returns the calls of the function's own name.
+//
+// A call whose callee is a name is the only shape considered: `f = self; f(x)` is a different program,
+// and one whose callee some other pass has already decided about is not this pass's to follow.
+func callableSelfCallsOf(fn *FuncDef) []*callableSelfCall {
+	var out []*callableSelfCall
+	if fn == nil || fn.Body == nil {
+		return out
+	}
+	rank := 0
+	var w callableWalk
+	w.visit = func(n Node, enc *FuncDef) {
+		c, isCall := n.(*Call)
+		if !isCall {
+			return
+		}
+		if nm, isName := c.Fn.(*Name); isName && enc == fn && nm.Value == fn.Name && !callableHasParamNamed(fn, nm.Value) {
+			sc := &callableSelfCall{rank: rank, line: c.Span().Line, args: append([]Expr(nil), c.Args...)}
+			sc.inLambda = w.inLambda > 0
+			sc.bad = len(c.Args) != len(fn.Params) || callableHasKeywordArgs(c.Args)
+			if !sc.bad {
+				sc.slots = make([]bool, len(fn.Params))
+				for i, p := range fn.Params {
+					an, isArgName := c.Args[i].(*Name)
+					sc.slots[i] = isArgName && an.Value == p.Name
+				}
+			}
+			out = append(out, sc)
+		}
+		rank++
+	}
+	w.stmts(fn.Body, fn)
+	return out
+}
+
+// callableSelfDeclines is the recursion's own audit, asked before any clone exists: a higher-order body
+// that calls itself is in this pass's hands now, and three shapes are not the clone's to answer. The
+// sentence is the reason, not a shrug — ADR 0166's rule that a refusal names the half that is missing,
+// and the reason a mutually recursive pair reads as a declined recursion rather than as the ordinary
+// road's one-word short answer.
+func callableSelfDeclines(fn *FuncDef, self []*callableSelfCall, positions []int) string {
+	if fn == nil {
+		return ""
+	}
+	for _, sc := range self {
+		if sc.inLambda {
+			return fmt.Sprintf("%q recurses at line %d from inside a lambda, whose body this pass gives a declaration of its own and therefore no frame to hand the recursion through", fn.Name, sc.line)
+		}
+		if sc.bad {
+			return fmt.Sprintf("%q recurses at line %d without filling every parameter positionally, which a clone cannot answer for the recursion", fn.Name, sc.line)
+		}
+		for _, pos := range positions {
+			if pos < 0 || pos >= len(sc.slots) || !sc.slots[pos] {
+				name := ""
+				if pos >= 0 && pos < len(fn.Params) && fn.Params[pos] != nil {
+					name = fn.Params[pos].Name
+				}
+				return fmt.Sprintf("%q recurses at line %d and hands %q something other than itself; a clone follows a recursion only while each called parameter is handed back to its own position", fn.Name, sc.line, name)
+			}
+		}
+	}
+	return ""
+}
+
+// callableHasParamNamed asks whether a name belongs to a function's parameters. A body that writes
+// `go(n)` where `go` is both the function's name and one of its parameters is calling the PARAMETER —
+// the frame's name wins over the module's, here as in the reference — and that call belongs to the
+// inner-call road, which has always answered it by name.
+func callableHasParamNamed(fn *FuncDef, name string) bool {
+	if fn == nil {
+		return false
+	}
+	for _, p := range fn.Params {
+		if p != nil && p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// callableSelfPassThrough names the argument nodes the recursion hands back to their own positions.
+// Only a call that is well shaped for the clone contributes: a recursion the pass would have to
+// decline contributes nothing, so a parameter whose only non-callee occurrence is in such a call is
+// never credited and the function is never registered as higher-order.
+func callableSelfPassThrough(fn *FuncDef, self []*callableSelfCall) map[*Name]bool {
+	passed := map[*Name]bool{}
+	if fn == nil {
+		return passed
+	}
+	for _, sc := range self {
+		if sc.bad || sc.inLambda {
+			continue
+		}
+		for i, ok := range sc.slots {
+			if !ok || i >= len(fn.Params) || i >= len(sc.args) {
+				continue
+			}
+			if an, isName := sc.args[i].(*Name); isName && an.Value == fn.Params[i].Name {
+				passed[an] = true
+			}
+		}
+	}
+	return passed
 }
 
 // callsOfParam returns the calls in fn's body whose callee is the named parameter, with their rank
@@ -456,7 +584,10 @@ type callableFn struct {
 	calledPos []int          // parameter indexes the body calls, ascending
 	sites     []*callableSite
 	inner     []*callableInner
-	clones    []*callableClone
+	// self is every call of this function written inside its own body, which each of its clones answers
+	// by calling itself (roadmap Gap R.267, ADR 0364).
+	self   []*callableSelfSite
+	clones []*callableClone
 }
 
 // callableSite is a call of a higher-order function from outside every higher-order body.
@@ -470,7 +601,35 @@ type callableSite struct {
 type callableInner struct {
 	rank int // index among the calls of that body's preorder
 	pos  int // which parameter of the enclosing function this call evaluates
+	// slot is which entry of the clone's tuple that parameter is asked to be: the ordinal of `pos` within
+	// calledPos, NOT `pos` itself. The two coincide exactly when the body calls the FIRST parameter, which
+	// is the only shape every program in the suite wrote, and a program that wrote `def run(v, fn)` read
+	// the one-entry tuple with the parameter's position, failed its own bounds check and handed the
+	// program back to the refusal it had before (roadmap Gap R.313, ADR 0364).
+	slot int
 	args int // how many arguments it passes
+}
+
+// callableSelfSite is a call of the higher-order function from inside its own body that hands back,
+// at each position the body calls, the very parameter that position names:
+//
+//	def fact(n, f):
+//	    if n <= 1:
+//	        return 1
+//	    return f(n) * fact(n - 1, f)   # <- this call
+//
+// The clone answers such a call by calling ITSELF: the entry tuple the recursion carries is the
+// enclosing clone's own, so the callable never has to exist as a value — which is the one thing this
+// pass does not make (roadmap L11.7 · Gap R.267, ADR 0364).
+//
+// Before this row the program was handed back whole, because `onlyCalledInBody` counted the `f` in
+// `fact(n - 1, f)` as a use as a value — which, on the ordinary road, it is — and the function was
+// never registered as higher-order at all. What is credited now is exactly that one occurrence, at
+// exactly that one position, and nothing else: pass the callable anywhere else and the program keeps
+// the refusal it has today.
+type callableSelfSite struct {
+	rank int // index among the calls of that body's preorder — the coordinate the clone is written against
+	line int // the source line, for the sentence that declines a recursion this pass cannot follow
 }
 
 type callableClone struct {
@@ -565,13 +724,25 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if len(fn.Decorators) > 0 || fn.Async {
 			continue
 		}
-		positions, ok := callableCalledParams(r, fn)
+		self := callableSelfCallsOf(fn)
+		passed := callableSelfPassThrough(fn, self)
+		positions, ok := callableCalledParams(r, fn, passed)
 		if !ok || len(positions) == 0 {
 			continue
+		}
+		// The recursion is now the pass's to answer, which means it is the pass's to refuse. Each of the
+		// three shapes below is a recursion whose clone would call something the plan has no entry for;
+		// each declines the whole program, naming the recursion as the reason, rather than letting the
+		// ordinary road answer it one word short (roadmap Gap R.267, ADR 0364).
+		if why := callableSelfDeclines(fn, self, positions); why != "" {
+			return nil, callableDeclinef("%s", why)
 		}
 		cf := &callableFn{def: fn, paramPos: map[string]int{}, calledPos: positions}
 		for i, p := range fn.Params {
 			cf.paramPos[p.Name] = i
+		}
+		for _, sc := range self {
+			cf.self = append(cf.self, &callableSelfSite{rank: sc.rank, line: sc.line})
 		}
 		plan.fns[fn.Name] = cf
 		plan.order = append(plan.order, cf)
@@ -740,6 +911,15 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// whose calls can be pointed at the function they mean, or a lambda argument the pass can name. An
 	// ordinary program is handed back with one comparison spent on it.
 	if len(plan.fns) == 0 && len(plan.aliases) == 0 && len(plan.argHoists) == 0 {
+		// The recursion gets one more chance to explain itself. A pair of functions that call a parameter
+		// and hand it to each other is a recursion no clone can be written for — and it registers no
+		// higher-order function at all, because handing the callable to the other body is a use as a value
+		// on the ordinary road. Said here rather than at the pair's own row because this is the one place
+		// the pass knows nothing else was rewritable: a decline that fires on a program with work to do
+		// would take the answer away from a higher-order call that has nothing to do with the pair.
+		if why := callableMutualHigherOrderDecline(r); why != "" {
+			return nil, callableDeclinef("%s", why)
+		}
 		return nil, &callableDecline{why: "no function calls its own parameter, no name aliases one, and no lambda argument needs a declaration"}
 	}
 
@@ -760,7 +940,15 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		}
 		if enc := r.encs[rank]; enc != nil {
 			if _, inside := plan.fns[enc.Name]; inside {
-				continue // a call of a higher-order function from inside one is the clone's business
+				if enc != cf.def {
+					// One higher-order function called from inside another: the callee's own body has been
+					// taken out of the program and the caller's clone has no entry tuple to hand the call, so
+					// neither clone owns it. Before the self-call was this pass's, the reading never got this
+					// far; now it says what the shape is instead of leaving the invariant to withdraw a
+					// rewrite it cannot explain (roadmap Gap R.267, ADR 0364).
+					return nil, callableDeclinef("%q is called from inside the higher-order body of %q at line %d: a recursion between two higher-order functions is a call neither clone can answer", name, enc.Name, c.Span().Line)
+				}
+				continue // a call of the function from inside its own body is the self-call's business
 			}
 		}
 		if callableHasKeywordArgs(c.Args) || len(c.Args) != len(cf.def.Params) {
@@ -780,7 +968,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// The inner calls: where the parameter is the callee. Each must be a call of a plain name, of the
 	// parameter, passing the arity the entries are declared with.
 	for _, cf := range plan.order {
-		for _, pos := range cf.calledPos {
+		for slot, pos := range cf.calledPos {
 			param := cf.def.Params[pos].Name
 			calls, ranks, ok := r.callsOfParam(cf.def, param)
 			if !ok || len(ranks) != len(calls) || len(calls) == 0 {
@@ -791,7 +979,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 				if len(c.Args) != arity || callableHasKeywordArgs(c.Args) {
 					return nil, callableDeclinef("%q calls %q with differing arity", cf.def.Name, param)
 				}
-				cf.inner = append(cf.inner, &callableInner{rank: ranks[k], pos: pos, args: len(c.Args)})
+				cf.inner = append(cf.inner, &callableInner{rank: ranks[k], pos: pos, slot: slot, args: len(c.Args)})
 			}
 		}
 		if len(cf.inner) == 0 || len(cf.sites) == 0 {
@@ -842,10 +1030,11 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 }
 
 // callableCalledParams decides which parameters of a function are called as callees. A parameter is
-// eligible only when every one of its occurrences inside the body is a callee and the body's calls
-// of it are uniform; a parameter that is also read is not eligible, and a function with an
-// ineligible parameter that is *also* called elsewhere is left alone entirely.
-func callableCalledParams(r *callableRead, fn *FuncDef) ([]int, bool) {
+// eligible only when every one of its occurrences inside the body is a callee (or the recursion
+// handing it back to itself, `passed`) and the body's calls of it are uniform; a parameter that is also
+// read is not eligible, and a function with an ineligible parameter that is *also* called elsewhere is
+// left alone entirely.
+func callableCalledParams(r *callableRead, fn *FuncDef, passed map[*Name]bool) ([]int, bool) {
 	if fn.Body == nil {
 		return nil, false
 	}
@@ -858,7 +1047,7 @@ func callableCalledParams(r *callableRead, fn *FuncDef) ([]int, bool) {
 	}
 	var positions []int
 	for i, p := range fn.Params {
-		if !r.onlyCalledInBody(fn, p.Name) {
+		if !r.onlyCalledInBody(fn, p.Name, passed) {
 			continue
 		}
 		// A parameter the body calls has to be a plain slot: a default would be filled by a value the
@@ -1459,11 +1648,34 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 				return prog, nil
 			}
 			for _, in := range cf.inner {
-				if in.rank < 0 || in.rank >= len(cloneCalls) || in.pos >= len(cl.key) {
+				if in.rank < 0 || in.rank >= len(cloneCalls) || in.slot < 0 || in.slot >= len(cl.key) {
 					return prog, nil
 				}
 				callee := cloneCalls[in.rank]
-				callee.Fn = &Name{Value: cl.key[in.pos], Src: callee.Fn.Span()}
+				callee.Fn = &Name{Value: cl.key[in.slot], Src: callee.Fn.Span()}
+			}
+			// The recursion. Every call of the source function written inside this clone's copy of the body
+			// is pointed at the clone itself — the entry tuple the recursion carries is the one this clone
+			// was minted for — and the slot the callable came in on is filled with the same plain integer an
+			// outside call site gets, because a clone reads nothing there. The rank is re-checked against
+			// the callee's spelling: a call pointed at the wrong `define` is worse than no rewrite at all
+			// (roadmap Gap R.267, ADR 0364).
+			for _, sf := range cf.self {
+				if sf.rank < 0 || sf.rank >= len(cloneCalls) {
+					return prog, nil
+				}
+				rec := cloneCalls[sf.rank]
+				if nm, isName := rec.Fn.(*Name); !isName || nm.Value != cf.def.Name {
+					return prog, nil
+				}
+				rec.Fn = &Name{Value: cl.name, Src: rec.Fn.Span()}
+				for _, pos := range cf.calledPos {
+					if pos >= len(rec.Args) {
+						return prog, nil
+					}
+					rec.Args[pos] = &IntLit{Value: 0, Text: callablePlaceholderText, Src: rec.Args[pos].Span()}
+				}
+				report.RecursiveSites++
 			}
 			clones = append(clones, clone)
 			report.Clones++
@@ -1643,7 +1855,12 @@ func callableNoFunctionValuesLeft(prog *Program, plan *callablePlan) bool {
 		gone[cf.def.Name] = true
 		delete(functions, cf.def.Name)
 	}
-	check := callableReadProgram(prog)
+	// The program the pass produced, minus the definitions the pass took out of it: a body marked
+	// SkipEmit is never emitted, so a name inside it cannot reach the module — while every statement that
+	// IS emitted, each clone included, is still read. A recursion is exactly the shape this distinction is
+	// for: the source body names its own function, and the clone that replaces it calls itself (roadmap
+	// Gap R.267, ADR 0364).
+	check := callableReadProgram(emittedStmtsOf(prog))
 	for _, n := range check.names {
 		if gone[n.Value] {
 			return false
@@ -1656,6 +1873,106 @@ func callableNoFunctionValuesLeft(prog *Program, plan *callablePlan) bool {
 		}
 	}
 	return true
+}
+
+// callableMutualHigherOrderDecline is the sentence for the recursion between TWO higher-order bodies:
+//
+//	def a(n, f):            #   a calls f, and hands f to b
+//	    return f(n) + b(n - 1, f)
+//	def b(n, f):            #   b calls f too, and hands it back to a
+//	    return f(n) + a(n - 1, f)
+//
+// Each body's clone would need the other's entry tuple, which is the same fixed point the clone road
+// finds for one function and has no way to find across two. The question is asked of the pair, never
+// of one body: `f` reaching a plain function is a use as a value the pass has always declined, and
+// saying "recursion" about that would blame a shape the program never wrote (roadmap Gap R.267,
+// ADR 0364).
+func callableMutualHigherOrderDecline(r *callableRead) string {
+	if r == nil {
+		return ""
+	}
+	// The functions are asked in the order the source names them, never in map order: which of a pair is
+	// named in the sentence has to be the same answer twice in a row (ADR 0345's determinism rule for
+	// anything the pass says about a program).
+	names := make([]string, 0, len(r.fds))
+	for name := range r.fds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fn := r.fds[name]
+		if fn == nil || fn.Body == nil || len(fn.Decorators) > 0 || fn.Async {
+			continue
+		}
+		for i, p := range fn.Params {
+			if p == nil || isPredeclaredName(p.Name) || !bodyCallsParam(r, fn, i) {
+				continue
+			}
+			sentence := ""
+			var w callableWalk
+			w.visit = func(n Node, enc *FuncDef) {
+				if sentence != "" {
+					return
+				}
+				c, isCall := n.(*Call)
+				if !isCall || enc != fn || w.inLambda > 0 {
+					return
+				}
+				callee, isName := c.Fn.(*Name)
+				if !isName || callee.Value == fn.Name {
+					return
+				}
+				g, declared := r.fds[callee.Value]
+				if !declared || g == fn || i >= len(g.Params) || g.Params[i] == nil || i >= len(c.Args) {
+					return
+				}
+				arg, isArgName := c.Args[i].(*Name)
+				if !isArgName || arg.Value != p.Name || !bodyCallsParam(r, g, i) {
+					return
+				}
+				sentence = fmt.Sprintf("%q calls its own parameter %q and hands it to %q at line %d, whose body calls it back: a recursion between two higher-order functions is a call neither clone can answer",
+					fn.Name, p.Name, callee.Value, c.Span().Line)
+			}
+			w.stmts(fn.Body, fn)
+			if sentence != "" {
+				return sentence
+			}
+		}
+	}
+	return ""
+}
+
+// bodyCallsParam asks whether a function's body ever calls its i-th parameter — the callee position, not
+// merely a mention of it, which is what makes "the two bodies call it together" a claim about a pair
+// rather than about two programs that never met.
+func bodyCallsParam(r *callableRead, fn *FuncDef, i int) bool {
+	if fn == nil || i < 0 || i >= len(fn.Params) || fn.Params[i] == nil {
+		return false
+	}
+	for k, n := range r.names {
+		if r.nameEncs[k] == fn && n.Value == fn.Params[i].Name && r.calleeNames[n] {
+			return true
+		}
+	}
+	return false
+}
+
+// emittedStmtsOf is the program a run actually consists of: every statement, minus the definitions the
+// pass took out of it. A `SkipEmit` body is not emitted, so it is not part of the program codegen reads
+// — which is why the recursion it still spells (`fact(n - 1, f)` in the source body a clone replaced)
+// does not read as a leftover use of a function as a value.
+func emittedStmtsOf(prog *Program) *Program {
+	if prog == nil {
+		return nil
+	}
+	kept := make([]Stmt, 0, len(prog.Stmts))
+	for _, s := range prog.Stmts {
+		if fd, ok := s.(*FuncDef); ok && fd.SkipEmit {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	return &Program{Src: prog.Src, Stmts: kept}
 }
 
 func callableSortedKeys(m map[string]string) []string {
@@ -1901,8 +2218,8 @@ func marshalCallableReport(rep callableReport) (string, error) {
 func callablePlanHash(rep *callableReport) string {
 	h := fnv.New64a()
 	if rep != nil {
-		fmt.Fprintf(h, "%s|%d|%d|%d|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
-			strings.Join(rep.HigherOrderFunc, ","))
+		fmt.Fprintf(h, "%s|%d|%d|%d|%d|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
+			rep.RecursiveSites, strings.Join(rep.HigherOrderFunc, ","))
 	}
 	return fmt.Sprintf("%016x", h.Sum64())
 }
