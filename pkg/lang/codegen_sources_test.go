@@ -67,7 +67,7 @@ func TestCodegenSourcesCoverTheEmitter(t *testing.T) {
 	}
 	// Every road family the split promised still exists, and each one is non-trivial.
 	for _, want := range []string{
-		"codegen.go", "codegen_value.go", "codegen_stmt.go", "codegen_call.go", "codegen_arith.go",
+		"codegen.go", "codegen_value.go", "codegen_binop.go", "codegen_stmt.go", "codegen_call.go", "codegen_arith.go",
 		"codegen_match.go", "codegen_comp.go", "codegen_func.go", "codegen_class.go", "codegen_text.go",
 		"codegen_container.go", "codegen_index.go", "codegen_float.go", "codegen_minmax.go",
 		"codegen_module.go", "codegen_gc.go", "codegen_error.go", "codegen_truth.go", "codegen_facts.go",

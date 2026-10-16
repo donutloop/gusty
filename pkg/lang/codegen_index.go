@@ -475,3 +475,551 @@ func literalKeyRepr(e Expr) (string, bool) {
 	}
 	return "", false
 }
+
+// valueIndex is the road a subscript takes, container-agnostic: every kind question and every trap
+// it asks is answered by the doors beside it in this file.
+func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error) {
+	// An index that is not a position is asked about before the subscript is lowered at all.
+	// The bounds check downstream takes an i32 and never asked what it meant, so `xs["a"]`
+	// counted to slot 1 with the text's @str_tab index and printed an element nobody asked
+	// for, and `xs[[0]]` lowered a list literal to a @.lstN global reference inside an
+	// `icmp slt` — a module llc rejected, exit 2, the code the contract reserves for a
+	// compiler bug. The reference raises TypeError naming the type, and so does this (roadmap
+	// Gap R.222, ADR 0329). A dict or a set is not subscripted by position and is left to the
+	// hashing door beside it (Gap R.217, ADR 0328).
+	if g.badIndexGateAtSubscript(b, n) {
+		return "0", nil
+	}
+	// A subscript whose base is a call that hands back a container asks the door the bound form
+	// already answers. The callee materialised the object at its `ret` and the answer arrives under a
+	// rooted name carrying the notebooks this road consults for a container variable, so `build()[7]`
+	// is `ys = build(); ys[7]` written shorter — same read, same bounds check, same catchable raise.
+	// Until this arm the fold's own gate condemned the shape because a call is not a literal, which
+	// is the base's *spelling* rather than what the compiler holds: the same misattribution ADR 0251
+	// fixed for a container the program built, one construct over (roadmap Gap R.214, ADR 0334).
+	if redo, okAns := g.containerAnswerSubscript(b, n); okAns {
+		return g.value(b, redo)
+	}
+	// A subscript of a string the compiler cannot read asks the table (ADR 0229): the
+	// base only has to *be* a string, not be a constant. The fold below still answers
+	// everything the compiler can name, so this path is reached exactly when the fold
+	// cannot — which used to be a refusal, so `print(s[1])` worked and `print(get()[1])`
+	// did not, one rule with two behaviours.
+	_, foldBase := g.stringVal(n.Obj)
+	_, foldIdx := n.Idx.(*IntLit)
+	if !foldBase || !foldIdx {
+		if ch, isStr, err := g.emitStrChar(b, n.Obj, n.Idx, n.Span()); err != nil {
+			return "", err
+		} else if isStr {
+			return ch, nil
+		}
+	}
+	// list/dict/set indexing against an inline literal with a constant
+	// index/key (this llc build accepts only constant GEP indices).
+	// Constant keys/elements are resolved at compile time.
+	key := int64(0)
+	if il, ok := n.Idx.(*IntLit); ok {
+		key = il.Value
+	} else {
+		// non-literal index: only runtime containers support it (x[a]) — and a dict literal, which is
+		// a runtime container the compiler happens to be looking at. Refusing the text key here is what
+		// made `print({"a": 1}["a"])` stop the program at exit 1 while `d = {"a": 1}; print(d["a"])`
+		// answered `1`: one construct, two doors (roadmap Gap R.215, ADR 0327).
+		if nm, ok := n.Obj.(*Name); ok {
+			if !g.listVars[nm.Value] && !g.runtimeDicts[nm.Value] && !g.runtimeSets[nm.Value] {
+				return "", fmt.Errorf("index must be a constant")
+			}
+		} else if _, isDictLit := n.Obj.(*DictLit); !isDictLit {
+			return "", fmt.Errorf("index must be a constant")
+		}
+	}
+	// A subscript of a string is a one-character string (ADR 0225), and the base the
+	// compiler can name is folded: a literal, a variable holding text, a folded
+	// concatenation. Negative positions are positions, as ADR 0210 ruled for containers,
+	// and the count is code points, which is how `len` and slicing already count. Without
+	// this the base only worked as a literal, so `s = "abc"; print(s[1])` refused while
+	// `"abc"[1]` answered -- one rule, two behaviours.
+	if _, isInt := n.Idx.(*IntLit); isInt {
+		if txt, isStr := g.stringVal(n.Obj); isStr {
+			runes := []rune(txt)
+			i := normPosIndex(key, int64(len(runes)))
+			if i < 0 || i >= int64(len(runes)) {
+				g.constantTrap(b, "IndexError", stringIndexOutOfRange(), n.Span())
+				return "0", nil
+			}
+			return g.internStr(b, string(runes[i])), nil
+		}
+	}
+	switch obj := n.Obj.(type) {
+	case *Name:
+		// runtime heap list variable: x[i] reads heap[x].data[i].
+		if g.runtimeDicts[obj.Value] {
+			g.heapSeq++
+			hs := g.heapSeq
+			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
+			// The key may be a runtime value (`for k in d: d[k]`), so it is
+			// lowered like the list index path does; only a literal key folds. A
+			// string key becomes its @str_tab index, because rt_dict_get/rt_dict_has
+			// take i32 keys and a global pointer there is what LLVM rejected.
+			keyOp := strconv.FormatInt(key, 10)
+			// The key is compared as (payload, tag). A string needle's payload is an
+			// @str_tab index, and an int key holding the same number is a different key:
+			// {1: "one"} asked for "a" must raise KeyError, not answer "one" — which is
+			// what an untagged comparison did until the tag was consulted here too
+			// (ADR 0232, and ADR 0189's promise that the tag is always there to read).
+			keyTag := ""
+			if _, isLit := n.Idx.(*IntLit); !isLit {
+				kv, isStr, e := g.heapElemKind(b, n.Idx)
+				if e != nil {
+					return "", e
+				}
+				if isStr {
+					g.dictKeyStr[obj.Value] = true
+				}
+				keyOp = kv
+				if t, ok := g.elemKindTag(n.Idx); ok {
+					keyTag = strconv.FormatInt(int64(t), 10)
+				} else if isStr {
+					keyTag = strconv.FormatInt(int64(TagStr), 10)
+				} else {
+					keyTag = strconv.FormatInt(int64(TagInt), 10)
+				}
+			} else if nm, ok := n.Idx.(*Name); ok && g.taggedVars[nm.Value] {
+				kt := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", kt, nm.Value))
+				keyTag = kt
+			}
+			if keyTag != "" {
+				g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Idx, n.Span())
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, hs, keyOp, keyTag))
+			} else {
+				g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Idx, n.Span())
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
+			}
+			return fmt.Sprintf("%%g%d", hs), nil
+		}
+		if g.listVars[obj.Value] {
+			idxOp := strconv.FormatInt(key, 10)
+			if _, ok := n.Idx.(*IntLit); !ok {
+				v, e := g.value(b, n.Idx)
+				if e != nil {
+					return "", e
+				}
+				idxOp = v
+			}
+			g.heapSeq++
+			hs := g.heapSeq
+			if g.mixedLists[obj.Value] {
+				// A numeric use of an element is not a use that needs the tag. When the container is one the
+				// program spelled out and never changed, and the element is a number literal, the slot holds
+				// that number: `xs = [1, "a"]; print(xs[0] + 1)` is an addition on 1, and the float form takes
+				// the float path with it (roadmap L11.1, ADR 0243). What the promise does not cover — a name
+				// element, a runtime index, text or a container in the slot — keeps the refusal below, because
+				// for those the tag is exactly what the answer depends on.
+				if v, ok := g.numericElemUse(b, n); ok {
+					return v, nil
+				}
+				if v, ok := g.numericSlotUse(b, obj.Value, n); ok {
+					return v, nil
+				}
+				return "", mixedReadErr("list")
+			}
+			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
+			idxOp = g.normalizeIndexFor(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span(), indexOutOfRangeSentenceFor(g.isTupleExpr(obj)))
+			b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
+			return fmt.Sprintf("%%g%d", hs), nil
+		}
+		if g.dictVals != nil {
+			if dl, ok := g.dictVals[obj.Value]; ok {
+				return g.dictIndex(dl, key)
+			}
+		}
+		// A name whose container the program spelled out and never changed answers from the
+		// literal, whatever the kind maps happen to record: the mixed-list arm above consults this
+		// fold and the arms below do not, so a chain — which lowers each operand through an
+		// ordinary `value` read rather than through the comparison's own context — reached the
+		// refusal for `0 < xs[1] < 3` while the same program written as one comparison did not
+		// (roadmap L12.1 / Gap R.53, ADR 0288). Asking the fold here is the choke-point form of
+		// ADR 0243's promise: the slot holds that number, so the answer is the number.
+		if v, ok := g.numericElemUse(b, n); ok {
+			return v, nil
+		}
+		if v, ok := g.numericSlotUse(b, obj.Value, n); ok {
+			return v, nil
+		}
+		return "", fmt.Errorf("index of a non-literal variable")
+
+	case *Attr:
+		// imported module list global (data imports): mod.list[i]
+		if nm, ok := obj.Obj.(*Name); ok {
+			if globals, ok2 := g.imports.Globals[nm.Value]; ok2 {
+				if lit, ok3 := globals[obj.Name.Value]; ok3 {
+					if lst, ok4 := lit.(*ListLit); ok4 {
+						if key >= 0 && int(key) < len(lst.Elems) {
+							return g.value(b, lst.Elems[key])
+						}
+					}
+					if dct, ok4 := lit.(*DictLit); ok4 {
+						ks, err := dictLiteralKeys(dct)
+						if err != nil {
+							return "", err
+						}
+						vs, err := dictLiteralVals(dct)
+						if err != nil {
+							return "", err
+						}
+						for i := range ks {
+							if ks[i] == key {
+								return fmt.Sprintf("%d", vs[i]), nil
+							}
+						}
+					}
+				}
+			}
+		}
+		return "", fmt.Errorf("codegen: index of non-list module attr")
+	case *ListLit:
+		// index into a list literal: evaluate the element directly. A negative key
+		// counts from the end like every other positional subscript (L11.4), and it has
+		// to be checked here: this line used to hand `-1` straight to the Go slice and
+		// crash the compiler (`panic: runtime error: index out of range [-1]`), which the
+		// exit-code contract classifies as a compiler bug (ADR 0168's rule).
+		li := int(normPosIndex(key, int64(len(obj.Elems))))
+		if li < 0 || li >= len(obj.Elems) {
+			// The position is a constant, so this backend is the first to notice it is not there — and
+			// notice it the reference does: an IndexError the program's `except IndexError:` can take,
+			// not a compile stop that no handler can reach (roadmap Gap R.37, ADR 0326). The sentence
+			// names the spelling the source wrote, because `(1, 2)[5]` is not a list running off its
+			// end (roadmap L11.3, ADR 0361).
+			g.constantTrap(b, "IndexError", indexOutOfRangeSentenceFor(obj.IsTuple()), n.Span())
+			return "0", nil
+		}
+		if !g.listLiteralFoldAnswers(obj, n.Idx) {
+			// Two doors, one question — the dict arm above, taken for the other container (ADR 0327).
+			// Where the compiler can read the whole literal (every element an integer constant) the read
+			// is a compile-time lookup and the program gets the number. Where it cannot, the element's
+			// kind lives in the tag the builder wrote beside its payload, and a position that keeps one
+			// word for a whole value has nowhere to put it: this road refuses by name rather than hand
+			// back an @str_tab index or a @float_box handle wearing a number. print, str()/repr(), an
+			// f-string field and a binding ask the pair door instead, which is where the answer is
+			// the reference's (roadmap Gap R.218, ADR 0331; the residue is Gap R.146).
+			return g.listLiteralRead(b, obj, n.Idx, n.Span())
+		}
+		return g.value(b, obj.Elems[li])
+	case *DictLit:
+		// Two doors, one question. Where the compiler can read the whole literal and the key — every key
+		// and every value an integer constant, the key an integer literal — the read is a compile-time
+		// lookup and the program gets the number. Where it cannot, the read is a message to the object:
+		// the same three calls a dict variable's read makes, on a dict the builder just tagged slot by
+		// slot, so a text key, a number key, a key of a kind the dict's other entries never held, and a
+		// key that is simply absent all get the answer the object gives rather than the answer the
+		// spelling suggests (roadmap Gap R.215, ADR 0327).
+		if g.dictLiteralFoldAnswers(obj, n.Idx) {
+			keys, err := dictLiteralKeys(obj)
+			if err != nil {
+				return "", err
+			}
+			vals, err := dictLiteralVals(obj)
+			if err != nil {
+				return "", err
+			}
+			// A repeated key in a literal is the SAME key written twice, so the later entry wins the value
+			// and the earlier one only contributes its spelling of the key: `{1: 2, 1: 3}[1]` is `3` in the
+			// reference, which is what a reverse scan says and a forward one gets backwards. The dict is
+			// built by insertion, so the object already answered this correctly — the fold was the half that
+			// had never been asked (roadmap Gap R.216, ADR 0327).
+			for i := len(keys) - 1; i >= 0; i-- {
+				if keys[i] == key {
+					return fmt.Sprintf("%d", vals[i]), nil
+				}
+			}
+			// A constant key the literal does not hold is the KeyError the reference raises, with the key
+			// itself as its message — the same sentence the dynamic read of a heap dict raises through
+			// `checkKeyRead`, so one program gets one message whichever way the compiler reached it
+			// (roadmap Gap R.37, ADR 0326).
+			g.constantTrap(b, "KeyError", g.keyNotFoundMessage(n.Idx), n.Span())
+			return "0", nil
+		}
+		return g.literalDictRead(b, obj, n.Idx, n.Span())
+	case *SetLit:
+		// constant membership lookup: return the element if present.
+		elems, err := setLiteralElems(obj)
+		if err != nil {
+			return "", err
+		}
+		for _, el := range elems {
+			if el == key {
+				return fmt.Sprintf("%d", key), nil
+			}
+		}
+		return "", fmt.Errorf("not in set")
+	case *Comp:
+		// indexing into a lowered comprehension result. The struct shape
+		// depends on the comprehension kind:
+		//   - list: positional GEP+load into {i32, [n x i32]}.
+		//   - set:  membership test against the folded elements.
+		//   - dict: constant key lookup against the folded key/value pairs.
+		switch obj.Kind {
+		case CompList:
+			name, err := g.comp(b, obj)
+			if err != nil {
+				return "", err
+			}
+			n := g.compLen[obj]
+			key = normPosIndex(key, int64(n))
+			if key < 0 || key >= int64(n) {
+				g.constantTrap(b, "IndexError", listIndexOutOfRange(), obj.Span())
+				return "0", nil
+			}
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
+			return v, nil
+		case CompSet:
+			// set membership: `s[key]` returns the element if present,
+			// otherwise errors (interpreter semantics). comp() populates
+			// compEls and emits the set global.
+			if _, err := g.comp(b, obj); err != nil {
+				return "", err
+			}
+			for _, el := range g.compEls[obj] {
+				if el == key {
+					return fmt.Sprintf("%d", key), nil
+				}
+			}
+			return "", fmt.Errorf("not in set")
+		case CompDict:
+			// dict lookup: `d[key]` returns the mapped value, else errors.
+			// comp() populates compKeys/compEls and emits the dict global.
+			if _, err := g.comp(b, obj); err != nil {
+				return "", err
+			}
+			for i, k := range g.compKeys[obj] {
+				if k == key {
+					return fmt.Sprintf("%d", g.compEls[obj][i]), nil
+				}
+			}
+			return "", fmt.Errorf("key not found")
+		default:
+			return "", fmt.Errorf("unsupported comprehension kind %d", obj.Kind)
+		}
+	case *StrLit:
+		str, ok := g.stringVal(obj)
+		if !ok {
+			return "", fmt.Errorf("string index on non-constant string")
+		}
+		// The same rule as the interpreter (ADR 0225): a subscript of a string is a
+		// one-character string, so it comes back as an @str_tab index, and it is counted in
+		// code points. `%d`-ing the byte made `s[1] == "b"` compile and answer false -- a wrong
+		// value, not a refusal, which is the worst thing this backend can do.
+		runes := []rune(str)
+		key = normPosIndex(key, int64(len(runes)))
+		if key < 0 || key >= int64(len(runes)) {
+			g.constantTrap(b, "IndexError", stringIndexOutOfRange(), n.Span())
+			return "0", nil
+		}
+		return g.internStr(b, string(runes[key])), nil
+	case *Call:
+		// Element access into list-producing call expressions: keys(),
+		// values(), sorted(...), reversed(...), split(...). partition()
+		// returns only dummy length elems (see dictMethodElems), so it
+		// is excluded here to avoid silently wrong results.
+		if elems, ok2 := g.indexListElems(obj); ok2 {
+			key = normPosIndex(key, int64(len(elems)))
+			if key < 0 || int(key) >= len(elems) {
+				g.constantTrap(b, "IndexError", listIndexOutOfRange(), n.Span())
+				return "0", nil
+			}
+			return g.value(b, elems[key])
+		}
+		// The base is an expression rather than a name the compiler holds (`t[0][0]`, `d["a"][1]`,
+		// `xs[0][0]`). Same rule as the mixed-list arm above: a literal number in a slot of a container
+		// the program spelled out and never changed *is* that number, and the arithmetic the language
+		// already has runs on it (roadmap L11.1, ADR 0243).
+		if v, ok := g.numericElemUse(b, n); ok {
+			return v, nil
+		}
+		return "", g.slotReadRefusal(n, "index")
+	default:
+		if v, ok := g.numericElemUse(b, n); ok {
+			return v, nil
+		}
+		return "", g.slotReadRefusal(n, "index")
+	}
+}
+
+// valueSlice is the road a slice takes: the three optional bounds, the fold that answers them at
+// compile time, and `rt_slice` when the compiler cannot (the index arithmetic is fold.go's).
+func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error) {
+	// A slice of a call's container answer asks the road that slices a container variable, by naming the
+	// slot the answer was recorded under. `rt_slice` copies the slots with their tags and the binding road
+	// records the copy, so `print(build()[0:2])` and `ys = build(); print(ys[0:2])` are one program written
+	// two ways — the base's spelling stopped being the relevant fact the day the answer became an object
+	// (roadmap Gap R.230, ADR 0335; the answer itself is ADR 0333, the index door ADR 0334).
+	if redo, okAns := g.containerAnswerSubscript(b, n); okAns {
+		return g.value(b, redo)
+	}
+	// String slices are folded at compile time via stringVal; the fold is a string
+	// value, so it is emitted as its @str_tab index -- the pointer is for printf
+	// contexts, which fold the text themselves (Gap R.42, ADR 0224).
+	// The gate is "is this a string?", not "can the compiler read its text?": a slice of a
+	// string the emitter only knows the *kind* of (`s = "abcdef"` inside a function body)
+	// still has an answer, and the table gives it (ADR 0229).
+	_, objIsFoldedStr := g.stringVal(n.Obj)
+	if objIsFoldedStr || g.exprIsString(n.Obj) {
+		// A text slice counts characters, so its bounds are positions and the reference's sentence for a
+		// bound that is neither an integer nor `None` is the same one a list's slice gets. Asked before the
+		// fold and before the helper, because both read a bound as a number without asking what it holds:
+		// `print(s["a":"b"])` over `s = "abcd"` answered `b` at exit 0 (roadmap Gap R.233, ADR 0336).
+		if g.badSliceBoundGate(b, n) {
+			return "0", nil
+		}
+		// A step of zero is the reference's `ValueError: slice step cannot be zero`, and the fold reads a
+		// step as a stride without asking whether it strides at all — asked here, before the fold and
+		// before the helper, so the shape that used to be refused with `cannot fold string slice` is the
+		// program's exception instead (roadmap Gap R.236, ADR 0336).
+		if g.sliceStepIsKnownZero(n) {
+			g.raiseSliceStepIsZero(b, n)
+			return "0", nil
+		}
+		if sv, ok := g.stringVal(n); ok {
+			return g.internStr(b, sv), nil
+		}
+		// Bounds that are values rather than constants are still a slice of the same
+		// string: an absent bound is spelled with the helper's own sentinel, because an
+		// i32 argument cannot be "missing" (ADR 0229).
+		if g.sliceBoundIsAbsent(n.Step) {
+			if sreg, sok, serr := g.strReg(b, n.Obj); serr != nil {
+				return "", serr
+			} else if sok {
+				lo := "-2147483648"
+				hi := "2147483647"
+				if !g.sliceBoundIsAbsent(n.Low) {
+					v, lerr := g.strPosReg(b, n.Low)
+					if lerr != nil {
+						return "", lerr
+					}
+					lo = v
+				}
+				if !g.sliceBoundIsAbsent(n.High) {
+					v, herr := g.strPosReg(b, n.High)
+					if herr != nil {
+						return "", herr
+					}
+					hi = v
+				}
+				r := g.rtStrCall(b, "rt_str_slice", "i32 "+sreg, "i32 "+lo, "i32 "+hi)
+				g.checkStrSentinels(b, r, "IndexError", "string slice out of range", n.Span(), "stslice")
+				return r, nil
+			}
+		}
+		return "", fmt.Errorf("cannot fold string slice")
+	}
+	// The copy is only as good as the description of what it copies: `rt_slice` needs a heap list, and the
+	// roads that read the copy need to be told whether its slots describe themselves. Asked of a base
+	// neither record describes, the road used to emit the copy over whatever word the base lowered to and
+	// the caller printed that word — a heap handle wearing the program's answer (`print(m()["k"][0:1])`
+	// printed `3`, exit 0). The refusal names the missing record (ADR 0249's rule; roadmap Gap R.235,
+	// ADR 0335).
+	if !g.sliceBaseIsDescribed(n.Obj) {
+		return "", fmt.Errorf("cannot slice %s: the copy is a list whose slots are the base's payloads with their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one (roadmap Gap R.235, ADR 0335)", exprSnippet(n.Obj))
+	}
+	// The base is a container the records describe; now the three bounds are asked the same question the
+	// subscript door asks its position (Gap R.222's gate, one construct over): an integer or a bool is a
+	// position, `None` is the absence of one, and anything else the compiler can name the kind of is the
+	// reference's `TypeError: slice indices must be integers or None or have an __index__ method`. Asked
+	// before any bound is lowered, so a text bound never becomes its `@str_tab` index and a position
+	// (`print(xs["a":"b"])` answered `[1]` at exit 0) and a list bound never reaches `rt_slice`'s i32
+	// arguments as a global address (exit 2, roadmap Gap R.233, ADR 0336).
+	if g.badSliceBoundGate(b, n) {
+		return "0", nil
+	}
+	objReg, err := g.value(b, n.Obj)
+	if err != nil {
+		return "", err
+	}
+	// A container LITERAL lowers to the ADDRESS of a compile-time global (`@.lst1`), which is not a
+	// heap handle, and `rt_slice` walks the heap — so `print([1, 2, 3][1:])` emitted
+	// `call i32 @rt_slice(i32 @.lst1, …)` and llc rejected the compiler's own module (exit 2, which
+	// ADR 0166 counts as OUR bug). The comprehension road beside this one already solved it (ADR
+	// 0234): ask the literal records, and if the operand is one, BUILD it as a real heap object
+	// first and slice that (roadmap Gap R.179).
+	// The base may be a literal NODE (`[1, 2, 3][1:]`) or a NAME the records hold a literal for
+	// (`xs = [1, 2, 3]` / `xs[1:]`); both lower to a global address and both need a heap object.
+	if lit := g.listLiteralOf(n.Obj); lit != nil {
+		// The same question the build site asks wherever a list literal becomes an object: do the slots
+		// need tags to be understood? A text's word is an interned index, a float's a box handle, a
+		// nested container's a handle — all of which the printer can only read from a tag. Asking
+		// `literalNeedsHeap` alone built the sliced source untagged, and `rt_slice` then faithfully copied
+		// tags nobody had written (roadmap Gap R.230, ADR 0187's pairing rule).
+		var berr error
+		if literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
+			built, terr := g.heapListFromTagged(b, lit)
+			if terr != nil {
+				return "", terr
+			}
+			objReg, berr = built, nil
+		} else {
+			objReg, berr = g.heapListFrom(b, lit, "")
+		}
+		if berr != nil {
+			return "", berr
+		}
+	}
+	lowReg := "0"
+	highReg := "0"
+	stepReg := "1"
+	hasLow := "0"
+	hasHigh := "0"
+	hasStep := "0"
+	if !g.sliceBoundIsAbsent(n.Low) {
+		lowReg, err = g.value(b, n.Low)
+		if err != nil {
+			return "", err
+		}
+		hasLow = "1"
+	}
+	if !g.sliceBoundIsAbsent(n.High) {
+		highReg, err = g.value(b, n.High)
+		if err != nil {
+			return "", err
+		}
+		hasHigh = "1"
+	}
+	if !g.sliceBoundIsAbsent(n.Step) {
+		stepReg, err = g.value(b, n.Step)
+		if err != nil {
+			return "", err
+		}
+		hasStep = "1"
+	}
+	if hasStep == "1" {
+		// The kind gate above could not ask this: `0` is a perfectly good integer. It is the one
+		// value a step may not take, and `rt_slice` walks its own loop forever on it — a run that has
+		// to be killed comes out as exit 2, which the contract blames on the compiler (ADR 0166), and
+		// that is what `print(xs[::0])` did. The question is asked where the value is, after every
+		// bound has been evaluated and before any copy is built, which is the order the reference
+		// raises in: a step the compiler can read is settled there and then — a known zero raises with
+		// no copy and no counter touched (a gate stays pure, ADR 0273), a known non-zero needs no test
+		// at all — and only a step it cannot read carries the run-time guard (roadmap Gap R.236,
+		// ADR 0336's neighbour, paid by ADR 0337).
+		if v, known := g.sliceStepIsKnown(n); known {
+			if v == 0 {
+				g.raiseSliceStepIsZero(b, n)
+				return "0", nil
+			}
+		} else {
+			g.zeroStepGuardAtSlice(b, stepReg, n.Span())
+		}
+	}
+	r := g.heapSeq
+	g.heapSeq++
+	// The copy is built inside rt_slice, which allocates through rt_alloc — so a full arena reaches
+	// this caller as a negative handle too, and the store that follows the call would be the write
+	// below the arena (roadmap Gap Q.2, ADR 0347). The guard stands after every bound has been
+	// evaluated and after ADR 0337's zero-step question, which is the order the reference raises in.
+	// A slice of the immutable spelling comes back a tuple, because `rt_slice` copies the source
+	// object's attribute word along with its slots and tags (ADR 0361) — the door that decides what a
+	// value prints is the object, not the road that copied it.
+	g.emitHeapCall(b, fmt.Sprintf("%%sl%d", r), fmt.Sprintf("call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)", objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep), n.Span())
+	return fmt.Sprintf("%%sl%d", r), nil
+}

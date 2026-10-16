@@ -4,7 +4,8 @@
 // the text the roads produced.
 //
 // The lowering itself is spread over the files named for the question they answer — codegen_value.go
-// (an expression's value), codegen_stmt.go (a statement), codegen_call.go (a call), codegen_arith.go
+// (an expression's value, which dispatches to the road for each shape), codegen_binop.go (a BinOp's
+// road), codegen_stmt.go (a statement), codegen_call.go (a call), codegen_arith.go
 // (a BinOp's roads), codegen_match.go, codegen_comp.go (a comprehension or generator), codegen_func.go,
 // codegen_class.go, codegen_text.go, codegen_container.go, codegen_index.go, codegen_float.go,
 // codegen_minmax.go, codegen_module.go, codegen_gc.go, codegen_error.go (a raise, a try, a trap's
