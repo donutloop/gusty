@@ -227,8 +227,12 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 		}
 		if at, ok := v.Fn.(*Attr); ok && isStrUnder(g, at.Obj, params) {
 			switch at.Name.Value {
-			case "upper", "lower":
-				return true
+			// The five case operations and the three trim roads all hand back one interned-text index,
+			// whatever the door answered: every one of them ends at `rt_str_intern` (roadmap L11.5, ADR 0362).
+			// A name missing here is the shape that made `print(f("  café "))` print the intern INDEX — the
+			// number a text is stored under — instead of the text.
+			case "upper", "lower", "title", "capitalize", "swapcase", "strip", "lstrip", "rstrip":
+				return argcOf(v) <= trimArgBudget(at.Name.Value)
 			}
 		}
 		return false
@@ -337,4 +341,16 @@ func bindsAContainerExpr(e Expr) bool {
 		return true
 	}
 	return false
+}
+
+// argcOf is the call's own argument count, and trimArgBudget the cutset a trim method takes. Kept apart so
+// the case operations, which take none, stay readable as taking none.
+func argcOf(c *Call) int { return len(c.Args) }
+
+func trimArgBudget(name string) int {
+	switch name {
+	case "strip", "lstrip", "rstrip":
+		return 1
+	}
+	return 0
 }

@@ -1,0 +1,88 @@
+# Code-point strings: the case doors answer the reference (L11.5, ADR 0362).
+#
+# Every line below was a wrong value at exit 0. The fold borrowed Go's SIMPLE case mapping, so the
+# sharp s stayed a sharp s, the ligatures stayed ligatures and the conditional sigma went out
+# un-finalised; the runtime door — the one that answers a text the compiler cannot read — knew A–Z
+# and copied every other byte, and refused `title`, `capitalize` and `swapcase` outright.
+# Both halves now read one table, generated from the reference by tools/casetab.
+print("straße".upper())
+print("ΑΣ".lower())
+print("ΣΣΣ".lower())
+print("ǅ".title())
+print("İ".lower())
+print("ﬁ".upper())
+print("é.é".title())
+print("aBC".capitalize())
+print("aÉ".swapcase())
+print("日本語".upper())
+
+
+def shout(s):
+    return s.upper()
+
+
+def whisper(s):
+    return s.lower()
+
+
+def headings(s):
+    return s.title()
+
+
+def start(s):
+    return s.capitalize()
+
+
+def flip(s):
+    return s.swapcase()
+
+
+print(shout("straße"))
+print(whisper("STRASSE"))
+print(headings("é.é"))
+print(start("aBC"))
+print(flip("ǅ"))
+print(whisper("ΑΣ"))
+print(shout("ǳ"))
+words = ["straße", "ΑΣ", "ǅ"]
+for w in words:
+    print(shout(w))
+print(len(shout("ß")))
+
+# Trimming is the same question asked of the same artifact. The fold asked Go's unicode.IsSpace, which
+# leaves the four separators U+001C..U+001F standing where the reference removes them; the runtime door
+# compared each byte against 32 SIGNED, so every byte from 0x80 up counted as whitespace and a Greek or
+# accented text trimmed to nothing at exit 0. A cutset argument was dropped on the floor on both roads.
+print("  café ".strip())
+print("\x1cx".strip())
+print("ßﬁ".strip())
+print("  ΑΣ  ".lstrip())
+print("hi xx".rstrip("x"))
+print("café x".strip("c"))
+print("   ".strip())
+
+
+def bare(s):
+    return s.strip()
+
+
+def left(s):
+    return s.lstrip()
+
+
+def right(s):
+    return s.rstrip()
+
+
+def cut(s, c):
+    return s.strip(c)
+
+
+print(bare("  café "))
+print(bare("ßﬁ"))
+print(bare("\x1cx"))
+print(left("  ΑΣ  "))
+print(right("hi xx"))
+print(cut("café x", "c"))
+print(bare(""))
+print(len(bare("  ß  ")))

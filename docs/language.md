@@ -1273,11 +1273,14 @@ Rules that the compiled backend implement:
   variable to each character as the loop produces it, over the loop's own counter, so assigning to
   the variable inside the body does not move the iteration (ADR 0196).
 
-  Three limits belong to the compiled backend and are stated rather than approximated: case folding
-  covers ASCII and `strip` trims the ASCII whitespace set (the record folds and trims the full
-  Unicode sets); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
+  Three limits belong to the compiled backend and are stated rather than approximated: the text methods
+  that take an argument (`count`, `find`, `split`, `replace`, `startswith`, `encode`, `zfill`, `ljust`,
+  `rjust`, `join`) answer on the roads that can read their receiver and refuse on the ones that cannot
+  (Gap I.2); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
   and `%`-formatting of a text is answered by the run-time door described in § *Printf-style `%`*
-  (Gap R.31, ADR 0360). A program that creates more distinct strings
+  (Gap R.31, ADR 0360). Case mapping and trimming are NOT among them: `upper`/`lower`/`title`/
+  `capitalize`/`swapcase` and `strip`/`lstrip`/`rstrip` answer the reference's answers on both roads,
+  from one generated table (ADR 0362, § *Case and trim* below). A program that creates more distinct strings
   than the table holds (4096) raises `RuntimeError`, which it can catch — the alternative, which used
   to happen, was silently reusing an entry and printing a different string than the program built.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
@@ -1733,8 +1736,9 @@ for c in "abc":                        # a, b, c — `for`, a comprehension and 
     print(c)
 ```
 
-Iteration is per **code point**, so `max("aé")` is `é` and not a stray byte. (Measuring a text — `len`,
-`s[i]` — is still bytewise and is `Gap N.2`'s open row; this row does not claim it.)
+Iteration is per **code point**, so `max("aé")` is `é` and not a stray byte — and so is every other
+question a text answers: `len`, `s[i]`, `s[i:j]` and the doors that transform a text all count characters
+(roadmap L11.5 closed Gap N.2; ADR 0225, ADR 0362).
 
 The compiled leg **refuses** a comprehension whose iterable is a text, and refuses `max`/`min` of one, at
 exit 1 with a sentence naming what it cannot lower. That is owed work (`L11.1`), not a limit: before this
@@ -4596,20 +4600,42 @@ strings `r"..."` keep backslashes; triple-quoted strings decode escapes and may
 contain literal newlines. All three forms share one decoder, as do f-string
 literal parts.
 
-**String values are UTF-8 text, measured in bytes.** A literal's value is the
-source's own bytes (`"café"` is 5 bytes, and `print` round-trips it), so
-non-ASCII text survives lexing, containers, interning, and printing. Length,
-indexing, and slicing measure **bytes**, not code points, in the compiled backend:
-`len("café")` is 5 where CPython says 4, and `"héllo"[1]` yields the byte 195.
-That is a tracked divergence, not an accident — code-point semantics are a
-representation decision for `len`, `s[i]`, `s[i:j]` and `for c in s` in both
-backends at once, and a half-migration would break interpreter/AOT parity
-(roadmap Gap N.2).
+**A text is a sequence of code points** (roadmap L11.5, which closed Gap N.2; ADR 0225, ADR 0229, ADR 0362).
+Its value is the source's own UTF-8 bytes, so a text survives lexing, containers, interning and printing
+byte for byte; what is measured in *characters* is every question the program asks of it.
+`len("café")` is `4`, `"héllo"[1]` is `"é"`, `"héllo"[-1]` is `"o"`, `"héllo"[1:3]` is `"él"`, and
+`for c in "aé"` binds `"a"` then `"é"` — each of those on a text the compiler can read AND on one it cannot
+(a parameter, an element read out of a container, the answer of a call). An out-of-range index raises
+`IndexError`; `s[i]` answers a one-character text, so `s[1][0]`, `len(s[1])` and `ord(s[1])` all work on it.
+
+### Case and trim
+
+`upper`, `lower`, `title`, `capitalize`, `swapcase` and `strip`, `lstrip`, `rstrip` answer the reference's
+answers, on both roads — the compile-time fold over a text the compiler can read, and the runtime door over
+a text it cannot (roadmap L11.5, ADR 0362). They are not this compiler's opinions of case:
+
+    "straße".upper()   # STRASSE      not straße: one character answers two
+    "ﬁ".upper()        # FI           a ligature is two characters to the reference
+    "İ".lower()        # i + U+0307   one character answers two
+    "ΑΣ".lower()       # ας           the last sigma of a word is ς, and ασ when a cased letter follows
+    "é.é".title()      # É.É          a word begins after any uncased character, not only after a space
+    "ǅ".title()        # ǅ            a titlecase character's title form is itself
+    "1a".capitalize()  # 1a           the FIRST character is title-cased, and here it is a digit
+    "\x1cx".strip()    # x            the reference strips U+001C..U+001F, which Go's set does not
+    "ßﬁ".strip()       # ßﬁ           non-ASCII text is content, not whitespace
+    "café x".strip("c")  # afé x        a cutset is a set of characters, read as code points
+
+The answers come from `pkg/lang/testdata/case-table.json`, which `tools/casetab` generates by asking
+CPython every code point (`go run ./tools/casetab -check` re-asks it and fails if the file on disk is not
+what the reference says). One artifact, two readers: the fold and the emitted IR door both walk it, so the
+same text cannot answer one way in a literal and another way in a parameter. A byte that is not a
+well-formed UTF-8 sequence is carried through unchanged rather than reinterpreted, and the tables a module
+never asks are not emitted into it (ADR 0354).
 
 String equality `==` / `!=` compares contents in both paths (`"abc" == "abc"`
 is 1, `"abc" == "abd"` is 0), constant-folded in the codegen.
-String indexing `"abc"[1]` returns the char code (98 for 'b') in both the
-interpreter and the AOT codegen (constant-folded).
+String indexing `"abc"[1]` returns the one-character text `"b"` (ADR 0225), and `ord("b")` is where the
+number 98 comes from.
 Substring membership `"cat" in s` is a substring test, not container membership;
 in the AOT backend both sides are interned table indices and the scan runs in
 `@rt_str_contains`.
@@ -4673,20 +4699,26 @@ absent, in **both** paths: the record applies `strings.LastIndex`; the
 codegen constant-folds it to an `i32` literal
 (`print("abcabc".rfind("bc"))` emits `i32 4`).
 
-`.capitalize()` uppercases the first rune and lowercases the rest in
-**both** paths via a shared `capitalize` helper: the record calls it
-directly; the codegen folds it in `stringConst`/`stringVal` and the call
-dispatch (`print(len("hello".capitalize()))` emits `i32 5`).
+`.capitalize()` answers the reference's answer — the FIRST cased character title-cased, the rest
+lower-cased — on both roads: the compile-time fold and the runtime door read the same generated
+table (ADR 0362), so `print(len("hello".capitalize()))` emits `i32 5` and
+`"straße".capitalize()` is `"Straße"` whichever road the receiver came in on.
 
-`.title()` capitalizes the first rune of each whitespace-separated word in
-**both** paths via a shared `title` helper (`strings.Map` tracking the
-previous rune), folded in `stringConst`/`stringVal` and the call dispatch
-(`print(len("hello world".title()))` emits `i32 11`).
+`.title()` title-cases every word — a word boundary is "the previous code point was not cased", not
+"the previous character was a space", so `"ab-cd".title()` is `"Ab-Cd"` — on both roads, from the
+same table (ADR 0362); `print(len("hello world".title()))` emits `i32 11`.
 
-`.swapcase()` swaps the case of each rune in **both** paths via a shared
-`swapcase` helper (`strings.Map` using `unicode.IsUpper`), folded in
-`stringConst`/`stringVal` and the call dispatch
-(`print(len("HeLLo".swapcase()))` emits `i32 5`).
+`.swapcase()` swaps the case of every code point on both roads — the Greek final sigma included, so
+`"ΑΣ».swapcase()` becomes `"ασ»` while `"ΑΣ".swapcase()` is `"ας"` — from the same table
+(ADR 0362); `print(len("HeLLo".swapcase()))` emits `i32 5`.
+
+None of the five is `strings.ToUpper`, `strings.ToTitle`, `strings.Map(unicode.ToUpper, …)` or any
+other Go case routine, and the reason is measured rather than asserted (ADR 0362): Go answers
+`strings.ToUpper("straße")` as `STRAßE` where the reference answers `STRASSE`, `strings.ToLower("ΑΣ")`
+as `ασ` where the reference answers `ας` (it has no final-sigma rule), and `strings.ToLower("İ")` as a
+bare `i` where the reference answers `i` + U+0307. `strip`, `lstrip` and `rstrip` read the same
+artifact's whitespace set, also probed from the reference (`c.strip() == ""`) rather than imported from
+`unicode.IsSpace` — which differs: Go does not count U+001C..U+001F as whitespace and the reference does.
 
 List `.count(value)` returns the number of occurrences of `value` in the
 list (interpreter path; elements compare by string content via
@@ -4789,9 +4821,9 @@ strings compile and print like the interpreter and CPython do (ADR 0208; it used
 interpreter-only, ADR 0085, because the unrolled store handed a string global to an `i32`
 slot and LLVM rejected the module).
 
-A character is a one-character **string**, not a distinct char type, and strings are byte
-sequences today: `len("café")` is `5` and `"héllo"[1]` is the byte `195` (roadmap L11.5,
-`programs/unicode_text.gy`).
+A character is a one-character **string**, not a distinct char type, and a text measures in characters:
+`len("café")` is `4` and `"héllo"[1]` is `"é"` on both roads (roadmap L11.5 closing Gap N.2,
+`programs/unicode_text.gy`, ADR 0225, ADR 0362).
 
 ### A `for` asks its iterable what it is (Gap R.246, ADR 0339)
 

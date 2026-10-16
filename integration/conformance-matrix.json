@@ -394,6 +394,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_case_doors",
+        "name": "probe_case_doors.gy",
+        "source": "# Code-point strings: the case doors answer the reference (L11.5, ADR 0362).\n#\n# Every line below was a wrong value at exit 0. The fold borrowed Go's SIMPLE case mapping, so the\n# sharp s stayed a sharp s, the ligatures stayed ligatures and the conditional sigma went out\n# un-finalised; the runtime door — the one that answers a text the compiler cannot read — knew A–Z\n# and copied every other byte, and refused `title`, `capitalize` and `swapcase` outright.\n# Both halves now read one table, generated from the reference by tools/casetab.\nprint(\"straße\".upper())\nprint(\"ΑΣ\".lower())\nprint(\"ΣΣΣ\".lower())\nprint(\"ǅ\".title())\nprint(\"İ\".lower())\nprint(\"ﬁ\".upper())\nprint(\"é.é\".title())\nprint(\"aBC\".capitalize())\nprint(\"aÉ\".swapcase())\nprint(\"日本語\".upper())\n\n\ndef shout(s):\n    return s.upper()\n\n\ndef whisper(s):\n    return s.lower()\n\n\ndef headings(s):\n    return s.title()\n\n\ndef start(s):\n    return s.capitalize()\n\n\ndef flip(s):\n    return s.swapcase()\n\n\nprint(shout(\"straße\"))\nprint(whisper(\"STRASSE\"))\nprint(headings(\"é.é\"))\nprint(start(\"aBC\"))\nprint(flip(\"ǅ\"))\nprint(whisper(\"ΑΣ\"))\nprint(shout(\"ǳ\"))\nwords = [\"straße\", \"ΑΣ\", \"ǅ\"]\nfor w in words:\n    print(shout(w))\nprint(len(shout(\"ß\")))\n\n# Trimming is the same question asked of the same artifact. The fold asked Go's unicode.IsSpace, which\n# leaves the four separators U+001C..U+001F standing where the reference removes them; the runtime door\n# compared each byte against 32 SIGNED, so every byte from 0x80 up counted as whitespace and a Greek or\n# accented text trimmed to nothing at exit 0. A cutset argument was dropped on the floor on both roads.\nprint(\"  café \".strip())\nprint(\"\\x1cx\".strip())\nprint(\"ßﬁ\".strip())\nprint(\"  ΑΣ  \".lstrip())\nprint(\"hi xx\".rstrip(\"x\"))\nprint(\"café x\".strip(\"c\"))\nprint(\"   \".strip())\n\n\ndef bare(s):\n    return s.strip()\n\n\ndef left(s):\n    return s.lstrip()\n\n\ndef right(s):\n    return s.rstrip()\n\n\ndef cut(s, c):\n    return s.strip(c)\n\n\nprint(bare(\"  café \"))\nprint(bare(\"ßﬁ\"))\nprint(bare(\"\\x1cx\"))\nprint(left(\"  ΑΣ  \"))\nprint(right(\"hi xx\"))\nprint(cut(\"café x\", \"c\"))\nprint(bare(\"\"))\nprint(len(bare(\"  ß  \")))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "STRASSE\nας\nσσς\nǅ\ni̇\nFI\nÉ.É\nAbc\nAé\n日本語\nSTRASSE\nstrasse\nÉ.É\nAbc\nǅ\nας\nǱ\nSTRASSE\nΑΣ\nǄ\n2\ncafé\nx\nßﬁ\nΑΣ  \nhi \nafé x\n\ncafé\nßﬁ\nx\nΑΣ  \nhi xx\nafé x\n\n1\n",
+      "python_ok": true,
+      "python_stdout": "STRASSE\nας\nσσς\nǅ\ni̇\nFI\nÉ.É\nAbc\nAé\n日本語\nSTRASSE\nstrasse\nÉ.É\nAbc\nǅ\nας\nǱ\nSTRASSE\nΑΣ\nǄ\n2\ncafé\nx\nßﬁ\nΑΣ  \nhi \nafé x\n\ncafé\nßﬁ\nx\nΑΣ  \nhi xx\nafé x\n\n1\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_and_or_the_test_skips",
         "name": "probe_and_or_the_test_skips.gy",
         "source": "# probe_and_or_the_test_skips.gy — the operand the test did not choose never runs.\n#\n# The reference short-circuits: `x and boom()` never calls boom when x is false, `y or (1 // 0)` never\n# divides when y is true, and `if xs and xs[0] \u003e 0:` never subscript the empty list. Both engines used to\n# evaluate both operands and choose afterwards — which is all a `select` can do — so the skipped operand's\n# print ran, its division raised, and a call on the left of the operator ran twice on the compiled leg\n# because its truth and its value each evaluated it. The row is roadmap Gap R.149, ADR 0275; the operator\n# answering with an *operand* rather than a verdict is the ADR 0269 half beside it.\n#\n# Three things are pinned in one program, because they are one promise: the effects the reference never\n# performs do not happen (the boom lines below are printed only for the operand the test reached), a\n# trap inside the operand the test skipped is never raised, and a trap inside the operand it *did* choose\n# still raises the ordinary catchable error. The last two lines are the other half of the same rule: the\n# operand the test reaches runs exactly once, whatever it is.\ndef boom():\n    print(\"boom\")\n    return 9\nx = 0\ny = 1\nprint(x and boom())\nprint(y or boom())\nv = x and boom()\nprint(v)\nw = y or boom()\nprint(w)\nif x and boom():\n    print(\"then\")\nif y or boom():\n    print(\"or-then\")\nwhile x and boom():\n    print(\"loop\")\n    break\nprint(\"loop ended\")\nprint(x and (1 // 0))\nprint(y or (1 // 0))\ntry:\n    print(y and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the chosen operand raised\")\ntry:\n    print(x or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the other chosen operand raised\")\nprint(boom() and 2)\nprint(boom() or 2)\n",
@@ -4317,7 +4338,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/176/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/177/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4331,7 +4352,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/176/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/177/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4875,11 +4896,11 @@
       ]
     }
   ],
-  "rows": 200,
+  "rows": 201,
   "skipped": 32,
-  "pass": 168,
+  "pass": 169,
   "fail": 0,
-  "oracle_match": 154,
+  "oracle_match": 155,
   "oracle_debt": 24,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

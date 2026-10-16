@@ -3,7 +3,6 @@ package lang
 import (
 	"math"
 	"strings"
-	"unicode"
 )
 
 // The answers the compiler folds with.
@@ -68,37 +67,13 @@ func pyReprString(s string) string {
 	return sb.String()
 }
 
-// capitalize returns s with the first rune uppercased and the rest lowercased.
-func capitalize(s string) string {
-	if s == "" {
-		return ""
-	}
-	r := []rune(s)
-	return string(unicode.ToUpper(r[0])) + strings.ToLower(string(r[1:]))
-}
-
-// title returns s with the first rune of each whitespace-separated word uppercased.
-func title(s string) string {
-	prev := ' '
-	return strings.Map(func(r rune) rune {
-		if prev == ' ' {
-			prev = r
-			return unicode.ToUpper(r)
-		}
-		prev = r
-		return unicode.ToLower(r)
-	}, s)
-}
-
-// swapcase returns s with each rune case swapped.
-func swapcase(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsUpper(r) {
-			return unicode.ToLower(r)
-		}
-		return unicode.ToUpper(r)
-	}, s)
-}
+// capitalize/title/swapcase are the reference's rules, not Go's, and they are read out of the generated
+// table — see pkg/lang/case_table.go. Go's own answers differ where the reference's do not:
+// `strings.Title`-style word splitting on a space is not the reference's cased-character boundary, and the
+// reference's first-character rule for `capitalize` is not "upper-case the first rune".
+func capitalize(s string) (string, error) { return caseMapString(caseCapitalize, s) }
+func title(s string) (string, error)      { return caseMapString(caseTitle, s) }
+func swapcase(s string) (string, error)   { return caseMapString(caseSwapcase, s) }
 
 // pySliceIndices computes the normalized start/stop/step for a slice
 // following CPython's PySlice_GetIndicesEx semantics (used by s[a:b:c]).

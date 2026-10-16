@@ -120,9 +120,9 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	},
 	{
 		Code:       "lower.unsupported.comprehension-over-text",
-		Shape:      "a comprehension over a text iterates characters, which the backend has no code-point door for",
-		Suggestion: "iterate a list of the texts you want ([\"a\", \"b\"]), or a container variable the compiler can see the kind of",
-		Rows:       []string{"L11.5", "Gap N.2", "Gap R.16"},
+		Shape:      "a comprehension whose iterable is a text has no compiled lowering — the loop would build a list of one-character texts and this backend builds that list nowhere",
+		Suggestion: "iterate a list of the texts you want ([\"a\", \"b\"]), or a container variable the compiler can see the kind of — counting the text itself is code points since ADR 0362 (`len`, `s[i]`, `for c in s`), it is only the comprehension's list of characters that is missing",
+		Rows:       []string{"L11.1", "Gap I.2"},
 		Markers:    []string{"is refused: this backend builds a comprehension over an inline list literal"},
 		Sample:     "print([c for c in \"abc\"])",
 	},

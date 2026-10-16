@@ -73,6 +73,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// leg and reference, line for line. The probe that pinned "no tuple lowering at all"
 		// (`unsupported expression *lang.Tuple`) is this row's promotion (roadmap L11.3, ADR 0361).
 		"probe_tuple",
+		// …and the case doors, the other half of "a text is a sequence of code points": `"straße".upper()`
+		// is `STRASSE` and not `straße`, `"ΑΣ".lower()` is `ας`, `"ǅ".title()` keeps the digraph's title
+		// form, and the same five operations answered through a parameter — where the compiler cannot read
+		// the text and the runtime door has to answer — are the same answers. The fold used to borrow Go's
+		// simple case mapping and the door used to know only A–Z, both at exit 0 (roadmap L11.5, ADR 0362).
+		"probe_case_doors",
 		// …and the half of the same operator the print door cannot answer: the operand the test did not choose
 		// is not in the program at all. `x and boom()` with x false does not call boom, `y or (1 // 0)` with y
 		// true does not divide, `if x and boom():` branches without running boom, and the operand the test

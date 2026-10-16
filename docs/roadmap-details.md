@@ -986,7 +986,10 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   deleted; what remains is L11.5's string value model (a string in a *variable* is still
   AOT-refused) and the exit-code split recorded as R.17.
 <a id="l11-5"></a>
-- **L11.5 — Code-point strings (closes Gap N.2)** ⏳ PLANNED — `len("café")` is 5,
+- **L11.5 — Code-point strings (closes Gap N.2)** ✅ DONE (ADR 0362, 2026-10-16) — measured in code points on
+  both roads and decided once, as the gap demanded; the long account is
+  [here](#l115-adr-0362-2026-10-16-a-text-is-a-sequence-of-code-points-and-one-generated-table-decides-its-case).
+  The row's original wording, kept because it is the item's own: `len("café")` is 5,
   `"héllo"[1]` is the byte `195`, and `for c in s` at module scope emits an
   invalid `store i32 @.str1`. Decide the representation **once for both backends**
   (the gap's own rule: a half-migration is worse than the divergence): UTF-8 bytes
@@ -1765,7 +1768,16 @@ Each is a concrete, reproducible defect with the shape to fix it.
   Python prints that turns out to be wrong now breaks the build.
 
 <a id="gap-n-2"></a>
-### Gap N.2 — strings measure bytes, not code points (OPEN)
+### Gap N.2 — strings measure bytes, not code points (CLOSED by ADR 0362, 2026-10-16)
+
+> **Closed.** The compiled backend measures a text in code points on both roads — the
+> compile-time fold and the emitted IR door read one generated artifact — and
+> `TestStringLengthIsBytesForNow`, the guard that pinned the byte answer *on purpose*,
+> is retired. Its successor is `TestTheStringMeasuresCodePointsOnEveryRoad` and
+> `TestTheStringMeasuresCodePointsThroughAValue`, each source asked of this compiler and
+> of CPython in the same case. The account of what landed is
+> [here](#l115-adr-0362-2026-10-16-a-text-is-a-sequence-of-code-points-and-one-generated-table-decides-its-case);
+> the bytes answer below is the retired engine's, kept as the record it is and not as a definition.
 
 `len("café")` is 5 (bytes) where CPython says 4, `"héllo"[1]` returns the byte
 `195` rather than `"é"`, and `for c in s` walks bytes. This is documented in
@@ -2569,7 +2581,14 @@ interpreter and CPython print `ok`), which is R.1, and the R.2 test skips loudly
 starts agreeing, so the two gaps cannot be mistaken for each other.
 
 <a id="gap-r-16"></a>
-### R.16 — iterating a string computed at run time is AOT-unsupported, and now refused (OPEN)
+### R.16 — iterating a string computed at run time is AOT-unsupported, and now refused (CLOSED by ADR 0362, 2026-10-16)
+
+> **Closed.** The refusal sentence is gone from the package: a text the compiler cannot read is decoded
+> by the emitted door, so `for c in txt():` prints `h` then `i`. The account is
+> [here](#l115-adr-0362-2026-10-16-a-text-is-a-sequence-of-code-points-and-one-generated-table-decides-its-case),
+> and the shape is a row of `TestTheAdrsMeasuredRowsAnswerTheReference`. What remains refused is the
+> *comprehension* over a text (`[c for c in "abc"]`), which is `L11.1`/`Gap I.2`'s list of one-character
+> texts — not this row's iteration.
 
 ```gusty
 def txt():
@@ -13751,3 +13770,78 @@ printing arrival order ([Gap R.309](#gap-r-309)); `() is ()` prints `False` wher
 ([Gap R.310](#gap-r-310)); `count`/`index` remain Gap I.2's table; and a tuple pattern beyond the single
 capture shape remains Gap R.302. Each is a row, each is asserted by a test that fails the day the answer
 changes for the better, and none of them is described here as an answer.
+
+<a id="l115-adr-0362-2026-10-16-a-text-is-a-sequence-of-code-points-and-one-generated-table-decides-its-case"></a>
+
+### L11.5 (ADR 0362, 2026-10-16) — a text is a sequence of code points, and ONE generated table decides its case
+
+**The measurement that opened the row.** `len("café")` answered `5`, `"héllo"[1]` answered the byte `195`,
+`for c in "aé"` printed two UTF-8 fragments where the reference prints `a` and `é`, and the case doors
+answered Go's opinion rather than the language's: compiled through the old ASCII loop, `"straße".upper()`
+stayed `STRAßE`, `"ΑΣ".lower()` stayed `ασ`, and `title`/`capitalize`/`swapcase` — which the compiled leg had
+never been given the rules for — stopped the build with `string method: title` while the reference answers
+`Straße`, `ǅ`, `Strasse`. Those are two failures wearing one coat: the measurement was wrong, and the case
+authority was whatever Go happened to implement.
+
+**The representation was decided the way the gap's own rule demanded.** A text's *value* stays its source's
+own UTF-8 bytes — no second string representation, no `[]rune` boxed object beside the boxed bytes, nothing
+for `rt_print_mixed_value`, `rt_str_intern`, `@estr` or `rt_slice` to learn twice. What is measured in
+characters is every *question*: `len`, `s[i]`, `s[i:j]`, `for c in s`, `c in s`, `==`, the printers, the case
+doors, the trim doors. That is ADR 0225's incomplete migration finished: ADR 0225 had already made `s[i]` and
+slicing code-point aware over a text the compiler could read, and had left the rest on bytes.
+
+**One artifact, two readers.** `pkg/lang/testdata/case-table.json` is generated by `tools/casetab`, whose
+`probe.py` asks CPython every code point — `upper`, `lower`, `title`, `swapcase` where the answer differs from
+identity; whether `("1" + c + "a").title()` cases it (the *cased* set `title` needs, which is not "is in some
+letter category"); whether it is ignorable, probed with the sigma word (the reference's own answer for
+whether `ΑΣ` keeps its final sigma); and whether `c.strip() == ""` (the *whitespace* set, which is why
+`"\x1cx".strip()` is `x` — Go's `unicode.IsSpace` says `"\x1cx"`). 1114112 code points asked, 1112064 rows
+kept, 4526 cased, 2707 case-ignorable, 29 whitespace, 65 KB. `go run ./tools/casetab -check` re-asks the
+reference and fails the build when the file on disk is not what the reference says, and
+`TestTheCaseTableIsTheArtifactItClaims` fails if a reader hand-edited it — the reason ADR 0232's hand-written
+whitespace set is gone. The fold (`pkg/lang/case_table.go`: `caseFoldFold`, `caseFoldTrim`, `caseMapString`,
+`caseLookup` over runs then entries then one-to-many, `caseIsFinalSigma`, `caseScan`) and the emitted IR door
+(`pkg/lang/case_runtime.go`: the same arrays rendered as globals, the same binary searches, the same sigma
+rule, `rt_str_case` and `rt_str_trim`) both read that artifact, so the same text cannot answer one way in a
+literal and another way in a parameter. `TestTheFoldAndTheDoorAnswerTheSameCase` and
+`TestTheFoldAndTheDoorAnswerTheSameTrim` pin the pair road by road.
+
+**Byte values survive; Go does not get a vote.** A malformed byte — which the record leg can hand the door,
+because the record's texts are Go string literals — is carried as `0x110000 + byte` and written back
+unchanged, so the door can never turn bytes the program put in into a different program's text. The old ASCII
+loop (`rt_str_strip` in the heap block, and the `cp += 32` / `cp -= 32` branch in the old case door) is
+deleted, not deprecated, and `TestTheAsciiCaseDoorStaysDead` / `TestTheAsciiTrimDoorStaysDead` fail the day
+either comes back: they ask a module with no case or trim question for `rt_str_strip` and `rt_str_case` by
+name, because counting functions in the block text would count the generated tables either way. The gate is
+`irGen.caseOps` — case and trim have separate bits, so a program that only upper-cases carries no whitespace
+search and one that only strips carries neither the 1.1-million-code-point tables nor the searches.
+
+**What the row did not predict: the answer is text, and the classifier had to learn that.** Measuring the
+text is half the job; the other half is knowing which values *are* texts, because a value the compiler cannot
+see is printed as an intern-table index — `print(f("café") …)` answered `0` rather than `café`, and `len` of a
+case door's answer refused outright while `len` of an interned element counted its bytes. So
+`pkg/lang/strargs.go` now asks one question — *does this expression answer text?* — and `computeTextFuncs`
+answers it for a function whose EVERY return answers text (an arm that returns a number disqualifies the
+function rather than being guessed past), for a literal container whose every element is text, and for a
+slice or index of a text. `len` asks the same predicate the printers ask (ADR 0229), which is why
+`len(w.strip().upper())` and `len(xs[0])` both answer in characters. `s = "x"; x = s[1:3]` — a binding whose
+right-hand side mentions the name being decided — no longer drops every fact the program did declare, because
+the scan's fixpoint ignores a self-referential right-hand side instead of giving up on the whole name.
+
+**The record leg and the reference leg, both paid.** 454 sources — every case operation, every trim operation,
+each over a literal, a parameter, a container slot and a call answer — went through `tools/recmerge`, which
+asks CPython first and refuses to write an entry the compiled leg will not agree to: the record went 
+sources to 7606 with no hand-written answer among them. `integration/programs/probe_case_doors.gy` is an
+asserted parity program (conformance programs 213 → 214, matrix rows 200 → 201, oracle verdict `match`). The
+hand-written rows that disagreed with the reference were fixed as rows, not as engines: `"  ΑΣ  ".lstrip()` is
+`"ΑΣ  "` because `strip` removes only the reference's whitespace, and `"  x a  ".strip(" xa")` is `""`.
+
+**What the row did not buy.** `[c for c in "abc"]` still refuses — the list of one-character texts it would
+build is built nowhere, and that is `L11.1`/`Gap I.2`'s, not this row's; the capability row
+`lower.unsupported.comprehension-over-text` now says the iteration is measured and only the list is missing.
+`count`, `find`, `index`, `split`, `join`, `replace`, `startswith`, `endswith`, `encode`, `decode`, `center`,
+`ljust`, `rjust` and `zfill` over a receiver the compiler cannot read refuse (`Gap I.2`), as does `s * 2` on a
+text variable and an f-string spec over a runtime value (`Gap R.308`). A text whose source the classifier
+cannot prove — an element of a mixed list, the answer of a `join` over runtime elements — refuses rather than
+print an index, which is the honest answer and not a good one. Each of those is an exit 1 refusal with a
+capability code, not an exit 0 lie.

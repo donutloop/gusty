@@ -11954,3 +11954,72 @@ say, in the comment, which shape of the row is still owed (Gap R.295's tuple ele
 nested patterns, Gap R.212's list key). What must never happen is deleting the case or softening the
 sentence; and what must also not happen is keeping a refusal the language no longer needs —
 `lower.unsupported.tuple-value` left the capability registry for exactly that reason.
+
+## L11.5 — a text is a sequence of code points, and one generated table decides its case (ADR 0362, 2026-10-16)
+
+**A hand-written expectation is not a witness.** The first version of the trim table pinned
+`"  ΑΣ  ".lstrip()` as `"ΑΣ"` and `"  x a  ".strip(" xa")` as `"a"`, and both guards were green — because they
+compared the compiler against my guess about the compiler. Measured against `python3` inside the same case, the
+reference answers `"ΑΣ  "` and `""`: `strip` removes what the reference calls whitespace and nothing else, and a
+cutset is a set of *characters*, not a prefix to peel. The rule that came out of being wrong twice: a row that
+states an answer must ask the reference for that answer **in the same test**, and fail on the row's own
+disagreement — `TestTheCaseEngineAnswersTheReferencesSpecialCasings` and its trim twin do exactly that, and each
+one failed on my rows before it failed on the compiler's. A hand-typed `want` is a claim about a language, and
+the language is defined elsewhere.
+
+**A road that produces a value must be registered with the predicates that classify values.** Three separate
+silent failures came from the same omission. `print(f("  café "))` printed `1`, the intern index, because
+`isStrUnder` knew `.strip` was not a text-returning method (and a *second* copy of that list, `argcOf`, kept the
+old zero-argument shape of `strip`, so the two halves disagreed about the same call). `len(w.upper())` stopped the
+build with `len requires an inline list/dict/set literal` where the reference answers `2` for `w = "ß"`, because the
+`len` road
+enumerated the *shapes* it could measure and a method call was not one of them. `f(xs[0])` and `f(g())` — the same
+text arriving from a container slot or a call — were refused as `len of a non-string variable`, and the refusal
+said *variable*, describing a program the author had not written. The fix was not three patches but one rule,
+ADR 0229's: every consumer asks one predicate — *does this expression answer text?* — and the predicate knows the
+case doors, the trim doors, a call whose every return answers text, an element of a literal container whose
+elements are all text, and a slice or index of a text. Where the measurement could not reach, the door was still
+asked for the right one: the `len` road measured an interned text with `rt_str_len`, the byte counter, while the
+code-point counter `rt_str_nchars` sits beside it in the same block, and the two `len` arms now ask the character
+door — a switch no program of mine distinguished (every road that reaches the object asks the object, which
+already answers in characters), and the entry says so rather than inventing a wrong answer to justify it. When a
+new value-producing road lands, the classification pass is part of it; otherwise the new road prints the word it
+stores rather than the value it holds, at exit 0.
+
+**A self-edge in a fixpoint is not a cycle.** The call-argument classifier decided too much:
+`def f(s): x = s[1:3]; return x` printed `1` because the scan that folds a parameter's text from the call site
+gave up on `x` — its right-hand side mentioned `x`. Dropping every fact for a name that mentions itself is the
+easy rule and the wrong one: a fixpoint tolerates a self-edge by comparing against the previous round instead of
+removing the node. The self-referential arm is now skipped while the rest of the body's bindings are recorded,
+and `s = "x"; x = s[1:3]` keeps the text it was declared to hold. Two lessons in one line: fixpoints keep stale
+values rather than no values, and a heuristic that "conservatively declines" must say *what* it declines — the
+sentence that came out named the mixed container element it refused to classify, which is what told me the
+remaining refusal was honest rather than accidental.
+
+**Probe the reference's behaviour, never its labels.** The generated artifact asks CPython four questions per
+code point: the four case mappings where they differ from identity, `("1" + c + "a").title()` for *cased*, both
+sigma looks around `ΑΣ` for *case-ignorable*, and `c.strip() == ""` for *whitespace*. Each is a behaviour rather
+than a category, and the difference is not academic: the Unicode category of U+0345 makes it cased and
+case-ignorable at once, which is why `"ͅΣ".lower()` answers `ͅσ` and a category-driven engine answers `ͅς`; and
+`unicode.IsSpace` does not count U+001C as whitespace while `str.strip` does. A table copied from a data file, or
+from Go's `strings.ToUpper`/`unicode.IsSpace`, is a claim about what Unicode says; a table probed from the
+reference is a claim about what *this language* answers. The 29-entry whitespace set, the 4526-entry cased set and
+the 2707-entry ignorable set all came out of the reference, and `casetab -check` re-asks the reference rather than
+re-checking a committed number.
+
+**Measure the "before" with the old binary, or write the wrong history.** The ADR's first measured table said the
+compiled leg *refused* `"ǅ".title()` and printed `İ` for `"İ".lower()`. Measuring against the pre-change binary
+(`/tmp/gzhead`) says otherwise: the fold answered `Ǆ` and `i` — wrong answers at exit 0 — and it was the *runtime*
+door (a text the compiler cannot read) that refused `title` and `swapcase`. Those are different defects with
+different lessons, and the difference is only visible if the comparison is run rather than remembered. Every row
+of that table is now a test (`TestTheAdrsMeasuredRowsAnswerTheReference`, compiled output compared with CPython in
+the same case), so the ADR's history and the compiler's present cannot drift apart.
+
+**Process: a feature that lands is a snapshot-count event.** One commit touched five artifacts and therefore four
+guards: the record grew 7152 → 7606 (454 sources, every one written by `tools/recmerge` from CPython's answer with
+the compiled leg cross-checked), the conformance programs 213 → 214, the matrix 200 → 201, the oracle's `match`
+column 154 → 155, the ADRs 352 → 353, and the queue's rows-owed 158 → 156. Each guard named the file and the
+position of the stale number, which is Gap R.204 doing its job — and the discipline is to edit the *cell* after
+re-running the measurement, never to edit the measurement to suit the cell. The same rule caught me writing
+"1400 code points" in a comment for a table that holds 1112064: a number in prose is a bug waiting to be believed,
+so it either comes from the artifact or it is not written at all.

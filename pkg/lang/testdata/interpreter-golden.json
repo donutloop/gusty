@@ -1,5 +1,2274 @@
 {
  "entries": {
+"# Code-point strings: the case doors answer the reference (L11.5, ADR 0362).\n#\n# Every line below was a wrong value at exit 0. The fold borrowed Go's SIMPLE case mapping, so the\n# sharp s stayed a sharp s, the ligatures stayed ligatures and the conditional sigma went out\n# un-finalised; the runtime door — the one that answers a text the compiler cannot read — knew A–Z\n# and copied every other byte, and refused `title`, `capitalize` and `swapcase` outright.\n# Both halves now read one table, generated from the reference by tools/casetab.\nprint(\"straße\".upper())\nprint(\"ΑΣ\".lower())\nprint(\"ΣΣΣ\".lower())\nprint(\"ǅ\".title())\nprint(\"İ\".lower())\nprint(\"ﬁ\".upper())\nprint(\"é.é\".title())\nprint(\"aBC\".capitalize())\nprint(\"aÉ\".swapcase())\nprint(\"日本語\".upper())\n\n\ndef shout(s):\n    return s.upper()\n\n\ndef whisper(s):\n    return s.lower()\n\n\ndef headings(s):\n    return s.title()\n\n\ndef start(s):\n    return s.capitalize()\n\n\ndef flip(s):\n    return s.swapcase()\n\n\nprint(shout(\"straße\"))\nprint(whisper(\"STRASSE\"))\nprint(headings(\"é.é\"))\nprint(start(\"aBC\"))\nprint(flip(\"ǅ\"))\nprint(whisper(\"ΑΣ\"))\nprint(shout(\"ǳ\"))\nwords = [\"straße\", \"ΑΣ\", \"ǅ\"]\nfor w in words:\n    print(shout(w))\nprint(len(shout(\"ß\")))\n\n# Trimming is the same question asked of the same artifact. The fold asked Go's unicode.IsSpace, which\n# leaves the four separators U+001C..U+001F standing where the reference removes them; the runtime door\n# compared each byte against 32 SIGNED, so every byte from 0x80 up counted as whitespace and a Greek or\n# accented text trimmed to nothing at exit 0. A cutset argument was dropped on the floor on both roads.\nprint(\"  café \".strip())\nprint(\"\\x1cx\".strip())\nprint(\"ßﬁ\".strip())\nprint(\"  ΑΣ  \".lstrip())\nprint(\"hi xx\".rstrip(\"x\"))\nprint(\"café x\".strip(\"c\"))\nprint(\"   \".strip())\n\n\ndef bare(s):\n    return s.strip()\n\n\ndef left(s):\n    return s.lstrip()\n\n\ndef right(s):\n    return s.rstrip()\n\n\ndef cut(s, c):\n    return s.strip(c)\n\n\nprint(bare(\"  café \"))\nprint(bare(\"ßﬁ\"))\nprint(bare(\"\\x1cx\"))\nprint(left(\"  ΑΣ  \"))\nprint(right(\"hi xx\"))\nprint(cut(\"café x\", \"c\"))\nprint(bare(\"\"))\nprint(len(bare(\"  ß  \")))\n": {
+    "stdout": "STRASSE\nας\nσσς\nǅ\ni̇\nFI\nÉ.É\nAbc\nAé\n日本語\nSTRASSE\nstrasse\nÉ.É\nAbc\nǅ\nας\nǱ\nSTRASSE\nΑΣ\nǄ\n2\ncafé\nx\nßﬁ\nΑΣ  \nhi \nafé x\n\ncafé\nßﬁ\nx\nΑΣ  \nhi xx\nafé x\n\n1\n",
+    "hasStdout": true
+   },
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  café \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"café\"))\n": {
+    "stdout": "Café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "Straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "Ας\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "Ας»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.capitalize()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "Fiß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  café \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"café\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "i̇\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǆ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ας\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ας»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lower()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "café \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"café\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.lstrip()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"café\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.rstrip()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"café\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.strip()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  CAFÉ \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"café\"))\n": {
+    "stdout": "CAFÉ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "STRASSE\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "i̇\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ας\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ας»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.swapcase()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "FISS\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  Café \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"  café \"))\nprint(\"  café \".title())\n": {
+    "stdout": "  Café \n  Café \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"café\"))\n": {
+    "stdout": "Café\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"café\"))\nprint(\"café\".title())\n": {
+    "stdout": "Café\nCafé\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "Straße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"straße\"))\nprint(\"straße\".title())\n": {
+    "stdout": "Straße\nStraße\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ǅ\"))\nprint(\"ǅ\".title())\n": {
+    "stdout": "ǅ\nǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "Ας\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ΑΣ\"))\nprint(\"ΑΣ\".title())\n": {
+    "stdout": "Ας\nΑς\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "Ας»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ΑΣ»\"))\nprint(\"ΑΣ»\".title())\n": {
+    "stdout": "Ας»\nΑς»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"日本語\"))\nprint(\"日本語\".title())\n": {
+    "stdout": "日本語\n日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "Fiß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.title()\n\nprint(f(\"ﬁß\"))\nprint(\"ﬁß\".title())\n": {
+    "stdout": "Fiß\nFiß\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"  café \"))\n": {
+    "stdout": "  CAFÉ \n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"café\"))\n": {
+    "stdout": "CAFÉ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"straße\"))\n": {
+    "stdout": "STRASSE\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"İ\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"ı\"))\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"ǅ\"))\n": {
+    "stdout": "Ǆ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"ΑΣ\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"ΑΣ»\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"日本語\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s):\n    return s.upper()\n\nprint(f(\"ﬁß\"))\n": {
+    "stdout": "FISS\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"  café \", \" x\"))\n": {
+    "stdout": "café \n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"café\", \" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"straße\", \" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"İ\", \" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"ı\", \" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"ǅ\", \" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"ΑΣ\", \" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"ΑΣ»\", \" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"日本語\", \" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.lstrip(cut)\n\nprint(f(\"ﬁß\", \" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"  café \", \" x\"))\n": {
+    "stdout": "  café\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"café\", \" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"straße\", \" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"İ\", \" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"ı\", \" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"ǅ\", \" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"ΑΣ\", \" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"ΑΣ»\", \" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"日本語\", \" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.rstrip(cut)\n\nprint(f(\"ﬁß\", \" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"  café \", \" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"café\", \" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"straße\", \" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"İ\", \" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"ı\", \" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"ǅ\", \" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"ΑΣ\", \" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"ΑΣ»\", \" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"日本語\", \" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"def f(s, cut):\n    return s.strip(cut)\n\nprint(f(\"ﬁß\", \" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"for c in \"  café \":\n    print(c)\n": {
+    "stdout": " \n \nc\na\nf\né\n \n",
+    "hasStdout": true
+   },
+
+"for c in \"café\":\n    print(c)\n": {
+    "stdout": "c\na\nf\né\n",
+    "hasStdout": true
+   },
+
+"for c in \"straße\":\n    print(c)\n": {
+    "stdout": "s\nt\nr\na\nß\ne\n",
+    "hasStdout": true
+   },
+
+"for c in \"İ\":\n    print(c)\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"for c in \"ı\":\n    print(c)\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"for c in \"ǅ\":\n    print(c)\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"for c in \"ΑΣ\":\n    print(c)\n": {
+    "stdout": "Α\nΣ\n",
+    "hasStdout": true
+   },
+
+"for c in \"ΑΣ»\":\n    print(c)\n": {
+    "stdout": "Α\nΣ\n»\n",
+    "hasStdout": true
+   },
+
+"for c in \"日本語\":\n    print(c)\n": {
+    "stdout": "日\n本\n語\n",
+    "hasStdout": true
+   },
+
+"for c in \"ﬁß\":\n    print(c)\n": {
+    "stdout": "ﬁ\nß\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".capitalize())\n": {
+    "stdout": "   \n",
+    "hasStdout": true
+   },
+
+"print(\"   \".lower())\n": {
+    "stdout": "   \n",
+    "hasStdout": true
+   },
+
+"print(\"   \".lstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".lstrip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".rstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".rstrip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".strip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".strip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"   \".swapcase())\n": {
+    "stdout": "   \n",
+    "hasStdout": true
+   },
+
+"print(\"   \".title())\n": {
+    "stdout": "   \n",
+    "hasStdout": true
+   },
+
+"print(\"   \".upper())\n": {
+    "stdout": "   \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".capitalize())\n": {
+    "stdout": "  café \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".lower())\n": {
+    "stdout": "  café \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".lstrip(\" x\"))\n": {
+    "stdout": "café \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".lstrip())\n": {
+    "stdout": "café \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".rstrip(\" x\"))\n": {
+    "stdout": "  café\n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".rstrip())\n": {
+    "stdout": "  café\n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".strip(\" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".strip())\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".swapcase())\n": {
+    "stdout": "  CAFÉ \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".title())\n": {
+    "stdout": "  Café \n",
+    "hasStdout": true
+   },
+
+"print(\"  café \".upper())\n": {
+    "stdout": "  CAFÉ \n",
+    "hasStdout": true
+   },
+
+"print(\"  ΑΣ  \".strip().lower())\n": {
+    "stdout": "ας\n",
+    "hasStdout": true
+   },
+
+"print(\"\".capitalize())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".lower())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".lstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".lstrip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".rstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".rstrip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".strip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".strip())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".swapcase())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".title())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"\".upper())\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".capitalize())\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".lower())\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".lstrip(\" x\"))\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".lstrip())\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".rstrip(\" x\"))\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".rstrip())\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".strip(\" x\"))\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".strip())\n": {
+    "stdout": "1a\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".swapcase())\n": {
+    "stdout": "1A\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".title())\n": {
+    "stdout": "1A\n",
+    "hasStdout": true
+   },
+
+"print(\"1a\".upper())\n": {
+    "stdout": "1A\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".capitalize())\n": {
+    "stdout": "Hello world\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".lower())\n": {
+    "stdout": "hello world\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".lstrip(\" x\"))\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".lstrip())\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".rstrip(\" x\"))\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".rstrip())\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".strip(\" x\"))\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".strip())\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".swapcase())\n": {
+    "stdout": "hello world\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".title())\n": {
+    "stdout": "Hello World\n",
+    "hasStdout": true
+   },
+
+"print(\"HELLO WORLD\".upper())\n": {
+    "stdout": "HELLO WORLD\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".capitalize())\n": {
+    "stdout": "Ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".lower())\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".lstrip(\" x\"))\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".lstrip())\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".rstrip(\" x\"))\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".rstrip())\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".strip(\" x\"))\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".strip())\n": {
+    "stdout": "ab-cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".swapcase())\n": {
+    "stdout": "AB-CD\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".title())\n": {
+    "stdout": "Ab-Cd\n",
+    "hasStdout": true
+   },
+
+"print(\"ab-cd\".upper())\n": {
+    "stdout": "AB-CD\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".capitalize())\n": {
+    "stdout": "Café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".lower())\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".lstrip(\" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".lstrip())\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".rstrip(\" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".rstrip())\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".strip(\" x\"))\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".strip())\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".swapcase())\n": {
+    "stdout": "CAFÉ\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".title())\n": {
+    "stdout": "Café\n",
+    "hasStdout": true
+   },
+
+"print(\"café\".upper())\n": {
+    "stdout": "CAFÉ\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".capitalize())\n": {
+    "stdout": "Straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".lower())\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".lstrip(\" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".lstrip())\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".rstrip(\" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".rstrip())\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".strip(\" x\"))\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".strip())\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".swapcase())\n": {
+    "stdout": "STRASSE\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".title())\n": {
+    "stdout": "Straße\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".upper() == \"STRASSE\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(\"straße\".upper())\n": {
+    "stdout": "STRASSE\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".capitalize())\n": {
+    "stdout": "X\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".lower())\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".lstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".lstrip())\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".rstrip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".rstrip())\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".strip(\" x\"))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".strip())\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".swapcase())\n": {
+    "stdout": "X\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".title())\n": {
+    "stdout": "X\n",
+    "hasStdout": true
+   },
+
+"print(\"x\".upper())\n": {
+    "stdout": "X\n",
+    "hasStdout": true
+   },
+
+"print(\" x \".capitalize())\n": {
+    "stdout": " x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".lower())\n": {
+    "stdout": " x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".lstrip(\" x\"))\n": {
+    "stdout": " x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".lstrip())\n": {
+    "stdout": "x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".rstrip(\" x\"))\n": {
+    "stdout": " x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".rstrip())\n": {
+    "stdout": " x\n",
+    "hasStdout": true
+   },
+
+"print(\" x \".strip(\" x\"))\n": {
+    "stdout": " x \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".strip())\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print(\" x \".swapcase())\n": {
+    "stdout": " X \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".title())\n": {
+    "stdout": " X \n",
+    "hasStdout": true
+   },
+
+"print(\" x \".upper())\n": {
+    "stdout": " X \n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".capitalize())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".lower())\n": {
+    "stdout": "i̇\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".lstrip(\" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".lstrip())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".rstrip(\" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".rstrip())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".strip(\" x\"))\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".strip())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".swapcase())\n": {
+    "stdout": "i̇\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".title())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"İ\".upper())\n": {
+    "stdout": "İ\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".capitalize())\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".lower())\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".lstrip(\" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".lstrip())\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".rstrip(\" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".rstrip())\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".strip(\" x\"))\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".strip())\n": {
+    "stdout": "ı\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".swapcase())\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".title())\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"print(\"ı\".upper())\n": {
+    "stdout": "I\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".capitalize())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".lower())\n": {
+    "stdout": "ǆ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".lstrip(\" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".lstrip())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".rstrip(\" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".rstrip())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".strip(\" x\"))\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".strip())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".swapcase())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".title())\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"print(\"ǅ\".upper())\n": {
+    "stdout": "Ǆ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".capitalize())\n": {
+    "stdout": "Ας\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".lower())\n": {
+    "stdout": "ας\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".lstrip(\" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".lstrip())\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".rstrip(\" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".rstrip())\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".strip(\" x\"))\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".strip())\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".swapcase())\n": {
+    "stdout": "ας\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".title())\n": {
+    "stdout": "Ας\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ\".upper())\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".capitalize())\n": {
+    "stdout": "Ας»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".lower())\n": {
+    "stdout": "ας»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".lstrip(\" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".lstrip())\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".rstrip(\" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".rstrip())\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".strip(\" x\"))\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".strip())\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".swapcase())\n": {
+    "stdout": "ας»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".title())\n": {
+    "stdout": "Ας»\n",
+    "hasStdout": true
+   },
+
+"print(\"ΑΣ»\".upper())\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".capitalize())\n": {
+    "stdout": "ᾯ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".lower())\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".lstrip(\" x\"))\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".lstrip())\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".rstrip(\" x\"))\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".rstrip())\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".strip(\" x\"))\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".strip())\n": {
+    "stdout": "ᾧ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".swapcase())\n": {
+    "stdout": "ὯΙ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".title())\n": {
+    "stdout": "ᾯ\n",
+    "hasStdout": true
+   },
+
+"print(\"ᾧ\".upper())\n": {
+    "stdout": "ὯΙ\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".capitalize())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".lower())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".lstrip(\" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".lstrip())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".rstrip(\" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".rstrip())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".strip(\" x\"))\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".strip())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".swapcase())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".title())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"日本語\".upper())\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".capitalize())\n": {
+    "stdout": "Fiß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".lower())\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".lstrip(\" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".lstrip())\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".rstrip(\" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".rstrip())\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".strip(\" x\"))\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".strip())\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".swapcase())\n": {
+    "stdout": "FISS\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".title())\n": {
+    "stdout": "Fiß\n",
+    "hasStdout": true
+   },
+
+"print(\"ﬁß\".upper())\n": {
+    "stdout": "FISS\n",
+    "hasStdout": true
+   },
+
+"print(len(\"   \".capitalize()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"   \".lower()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"   \".swapcase()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"   \".title()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"   \".upper()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"  café \".capitalize()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"  café \".lower()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"  café \".swapcase()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"  café \".title()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"  café \".upper()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"\".capitalize()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(\"\".lower()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(\"\".swapcase()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(\"\".title()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(\"\".upper()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(\"1a\".capitalize()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"1a\".lower()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"1a\".swapcase()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"1a\".title()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"1a\".upper()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"HELLO WORLD\".capitalize()))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"print(len(\"HELLO WORLD\".lower()))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"print(len(\"HELLO WORLD\".swapcase()))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"print(len(\"HELLO WORLD\".title()))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"print(len(\"HELLO WORLD\".upper()))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ab-cd\".capitalize()))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ab-cd\".lower()))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ab-cd\".swapcase()))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ab-cd\".title()))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ab-cd\".upper()))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\".capitalize()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\".lower()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\".swapcase()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\".title()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\".upper()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"straße\".capitalize()))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print(len(\"straße\".lower()))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print(len(\"straße\".swapcase()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"straße\".title()))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print(len(\"straße\".upper()))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print(len(\"x\".capitalize()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"x\".lower()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"x\".swapcase()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"x\".title()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"x\".upper()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\" x \".capitalize()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\" x \".lower()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\" x \".swapcase()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\" x \".title()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\" x \".upper()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"İ\".capitalize()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"İ\".lower()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"İ\".swapcase()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"İ\".title()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"İ\".upper()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ı\".capitalize()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ı\".lower()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ı\".swapcase()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ı\".title()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ı\".upper()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ǅ\".capitalize()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ǅ\".lower()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ǅ\".swapcase()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ǅ\".title()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ǅ\".upper()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ\".capitalize()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ\".lower()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ\".swapcase()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ\".title()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ\".upper()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ»\".capitalize()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ»\".lower()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ»\".swapcase()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ»\".title()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ΑΣ»\".upper()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ᾧ\".capitalize()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ᾧ\".lower()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ᾧ\".swapcase()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ᾧ\".title()))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ᾧ\".upper()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"日本語\".capitalize()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"日本語\".lower()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"日本語\".swapcase()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"日本語\".title()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"日本語\".upper()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁ\".upper()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁß\".capitalize()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁß\".lower()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁß\".swapcase()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁß\".title()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"ﬁß\".upper()))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"  café \"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"  café \"[0])\n": {
+    "stdout": "7\n \n  \nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"café\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"café\"[0])\n": {
+    "stdout": "4\nc\nca\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"straße\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"straße\"[0])\n": {
+    "stdout": "6\ns\nst\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"İ\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"İ\"[0])\n": {
+    "stdout": "1\nİ\nİ\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"ı\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"ı\"[0])\n": {
+    "stdout": "1\nı\nı\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"ǅ\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"ǅ\"[0])\n": {
+    "stdout": "1\nǅ\nǅ\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"ΑΣ\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"ΑΣ\"[0])\n": {
+    "stdout": "2\nΑ\nΑΣ\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"ΑΣ»\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"ΑΣ»\"[0])\n": {
+    "stdout": "3\nΑ\nΑΣ\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"日本語\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"日本語\"[0])\n": {
+    "stdout": "3\n日\n日本\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = \"ﬁß\"\nprint(len(s))\nprint(s[0])\nprint(s[0:2])\nprint(s[0] == \"ﬁß\"[0])\n": {
+    "stdout": "2\nﬁ\nﬁß\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"  café \"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"  café \".lower())\n": {
+    "stdout": "  café \n4\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"café\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"café\".lower())\n": {
+    "stdout": "café\n4\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"straße\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"straße\".lower())\n": {
+    "stdout": "strasse\n7\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"ǅ\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"ǅ\".lower())\n": {
+    "stdout": "ǆ\n1\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"ΑΣ\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"ΑΣ\".lower())\n": {
+    "stdout": "ας\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"ΑΣ»\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"ΑΣ»\".lower())\n": {
+    "stdout": "ας»\n3\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"日本語\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"日本語\".lower())\n": {
+    "stdout": "日本語\n3\nTrue\n",
+    "hasStdout": true
+   },
+
+"w = \"ﬁß\"\nprint(w.upper().lower())\nprint(len(w.strip().upper()))\nprint(w.lower() == \"ﬁß\".lower())\n": {
+    "stdout": "fiss\n4\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [\"  café \"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "  café \n",
+    "hasStdout": true
+   },
+
+"xs = [\"  café \"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "  CAFÉ \n7\n \n  \n",
+    "hasStdout": true
+   },
+
+"xs = [\"café\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "café\n",
+    "hasStdout": true
+   },
+
+"xs = [\"café\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "CAFÉ\n4\na\nca\n",
+    "hasStdout": true
+   },
+
+"xs = [\"straße\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "straße\n",
+    "hasStdout": true
+   },
+
+"xs = [\"straße\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "STRASSE\n6\nt\nst\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ǅ\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "ǅ\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ǅ\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "err": "IndexError: string index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "string index out of range"
+   },
+
+"xs = [\"ΑΣ\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "ΑΣ\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ΑΣ\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "ΑΣ\n2\nΣ\nΑΣ\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ΑΣ»\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "ΑΣ»\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ΑΣ»\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "ΑΣ»\n3\nΣ\nΑΣ\n",
+    "hasStdout": true
+   },
+
+"xs = [\"日本語\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "日本語\n",
+    "hasStdout": true
+   },
+
+"xs = [\"日本語\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "日本語\n3\n本\n日本\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ﬁß\"]\nfor c in xs:\n    print(c)\n": {
+    "stdout": "ﬁß\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ﬁß\"]\nprint(xs[0].upper())\nprint(len(xs[0]))\nprint(xs[0][1])\nprint(xs[0][0:2])\n": {
+    "stdout": "FISS\n2\nß\nﬁß\n",
+    "hasStdout": true
+   },
 "# Tuples are values, not syntax sugar (L11.3, ADR 0361). Promoted from an oracle probe to an\n# asserted parity program: the compiled backend used to stop at `unsupported expression\n# *lang.Tuple` on the first line, and the record rendered every tuple as a list. Now the\n# immutable container prints with its own brackets, subscripts, measures, unpacks and returns\n# from a function — the answer below is CPython's, line for line.\nt = (1, 2, 3)\nprint(t)\nprint(t[1])\nprint(len(t))\na, b = (4, 5)\nprint(a)\nprint(b)\ndef pair():\n    return (1, 2)\nprint(pair())\n": {
     "stdout": "(1, 2, 3)\n2\n3\n4\n5\n(1, 2)\n",
     "hasStdout": true

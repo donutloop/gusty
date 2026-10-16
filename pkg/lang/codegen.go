@@ -746,48 +746,10 @@ bad:
   ret i32 -1
 }
 
-; rt_str_case folds ASCII letters: mode 0 upper-cases, mode 1 lower-cases. Bytes outside the
-; ASCII range are copied unchanged, which is the documented limit of the first cut — the
-; interpreter folds Unicode case tables, the compiled backend folds ASCII (roadmap Gap R.47).
-define internal i32 @rt_str_case(i32 %s, i32 %mode) {
-entry:
-  %p = call i8* @rt_str_ptr(i32 %s)
-  %nb = call i32 @rt_str_len(i32 %s)
-  %n1 = add i32 %nb, 1
-  %sz = zext i32 %n1 to i64
-  %buf = call ptr @malloc(i64 %sz)
-  br label %scan
-scan:
-  %i = phi i32 [ 0, %entry ], [ %inext, %body ]
-  %done = icmp sge i32 %i, %nb
-  br i1 %done, label %term, label %body
-body:
-  %src = getelementptr i8, i8* %p, i32 %i
-  %b = load i8, i8* %src
-  %ub = icmp sgt i8 %b, 96
-  %ub2 = icmp slt i8 %b, 123
-  %upperable = and i1 %ub, %ub2
-  %lb = icmp sgt i8 %b, 64
-  %lb2 = icmp slt i8 %b, 91
-  %lowerable = and i1 %lb, %lb2
-  %upperMode = icmp eq i32 %mode, 0
-  %lowerMode = icmp eq i32 %mode, 1
-  %doUpper = and i1 %upperable, %upperMode
-  %doLower = and i1 %lowerable, %lowerMode
-  %flipU = select i1 %doUpper, i8 -32, i8 0
-  %flipL = select i1 %doLower, i8 32, i8 0
-  %flip = or i8 %flipU, %flipL
-  %out = add i8 %b, %flip
-  %dst = getelementptr i8, i8* %buf, i32 %i
-  store i8 %out, i8* %dst
-  %inext = add i32 %i, 1
-  br label %scan
-term:
-  %t = getelementptr i8, i8* %buf, i32 %nb
-  store i8 0, i8* %t
-  %idx = call i32 @rt_str_intern(i8* %buf)
-  ret i32 %idx
-}
+; The case door used to live here: a loop over ASCII that copied every other byte unchanged, which is the
+; documented shape of the first cut (Gap R.47) and a wrong answer now that the compiled backend is the only
+; one (ADR 0302). It lives in pkg/lang/case_runtime.go, walks the table generated from the reference, and is
+; gated — a module that never asks a case question does not carry it (roadmap L11.5, ADR 0362).
 
 ; rt_str_byteoff is the byte offset where the k-th code point begins, with the clamping a
 ; slice needs: negative counts from the end, out of range collapses to an end, and k=0 is 0.
@@ -906,51 +868,6 @@ term:
   ret i32 %idx
 }
 
-; rt_str_strip trims ASCII whitespace at both ends. the record trims the full Unicode set
-; of spaces; the compiled backend trims bytes at or below space, which is the documented limit
-; of this cut (roadmap Gap R.47) rather than a silent approximation.
-define internal i32 @rt_str_strip(i32 %s) {
-entry:
-  %p = call i8* @rt_str_ptr(i32 %s)
-  %nb = call i32 @rt_str_len(i32 %s)
-  br label %lead
-lead:
-  %lo = phi i32 [ 0, %entry ], [ %lonext, %leadbody ]
-  %past = icmp slt i32 %lo, %nb
-  br i1 %past, label %leadcheck, label %done2
-leadcheck:
-  %la = getelementptr i8, i8* %p, i32 %lo
-  %lb = load i8, i8* %la
-  %lsp = icmp sgt i8 %lb, 32
-  br i1 %lsp, label %done2, label %leadbody
-leadbody:
-  %lonext = add i32 %lo, 1
-  br label %lead
-done2:
-  %lof = phi i32 [%lo, %lead], [%lo, %leadcheck]
-  br label %tail
-tail:
-  %hib = phi i32 [ %nb, %done2 ], [ %hinext, %tailbody ]
-  %above = icmp sgt i32 %hib, %lof
-  br i1 %above, label %tailcheck, label %empty
-tailcheck:
-  %ta = getelementptr i8, i8* %p, i32 %hib
-  %tam = getelementptr i8, i8* %ta, i32 -1
-  %tb = load i8, i8* %tam
-  %tsp = icmp sgt i8 %tb, 32
-  br i1 %tsp, label %fin, label %tailbody
-tailbody:
-  %hinext = sub i32 %hib, 1
-  br label %tail
-fin:
-  %len = sub i32 %hib, %lof
-  %base = getelementptr i8, i8* %p, i32 %lof
-  %idx = call i32 @rt_str_from_bytes(i8* %base, i32 %len)
-  ret i32 %idx
-empty:
-  %zero = call i32 @rt_str_intern(i8* getelementptr ([1 x i8], [1 x i8]* @.strempty, i32 0, i32 0))
-  ret i32 %zero
-}
 
 ; rt_str_of_int is str(n) for a number the compiler cannot read: digits written backwards into
 ; a block that is then interned from the first digit onward. the record has always answered
@@ -4607,6 +4524,24 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		}
 		g.globals.WriteString(percentRuntimeIR)
 	}
+	// The case door (roadmap L11.5, ADR 0362) is gated the way the formatting door and the frame stack are:
+	// the tables are the reference's answer for 1.1 million code points, and a program that never asks a
+	// case question has no business carrying them. The block reads the interned-text table
+	// (`rt_str_ptr`/`rt_str_nchars`/`rt_str_intern`), so it rides with the heap block — a referenced
+	// internal function that was never emitted is the module `llc` rejects (ADR 0173). The table is the
+	// artifact's, and a table that will not load is a compiler error rather than a fallback to Go's answer.
+	caseIR := ""
+	if t, terr := loadCaseTable(); terr == nil {
+		caseIR = caseRuntimeBlock(t, g.caseOps)
+	} else if g.caseOps != 0 {
+		return "", nil, terr
+	}
+	if g.caseOps != 0 || (caseIR != "" && runtimeBlockReferenced(caseIR, bodyText)) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		g.globals.WriteString(caseIR)
+	}
 	// The REPL echo's writer (roadmap L13.1, ADR 0302) rides with the heap block for the same
 	// reason the arithmetic door does: it renders through `rt_str_ptr`/`rt_str_len`, which live
 	// there, and a referenced internal function that was never emitted is the module `llc`
@@ -5152,6 +5087,11 @@ type irGen struct {
 	// `sum` over a pair — which is what pulls in the fold door (roadmap L11.1, Gap R.146; ADR 0316). A
 	// module that never asks the door carries no ordering sentence it never reaches.
 	foldUsed bool
+	// caseOps is the set of case operations this module asks of the runtime door, one bit per
+	// caseUpper..caseSwapcase. It is the gate for the case block: a program that never upper-cases a
+	// text the compiler cannot read carries neither the reference's tables nor its searches
+	// (roadmap L11.5, ADR 0362).
+	caseOps int
 	// percentUsed records that this module formats a text with `%`, which pulls in the formatting door
 	// (roadmap Gap R.31, ADR 0360). A program that never formats carries no format walker, no argument
 	// table and no copy of the reference's eight sentences.
@@ -6860,22 +6800,47 @@ func stringConst(e Expr, shadowed func(string) bool) (string, bool) {
 			v, ok := stringConst(attr.Obj, shadowed)
 			if ok {
 				switch attr.Name.Value {
+				// The five case operations read the generated table (ADR 0362), and a table that will
+				// not answer is a fold that did not happen: the runtime door beside it asks the same
+				// artifact, so declining here cannot leave Go's answer in the module.
 				case "upper":
-					return strings.ToUpper(v), true
+					t2, ok2 := caseFoldFold(caseUpper, v)
+					if !ok2 {
+						return "", false
+					}
+					return t2, true
 				case "capitalize":
-					return capitalize(v), true
+					t2, ok2 := caseFoldFold(caseCapitalize, v)
+					if !ok2 {
+						return "", false
+					}
+					return t2, true
 				case "title":
-					return title(v), true
+					t2, ok2 := caseFoldFold(caseTitle, v)
+					if !ok2 {
+						return "", false
+					}
+					return t2, true
 				case "swapcase":
-					return swapcase(v), true
+					t2, ok2 := caseFoldFold(caseSwapcase, v)
+					if !ok2 {
+						return "", false
+					}
+					return t2, true
 				case "lower":
-					return strings.ToLower(v), true
-				case "strip":
-					return strings.TrimSpace(v), true
-				case "lstrip":
-					return strings.TrimLeftFunc(v, unicode.IsSpace), true
-				case "rstrip":
-					return strings.TrimRightFunc(v, unicode.IsSpace), true
+					t2, ok2 := caseFoldFold(caseLower, v)
+					if !ok2 {
+						return "", false
+					}
+					return t2, true
+				case "strip", "lstrip", "rstrip":
+					t2, ok3 := caseFoldTrim(caseTrimMode(attr.Name.Value), v, c.Args, func(e Expr) (string, bool) {
+						return stringConst(e, shadowed)
+					})
+					if !ok3 {
+						return "", false
+					}
+					return t2, true
 				case "replace":
 					if len(c.Args) != 2 {
 						return "", false
@@ -7559,22 +7524,43 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			return "", false
 		}
 		switch attr.Name.Value {
+		// The other fold road, asked of the same table (ADR 0362).
 		case "swapcase":
-			return swapcase(v), true
+			t2, ok2 := caseFoldFold(caseSwapcase, v)
+			if !ok2 {
+				return "", false
+			}
+			return t2, true
 		case "title":
-			return title(v), true
+			t2, ok2 := caseFoldFold(caseTitle, v)
+			if !ok2 {
+				return "", false
+			}
+			return t2, true
 		case "capitalize":
-			return capitalize(v), true
+			t2, ok2 := caseFoldFold(caseCapitalize, v)
+			if !ok2 {
+				return "", false
+			}
+			return t2, true
 		case "upper":
-			return strings.ToUpper(v), true
+			t2, ok2 := caseFoldFold(caseUpper, v)
+			if !ok2 {
+				return "", false
+			}
+			return t2, true
 		case "lower":
-			return strings.ToLower(v), true
-		case "strip":
-			return strings.TrimSpace(v), true
-		case "lstrip":
-			return strings.TrimLeftFunc(v, unicode.IsSpace), true
-		case "rstrip":
-			return strings.TrimRightFunc(v, unicode.IsSpace), true
+			t2, ok2 := caseFoldFold(caseLower, v)
+			if !ok2 {
+				return "", false
+			}
+			return t2, true
+		case "strip", "lstrip", "rstrip":
+			t2, ok3 := caseFoldTrim(caseTrimMode(attr.Name.Value), v, n.Args, g.stringVal)
+			if !ok3 {
+				return "", false
+			}
+			return t2, true
 		case "replace":
 			if len(n.Args) != 2 {
 				return "", false
@@ -14274,15 +14260,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if sreg, isStr, err2 := g.strReg(b, attr.Obj); err2 != nil {
 				return "", err2
 			} else if isStr {
+				// A text the compiler cannot read — a parameter, an element, a call's answer — is folded by
+				// the runtime door, and since ADR 0362 the door reads the same generated table the fold
+				// above does, so the two answers cannot part company. It answers the three operations whose
+				// rules the old ASCII loop had no room for as well: title, capitalize and swapcase.
 				switch attr.Name.Value {
-				case "upper":
-					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 0"), nil
-				case "lower":
-					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 1"), nil
-				case "strip":
-					r := g.rtStrCall(b, "rt_str_strip", "i32 "+sreg)
-					g.checkStrSentinels(b, r, "RuntimeError", strFullMessage, c.Span(), "ststrip")
-					return r, nil
+				case "upper", "lower", "title", "capitalize", "swapcase":
+					op := caseOpOfMethod(attr.Name.Value)
+					if op < 0 {
+						return "", fmt.Errorf("codegen: %s() has no case operation (roadmap L11.5, ADR 0362)", attr.Name.Value)
+					}
+					g.caseOps |= 1 << uint(op)
+					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 "+strconv.Itoa(op)), nil
+				case "strip", "lstrip", "rstrip":
+					// A text the compiler cannot read is trimmed by the door, which walks the artifact's
+					// whitespace set — the same one caseFoldTrim read above (ADR 0232).
+					return g.emitTrimRoad(b, c, attr.Name.Value, sreg)
 				}
 			}
 			// A NAME bound to a container is not a string with a value the compiler cannot read, and
@@ -14296,22 +14289,55 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("string-method %s on a receiver that is not a text the compiler can read: %s (roadmap Gap I.2, ADR 0166)", attr.Name.Value, g.exprSummary(attr.Obj))
 		}
 		switch attr.Name.Value {
+		// The third fold road, and the only one of the three that can say the table would not answer:
+		// it is inside a road that returns an error, so it says so rather than keeping the old answer
+		// (roadmap L11.5, ADR 0362).
 		case "upper":
-			v = strings.ToUpper(v)
+			t2, cerr := caseMapString(caseUpper, v)
+			if cerr != nil {
+				return "", cerr
+			}
+			v = t2
 		case "capitalize":
-			v = capitalize(v)
+			t2, cerr := caseMapString(caseCapitalize, v)
+			if cerr != nil {
+				return "", cerr
+			}
+			v = t2
 		case "title":
-			v = title(v)
+			t2, cerr := caseMapString(caseTitle, v)
+			if cerr != nil {
+				return "", cerr
+			}
+			v = t2
 		case "swapcase":
-			v = swapcase(v)
+			t2, cerr := caseMapString(caseSwapcase, v)
+			if cerr != nil {
+				return "", cerr
+			}
+			v = t2
 		case "lower":
-			v = strings.ToLower(v)
-		case "strip":
-			v = strings.TrimSpace(v)
-		case "lstrip":
-			v = strings.TrimLeftFunc(v, unicode.IsSpace)
-		case "rstrip":
-			v = strings.TrimRightFunc(v, unicode.IsSpace)
+			t2, cerr := caseMapString(caseLower, v)
+			if cerr != nil {
+				return "", cerr
+			}
+			v = t2
+		case "strip", "lstrip", "rstrip":
+			// The fold answers when it can read BOTH texts. A cutset it cannot read does not make the question
+			// unanswerable — the receiver is right here, and the door beside it reads the same artifact (ADR 0232).
+			if len(c.Args) > 1 {
+				return "", fmt.Errorf("%s() takes one cutset at most; the reference raises TypeError for %d arguments (roadmap L11.5, ADR 0362)", attr.Name.Value, len(c.Args))
+			}
+			if len(c.Args) == 1 {
+				if _, okCut := g.stringVal(c.Args[0]); !okCut {
+					return g.emitTrimRoad(b, c, attr.Name.Value, g.internStr(b, v))
+				}
+			}
+			t2, ok3 := caseFoldTrim(caseTrimMode(attr.Name.Value), v, c.Args, g.stringVal)
+			if !ok3 {
+				return "", fmt.Errorf("the trim table would not answer %s() (roadmap L11.5, ADR 0362)", attr.Name.Value)
+			}
+			v = t2
 		case "replace":
 			if len(c.Args) != 2 {
 				return "", fmt.Errorf("replace() takes exactly 2 arguments")
@@ -15807,7 +15833,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", err
 				}
 				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = call i32 @rt_str_len(i32 %s)\n", t, v)
+				// The length of a text is its CODE points, on the road where the text has no compile-time
+				// spelling too — `rt_str_len` counts the bytes the table stores, `rt_str_nchars` counts the
+				// characters the program sees (ADR 0225, ADR 0362).
+				fmt.Fprintf(b, "  %s = call i32 @rt_str_nchars(i32 %s)\n", t, v)
 				return t, nil
 			}
 			if g.listVars[lit.Value] {
@@ -15897,6 +15926,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			if n, ok := g.listLen(c.Args[0]); ok {
 				return fmt.Sprintf("%d", n), nil
+			}
+			if mc, ok := c.Args[0].(*Call); ok {
+				if at, isAttr := mc.Fn.(*Attr); isAttr && g.exprIsString(at.Obj) && g.textMethodAnswersText(at.Name.Value, len(mc.Args)) {
+					// `len(w.lower())`, `len(w.strip(" "))`: the answer of this pair is text, so its length is the
+					// number of code points in the answer the module already knows how to build — asked of the
+					// answer, through the same predicate the print road uses to decide whether to print it as text
+					// (ADR 0229, ADR 0362). Refusing here would leave `len` silent about a text the road beside it can make.
+					av, err := g.value(b, mc)
+					if err != nil {
+						return "", err
+					}
+					g.heapUsed = true
+					t := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_nchars(i32 %s)\n", t, av))
+					return t, nil
+				}
 			}
 			if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
 				return g.heapLenOf(b, h), nil
@@ -17182,7 +17227,12 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 // operation ask one predicate).
 func (g *irGen) textMethodAnswersText(name string, argc int) bool {
 	switch name {
-	case "upper", "lower", "strip", "lstrip", "rstrip", "capitalize", "title", "swapcase", "expandtabs":
+	case "strip", "lstrip", "rstrip":
+		// The cutset is an argument, not a second text: `s.strip("x")` hands back text just as `s.strip()` does
+		// (roadmap L11.5, ADR 0362). Listing the trim family against its own arity is what made
+		// `print(f("  café "))` print the intern index.
+		return argc <= 1
+	case "upper", "lower", "capitalize", "title", "swapcase", "expandtabs":
 		return argc == 0
 	case "replace", "removeprefix", "removesuffix", "ljust", "rjust", "zfill", "join":
 		return argc == 1

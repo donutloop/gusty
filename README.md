@@ -98,6 +98,21 @@ gusty ships an indentation-based syntax covering:
   dict-key road all ask **the object**, which is why `p = mk(1, "x")` prints `(1, 'x')` (**ADR 0361**, roadmap L11.3).
   What is owed is named by the rows: an order (`Gap R.309` — `sorted` refuses container elements rather than printing
   arrival order), `count`/`index` (`Gap I.2`), and the empty tuple's identity (`Gap R.310`).
+- **Text is measured in code points, and one generated table decides its case** — a text's value is its source's
+  own UTF-8 bytes, and every question about it is asked of characters: `len("café")` is `4`, `"héllo"[1]` is `"é"`,
+  `"héllo"[1:3]` is `"él"`, `for c in "aé"` binds `a` then `é` — each of them on a text the compiler can read AND on
+  one it cannot (a parameter, a container element, the answer of a call). `upper`/`lower`/`title`/`capitalize`/
+  `swapcase` and `strip`/`lstrip`/`rstrip` answer what CPython answers — `"straße".upper()` is `STRASSE`, `"ﬁ".upper()`
+  is `FI`, `"İ".lower()` is two characters, `"ΑΣ".lower()` is `ας` and `"ΑΣΒ".lower()` is `ασβ`, `"ǅ".title()` is `ǅ`,
+  `"\x1cx".strip()` is `x` — because the answers come from `pkg/lang/testdata/case-table.json`, which
+  `tools/casetab` generates by asking the reference every code point (1114112 asked; `go run ./tools/casetab -check`
+  re-asks it), and because the compile-time fold and the emitted IR door read that ONE artifact rather than each
+  carrying a rule. A module that never asks a case or trim question carries neither table. This is not Go's case
+  engine: `strings.ToUpper("straße")` answers `STRAßE`, `strings.ToLower("ΑΣ")` answers `ασ`, and `unicode.IsSpace`
+  does not count U+001C as whitespace (**ADR 0362**, roadmap L11.5, closing Gap N.2; `docs/language.md` § *A text is a
+  sequence of code points* and § *Case and trim* are the authority). What is owed is named by the rows: a
+  comprehension over a text (`[c for c in "abc"]`, `L11.1`/`Gap I.2`), and the search/split/pad methods over a
+  receiver the compiler cannot read (`Gap I.2`).
 - **Text formatting** — f-strings (`f"x{n}"`, an interpolation is a text value: ADR 0359) and printf-style
   `%` on a text: `"hi %s, you are %d" % ("Ada", 36)` is `hi Ada, you are 36`. The door renders
   `%s %r %a %d %i %o %x %X %e %E %f %F %g %G %c` with the reference's flags, widths, precisions, the `*`/`.*`

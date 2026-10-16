@@ -43,11 +43,42 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	// propagation, so a parameter called `s` cannot drag an unrelated numeric `s` along.
 	strVars := map[string]bool{}
 	notString := map[string]bool{}
+	// Which names hold a container whose elements are ALL texts. `xs = ["café"]` / `f(xs[0])` is the same
+	// text crossing the same boundary, and until the census kept it the parameter arrived unclassified:
+	// `def f(s): return "é" in s` printed False at exit 0 for `f(xs[0])` because the body asked its
+	// container roads about a text (roadmap L11.5, ADR 0362).
+	strElemVars := map[string]bool{}
+	notStrElem := map[string]bool{}
+	allTextElems := func(e Expr) (bool, bool) {
+		var elems []Expr
+		switch v := e.(type) {
+		case *ListLit:
+			elems = v.Elems // tuple or list: an element read out of either answers the element's own kind
+		case *SetLit:
+			elems = v.Elems
+		default:
+			return false, false
+		}
+		if len(elems) == 0 {
+			return false, false
+		}
+		for _, el := range elems {
+			if !isStringExpr(el) {
+				return false, true
+			}
+		}
+		return true, false
+	}
 	w.assign = func(scope, target string, value Expr, annot *Type) {
 		key := scopeKey(scope, target)
 		if isStringAnnotation(annot) || isStringExpr(value) {
 			strVars[key] = true
 			return
+		}
+		if ok, bad := allTextElems(value); ok {
+			strElemVars[key] = true
+		} else if bad {
+			notStrElem[key] = true
 		}
 		if value != nil {
 			notString[key] = true
@@ -70,6 +101,93 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 			out[fn] = m
 		}
 		m[idx] = true
+	}
+	// textFuncs is the conservative twin of strReturningFuncs: a function is in it only when EVERY
+	// return of its body answers a text. The looser table decides how a call's answer prints; this one
+	// decides what REPRESENTATION a parameter takes, where a wrong "yes" would print a number through
+	// the string table — so it asks every path, not any path.
+	textFuncs := map[string]bool{}
+	defines := map[string]bool{}
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			defines[fd.Name] = true
+		}
+	}
+	var answerIsText func(fd *FuncDef, e Expr, depth int) bool
+	callAnswersText := func(c *Call) bool {
+		nm, ok := c.Fn.(*Name)
+		if !ok {
+			return false
+		}
+		if !defines[nm.Value] && (nm.Value == "str" || nm.Value == "repr") && len(c.Args) == 1 {
+			return true // a rendering is text, and the body emits the same door for it (ADR 0258)
+		}
+		return textFuncs[nm.Value]
+	}
+	answerIsText = func(fd *FuncDef, e Expr, depth int) bool {
+		if e == nil || depth > 6 {
+			return false
+		}
+		if isStringExpr(e) {
+			return true
+		}
+		switch v := e.(type) {
+		case *Name:
+			for i, p := range fd.Params {
+				if p != nil && p.Name == v.Value && out[fd.Name][i] {
+					return true
+				}
+			}
+			if scopeHasString(strVars, notString, fd.Name, v.Value) {
+				return true
+			}
+			for _, val := range bodyBindings(fd)[v.Value] {
+				if answerIsText(fd, val, depth+1) {
+					return true
+				}
+			}
+			return false
+		case *Call:
+			return callAnswersText(v)
+		case *BinOp:
+			return isConcat(v)
+		case *Index:
+			// A character read out of a text IS a one-character text (ADR 0225), which is what
+			// `def f(s): return g()[0]` hands its caller.
+			return isStringExpr(v.Obj)
+		}
+		return false
+	}
+	fnOrder := make([]string, 0, len(funcs))
+	for fn := range funcs {
+		fnOrder = append(fnOrder, fn)
+	}
+	sort.Strings(fnOrder)
+	computeTextFuncs := func() bool {
+		changed := false
+		for _, fn := range fnOrder {
+			if textFuncs[fn] {
+				continue
+			}
+			fd := funcs[fn]
+			c := returnCollector{}
+			c.stmts(fd.Body)
+			if len(c.returns) == 0 {
+				continue
+			}
+			all := true
+			for _, r := range c.returns {
+				if !answerIsText(fd, r, 0) {
+					all = false
+					break
+				}
+			}
+			if all {
+				textFuncs[fn] = true
+				changed = true
+			}
+		}
+		return changed
 	}
 	w.call = func(scope, fn string, args []Expr) {
 		fd, ok := funcs[fn]
@@ -104,6 +222,23 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 			}
 			if isStringExpr(a) {
 				mark(fn, pos)
+			} else if ix, ok := a.(*Index); ok {
+				// xs[0] of a container the program filled with texts is a text (ADR 0225's answer is a
+				// one-character text, and a slice of one is a text).
+				if nm, ok2 := ix.Obj.(*Name); ok2 && strElemVars[scopeKey(scope, nm.Value)] && !notStrElem[scopeKey(scope, nm.Value)] {
+					mark(fn, pos)
+				} else if isStringExpr(ix.Obj) {
+					mark(fn, pos)
+				} else if sl, ok3 := ix.Obj.(*Slice); ok3 && isStringExpr(sl.Obj) {
+					mark(fn, pos)
+				}
+			} else if ca, ok := a.(*Call); ok && callAnswersText(ca) {
+				// `f(g())` is a text argument exactly when g's answer is one. Until that was asked, a parameter
+				// receiving a call's answer carried no record of the text crossing the boundary: the body then
+				// asked its container roads about a text, which is how `def f(s): return "é" in s` printed
+				// False at exit 0 and `s[1]`/`s[1:3]` of the same parameter refused with a list-shaped message
+				// (roadmap L11.5, ADR 0362).
+				mark(fn, pos)
 			} else if nm, ok := a.(*Name); ok && scopeHasString(strVars, notString, scope, nm.Value) {
 				// forwarding a variable that is known to carry a string
 				mark(fn, pos)
@@ -135,6 +270,15 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		}
 		w.stmts(prog.Stmts)
 	}
+	// The first look at the bodies needs a table to read, and the table is grown from the bodies: seed
+	// the parameter kinds once with nothing known, then let the two grow together below.
+	seed()
+	for pass := 0; pass < 8; pass++ {
+		if !computeTextFuncs() {
+			break
+		}
+	}
+	seed()
 
 	// Fixed point: a parameter known to receive a string makes its own *variable* a string, so
 	// a forwarding call discovered later marks the callee's parameter too.
@@ -164,6 +308,7 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 			}
 		}
 		seed()
+		computeTextFuncs()
 		if snapshotStrKinds(out) == before {
 			break
 		}
@@ -264,8 +409,15 @@ func strReturningFuncs(prog *Program) map[string]bool {
 	}
 	// Declared before its own body so the name-bound case can ask it of a binding value — a closure
 	// assigned with `:=` cannot reach its own name in its initializer (roadmap Gap R.170, ADR 0286).
-	var isStrExprIn func(fd *FuncDef, e Expr) bool
-	isStrExprIn = func(fd *FuncDef, e Expr) bool {
+	// The depth is a cycle guard, not a tuning number: `x = x[1:3]` writes a binding whose slice base is
+	// the name the binding itself defines, and the two arms below follow a name back to what wrote it.
+	// The bodies this asks about nest a handful deep, so the bound is never reached — it is what stops a
+	// self-referential binding from walking the stack away.
+	var isStrExprIn func(fd *FuncDef, e Expr, depth int) bool
+	isStrExprIn = func(fd *FuncDef, e Expr, depth int) bool {
+		if depth > 8 {
+			return false
+		}
 		if e == nil || isStringExpr(e) {
 			return e != nil && isStringExpr(e)
 		}
@@ -284,7 +436,7 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			// (roadmap L11.2, Gap R.170, ADR 0286). The two-hop question is what ADR 0285's number half
 			// asks too: the value's kind is written by an assignment, not by the returned expression.
 			for _, val := range bodyBindings(fd)[v.Value] {
-				if isStrExprIn(fd, val) {
+				if isStrExprIn(fd, val, depth+1) {
 					return true
 				}
 			}
@@ -303,6 +455,17 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			// A method's `return str(...)` is the same verdict: the callee emits the same door, and the
 			// caller's print dispatch asks `callReturnsStr`, which reads this table.
 			return false
+		case *Slice:
+			// s[a:b] of a text is a text, bounds constant or not (ADR 0229). The arm was missing, so a body
+			// that binds a slice to a name and returns it handed its caller an @str_tab index while the
+			// caller, asking this table, rendered the number under it: `def f(s):
+			//     x = s[1:3]
+			//     return x` printed 1 where the reference prints af (roadmap L11.5, ADR 0362).
+			return isStringExpr(v.Obj) || isStrExprIn(fd, v.Obj, depth+1)
+		case *Index:
+			// A character read out of a text is a one-character text (ADR 0225), so `return g()[0]` answers
+			// text for the same reason slicing one does.
+			return isStringExpr(v.Obj) || isStrExprIn(fd, v.Obj, depth+1)
 		case *BinOp:
 			// "a" + x  /  x + "a" is a string; the codegen refuses it until the runtime can
 			// allocate, but the *intent* is a string, so the caller must not treat it as an int.
@@ -323,7 +486,7 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			w := returnCollector{}
 			w.stmts(fd.Body)
 			for _, r := range w.returns {
-				if isStrExprIn(fd, r) {
+				if isStrExprIn(fd, r, 0) {
 					out[name] = true
 					changed = true
 					break
