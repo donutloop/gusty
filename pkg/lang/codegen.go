@@ -1,18 +1,21 @@
-// codegen.go is the emitter's front door and the state behind it: GenerateIR, GenerateIRWithOptions
-// and GenerateIRReport assemble one module, irGen carries the facts about the module being compiled,
-// and the two post-passes that tidy the block layout (hoistAllocas and the debug-suffix strip) run over
-// the text the roads produced.
+// codegen.go is the emitter's front door and the state behind it: GenerateIR,
+// GenerateIRWithOptions and GenerateIRReport assemble one module, irGen carries the facts
+// about the module being compiled, and the two post-passes that tidy the block layout
+// (hoistAllocas and the debug-suffix strip) run over the text the roads produced.
 //
-// The lowering itself is spread over the files named for the question they answer — codegen_value.go
-// (an expression's value, which dispatches to the road for each shape), codegen_binop.go (a BinOp's
-// road), codegen_stmt.go (a statement), codegen_call.go (a call), codegen_arith.go
-// (a BinOp's roads), codegen_match.go, codegen_comp.go (a comprehension or generator), codegen_func.go,
-// codegen_class.go, codegen_text.go, codegen_container.go, codegen_index.go, codegen_float.go,
-// codegen_minmax.go, codegen_module.go, codegen_gc.go, codegen_error.go (a raise, a try, a trap's
-// sentence), codegen_truth.go (an i1 and the and/or connectives), codegen_union.go, codegen_instance.go
-// and the analysis predicates in codegen_facts.go — and the runtime IR blocks the module is assembled
-// from are in codegen_ir_*.go, one file per block. One declaration lives in exactly one of them; nothing
-// here re-decides a rule that lives there.
+// The lowering itself is spread over the files named for the question they answer:
+// codegen_call.go dispatches a call to codegen_method.go, codegen_builtin.go and its family,
+// codegen_func.go and codegen_instance.go; codegen_value.go dispatches an expression to
+// codegen_binop.go and codegen_index.go; codegen_stmt.go dispatches a statement to
+// codegen_assign.go, codegen_for.go, codegen_match.go and codegen_func.go. The rest answer
+// one construct each — codegen_arith.go (a BinOp's predicates), codegen_comp.go (a
+// comprehension or generator), codegen_class.go, codegen_text.go, codegen_container.go,
+// codegen_float.go, codegen_minmax.go, codegen_module.go, codegen_gc.go, codegen_error.go (a
+// raise, a try, a trap's sentence), codegen_truth.go (an i1 and the and/or connectives),
+// codegen_union.go — and the analysis predicates live in codegen_facts.go, which emits no IR.
+// The runtime IR blocks the module is assembled from are in codegen_ir_*.go, one file per
+// block. One declaration lives in exactly one of them; nothing here re-decides a rule that
+// lives there.
 package lang
 
 import (

@@ -23,7 +23,8 @@ whole package:
 | File | Answers |
 |---|---|
 | `pkg/lang/codegen.go` | the front door — `GenerateIR`/`GenerateIRReport`, the `irGen` state one module compiles with, and the allocas-hoisting block pass |
-| `pkg/lang/codegen_value.go`, `codegen_stmt.go`, `codegen_call.go` | an expression's value, a statement, a call |
+| `pkg/lang/codegen_value.go`, `codegen_stmt.go`, `codegen_call.go` | the three dispatchers: an expression's value, a statement, a call — each hands its node to the road for its shape |
+| `pkg/lang/codegen_binop.go`, `codegen_assign.go`, `codegen_for.go`, `codegen_method.go`, `codegen_builtin.go` + `codegen_builtin_{print,seq,numeric,text}.go` | the roads the dispatchers reach: a `BinOp`, a binding, a loop, a method call, a builtin by family |
 | `pkg/lang/codegen_arith.go`, `codegen_float.go`, `codegen_minmax.go`, `codegen_truth.go`, `codegen_union.go` | a `BinOp`'s roads, doubles, `min`/`max`, an `i1`, a gradual-typing slot |
 | `pkg/lang/codegen_text.go`, `codegen_container.go`, `codegen_index.go`, `codegen_comp.go`, `codegen_match.go`, `codegen_class.go`, `codegen_instance.go`, `codegen_func.go`, `codegen_module.go` | text, containers, subscripts, comprehensions and generators, `match`, classes, instances, functions, module state |
 | `pkg/lang/codegen_gc.go`, `codegen_error.go` | the compiled root stack's bookkeeping; a raise, a `try`, a trap's sentence |

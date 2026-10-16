@@ -1,5 +1,7 @@
-// Functions: the symbol a FuncDef is emitted under, its prologue and epilogue, its return road, and the
-// questions the call roads ask about what it answers.
+// Functions: the symbol a FuncDef is emitted under, its prologue and epilogue, its return
+// road, and the questions the call roads ask about what it answers — including
+// callUserFunc, the road a call to one of the program's own functions takes, which lives
+// here because it is the other half of funcDef.
 package lang
 
 import (
@@ -776,4 +778,314 @@ func (g *irGen) stmtReturn(b *strings.Builder, st Stmt, n *ReturnStmt) error {
 	g.gcCloseFrame(b)
 	b.WriteString(fmt.Sprintf("  ret i32 %s\n", v))
 	return nil
+}
+
+// callUserFunc is the road a call to a function the program defined takes: the argument
+// words, the pair the caller crosses with them, the float return the callee may carry, and
+// the tail call or trampoline the shape of the callee decides.
+func (g *irGen) callUserFunc(b *strings.Builder, c *Call, fnName string) (string, error) {
+	fd := g.fds[fnName]
+	if fd == nil {
+		return "", fmt.Errorf("codegen: unknown function %q", fnName)
+	}
+	n := len(fd.Params)
+	isFloat := g.floatFuncs[fnName]
+	vals := make([]string, n)
+	// tagWords is the second word of the arguments the pair crosses with, pre-filled from the same
+	// scan the `define` read: a parameter the scan marked always gets its tag word, whether the pair
+	// road answered the payload or the ordinary road did, because a `call` and its `define` that
+	// disagree about the arity is the module verifier's problem (roadmap L11.1, ADR 0273).
+	tagWords := make([]string, n)
+	for i := range fd.Params {
+		tagWords[i] = g.pairArityTag(fnName, i)
+	}
+	// pairArg is the pair road in front of the ordinary one; it is filled in below `argVal`, whose
+	// refusal it keeps for an argument the pair cannot name (ADR 0273).
+	var pairArg func(a Expr, idx int) (string, error)
+	// A container literal argument is materialised into the runtime heap and
+	// passed by handle; the callee declares the matching parameter as a
+	// container (see declareHeapParams / heapargs.go).
+	// strArgCheck reports the AOT limitation before emitting IR that LLVM
+	// would reject: a string is an `i8*` global in this backend, so passing
+	// one where the callee expects an `i32` produces
+	// `call i32 @f(i32 @.str1)` — "global variable reference must have
+	// pointer type". Naming the parameter keeps the message actionable.
+	strArgCheck := func(a Expr, idx int) error {
+		if _, isStr := g.stringVal(a); !isStr {
+			if _, isFs := a.(*FString); !isFs {
+				return nil
+			}
+		}
+		what := "an argument"
+		if idx >= 0 && idx < len(fd.Params) {
+			what = fmt.Sprintf("parameter %q of %s", fd.Params[idx].Name, fnName)
+		}
+		return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); CPython answers them", what)
+	}
+	argVal := func(a Expr, idx int) (string, error) {
+		if h, ok, err := g.heapArg(b, a); ok || err != nil {
+			if err != nil {
+				return "", err
+			}
+			return h, nil
+		}
+		// A string argument to a string parameter becomes its @str_tab index: the
+		// parameter is an i32 slot, and `call i32 @f(i32 @.strN)` is what LLVM rejects
+		// (Gap J.5). A forwarded string (already an index) passes straight through.
+		if idx >= 0 && g.strParamOf[fnName][idx] {
+			if nm, ok := a.(*Name); ok && g.internedVars[nm.Value] {
+				return g.value(b, a)
+			}
+			// An interpolation IS a text: the value road interns its parts and answers the index the
+			// parameter's i32 slot holds, so `g(f"x{n}")` reaches the callee as any other text does
+			// (roadmap Gap J.5's string parameter, L11.1's interpolation; ADR 0359).
+			if _, isFs := a.(*FString); isFs {
+				return g.value(b, a)
+			}
+			if txt, ok := g.stringVal(a); ok {
+				g.heapUsed = true
+				t := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", t, g.strConst(txt), g.strConst(pyReprString(txt))))
+				return t, nil
+			}
+		}
+		if err := strArgCheck(a, idx); err != nil {
+			return "", err
+		}
+		v, err := g.value(b, a)
+		if err != nil {
+			return "", err
+		}
+		// A compile-time list global (@.lstN, e.g. a folded comprehension)
+		// is not an i32 handle: copy it into the runtime heap so the callee
+		// receives a handle it can iterate, measure and index.
+		if ln, ok := g.staticLists[v]; ok {
+			return g.heapListFrom(b, ln, "")
+		}
+		return v, nil
+	}
+	// pairArg is tried before the ordinary road for a marked parameter: the argument's kind may live in
+	// an object the caller can read and the callee cannot, and the two words are what carry it over.
+	// It is written after `argVal` because the fallback is that road, refusal and all (ADR 0273).
+	pairArg = func(a Expr, idx int) (string, error) {
+		if p, t, handled, err := g.pairArgWords(b, fnName, idx, a); err != nil {
+			return "", err
+		} else if handled {
+			tagWords[idx] = t
+			return p, nil
+		}
+		// A position the scan considered for the pair and then closed is not a free pass. It was closed
+		// because some *other* call site hands that parameter something this pass cannot name —
+		// `y = twice(x)` / `z = twice(y)` is exactly that — and a caller holding a double now has no road
+		// left that reads its kind: the ordinary road keeps one word per argument and truncates the double
+		// to its int half, which is how `print(outer(2.5))` answered `8` for CPython's `10.0` at exit 0
+		// (roadmap Gap R.164, ADR 0280). Refusing here is the same judgement pairArgWords already makes for a
+		// float handed to a *marked* position: a kind with nowhere to travel.
+		if g.pairClosed[fnName] != nil && g.pairClosed[fnName][idx] && g.isFloat(a) {
+			return "", fmt.Errorf("codegen: %s is a float handed to parameter %d of %s, a position this pass considered for the (payload, tag) pair and closed because another call site hands it something it cannot name: the ordinary road keeps one word per argument and would truncate the double to its int half, which is a wrong number rather than a refusal (roadmap L11.6, Gap R.164, ADR 0280)", exprSurface(a), idx, fnName)
+		}
+		// The same judgement, one construct nearer the source: an entry of a dict literal whose kind the
+		// object chose is a pair, and the ordinary argument road has one word per argument. The answer's
+		// tag would be dropped at the door, which is how `g({"a": "x"}["a"])` prints the `@str_tab`
+		// position instead of the word — the Gap R.164 shape with a text where ADR 0280 had a float.
+		if dl, key, isLit := literalDictReadOf(a); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
+			return "", literalDictOneWordErr(key)
+		}
+		return argVal(a, idx)
+	}
+	// callArgWords is the one place the arity is spelled: every parameter's word, plus the tag word
+	// where the scan says the pair crosses.
+	callArgWords := func() []string {
+		out := make([]string, 0, len(vals)+len(tagWords))
+		for i := range vals {
+			out = append(out, vals[i])
+			if tagWords[i] != "" {
+				out = append(out, "i32 "+tagWords[i])
+			}
+		}
+		return out
+	}
+	// A helper that fills a container it was handed tells the caller what its elements are:
+	// `def fill(out, v): out.append(v)` called as `fill(names, "one")` is what makes
+	// `print(names[1])` render text instead of the raw string-table index (Gap J.5).
+	if fills := g.strFillOf[fnName]; len(fills) > 0 {
+		fillPos := 0
+		for _, a := range c.Args {
+			if kw, ok := a.(*KeywordArg); ok {
+				for i, p := range fd.Params {
+					if p.Name == kw.Name {
+						g.applyStrFill(fnName, i, kw.Value)
+					}
+				}
+				continue
+			}
+			g.applyStrFill(fnName, fillPos, a)
+			fillPos++
+		}
+	}
+	// A call whose answer is a pair is emitted by the pair door alone (pairCallPair): the ordinary
+	// numeric road would take the payload as though it were the whole value and print an int box
+	// handle as a number, which is the wrong answer this line of work exists to eliminate. The
+	// permission is this call's, and it is off while the arguments are lowered, so a nested call of
+	// the same shape inside an argument keeps its own honest refusal (roadmap L11.1, ADR 0273).
+	if g.pairRetDone[fnName] && !g.pairCallAsked[fnName] {
+		return "", fmt.Errorf("codegen: %s hands back the (payload, tag) pair its answer arrived in: print(...), a binding, and the positions that read one number ask the tag, and this position keeps one word for the value, so the tag has nowhere to go (roadmap L11.1, Gap R.146, ADR 0273)", fnName)
+	}
+	// A call whose answer is a container is lowered by the container door alone: the ordinary road
+	// would take the heap handle for the number it is not, which is how `print(f())` printed `0` and
+	// `[f(), 9]` printed `[1, 9]` (roadmap Gap R.67, ADR 0333). The permission is this call's alone and
+	// is off while the arguments are lowered, so a nested call of the same shape keeps its own refusal
+	// — ADR 0273's rule, read again by the door beside the pair road's.
+	if _, isContainerAnswer := g.containerAnswerOf(fnName); isContainerAnswer && !g.containerAnswerIsAsked(fnName) && g.containerAnswerCallIsCarriable(c) {
+		return "", containerAnswerRefusal(fnName)
+	}
+	// The same refusal for a container the scan proved and the slot table declined. Without this the
+	// fall-through returns the word the allocator handed back, and `print(f())` printed `0` for a
+	// function that returns `[5]` — the module built, the program ran, exit 0, and the number on the
+	// screen was a heap slot (roadmap Gap R.261, ADR 0333's scan read a second time).
+	if g.containerAnswerIsUndescribed(fnName) && !g.containerAnswerIsAsked(fnName) {
+		return "", containerAnswerUndescribedRefusal(fnName)
+	}
+	asked := g.pairCallAsked
+	g.pairCallAsked = map[string]bool{}
+	provided := make([]bool, n)
+	pos := 0
+	seenKw := false
+	for _, a := range c.Args {
+		if kw, ok := a.(*KeywordArg); ok {
+			seenKw = true
+			idx := -1
+			for i, p := range fd.Params {
+				if p.Name == kw.Name {
+					idx = i
+					break
+				}
+			}
+			if idx < 0 {
+				return "", fmt.Errorf("codegen: unknown keyword argument %q for %s", kw.Name, fnName)
+			}
+			if provided[idx] {
+				return "", fmt.Errorf("codegen: multiple values for argument %q of %s", kw.Name, fnName)
+			}
+			if isFloat {
+				fv := g.floatValue(b, kw.Value)
+				vals[idx] = "double " + fv
+			} else {
+				av, err := pairArg(kw.Value, idx)
+				if err != nil {
+					return "", err
+				}
+				vals[idx] = "i32 " + av
+			}
+			provided[idx] = true
+			continue
+		}
+		if seenKw {
+			return "", fmt.Errorf("codegen: positional argument after keyword argument for %s", fnName)
+		}
+		if pos >= n {
+			return "", fmt.Errorf("codegen: too many arguments for %s", callableSurfaceName(fnName))
+		}
+		if provided[pos] {
+			return "", fmt.Errorf("codegen: multiple values for argument %q of %s", fd.Params[pos].Name, fnName)
+		}
+		if isFloat {
+			fv := g.floatValue(b, a)
+			vals[pos] = "double " + fv
+		} else {
+			av, err := pairArg(a, pos)
+			if err != nil {
+				return "", err
+			}
+			vals[pos] = "i32 " + av
+		}
+		provided[pos] = true
+		pos++
+	}
+	// fill defaults for params not supplied
+	for i := range fd.Params {
+		if provided[i] {
+			continue
+		}
+		if fd.Params[i].Default == nil {
+			return "", fmt.Errorf("codegen: missing argument %q for %s", fd.Params[i].Name, fnName)
+		}
+		if isFloat {
+			fv := g.floatValue(b, fd.Params[i].Default)
+			vals[i] = "double " + fv
+		} else {
+			dv, err := pairArg(fd.Params[i].Default, i)
+			if err != nil {
+				return "", err
+			}
+			vals[i] = "i32 " + dv
+		}
+	}
+	g.pairCallAsked = asked
+	t := g.newTmp()
+	if _, ok := g.closures[fnName]; ok {
+		env := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* @%s_slot\n", env, fnName))
+		callArgs := append([]string{"i32 " + env}, callArgWords()...)
+		b.WriteString(fmt.Sprintf("  %s = call i32 @%s_env(%s)\n", t, fnName, strings.Join(callArgs, ", ")))
+		g.checkExn(b)
+	} else if g.decorated[fnName] {
+		// The decorated body is emitted through funcDef, which defines program-owned
+		// names under irSymbolPrefix, so the reference must carry it too (Gap R.4).
+		b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
+		g.checkExn(b)
+	} else {
+		if isFloat {
+			b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
+			if g.floatTemps == nil {
+				g.floatTemps = map[string]bool{}
+			}
+			g.floatTemps[t] = true
+		} else {
+			// FFI: call to an extern (C) function — marshal values to native types.
+			if ed, ok := g.externs[fnName]; ok {
+				if len(ed.Params) != len(c.Args) {
+					panic(fmt.Sprintf("extern function %q: expected %d args, got %d", fnName, len(ed.Params), len(c.Args)))
+				}
+				argTypes := []string{}
+				argRegs := []string{}
+				for i, p := range ed.Params {
+					if p.Annot != nil && p.Annot.Kind == KindString {
+						lit, ok2 := c.Args[i].(*StrLit)
+						if !ok2 {
+							panic("extern string args must be string literals: " + fnName)
+						}
+						gn := g.strConst(lit.Value) // ensure global @.strN exists
+						n := len(lit.Value)
+						argTypes = append(argTypes, "i8*")
+						argRegs = append(argRegs, fmt.Sprintf("i8* getelementptr([%d x i8], [%d x i8]* %s, i32 0, i32 0)", n, n, gn))
+					} else {
+						v, err := g.value(b, c.Args[i])
+						if err != nil {
+							return "", err
+						}
+						argTypes = append(argTypes, "i32")
+						argRegs = append(argRegs, "i32 "+v)
+					}
+				}
+				ret := "i32"
+				if ed.ReturnAnno != nil && ed.ReturnAnno.Kind == KindString {
+					ret = "i8*"
+				}
+				callArgs := []string{}
+				for i := range argTypes {
+					callArgs = append(callArgs, argTypes[i]+" "+argRegs[i])
+				}
+				b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, irSymbol(fnName), strings.Join(callArgs, ", ")))
+				return t, nil
+			}
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
+		}
+		g.checkExn(b)
+		// a generator function returns a runtime heap list handle
+		if g.genFuncs[fnName] {
+			g.listOperands[t] = true
+		}
+	}
+	return t, nil
 }

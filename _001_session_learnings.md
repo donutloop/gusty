@@ -4,7 +4,8 @@
 
 **Change (codegen layout)**: `pkg/lang/codegen.go` was 21,473 lines — 254 functions and seven runtime
 IR templates in one file, the largest single file in the tree by more than 3× and the file every cycle
-has to open. It is now 41 files: `codegen.go` keeps the front door (`GenerateIR`/`GenerateIRReport`,
+has to open. It is 50 files now (plus `codegen_sources_test.go`), and the largest of them is
+`codegen.go` itself at 1,256 lines — eleventh in the repo, behind eight other `pkg/lang` files. `codegen.go` keeps the front door (`GenerateIR`/`GenerateIRReport`,
 the `irGen` state, the allocas-hoisting pass) and the rest is named for the question it answers
 (`codegen_value.go`, `codegen_stmt.go`, `codegen_call.go`, `codegen_arith.go`, `codegen_match.go`,
 `codegen_comp.go`, `codegen_text.go`, `codegen_container.go`, `codegen_index.go`, `codegen_float.go`,
@@ -39,11 +40,22 @@ tests read.
   a comment reading "GenerateIR produces LLVM IR text for prog", and `const floatRuntimeIR` carried
   the comment that describes `raiseRuntimeIR`. Both were harmless while everything was one file and
   both are lies once the reader is somewhere else; each now sits where it is true.
-- **What is left big is big for a reason, and it is now named.** `irGen.call` (3,134 lines),
-  `irGen.stmt` (2,062) and `irGen.value` (1,757) are each in a file of their own. They are switches
-  whose arms each take the builder and return a value and an error, which is the shape that
-  decomposes into methods — the next cycle can take them one arm at a time, and
-  `codegen_sources_test.go` is already the harness that keeps the roads in view while it does.
+- **The three giants are dispatchers now, not 2,000-line switches.** `irGen.value`, `irGen.stmt` and
+  `irGen.call` were 1,757 / 2,062 / 3,134 lines each — one `switch` whose arms were bigger than most
+  files in the package. Each is now a dispatch table, and its arms are methods in the file that owns
+  their shape: `valueBinOp` in codegen_binop.go, `valueIndex`/`valueSlice` in codegen_index.go,
+  `stmtAssign`/`stmtAugAssign` in codegen_assign.go, `stmtFor`/`stmtWhile` in codegen_for.go,
+  `stmtMatch` in codegen_match.go, `stmtReturn`/`stmtYield*` in codegen_func.go, `callMethod` in
+  codegen_method.go, `callUserFunc` in codegen_func.go and the nineteen predeclared names by family in
+  `codegen_builtin_{print,seq,numeric,text}.go`. An arm moved whole; the compiler, not a reader, is what
+  proved each arm returned on every path — the one that did not (`callImportedSibling`, which falls
+  through to the function table when the name is not a sibling's) came back with a `called` flag rather
+  than a `return nil` that would have swallowed the fall-through.
+- **`open(f, "w")` truncates before its argument is read.** One extraction helper wrote
+  `open(f, "w").write(open(f).read() + …)` and ate a 1,000-line file. The compiler turned it into a
+  syntax error in seconds; the cost of the bug was the two minutes it took to notice that the
+  declaration-vs-HEAD check had been run before the move, not after. Re-run the equivalence check after
+  the last edit, not before it.
 - **Gate**: `make testparallel` green (`pkg/lang`, `integration`, `cmd/gustyc`, tools), `gofmt` and
   `go vet` clean. The split is one commit; no behaviour, no IR, no record and no ledger row moved.
 

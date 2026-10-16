@@ -70,7 +70,8 @@ func TestCodegenSourcesCoverTheEmitter(t *testing.T) {
 		"codegen.go", "codegen_value.go", "codegen_binop.go", "codegen_stmt.go", "codegen_call.go", "codegen_arith.go",
 		"codegen_match.go", "codegen_comp.go", "codegen_func.go", "codegen_class.go", "codegen_text.go",
 		"codegen_container.go", "codegen_index.go", "codegen_float.go", "codegen_minmax.go",
-		"codegen_assign.go", "codegen_for.go",
+		"codegen_assign.go", "codegen_for.go", "codegen_method.go", "codegen_builtin.go",
+		"codegen_builtin_print.go", "codegen_builtin_seq.go", "codegen_builtin_numeric.go", "codegen_builtin_text.go",
 		"codegen_module.go", "codegen_gc.go", "codegen_error.go", "codegen_truth.go", "codegen_facts.go",
 		"codegen_union.go", "codegen_instance.go", "codegen_ir_arena.go",
 	} {

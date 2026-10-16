@@ -1,5 +1,6 @@
-// Instances: which class an expression's value belongs to, the instance runtime block, and the operand
-// question an arithmetic or comparison road asks about an instance.
+// Instances: which class an expression's value belongs to, the instance runtime block, the
+// operand question an arithmetic or comparison road asks about an instance, and the road that
+// builds one (callInstantiate, the other half of `Point(1, 2)`).
 package lang
 
 import (
@@ -155,4 +156,39 @@ func (g *irGen) instanceRuntimeIR() string {
 // one prints a verdict (ADR 0257, against the L6.6 rule).
 func (g *irGen) instanceOperand(x Expr) bool {
 	return g.receiverClass(x) != ""
+}
+
+// callInstantiate builds an instance of a class: the slot, the class id, and the attribute
+// row that starts out holding nothing (ADR 0235).
+func (g *irGen) callInstantiate(b *strings.Builder, c *Call, fnName string) (string, error) {
+	g.heapUsed = true
+	h := g.newTmp()
+	g.emitRtAllocKind(b, h, HeapKindInstance, c.Span())
+	// A heap slot is reused, and an instance inherits nothing from whoever held it last — not
+	// even which attributes exist. The clear zeroes the presence row; the slot count is final
+	// because every name the program can write was interned before emission (ADR 0235).
+	b.WriteString(fmt.Sprintf("  call void @rt_inst_clear(i32 %s, i32 %d)\n", h, g.nextSlot))
+	b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
+	if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
+		// Compute each argument value first (each emits its own load
+		// statement on a fresh line), then emit the call using the
+		// computed temporaries so the IR stays well-formed.
+		argTmp := make([]string, len(c.Args))
+		for i, arg := range c.Args {
+			av, err := g.value(b, arg)
+			if err != nil {
+				return "", err
+			}
+			argTmp[i] = av
+		}
+		b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
+		for _, av := range argTmp {
+			b.WriteString(", i32 " + av)
+		}
+		b.WriteString(")\n")
+		// A constructor that raises has failed to construct: the exception propagates
+		// before the instance is ever used (Gap R.41, ADR 0223).
+		g.checkExn(b)
+	}
+	return h, nil
 }
