@@ -548,3 +548,232 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.inFunc = false
 	return nil
 }
+
+// stmtYieldFrom is the road a `yield from` takes: the sub-generator's values, one at a
+// time, into the same buffer.
+func (g *irGen) stmtYieldFrom(b *strings.Builder, st Stmt, n *YieldFromStmt) error {
+	if g.genHandle == "" {
+		return fmt.Errorf("codegen: yield from outside a generator")
+	}
+	// A statically-known list literal has no heap backing: append each
+	// element directly instead of treating the global as a heap handle.
+	if ll, ok := n.Expr.(*ListLit); ok {
+		for _, el := range ll.Elems {
+			ev, err := g.value(b, el)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, ev)
+		}
+		return nil
+	}
+	hv, err := g.value(b, n.Expr)
+	if err != nil {
+		return err
+	}
+	// Keep the sub-list handle alive across the GC emitted before the
+	// append loop; otherwise the generator's freshly-returned list can be
+	// collected and the loop reads a stale handle. Store the handle into a
+	// rooted alloca slot so GC keeps the object reachable.
+	hvslot := g.newTmp()
+	hvslotName := strings.TrimPrefix(hvslot, "%")
+	fmt.Fprintf(b, "  %%_%s = alloca i32\n", hvslotName)
+	fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", hv, hvslotName)
+	g.gcReg(b, hvslotName)
+	ln := g.newTmp()
+	fmt.Fprintf(b, "%s = call i32 @rt_list_len(i32 %s)\n", ln, hv)
+	ild := g.newLabel("yf.cond")
+	ilp := g.newLabel("yf.body")
+	inc := g.newLabel("yf.inc")
+	end := g.newLabel("yf.end")
+	iv := g.newTmp()
+	fmt.Fprintf(b, "%s = alloca i32\n", iv)
+	fmt.Fprintf(b, "  store i32 0, i32* %s\n", iv)
+	fmt.Fprintf(b, "  br label %%%s\n", ild)
+	fmt.Fprintf(b, "%s:\n", ild)
+	ivc := g.newTmp()
+	fmt.Fprintf(b, "%s = load i32, i32* %s\n", ivc, iv)
+	cmp := g.newTmp()
+	fmt.Fprintf(b, "%s = icmp slt i32 %s, %s\n", cmp, ivc, ln)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", cmp, ilp, end)
+	fmt.Fprintf(b, "%s:\n", ilp)
+	// The generator's answer is already parked in a rooted slot above (it keeps the list alive across
+	// the append loop), so the body can collect: each element is appended straight into that container,
+	// which roots it transitively from the sweep's own walk of the payload. The loop itself is
+	// the compiler's, not the program's: it fetches a word and appends it, minting no object, so it
+	// asks for no collection (loopSafePoint's `nil` body).
+	g.loopSafePoint(b, nil)
+	el := g.newTmp()
+	fmt.Fprintf(b, "%s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", el, hv, ivc)
+	fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, el)
+	fmt.Fprintf(b, "  br label %%%s\n", inc)
+	fmt.Fprintf(b, "%s:\n", inc)
+	nv := g.newTmp()
+	fmt.Fprintf(b, "%s = add i32 %s, 1\n", nv, ivc)
+	fmt.Fprintf(b, "  store i32 %s, i32* %s\n", nv, iv)
+	fmt.Fprintf(b, "  br label %%%s\n", ild)
+	fmt.Fprintf(b, "%s:\n", end)
+	return nil
+}
+
+// stmtYield is the road a `yield` takes in a generator the backend unrolls.
+func (g *irGen) stmtYield(b *strings.Builder, st Stmt, n *YieldStmt) error {
+	// `yield expr` inside a generator function appends to the function's
+	// runtime heap list (the interpreter evaluates generators eagerly).
+	if g.genHandle == "" {
+		return fmt.Errorf("codegen: yield outside a generator function")
+	}
+	v, err := g.value(b, n.Expr)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, v)
+	return nil
+}
+
+// stmtReturn is the road a `return` takes, including the double it has to carry when the
+// function answers one.
+func (g *irGen) stmtReturn(b *strings.Builder, st Stmt, n *ReturnStmt) error {
+	if g.handledArms > 0 {
+		// Returning out of an `except` arm ends the handler's work: the exception this
+		// arm accepted must not survive the return, or the caller's next call-site check
+		// hands it back as though nothing had handled it (Gap R.21, compiled half).
+		g.clearExn(b)
+	}
+	if n.Expr == nil {
+		// bare `return` yields None (ADR 0172). A float function reaching this is
+		// a type error the checker reports; 0.0 keeps the module valid.
+		if g.floatFuncs[g.curFunc] {
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
+			g.gcCloseFrame(b)
+			b.WriteString("  ret double 0.000000\n")
+			return nil
+		}
+		g.heapUsed = true
+		t := g.newTmp()
+		g.emitHeapHelperCall(b, t, "rt_none", "", Span{})
+		if err := g.runDeferred(b); err != nil {
+			return err
+		}
+		g.gcCloseFrame(b)
+		b.WriteString(fmt.Sprintf("  ret i32 %s\n", t))
+		return nil
+	}
+	// One word crosses a `return`, and a dict literal's entry does not always travel in one word: the
+	// answer to `{"a": "x"}["a"]` is a text whose payload is an `@str_tab` index, and a caller with no tag
+	// to read prints the table position — the reference's `x` turned into a number at exit 0. The pair road
+	// at the call boundary (ADR 0273) is the row that owns carrying it (Gap R.146); until it does, this
+	// door refuses by name rather than answers wrongly, and every position that does carry the pair —
+	// print, str()/repr(), an f-string field, a binding — is answered (roadmap Gap R.215, ADR 0327).
+	if dl, key, isLit := literalDictReadOf(n.Expr); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
+		return literalDictOneWordErr(key)
+	}
+	if g.floatFuncs[g.curFunc] {
+		// A pair-returning callee under a double return: the callee answered (payload, tag) beside its
+		// own return, and the one place a tagged value becomes a double is @rt_lift_num — the same door a
+		// float slot's arithmetic lifts through. `def g(y): return y * 2` under
+		// `def f(x): x = x + 1.5; return g(x)` is this shape: the callee's parameter has to arrive as a
+		// pair for the multiply to keep the half, and the answer the caller reads is that pair lifted to
+		// the double this function's convention already promised (roadmap L11.1, Gap R.139's return half).
+		if p, t, okPair, pairErr := g.pairCallPair(b, n.Expr); pairErr != nil {
+			return pairErr
+		} else if okPair {
+			lift := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call double @rt_lift_num(i32 %s, i32 %s)\n", lift, p, t))
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
+			g.gcCloseFrame(b)
+			b.WriteString(fmt.Sprintf("  ret double %s\n", lift))
+			return nil
+		}
+		fv := g.floatValue(b, n.Expr)
+		if err := g.runDeferred(b); err != nil {
+			return err
+		}
+		g.gcCloseFrame(b)
+		b.WriteString(fmt.Sprintf("  ret double %s\n", fv))
+		return nil
+	}
+	if g.strFuncs[g.curFunc] {
+		// A function known to yield a string returns its @str_tab index: callers
+		// read the result as an index (that is what makes print(f("x")) show text,
+		// ADR 0174), so returning the raw @.strN global here put a global in an
+		// i32 slot and llc rejected the module — a plain `def g(): return "hi"`
+		// looked like a compiler bug (ADR 0166).
+		if txt, ok := g.stringVal(n.Expr); ok {
+			it := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", it, g.strConst(txt), g.strConst(pyReprString(txt))))
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
+			g.gcCloseFrame(b)
+			b.WriteString(fmt.Sprintf("  ret i32 %s\n", it))
+			return nil
+		}
+	}
+	// A container handed back by a `return` is an object, and an object has a handle rather than a
+	// global. `return [1, 2]` used to lower the literal to its compile-time array and write
+	// `ret i32 @.lst1`, which is not IR: `llc` rejected the module and `gustyc` exited **2** — the code
+	// the exit-code contract reserves for a compiler bug — on `def build(): return [1, 2]` with
+	// `print(build())`, a program the reference runs and prints `[1, 2]` (roadmap Gap R.67, ADR 0333).
+	// The builders reached here are the ones a binding already uses, so the word that crosses the `ret`
+	// is the same handle `ys = build()` has been handing back all along, and the roads that read a
+	// container variable read the answer as soon as the print door asks it (below).
+	if _, isContainerAnswer := g.containerAnswerOf(g.curFunc); isContainerAnswer {
+		mustBuild := false
+		switch n.Expr.(type) {
+		case *ListLit, *SetLit, *DictLit, *Comp:
+			mustBuild = true // the scan proved the answer; a builder that declines says so, it does not emit a global
+		}
+		if h, _, okHandle := g.containerHandleOf(b, n.Expr); okHandle {
+			g.heapUsed = true
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
+			g.gcCloseFrame(b)
+			b.WriteString(fmt.Sprintf("  ret i32 %s\n", h))
+			return nil
+		}
+		if mustBuild {
+			_, cErr := g.containerOperand(b, n.Expr)
+			if cErr != nil {
+				return cErr
+			}
+			return fmt.Errorf("codegen: %q answers a container this backend cannot build at the return (roadmap Gap R.67, ADR 0333)", g.curFunc)
+		}
+	}
+	if g.pairRetDone[g.curFunc] {
+		// The body's answer already is a (payload, tag) pair — the arithmetic door decided its kind from
+		// the objects the caller read — so the tag travels beside the return and the payload keeps the
+		// word this function always returned (roadmap L11.1, Gap R.139, ADR 0273).
+		p, t, rerr := g.pairReturnWords(b, n.Expr)
+		if rerr != nil {
+			return rerr
+		}
+		g.storePairTag(b, t)
+		// The value is computed before the deferred bodies run, as Python's `return` in a `try` does
+		// (Gap R.23, ADR 0222) — and the tag is stored before them for the same reason: a `finally` that
+		// calls this function again would otherwise leave its own answer's kind in the word.
+		if err := g.runDeferred(b); err != nil {
+			return err
+		}
+		g.gcCloseFrame(b)
+		b.WriteString(fmt.Sprintf("  ret i32 %s\n", p))
+		return nil
+	}
+	v, err := g.value(b, n.Expr)
+	if err != nil {
+		return err
+	}
+	// deferred bodies run -- which is why `return n` in a `try` hands back the `n` from
+	// before the `finally` reassigned it, as it does in Python (Gap R.23, ADR 0222).
+	if err := g.runDeferred(b); err != nil {
+		return err
+	}
+	g.gcCloseFrame(b)
+	b.WriteString(fmt.Sprintf("  ret i32 %s\n", v))
+	return nil
+}

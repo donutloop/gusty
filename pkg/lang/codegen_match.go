@@ -385,3 +385,83 @@ func (g *irGen) matchInstance(b *strings.Builder, sub, class, classVal string, a
 	}
 	return cond, nil
 }
+
+// stmtMatch is the road a `match` takes: the subject once, the pattern tests the matcher in
+// this file answers, the arm's captures bound before its body runs.
+func (g *irGen) stmtMatch(b *strings.Builder, st Stmt, n *MatchStmt) error {
+	sub, err := g.matchSubjectOperand(b, n.Subject)
+	if err != nil {
+		return err
+	}
+	endL := g.newLabel("match.end")
+	for i, c := range n.Cases {
+		bodyL := g.newLabel("match.case")
+		fallL := endL
+		if i < len(n.Cases)-1 {
+			fallL = g.newLabel("match.next")
+		}
+		// The captures of the arm that runs are written in the block the branch enters, and only by
+		// that arm: deciding which arm matches is not binding anything (Gap R.68, ADR 0358).
+		savedBinds := g.matchBinds
+		g.matchBinds = nil
+		patterns := append([]Expr{c.Pattern}, c.Or...)
+		if len(patterns) == 1 {
+			pc, perr := g.matchPattern(b, sub, patterns[0])
+			if perr != nil {
+				return perr
+			}
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", pc, bodyL, fallL))
+			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+			// The arm is the one that matched: this is where its captures bind.
+			g.emitArmCaptures(b)
+		} else {
+			// An arm written `case p0 | p1 | …` is decided one alternative at a time, and each
+			// alternative enters the arm's body carrying ITS captures. Folding the alternatives into one
+			// `or i1` and writing every alternative's captures made a name bound by the alternative that
+			// did not match answer the value the other one computed — `case [a] | {"k": a}:` over [3]
+			// printed the interred `k`, because the mapping pattern's `rt_dict_get` ran last and won.
+			// One arm block cannot hold that, since the stores differ per alternative.
+			for k, p := range patterns {
+				altFalse := g.newLabel("match.alt")
+				last := k == len(patterns)-1
+				if last {
+					altFalse = fallL
+				}
+				pc, perr := g.matchPattern(b, sub, p)
+				if perr != nil {
+					return perr
+				}
+				enterL := g.newLabel("match.alt.enter")
+				b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", pc, enterL, altFalse))
+				b.WriteString(fmt.Sprintf("%s:\n", enterL))
+				g.emitArmCaptures(b) // this alternative's captures, and no other's
+				b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
+				if !last {
+					b.WriteString(fmt.Sprintf("%s:\n", altFalse))
+				}
+			}
+			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+		}
+		g.matchBinds = savedBinds
+		if c.Guard != nil {
+			gok, gerr := g.truthyValue(b, c.Guard)
+			if gerr != nil {
+				return gerr
+			}
+			bodyAfter := g.newLabel("match.case.body")
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", gok, bodyAfter, fallL))
+			b.WriteString(fmt.Sprintf("%s:\n", bodyAfter))
+		}
+		for _, s := range c.Body {
+			if err := g.stmt(b, s); err != nil {
+				return err
+			}
+		}
+		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		if i < len(n.Cases)-1 {
+			b.WriteString(fmt.Sprintf("%s:\n", fallL))
+		}
+	}
+	b.WriteString(fmt.Sprintf("%s:\n", endL))
+	return nil
+}
