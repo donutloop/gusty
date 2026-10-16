@@ -40,6 +40,9 @@ func TestABoundArithmeticAnswerAnswersLikeTheReferenceAtTheCLI(t *testing.T) {
 		{"bound inside a while arm", built + "i = 0\nwhile i < 1:\n    n = xs[0][0] * 2\n    print(n)\n    i = 1\n", "14\n"},
 		{"two names bound from one container", built + "a = xs[0][0] * 2\nb = xs[0][1] * 3\nprint(a, b)\n", "14 24\n"},
 		{"the answer in a print's second argument", built + "n = xs[0][0] * 2\nprint(\"n\", n)\n", "n 14\n"},
+		// The unpacking target is a binding position too, and it asks this same door per element: the row
+		// that used to sit in the refusal table below (Gap R.144) is answered here (roadmap L11.1, ADR 0367).
+		{"two names bound by one unpacking", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\nprint(b)\n", "8\n10\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -308,10 +311,12 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 // misread ADR 0309 refused for `abs(n) + 1`, and the fold door is asked of a fold's ARGUMENT, never of the
 // fold itself. The `min(n, 3)` row that used to open this table answers since ADR 0316 and lives in
 // `pair_fold_test.go`. The float domain is no longer on this table: Gap R.148's shapes are answered by the
-// tag-selected arms (ADR 0304), and they sit in the answer table above. A tuple unpacking is the other family
-// and is Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road once stored a
-// double into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must
-// stay a refusal — not a broken module — until the pair reaches it.
+// tag-selected arms (ADR 0304), and they sit in the answer table above. The tuple unpacking that used to sit
+// here is Gap R.144, and it answers since ADR 0367 — it joined the answer table above rather than stay a
+// refusal, because the unpacking binds names exactly as the plain assignment does. Exit 2 is forbidden in
+// every row (ADR 0166): the float road once stored a double into the i32 slot a tagged name owns, which is
+// the module `llc` rejects, so every shape here must stay a refusal — not a broken module — until the pair
+// reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
@@ -321,7 +326,9 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T)
 		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool
 		// arm converts, every other kind raises CPython's own sentence), so the two shapes Gap R.148 was
 		// filed with left the refusal table for the answer table above (ADR 0304, roadmap L11.1).
-		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
+		// The arithmetic over a name an UNPACKING bound is the same residue one statement earlier: the
+		// binding carries the pair, and the operator still keeps one word for the operand (Gap R.146).
+		{"arithmetic over a name an unpacking bound", "xs = []\nxs.append([\"hi\", 8])\na, b = xs[0][0], xs[0][1]\nprint(a + \"!\")\n", "one word"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -2044,29 +2044,6 @@ func (g *irGen) pairCallPrint(b *strings.Builder, e Expr) (bool, error) {
 	return true, nil
 }
 
-// bindPairCallResult binds a name to the answer of a pair-returning call: the pair the answer arrived
-// in, through the one binding door (ADR 0187), with the arithmetic origin recorded so every position
-// that later reads the name asks the door that knows the kind (ADR 0267, ADR 0268).
-func (g *irGen) bindPairCallResult(b *strings.Builder, name string, e Expr) (bool, error) {
-	p, t, ok, err := g.pairCallPair(b, e)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, nil
-	}
-	g.bindTaggedVar(b, name, p, t)
-	if g.taggedOrigin == nil {
-		g.taggedOrigin = map[string]string{}
-	}
-	g.taggedOrigin[name] = taggedOriginArith
-	// The payload may be a float box, which is a heap object: the slot that holds it is a root for as
-	// long as the name holds it (ADR 0181's rule for every handle-carrying store; the store itself is
-	// the binding door's, so only the registration is emitted here).
-	g.gcReg(b, name)
-	return true, nil
-}
-
 // pairReturnWords is the callee's side of the answer direction: the pair the body's arithmetic answered,
 // and the word its tag travels in. A body the scan judged answerable and the door then declines is the
 // scan's mistake, not the program's — and the refusal below is what keeps that from being a load of

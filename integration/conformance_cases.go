@@ -241,6 +241,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the print door already took now travels through the binding, so `n = xs[0][0] * 2` and
 		// `print(n)` answer 14 on both witness legs (roadmap Gap R.138, ADR 0267).
 		"probe_arith_result_bound_to_a_name",
+		// …and the same arithmetic bound by an UNPACKING: `a, b = xs[0][0] + 1, xs[0][1] + 2` is `8` and `10`.
+		// The tuple target used to bind its names through the ordinary one-word road, which refused the slot
+		// it cannot see into; it now asks the plain assignment's door list per element (roadmap Gap R.144,
+		// ADR 0367 — the probe that pinned the refusal is this row's promotion).
+		"probe_pair_from_a_tuple_unpack",
+		// Every element kind the unpacking had to learn to carry: a slot read, arithmetic over a slot, a dict
+		// entry read (which printed the text's `@str_tab` index at exit 0), a text / `None` / `bool` element
+		// (which printed `hi`'s index, `0` and `1`), the answer of a call, a swap of two pair-bound names, and
+		// the pair-bound names read back by print, str, len and an f-string (roadmap L11.1, Gaps R.144 and
+		// R.321, ADR 0367).
+		"unpack_pair_binds_by_its_tag",
 		// …and the same name read back as a number: an operand, an ordering, a `while` head, a condition,
 		// `str`, an f-string field, the target of `+=`. Fifteen lines, both legs, the same bytes
 		// (roadmap Gap R.143, ADR 0268).
@@ -850,11 +861,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_whole_number_slot_beyond_the_int_word",
 		// The arithmetic the print position answers, one statement earlier, and the number positions that
 		// read the bound name back, are parity surface: both programs live in conformanceStandalone
-		// (roadmap Gaps R.138 and R.143, ADRs 0267 and 0268). What stays filed beside them is the unpacking
-		// that has not taken the pair (Gap R.144); the same value handed to a function is parity surface since
+		// (roadmap Gaps R.138 and R.143, ADRs 0267 and 0268), and so does the unpacking of the same
+		// expression (Gap R.144, ADR 0367); the same value handed to a function is parity surface since
 		// ADR 0273, and the value handed to a FOLD is parity surface since ADR 0316 — the program that pinned
 		// it, programs/probe_pair_bound_name_takes_a_value.gy, was promoted with that line.
-		"probe_pair_from_a_tuple_unpack",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
 		// the compiled path stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
@@ -1069,10 +1079,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the reference now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
 		ref:    "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "is refused: this backend builds a comprehension over an inline list literal"}}},
-	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
-		reason: "CPython prints 8 and the reference prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
-		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
 	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
 		reason: "CPython answers 7000000000 and so does the reference, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
 		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",

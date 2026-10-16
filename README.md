@@ -329,6 +329,23 @@ still prints the intern position under it (**Gap R.319**, `programs/probe_method
 defaulted method parameter or a `self.other()` call still refuses in words (**Gap R.320**) — never a crash,
 never exit 2.
 
+**An unpacking binds each name the way an assignment binds its value** (roadmap Gap R.144 — closed
+by ADR 0367). The doors that decide whether a value travels as a `(payload, tag)` pair belonged to
+the plain binding: an element of `a, b = …` went through the one-word road and recorded nothing, so
+`a, b = 1, None` printed `1 0`, `a, b = "a", "b"` printed the intern position `0 1`, `a, b = 1, 2.5`
+printed `1 2`, `def f(): a, b = 1, "z"; return b` returned `0`, and `a, b = xs[0][0] + 1,
+xs[0][1] + 2` — the arithmetic the plain binding answers with `8` — spent exit 1 on `index cannot
+reach into xs's slots`. The doors are one ordered list now (`pkg/lang/assign_pair.go`), asked per
+element by both binding roads and bound through `bindAssignPair`, which is ADR 0187's binding door
+plus the tag's origin and the rooting; every value is still read before any name is written, so the
+swap keeps swapping. `programs/probe_pair_from_a_tuple_unpack.gy` is that shape as an answered row
+and `programs/unpack_pair_binds_by_its_tag.gy` walks every element kind through the door, both
+byte-for-byte the reference. What the pair still cannot carry says so — the operand of a binary `+`,
+a condition, `a[0]` (**Gap R.323**), and binding a pair-bound name again, a non-name target or
+unpacking one collection (**Gap R.321**); an interned text name that answers from the fold, and a
+`None` returned out of a function, are the two wrong answers this row found and filed (**Gap
+R.322**).
+
 **A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
 named and left open. `print(build()[7])` is `IndexError: list index out of range` in the reference; here it was
 `codegen: index requires an inline list/dict/set literal` at exit 1 — while `ys = build()` / `print(ys[7])` had

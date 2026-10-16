@@ -344,24 +344,6 @@ func (g *irGen) pairFoldPrint(b *strings.Builder, e Expr) (bool, error) {
 	return true, nil
 }
 
-// bindFoldPair is the binding position's fold road: `m = min(n, 3)` binds the name with the pair the
-// answer arrived in, so every tag-reading position — print, str/repr, an f-string field, a container
-// element, a further fold — reads the same two words the run time wrote. The origin is recorded rather
-// than inferred, because the refusal this name meets later has to say where its tag came from and this
-// program contains no loop, no call site and no slot the name itself was read out of (Gap R.38).
-func (g *irGen) bindFoldPair(b *strings.Builder, name string, e Expr) (bool, error) {
-	p, t, ok, err := g.taggedFoldPair(b, e)
-	if err != nil || !ok {
-		return false, err
-	}
-	g.bindTaggedVar(b, name, p, t)
-	if g.taggedOrigin == nil {
-		g.taggedOrigin = map[string]string{}
-	}
-	g.taggedOrigin[name] = taggedOriginFold
-	return true, nil
-}
-
 // foldPairOf is the rendering positions' question — the f-string field's and str()/repr()'s — and it is
 // the same door print and the binder ask, so one fold cannot print `3` in a line and `3.0` in a field
 // (ADR 0303's rule that a value has ONE renderer, extended to the answer of a call).

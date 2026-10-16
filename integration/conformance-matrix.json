@@ -1003,6 +1003,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_pair_from_a_tuple_unpack",
+        "name": "probe_pair_from_a_tuple_unpack.gy",
+        "source": "# probe_pair_from_a_tuple_unpack.gy — the row's own shape: the arithmetic the plain assignment answers is\n# bound by an unpacking through the same door. `print(a)` is `8` on the compiled leg and the reference's;\n# the tuple target used to bind its names through the ordinary road, which refused the slot it could not see\n# into at exit 1 (roadmap L11.1, Gap R.144, paid by ADR 0367 — this probe is that row's promotion).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "8\n",
+      "python_ok": true,
+      "python_stdout": "8\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/unpack_pair_binds_by_its_tag",
+        "name": "unpack_pair_binds_by_its_tag.gy",
+        "source": "# unpack_pair_binds_by_its_tag.gy — an unpacking binds each name the way the plain assignment binds its\n# value: through the (payload, tag) pair, so the element's kind travels with the element. Every line is the\n# reference's answer, compiled; the roads that used to answer one word printed the `@str_tab` index for a\n# text element, the float box's handle for a float, `0` for `None` and `1` for `True`, and refused the slot\n# it could not see into for a slot read (roadmap L11.1, Gap R.144 and Gap R.321, ADR 0367).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\nprint(b)\nd = {}\nd[\"k\"] = [1, 2]\nc, e = d[\"k\"][0], d[\"k\"][1]\nprint(c)\nprint(e)\nys = []\nys.append(\"hi\")\nf, g = ys[0], 1\nprint(f)\nprint(g)\nh, i = None, True\nprint(h)\nprint(i)\n\n\ndef twice(v):\n    return v * 2\n\n\nj, k = twice(xs[0][0]), \"end\"\nprint(j)\nprint(k)\np, q = 1, 2\np, q = q, p\nprint(p)\nprint(q)\nm, n = xs[0][0] * 2, xs[0][1] * 3\nprint(m + n)\nprint(str(a), len([a, b]), f\"{m}-{n}\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "8\n10\n1\n2\nhi\n1\nNone\nTrue\n14\nend\n2\n1\n38\n8 2 14-24\n",
+      "python_ok": true,
+      "python_stdout": "8\n10\n1\n2\nhi\n1\nNone\nTrue\n14\nend\n2\n1\n38\n8 2 14-24\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_pair_bound_name_as_a_number",
         "name": "probe_pair_bound_name_as_a_number.gy",
         "source": "# probe_pair_bound_name_as_a_number.gy — a name the pair road bound is read as a number.\n#\n# The arithmetic a slot's answer takes travels to the binding as a (payload, tag) pair (ADR 0267), and\n# this program asks every position that wants one static number to read it: an operand of a sum, a\n# negation, an ordering, a condition's head, a `while` head, an `and`, `str`, an f-string field, and the\n# target of an augmented assignment. Each of them refused one commit ago with the missing pair named\n# (roadmap Gap R.143); every line now answers the same on CPython, `--interp` and `--aot`.\n#\n# A float is bound beside an int on purpose: the tag is what decides `17.5` from `17`, and a position\n# that read the payload alone would print the box handle underneath it. What this program does *not*\n# ask is a position that takes a whole value — a builtin's argument, a container's element, an `and`'s\n# operand — which is the next door over (Gap R.146, programs/probe_pair_bound_name_takes_a_value).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\nprint(n - 1)\nprint(-n)\nprint(n \u003e 13)\nprint(13 \u003e n)\nprint(1 if n \u003e 1 else 0)\nif n:\n    print(\"truthy\")\ni = 0\nwhile n \u003e 0 and i \u003c 2:\n    print(n)\n    i = i + 1\n    n = n - 1\nprint(str(n))\nprint(f\"[{n}]\")\nq = xs[0][1] * 3\nq += 1\nprint(q)\nr = xs[0][0] * 2.5\nprint(str(r))\nprint(r \u003e 17)\nprint(f\"{r}\")\n",
@@ -4249,42 +4291,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_pair_from_a_tuple_unpack",
-        "name": "probe_pair_from_a_tuple_unpack.gy",
-        "source": "# probe_pair_from_a_tuple_unpack.gy — the pair road stops at the plain assignment. CPython and the\n# interpreted leg print 8 for `a`; the compiled leg spends exit 1 on the unpacking, because the tuple\n# target binds its names through the ordinary road, which refuses the slot it cannot see into\n# (roadmap Gap R.144, measured landing ADR 0267).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "CPython prints 8 and the reference prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
-        "ref": "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "index cannot reach into xs's slots",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)",
-      "python_ok": true,
-      "python_stdout": "8\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 8 and the reference prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
-      "oracle_ref": "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_float_literal_with_exponent",
         "name": "probe_float_literal_with_exponent.gy",
         "source": "print(1e18)\n",
@@ -4443,7 +4449,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/182/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/184/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4457,7 +4463,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/182/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/184/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5035,12 +5041,12 @@
       ]
     }
   ],
-  "rows": 207,
-  "skipped": 33,
-  "pass": 174,
+  "rows": 208,
+  "skipped": 32,
+  "pass": 176,
   "fail": 0,
-  "oracle_match": 160,
-  "oracle_debt": 25,
+  "oracle_match": 162,
+  "oracle_debt": 24,
   "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

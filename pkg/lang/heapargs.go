@@ -6491,32 +6491,6 @@ func (g *irGen) liftPair(b *strings.Builder, payload, tag string) string {
 	return d
 }
 
-// bindArithmeticPair is the pair road of an assignment, asked the same way from the plain statement and
-// from an augmented one: when the ordinary numeric road would refuse the expression, ask the objects and
-// bind the name with the pair the answer arrived in (roadmap L11.1, ADR 0267).
-// bindSlotReadPair is `n = xs[0]` over a container the program BUILT (`xs = []` / `xs.append(3)`), where
-// the element's kind is a fact about the object rather than about the literal. The pair door the print
-// dispatch, the comparisons and `len` already use answers it, and binding only the payload would leave a
-// number wearing another object's bits — the interned index of a text reads back as the integer 4 (ADR
-// 0185's rule, applied to the one binding road that had not been taken). `n = xs[0][0] * 2` has always
-// come through bindArithmeticPair; the plain read had nowhere to go, so `str(n)` refused and `n + 1`
-// blamed a loop that was never written (roadmap L11.1, Gap R.146, ADR 0302's diagnostic pass).
-func (g *irGen) bindSlotReadPair(b *strings.Builder, name string, e Expr) (bool, error) {
-	p, t, ok := g.runtimeSlotPairDeep(b, e)
-	if !ok {
-		return false, nil
-	}
-	g.bindTaggedVar(b, name, p, t)
-	if g.taggedOrigin == nil {
-		g.taggedOrigin = map[string]string{}
-	}
-	g.taggedOrigin[name] = taggedOriginSlot
-	// The payload may be a float box or a container handle, both of which are heap objects: the slot is a
-	// root for as long as the name holds it (ADR 0181's rule for every handle-carrying store).
-	g.gcReg(b, name)
-	return true, nil
-}
-
 // recordSlotOrigin says where a name's pair came from when the door that bound it read a slot. The
 // origin is what lets a later refusal name the truth (taggedVarErr); a binding that leaves it unset
 // falls through to a sentence that has to guess, and the guess it used to make — "comes from a loop
@@ -6529,32 +6503,6 @@ func (g *irGen) recordSlotOrigin(name string) {
 		return
 	}
 	g.taggedOrigin[name] = taggedOriginSlot
-}
-
-func (g *irGen) bindArithmeticPair(b *strings.Builder, name string, e Expr) (bool, error) {
-	if !g.arithWouldRefuse(e) {
-		return false, nil
-	}
-	v, t, okPair, err := g.taggedArithPair(b, e)
-	if err != nil {
-		return false, err
-	}
-	if !okPair {
-		return false, nil
-	}
-	g.bindTaggedVar(b, name, v, t)
-	if g.taggedOrigin == nil {
-		g.taggedOrigin = map[string]string{}
-	}
-	g.taggedOrigin[name] = taggedOriginArith
-	// The sentence has to name what the arithmetic was *over*. `xs = [1]; xs.append(2.5)` really is a slot
-	// the program built at run time; `y = x + 1` inside a function is arithmetic over a value the caller
-	// handed in, and telling the reader to look for a container they never wrote is Gap R.38's own defect
-	// (roadmap L11.1, Gap R.38, ADR 0285).
-	if g.arithReadsAParameter(e, g.params) {
-		g.taggedOrigin[name] = taggedOriginParamArith
-	}
-	return true, nil
 }
 
 // arithReadsAParameter reports that an expression reaches its number through a parameter rather than

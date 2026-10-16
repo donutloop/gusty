@@ -1,7 +1,7 @@
-# probe_pair_from_a_tuple_unpack.gy — the pair road stops at the plain assignment. CPython and the
-# interpreted leg print 8 for `a`; the compiled leg spends exit 1 on the unpacking, because the tuple
-# target binds its names through the ordinary road, which refuses the slot it cannot see into
-# (roadmap Gap R.144, measured landing ADR 0267).
+# probe_pair_from_a_tuple_unpack.gy — the row's own shape: the arithmetic the plain assignment answers is
+# bound by an unpacking through the same door. `print(a)` is `8` on the compiled leg and the reference's;
+# the tuple target used to bind its names through the ordinary road, which refused the slot it could not see
+# into at exit 1 (roadmap L11.1, Gap R.144, paid by ADR 0367 — this probe is that row's promotion).
 xs = []
 xs.append([7, 8])
 a, b = xs[0][0] + 1, xs[0][1] + 2

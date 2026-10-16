@@ -435,9 +435,13 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Code:       "lower.unsupported.slot-read-of-rebound-name",
 		Shape:      "a subscript into a container the compiler no longer trusts the binding of",
 		Suggestion: "bind the container to a fresh name after the last mutation and index that, or ask the object as a whole (print, ==, len, a loop) — the slot read is licensed by the literal the name was bound to, and a mutation or a hand-off to another function takes that licence back",
-		Rows:       []string{"L11.1", "Gap R.191"},
+		Rows:       []string{"L11.1", "Gap R.191", "Gap R.323"},
 		Markers:    []string{"cannot reach into", "the name was rebound, mutated"},
-		Sample:     "xs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)",
+		// The unpacking that used to be this code's sample — `a, b = xs[0][0] + 1, xs[0][1] + 2` — answers
+		// since ADR 0367, and a sample that compiles is a claim about nothing (TestCLICapabilityRefusalText
+		// RoundTrips fails it on purpose). What still asks the subscript for ONE word is a condition's head,
+		// and the truth of a slot of a container the program built is the half owed (Gap R.323).
+		Sample: "xs = []\nxs.append([7, 8])\nif xs[0][0]:\n    print(1)",
 	},
 }
 

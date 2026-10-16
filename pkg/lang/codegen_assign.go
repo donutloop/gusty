@@ -118,6 +118,86 @@ func (g *irGen) stmtAugAssign(b *strings.Builder, st Stmt, n *AugAssignStmt) err
 	return fmt.Errorf("codegen: unsupported augmented-assignment target %T", n.Target)
 }
 
+// bindFloatValue writes a double into a name, by whichever of the two roads the name's slot allows: the
+// `double` slot this binding opens, or — when an earlier binding already chose the four-byte slot — the
+// (payload, tag) pair through bindFloatRebinding, because a `store double` into an `i32` alloca is an
+// eight-byte write that LLVM's opaque-pointer verifier cannot see and the neighbour pays for it.
+//
+// Both binding roads ask it: the plain assignment since ADR 0274, and the unpacking since the element that
+// is a float stopped being truncated into the int word (`a, b = 1, 2.5` printed `2` at exit 0 — roadmap
+// L11.1, Gap R.321, ADR 0367).
+func (g *irGen) bindFloatValue(b *strings.Builder, name, fv string, hadSlot bool) {
+	if hadSlot && g.bindFloatRebinding(b, name, fv) {
+		return
+	}
+	if g.doubleSlot == nil {
+		g.doubleSlot = map[string]bool{}
+	}
+	g.doubleSlot[name] = true
+	b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, name))
+	// A float is a word of its own, not a payload waiting for a tag: the pair the last binding wrote has
+	// no reader left, and leaving it would have print ask the stale tag instead of the double in the slot
+	// (Gap R.142).
+	g.forgetTaggedBinding(name)
+	if g.floatVars == nil {
+		g.floatVars = map[string]bool{}
+	}
+	g.floatVars[name] = true
+}
+
+// recordNoneAndBool is ADR 0172's latest-binding rule for the two singleton-family records: a variable's
+// LAST binding decides how print, truthiness, `str` and equality lower, so the binding that writes the
+// value also writes (or clears) the claim that the value is None or a bool.
+//
+// It is asked by both binding roads — the plain assignment, which has always applied it, and the unpacking,
+// which wrote the value word and recorded nothing, so `a, b = 1, None` printed `0` and `a, b = 1, True`
+// printed `1` where the reference prints `None` and `True` (roadmap L11.1, Gap R.321, ADR 0367).
+// `keepContainer` is the plain road's `rebindsContainer`: a binding that just took over a container slot
+// leaves the claim to the container roads.
+func (g *irGen) recordNoneAndBool(name string, rhs Expr, keepContainer bool) {
+	if g.isNoneExpr(rhs) {
+		if g.noneVars == nil {
+			g.noneVars = map[string]bool{}
+		}
+		g.noneVars[name] = true
+	} else if !keepContainer {
+		delete(g.noneVars, name)
+	}
+	// A bool is tracked by the same rule — `flag = 1 == 1` then `flag = 5` must print 5 (ADR 0172, applied
+	// to bools by ADR 0257).
+	if g.printsAsBool(rhs) && !keepContainer {
+		if g.boolVars == nil {
+			g.boolVars = map[string]bool{}
+		}
+		g.boolVars[name] = true
+	} else if !keepContainer {
+		delete(g.boolVars, name)
+	}
+}
+
+// recordTextStatus is the same rule for the interned-text pair: the concrete value the folds read (`len(s)`,
+// `s.upper()`) and the claim that the word in the slot is an `@str_tab` index rather than a number. Without
+// the second half `a, b = 1, "t"` printed `0` — the index — where the plain binding of the same text prints
+// `t`, because print asks the record and nothing wrote it (roadmap L11.1, Gap R.321, ADR 0270's family;
+// Gap R.73 is the same record on the call side).
+func (g *irGen) recordTextStatus(name string, rhs Expr) {
+	if sv, ok := g.stringVal(rhs); ok {
+		if g.strVals == nil {
+			g.strVals = map[string]string{}
+		}
+		g.strVals[name] = sv
+	}
+	// A call can return an @str_tab index without being a literal the folds recognize; min/max of texts is
+	// one. Recording the binding here is what lets a later print ask the same question that printing the
+	// call directly would have asked (roadmap Gap R.73).
+	if _, tracked := g.strVals[name]; !tracked && g.printsAsInternedStr(rhs) {
+		if g.internedVars == nil {
+			g.internedVars = map[string]bool{}
+		}
+		g.internedVars[name] = true
+	}
+}
+
 // stmtAssign is the road a binding takes: the slot it writes, the value word it writes, and what
 // the name is recorded as holding afterwards.
 func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
@@ -153,34 +233,117 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		}
 		// Tuple assignment must be simultaneous: `a, b = b, a` swaps,
 		// it must not alias the updated targets. Emit all target allocas
-		// first, then snapshot all RHS values, then store each target.
-		for _, tgt := range tup.Elems {
+		// first, then evaluate every element into registers, then bind each name.
+		//
+		// The evaluation asks the SAME ordered pair-door list the plain assignment asks
+		// (assign_pair.go) and binds through the same bindTaggedVar door, because an element of an
+		// unpacking is a binding position exactly like `n = <expr>` is. It had asked none of them:
+		// `a, b = xs[0][0] + 1, xs[0][1] + 2` over a container the program built spent exit 1 on the
+		// ordinary numeric road, and — the worse face — `a, b = d["a"], 1` over `d = {"a": "x"}` answered
+		// `1`, the text's `@str_tab` index, at exit 0, because the one-word road hands back a payload and
+		// throws the tag away (roadmap L11.1, Gap R.144, ADR 0367; ADR 0267's rule one construct nearer
+		// the source, ADR 0332's the same shape one construct nearer still). Evaluating every element
+		// before storing any is what keeps the swap simultaneous: a pair door answers into registers, so
+		// every load reads the old binding and every store happens afterwards.
+		hadSlot := make([]bool, len(tup.Elems))
+		for i, tgt := range tup.Elems {
 			if nm, ok2 := tgt.(*Name); ok2 {
 				// Unpacking binds each name to an element the front end cannot read as
 				// a verdict, so whatever the name held before is gone (ADR 0172's
 				// latest-binding rule, carried to bools by ADR 0257 — the interpreter
 				// already forgets here, and the two engines must forget together).
 				g.forgetVarBool(nm.Value)
+				hadSlot[i] = g.allocd[nm.Value]
 				if !g.allocd[nm.Value] {
+					// A name that opens here may choose its own width, exactly as the plain binding
+					// does: a float element opens a `double` slot, and a name that already has the
+					// four-byte slot cannot (roadmap L11.6, ADR 0274's rule, read by the unpacking
+					// through Gap R.321).
+					slotTy := "i32"
+					if g.isFloat(valElems[i]) {
+						slotTy = "double"
+					}
 					g.allocd[nm.Value] = true
-					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
-					g.gcReg(b, nm.Value)
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca %s\n", nm.Value, slotTy))
+					if slotTy == "i32" {
+						g.gcReg(b, nm.Value)
+					}
 				}
 			}
 		}
-		vals := make([]string, len(tup.Elems))
+		// One element, answered: either the two words a pair door computed, or the one word the
+		// ordinary road lowered. Nothing is stored until every element has been evaluated.
+		type unpackedElem struct {
+			name    string
+			pair    assignPair
+			isPair  bool
+			isFloat bool
+			hadSlot bool
+			payload string
+			rhs     Expr
+		}
+		elems := make([]unpackedElem, len(tup.Elems))
 		for i := range tup.Elems {
+			nm, isName := tup.Elems[i].(*Name)
+			if !isName {
+				// A target that is not a name — `a, d[0] = 1, 2` — is not a slot this road writes, and it
+				// never was: the road skips it, which is why the reference writes both names and entries and
+				// this backend writes one (filed as Gap R.322, pinned beside the parity rows below).
+				continue
+			}
+			if p, okPair, err := g.assignPairWords(b, valElems[i]); err != nil {
+				return err
+			} else if okPair {
+				elems[i] = unpackedElem{name: nm.Value, pair: p, isPair: true, rhs: valElems[i]}
+				continue
+			}
+			if g.isFloat(valElems[i]) {
+				// The element is a double, and the name's slot is either the `double` this statement
+				// opened or the `i32` an earlier binding chose; the two are bound differently, through
+				// the same door the plain assignment asks (roadmap L11.6, Gap R.321, ADR 0274).
+				elems[i] = unpackedElem{name: nm.Value, isFloat: true, hadSlot: hadSlot[i], payload: g.floatValue(b, valElems[i]), rhs: valElems[i]}
+				continue
+			}
+			if src, isSrcName := valElems[i].(*Name); isSrcName && g.allocd[src.Value] {
+				// The element is another name, and that name has a slot: the value is asked FROM THE SLOT,
+				// not from the literal the name was first bound to. The one-word road's constant fold answers
+				// an interned text name out of the intern table — which is right for a read and wrong for a
+				// swap, because the store below may already have moved a different value into the name on the
+				// left (`a, b = "x", "y"` then `a, b = b, a` answered `y y`, where the reference answers `y x`);
+				// an unpacking reads every value before naming any of them, and a folded constant is not a
+				// read (roadmap L11.1, Gap R.144, ADR 0367).
+				payload := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", payload, "_"+src.Value))
+				elems[i] = unpackedElem{name: nm.Value, payload: payload, rhs: valElems[i]}
+				continue
+			}
 			val, err := g.value(b, valElems[i])
 			if err != nil {
 				return err
 			}
-			vals[i] = val
+			elems[i] = unpackedElem{name: nm.Value, payload: val, rhs: valElems[i]}
 		}
-		for i, tgt := range tup.Elems {
-			if nm, ok2 := tgt.(*Name); ok2 {
-				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", vals[i], nm.Value))
-				g.markBound(b, nm.Value) // unpacking binds every element (ADR 0228)
+		for _, el := range elems {
+			if el.name == "" {
+				continue
 			}
+			if el.isPair {
+				g.bindAssignPair(b, el.name, el.pair)
+				continue
+			}
+			if el.isFloat {
+				g.bindFloatValue(b, el.name, el.payload, el.hadSlot)
+				g.markBound(b, el.name)
+				continue
+			}
+			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", el.payload, el.name))
+			// The records the plain binding leaves behind, asked of the element this name took over:
+			// print, truthiness and the folds all read them, and an unpacking that stored the word and
+			// recorded nothing answered `None` as `0` and a text as its intern-table index (ADR 0172's
+			// latest-binding rule, roadmap L11.1, Gap R.321, ADR 0367).
+			g.recordNoneAndBool(el.name, el.rhs, false)
+			g.recordTextStatus(el.name, el.rhs)
+			g.markBound(b, el.name) // unpacking binds every element (ADR 0228)
 		}
 		return nil
 	}
@@ -310,23 +473,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		// Track the None singleton the same way containers are tracked: the variable's
 		// *latest* assignment decides how print/truthiness/equality lower, and any other
 		// assignment must clear the status (x = None; x = 0 must print 0) (ADR 0172).
-		if g.isNoneExpr(n.Value) {
-			g.noneVars[nm.Value] = true
-		} else if !rebindsContainer {
-			delete(g.noneVars, nm.Value)
-		}
-		// A bool is tracked the same way, by the same rule: the variable's latest
-		// assignment decides how print and str render it, and any other assignment clears
-		// the status — `flag = 1 == 1` then `flag = 5` must print 5 (ADR 0172's rule, applied
-		// to bools by ADR 0257).
-		if g.printsAsBool(n.Value) && !rebindsContainer {
-			if g.boolVars == nil {
-				g.boolVars = map[string]bool{}
-			}
-			g.boolVars[nm.Value] = true
-		} else if !rebindsContainer {
-			delete(g.boolVars, nm.Value)
-		}
+		g.recordNoneAndBool(nm.Value, n.Value, rebindsContainer)
 		// A module-level container variable needs its slot + GC root before
 		// anything mutates it; the empty-literal init (`xs = []`) is where that
 		// happens, because the literal path below only stores a fresh handle.
@@ -440,51 +587,16 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		// `v = xs[i]` out of a tagged list binds a (value, tag) pair, not a bare i32:
 		// the slot means nothing without its companion, and print(v) dispatches on the
 		// tag exactly as a loop variable over a mixed list does (ADR 0185, ADR 0187).
-		if ix, isIndex := n.Value.(*Index); isIndex {
-			if v, t, okRead, rerr := g.taggedContainerRead(b, ix); okRead && rerr == nil {
-				// `y = xs[0][1]`, `y = d["a"][1]`, `y = t[0][0][0]` — binding a slot of a container that
-				// is itself reached through a slot. Same rule as the two bindings below: the payload
-				// means nothing without its tag, so both travel and print(y) dispatches on the tag
-				// instead of guessing a kind (roadmap L11.1, ADR 0241).
-				g.bindTaggedVar(b, nm.Value, v, t)
-				g.recordSlotOrigin(nm.Value)
-				return nil
-			}
-			if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
-				// `v = d[k]` out of a dict whose values mix kinds binds the pair too; the
-				// block below this one is the list version of the same binding.
-				val, tag, err := g.mixedDictPair(b, dictName, ix.Idx, ix.Span())
-				if err != nil {
-					return err
-				}
-				g.bindTaggedVar(b, nm.Value, val, tag)
-				g.recordSlotOrigin(nm.Value)
-				return nil
-			}
-			if dl, isLit := ix.Obj.(*DictLit); isLit && !g.dictLiteralFoldAnswers(dl, ix.Idx) {
-				// `v = {"a": "x"}["a"]` binds the pair for the same reason `v = d[k]` does: the entry's kind is
-				// a fact about the object, and a payload without its tag is a table index or a box handle
-				// wearing a number. The door is the one the print position asks, so the two cannot disagree
-				// about the answer (roadmap Gap R.215, ADR 0327 — ADR 0267's rule one construct nearer the source).
-				val, tag, derr := g.literalDictPair(b, dl, ix.Idx, ix.Span())
-				if derr != nil {
-					return derr
-				}
-				g.bindTaggedVar(b, nm.Value, val, tag)
-				g.recordSlotOrigin(nm.Value)
-				return nil
-			}
-			if listName, mixed := g.mixedIndexRead(ix); mixed {
-				val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
-				if err != nil {
-					return err
-				}
-				// Rebinding over a container or a tagged value: the door frees the old heap slot and
-				// marks the root dead, the way every other immediate binding does.
-				g.bindTaggedVar(b, nm.Value, val, tag) // the tagged slot is written too (ADR 0228)
-				g.recordSlotOrigin(nm.Value)
-				return nil
-			}
+		// The four subscript doors live in assign_pair.go, because an unpacking element asks the
+		// identical list and the two roads must not answer one slot two ways (roadmap L11.1,
+		// Gap R.144, ADR 0232, ADR 0367).
+		if p, okPair, err := g.indexPairWords(b, n.Value); err != nil {
+			return err
+		} else if okPair {
+			// Rebinding over a container or a tagged value: the door frees the old heap slot and
+			// marks the root dead, the way every other immediate binding does (bindTaggedVar).
+			g.bindAssignPair(b, nm.Value, p)
+			return nil
 		}
 		// `n = xs[0][0] * 2` — the arithmetic the print position answers, refused one statement
 		// earlier. The print dispatch asks the pair door for exactly this expression (ADR 0265) and
@@ -492,32 +604,14 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		// wants one i32 with no tag beside it and refuses the slot it cannot see into. The road is the
 		// same door, and the name becomes a tagged binding — the shape `print(n)` already reads —
 		// because a payload without its tag is a number wearing another object's bits (roadmap
-		// Gap R.138, ADR 0265's rule one statement earlier).
-		if handled, aerr := g.bindPairCallResult(b, nm.Value, n.Value); aerr != nil {
-			return aerr
-		} else if handled {
-			return nil
-		}
-		if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
-			return aerr
-		} else if handled {
-			return nil
-		}
-		// `m = min(n, 3)` — the answer of a fold the run time decided, bound to a name. The print
-		// position already asks this door; a binding that only kept the payload would leave a float
-		// winner printing as its box handle and an int winner printing as whatever a text slot's
-		// interned index happens to be (roadmap L11.1, Gap R.146; ADR 0267's rule, ADR 0316).
-		if handled, ferr := g.bindFoldPair(b, nm.Value, n.Value); ferr != nil {
-			return ferr
-		} else if handled {
-			return nil
-		}
-		// `n = xs[0]` over a container the program built: the kind lives in the object, so the binding
-		// carries the tag beside the payload or the name means nothing on its own (ADR 0185, applied
-		// by the one binding road that had not asked — roadmap L11.1, Gap R.146).
-		if handled, perr := g.bindSlotReadPair(b, nm.Value, n.Value); perr != nil {
-			return perr
-		} else if handled {
+		// Gap R.138, ADR 0265's rule one statement earlier). The four value doors — a pair-returning
+		// call, the arithmetic, a fold the run time decided, a slot of a container the program built —
+		// live in assign_pair.go in the order the plain road has always asked them, and the unpacking
+		// asks the same list (roadmap L11.1, Gap R.144, ADR 0367).
+		if p, okPair, err := g.valuePairWords(b, n.Value); err != nil {
+			return err
+		} else if okPair {
+			g.bindAssignPair(b, nm.Value, p)
 			return nil
 		}
 		if lit, ok := n.Value.(*ListLit); ok {
@@ -725,19 +819,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				return err
 			}
 		}
-		// track concrete string constant values for `len(s)` and string ops
-		if sv, ok := g.stringVal(n.Value); ok {
-			if g.strVals == nil {
-				g.strVals = map[string]string{}
-			}
-			g.strVals[nm.Value] = sv
-		}
-		// A call can return an @str_tab index without being a literal the folds recognize;
-		// min/max of texts is one. Recording the binding here is what lets a later print ask the
-		// same question that printing the call directly would have asked (roadmap Gap R.73).
-		if _, tracked := g.strVals[nm.Value]; !tracked && g.printsAsInternedStr(n.Value) {
-			g.internedVars[nm.Value] = true
-		}
+		g.recordTextStatus(nm.Value, n.Value)
 		// track dict literals assigned to variables for `d[key]`
 		if dl, ok := rhs.(*DictLit); ok {
 			// runtime dict: allocate a heap dict object and fill pairs.
@@ -854,26 +936,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		}
 		if isFloat {
 			fv := g.floatValue(b, n.Value)
-			// The variable was bound to a number and is being rebound to a double: the slot is the
-			// `i32` that first binding chose, and a `store double` into it is an eight-byte write into
-			// a four-byte allocation — which LLVM's opaque-pointer verifier cannot see, and which the
-			// neighbour pays for (roadmap L11.6, Gap R.155, ADR 0274). The pair is the answer.
-			if hadSlot && g.bindFloatRebinding(b, nm.Value, fv) {
-				return nil
-			}
-			if g.doubleSlot == nil {
-				g.doubleSlot = map[string]bool{}
-			}
-			g.doubleSlot[nm.Value] = true
-			b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, nm.Value))
-			// A float is a word of its own, not a payload waiting for a tag: the pair the
-			// last binding wrote has no reader left, and leaving it would have print ask
-			// the stale tag instead of the double in the slot (Gap R.142).
-			g.forgetTaggedBinding(nm.Value)
-			if g.floatVars == nil {
-				g.floatVars = map[string]bool{}
-			}
-			g.floatVars[nm.Value] = true
+			g.bindFloatValue(b, nm.Value, fv, hadSlot)
 		} else {
 			// Root the variable's slot so a heap handle (instance/list/dict/set
 			// handle) stored here survives a later GC collection (Gap A / ADR

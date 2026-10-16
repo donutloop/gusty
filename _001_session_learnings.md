@@ -1,5 +1,68 @@
 # Session Learnings
 
+## Round 4 — Tuple unpacking binds by the element's tag (roadmap Gap R.144 closed; ADR 0367; Gap R.321, Gap R.322, Gap R.323 filed)
+
+**Change (codegen)**: `emitTupleAssign` in `pkg/lang/codegen_assign.go` lowered every right-hand
+element through the one-word road and recorded nothing about it, while the plain binding asked the
+pair doors first. `pkg/lang/assign_pair.go` is the new file: `assignPairWords` is the one ordered door
+list (`indexPairWords` for the four subscript doors, `valuePairWords` for the call, the arithmetic,
+the fold and the run-time slot, plus `namePairWords`, which the unpacking owns alone), and
+`bindAssignPair` is ADR 0187's `bindTaggedVar` plus the tag's origin and the rooting. Both binding
+roads ask it; the unpacking asks it per element and stores afterwards, which is what keeps
+`a, b = b, a` a swap. Four `bind*Pair` helpers and their four value doors in `heapargs.go`, `paircall.go`
+and `pairfold.go` collapsed into it (−93 lines), and the tests that pinned the old inline ordering were
+rewritten to ask the same questions of the shared door.
+
+**Answers the row turned** (each measured against CPython before and after, not remembered):
+`a, b = 1, None` printed `1 0`; `a, b = None, True` printed `0 1`; `a, b = "a", "b"` printed `0 1` —
+the `@str_tab` index; `a, b = 1, 2.5` printed `1 2`; `a, b, c, d = 1, "x", None, True` printed
+`1 0 0 1`; `def f(): a, b = 1, "z"; return b` returned `0`; and `a, b = xs[0][0] + 1, xs[0][1] + 2`
+over a container the program built spent exit 1 on `index cannot reach into xs's slots` while the
+plain binding of the same arithmetic answered `8`. All of them answer the reference now.
+
+**Discovery — a rebinding needs the name to be *registered*, not merely to exist.** Rebinding a
+pair-bound name to a plain int (`a, b = xs[0][0], xs[0][1]` then `a = 5`) opened a fresh `i32` beside
+the pair's own slot and read back `0`, because the rebinding road asked only `isTaggedName` and the
+unpacking had never put its names there. The pair roads write `taggedVars`; asking that map instead
+is what lets the rebinding load-and-retype the pair's payload, the way ADR 0267's road has always
+done. A name that has a pair must be a name every pair road can see — a binding road that binds
+privately is a binding road that lies later.
+
+**Discovery — two wrong answers this row found and deliberately did not fix.** An interned text
+name answers from the fold, not from its slot, so `a, b = "x", "y"` then `a, b = b, a` prints `y y`
+where the reference prints `y x`; and `def f(): a, b = 1, None; return b` printed at top level answers
+`0`, not `None`. Both were wrong at the same exit 0 before this row and are wrong after it: the fold
+is not a pair door, and ADR 0172's lesson is that a fold is retired, not patched beside a neighbour.
+Filed as **Gap R.322** with the reference's answer beside each, plus a conformance debt row.
+
+**Discovery — the refusal list is the deliverable too.** Widening the numeric gate would have made
+the unpacking's slot read answer and left `1 0` standing; the row's real content is that an element
+is decided by its value, so the positions that still cannot carry a tag (the operand of a binary `+`,
+a condition, `a[0]`, a call answer beside a slot read) stay refusals, pinned as refusals in
+`pkg/lang/unpack_pair_test.go` (**Gap R.323**), and the positions that need a door of their own
+(binding a pair-bound name again, a non-name target, unpacking one collection) are **Gap R.321**.
+`lower.unsupported.slot-read-of-rebound-name` in the capability registry now samples the condition
+shape, with `Gap R.321` among its rows, and `go run ./tools/captable` regenerated the docs table the
+registry guard compares byte for byte.
+
+**Process lesson — measure the claim, then measure the measurement.** This cycle arrived with a
+written-out model of the answer it expected to land, and three separate claims in that model turned
+out not to be on disk: a probe program that did not parse, two roadmap rows that had never been
+inserted, and a docs table edit that had duplicated a table instead of replacing it. Every one of
+them was caught by a guard the repo already had — `TestTheCapabilityRegistryIsWellFormed` refuses a
+row citation that is not in the tracker, `TestTheCapabilityDocsTableIsTheRegistry` refuses a table
+that is not the registry's bytes, `TestTheRoadmapSnapshotIsMeasuredNotRemembered` refuses a number
+the artifact does not hold (it named 220→221 programs, 155→158 owed rows, 7741→7743 record entries),
+and `tools/recmerge` refuses to write a record the compiled leg will not agree to. The lesson is not
+"trust the guards more than the plan" but that a claim in this repo is a *command*: the count is the
+file's, the answer is CPython's, the refusal is the door's, and a table is the bytes `captable`
+prints. Anything else is a memory, and memories are what the snapshot test exists to catch.
+
+**Witnesses**: 40 answer rows + 3 IR-shape rows + 7 refusal rows in `pkg/lang/unpack_pair_test.go`,
+13 answer rows + 6 refusal rows + 2 CLI rows in `integration/pair_binding_test.go`, two corpus
+programs promoted to answered matrix rows (208 rows, 176 parity-asserted, 32 divergences), and both
+sources added to the record leg through `tools/recmerge`.
+
 ## Refactor — the 21,473-line emitter becomes a family of files (no rule moved, no IR changed)
 
 **Change (codegen layout)**: `pkg/lang/codegen.go` was 21,473 lines — 254 functions and seven runtime

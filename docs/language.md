@@ -999,6 +999,37 @@ printed `text` at exit 0, why the same program refused `x * 2`, and why `-x` rai
 one function called at the binding, and it asks the print dispatch's own predicate about the right-hand
 side, so the notebook and the printer cannot disagree about what the name holds.
 
+### An unpacking binds each name by the **element's own tag** (Gap R.144, ADR 0367)
+
+`a, b = <values>` is not one statement about a container; it is a row of binding positions, and a
+binding position asks the pair doors. So each right-hand element is lowered through the same ordered
+list an ordinary assignment asks — a pair someone else already carried, the tagged read of a slot,
+the entry of a dict whose values mix kinds, the answer of a call, the arithmetic the print position
+answers, the fold that hands back one of its arguments, the slot of a container the program built,
+and (for the unpacking alone) a name the pair road bound before — and only then is it stored:
+
+```python
+xs = []
+xs.append([7, 8])
+a, b = xs[0][0] + 1, xs[0][1] + 2
+print(a)          # 8 — and the same three lines with `=` instead of `,` answer 8 too
+a = 5
+print(a, b)       # 5 8 — the rebinding retypes the pair's own slot, it does not open an int beside it
+```
+
+Before this rule the unpacking lowered every element through the one-word road and recorded nothing,
+so `a, b = 1, None` printed `1 0`, `a, b = "a", "b"` printed `0 1` (the `@str_tab` index), `a, b = 1,
+2.5` printed `1 2`, and a slot read in an element was refused outright with `index cannot reach into
+xs's slots` while the plain binding of the same expression answered it. Values are now decided by the
+value, in one place: `pkg/lang/assign_pair.go`.
+
+The values are still read **before any of them is named**, so `a, b = b, a` swaps and
+`a, b, c = c, a, b` rotates; a pair door answers into registers, which is what lets every load read
+the old binding. And what the pair road cannot carry is still refused rather than answered from the
+payload alone: `print(a + b)` over two pair-bound names, `if a:`, `print(a[0])` each say so, naming
+where the tag they cannot hold came from (roadmap Gap R.323, and Gap R.321 for binding a pair-bound
+name to a second name or unpacking one collection — `a, b = xs[0]`).
+
 ## None
 
 `None` is a real value — a singleton with its own dynamic type (`None`, value tag
