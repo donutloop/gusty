@@ -11839,3 +11839,118 @@ then every "N sources" claim in `AGENTS.md`, `docs/operations.md` and `roadmap.m
 `print("a" % 2)` agree with its record, and a **paid** row left on the drift ledger fails the build as loudly as a
 new one — so the ledger is rewritten with `GUSTY_GOLDEN_UPDATE=1` under the serial `make test`, never under the
 concurrent gate, where N processes would each overwrite the ledger with their own subset.
+
+## L11.3 — tuples are values, not syntax sugar (ADR 0361, 2026-10-16)
+
+### A refusal that becomes an answer has to be audited for the wrong answer underneath it
+
+`sorted([(2,1),(1,2)])` refused at the head of this branch, with `unsupported expression *lang.Tuple`. Once
+the tuple was an object, the same line printed `[(2, 1), (1, 2)]` — the input, at exit 0. `@rt_sort` compares
+payloads (ADR 0339's modes are "number" and "text"), and a container's payload is a **heap slot**: the arrival
+order, presented as an order. The refusal had been hiding a fabricated answer that predated tuples (lists did
+the same thing), and paying a row had exposed it. Every shape this loop promotes from refusal to answer is
+therefore worth asking: *what would the road have printed if it had not stopped?* `TestSortingContainersRefusesRatherThanPrintsArrival`
+is that question as a test — three container-element sorts must refuse naming **Gap R.309**, and the two sorts the
+door does answer must stay answered, so neither the wrong answer nor a blanket refusal can sneak through.
+
+### The fact belongs on the object; the refusal belongs on the node
+
+The compiled heap has one container layout, so a tuple is that object plus `estrBitTuple` in its own `@estr[h]`
+word. Everything that *renders or compares* asks the object — including the roads that only hold a handle at run
+time (`rt_tuple_flag` decides `tuple index out of range` from `list index out of range`; the bounds road has no
+other witness). Everything that must **stop the build** asks the node, because that is the only moment a build
+can be stopped: `t.append(3)` cannot consult an object it has not built yet. Keeping both, and asking each where
+it is knowable, is what let one layout serve both spellings without a lie in either direction. The corollary is
+that a copy must carry the attributes too — `rt_slice` copying `@estr` is what makes `t[1:]` a tuple — and that a
+road whose copy has *no* attribute word (`sorted`, `reversed`, the dict views) must keep its specific printer,
+because an object dispatcher that trusts a missing word prints the wrong brackets.
+
+### Re-spelling an AST node is a semantic change in every consumer that pattern-matched on it
+
+Making `(1, 2)` a `*ListLit{Tuple: true}` (rather than a `*Tuple`) was three lines in the parser and a tail of
+consumers that had been asking `case *Tuple`: the analyzer's elementwise inference (a variance diagnostic went
+silent), the unpack road, and `scalarStoreValue` in `boundflags.go`. That last one was the dangerous one — it
+decides whether a name carries a bound flag, and a name whose binding it no longer recognised silently stopped
+trapping, so `def f(c): if c: p, q = 1, 2` / `return p` printed `0` where both legs raise `UnboundLocalError`. It
+surfaced because an unrelated integration case (`tuple unpack on one branch`) had been written to be sensitive to
+exactly that. Two rules came out of it: ask a *predicate* (`g.isTupleExpr`) rather than a node type, and when the
+question depends on the binding's shape, pass the shape (`scalarStoreValueForTarget`) instead of inferring it from
+the value. The list-shaped twin of each bug was checked every time — if the list road does the same thing, the
+behaviour is the shared family (`Gap R.146`, `Gap I.2`) and gets a **parity** test, not an assertion.
+
+### Where the record and the reference disagree, the record keeps its drift row
+
+`print(-("a", 1))` is `TypeError: bad operand type for unary -: 'tuple'` in CPython and the golden record says
+`'list'` — the retired engine named the layout it used, and the record copied that. The compiled leg now says
+`'tuple'`, which means the row *diverges from the record* and stays on the drift ledger; the harness told me to
+delete it as "paid" at the moment the compiled leg still agreed with the record, which is precisely the wrong
+direction (ADR 0302: the reference is the definition, the record is evidence and the debt). A row whose shape
+changed — `a = (1, 2,)` became buildable, so "cannot build" became "echoed value differs" — is re-recorded with
+`GUSTY_GOLDEN_UPDATE=1` under the serial `make test`, and the diff is then read line by line: both drift ledgers
+had also been re-escaped (`—` → `\u2014`, `>` → `\u003e`) by the writer, and the two files disagree with each
+other about escaping, so the diff is normalised back to each file's own HEAD style before the content is judged.
+
+### A record for a promoted probe is asked of the reference, and then the counts move
+
+`probe_tuple.gy` moved from the oracle-debt ledger to an asserted parity program, which made the GC corpus ask a
+question nobody had recorded an answer to. `GUSTY_GOLDEN_MISSING` lists it, `tools/recmerge -sources` records it
+from CPython and refuses what the compiled leg will not agree to — 7151 → 7152 — and every "N sources" claim in
+`AGENTS.md`, `docs/operations.md` and the `roadmap.md` snapshot has to follow the file (Gap R.204 recomputes them).
+The historical count inside Gap R.31's own evidence cell (`7119 → 7151`) stays: it describes what that commit did,
+not what the file holds now.
+
+### Capability codes for refusals a doc promises, and a suggestion nobody can follow
+
+Two registry entries came with the refusals (`lower.unsupported.tuple-is-immutable`,
+`lower.unsupported.sort-elements-have-no-order`), each with a `Sample` that must still refuse or
+`TestCLICapabilityRefusalTextRoundTrips` calls the code "a claim about nothing". The first draft of the immutability
+suggestion told the user to write `t = t + (3,)` — which this backend also refuses (`Gap R.33`, no list-concatenate),
+so the advice would have sent a reader into a second refusal. A suggestion is part of the diagnostic: it may name a
+road that exists (`write the literal out`, `build a list for what you mutate`) and must name the missing half rather
+than offer a way to run something this toolchain does not run at all.
+
+### Documents are artifacts: run them
+
+The new `docs/language.md` § *Tuples are values* and the README's **Tuples are values** bullet were each extracted
+and executed against CPython in the same session (`diff` of compiled stdout against `python3`, empty). Every number
+and count claim in them is the file's own. The docs that this row falsified — the dict-key paragraph claiming
+`unsupported expression *lang.Tuple`, `d.items()`/`d.popitem()`'s "no tuple value until L11.3", "a tuple is refused
+until L11.3 gives it a value to render", the README's stale tuple-in-a-list-of-owed-shapes line — were rewritten to
+what the door does now, not softened: a claim a test cannot reach is a claim that will be wrong by the next cycle.
+
+### The three surprises, found by the gate rather than by the plan
+
+**The static global is a trap for a container with an attribute word.** `(1, 2)` of constants wants to fold
+to `@.lst1 = global {i32, [N x i32]}`, and that shape has no `@estr[h]` beside it — so a road that handed the
+global to `rt_heap_kind` emitted `call i32 @rt_heap_kind(i32 @.lst1)`, `llc` rejected the module, and the run
+ended at exit 2, which ADR 0166 reserves for a compiler bug. ADR 0188 had already solved this for lists with
+one rule — *the object has to be a heap object because its own bits answer* — and the tuple is the first
+container whose answer includes a bit the fold cannot carry. The lesson generalises past tuples: **any new
+per-object attribute disqualifies the compile-time global shape**, and the check belongs at the fold door
+(`value()`'s list branch, keyed on the literal's own flag), not in each caller.
+
+**A scan that records the wrong kind is worse than a scan that declines.** Routing a tuple-returning
+function to the container-return scan's `listAnswer` put it on the list's roads (static answer, road-named
+printer → `[1, 2]` for `(1, 2)`, plus the exit-2 above). Removing it from the scan entirely looked cleaner
+and was worse: the number door then printed the allocator's word for a container, at exit 0. What was right
+is a third answer in the scan — `tupleAnswer` — with the *physical* kind settled as the list's (slots, tag
+array, object kind word all say `list`) and the bracket claim recorded separately. When a table has to
+describe a value that is physically one thing and presentationally another, add a kind; do not reuse a kind
+and do not decline into a fall-through that has a different idea of what the value is.
+
+**Printers that ask the object must be used only where the object owns the answer.** The first cut routed
+every list-shaped print through `rt_print_container_value`; three guards noticed immediately, because
+`rt_slice` copies the attribute word while `sorted(...)`/`reversed(...)`/the dict views mint objects that
+have none — so a slice of a tuple printed right and a sorted list printed an interned index. The rule that
+came out: the dispatcher reads an attribute word, so only roads whose object *carries* one may ask it; roads
+whose object has no attribute word keep their specific printer. A reuse that "works on my program" is a
+claim about the door's precondition, and the precondition belongs in the commit message and the comment.
+
+**Process: a feature that lands turns refusal-guards into liabilities, fast.** Eight tests in this cycle
+failed not because the codegen was wrong but because they were written to fail the day the answer arrived
+("this compiles — the roadmap row says it is not answered"). That is the design working: each carried the
+roadmap row in its message, and the honest move each time was to move the case into the answered table and
+say, in the comment, which shape of the row is still owed (Gap R.295's tuple element, Gap R.302's mixed and
+nested patterns, Gap R.212's list key). What must never happen is deleting the case or softening the
+sentence; and what must also not happen is keeping a refusal the language no longer needs —
+`lower.unsupported.tuple-value` left the capability registry for exactly that reason.

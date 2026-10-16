@@ -203,12 +203,15 @@ func TestRenderPairAgreesWithPrint(t *testing.T) {
 // letting one answer and the other refuse.
 func TestStrOfAValueWhoseFormIsNotVisibleRefusesBothHalvesTogether(t *testing.T) {
 	t.Parallel()
+	// A tuple is NOT in this list: since ADR 0361 the immutable container is a value the pair renders,
+	// `str((1, 2))` and `repr((1, 2))` both answer `(1, 2)`, and the rows moved to the answered side.
+	// What the pair still cannot name is a value with no form at all — a function object.
 	for _, src := range []string{
-		"print(str((1, 2)))\n",
-		"print(repr((1, 2)))\n",
+		"print(str(lambda: 1))\n",
+		"print(repr(lambda: 1))\n",
 	} {
 		if _, err := Compile(src); err == nil {
-			t.Errorf("compiled backend accepted %q; a tuple is a form the pair cannot name", src)
+			t.Errorf("compiled backend accepted %q; a function is a form the pair cannot name", src)
 		}
 	}
 }

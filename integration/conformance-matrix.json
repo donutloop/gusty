@@ -373,6 +373,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_tuple",
+        "name": "probe_tuple.gy",
+        "source": "# Tuples are values, not syntax sugar (L11.3, ADR 0361). Promoted from an oracle probe to an\n# asserted parity program: the compiled backend used to stop at `unsupported expression\n# *lang.Tuple` on the first line, and the record rendered every tuple as a list. Now the\n# immutable container prints with its own brackets, subscripts, measures, unpacks and returns\n# from a function — the answer below is CPython's, line for line.\nt = (1, 2, 3)\nprint(t)\nprint(t[1])\nprint(len(t))\na, b = (4, 5)\nprint(a)\nprint(b)\ndef pair():\n    return (1, 2)\nprint(pair())\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "(1, 2, 3)\n2\n3\n4\n5\n(1, 2)\n",
+      "python_ok": true,
+      "python_stdout": "(1, 2, 3)\n2\n3\n4\n5\n(1, 2)\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_and_or_the_test_skips",
         "name": "probe_and_or_the_test_skips.gy",
         "source": "# probe_and_or_the_test_skips.gy — the operand the test did not choose never runs.\n#\n# The reference short-circuits: `x and boom()` never calls boom when x is false, `y or (1 // 0)` never\n# divides when y is true, and `if xs and xs[0] \u003e 0:` never subscript the empty list. Both engines used to\n# evaluate both operands and choose afterwards — which is all a `select` can do — so the skipped operand's\n# print ran, its division raised, and a call on the left of the operator ran twice on the compiled leg\n# because its truth and its value each evaluated it. The row is roadmap Gap R.149, ADR 0275; the operator\n# answering with an *operand* rather than a verdict is the ADR 0269 half beside it.\n#\n# Three things are pinned in one program, because they are one promise: the effects the reference never\n# performs do not happen (the boom lines below are printed only for the operand the test reached), a\n# trap inside the operand the test skipped is never raised, and a trap inside the operand it *did* choose\n# still raises the ordinary catchable error. The last two lines are the other half of the same rule: the\n# operand the test reaches runs exactly once, whatever it is.\ndef boom():\n    print(\"boom\")\n    return 9\nx = 0\ny = 1\nprint(x and boom())\nprint(y or boom())\nv = x and boom()\nprint(v)\nw = y or boom()\nprint(w)\nif x and boom():\n    print(\"then\")\nif y or boom():\n    print(\"or-then\")\nwhile x and boom():\n    print(\"loop\")\n    break\nprint(\"loop ended\")\nprint(x and (1 // 0))\nprint(y or (1 // 0))\ntry:\n    print(y and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the chosen operand raised\")\ntry:\n    print(x or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the other chosen operand raised\")\nprint(boom() and 2)\nprint(boom() or 2)\n",
@@ -4296,7 +4317,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/175/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/176/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4310,7 +4331,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/175/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/176/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4422,41 +4443,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_tuple",
-        "name": "probe_tuple.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — tuples are values. There is no AOT lowering for a\n# tuple literal at all (\"unsupported expression *lang.Tuple\"), and the interpreter\n# renders one as a list (L11.3).\nt = (1, 2, 3)\nprint(t)\nprint(t[1])\nprint(len(t))\na, b = (4, 5)\nprint(a)\nprint(b)\ndef pair():\n    return (1, 2)\nprint(pair())\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
-        "ref": "roadmap L11.3 (tuples are values)",
-        "pins": [
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: unsupported expression *lang.Tuple",
-      "python_ok": true,
-      "python_stdout": "(1, 2, 3)\n2\n3\n4\n5\n(1, 2)\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
-      "oracle_ref": "roadmap L11.3 (tuples are values)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: unsupported expression *lang.Tuple"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_mixed_return_value",
         "name": "probe_mixed_return_value.gy",
         "source": "# Refiled while fixing Gap R.20: this is *not* a try/except defect. A function whose `return`s\n# disagree on type — an integer on one path, a string on another — is specialised as returning\n# one of them, and the caller reads the other through the wrong lens: the int comes back as an\n# interned-string index, so print renders `(null)`. Same root as Gap R.22 (`sitofp i32 @.str3`).\n# The interpreter and CPython both print 3.\ndef guarded(a, b):\n    try:\n        return a % b\n    except ValueError:\n        return \"nope\"\n\nprint(guarded(7, 4))\n",
@@ -4507,7 +4493,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: tuple assignment length mismatch",
+      "aot_error": "codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)",
       "python_ok": true,
       "python_stdout": "attr ok\nvalue ok\nunpack ok\ncall ok\nlen ok\n",
       "aot_matches_python": false,
@@ -4521,7 +4507,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: codegen: tuple assignment length mismatch"
+        "compiled leg failed: codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)"
       ]
     },
     {
@@ -4754,8 +4740,8 @@
         "source": "# Oracle probe (L11.9, ADR 0186) — enumerate/zip/reversed produce tuples, so they need\n# L11.3 (tuples are values) before they can be language surface; the interpreter\n# renders their pairs as lists and the compiled backend refuses `list(\u003ccontainer\u003e)`.\nprint(list(enumerate([\"a\", \"b\"])))\nprint(list(zip([1, 2], [3, 4])))\nprint(list(reversed([1, 2, 3])))\n",
         "asserted": false,
         "oracle": "debt",
-        "reason": "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(\u003ccontainer\u003e) copies are refused in AOT",
-        "ref": "roadmap L11.7 + L11.3 (tuples are values)",
+        "reason": "the tuple half of this program is answered — the pairs print `(0, 'a')`, `(1, 3)` with the reference's brackets (L11.3, ADR 0361) — and what the compiled leg refuses is the walk to them: no builtin builds an `enumerate`/`zip` pair sequence, and `list(\u003ccontainer\u003e)` refuses to copy a container it cannot name, so the first line never prints",
+        "ref": "roadmap L11.7 (enumerate/zip, the container builtins; Gap R.174's container-method door) beside L11.3 (paid: the pair is a value the compiled backend prints, indexes, compares and hashes)",
         "pins": [
           {
             "backend": "aot",
@@ -4772,8 +4758,8 @@
       "conformant": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(\u003ccontainer\u003e) copies are refused in AOT",
-      "oracle_ref": "roadmap L11.7 + L11.3 (tuples are values)",
+      "oracle_reason": "the tuple half of this program is answered — the pairs print `(0, 'a')`, `(1, 3)` with the reference's brackets (L11.3, ADR 0361) — and what the compiled leg refuses is the walk to them: no builtin builds an `enumerate`/`zip` pair sequence, and `list(\u003ccontainer\u003e)` refuses to copy a container it cannot name, so the first line never prints",
+      "oracle_ref": "roadmap L11.7 (enumerate/zip, the container builtins; Gap R.174's container-method door) beside L11.3 (paid: the pair is a value the compiled backend prints, indexes, compares and hashes)",
       "oracle_rules": [
         "set-order",
         "instance-identity"
@@ -4890,11 +4876,11 @@
     }
   ],
   "rows": 200,
-  "skipped": 33,
-  "pass": 167,
+  "skipped": 32,
+  "pass": 168,
   "fail": 0,
-  "oracle_match": 153,
-  "oracle_debt": 25,
+  "oracle_match": 154,
+  "oracle_debt": 24,
   "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

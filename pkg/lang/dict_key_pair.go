@@ -52,6 +52,37 @@ func dictKeyCarriesPair(e Expr) bool {
 		// is the runtime's key-equality rule, not this gate's: it lives in the payload-and-tag
 		// comparison behind `rt_dict_get_tagged`, which ADR 0328 left correct.
 		return true
+	case *ListLit:
+		// The immutable spelling is a key the language hashes, and a dict holding one has its slots
+		// self-describing (a container key is a container slot: ADR 0232's promotion), which is exactly
+		// the state in which the one-word read prints the entry's @str_tab index as a number. The pair
+		// road is the only sound read of such an entry, so the gate must say yes here — and only for a
+		// tuple the door can build: every element a kind the pair table labels, no container inside
+		// (roadmap L11.3, ADR 0361).
+		if ln, isList := e.(*ListLit); isList && ln.IsTuple() {
+			return tupleKeyCarriesPair(ln)
+		}
 	}
 	return false
+}
+
+// tupleKeyCarriesPair is the walk that decides whether the door can build this key's pair: a tuple of
+// scalars and tuples-of-scalars, which is what `rt_dict_put_tagged` wrote the entry with and what
+// `rt_container_eq` compares it back against (roadmap L11.3, ADR 0361).
+func tupleKeyCarriesPair(ln *ListLit) bool {
+	if !ln.IsTuple() {
+		return false
+	}
+	for _, el := range ln.Elems {
+		if inner, isList := el.(*ListLit); isList {
+			if !tupleKeyCarriesPair(inner) {
+				return false
+			}
+			continue
+		}
+		if !dictKeyCarriesPair(el) {
+			return false
+		}
+	}
+	return true
 }

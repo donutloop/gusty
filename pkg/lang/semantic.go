@@ -671,8 +671,13 @@ func freshContainer(e Expr, want *Type) bool {
 	if want == nil {
 		return false
 	}
-	switch e.(type) {
+	switch v := e.(type) {
 	case *ListLit:
+		// A tuple literal is not a fresh LIST for a tuple-typed destination: the element types of a
+		// tuple are the element types the program WROTE, so `pair: tuple[int, str] = (1, 2)` keeps its
+		// covariance diagnostic instead of having the literal's second element quietly re-read as a str
+		// (roadmap L11.3, ADR 0361).
+		_ = v
 		return want.Kind == KindList
 	case *SetLit:
 		return want.Kind == KindSet
@@ -1296,6 +1301,18 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 	case *Call:
 		return an.inferCall(n)
 	case *ListLit:
+		if n.IsTuple() {
+			// The `(1, "a")` spelling is a TUPLE value, so the analyzer types it element by element the
+			// way the `*Tuple` node below does: a heterogeneous tuple is `tuple[int, str]`, not
+			// `list<any>`, and an unpack that counts the elements wrong is a diagnostic rather than
+			// silence (roadmap L11.3, ADR 0361 — the same fix that keeps the covariant element check
+			// answering for a tuple literal).
+			var elems []*Type
+			for _, el := range n.Elems {
+				elems = append(elems, an.inferExpr(el))
+			}
+			return TTuple(elems...)
+		}
 		var elem *Type
 		if len(n.Elems) > 0 {
 			elem = an.inferExpr(n.Elems[0])

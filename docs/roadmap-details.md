@@ -935,12 +935,41 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   program is pinned at CPython's `3.0` instead, and the sinks that store an `i32` word still refuse.
 
 <a id="l11-3"></a>
-- **L11.3 — Tuples are values, not syntax sugar** ⏳ PLANNED — `TupleLit` has no
-  AOT lowering at all (`unsupported expression *lang.Tuple`, so
-  `def pair(): return (1, 2)` cannot compile), and the interpreter prints a tuple
-  as `[1, 2, 3]`. Ship the tuple type in both backends: immutable, indexable,
-  unpackable, hashable as a dict key, printed `(1, 2)`/`(1,)`/`()`. Feeds the
-  covariant `tuple[...]` rule of L6.6, which today only has a checker to talk to.
+- **L11.3 — Tuples are values, not syntax sugar** ✅ DONE (ADR 0361, 2026-10-16) — the row's own
+  measurement was `unsupported expression *lang.Tuple` on six of eight shapes and **two parse errors** for
+  `a = ()`, with the retired engine rendering every tuple as a list. What ships is one object, not a second
+  value kind: the compiled heap keeps its one container layout (ADR 0232) and a tuple is that object with
+  the immutable-container bit set in its own `@estr[h]` attribute word, beside the interned-text claims
+  (ADR 0229) and the self-describing-slot bit (ADR 0187/0251). Three consequences did most of the work.
+  **(1) Ask the object.** `print(p)` after `p = mk(1, "x")` prints `(1, 'x')` because the printer reads the
+  handle's bit, and a *name* that holds a tuple and a *literal* written with parentheses reach the same
+  door; a compile-time-only fact could not survive the call boundary, and an object-only fact could not stop
+  `t.append(3)` before the build, so both are kept and each is asked where it is knowable. A tuple literal is
+  always heap materialised, because the `@.lstN` global shape has no attribute word to carry the fact.
+  **(2) A copy carries its attributes.** `rt_slice` was already copying payloads and (per ADR 0187) tags; it
+  now copies the object's `@estr` word too, which is what makes `t[1:]`, `t[::-1]` and `t[0:0]` tuples rather
+  than lists. The roads whose copies have *no* attribute word — `sorted`, `reversed`, the dict views — keep
+  their specific printers instead of being switched to the object dispatcher, because a dispatcher that
+  trusts a missing word prints the wrong brackets. **(3) Immutability is a refusal.** `append`, `extend`,
+  `insert`, `remove`, `pop`, `sort`, `reverse`, `clear` and `t[0] = v` stop the build quoting the reference's
+  `AttributeError`/`TypeError`, because the shared layout *could* carry the write and the result would be a
+  value the language does not have; a runtime no-op would keep the program running on it (ADR 0166).
+  Traps carry class **and** sentence — four roads raise `IndexError: tuple index out of range` (the object
+  answers when the road holds only a handle, via `rt_tuple_flag`; the node answers when the road can see the
+  source), `KeyError: (3, 4)` prints the key's repr, and an unhashable element inside a key names the inner
+  type (`(1, [2])` says `'list'`, the reference's left-to-right hashability walk).
+  The reference, not the record, decided the wording where the two disagree: the record still says
+  `bad operand type for unary -: 'list'` for `print(-("a", 1))` because the retired engine named the layout
+  it used, and that row stays on the drift ledger as a divergence *from the record*.
+  What the row does not claim: an order (`Gap R.309` — `sorted` refuses container elements rather than
+  printing arrival order), `count`/`index` (`Gap I.2`, refused for a list exactly as for a tuple), the empty
+  tuple's identity (`Gap R.310`), and the element read out of a container the compiler cannot kind
+  (`Gap R.146`), which is wrong for a list in the same way and is parity-guarded rather than asserted.
+  `probe_tuple` left the oracle-debt ledger and is an asserted parity program; `probe_enumerate`'s reason is
+  narrowed to the `enumerate`/`zip`/`list(<container>)` lowering that still owns it (L11.7). The covariant
+  `tuple[...]` rule of L6.6 now has a value to check against: a tuple literal infers elementwise
+  (`(1, "a")` is `tuple[int, str]`), so an unpack that counts elements wrong and an element that flows the
+  wrong way are diagnostics instead of silence.
 <a id="l11-4"></a>
 - **L11.4 — Python-shaped indexing: negatives, bounds, one rule** ✅ DONE (ADR 0210) —
   one normalisation (`i < 0 ⇒ i + len`) now serves read, write, `pop`, `index` and slice
@@ -13428,6 +13457,62 @@ Answering is a design choice, and a choice has to be stated, priced and tested r
 the statement, and `TestAnOrPatternBindsOnlyTheAlternativeThatMatched` — run in both alternative orders — is the
 test that the choice, if kept, is at least a consistent one.
 
+<a id="gap-r-309"></a>
+
+### Gap R.309 — a container has no order, so sorting one printed the order its values arrived in (filed by ADR 0361)
+
+```gusty
+print(sorted([(2, 1), (1, 2)]))    # was: [(2, 1), (1, 2)] at exit 0    py: [(1, 2), (2, 1)]
+print(sorted([[2, 1], [1, 2]]))    # was: [[2, 1], [1, 2]] at exit 0    py: [[1, 2], [2, 1]]
+```
+
+`@rt_sort` (ADR 0339) is an insertion sort over a heap list that compares **payloads** under one mode per
+kind: mode 0 compares the number, mode 1 compares the interned text with `strcmp` (because comparing texts
+by payload sorts them by arrival — the exact trap ADR 0191 records). A container has no payload-order. Its
+payload is a slot index, i.e. the order the values were allocated, which for a literal is their written
+order. So `sorted` of tuples found the input "already sorted" every time and returned it, at exit 0, with
+no refusal, no diagnostic, and no hint that nothing had been compared.
+
+The row is not tuple-only. `sorted([[2,1],[1,2]])` did the identical thing at the head of this branch, and
+the same is true of dicts and sets as elements. What made it visible is that L11.3 gave tuples an answer at
+all: a shape that used to stop the build with `unsupported expression *lang.Tuple` started printing a wrong
+answer, and a wrong answer is a worse state than a refusal (ADR 0166).
+
+The door now asks one question before it claims an order — `sortElementsAreContainers` — and refuses when
+the elements are containers, naming this row. That is a placeholder with a cost: `sorted` of tuples does not
+work yet. The honest alternative (building the comparator) is spelled out in the row: a tag-dispatching
+`rt_elem_pair_order` that recurses through the container branch, settles a tie by length, raises
+`TypeError` for an incomparable pair, and is reached both by a new `@rt_sort` mode that reads both tags and
+by the ordering operators. It is a runtime door of its own and it needs the ordering ledger to move with it,
+which is why it is a row and not a footnote.
+
+What was *not* acceptable is the state the code was in: an unsorted answer dressed as a sorted one. The
+guard is `TestSortingContainersRefusesRatherThanPrintsArrival`, which fails both if the refusal disappears
+and if the two sorts the door does answer (`[2,1]`, `["b","a"]`) stop answering.
+
+<a id="gap-r-310"></a>
+
+### Gap R.310 — the empty tuple is one object to the reference and a fresh one here (filed by ADR 0361)
+
+```gusty
+a = ()
+b = ()
+print(a is b)     # gy: False    py: True
+```
+
+CPython keeps a single empty-tuple object and hands the same one to every program; `a is b` is therefore
+`True` for free. This backend mints a heap slot per `()` literal, so the two names hold two handles and
+`is` compares them as different. Everything else about the empty tuple answers — `() == ()` is `True`,
+`len(())` is `0`, `1 in ()` is `False`, `print(())` prints `()` (and at the head of this branch none of
+those lines *parsed*, which is the sentence `Gap R.288` files).
+
+The fix is small and deliberately not taken here: the tuple block mints one canonical slot for a
+zero-length **tuple** and every `()` literal returns it. The row exists because the same trick applied to
+every empty container is wrong in the other direction — `[] is []` is `False` to the reference — so the
+canonicalisation has to be tuple-only and has to be minted where the tuple bit is known. `()` sits out of
+the answered table in `pkg/lang/tuple_answer_test.go` for exactly one assertion, `is`, and the row is what
+keeps that from becoming a permanent surprise.
+
 <a id="l11-1-adr-0359"></a>
 
 ### L11.1 (ADR 0359, 2026-10-17) — an interpolation is a text, not only a printing instruction
@@ -13612,12 +13697,57 @@ gives is a documented bug. The row floors (10 answers, 13 traps) so the section 
 doc side either.
 
 **Honest residue.** `2 ** 70` and `1e100` reach the door as refusals owned by other rows (bounded ints, Gap
-R.176/ADR 0166; the float literal's exponent), a nested tuple in an argument position is refused because tuples
-are not values (`L11.3`), and an empty tuple `()` is not in the grammar at all, so `"%s" % ()` dies in the parser
-where the reference raises `TypeError`. Those four are the probe
+R.176/ADR 0166; the float literal's exponent), a nested tuple in an argument position was refused because tuples
+were not values then, and an empty tuple `()` did not parse at all, so `"%s" % ()` died in the parser where the
+reference raises `TypeError`. The two tuple claims are the pre-L11.3 state of this table and are kept as measured:
+[ADR 0361](#l113-adr-0361-2026-10-16-a-tuple-is-a-container-whose-object-says-it-is-a-tuple) landed afterwards and
+gave the tuple its object, so `("%d" % (1, 2))` answers and `()` parses; the probe that carries those four shapes
+was written against the state this row measured, and the shapes it still refuses are named by their own rows. Those four are the probe
 `programs/probe_percent_arguments_beyond_the_door.gy`, kept out of the parity probe so the formatting claim stays a
 claim about formatting; the probe is a `ProbeOnly` matrix row carrying an `OracleDebt` ledger row that names the
 four owning rows, and the residue is recorded here and in that ledger row rather than in
 `integration/testdata/cpython-debt.json`, whose row count is itself a guarded claim (six rows, asserted in
 `docs/operations.md`) that this cycle had no business re-cutting. The row stays `DONE` for what it claims — the
 conversions, the traps and the value — not for the argument shapes those other rows own.
+
+<a id="l113-adr-0361-2026-10-16-a-tuple-is-a-container-whose-object-says-it-is-a-tuple"></a>
+
+### L11.3 (ADR 0361, 2026-10-16) — a tuple is a container whose object says it is a tuple
+
+**The measurement that opened the row.** `print((1, 2))` stopped the build with
+`unsupported expression *lang.Tuple`, and so did `d.popitem()`, `t[0]`, `for k, v in d.items():` and
+`"%d" % (2, 3)` — one AST node with no compiled answer, holding open four other rows (Gap R.288's error
+family, L11.1's value half, Gap I.2's method table, L8.12's argument spread). `()` did not parse. That is
+the row's own wording: *tuples are values, not syntax sugar*.
+
+**The root cause of the surface problem was a representation question, not a missing builtin.** The backend
+already had one container layout — `{count, [N x payload], [N x tag]}` — and everything that reads a
+container (`rt_print_mixed_value`, `rt_heap_kind`, the membership and equality doors, `rt_slice`) reads
+*that* shape plus the `@estr[h]` attribute word beside it. A second "tuple layout" would have meant
+teaching every one of those doors a second shape, and the first thing they would disagree about is the one
+thing the two spellings actually share. So the tuple is the list's container with one more bit in the
+attribute word (`estrBitTuple`), and the tuple fact travels in exactly two places: that bit on the object,
+and the literal's flag on the AST node for the roads that build and print it. Every road that had been
+asking `case *Tuple` now asks the predicate `g.isTupleExpr` / `ListLit.IsTuple()` — ADR 0229/0359's rule that
+a re-spelled node must be asked a question, not matched.
+
+**Three consequences the plan did not predict** are written up in the ADR's *three things the plan did not
+predict*: a tuple may never take the compile-time `@.lstN` global shape (ADR 0188's rule, extended to a bit
+the fold cannot carry — the failure mode was `call i32 @rt_heap_kind(i32 @.lst1)` and exit 2); the
+container-return scan needs a kind of its own (`tupleAnswer`) because recording it as `listAnswer` printed
+`[1, 2]` and declining it printed the allocator's word; and the object-asking printer may only be used where
+the object owns an attribute word, which is why `rt_slice` copies `@estr` while `sorted(...)` and the dict
+views keep their specific printers.
+
+**Where the reference and the record disagree, the reference is the definition.** `print(-("a", 1))`: the
+retired engine's record says `'list'`, CPython says `'tuple'`, the compiled leg says `'tuple'`, so the source
+stays a divergence row on `testdata/interpreter-golden-drift.json` rather than being paid by editing the
+record. `probe_tuple.gy` was added to the record through the production writer (`tools/recmerge`), which is
+how the count went from 7151 to 7152 — and the count claims in `AGENTS.md`, `docs/operations.md` and this
+file are the file's own, recomputed by `pkg/lang/golden_artifact_counts_test.go` (Gap R.204).
+
+**What the row did not buy.** Sorting a container whose elements are containers now *refuses* instead of
+printing arrival order ([Gap R.309](#gap-r-309)); `() is ()` prints `False` where CPython prints `True`
+([Gap R.310](#gap-r-310)); `count`/`index` remain Gap I.2's table; and a tuple pattern beyond the single
+capture shape remains Gap R.302. Each is a row, each is asserted by a test that fails the day the answer
+changes for the better, and none of them is described here as an answer.

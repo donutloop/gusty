@@ -67,8 +67,14 @@ func (g *irGen) percentFormatOf(n *BinOp) percentPlan {
 	// The right operand is either ONE value or the tuple the program wrote as an argument list. A list
 	// on the right is ONE value too: the reference refuses to format against a list, and the door's
 	// conversion refuses it by kind, which is the reference's answer rather than a second one.
+	//
+	// The tuple spelling is the `Tuple` flag on the container node (roadmap L11.3, ADR 0361) as much as
+	// the pattern node it used to be: `"%d %d" % (1, 2)` spreads, and `"%s" % [1, 2]` does not, because
+	// the flag is the difference between the two spellings and nothing else.
 	if t, ok := n.R.(*Tuple); ok {
 		plan.args = t.Elems
+	} else if ln, isList := n.R.(*ListLit); isList && ln.IsTuple() {
+		plan.args = ln.Elems
 	} else {
 		plan.args = []Expr{n.R}
 		plan.isMap = g.percentArgIsMapping(n.R)

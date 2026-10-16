@@ -202,7 +202,7 @@ func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
 		{"print({[1, 2]: 3})\n", "cannot hold"},
 		// The static dict-literal path gets there first for an int-keyed dict and refuses with its
 		// own honest reason; both are front-end refusals, neither is a wrong answer.
-		{"d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
+		{"d = {[1]: 1}\nprint(d)\n", "no hashing rule"},
 		// A container element read back as a number still has no tag to carry.
 		{"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 	} {

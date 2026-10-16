@@ -1122,7 +1122,9 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 		target := &Tuple{Elems: targets, Src: ex.Span()}
 		value := Expr(rhs)
 		if len(rhsList) > 1 {
-			value = &Tuple{Elems: rhsList, Src: rhs.Span()}
+			// The bare right-hand side of `a, b = 1, 2` is a tuple value, spelled without parentheses
+			// exactly as CPython's is; the pattern on the left stays a `*Tuple` (roadmap L11.3, ADR 0361).
+			value = &ListLit{Elems: rhsList, Tuple: true, Src: rhs.Span()}
 		}
 		p.skipNewlines()
 		// The statement carries the position of its leftmost target: an unnamed
@@ -1822,7 +1824,15 @@ func (p *parser) parseAtom() (Expr, error) {
 		p.next()
 		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.IsOp("("):
+		open := t
 		p.next()
+		// `()` is a value in this language, not a gap in its grammar: the empty tuple. It was a parse
+		// error, which made `"%s" % ()` and `print(())` die in the front end where the reference answers
+		// them (roadmap L11.3, ADR 0361).
+		if p.peek().IsOp(")") {
+			p.next()
+			return &ListLit{Tuple: true, Src: open.Span}, nil
+		}
 		ex, err := p.parseExpr()
 		if err != nil {
 			return nil, err
@@ -1855,7 +1865,10 @@ func (p *parser) parseAtom() (Expr, error) {
 			return nil, err
 		}
 		if len(elems) > 1 || trailing {
-			return &Tuple{Elems: elems, Src: ex.Span()}, nil
+			// A tuple VALUE is a container literal carrying the tuple flag, not a `*Tuple` node: the roads
+			// that read a container — index, length, membership, equality, iteration, the printers — are
+			// one road, and the object says which spelling it came from (roadmap L11.3, ADR 0361).
+			return &ListLit{Elems: elems, Tuple: true, Src: open.Span}, nil
 		}
 		return ex, nil
 	case t.IsOp("["):

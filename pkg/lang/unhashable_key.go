@@ -45,6 +45,18 @@ func (g *irGen) unhashableKeyName(e Expr) (string, bool) {
 	case nil:
 		return "", false
 	case *ListLit:
+		// A tuple is a container the language *does* hash — but only when every element is hashable,
+		// and the reference walks the elements left to right and names the first it cannot hash. The
+		// tuple's own spelling is the `Tuple` flag (roadmap L11.3, ADR 0361), because the compiled
+		// backend gives both spellings the one container layout.
+		if k.IsTuple() {
+			for _, el := range k.Elems {
+				if tn, bad := g.unhashableKeyName(el); bad {
+					return tn, true
+				}
+			}
+			return "", false
+		}
 		return "list", true
 	case *DictLit:
 		return "dict", true
@@ -62,6 +74,20 @@ func (g *irGen) unhashableKeyName(e Expr) (string, bool) {
 	case *Name:
 		// A name the program most recently filled with a container. These are the same maps
 		// the print door and the membership door already trust for a container's own kind.
+		if g.tupleVars != nil && g.tupleVars[k.Value] {
+			// The name holds a tuple: hashable unless an element is not, which is a question the
+			// literal the binding kept can answer (roadmap L11.3, ADR 0361).
+			if lit, has := g.containerLits[k.Value]; has {
+				if ln, isList := lit.(*ListLit); isList {
+					for _, el := range ln.Elems {
+						if tn, bad := g.unhashableKeyName(el); bad {
+							return tn, true
+						}
+					}
+				}
+			}
+			return "", false
+		}
 		switch {
 		case g.listVars[k.Value]:
 			return "list", true

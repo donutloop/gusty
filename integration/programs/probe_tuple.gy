@@ -1,6 +1,8 @@
-# Oracle probe (L11.9, ADR 0186) — tuples are values. There is no AOT lowering for a
-# tuple literal at all ("unsupported expression *lang.Tuple"), and the interpreter
-# renders one as a list (L11.3).
+# Tuples are values, not syntax sugar (L11.3, ADR 0361). Promoted from an oracle probe to an
+# asserted parity program: the compiled backend used to stop at `unsupported expression
+# *lang.Tuple` on the first line, and the record rendered every tuple as a list. Now the
+# immutable container prints with its own brackets, subscripts, measures, unpacks and returns
+# from a function — the answer below is CPython's, line for line.
 t = (1, 2, 3)
 print(t)
 print(t[1])

@@ -101,13 +101,12 @@ func TestCLIFailureCarriesTheCapabilityCode(t *testing.T) {
 		src  string
 		code string
 	}{
-		{"a tuple is a value", "t = (1, 2)\nprint(t)", "lower.unsupported.tuple-value"},
 		{"list(<container>) copies", "print(list([1, 2]))", "lower.unsupported.list-copy"},
 		{"tuple(...) builds one", "print(tuple([1, 2]))", "lower.unsupported.tuple-call"},
 		{"a container beside a container", "print([1] + [2])", "lower.unsupported.sequence-operation"},
 		{"a text iterated by a comprehension", "print([c for c in \"abc\"])", "lower.unsupported.comprehension-over-text"},
 		{"a printf conversion with no renderer", "print(\"%b\" % 3)", "lower.unsupported.printf-style-format"},
-		{"a printf argument with no value", "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))", "lower.unsupported.printf-style-format"},
+		{"a printf argument with no value", "print(\"%s\" % (lambda: 1))", "lower.unsupported.printf-style-format"},
 		{"a function as a value", "def f():\n    return 1\n\nprint(f)", "lower.unsupported.function-read-as-value"},
 	}
 	for _, tc := range cases {

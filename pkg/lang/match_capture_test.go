@@ -540,16 +540,11 @@ func TestMatchCaptureShapesStillNotAnswered(t *testing.T) {
 			pointDecl + "match Point(5):\n    case Point(x, 1):\n        print(1)\n",
 			"class pattern attribute must be a name", "roadmap Gap R.304",
 		},
-		{
-			"a parenthesised tuple pattern is refused (Gap R.302)",
-			// `case (a,)` is a Tuple pattern, which matchPattern has no arm for. The checker refuses it
-			// one stage earlier (`undefined name "a"`, because the census has no Tuple arm and so never
-			// heard of `a`) and the emitter refuses it here, by naming the AST type it cannot lower.
-			// Either way nothing is silently bound — but the message blames the name, not the missing
-			// pattern form, which is the row's second half.
-			"match (5,):\n    case (a,):\n        print(a)\n",
-			"unsupported expression *lang.Tuple", "roadmap Gap R.302",
-		},
+		// The `case (a,)` row that used to sit here is ANSWERED and moved to
+		// TestAParenthesisedTuplePatternAnswersTheSingleCaptureShape: ADR 0361 gave the tuple an object,
+		// `match (5,):` / `case (a,):` binds `a` and prints 5, CPython's answer. The rest of roadmap
+		// Gap R.302 stands — `case (a, b)` over a mixed tuple, a nested tuple pattern and a guarded tuple
+		// arm are still not answered — and the row keeps its ⏳ status for those.
 	}
 	for _, tc := range refused {
 		t.Run(tc.name, func(t *testing.T) {
@@ -645,4 +640,27 @@ func sameCaptureNameSet(a, b map[string]bool) bool {
 		}
 	}
 	return true
+}
+
+// TestAParenthesisedTuplePatternAnswersTheSingleCaptureShape is the half of roadmap Gap R.302 that
+// ADR 0361 paid: a tuple is an object the pattern roads can ask, so the one-capture form binds and prints
+// what the reference prints. Measured against CPython inside the case, so the row cannot drift into
+// asserting a guess. The multi-capture, nested and guarded shapes are the row's remaining half and stay
+// refused; this test does not claim them.
+func TestAParenthesisedTuplePatternAnswersTheSingleCaptureShape(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"one_capture", "match (5,):\n    case (a,):\n        print(a)\n", "5\n"},
+		{"two_ints", "match (1, 2):\n    case (1, 2):\n        print(\"y\")\n", "y\n"},
+		{"no_match_falls_through", "match (1, 2):\n    case (1, 3):\n        print(\"wrong\")\n    case _:\n        print(\"no\")\n", "no\n"},
+		{"arity_mismatch_falls_through", "match (1,):\n    case (a, b):\n        print(\"wrong\")\n    case _:\n        print(\"no\")\n", "no\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := compiledOut(t, tc.src); got != tc.want {
+				t.Errorf("%s printed %q, the reference prints %q\n%s", tc.name, got, tc.want, tc.src)
+			}
+		})
+	}
 }

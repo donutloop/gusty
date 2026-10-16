@@ -1584,7 +1584,16 @@ kinds:
   %ka = load i32, i32* %kap
   %kb = load i32, i32* %kbp
   %ksameness = icmp eq i32 %ka, %kb
-  br i1 %ksameness, label %sizes, label %no
+  br i1 %ksameness, label %tupflags, label %no
+tupflags:
+  ; Same kind is not the whole question for the family that shares the list layout: a tuple and a
+  ; list with equal slots are NOT equal, because the language distinguishes them and the object
+  ; carries the distinction. The flag is read through the tuple block's own door so this module
+  ; never spells the bit (roadmap L11.3, ADR 0361).
+  %fa = call i32 @rt_tuple_flag(i32 %a)
+  %fb = call i32 @rt_tuple_flag(i32 %b)
+  %fsame = icmp eq i32 %fa, %fb
+  br i1 %fsame, label %sizes, label %no
 sizes:
   %lap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 1
   %lbp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 1
@@ -1692,8 +1701,10 @@ entry:
 list:
   ; Each container printer asks its own object how its elements are stored — plain numbers,
   ; interned text, or per-slot tags — so the delegate is chosen by kind here and by the object
-  ; there, never by a guess in this scope (roadmap Gap J.5, L11.1).
-  call void @rt_print_list(i32 %h, i32 0)
+  ; there, never by a guess in this scope (roadmap Gap J.5, L11.1). The list-layout branch asks the
+  ; object one further question — the immutable parenthesised spelling shares this layout and differs
+  ; in its brackets, its tag and its promise (roadmap L11.3, ADR 0361).
+  call void @rt_print_list_or_tuple(i32 %h)
   ret void
 chkDict:
   %isDict = icmp eq i32 %kind, 2
@@ -1766,14 +1777,11 @@ checkContainer:
   ; A slot that names another container is rendered by that container's own printer, chosen at
   ; run time from its record rather than from what the builder knew — the tag says list, only
   ; the object says whether its elements are numbers, text, or tagged (roadmap L11.1).
-  %isList = icmp eq i32 %t, 5
-  br i1 %isList, label %cont, label %checkDict
-checkDict:
-  %isDict = icmp eq i32 %t, 6
-  br i1 %isDict, label %cont, label %checkSet
-checkSet:
-  %isSet = icmp eq i32 %t, 7
-  br i1 %isSet, label %cont, label %checkInstance
+  ; "Is this tag a container?" is one door rather than three comparisons written out here, because
+  ; the family gained a member: a tuple is a container, and an element printer that lists the kinds
+  ; by hand is how the fourth one prints as its handle (roadmap L11.3, ADR 0361).
+  %isCont = call i1 @rt_tag_is_container(i32 %t)
+  br i1 %isCont, label %cont, label %checkInstance
 checkInstance:
   ; An instance slot is a heap handle too, but it is not a container and must not be printed as
   ; its integer address. The class name is in instance slot 0, and the table beside it says what
@@ -3171,6 +3179,16 @@ body:
 done:
   %c2 = load i32, i32* %cd
   store i32 %c2, i32* %nlenp
+  ; A copy of an object carries the object's own attributes, which is ADR 0251's rule applied to the
+  ; one door that had never carried them: the slots and their tags travel, and the object's @estr
+  ; word - the interned-text claims and the immutable-container flag - travels with them. Without
+  ; this a slice of a tuple arrived claiming to be a list and printed (1, 2)[0:1] as [1], and a slice
+  ; of a container that had said "these slots describe themselves" had to be told again by whoever
+  ; looked next (roadmap L11.3, ADR 0361; rt_alloc clears the word, so the store is a copy, not an or).
+  %esrc = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %h
+  %attr = load i32, i32* %esrc
+  %edst = getelementptr [@HEAPSLOTS@ x i32], [@HEAPSLOTS@ x i32]* @estr, i32 0, i32 %nh
+  store i32 %attr, i32* %edst
   ret i32 %nh
 }
 
@@ -4534,6 +4552,14 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	if needHeap {
 		g.globals.WriteString(heapRuntimeIR)
+		// The immutable container's half rides with the heap block because it *is* the heap block's
+		// container question: `rt_print_mixed_value` asks `rt_tag_is_container` and the container
+		// dispatcher asks `rt_print_list_or_tuple`, and a referenced internal function that was never
+		// emitted is the module `llc` rejects (ADR 0173). The reference scan is what makes the gate honest
+		// rather than unconditional: a module that carries neither door carries neither definition.
+		if g.tupleUsed || runtimeBlockReferenced(tupleRuntimeIR, bodyText) || runtimeBlockReferenced(tupleRuntimeIR, heapRuntimeIR) {
+			g.globals.WriteString(tupleRuntimeIR)
+		}
 		// The instance printer and the class-name table ride with the heap block because the heap block's
 		// mixed printer references `@rt_instance_repr_ptr`, and an internal call that no block defines is the
 		// undefined-symbol failure ADR 0173 made the whole rule about. The class names cannot live in the
@@ -5114,6 +5140,14 @@ type irGen struct {
 	// arithUsed records that this module does arithmetic on a slot whose kind only the run time can
 	// describe, which is what pulls in the tagged arithmetic door (roadmap L11.1, ADR 0265).
 	arithUsed bool
+	// tupleUsed records that this module builds or prints an immutable container, which is what pulls
+	// in the tuple printers (`pkg/lang/tuple_runtime.go`, roadmap L11.3, ADR 0361).
+	tupleUsed bool
+	// tupleVars is the binding-side half of the same fact: the names whose LATEST binding is a tuple
+	// literal, so the print road can choose the bracketed printer for `t = (1, 2)` / `print(t)` without
+	// guessing from elements. A binding to anything else retires it — the rule ADR 0172 set for a
+	// value's tag word, asked of one more attribute of the binding (Gap R.142).
+	tupleVars map[string]bool
 	// foldUsed records that this module folds a value whose kind the run time chose — a `min`, `max` or
 	// `sum` over a pair — which is what pulls in the fold door (roadmap L11.1, Gap R.146; ADR 0316). A
 	// module that never asks the door carries no ordering sentence it never reaches.
@@ -6081,12 +6115,18 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 		if sawInt && sawStr {
 			return "", fmt.Errorf("cannot sort a list whose elements are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191)")
 		}
+		if sortElementsAreContainers(a) {
+			return "", errSortElementsHaveNoOrder()
+		}
 	case *Name:
 		if g.listElemStr[a.Value] {
 			mode = 1
 		}
 		if g.mixedLists[a.Value] {
 			return "", fmt.Errorf("cannot sort a list whose elements are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191)")
+		}
+		if lit, has := g.containerLits[a.Value]; has && sortElementsAreContainersLit(lit) {
+			return "", errSortElementsHaveNoOrder()
 		}
 	}
 	// Handle registers in this backend are named %h<N> off heapSeq; a %t<N> name reads as an
@@ -9723,6 +9763,14 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	if !ok {
 		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
 	}
+	// `t[0] = 1` on the immutable spelling: the reference raises TypeError — 'tuple' object does not
+	// support item assignment — and the shared container layout could carry the write, so the door
+	// refuses before emitting none of it rather than answering a mutated tuple
+	// (roadmap L11.3, ADR 0361, immutable container).
+	if g.isTupleExpr(nm) {
+		return refusesTupleMutation("`"+nm.Value+"[i] = v`", "TypeError",
+			"'tuple' object does not support item assignment")
+	}
 	// Storing under an unhashable key is the same refusal as reading under one, asked at the
 	// other door: the reference raises TypeError naming the type, and the put road happily
 	// built the entry, so `d = {}; d[[1]] = 2; print(d)` answered `{[1]: 2}` at exit 0 where the
@@ -11380,7 +11428,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// an i32 slot, literalNeedsTags whether a slot can say what it holds. A bool answers the
 		// first yes and the second no — the 0/1 fits, and nothing beside it names it — so asking
 		// only the first kept [True] on the static path, printing [1] (roadmap Gap R.112, ADR 0259).
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
+		// A tuple is not a second layout, so the same two questions decide its shape as decide a list's;
+		// what the tuple adds is that the OBJECT so much as exists carries the bracket flag (heapListFrom /
+		// heapListFromTagged) and the print road asks the object rather than the spelling. A tuple of
+		// integer constants still folds, because that is how `(1, 2)[0]` and `n = (1, 2)[0]` keep answering
+		// from the literal the way the list spelling always did (roadmap L11.3, ADR 0361).
+		// A tuple NEVER takes the static shape: the fold `@.lstN = global {i32, [N x i32]}` has no attribute word
+		// beside it, and the object's own bit is what answers the bracket question. Handing that GLOBAL to a door
+		// that takes a handle (`call i32 @rt_heap_kind(i32 @.lst1)`) is the exit-2 shape ADR 0188 removed for
+		// lists, and ADR 0188's rule — the object has to be a heap object because its OWN bits answer — applies to
+		// a bit the list never had (roadmap L11.3, ADR 0361).
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) || n.IsTuple() {
 			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
 			// carry the meaning the container-wide kind used to. The list branch asked this later
 			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
@@ -11594,6 +11652,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// this caller as a negative handle too, and the store that follows the call would be the write
 		// below the arena (roadmap Gap Q.2, ADR 0347). The guard stands after every bound has been
 		// evaluated and after ADR 0337's zero-step question, which is the order the reference raises in.
+		// A slice of the immutable spelling comes back a tuple, because `rt_slice` copies the source
+		// object's attribute word along with its slots and tags (ADR 0361) — the door that decides what a
+		// value prints is the object, not the road that copied it.
 		g.emitHeapCall(b, fmt.Sprintf("%%sl%d", r), fmt.Sprintf("call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)", objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep), n.Span())
 		return fmt.Sprintf("%%sl%d", r), nil
 
@@ -11744,7 +11805,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return "", mixedReadErr("list")
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
-				idxOp = g.normalizeIndex(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span())
+				idxOp = g.normalizeIndexFor(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span(), indexOutOfRangeSentenceFor(g.isTupleExpr(obj)))
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -11807,8 +11868,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if li < 0 || li >= len(obj.Elems) {
 				// The position is a constant, so this backend is the first to notice it is not there — and
 				// notice it the reference does: an IndexError the program's `except IndexError:` can take,
-				// not a compile stop that no handler can reach (roadmap Gap R.37, ADR 0326).
-				g.constantTrap(b, "IndexError", listIndexOutOfRange(), n.Span())
+				// not a compile stop that no handler can reach (roadmap Gap R.37, ADR 0326). The sentence
+				// names the spelling the source wrote, because `(1, 2)[5]` is not a list running off its
+				// end (roadmap L11.3, ADR 0361).
+				g.constantTrap(b, "IndexError", indexOutOfRangeSentenceFor(obj.IsTuple()), n.Span())
 				return "0", nil
 			}
 			if !g.listLiteralFoldAnswers(obj, n.Idx) {
@@ -12135,6 +12198,11 @@ func (g *irGen) carryOperandRecords(from Expr, to string) {
 	}
 	if g.mixedSets[nm.Value] {
 		g.mixedSets[to] = true
+	}
+	if g.tupleVars[nm.Value] {
+		// `u = t` binds the same value, so it binds the same promise: the alias prints with parentheses
+		// too (roadmap L11.3, ADR 0361).
+		g.tupleVars[to] = true
 	}
 	if g.strVals != nil {
 		if v, ok := g.strVals[nm.Value]; ok {
@@ -13710,6 +13778,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+		// The one thing the shared container layout may not be allowed to do quietly: write. The
+		// reference raises for every one of these on the immutable spelling — `TypeError` for the slot
+		// writes, `AttributeError` for the methods a tuple does not have — and a road that appended to a
+		// tuple happily would answer `(1, 2, 3)`, a value no program of this language can print in the
+		// reference. The door refuses, naming the call, the class the reference raises, and the row that
+		// owns the raise this shape still lacks (roadmap L11.3, ADR 0361).
+		if containerMutators[attr.Name.Value] && g.receiverIsTuple(attr.Obj) {
+			return "", refusesTupleMutation("`"+attr.Name.Value+"()`", "AttributeError",
+				"'tuple' object has no attribute '"+attr.Name.Value+"'")
+		}
 		// mod.fn(args): dispatch to an AOT module function.
 		if modName, isName := attr.Obj.(*Name); isName {
 			if modFuncs := g.imports.Funcs[modName.Value]; modFuncs != nil {
@@ -15262,6 +15340,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						} else if g.listElemStr[nm2.Value] {
 							printer = "rt_print_list_str"
 						}
+						if g.isTupleExpr(sl.Obj) {
+							// The copy is a fresh object and it carries the attribute word of the object it
+							// was cut from, so the parentheses come from the value and not from the road that
+							// copied it: `t[0:1]` prints (1,) because the object says tuple (ADR 0361).
+							fmt.Fprintf(b, "  call void @rt_print_list_or_tuple(i32 %s)\n", h)
+							g.tupleUsed = true
+							continue
+						}
 						fmt.Fprintf(b, "  call void @%s(i32 %s, i32 0)\n", printer, h)
 						continue
 					}
@@ -15348,6 +15434,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// rendered `{1, 2}` and a dict comp `{1: 2}`, not `[1, 2]`, which is what made
 			// `print({x for x in [3, 1, 2]})` a question about the comprehension's kind and not
 			// only about its elements (roadmap Gap J.2, ADR 0234).
+			// print(t) of the immutable container: the brackets belong to the object, so the print road
+			// hands the handle to the container dispatcher and lets the object answer — the same
+			// arrangement that made `print(xs)` of a built container honest (ADR 0251), asked of a
+			// spelling the list roads were never written for (roadmap L11.3, ADR 0361).
+			if g.isTupleExpr(a) && !g.printsAsInternedStr(a) {
+				// containerOperand, not g.value: a tuple of constants folds to a compile-time global
+				// (@.lstN), and handing the address of that global to the printer is the exit-2 shape ADR 0188
+				// removed for lists. The operand has to be the heap object the materialiser built, because its
+				// own bits are what answer the bracket question (roadmap L11.3, ADR 0361).
+				h, herr := g.containerOperand(b, a)
+				if herr != nil {
+					return "", herr
+				}
+				b.WriteString(fmt.Sprintf("  call void @rt_print_container_value(i32 %s, i32 0)\n", h))
+				continue
+			}
 			// A slice of a container lowers to `rt_slice`, whose answer is a heap HANDLE; printf's %d
 			// printed that handle as `1` where the reference prints `[2, 3]`. Ask before the numeric
 			// road does, the same way the comprehension and sorted() arms beside this do (Gap R.179).
@@ -15357,6 +15459,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				h, herr := g.value(b, a)
 				if herr != nil {
 					return "", herr
+				}
+				if g.isTupleExpr(sl.Obj) {
+					b.WriteString(fmt.Sprintf("  call void @rt_print_container_value(i32 %s, i32 0)\n", h))
+					g.tupleUsed = true
+					continue
 				}
 				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
 				continue
@@ -15391,7 +15498,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", herr
 				}
 				g.heapUsed = true
-				b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", g.answerPrinter(ansName.(*Name).Value, ansKind), h))
+				// Which door prints the answer is asked of the answer, and the tuple is the answer that has to be
+				// asked of the OBJECT: a callee that handed back a tuple wrote the parentheses and the caller never
+				// saw them, so no road-level fact can name the brackets — the attribute word beside the slots can.
+				// A described list, set or dict keeps the printer its kind names (roadmap Gap R.67's arrangement,
+				// read again for the immutable container at L11.3, ADR 0361).
+				ansNameStr := ""
+				if nm, isName := ansName.(*Name); isName {
+					ansNameStr = nm.Value
+				}
+				if ansKind == tupleAnswer || g.tupleVars[ansNameStr] {
+					b.WriteString(fmt.Sprintf("  call void @rt_print_container_value(i32 %s, i32 0)\n", h))
+					g.tupleUsed = true
+				} else {
+					b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", g.answerPrinter(ansNameStr, ansKind), h))
+				}
 				continue
 			}
 			if comp, ok := a.(*Comp); ok {
@@ -15420,6 +15541,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					if cerr != nil {
 						return "", cerr
 					}
+					// The two orderings answer a LIST whatever their argument was — `sorted((3, 1))` is `[1, 3]`, with
+					// brackets, in the reference — so the printer is the one the compiler knows, not the one the
+					// object would be asked: the copy `sortedRuntime` builds carries no attribute word of its own
+					// (roadmap Gap R.67's arrangement, and ADR 0361's rule that a road asks what it can see).
 					b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
 					continue
 				}
@@ -17663,14 +17788,35 @@ func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string, sp S
 // slicing: a negative index counts from the end (roadmap L11.4, ADR 0210). Dict and set
 // subscripts never come here — their index is a key, and `-1` is a key you can store.
 func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) string {
-	return g.normalizeIndexFor(b, h, idx, sp, listIndexOutOfRange())
+	ix, bad := g.indexBoundsCheck(b, h, idx)
+	badL, okL := g.newLabel("ix.bad"), g.newLabel("ix.ok")
+	// The three roads that come here without a sentence are the ones where the container's kind is a
+	// run-time fact — a slot read (`xs[0][5]`, `d["k"][5]`) arrives with a handle and a tag, and the one
+	// list layout answers for the list AND for the immutable spelling. So the object is asked, through
+	// its own door, which sentence the raise quotes (roadmap L11.3, ADR 0361).
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+	tupL, lstL := g.newLabel("ix.bad.tup"), g.newLabel("ix.bad.lst")
+	flag := g.newTmp()
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tuple_flag(i32 %s)\n", flag, h))
+	isTup := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", isTup, flag))
+	g.markI1(isTup)
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isTup, tupL, lstL))
+	b.WriteString(fmt.Sprintf("%s:\n", tupL))
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", tupleIndexOutOfRange(), sp)
+	b.WriteString(fmt.Sprintf("%s:\n", lstL))
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", listIndexOutOfRange(), sp)
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
+	g.heapUsed = true
+	return ix
 }
 
-// normalizeIndexFor is the bounds check with the sentence the door owns. The reference distinguishes
-// `list index out of range` from `list assignment index out of range` because reading past the end and
-// writing past it are different acts, and one shared normaliser cannot know which it is doing unless
-// the caller says (roadmap Gap R.223, ADR 0330).
-func (g *irGen) normalizeIndexFor(b *strings.Builder, h, idx string, sp Span, sentence string) string {
+// indexBoundsCheck emits the length, the negative wrap and the range test, and answers the two
+// registers the raise strategies branch on: the normalised position and the `bad` verdict. One copy
+// of the arithmetic for the door that already knows its sentence and the door that must ask the
+// object (roadmap Gap R.223, ADR 0330, ADR 0361).
+func (g *irGen) indexBoundsCheck(b *strings.Builder, h, idx string) (string, string) {
 	ln := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
 	neg := g.newTmp()
@@ -17689,6 +17835,16 @@ func (g *irGen) normalizeIndexFor(b *strings.Builder, h, idx string, sp Span, se
 	bad := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
 	g.markI1(bad)
+	return ix, bad
+}
+
+// normalizeIndexFor is the bounds check with the sentence the door owns. The reference distinguishes
+// `list index out of range` from `list assignment index out of range` because reading past the end and
+// writing past it are different acts, and one shared normaliser cannot know which it is doing unless
+// the caller says (roadmap Gap R.223, ADR 0330). The same door takes the tuple's sentence when the
+// caller can see the parentheses the program wrote (ADR 0361).
+func (g *irGen) normalizeIndexFor(b *strings.Builder, h, idx string, sp Span, sentence string) string {
+	ix, bad := g.indexBoundsCheck(b, h, idx)
 	badL, okL := g.newLabel("ix.bad"), g.newLabel("ix.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
@@ -17981,6 +18137,11 @@ func referenceMethodTrap(name string) string {
 // index) keeps the sentence the backend has always used, because inventing a key would be worse than
 // a generic one; naming it for those keys needs the tagged value word (roadmap L11.1), which is the
 // same debt that silences the echo of a value whose kind is not statically known.
+//
+// The immutable spelling joins the keys the compiler can quote, because the source wrote it out: a
+// tuple written from literals has a repr the pass can read, and `d[(3, 4)]` over a dict that has no
+// such entry says `KeyError: (3, 4)` the way the reference does (roadmap L11.3, ADR 0361; the row
+// that owns the keys this door still cannot quote is Gap R.189).
 func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
 	switch k := keyExpr.(type) {
 	case *StrLit:
@@ -17997,7 +18158,48 @@ func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
 	case *NoneLit:
 		return "None"
 	}
+	if repr, ok := literalKeyRepr(keyExpr); ok {
+		return repr
+	}
 	return "key not found"
+}
+
+// literalKeyRepr renders the repr of a container key the program spelled out of scalars — `(1, 2)`,
+// `[1, 2]`, `(1, (2, 3))` — or declines. It is a repr, not a print: a text member is quoted, and the
+// tuple spelling keeps its parentheses and its one-element comma (roadmap L11.3, ADR 0361).
+func literalKeyRepr(e Expr) (string, bool) {
+	switch k := e.(type) {
+	case *ListLit:
+		parts := make([]string, 0, len(k.Elems))
+		for _, el := range k.Elems {
+			s, ok := literalKeyRepr(el)
+			if !ok {
+				return "", false
+			}
+			parts = append(parts, s)
+		}
+		if k.IsTuple() {
+			if len(parts) == 1 {
+				return "(" + parts[0] + ",)", true
+			}
+			return "(" + strings.Join(parts, ", ") + ")", true
+		}
+		return "[" + strings.Join(parts, ", ") + "]", true
+	case *StrLit:
+		return pyReprString(k.Value), true
+	case *IntLit:
+		return strconv.FormatInt(k.Value, 10), true
+	case *FloatLit:
+		return pyFloatRepr(k.Value), true
+	case *BoolLit:
+		if k.Value {
+			return "True", true
+		}
+		return "False", true
+	case *NoneLit:
+		return "None", true
+	}
+	return "", false
 }
 
 // raiseStmt compiles `raise Exception("msg")` / `raise ValueError("msg")`.
@@ -18898,6 +19100,35 @@ func (g *irGen) classChainCond(b *strings.Builder, cid, class string) string {
 	return cond
 }
 
+// matchSubjectOperand lowers a `match` subject to the one word the pattern roads read: a heap HANDLE.
+//
+// A container literal whose every payload fits an i32 slot and whose slots need no tags folds to a
+// compile-time global (`@.lst1`) rather than a heap object, and `value()` hands back that global's name.
+// Every other reader of a folded literal is happy with that — an index reads the table at compile time —
+// but the pattern roads ask the OBJECT questions through `@heap_kind`, `@heap_elems` and `@heap_tags`,
+// whose address expressions take an i32 handle. Handing them the global emitted
+// `call i32 @rt_heap_kind(i32 @.lst1)`, which is not a value of the right type at all: `llc` rejected the
+// module and the run spent the contract's exit 2 (ADR 0166) on `match [1, 2]:` and, since ADR 0361 put
+// parentheses through the same road, on `match (5,):`. Measured on both shapes at the head of this
+// branch: the list subject was already broken, and the tuple subject reached the same door once the tuple
+// existed. The fix is one door rather than two patches: a subject that would fold is materialised to the
+// heap here, so the pattern roads only ever see a handle (roadmap Gap R.311, ADR 0166).
+func (g *irGen) matchSubjectOperand(b *strings.Builder, e Expr) (string, error) {
+	switch n := e.(type) {
+	case *ListLit:
+		if !literalNeedsHeap(n) && !g.literalNeedsTags(n) && !g.literalHasPairElement(n) {
+			return g.heapListFrom(b, n, "")
+		}
+	case *DictLit:
+		// A dict of integer constants folds to the static {count, keys, vals} global, so a `match` over
+		// one needs the same treatment as a list subject.
+		return g.heapDictFrom(b, n, "")
+	case *SetLit:
+		return g.heapSetFrom(b, n, "")
+	}
+	return g.value(b, e)
+}
+
 // heapKindInCond answers "is the subject one of these heap kinds?" with an i1. A pattern that reads a
 // container through @heap has to ask this before it asks anything of the container: the length word, the
 // pair table and the element array are the same few words at different offsets, so a kind the pattern was
@@ -19034,13 +19265,53 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) (string, 
 // matchEquality is where every non-structural pattern ends: evaluate the pattern expression and
 // compare it to the subject. A pattern that cannot be evaluated matches nothing — the next case is
 // tried, which is what the record's `return false, nil` says for the same shape.
+//
+// A container pattern is not an i32 and never was: `[1, 2]`, `{1: "a"}` and `{1, 2}` fold to a
+// compile-time global when their payloads fit a slot, and comparing the subject's HANDLE against that
+// global's address emitted `icmp eq i32 %t1, @.set1` — a global where a pointer is required — which
+// `llc` rejected, spending the contract's exit 2 (ADR 0166) on `match {1, 2}: case {1, 2}:`. Measured at
+// the head of this branch: the set shape was already broken that way, and a tuple subject reached the
+// same door once ADR 0361 gave `match (5,):` a subject to lower. Both sides now come from the heap and
+// the answer comes from the door that compares contents — `rt_container_eq`, the same one `==` between two
+// containers asks — so a pattern matches what it holds rather than where it was allocated
+// (roadmap Gap R.311, Gap R.312, ADR 0166).
 func (g *irGen) matchEquality(b *strings.Builder, sub string, pat Expr) (string, error) {
+	switch p := pat.(type) {
+	case *ListLit:
+		pv, err := g.heapListFrom(b, p, "")
+		if err != nil {
+			return "false", nil
+		}
+		return g.matchContainerEquality(b, sub, pv)
+	case *DictLit:
+		pv, err := g.heapDictFrom(b, p, "")
+		if err != nil {
+			return "false", nil
+		}
+		return g.matchContainerEquality(b, sub, pv)
+	case *SetLit:
+		pv, err := g.heapSetFrom(b, p, "")
+		if err != nil {
+			return "false", nil
+		}
+		return g.matchContainerEquality(b, sub, pv)
+	}
 	pv, err := g.value(b, pat)
 	if err != nil {
 		return "false", nil
 	}
 	cmp := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
+	return cmp, nil
+}
+
+// matchContainerEquality asks the content door, and turns its 0/1 into the i1 the arm dispatch reads.
+func (g *irGen) matchContainerEquality(b *strings.Builder, sub, pv string) (string, error) {
+	raw := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_container_eq(i32 %s, i32 %s)\n", raw, sub, pv))
+	cmp := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", cmp, raw))
+	g.markI1(cmp)
 	return cmp, nil
 }
 
@@ -19130,7 +19401,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				return fmt.Errorf("codegen: unsupported tuple assignment value %T", n.Value)
 			}
 			if len(tup.Elems) != len(valElems) {
-				return fmt.Errorf("codegen: tuple assignment length mismatch")
+				// The reference raises this one at run time; this backend answers it at build time, where
+				// both sides of the binding are visible, and says the reference's own sentence so a reader
+				// who greps for the wording finds this road (roadmap L11.3, ADR 0361, ADR 0166 — the build
+				// refuses rather than binding the wrong number of names).
+				if len(valElems) > len(tup.Elems) {
+					// The reference's too-many sentence has no `got` count — it names only what was expected.
+					// Quoting a count the reference never prints would make this refusal disagree with the
+					// sentence it claims to quote (roadmap L11.3, ADR 0361, ADR 0214).
+					return fmt.Errorf("codegen: unpacking %d values into %d names: the reference raises ValueError: too many values to unpack (expected %d) (roadmap L11.3, ADR 0361)", len(valElems), len(tup.Elems), len(tup.Elems))
+				}
+				return fmt.Errorf("codegen: unpacking %d values into %d names: the reference raises ValueError: not enough values to unpack (expected %d, got %d) (roadmap L11.3, ADR 0361)", len(valElems), len(tup.Elems), len(tup.Elems), len(valElems))
 			}
 			// Tuple assignment must be simultaneous: `a, b = b, a` swaps,
 			// it must not alias the updated targets. Emit all target allocas
@@ -19497,6 +19778,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// roads made about it goes with the object they described — including this kind's own
 				// element notebook, which describes slots this statement writes again (roadmap Gap Q.1).
 				g.settleContainerKindFromLiteral(nm.Value, containerKindList)
+				// The name learns the one thing the container notebook does not carry: this binding is the
+				// immutable spelling, which prints with parentheses and is never written again (L11.3, ADR 0361).
+				g.recordTupleBinding(nm.Value, n.Value)
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 					g.gcReg(b, nm.Value)
@@ -19572,7 +19856,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// handle reaches it without the builder's scope beside it: ["a", 1] came back
 					// as [0, 1], the two interned indexes (roadmap L11.2, ADR 0258).
 				}
-				if estrBits != 0 {
+				// The immutable spelling says so on the object, whatever the elements were: the bracket
+				// printer, the container dispatcher and every mutation door read this one word
+				// (roadmap L11.3, ADR 0361).
+				if estrBits = tupleEstrBits(lit, estrBits); estrBits != 0 {
 					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, estrBits))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
@@ -20099,7 +20386,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *MatchStmt:
-		sub, err := g.value(b, n.Subject)
+		sub, err := g.matchSubjectOperand(b, n.Subject)
 		if err != nil {
 			return err
 		}

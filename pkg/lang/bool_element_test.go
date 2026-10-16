@@ -238,11 +238,13 @@ func TestAComprehensionOfVerdictsRefusesInWords(t *testing.T) {
 // reaching llc with a module it rejects (ADR 0166's exit-class rule).
 func TestABoolFormNothingCanNameIsStillRefused(t *testing.T) {
 	t.Parallel()
+	// A tuple is not in this list: since ADR 0361 the pair renders (`str((1, 2))` is `(1, 2)`).
+	// What nothing can name is a value with no form at all — a function object.
 	for _, src := range []string{
-		"print(str((1, 2)))\n",
+		"print(str(lambda: 1))\n",
 	} {
 		if _, err := Compile(src); err == nil {
-			t.Errorf("%q compiled; the tuple pair refusal belongs to L11.3", strings.TrimSpace(src))
+			t.Errorf("%q compiled; a function is a form the pair cannot name", strings.TrimSpace(src))
 		}
 	}
 }

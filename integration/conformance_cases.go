@@ -67,6 +67,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// and the reference's — a paid debt, promoted out of the probe ledger (roadmap Gap R.289, ADR 0356; the
 		// iterable route is Gap R.291, ADR 0357, and the copy-as-iterable half beside it is Gap R.239).
 		"probe_comp_folded_iter",
+		// The immutable container is a value in the compiled backend, not a spelling the parser hands to a
+		// list road: `t = (1, 2, 3)` prints `(1, 2, 3)`, `t[1]` is `2`, `len(t)` is `3`, `a, b = (4, 5)`
+		// binds both halves, and `def pair(): return (1, 2)` hands the caller the same object — compiled
+		// leg and reference, line for line. The probe that pinned "no tuple lowering at all"
+		// (`unsupported expression *lang.Tuple`) is this row's promotion (roadmap L11.3, ADR 0361).
+		"probe_tuple",
 		// …and the half of the same operator the print door cannot answer: the operand the test did not choose
 		// is not in the program at all. `x and boom()` with x false does not call boom, `y or (1 // 0)` with y
 		// true does not divide, `if x and boom():` branches without running boom, and the operand the test
@@ -850,7 +856,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// prints the true branch. The int spelling predates this cycle; the bool spelling is what
 		// found it (roadmap Gap R.119).
 		"probe_slot_order_in_a_ternary",
-		"probe_tuple", // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
@@ -1170,11 +1175,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
 		ref:    "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	"programs/probe_tuple": {oracle: lang.OracleDebt,
-		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
-		ref:    "roadmap L11.3 (tuples are values)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-
 	"programs/sequence_ops": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
@@ -1226,8 +1226,8 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "3.141592653589793\n2.718281828459045\n"}}},
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
-		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
-		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
+		reason: "the tuple half of this program is answered — the pairs print `(0, 'a')`, `(1, 3)` with the reference's brackets (L11.3, ADR 0361) — and what the compiled leg refuses is the walk to them: no builtin builds an `enumerate`/`zip` pair sequence, and `list(<container>)` refuses to copy a container it cannot name, so the first line never prints",
+		ref:    "roadmap L11.7 (enumerate/zip, the container builtins; Gap R.174's container-method door) beside L11.3 (paid: the pair is a value the compiled backend prints, indexes, compares and hashes)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// Five lines of CPython parity on the record. The compiled leg answers the two trap lines
 	// (`abs(twice)`, `-twice`) byte-for-byte and refuses only the higher-order body — `apply` calls a

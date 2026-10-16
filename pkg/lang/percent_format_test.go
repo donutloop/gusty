@@ -52,13 +52,14 @@ func TestPercentRefusesWhatHasNoRenderer(t *testing.T) {
 
 // TestPercentRefusesWhatHasNoValue is the L11.1 half of the honesty rule: an argument this backend has no
 // value for cannot be rendered, and a payload without a kind beside it would print the number underneath
-// it. Tuples are the case — still not values (L11.3) — and the refusal has to say which argument and why,
-// not that the program is malformed.
+// it. The row's own history is the measurement: until the immutable container became a value (roadmap
+// L11.3, ADR 0361) a tuple argument was one of these refusals, and `"%s" % ((1, 2),)` answered
+// `(1, 2)` on the reference while this door had nothing to render — those two rows moved to the answered
+// table with their CPython answers written in. What is left is what still has no value: a callable, a
+// generator, and an argument list too long for the door's table.
 func TestPercentRefusesWhatHasNoValue(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
-		{"a tuple standing where a value goes", "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n"},
-		{"a nested tuple", "print(\"%s\" % ((1, 2),))\n"},
 		{"a lambda", "print(\"%s\" % (lambda: 1))\n"},
 		{"a generator", "print(\"%s\" % (i for i in [1, 2]))\n"},
 		{"one argument per conversion, more than the table holds", "print(\"%s\" % (" + strings.TrimSuffix(strings.Repeat("1, ", 65), ", ") + "))\n"},
@@ -145,13 +146,24 @@ func TestThePercentRefusalNamesItsOwnCause(t *testing.T) {
 		},
 		{
 			name: "an argument with no value names the argument",
-			src:  "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n",
+			src:  "print(\"%d\" % (2 ** 70))\n",
 			wants: []string{
-				"kind this backend cannot name", "number underneath", "Gap R.31", "L11.1",
+				"cannot build", "number underneath", "Gap R.31", "L11.1",
 			},
 			// It must not blame the format string, which is well-formed, nor claim the operator is
 			// missing, which it no longer is.
 			nots: []string{"unsupported operator", "not implemented"},
+		},
+		{
+			// The tuple argument answers now (roadmap L11.3, ADR 0361) — so the wording row keeps a
+			// refusal this door still has to give, and pins that a *text* argument that is a container
+			// element reaches the renderer with its kind or not at all.
+			name: "a callable argument names the callable, not the format",
+			src:  "print(\"%s\" % (lambda: 1))\n",
+			wants: []string{
+				"kind", "Gap R.31", "ADR 0360",
+			},
+			nots: []string{"format string is malformed", "unsupported operator"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

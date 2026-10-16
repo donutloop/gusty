@@ -370,3 +370,24 @@ print(n)`)
 		t.Fatalf("nested formatting:\n got %q\nwant %q", got, want)
 	}
 }
+
+// The argument list is a tuple, and the tuple is a value (roadmap L11.3, ADR 0361). Two of these rows
+// were refusals until the immutable container got its own object: `"%s" % ((1, 2),)` is CPython's
+// `(1, 2)` on the compiled leg, and the door no longer claims it cannot name the argument. The empty
+// tuple beside them is the reference's own trap — zero arguments against one conversion — which the
+// compiled program raises rather than answers, and `("a", ("b", "c"))` is the shape that tells a
+// spread argument list from a tuple standing where one value goes.
+func TestPercentTuplesAreArgumentsAndValues(t *testing.T) {
+	for _, c := range []percentCase{
+		{src: `print("%s" % ((1, 2),))`, out: "(1, 2)\n"},
+		{src: `print("%s %s" % ("a", ("b", "c")))`, out: "a ('b', 'c')\n"},
+		{src: `print("%d items: %s" % (3, (1, 2)))`, out: "3 items: (1, 2)\n"},
+		{src: `print("%s of %r" % ((1,), (2, 3)))`, out: "(1,) of (2, 3)\n"},
+		{src: `print("%s and %s" % ((1, "a"), None))`, out: "(1, 'a') and None\n"},
+		{src: `print("%d" % (7,))`, out: "7\n"},
+		{src: `print("%s" % ((),))`, out: "()\n"},
+		{src: `print("%s" % ())`, exn: "TypeError", msg: "not enough arguments for format string"},
+	} {
+		runPercentCase(t, c)
+	}
+}

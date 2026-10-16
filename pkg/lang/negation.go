@@ -78,6 +78,15 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 	if lit, folded := g.foldedModuleAttr(e); folded {
 		return g.negationOperandKind(lit)
 	}
+	// The tuple question, asked of the one predicate that owns it: the value a `(1, 2)` spells is not
+	// the value `[1, 2]` spells, and the reference says so in the sentence — `-("a", 1)` is
+	// `bad operand type for unary -: 'tuple'`, not `'list'`. The compiled backend builds both with one
+	// container layout, so a road that named the layout instead of the spelling would print the list's
+	// word for the tuple's value, which is what this door used to do (roadmap L11.3, ADR 0361; the
+	// record for this source still carries the retired engine's `'list'`, and the reference is right).
+	if g.isTupleExpr(e) {
+		return "tuple", true
+	}
 	// The printer's own question, asked once: is this value an index into @str_tab? A text is a text for
 	// the print door and for the numeric road, or `print(x)` and `print(-x)` disagree about what x holds
 	// — ADR 0229's rule ("the print path and the operation path ask this question of the same predicate")

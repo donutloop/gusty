@@ -213,18 +213,16 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 			reference: "3.5",
 			row:       "Gap R.286",
 		},
+		// The sibling this table used to pin — a tuple key refusing with `unsupported expression
+		// *lang.Tuple` — is PAID: ADR 0361 gave the tuple a compiled object and the shape now answers `x`,
+		// the reference's own answer, so it moved to TestATupleKeyAnswersWhereTheTupleObjectArrived below.
+		// A sentence the emitter no longer produces has no pin; Gap R.288 keeps its row for the half that
+		// survives — the offer below (one pin per refusal shape).
 		{
 			name:      "an_untaggable_key_offers_the_retired_way_to_run",
 			src:       "d = {[1]: \"x\"}\nprint(d[[1]])\n",
 			wantErr:   "or run it interpreted",
 			reference: "TypeError: unhashable type: 'list' — the refusal is honest, the offer of another way to run it is not",
-			row:       "Gap R.288",
-		},
-		{
-			name:      "a_tuple_key_names_an_ast_node",
-			src:       "d = {(1, 2): \"x\"}\nprint(d[(1, 2)])\n",
-			wantErr:   "unsupported expression *lang.Tuple",
-			reference: "x — a tuple is hashable; the missing tuple object is L11.3's, this row is the sentence",
 			row:       "Gap R.288",
 		},
 	} {
@@ -282,6 +280,38 @@ func TestTheFstringFieldOfANoneKeyEntryIsAnsweredAtTheCLI(t *testing.T) {
 			ref := pythonOutput(t, tc.src)
 			if ref != tc.want {
 				t.Fatalf("the reference prints %q, so this row's expectation is invented", ref)
+			}
+		})
+	}
+}
+
+// TestATupleKeyAnswersWhereTheTupleObjectArrived is the half of Gap R.288's sibling that ADR 0361 paid:
+// `d = {(1, 2): "x"}` / `print(d[(1, 2)])` used to stop the build with `unsupported expression
+// *lang.Tuple` — an AST type name in the user's sentence — and now answers `x`, the reference's own
+// answer, because a tuple is an object the dict road can hash and read back (roadmap L11.3, ADR 0361).
+// The untaggable-key half of that table (`d[[1]]`) stays filed: a list is not hashable, and this row is
+// only about the sentence (Gap R.288).
+func TestATupleKeyAnswersWhereTheTupleObjectArrived(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"literal_tuple_key", "d = {(1, 2): \"x\"}\nprint(d[(1, 2)])\n", "x\n"},
+		{"runtime_tuple_key", "e = {}\ne[(5, 6)] = 7\nprint(e[(5, 6)])\n", "7\n"},
+		{"tuple_key_membership", "d = {(1, 2): \"x\"}\nprint((1, 2) in d)\n", "True\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "tuple_key.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range cliEngines {
+				out, code := cliRunCode(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s exited %d where the reference prints %q:\n%s", engine, code, tc.want, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Errorf("%s printed %q, want %q", engine, out, tc.want)
+				}
 			}
 		})
 	}

@@ -40,6 +40,13 @@ import (
 // false when the index is a legal position, and false when the compiler cannot tell — a name whose
 // kind is a run-time fact keeps the door it has always gone through rather than being accused.
 func (g *irGen) nonIntIndexTypeName(e Expr) (string, bool) {
+	// The tuple question first, asked of the one predicate that owns it: `(0, 1)` is a
+	// `*ListLit` carrying the tuple flag, and a name the program last filled with a tuple is a tuple
+	// too. Naming the LAYOUT here would tell the reader `list indices must be integers or slices, not
+	// list` for a value the reference calls a tuple (roadmap L11.3, ADR 0361).
+	if g.isTupleExpr(e) {
+		return "tuple", true
+	}
 	switch k := e.(type) {
 	case nil:
 		return "", false

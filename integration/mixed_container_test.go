@@ -191,11 +191,13 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
 	t.Parallel()
 	// The nested shapes this table used to carry are answers now ({1, [1]} and {"a": 1, "b": [1]}
-	// both print correctly, pinned by TestNestedContainersAnswerOnTheCompiledBackend). What is left is a
-	// value with no entry in the tag table at all, and the one nested shape with no rule.
+	// both print correctly, pinned by TestNestedContainersAnswerOnTheCompiledBackend), and so does a tuple
+	// member: `xs.append((1, 2))` prints [1, 'a', (1, 2)] on both legs, because the immutable container is
+	// an object the slot can tag since ADR 0361 — the row that used to demand a refusal here is now the
+	// answered row below it. What is left is a value with no entry in the tag table at all, and the one
+	// nested shape with no rule.
 	for _, tc := range []struct{ name, src, want string }{
 		{"lambda_member", "xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
-		{"tuple_member", "xs = [1, \"a\"]\nxs.append((1, 2))\nprint(xs)\n", "must carry a tag"},
 		{"container_dict_key", "print({[1, 2]: 3})\n", "cannot hold"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

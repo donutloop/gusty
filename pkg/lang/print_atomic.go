@@ -87,17 +87,24 @@ import "strings"
 // doors the renderers are built from — `rt_str_of_value`, `rt_str_ptr`, `rt_fmt_double`,
 // `rt_bool_text`, `rt_kind_name` — are evaluations: they compute text and never put it anywhere.
 var printWriteSinks = map[string]bool{
-	"@printf":                   true,
-	"@rt_out_txt":               true,
-	"@rt_out_int":               true,
-	"@rt_print_none":            true,
-	"@rt_print_bool":            true,
-	"@rt_print_str":             true,
-	"@rt_print_value":           true,
-	"@rt_print_mixed_value":     true,
-	"@rt_print_list":            true,
-	"@rt_print_list_str":        true,
-	"@rt_print_list_mixed":      true,
+	"@printf":               true,
+	"@rt_out_txt":           true,
+	"@rt_out_int":           true,
+	"@rt_print_none":        true,
+	"@rt_print_bool":        true,
+	"@rt_print_str":         true,
+	"@rt_print_value":       true,
+	"@rt_print_mixed_value": true,
+	"@rt_print_list":        true,
+	"@rt_print_list_str":    true,
+	"@rt_print_list_mixed":  true,
+	// The immutable container's three printers are writes for the same reason the list's are: the
+	// brackets, the separator and the elements all go to stdout through rt_out_txt and
+	// rt_print_mixed_value, and a print line that calls the dispatcher must be seen as the write it
+	// is (roadmap L11.3, ADR 0361; Gap L.5's atomicity).
+	"@rt_print_list_or_tuple":   true,
+	"@rt_print_tuple":           true,
+	"@rt_print_tuple_value":     true,
 	"@rt_print_container_value": true,
 	"@rt_dict_print":            true,
 	"@rt_dict_print_s":          true,

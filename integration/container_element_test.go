@@ -160,6 +160,14 @@ func TestNestedContainersAnswerOnTheCompiledBackend(t *testing.T) {
 		{"store_a_container_in_a_dict", "d = {\"a\": 1}\nd[\"b\"] = [2, 3]\nprint(d)\n", "{'a': 1, 'b': [2, 3]}\n"},
 		{"length_of_a_nested_list", "print(len([[1, 2], [3, 4]]))\n", "2\n"},
 		{"loop_over_inner_containers", "for row in [[1, 2], [3, 4]]:\n    print(row)\n", "[1, 2]\n[3, 4]\n"},
+		// A tuple is a storable object since ADR 0361: the slot carries the tag, the object carries the
+		// immutable-container bit, and the printer asks the object. These rows used to demand a refusal.
+		{"tuple_in_a_list", "print([1, \"a\", (1, 2)])\n", "[1, 'a', (1, 2)]\n"},
+		{"append_a_tuple", "xs = [1, \"a\"]\nxs.append((1, 2))\nprint(xs)\n", "[1, 'a', (1, 2)]\n"},
+		{"tuple_of_containers", "print(((1, 2), (3, \"b\")))\n", "((1, 2), (3, 'b'))\n"},
+		{"list_of_tuples", "print([(2, 1), (1, 2)])\n", "[(2, 1), (1, 2)]\n"},
+		{"tuple_in_a_dict_value", "print({\"k\": (1, 2)})\n", "{'k': (1, 2)}\n"},
+		{"tuple_element_read", "print([(1, 2)][0][1])\n", "2\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -194,7 +202,7 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"container_key", "print({[1, 2]: 3})\n", "cannot hold"},
-		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
+		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "no hashing rule"},
 		{"arithmetic_on_a_container_element", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 		// (`element_of_a_mutated_container_as_a_number` — `xs = [[1, 2]]` / `xs.append([3])` /
 		// `print(xs[0][0] + 1)` — sat in this table demanding a refusal until ADR 0265: the pair (payload,

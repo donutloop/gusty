@@ -42,11 +42,15 @@ var capabilityNotACapabilityGap = map[string]string{
 	// Refusals of a program the reference also refuses: the program is wrong, and the compiler said so
 	// before running it. Where the fold should have raised instead of refusing, that is Gap R.37's road,
 	// not a missing capability.
-	"tuple assignment length mismatch":                         "unpacking a non-sequence: the reference raises ValueError for the same program",
-	"unsupported tuple assignment value":                       "unpacking a non-sequence: the reference raises TypeError for the same program",
-	"no such module":                                           "an import of a module that is not there — the reference raises ModuleNotFoundError",
-	"unsupported string method":                                "a method text has not: the reference raises AttributeError",
-	"concatenating a string with a value that is not a string": "the reference raises TypeError for the same program",
+	// The unpack-count sentence since ADR 0361: the build says what the reference raises, because both
+	// sides of the binding are visible here. The program is wrong; the compiler said so before running it.
+	"the reference raises ValueError: too many values to unpack":   "unpacking the wrong number of values: the reference raises ValueError for the same program",
+	"the reference raises ValueError: not enough values to unpack": "unpacking the wrong number of values: the reference raises ValueError for the same program",
+	"tuple assignment length mismatch":                             "unpacking a non-sequence: the reference raises ValueError for the same program",
+	"unsupported tuple assignment value":                           "unpacking a non-sequence: the reference raises TypeError for the same program",
+	"no such module":                                               "an import of a module that is not there — the reference raises ModuleNotFoundError",
+	"unsupported string method":                                    "a method text has not: the reference raises AttributeError",
+	"concatenating a string with a value that is not a string":     "the reference raises TypeError for the same program",
 }
 
 func TestEveryCapabilityRefusalInTheCorpusIsClassified(t *testing.T) {

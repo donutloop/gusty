@@ -53,6 +53,12 @@ const (
 	listAnswer
 	setAnswer
 	dictAnswer
+	// tupleAnswer is the scan saying "the answer is a container, and it is the immutable one". It is a kind of
+	// its own and NOT `listAnswer` even though the slots are the same shape, because everything this table's
+	// list answer implies — the compile-time `@.lstN` global, the list's own printer, calling the answer a
+	// `list` to a diagnostic — is a claim the tuple does not honour. A tuple answer is described and then handed
+	// to the door that asks the OBJECT, which is the only place the bracket bit lives (roadmap L11.3, ADR 0361).
+	tupleAnswer
 )
 
 func (k containerAnswerKind) String() string {
@@ -63,6 +69,8 @@ func (k containerAnswerKind) String() string {
 		return "set"
 	case dictAnswer:
 		return "dict"
+	case tupleAnswer:
+		return "tuple"
 	}
 	return ""
 }
@@ -256,6 +264,13 @@ func containerKindOfIn(fd *FuncDef, funcs map[string]*FuncDef, defines map[strin
 		}
 		switch n := e.(type) {
 		case *ListLit:
+			// A tuple is a container, so the scan answers "container"; it is not the LIST road's container, so
+			// it answers with its own kind. The roads that build a described list answer build the compile-time
+			// `@.lstN` shape and call the printer by name, and both claims are wrong for the object whose own bit
+			// says how it prints (roadmap L11.3, ADR 0361).
+			if n.IsTuple() {
+				return tupleAnswer
+			}
 			return listAnswer
 		case *SetLit:
 			return setAnswer
@@ -779,7 +794,21 @@ func (g *irGen) containerAnswerOperandRead(b *strings.Builder, e Expr, read cont
 		b.WriteString(fmt.Sprintf("  %s = alloca i32\n", "%_"+name))
 		g.gcReg(b, name)
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %s\n", h, "%_"+name))
-		g.settleContainerKind(name, kind.String())
+		g.settleContainerKind(name, func() string {
+			// The scan proved a container, and for a tuple the PHYSICAL kind it has to be recorded under is the
+			// list's: the slots, the tag array and the object's own kind word all say `list`, and only the
+			// attribute word says tuple. Claiming a `tuple` kind here would answer `no` to every door that asks
+			// "is this walkable?", and `for x in b():` would refuse where it walks (roadmap L11.3, ADR 0361).
+			if kind == tupleAnswer {
+				return containerKindList
+			}
+			return kind.String()
+		}())
+		if kind == tupleAnswer {
+			// …and the bracket claim rides beside it, on the name the answer was rooted under.
+			g.recordTupleClaim(name)
+			g.tupleUsed = true
+		}
 		return &Name{Value: name, Src: c.Span()}, kind, true
 	}
 	g.containerAsked[nm.Value] = true
@@ -935,12 +964,25 @@ func (g *irGen) sliceBaseIsDescribed(base Expr) bool {
 // needs (ADR 0232's rule, kept whole).
 func (g *irGen) recordContainerAnswer(name string, ans containerAnswer) {
 	switch ans.kind {
-	case listAnswer:
+	case listAnswer, tupleAnswer:
 		// Every claim the name held from another kind's object is settled by the one door, which
 		// then lets the line below answer the only question the door cannot: do these slots
 		// describe themselves (roadmap Gap Q.1, ADR 0232's rule).
 		g.settleContainerKind(name, containerKindList)
 		g.mixedLists[name] = g.containerAnswerCarriesTags(ans)
+		// One more attribute of the same binding: is the object the callee handed back the immutable
+		// spelling? The callee wrote the parentheses and the caller never saw them, so the fact has to be
+		// read off the arms the `ret` was built from — and claimed only when every arm agrees, which is
+		// ADR 0172's latest-binding rule asked of a return (roadmap L11.3, ADR 0361).
+		if g.tupleVars == nil {
+			g.tupleVars = map[string]bool{}
+		}
+		if ans.kind == tupleAnswer || g.containerAnswerIsTupleSpelling(ans) {
+			g.tupleVars[name] = true
+			g.tupleUsed = true
+		} else {
+			delete(g.tupleVars, name)
+		}
 	case dictAnswer:
 		g.settleContainerKind(name, containerKindDict)
 		// The builder's own question, asked here rather than guessed: `heapDictFrom` picks the tagged put —
@@ -1048,7 +1090,7 @@ func (g *irGen) recordContainerAnswerElementKinds(name string, ans containerAnsw
 		return ""
 	}
 	switch ans.kind {
-	case listAnswer:
+	case listAnswer, tupleAnswer:
 		seen := map[string]bool{}
 		for _, arm := range ans.arms {
 			lit, ok := arm.(*ListLit)
@@ -1211,6 +1253,23 @@ func containerAnswerHandsAPair(name string, sites containerAnswerCallTable) bool
 // written. A list literal answers from the same predicate its build site used; anything the compiler
 // cannot read is taken as carrying tags, because the safe direction is the printer that asks the object
 // and not the one that assumes.
+// containerAnswerIsTupleSpelling asks whether every container the callee can hand back is the immutable
+// spelling: the arms are the `return` expressions the scan read the kind from, and the question is the
+// same one the print road asks of an expression — the `Tuple` flag on the container node, never a guess
+// from the elements (roadmap L11.3, ADR 0361). An arm the walk cannot pin to a tuple (`return xs`, a
+// comprehension, a call) answers no, which retires the claim rather than print brackets on a list.
+func (g *irGen) containerAnswerIsTupleSpelling(ans containerAnswer) bool {
+	if len(ans.arms) == 0 {
+		return false
+	}
+	for _, arm := range ans.arms {
+		if !g.isTupleExpr(arm) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *irGen) containerAnswerCarriesTags(ans containerAnswer) bool {
 	if len(ans.arms) == 0 {
 		return true

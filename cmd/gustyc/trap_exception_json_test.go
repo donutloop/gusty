@@ -75,7 +75,7 @@ func TestCompiledBackendRefusesWhereTheReferenceTraps(t *testing.T) {
 	}{
 		{"x = 5\nx()\n", "is not a function", "roadmap L11.1 (a value that can be called needs the tagged value word)", "TypeError: 'int' object is not callable"},
 		{"print(len(5))\n", "inline list/dict/set literal", "roadmap Gap L11.1 (len() over a value whose kind is a run-time fact)", "TypeError: object of type 'int' has no len()"},
-		{"a, b = [1]\n", "length mismatch", "roadmap Gap K.x (unpacking a container whose length is a run-time fact)", "ValueError: not enough values to unpack (expected 2, got 1)"},
+		{"a, b = [1]\n", "not enough values to unpack (expected 2, got 1)", "roadmap Gap K.x (unpacking a container whose length is a run-time fact)", "ValueError: not enough values to unpack (expected 2, got 1)"},
 	}
 	for _, tc := range cases {
 		out, code := cliExit(t, "--json", "--eval", tc.src)

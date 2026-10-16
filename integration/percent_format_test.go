@@ -35,6 +35,12 @@ func TestPercentFormatAnswersAtTheCLI(t *testing.T) {
 		{"the mapping form", "print(\"%(who)s has %(n)d\" % {\"who\": \"ada\", \"n\": 2})\n"},
 		{"a text answer reaching a text method", "print((\"[%s]\" % \"hi\").upper())\n"},
 		{"the numeric remainder beside it", "print(7 % 3)\nprint(\"%d of 2\" % 1)\n"},
+		// The argument list is a tuple, and the tuple is a value (roadmap L11.3, ADR 0361): these two rows
+		// were refusals — the door could not name the argument — until the immutable container got an
+		// object that says what it is.
+		{"a tuple standing where one value goes", "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n"},
+		{"a tuple nested in the argument list", "print(\"%s\" % ((1, 2),))\n"},
+		{"the empty tuple's one element", "print(\"%s\" % ((),))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -65,7 +71,7 @@ func TestPercentRefusalAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, refusal string }{
 		{"a conversion with no renderer", "print(\"%b\" % 3)\n", "%b"},
 		{"the conversion the reference removed", "print(\"%u\" % 3)\n", "%u"},
-		{"an argument with no value", "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n", "kind"},
+		{"an argument with no value", "print(\"%s\" % (lambda: 1))\n", "cannot name"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -131,8 +137,9 @@ func TestRemainderAtTheCLIIsUntouchedByThePercentGuard(t *testing.T) {
 // (`integration/programs/probe_percent_arguments_beyond_the_door.gy`) carries the first of these and the rest
 // live here as their own sources. Each row states the reference's answer beside this backend's, because the
 // point of the family is which leg is missing what, and the missing door behind each answer belongs to another
-// roadmap row: the bounded integer (Gap R.176, ADR 0166), the float literal's written forms (L11.2), a tuple
-// standing where a value goes (L11.3), and the exception class the shared table does not hold (the surrogate).
+// roadmap row: the bounded integer (Gap R.176, ADR 0166), the float literal's written forms (L11.2), and
+// the exception class the shared table does not hold (the surrogate). A tuple argument is no longer one of
+// them: it answers, and its rows live beside the answered family (roadmap L11.3, ADR 0361).
 //
 // Exit 2 is forbidden in every row: an ordinary program whose module `llc` rejects is the compiler's bug
 // whatever the reason it was reached (ADR 0166).
@@ -189,14 +196,9 @@ func TestPercentArgumentResidueAtTheCLI(t *testing.T) {
 		answers(t, t.TempDir(), "print(\"%s\" % (1e100,))\n", "1e+100\n")
 	})
 
-	// A tuple is an argument list here, not a value, so a tuple standing where one conversion's value goes
-	// has no kind for the door to answer with. The refusal says that; it does not print the handle.
-	refuse(t, "a tuple where a value goes", "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n",
-		"codegen", "cannot name", "Gap R.31", "ADR 0360")
-	t.Run("and the reference renders the nested tuple beside the refusal", func(t *testing.T) {
-		t.Parallel()
-		answers(t, t.TempDir(), "print(\"%s %s\" % (\"a\", (\"b\", \"c\")))\n", "a ('b', 'c')\n")
-	})
+	// A tuple is the argument list AND a value: the row beside the residue family that used to refuse here
+	// (`cannot name` the argument) answers CPython's `a ('b', 'c')` on the compiled leg now, and lives in
+	// TestPercentFormatAnswersAtTheCLI instead (roadmap L11.3, ADR 0361).
 
 	// The surrogate is the debt, not the refusal: the LITERAL is refused by the same gate that guards the
 	// rows above, but a code point the program COMPUTED reaches the encoder, which has no class to raise —

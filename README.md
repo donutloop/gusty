@@ -86,6 +86,18 @@ gusty ships an indentation-based syntax covering:
   walk + attribute binding).
 - **Data structures** — inline `list` / `dict` / `set` literals, indexing, and
   list / dict / set comprehensions.
+
+- **Tuples are values** — `(1, 2)`, `(1,)` and `()` are objects, not a spelling the parser hands to a list road:
+  they print `(1, 2)`, index (including `t[-1]`), measure with `len`, unpack with `a, b = (4, 5)`, test with `in`,
+  compare for equality (a tuple is never equal to a list, in either direction), enter a container, come back from a
+  function, key a dict (`d[(1, 2)]`, and a missing key raises `KeyError: (3, 4)` with the key's repr), and survive a
+  slice (`t[1:]` is a tuple, because a copy carries the object's attributes). They are **immutable**, and the write
+  doors refuse rather than mutate: `t.append(3)`, `t[0] = 9`, `t.sort()` stop the build quoting the reference's own
+  `AttributeError`/`TypeError`. The mechanism is one object, not a second layout — the list layout's heap object with
+  the immutable-container bit set in its own `@estr[h]` attribute word — so the printer, the equality door and the
+  dict-key road all ask **the object**, which is why `p = mk(1, "x")` prints `(1, 'x')` (**ADR 0361**, roadmap L11.3).
+  What is owed is named by the rows: an order (`Gap R.309` — `sorted` refuses container elements rather than printing
+  arrival order), `count`/`index` (`Gap I.2`), and the empty tuple's identity (`Gap R.310`).
 - **Text formatting** — f-strings (`f"x{n}"`, an interpolation is a text value: ADR 0359) and printf-style
   `%` on a text: `"hi %s, you are %d" % ("Ada", 36)` is `hi Ada, you are 36`. The door renders
   `%s %r %a %d %i %o %x %X %e %E %f %F %g %G %c` with the reference's flags, widths, precisions, the `*`/`.*`
@@ -664,7 +676,10 @@ further out). The constant folders were closed on the shape — a folded `-None`
 instruction that could have disagreed (Gap R.37's rule, at its last operator) — and a slot is raised only
 where the literal says nothing it holds is a number *and* the program never stores anything else into it,
 because a raise where CPython answers `-1` would be the same bug wearing a class. the record still
-calls a tuple `'list'`, which is pinned with its own row (`Gap R.141`) rather than hidden in this one.
+calls a tuple `'list'`, which is pinned with its own row (`Gap R.141`) rather than hidden in this one; the **compiled**
+leg says `'tuple'` — the reference's word, since **ADR 0361** gave the tuple an object to ask — which makes that
+record row a divergence *from the record*, and the drift ledger is where such a row lives (ADR 0302: where the
+record and the reference disagree, the reference is right and the record is the debt).
 
 **A slot read reaches a function, in both directions** (ADR 0273, closing `Gap R.139`).
 `def twice(v): return v * 2` with `xs = []` / `xs.append([7, 8])` / `print(twice(xs[0][0]))` is CPython's
@@ -967,8 +982,9 @@ blamed the program for a feature the language lacked. `d.setdefault(k, []).appen
 anybody groups rows, now works; `index` finds by value equality (so `[1].index(True)` is `0`) and raises
 `ValueError: 5 is not in list` rather than answering `-1`, which is a legal index a program would obey
 into reading from the end of the list; `insert` clamps rather than validating. `d.popitem()` **exists and
-refuses**, naming why: it answers a pair, and there is no tuple value until `L11.3` — answering a list
-would print `[1, 2]` where the reference prints `(1, 2)`. Along the way a `KeyError` learned to name the
+refuses**, naming why: it is a dict method the compiled doors do not build over a literal (the `Gap I.2`
+receiver table, beside `Gap R.126`'s pair), and a two-element list is not an answer — it prints `[1, 2]`
+where the reference prints `(1, 2)`. The tuple itself is a value since **ADR 0361**; the door is what is owed. Along the way a `KeyError` learned to name the
 **key** (`KeyError: 'a'`) on the leg that can: the compiled leg's raise is a module constant, and that
 half is filed as `Gap R.189` PARTIAL rather than left looking closed.
 
@@ -1271,7 +1287,8 @@ surface, byte-identical to CPython). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,
 a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
-R.115, a tuple is L11.3's, and an unrelated container's nested slot read refusing is Gap R.191's). An
+R.115 and an unrelated container's nested slot read refusing, Gap R.191's — the tuple that used to be in
+this list is a value since **ADR 0361**, see `docs/language.md` § *Tuples are values*). An
 **interpolation** is no longer in that list: since **ADR 0359** `s = f"x{n}"`, `f"a{n}" + "!"`,
 `f"v={n}".upper()`, `[f"a{n}", 1]`, `{f"k{n}": 1}` and `for c in f"ab{n}"` answer, `print(f"{xs}")` writes
 `[1, 2]` instead of the handle (Gap R.114 paid with the same change), and what the interpolation still owes is a

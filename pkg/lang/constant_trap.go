@@ -61,6 +61,21 @@ func (g *irGen) constantTrap(b *strings.Builder, class, msg string, sp Span) {
 // wrongly — and the container is the word a reader needs when two containers are on the line.
 func listIndexOutOfRange() string { return "list index out of range" }
 
+// tupleIndexOutOfRange is the same accident one spelling over. The two containers share the compiled
+// layout, so a bounds check that quotes one sentence for both tells the reader about an object the
+// program never wrote — and a traceback is the interface (Gap R.35's rule, roadmap L11.3, ADR 0361).
+func tupleIndexOutOfRange() string { return "tuple index out of range" }
+
+// indexOutOfRangeSentenceFor is the one question the bounds doors ask: which spelling does the object
+// they are about to subscript have? The answer comes from the same census the printer asks, so one
+// program cannot get `list` from the print and `tuple` from the trap (roadmap L11.3, ADR 0361).
+func indexOutOfRangeSentenceFor(isTuple bool) string {
+	if isTuple {
+		return tupleIndexOutOfRange()
+	}
+	return listIndexOutOfRange()
+}
+
 // listAssignmentIndexOutOfRange is the store's own sentence. The reference distinguishes the two
 // because the actions differ — one read past the end, one wrote past it — and the shared bounds check
 // that normalises a negative index cannot tell them apart unless it is told (ADR 0330).

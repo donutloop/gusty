@@ -1209,11 +1209,13 @@ Rules that the compiled backend implement:
                               #        and that is the runtime's key-equality rule, not the gate's
   ```
 
-  A key this backend cannot tag — a tuple, a container — is refused **before** the door: `d = {(1, 2): "x"}` /
-  `print(d[(1, 2)])` stops the build with `unsupported expression *lang.Tuple` (a tuple has no compiled object at
-  all — that is **L11.3**) and `d = {[1]: "x"}` says a
+  A key this backend cannot tag — a container — is refused **before** the door: `d = {[1]: "x"}` says a
   compiled container cannot hold a list literal (ADR 0327's untypable-key row; the class a container key raises
-  is **Gap R.217**'s, and the sentence's own wording is **Gap R.288**'s). What the same read still cannot reach is
+  is **Gap R.217**'s, and the sentence's own wording is **Gap R.288**'s). A **tuple key answers**: `d = {(1, 2): "x"}` /
+  `print(d[(1, 2)])` prints `x`, `print((1, 2) in d)` prints `1`, a tuple key added at run time (`e[(5, 6)] = 7`) reads
+  back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
+  object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says
+  `'list'`, the reference's left-to-right hashability walk). What the same read still cannot reach is
   five rows, each pinned with today's answer beside the reference's: an
   f-string field of the entry (**Gap R.283**), the truth of it (**R.284**), `+`/`*` over it (**R.285**), `abs`
   of it (**R.287**), and a **name** whose last binding was `None`, which arrives as an untagged word and raises
@@ -1591,9 +1593,11 @@ The methods that **mutate and return nothing** (`extend`, `insert`, `remove`, `c
 quietly read from the end of the list. `list.remove` raises `ValueError: list.remove(x): x not in list`,
 `dict.pop` raises `KeyError: 'z'` (a `KeyError` carries the **key's repr**: `Gap R.189`).
 
-`d.popitem()` **exists and refuses**, naming the reason: it answers a pair, and this language has no
-tuple value until `L11.3` — answering a two-element list would print `[1, 2]` where the reference prints
-`(1, 2)`. A method that exists is not obliged to answer.
+`d.popitem()` **exists and refuses**, naming the reason: it is a dict method whose answer the compiled
+doors do not build (the same `Gap I.2` receiver table as `.items()` over a literal), and a two-element list
+would not be an answer — `[(k, v)]` prints where the reference prints `(k, v)`. A method that exists is not
+obliged to answer. A tuple itself is a value since **ADR 0361**; what `popitem` still needs is the door that
+answers it from a dict's own slots.
 
 The compiled leg folds a container method only over a literal written at the call, so these over a
 *variable* still refuse at exit 1 — owed to `L12.11`, whose receiver table is the fix (and, per ADR
@@ -1787,9 +1791,10 @@ Both legs print all of this identically, at exit 0. A view is a list-shaped valu
 name: everything you can do to a list you can do to a view, and only its rendering differs.
 
 `d.items()` answers `dict_items([('a', 1), ('b', 2)])` on the record; the compiled leg **refuses** it,
-because its elements are key/value pairs and this backend has no pair value yet (`Gap R.126`/
-roadmap L11.3 owns tuples). Refusing is the honest answer — inventing a bracket-shaped value would be a
-fabricated representation.
+because its elements are key/value pairs the compiled doors do not build (`Gap R.126`, beside the `Gap I.2`
+method table). Refusing is the honest answer — inventing a bracket-shaped value would be a fabricated
+representation. The tuple the pair would print is itself a value since **ADR 0361** (`print(("a", 1))`
+prints `('a', 1)`); what is owed is the door that builds these from a dict's slots, not the value.
 
 ### What a set counts, and what a `dict.get` answers with
 
@@ -3138,8 +3143,9 @@ CPython prints: `str(None)` is `"None"` (not `"0"`), `str(1.5)` is `"1.5"`, and 
 folded string may be printed but never stored as a global; where it is stored, the text is interned
 and the handle kept (ADR 0183). A value whose kind **no expression names** — an untagged word the
 compiler cannot read — is refused in words, exit 1, naming which half is missing, rather than
-answering with the number underneath it; the remaining shapes of that kind are roadmap Gap R.115, and
-a tuple is refused until L11.3 gives it a value to render.
+answering with the number underneath it; the remaining shapes of that kind are roadmap Gap R.115. A
+**tuple** is no longer one of them: since **ADR 0361** it is the list layout's object with one attribute bit
+set, so it renders, indexes, unpacks, compares and hashes (see § Tuples are values).
 
 A **container slot is an i32 word**, so the element kinds a compiled container can hold are the kinds
 a word can carry: integers, interned strings (`@str_tab` indices, ADR 0224) and `None` — each with its
@@ -4248,6 +4254,76 @@ d2 = {}
 d2["k"] = xs[0] / 2     # refused: the value is not a pair, and the ordinary road is asked first
 ```
 
+
+
+## Tuples are values (L11.3, ADR 0361)
+
+A tuple is a **value**: an object that prints itself, measures, indexes, unpacks, compares, hashes, and
+refuses — in words, at build time — every write the reference also refuses. It is not a spelling the parser
+hands to a list road, and the compiled backend does not render one as a list.
+
+```gusty
+t = (1, 2, 3)
+print(t)            # (1, 2, 3)
+print((1,))         # (1,)      — the comma is what keeps a one-element tuple a tuple
+print(())           # ()
+print((1, "a", None, True, 2.5))
+print(t[0], t[-1], len(t))          # 1 3 3
+a, b = (4, 5)
+print(a, b)                         # 4 5
+p = (1, ("a", "b"), [1, 2])
+print(p[1][0], p[2][1])             # a 2
+print(2 in (1, 2, 3))               # True
+print((1, 2) == (1, 2))             # True
+print((1, 2) == [1, 2])             # False — a tuple is not a list, in either direction
+print((1, 2) == (1, 2.0))           # True  — an int and a float are the same number
+print(str((1, "a")))                # (1, 'a')   — str() and repr() ask print's door
+def pair():
+    return (1, 2)
+print(pair())                       # (1, 2)
+d = {(1, 2): "a"}
+print(d[(1, 2)])                    # a
+print((1, 2) in d)                  # True
+```
+
+**One layout, one bit.** The compiled heap has one container layout (ADR 0232), and a tuple is that object
+with the immutable-container bit set in its `@estr[h]` attribute word, beside the bits that claim interned
+text and self-describing slots (ADR 0187/0251). The printer, the equality door, the slice door and the dict
+key road all ask **the object**, because the expression that built a container is not the thing that knows
+what the container is. That is why `p = mk(1, "x")` followed by `print(p)` prints `(1, 'x')`: the name holds
+a handle, and the handle answers the question. A tuple literal is therefore always heap materialised — the
+compile-time global shape has no attribute word to carry the fact.
+
+**What a slice keeps.** A copy carries the object's own attributes, so `t[1:]`, `t[::-1]` and `t[0:0]` are
+tuples, print with parentheses, and compare as tuples (`t[1:] == (2, 3)` is `True`). Roads that build a copy
+*without* an attribute word — `sorted(...)`, `reversed(...)`, the dict views — keep their specific printers
+rather than asking the object dispatcher: a dispatcher that trusts a missing word prints the wrong brackets.
+
+**What refuses, in words.** Immutability is a build-time refusal, not a silent write, because the shared
+layout *could* carry the write and the answer would then be one the reference never produces:
+
+| program | the compiled backend says | the reference raises |
+|---|---|---|
+| `t.append(3)` | refuses, quoting | `AttributeError: 'tuple' object has no attribute 'append'` |
+| `t[0] = 9` | refuses, quoting | `TypeError: 'tuple' object does not support item assignment` |
+| `t.sort()`, `t.pop()`, `t.clear()`, `t.insert(0,1)`, `t.remove(1)`, `t.extend(x)`, `t.reverse()` | refuses, quoting | the same `AttributeError` family |
+
+…where a tuple literal used to stop the build with `unsupported expression *lang.Tuple` for every one of
+those lines (the sentence **Gap R.288** files), and `()` did not parse at all.
+
+**Traps carry the reference's class and sentence.** `t[5]`, `(1, 2)[5]`, `t[-3]` and a subscript under a
+nested read all raise `IndexError: tuple index out of range` — the tuple's own sentence, taken from the
+object when the road holds only a handle and from the node when the road can see the source. A missing key
+raises `KeyError: (3, 4)` with the key's repr, and an unhashable element inside a key names the inner type:
+`{(1, [2]): 1}` says `'list'`.
+
+**What is still owed.** Sorting a container whose *elements* are containers refuses rather than printing the
+order they arrived in (`Gap R.309`, with the ordering operators between containers); `count`/`index` are the
+list-method table (`Gap I.2`) for a tuple exactly as for a list; `() is ()` prints `False` where CPython prints
+`True`, because the reference keeps one empty tuple and this backend mints one per literal (`Gap R.310`);
+and reading **one element** out of a container the compiler cannot kind — `def mk(a,b): return (a,b)` then
+`print(mk(1,"x")[1])` — is the one-word-position family (`Gap R.146`), wrong for a list in the same way, and
+parity-guarded so a fix cannot land on one leg alone.
 
 ## Builtins
 

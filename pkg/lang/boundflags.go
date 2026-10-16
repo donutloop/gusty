@@ -167,7 +167,7 @@ func boundEligible(body []Stmt) (ok, bad map[string]bool) {
 		case nil:
 			return
 		case *AssignStmt:
-			if !scalarStoreValue(n.Value) {
+			if !scalarStoreValueForTarget(n.Target, n.Value) {
 				names := map[string]bool{}
 				collectBoundTargets(n.Target, names)
 				disqualify(names)
@@ -290,6 +290,39 @@ func collectBoundTargets(e Expr, out map[string]bool) {
 // scalarStoreValue is the shape test behind the eligibility rule: a value the scalar store site
 // handles. A container or float assignment stores elsewhere (a handle store, or a `double` slot),
 // which this file does not hook, so such a name is left as it was rather than flagged.
+// scalarStoreValueForTarget asks the same question with the binding's SHAPE in hand.
+//
+// An unpacking (`p, q = 1, 2`) stores one scalar per name at the store site this file hooks, so the
+// names keep their bound flags and a read of a name the branch never reached traps with
+// UnboundLocalError. A tuple bound to ONE name (`p = (1, 2)`) is a container: the store is a handle
+// store and the reads bypass the scalar load, so the name is left alone. Since ADR 0361 the
+// right-hand side of an unpacking is a tuple `*ListLit` rather than a `*Tuple`, and the two answers
+// must not depend on which node the parser happened to write (roadmap L11.3, ADR 0361).
+func scalarStoreValueForTarget(target, value Expr) bool {
+	if isUnpackingTarget(target) {
+		if ln, isList := AsTupleList(value); isList {
+			for _, el := range ln.Elems {
+				if !scalarStoreValue(el) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return scalarStoreValue(value)
+}
+
+// isUnpackingTarget reports whether this assignment binds name by name rather than one value to one
+// name. The pattern spelling is a *Tuple; a tuple literal on the left would be a bug elsewhere.
+func isUnpackingTarget(target Expr) bool {
+	switch target.(type) {
+	case *Tuple:
+		return true
+	}
+	_, isTuple := AsTupleList(target)
+	return isTuple
+}
+
 func scalarStoreValue(e Expr) bool {
 	switch n := e.(type) {
 	case *IntLit, *StrLit, *BoolLit, *NoneLit, *Name, *Index:

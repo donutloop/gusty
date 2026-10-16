@@ -15,7 +15,7 @@
     "source": "class P:\n    pass\n\np = P()\n\ntry:\n    print(p.nope)\nexcept AttributeError:\n    print(\"attr ok\")\n\ntry:\n    print(int(\"abc\"))\nexcept ValueError:\n    print(\"value ok\")\n\ntry:\n    a, b = [1]\nexcept ValueError:\n    print(\"unpack ok\")\n\ntry:\n    x = 5\n    x()\nexcept TypeError:\n    print(\"call ok\")\n\ntry:\n    print(len(5))\nexcept TypeError:\n    print(\"len ok\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "stdout \"attr ok\\nvalue ok\\nunpack ok\\ncall ok\\nlen ok\\n\"",
-    "actual": "jit: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: unpacking the wrong number of values"
   },
   {
     "source": "def scale(v):\n    return round(v, 2)\n\nprint(scale(2.345))\n",
@@ -57,13 +57,13 @@
     "source": "print(\"a\" * 1.5)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'float'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" / 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for /: 'str' and 'int'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" \u003c 1)\n",

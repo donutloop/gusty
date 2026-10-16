@@ -365,6 +365,32 @@ type ListLit struct {
 	Elems []Expr `json:"elems"`
 	Src   Span   `json:"span,omitempty"`
 	Ty    string `json:"inferred,omitempty"`
+	// Tuple marks a container written with parentheses: `(1, 2)`, `(1,)`, `()`. It is a flag on the
+	// SAME literal node rather than a second node type because the language has one container
+	// representation in the compiled heap — the object carries the flag too (its `@estr[h]` tuple bit),
+	// so the print door, the read doors and the mutation doors all ask the object rather than the
+	// spelling, which is the rule ADR 0251 set for a container the program built. What the flag buys
+	// is the roads a list already has (index, length, membership, equality, iteration) for the
+	// immutable spelling, and what it costs is that every door that MUTATES has to look at it
+	// (roadmap L11.3, ADR 0361).
+	Tuple bool `json:"tuple,omitempty"`
+}
+
+// IsTuple reports whether a container literal is the immutable parenthesised spelling. It is the one
+// question codegen asks of the node; the object's own bit is the runtime's half of the same fact
+// (roadmap L11.3, ADR 0361).
+func (n *ListLit) IsTuple() bool { return n != nil && n.Tuple }
+
+// AsTupleList re-answers a value written as a tuple as the container literal it compiles to, so a
+// road that has already decided "this expression is a tuple value" can ask for the node once. The
+// `*Tuple` node stays what it was: a PATTERN (a for-loop variable, an unpacking target, a sequence
+// match pattern), never a value (roadmap L11.3).
+func AsTupleList(e Expr) (*ListLit, bool) {
+	ln, ok := e.(*ListLit)
+	if !ok || !ln.Tuple {
+		return nil, false
+	}
+	return ln, true
 }
 
 func (n *ListLit) Span() Span { return n.Src }

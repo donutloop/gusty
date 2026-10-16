@@ -422,6 +422,11 @@ func runtimeIRBlocks() []string {
 		// ADR 0354) — so it belongs in the exempt set for the same reason the raise block does,
 		// and the guard stays derived from the blocks instead of a hand-written exemption.
 		frameRuntimeIR,
+		// The immutable container's doors — the tag test, the attribute-word read, the bracket printer and the
+		// container dispatcher that asks it — are compiler runtime code emitted per module, and no program wrote
+		// their names; the block is asked, not the names, so the exempt set stays derived from the blocks
+		// themselves (roadmap L11.3, ADR 0361).
+		tupleRuntimeBlock(),
 		// The instance renderers are emitted per module, but they are runtime code and their names
 		// never come from the program. Asking the generator with no classes is what keeps this list
 		// derived from the blocks themselves rather than a hand-written exemption (roadmap Gap R.209).

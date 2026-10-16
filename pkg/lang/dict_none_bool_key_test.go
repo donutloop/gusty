@@ -423,13 +423,11 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			reference:   "raises TypeError: unhashable type: 'list' — declining is this backend's honest answer, the offer beside it is not (and `--interp` is a usage error)",
 			row:         "Gap R.288",
 		},
-		{
-			name:        "a_tuple_key_names_an_ast_node",
-			src:         "d = {(1, 2): \"x\"}\nprint(d[(1, 2)])\n",
-			wantRefusal: "unsupported expression *lang.Tuple",
-			reference:   "prints x — a tuple is hashable; the tuple object itself is L11.3's row, this row is the sentence",
-			row:         "Gap R.288",
-		},
+		// The tuple-key sibling that used to sit here — `d = {(1, 2): "x"}` / `print(d[(1, 2)])` refusing
+		// with `unsupported expression *lang.Tuple` — is PAID: ADR 0361 gave the tuple a compiled object, the
+		// shape answers `x`, and the sentence the emitter used for it no longer exists. TestATupleDictKeyAnswers
+		// in dict_literal_key_test.go carries it as an answer now; Gap R.288 keeps its row for the offer to run
+		// a program "interpreted", which the surviving row below still pins.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

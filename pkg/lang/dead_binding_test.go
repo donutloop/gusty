@@ -80,6 +80,10 @@ func TestAReadInTheConstructsTheOldWalkersMissedKeepsTheAllocation(t *testing.T)
 		{"a_raise_caught_by_a_handler", "xs = [1, 2, 3]\ntry:\n    raise Exception(str(xs[0]))\nexcept Exception:\n    print(9)\n", "9\n"},
 		{"a_container_method_argument", "xs = [1, 2]\nxs.append(3)\nprint(len(xs))\n", "3\n"},
 		{"a_measured_container", "xs = [1, 2, 3]\nprint(len(xs))\n", "3\n"},
+		// A tuple in an argument list is a value the call road carries since ADR 0361 (roadmap Gap R.295
+		// — this row used to sit in TestAReadCountsEvenWhereTheBackendHasNoAnswerYet demanding the
+		// `unsupported expression *lang.Tuple` sentence).
+		{"a_tuple_in_an_argument_list", "xs = [1, 2, 3]\nprint((xs[0], 7))\n", "(1, 7)\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,12 +112,6 @@ func TestAReadCountsEvenWhereTheBackendHasNoAnswerYet(t *testing.T) {
 		row    string
 		refuse string // the sentence the compiled backend gives today, kept honest
 	}{
-		{
-			name:   "a_tuple_element",
-			src:    "xs = [1, 2, 3]\nprint((xs[0], 7))\n",
-			row:    "Gap R.295",
-			refuse: "unsupported expression *lang.Tuple",
-		},
 		{
 			name:   "a_generator_passed_to_a_builtin",
 			src:    "xs = [1, 2, 3]\nprint(sum((x for x in xs)))\n",

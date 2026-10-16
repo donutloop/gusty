@@ -278,7 +278,12 @@ func TestTheDeclinedAnswerIsPrintedByTheDoorThatAsksTheObject(t *testing.T) {
 	if !strings.Contains(main, "__cans") {
 		t.Fatalf("the answer is not materialised to a rooted slot the container roads can read:\n%s", main)
 	}
-	if !strings.Contains(main, "rt_str_of_container(") && !strings.Contains(main, "rt_print_list") {
+	// The answer is printed by the door that asks the object — @rt_print_container_value (which itself
+	// dispatches to rt_print_list / rt_print_list_or_tuple / dict / set by the object's own words), or the
+	// str() twin of the same door. A main that prints the handle with %d is what this guards (ADR 0232).
+	if !strings.Contains(main, "rt_str_of_container(") &&
+		!strings.Contains(main, "rt_print_list") &&
+		!strings.Contains(main, "rt_print_container_value(") {
 		t.Fatalf("main does not ask the container printer anything:\n%s", main)
 	}
 }

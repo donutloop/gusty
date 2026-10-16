@@ -346,12 +346,15 @@ func TestAPlainIntEntryStillTakesTheOneWordRoads(t *testing.T) {
 // sentence names the key it could not type, and the row that owns it.
 func TestAnUntypableDictLiteralKeyRefuses(t *testing.T) {
 	t.Parallel()
-	_, err := Compile("print({(1, 2): 3}[(1, 2)])\n")
+	// A LIST key is the untypable one, and it still refuses. The tuple key is not in this table: since
+	// ADR 0361 a tuple is an object whose elements each carry a tag, so `{(1, 2): 3}[(1, 2)]` answers 3
+	// (asserted in TestATupleDictKeyAnswersBelow).
+	_, err := Compile("print({[1]: 3}[[1]])\n")
 	if err == nil {
-		t.Fatal("a tuple key compiled; a key with no tag has no arm here (roadmap Gap R.212)")
+		t.Fatal("a list key compiled; a key with no tag has no arm here (roadmap Gap R.212)")
 	}
 	msg := err.Error()
-	for _, want := range []string{"codegen:", "a tuple literal", "Gap R.215"} {
+	for _, want := range []string{"codegen:", "a list literal", "Gap R.215"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the tuple-key refusal does not say %q: %q", want, msg)
 		}
@@ -359,4 +362,15 @@ func TestAnUntypableDictLiteralKeyRefuses(t *testing.T) {
 	if strings.Contains(msg, "unsupported expression") {
 		t.Errorf("the tuple key fell through to the old unexplained refusal: %q", msg)
 	}
+}
+
+// TestATupleDictKeyAnswers is the paid half of the table above: a tuple key hashes by its elements, reads
+// back, and reports a missing one with the key's own repr (roadmap L11.3, ADR 0361).
+func TestATupleDictKeyAnswers(t *testing.T) {
+	t.Parallel()
+	res, err := Compile("d = {(1, 2): 3}\nprint(d[(1, 2)])\nprint((1, 2) in d)\n")
+	if err != nil {
+		t.Fatalf("a tuple key refused where ADR 0361 answers it: %v", err)
+	}
+	_ = res
 }

@@ -254,9 +254,8 @@
   },
   {
     "source": "a = (1, 2,)\nlen(a)",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"2\"",
-    "actual": "jit: codegen: unsupported expression *lang.Tuple"
+    "reason": "the echoed value differs from the record",
+    "expected": "2"
   },
   {
     "source": "a = 2.5\nb = 1\nprint(min(a, b), max(a, b))\n",
@@ -304,13 +303,13 @@
     "source": "a, b = [1, 2, 3]\nprint(a)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many values to unpack (expected 2)",
-    "actual": "jit: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: unpacking 3 values into 2 names: the reference raises ValueError: too many values to unpack (expected 2, got 3) (roadmap L11.3, ADR 0361)"
   },
   {
     "source": "a, b = [1]\nprint(a)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: not enough values to unpack (expected 2, got 1)",
-    "actual": "jit: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)"
   },
   {
     "source": "any([0, 0, 1])",
@@ -1091,6 +1090,12 @@
     "expected": "1"
   },
   {
+    "source": "n = 7\nprint(f\"val={n:>3}\")",
+    "reason": "the compiled backend cannot build a program the engine ran",
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: the format spec \">3\" needs a value this backend can read at compile time (AOT backend)"
+  },
+  {
     "source": "ord(chr(65))",
     "reason": "the echoed value differs from the record",
     "expected": "65"
@@ -1105,7 +1110,7 @@
     "source": "print(\"a\" * 1.5)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'float'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting \u2014 the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" * [1])",
@@ -1135,7 +1140,7 @@
     "source": "print(\"a\" / 2)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for /: 'str' and 'int'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting \u2014 the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" // \"b\")",
@@ -1182,7 +1187,7 @@
     "source": "print(1 / \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for /: 'int' and 'str'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting \u2014 the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(1 // \"a\")",
@@ -1626,13 +1631,13 @@
     "source": "try:\n    a, b = [1, 2, 3]\n    print(a)\nexcept ValueError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: unpacking 3 values into 2 names: the reference raises ValueError: too many values to unpack (expected 2, got 3) (roadmap L11.3, ADR 0361)"
   },
   {
     "source": "try:\n    a, b = [1]\n    print(a)\nexcept ValueError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)"
   },
   {
     "source": "try:\n    class P:\n        pass\n    p = P()\n    print(p.nope)\nexcept AttributeError:\n    print(\"handled\")\n",
@@ -1860,11 +1865,5 @@
     "source": "{1: 10, 2: 20}[1]",
     "reason": "the echoed value differs from the record",
     "expected": "10"
-  },
-  {
-    "source": "n = 7\nprint(f\"val={n:>3}\")",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: the format spec \">3\" needs a value this backend can read at compile time (AOT backend)"
   }
 ]

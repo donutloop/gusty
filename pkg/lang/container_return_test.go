@@ -155,19 +155,26 @@ func TestTheReturnedContainerIsBuiltAndPrintedAsAnObject(t *testing.T) {
 	body := mainBodyOf(ir)
 	for _, want := range []string{
 		"call i32 @gy_build()",
-		"call void @rt_root_put(",       // the answer is rooted before anything can collect it
-		"call void @rt_print_list(i32 ", // and printed by the printer for the kind the table names
+		"call void @rt_root_put(", // the answer is rooted before anything can collect it
+		// Printed by the door the answer's KIND names. The caller never saw the callee's spelling, so the
+		// kind has to come from the scan that read every arm of the `return` — and for the one answer whose
+		// brackets are not inferable from a kind, the tuple, the road hands the handle to the printer that
+		// asks the object instead (the map below, roadmap L11.3, ADR 0361).
+		"call void @rt_print_list(",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the print door does not emit %q:\n%s", want, body)
 		}
 	}
 	// The three kinds get the three printers, because `{1, 2}` printed by the list printer is a rendering
-	// the reference never produces (ADR 0234's rule for a comprehension, applied to an answer).
+	// the reference never produces (ADR 0234's rule for a comprehension, applied to an answer). The fourth
+	// row is the immutable one: no road-level name can spell its brackets, so its handle goes to the
+	// dispatcher that reads the object's attribute word.
 	for src, want := range map[string]string{
 		"def b():\n    return {1, 2}\n\nprint(b())":     "call void @rt_set_print(",
 		"def b():\n    return {1: 2}\n\nprint(b())":     "call void @rt_dict_print(",
 		"def b():\n    return [1, \"a\"]\n\nprint(b())": "call void @rt_print_list_mixed(",
+		"def b():\n    return (1, 2)\n\nprint(b())":     "call void @rt_print_container_value(",
 	} {
 		ir2 := emittedModuleIR(t, src)
 		if !strings.Contains(mainBodyOf(ir2), want) {
@@ -242,7 +249,7 @@ func TestTheScanRecordsAFunctionOnlyWhenEveryArmAnswersIt(t *testing.T) {
 		name string
 		src  string
 		fn   string
-		want string // "list", "set", "dict" or "" for not recorded
+		want string // "list", "set", "dict", "tuple" or "" for not recorded
 	}{
 		{"a literal list", "def b():\n    return [1, 2]", "b", "list"},
 		{"a literal set", "def b():\n    return {1, 2}", "b", "set"},
@@ -262,7 +269,11 @@ func TestTheScanRecordsAFunctionOnlyWhenEveryArmAnswersIt(t *testing.T) {
 		{"a parameter's container", "def b(xs):\n    return xs", "b", ""},
 		{"a number", "def b():\n    return 1", "b", ""},
 		{"a text", "def b():\n    return \"x\"", "b", ""},
-		{"a tuple", "def b():\n    return (1, 2)", "b", ""},
+		// The tuple answer IS recorded — as a kind of its own, not as `list`. The scan proves the callee hands
+		// back a container; what the tuple keeps to itself is which brackets the object wears, so the kind is
+		// `tuple` and the roads that name a printer or fold a static `@.lstN` answer from a kind decline it and
+		// hand the handle to the door that asks the object (roadmap L11.3, ADR 0361).
+		{"a tuple", "def b():\n    return (1, 2)", "b", "tuple"},
 		{"a generator", "def b():\n    yield 1\n    return [1]", "b", ""},
 		{"an async body", "async def b():\n    return [1]", "b", ""},
 		{"a decorated body", "@decorator\ndef b():\n    return [1]", "b", ""},

@@ -157,9 +157,11 @@ func TestPairAgreesWithTheOracle(t *testing.T) {
 // words for both halves. Exit 2 — the compiler rejecting its own module — is never acceptable here.
 func TestPairRefusalIsWrittenForTheAgent(t *testing.T) {
 	t.Parallel()
+	// The tuple rows moved to the answered side with ADR 0361: `str((1, 2))` answers `(1, 2)`.
+	// What the boundary still refuses in words is a value with no form — a function object.
 	for _, src := range []string{
-		"print(str((1, 2)))\n",
-		"print(repr((1, 2)))\n",
+		"print(str(lambda: 1))\n",
+		"print(repr(lambda: 1))\n",
 	} {
 		path := writeSrc(t, t.TempDir(), "pair_refuse.gy", src)
 		combined := cliRun(t, "--aot", "--file", path)
@@ -170,7 +172,7 @@ func TestPairRefusalIsWrittenForTheAgent(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("exit %d, want 1 (a front-end refusal):\n%s", code, combined)
 		}
-		if !strings.Contains(combined, "is not implemented") && !strings.Contains(combined, "unsupported expression") {
+		if !strings.Contains(combined, "is not implemented") && !strings.Contains(combined, "unsupported expression") && !strings.Contains(combined, "no value for") {
 			t.Errorf("refusal does not name the missing half:\n%s", combined)
 		}
 		for _, bad := range []string{"LLVM ERROR", "verifier", "Instruction does not dominate"} {

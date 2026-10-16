@@ -711,7 +711,8 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, tag)
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 	}
-	fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 8)\n", h)
+	fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, tupleEstrBits(ln, 8))
+	g.noteTuple(ln)
 	return h, nil
 }
 
@@ -781,10 +782,25 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 			delete(g.listElemInt, name)
 		}
 	}
+	// The immutable spelling says so on the object, and says it by making its slots the truth: a tuple
+	// is built tagged whatever its elements are, because the printer that renders `(1, 'a', None)` asks
+	// each slot and no element-kind census can describe that list (roadmap L11.3, ADR 0361).
+	bits = tupleEstrBits(ln, bits)
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
 	}
+	g.noteTuple(ln)
 	return h, nil
+}
+
+// tupleEstrBits adds the flags the immutable spelling owes the object: the tuple bit every door that
+// prints, dispatches or mutates asks, and the self-describing bit that makes the per-slot tags the
+// truth the tuple printer reads. One function, so no builder can forget the pair (roadmap L11.3, ADR 0361).
+func tupleEstrBits(ln *ListLit, bits int) int {
+	if ln.IsTuple() {
+		bits |= estrBitTuple | 8
+	}
+	return bits
 }
 
 // heapDictFrom builds a heap dict from a literal, interning any string keys or values and
@@ -1002,7 +1018,10 @@ func literalNeedsHeap(e Expr) bool {
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if isStringExpr(k) {
+			if isStringExpr(k) || isContainerLiteral(k) {
+				// A key that is interned text, another container or the immutable spelling has no
+				// representation in the static int array — the key is an object, and an object is a
+				// handle plus the tag that says what it is (roadmap L11.3, ADR 0361).
 				return true
 			}
 		}
@@ -1602,14 +1621,48 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 // dictWantsContainerKey reports a dict literal keyed by a container — the one nested shape still
 // refused, because a container key has no hashing rule in this backend and a handle compared by
 // integer equality would make every key unique by accident. Values nest freely (roadmap L11.1).
+//
+// The tuple spelling is the exception, because it is the container the language *does* hash: the
+// dict's lookup is a scan over (payload, tag) pairs (rt_dict_find → rt_slot_matches →
+// rt_payload_eq → rt_container_eq), so two equal tuples find the same entry and a tuple never
+// collides with a list of the same slots — rt_container_eq asks the object's tuple flag. A tuple
+// carrying a container stays refused: the reference refuses to hash that one too, and the door has
+// no raise in it (roadmap L11.3, ADR 0361).
 func dictWantsContainerKey(dl *DictLit) bool {
 	for _, k := range dl.Keys {
+		if ln, isList := k.(*ListLit); isList && ln.IsTuple() {
+			if tupleElementsHashable(ln) {
+				continue
+			}
+			return true
+		}
 		switch k.(type) {
 		case *ListLit, *DictLit, *SetLit:
 			return true
 		}
 	}
 	return false
+}
+
+// tupleElementsHashable is the reference's walk: a tuple hashes by hashing its elements left to
+// right, so a tuple carrying a list, a dict or a set is not hashable either, and the walk that
+// decides it is shared with the gate that raises the reference's sentence (roadmap L11.3, ADR 0361).
+func tupleElementsHashable(ln *ListLit) bool {
+	for _, el := range ln.Elems {
+		switch el := el.(type) {
+		case *ListLit:
+			if el.IsTuple() {
+				if !tupleElementsHashable(el) {
+					return false
+				}
+				continue
+			}
+			return false
+		case *DictLit, *SetLit:
+			return false
+		}
+	}
+	return true
 }
 
 // compElemPrintsAsText answers whether the elements of a runtime-built list comprehension are text,
@@ -1987,6 +2040,11 @@ func exprSnippet(e Expr) string {
 	case *NoneLit:
 		return "None"
 	case *ListLit:
+		// The words the sentence needs are the words the program wrote: the same node answers for both
+		// spellings, and only its flag says which one the reader typed (roadmap L11.3, ADR 0361).
+		if n.IsTuple() {
+			return "a tuple literal"
+		}
 		return "a list literal"
 	case *DictLit:
 		return "a dict literal"
