@@ -208,12 +208,20 @@ func HeapKindNames() []string {
 	return out
 }
 
+// ValueTagList lists the canonical tags in table order. It is the same list ValueTagNames reports, exposed
+// as tags rather than as text so a generated IR block can spell its kind constants FROM the table instead
+// of writing numbers out by hand (ADR 0171's generated-constants rule, the thing that keeps a runtime
+// block's `tag == 0` and this table from ever disagreeing).
+func ValueTagList() []ValueTag {
+	return []ValueTag{TagInt, TagFloat, TagBool, TagNone, TagStr, TagList, TagDict, TagSet,
+		TagTuple, TagClass, TagInstance, TagMethod, TagClosure, TagExn, TagModule}
+}
+
 // ValueTagNames lists the canonical tags in table order, with their numbers: the
 // machine-readable form of the dynamic type model (--lang reports it, so an agent can
 // target a tag without reading Go).
 func ValueTagNames() []string {
-	all := []ValueTag{TagInt, TagFloat, TagBool, TagNone, TagStr, TagList, TagDict, TagSet,
-		TagTuple, TagClass, TagInstance, TagMethod, TagClosure, TagExn, TagModule}
+	all := ValueTagList()
 	out := make([]string, 0, len(all))
 	for _, t := range all {
 		out = append(out, fmt.Sprintf("%s=%d", kindForTag(t), int(t)))

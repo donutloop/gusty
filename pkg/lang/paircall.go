@@ -999,6 +999,15 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 					handled = true
 					return
 				}
+				if percentFormatShapeIsText(n.Expr) && pairMentions(n.Expr, pairParamSeen(fd)) {
+					// The answer is a text, but the ARGUMENTS of the formatting are read by the pair doors, and a
+					// parameter that feeds one has to keep its tag: `def f(v): return "%.2f" % v` called with `f(3.5)`
+					// read the float half of the argument off the one-word convention and printed `3.00` at exit 0.
+					// The string-return road owns the ANSWER (an @str_tab index), which is not a reason to take the
+					// parameter's tag away with it (roadmap Gap R.31, L11.1, ADR 0360).
+					declines = true
+					return
+				}
 				// A body that returns a name it bound to a *call's* answer is not the ordinary road's
 				// either. The float-return promotion (ADR 0274) and the string index (ADR 0174) are the two
 				// shapes this predicate exists to catch; a third slipped in beside them: `y = twice(x)` /
@@ -1724,6 +1733,12 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) boo
 func pairValueHoldsThePair(e Expr, pairParams map[string]bool, callees map[string]bool, trusted ...map[string]bool) bool {
 	switch n := e.(type) {
 	case *BinOp:
+		if percentFormatShapeIsText(n) {
+			// `q = "%.2f" % v` binds a TEXT, not a number whose family the pair carries: the door interned the
+			// answer and its word is the @str_tab index. Counting it as a pair-computed number would let the
+			// return direction hand a text back through the pair's payload (roadmap Gap R.31, ADR 0360).
+			return false
+		}
 		switch n.Op {
 		case "+", "-", "*", "/", "//", "%":
 		default:
@@ -1887,6 +1902,10 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees, bound map[strin
 		m, sh := pairAnswerShape(n.X, pairParams, intParams, pairCallees, bound)
 		return m, sh && m
 	case *BinOp:
+		if percentFormatShapeIsText(n) {
+			// The answer of a formatting is a text, and no tag word travels beside it (roadmap Gap R.31, ADR 0360).
+			return false, false
+		}
 		switch n.Op {
 		case "+", "-", "*", "//", "%":
 			lm, ls := pairOperandShape(n.L, pairParams, intParams, pairCallees, bound)
@@ -2089,6 +2108,14 @@ func (g *irGen) pairSpecFor(fd *FuncDef, floatRet, strRet bool) *pairFnSpec {
 		clone := *spec
 		clone.bindsParams = false
 		clone.returnsPair = false
+		if !floatRet && strRet && formatsReadAParam(fd) {
+			// The answer is an index and keeps the string convention; the PARAMETERS are a different boundary.
+			// A body that formats one — `def f(v): return "%.2f" % v` — reads the argument through the pair
+			// doors, which ask the tag, and a body that is not given the tag word renders the float as the int
+			// beside it: `f(3.5)` printed `3.00` and `f(3.5)` under `%s` printed `3`, both at exit 0 (roadmap
+			// Gap R.31, L11.1, ADR 0360). The call sites already pass both words; this binds them.
+			clone.bindsParams = true
+		}
 		return &clone
 	}
 	return spec
@@ -2293,6 +2320,126 @@ func pairUsesServed(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) bool
 // pair carries, which of the rest the call sites have shown to be integers, and which callees hand back
 // a pair themselves — so that a call to one is a position the pair doors read rather than a position that
 // keeps one word for the value.
+// formatsReadAParam reports whether a body formats one of its own parameters — the position where the
+// formatting door asks the argument's tag, and therefore the reason a string-returning body still needs
+// the tag word passed to it (roadmap Gap R.31, L11.1, ADR 0360).
+func formatsReadAParam(fd *FuncDef) bool {
+	if fd == nil {
+		return false
+	}
+	mentions := pairParamSeen(fd)
+	var has func(e Expr) bool
+	has = func(e Expr) bool {
+		switch n := e.(type) {
+		case nil:
+			return false
+		case *BinOp:
+			if percentFormatShapeIsText(n) && pairMentions(n.R, mentions) {
+				return true
+			}
+			return has(n.L) || has(n.R)
+		case *UnOp:
+			return has(n.X)
+		case *CondExpr:
+			return has(n.Cond) || has(n.If) || has(n.Else)
+		case *Tuple:
+			return hasAny(n.Elems, has)
+		case *ListLit:
+			return hasAny(n.Elems, has)
+		case *SetLit:
+			return hasAny(n.Elems, has)
+		case *DictLit:
+			return hasAny(n.Keys, has) || hasAny(n.Vals, has)
+		case *Call:
+			if has(n.Fn) {
+				return true
+			}
+			for _, a := range n.Args {
+				if kw, isKw := a.(*KeywordArg); isKw {
+					if has(kw.Value) {
+						return true
+					}
+					continue
+				}
+				if has(a) {
+					return true
+				}
+			}
+			return false
+		case *Index:
+			return has(n.Obj) || has(n.Idx)
+		}
+		return false
+	}
+	var walk func(ss []Stmt) bool
+	walk = func(ss []Stmt) bool {
+		for _, s := range ss {
+			switch n := s.(type) {
+			case nil:
+			case *ExprStmt:
+				if has(n.Expr) {
+					return true
+				}
+			case *AssignStmt:
+				if has(n.Value) || has(n.Target) {
+					return true
+				}
+			case *AugAssignStmt:
+				if has(n.Value) || has(n.Target) {
+					return true
+				}
+			case *ReturnStmt:
+				if has(n.Expr) {
+					return true
+				}
+			case *IfStmt:
+				if has(n.Cond) || walk(n.Then) {
+					return true
+				}
+				for _, c := range n.Elifs {
+					if walk([]Stmt{c}) {
+						return true
+					}
+				}
+				if walk(n.Else) {
+					return true
+				}
+			case *WhileStmt:
+				if has(n.Cond) || walk(n.Body) || walk(n.Else) {
+					return true
+				}
+			case *ForStmt:
+				if has(n.Iter) || walk(n.Body) || walk(n.Else) {
+					return true
+				}
+			case *TryStmt:
+				if walk(n.Body) {
+					return true
+				}
+				for _, e := range n.Excepts {
+					if walk(e.Body) {
+						return true
+					}
+				}
+				if walk(n.Finally) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(fd.Body)
+}
+
+func hasAny(es []Expr, has func(Expr) bool) bool {
+	for _, e := range es {
+		if has(e) {
+			return true
+		}
+	}
+	return false
+}
+
 type pairGate struct {
 	pp      map[string]bool
 	ip      map[string]bool
@@ -2314,6 +2461,13 @@ func (g *pairGate) expr(e Expr) bool {
 	case *UnOp:
 		return n.Op == "-" && g.expr(n.X)
 	case *BinOp:
+		if percentFormatShapeIsText(n) {
+			// A formatting reads its ARGUMENTS through the pair doors — the door answers each one's kind from
+			// the tag beside it — while the format itself is a text the body already knows. So the position is
+			// served exactly when the argument side is, and the parameter feeding it is worth tagging
+			// (roadmap Gap R.31, L11.1, ADR 0360).
+			return g.expr(n.R)
+		}
 		switch n.Op {
 		case "+", "-", "*", "//", "%", "and", "or":
 			return g.operand(n.L) && g.operand(n.R)

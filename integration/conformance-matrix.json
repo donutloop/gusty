@@ -814,6 +814,27 @@
     },
     {
       "case": {
+        "id": "programs/probe_percent_format",
+        "name": "probe_percent_format.gy",
+        "source": "# printf-style `%` formatting on a text (roadmap Gap R.31, L11.1, ADR 0360).\n#\n# CPython formats all of this. The compiled backend used to refuse every line: a compiled text is an\n# index into @str_tab, so `text % value` had no numeric meaning and ADR 0215 turned the wrong answer\n# into a refusal. The refusal is retired by this round's door (pkg/lang/percent_runtime.go), which\n# renders each conversion through the printers the module already has, and the traps below are the\n# reference's own classes — catchable, with the reference's sentence (ADR 0212, ADR 0214).\n#\n# The last four lines are the control: `%` between two numbers is still the remainder, so the probe\n# distinguishes \"formatting answered\" from \"the operator is gone\".\n\nprint(\"%s\" % 2)\nprint(\"hi %s, you are %d\" % (\"Ada\", 36))\nprint(\"%d-%d\" % (1, 2))\nprint(\"%r\" % \"text\")\nprint(\"%a\" % \"it's\")\nprint(\"%05d|%-5d|%+d|% d\" % (42, 42, 7, 7))\nprint(\"%#x %#X %#o\" % (255, 255, 8))\nprint(\"%5.2f|%08.3f|%.0f\" % (3.14159, 3.14159, 2.5))\nprint(\"%c %c\" % (65, 8364))\nprint(\"%10s|%-.10s|\" % (\"hi\", \"hi\"))\nprint(\"%*d|%.2f|\" % (5, 42, 3.14159))\nprint(\"%(who)s scored %(score)d\" % {\"who\": \"Ada\", \"score\": 7})\nprint(\"100%% of %d\" % 100)\n\ntry:\n    print(\"%d\" % \"text\")\nexcept TypeError:\n    print(\"trapped: %d wants a real number\")\n\ntry:\n    print(\"%x\" % \"text\")\nexcept TypeError:\n    print(\"trapped: %x wants an integer\")\n\ntry:\n    print(\"%s %s\" % (\"one\",))\nexcept TypeError:\n    print(\"trapped: not enough arguments\")\n\ntry:\n    print(\"%s\" % (\"a\", \"b\"))\nexcept TypeError:\n    print(\"trapped: not all arguments converted\")\n\ntry:\n    print(\"%(missing)s\" % {\"a\": 1})\nexcept KeyError:\n    print(\"trapped: no such key\")\n\ntry:\n    print(\"%c\" % 3000000)\nexcept OverflowError:\n    print(\"trapped: outside the code-point range\")\n\ntry:\n    print(\"%Q\" % 1)\nexcept ValueError:\n    print(\"trapped: unsupported conversion\")\n\nprint(7 % 2, -7 % 2, 7.5 % 2)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "2\nhi Ada, you are 36\n1-2\n'text'\n\"it's\"\n00042|42   |+7| 7\n0xff 0XFF 0o10\n 3.14|0003.142|2\nA €\n        hi|hi|\n   42|3.14|\nAda scored 7\n100% of 100\ntrapped: %d wants a real number\ntrapped: %x wants an integer\ntrapped: not enough arguments\ntrapped: not all arguments converted\ntrapped: no such key\ntrapped: outside the code-point range\ntrapped: unsupported conversion\n1 1 1.5\n",
+      "python_ok": true,
+      "python_stdout": "2\nhi Ada, you are 36\n1-2\n'text'\n\"it's\"\n00042|42   |+7| 7\n0xff 0XFF 0o10\n 3.14|0003.142|2\nA €\n        hi|hi|\n   42|3.14|\nAda scored 7\n100% of 100\ntrapped: %d wants a real number\ntrapped: %x wants an integer\ntrapped: not enough arguments\ntrapped: not all arguments converted\ntrapped: no such key\ntrapped: outside the code-point range\ntrapped: unsupported conversion\n1 1 1.5\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3691,6 +3712,41 @@
     },
     {
       "case": {
+        "id": "programs/probe_percent_arguments_beyond_the_door",
+        "name": "probe_percent_arguments_beyond_the_door.gy",
+        "source": "# One argument that never reaches the printf-style door as a (value, kind) pair (roadmap Gap R.31, ADR 0360).\n#\n# `2 ** 70` is an integer this backend's bounded-integer row does not cover (Gap R.176, ADR 0166), so the\n# conversion has no value to render and no kind to answer with. The door refuses it in words — naming the\n# operand, the missing pair and the row that owns the fix — rather than printing the number underneath it.\n# CPython answers `1180591620717411303424` on the line above nothing.\n#\n# Three sibling shapes are filed beside this one, and they are NOT in this program because a front-end refusal\n# ends the program before its first line runs: a program containing one refusal witnesses only that refusal.\n# Each is pinned as its own program, with the reference's answer written into the row, by\n# `TestPercentArgumentResidueAtTheCLI` in `integration/percent_format_test.go`:\n#\n#   print(\"%s\" % (1e100,))                  # the float literal's exponent: `parse error: expected \")\"`\n#   print(\"%s %s\" % (\"a\", (\"b\", \"c\")))      # a tuple where a value goes (tuples are an argument list, not a\n#                                           # value — L11.3): refused, where the reference prints `a ('b', 'c')`\n#   n = 0xD800; print(\"%c\" % n)             # a code point the program COMPUTED: this backend writes the bytes\n#                                           # its encoder refused (`\\xed\\xa0\\x80`) at exit 0 where the reference\n#                                           # raises UnicodeEncodeError, a class the shared table does not hold\n#\n# The literal spelling of that last shape IS refused, in words, by the same gate that guards this program\n# (`TestASurrogateCodePointIsRefusedRatherThanEncoded`); what is owed is the computed one, which needs the\n# missing exception class before it can raise honestly.\n\nprint(\"%d\" % (2 ** 70))\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
+        "ref": "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `\"%d\" % 2 ** 70` formats 2 ** 70, whose (value, kind) pair this backend cannot build — the formatter renders a value and answers its kind, and one word alone would be the number underneath it (roadmap Gap R.31, L11.1, ADR 0360)",
+      "python_ok": true,
+      "python_stdout": "1180591620717411303424\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
+      "oracle_ref": "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: `\"%d\" % 2 ** 70` formats 2 ** 70, whose (value, kind) pair this backend cannot build — the formatter renders a value and answers its kind, and one word alone would be the number underneath it (roadmap Gap R.31, L11.1, ADR 0360)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_a_container_has_its_methods",
         "name": "probe_a_container_has_its_methods.gy",
         "source": "# A container has the methods the reference's containers have.\n# Each line is checked against CPython 3.12.3 by the conformance matrix.\n# (roadmap Gap R.188 / Gap R.63, ADR 0301; the KeyError sentence is Gap R.189)\n\nxs = [1]\nxs.extend([2, 3])            # the reference has it; neither engine did\nprint(xs)                    # [1, 2, 3]\nxs.insert(0, 0)              # an index past either end clamps, it does not fail\nprint(xs)                    # [0, 1, 2, 3]\nprint(xs.index(2))           # 2       found by VALUE, so [1].index(True) is 0\nxs.remove(0)                 # deletes the first match, answers the void\nprint(xs)                    # [1, 2, 3]\nxs.clear()                   # empties in place\nprint(xs)                    # []\nxs.extend([3, 1, 2])\nxs.sort()\nprint(xs)                    # [1, 2, 3]\n\nd = {\"a\": 1}\nd.update({\"b\": 2})           # writes every pair of another dict\nprint(d)                     # {'a': 1, 'b': 2}\nprint(d.pop(\"a\"))            # 1       an expression: answers WITH what it removed\nprint(d)                     # {'b': 2}\nprint(d.pop(\"zz\", 9))        # 9       the two-argument form makes absence a default, not an error\nprint(d.setdefault(\"c\", 3))  # 3       and WRITES the default in\nprint(d)                     # {'b': 2, 'c': 3}\nprint(d.get(\"nothere\"))      # None    ADR 0291's void\nd.clear()\nprint(d)                     # {}\n\nprint([1, 2, 1].count(1))    # 2\nprint(len({\"a\": 1, \"b\": 2})) # 2\n",
@@ -4240,7 +4296,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/174/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/175/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4254,7 +4310,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/174/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/175/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4536,41 +4592,6 @@
       ],
       "oracle_notes": [
         "compiled leg failed: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_percent_format",
-        "name": "probe_percent_format.gy",
-        "source": "# String interpolation with the `%` operator (roadmap Gap R.31, ADR 0215).\n#\n# CPython formats these three lines. Pyre has no `%` formatting yet, so the interpreter refuses\n# with the operand TypeError the operand gate introduced (a catchable trap, not a substitute\n# answer), and the compiled backend refuses to lower the line at all -- which is why this program\n# is a debt row with the compiled leg recorded missing rather than a parity case.\n\ntry:\n    print(\"%s\" % 2)\nexcept TypeError:\n    print(\"str % int: TypeError\")\n\ntry:\n    print(\"%d-%d\" % (1, 2))\nexcept TypeError:\n    print(\"str % tuple: TypeError\")\n\ntry:\n    print(\"hi %s\" % \"you\")\nexcept TypeError:\n    print(\"str % str: TypeError\")\n\n# Ordinary remainder still works, and is here so the probe distinguishes \"no formatting\" from\n# \"no percent at all\".\nprint(7 % 2, -7 % 2)\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
-        "ref": "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
-        "pins": [
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)",
-      "python_ok": true,
-      "python_stdout": "2\n1-2\nhi you\n1 1\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
-      "oracle_ref": "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
       ]
     },
     {
@@ -4868,11 +4889,11 @@
       ]
     }
   ],
-  "rows": 199,
+  "rows": 200,
   "skipped": 33,
-  "pass": 166,
+  "pass": 167,
   "fail": 0,
-  "oracle_match": 152,
+  "oracle_match": 153,
   "oracle_debt": 25,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

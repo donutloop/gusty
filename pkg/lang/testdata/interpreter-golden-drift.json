@@ -1096,12 +1096,6 @@
     "expected": "65"
   },
   {
-    "source": "print(\"a\" % 2)",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: not all arguments converted during string formatting",
-    "actual": "jit: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it \u2014 a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-  },
-  {
     "source": "print(\"a\" * \"b\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'str'",

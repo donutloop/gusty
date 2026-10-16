@@ -11750,3 +11750,92 @@ then refuses to write the entry if the compiled leg disagrees. That is ADR 0302'
 means the record grew 7061 → 7119 only through programs where the reference and the compiler already agree. Where they
 do not agree, the entry does not exist — which is precisely why the CLI/reference-leg file re-derives every
 expectation from `python3` instead of trusting a `want` someone typed.
+
+### A refusal is only honest while the thing it refuses is missing
+
+`text % value` was refused in words by ADR 0215, and the refusal was right: a compiled text is an index into
+`@str_tab`, so treating `%` as a remainder there printed `0.0` for CPython's `3.50` — the answer Gap R.165
+filed and ADR 0282 closed with a guard. Building the door (ADR 0360) meant *retiring* four artefacts of that
+honest period, not just deleting one `return`: the capability row that said the operator does not exist, the
+CLI test that asserted `print("%.2f" % 3.5)` exits 1, the conformance row that said **both** legs refuse, and
+the probe program written to prove refusal. Each of them was correct on the day it was written and each one
+would have been a lie after the door landed, and a lie that a green suite certifies is worse than a red one.
+The general rule: when a feature lands, `git grep` the refusals it retires — the tests, the registry, the
+docs and the ledger — before the suite tells you nothing is wrong.
+
+### A payload is a number, and every kind question answered without a tag is a guess waiting to be right
+
+The first draft of the formatting door gave each conversion's argument a payload and no tag. It passed the
+integers, the floats and the texts, because for those the payload happens to mean the thing. It failed on
+`"%s" % None` (printed nothing at all — `%s` on a NULL char pointer) and on `"%d" % xs[0]` where the slot held
+a float (printed `3`). That is ADR 0359's lesson and Gap R.146's, arriving one construct later: the argument
+must arrive as the `(payload, tag)` pair the printer reads, and the compile-time gate's only job is to refuse
+the arguments whose pair it cannot build. The same class of bug appeared twice more in the same day, both times
+as a road that had its own kind question: `isFloat` reading `"%s" % 3.5` as a remainder, and `pairSpecFor`
+narrowing away the tag word of a parameter a format reads. Three predicates, one question, one door.
+
+### Textual IR of 1900 lines needs its own verifier, and its own "did the template run" test
+
+Every defect in the first hour of `percent_runtime.go` was an LLVM-level defect discovered by a 40-second
+`--file` run: a global named `@rt.pct.argp@`, a message literal whose declared length did not match its bytes,
+a label that collided with a parameter (`%cls` vs `cls`), a `br` to a label that introduced an undefined value,
+four PHI predecessor mismatches. Two tests removed that feedback loop: the block is verified **standalone**
+against `opt -passes=verify` with stub declarations for the twelve runtime helpers it borrows (0.2s), and a
+token test fails the build if any `@TAG_…@`/`@CODE_…@` placeholder survives substitution — which is the guard
+for the worse failure, a hand-written tag number that verifies cleanly and prints the wrong kind forever.
+Messages and tags are generated from `exnClassCode` and `ValueTagList()`, never typed: the two places a number
+was spelled by hand were the two that were wrong.
+
+### The seal is the exception semantics, not the message
+
+The door walks the whole format and records the first raise rather than unwinding at it, which is what let
+`"%(missing)s %" % {}` report the incomplete conversion and drop the missing key. CPython unwinds, so the first
+raise wins. One flag — `@rt.pct.sealed`, checked by every write into the message buffer — turned a whole class
+of precedence bugs into one invariant. The lesson generalises past this door: any compiler-side "record the
+diagnostic and keep going" design needs to say which record wins, or the last one does, and the last one is
+rarely the one the program would have raised.
+
+### `git stash pop` is not a restore, it is a merge
+
+The `git stash list` had three entries from earlier in the loop. Dropping the two newest and popping the third
+quietly re-applied a **two-sessions-old** `codegen.go` over the working tree, and a numeric road that had been
+rewritten hours earlier came back as if it were current — including a call to a helper that no longer existed,
+which is how a "does not compile" error appeared in a file I had already fixed. The tree looked right and was
+not. The rule this loop should keep: never pop a stash by index after dropping others; check the entry out to a
+file and diff it against the working tree first, and treat any symbol the compiler cannot resolve as a signal
+that the file, not the edit, is stale.
+
+### A probe is one program, so it witnesses exactly one refusal
+
+The residue shapes (`"%d" % (2 ** 70)`, `"%s" % (1e100,)`, a nested tuple as an argument, a computed surrogate)
+went into one `.gy` probe, and the matrix certified it: `debt`, one note, `compiled leg failed`. Every claim was
+true and four claims were unmeasured, because a front-end refusal ends the program before its first line runs —
+the second, third and fourth refusals were never reached, and nothing in the harness could tell the difference
+between "the program refuses" and "this program refuses in four places". The probe now carries the one line it
+can witness and names the rest in its own comment; each sibling got its own program in
+`TestPercentArgumentResidueAtTheCLI`, reference answer written into the row. The general rule: a witness
+artifact has one verdict, so a family of shapes needs a family of programs — a table of sources, not a program
+of statements.
+
+### A doc table is an artifact the day a test parses it
+
+`docs/language.md`'s printf section lists ten answers and fourteen traps as prose tables. The first pass checked
+them with a script in `/tmp`, which is the same as not checking them: nothing fails when the door changes and the
+doc does not. `TestTheLanguageDocsPercentSectionAnswersWhatItSays` now parses the section out of the file, runs
+each documented program through `--aot`, compares the positive rows against CPython too, and floors the row
+counts so the section cannot be quietly thinned. It found a formatting subtlety on its first run: the answers are
+written after a `#`, and trimming the comment eats the leading spaces that `%5d` deliberately produced, so the
+separator must remove exactly one space and keep the rest. A doc claim a test cannot reach is a claim that will
+be wrong by the next cycle.
+
+### The golden record is keyed by the source text, so editing a probe orphans its answer
+
+`programs/probe_percent_format.gy` grew the door's conversions, and the GC-corpus case came back with *"no
+recorded answer for this corpus program"* — not because the record was deleted, but because the record is keyed
+by the exact source, and a rewritten program is a program nobody ever asked. The fix is the ADR 0302 path, not a
+delete and not a revert: ask the reference (CPython ran it), cross-check the compiled leg, write the entry, and
+then every "N sources" claim in `AGENTS.md`, `docs/operations.md` and `roadmap.md` has to follow the file, because
+`golden_artifact_counts_test.go` recomputes them all. Same ratchet, other direction: the door made
+`print("a" % 2)` agree with its record, and a **paid** row left on the drift ledger fails the build as loudly as a
+new one — so the ledger is rewritten with `GUSTY_GOLDEN_UPDATE=1` under the serial `make test`, never under the
+concurrent gate, where N processes would each overwrite the ledger with their own subset.

@@ -1,0 +1,24 @@
+# One argument that never reaches the printf-style door as a (value, kind) pair (roadmap Gap R.31, ADR 0360).
+#
+# `2 ** 70` is an integer this backend's bounded-integer row does not cover (Gap R.176, ADR 0166), so the
+# conversion has no value to render and no kind to answer with. The door refuses it in words — naming the
+# operand, the missing pair and the row that owns the fix — rather than printing the number underneath it.
+# CPython answers `1180591620717411303424` on the line above nothing.
+#
+# Three sibling shapes are filed beside this one, and they are NOT in this program because a front-end refusal
+# ends the program before its first line runs: a program containing one refusal witnesses only that refusal.
+# Each is pinned as its own program, with the reference's answer written into the row, by
+# `TestPercentArgumentResidueAtTheCLI` in `integration/percent_format_test.go`:
+#
+#   print("%s" % (1e100,))                  # the float literal's exponent: `parse error: expected ")"`
+#   print("%s %s" % ("a", ("b", "c")))      # a tuple where a value goes (tuples are an argument list, not a
+#                                           # value — L11.3): refused, where the reference prints `a ('b', 'c')`
+#   n = 0xD800; print("%c" % n)             # a code point the program COMPUTED: this backend writes the bytes
+#                                           # its encoder refused (`\xed\xa0\x80`) at exit 0 where the reference
+#                                           # raises UnicodeEncodeError, a class the shared table does not hold
+#
+# The literal spelling of that last shape IS refused, in words, by the same gate that guards this program
+# (`TestASurrogateCodePointIsRefusedRatherThanEncoded`); what is owed is the computed one, which needs the
+# missing exception class before it can raise honestly.
+
+print("%d" % (2 ** 70))

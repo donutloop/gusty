@@ -147,12 +147,19 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Sample:     "print({v > 1 for v in [1, 2]})",
 	},
 	{
-		Code:       "lower.unsupported.printf-style-format",
-		Shape:      "printf-style `%` on a text is not formatting here",
-		Suggestion: "write the answer with an f-string (f\"{v:.2f}\") or concatenate the parts — the reference's `\"%.2f\" % 3.5` is `3.50`, and this backend builds neither a double from a format string nor a number from one",
-		Rows:       []string{"Gap R.165", "Gap R.31"},
-		Markers:    []string{"printf-style formatting"},
-		Sample:     "print(\"%.2f\" % 3.5)",
+		Code: "lower.unsupported.printf-style-format",
+		// The formatting itself is answered (pkg/lang/percent_runtime.go, ADR 0360); what this row now
+		// reports is the half of the conversion table the door has no renderer for, and the argument it
+		// has no value for — both refused in the source they were written in, never answered sideways.
+		Shape:      "a `%` conversion this backend has no renderer for, or an argument it has no value for",
+		Suggestion: "keep to the conversions the door renders (`%s %r %a %d %i %o %x %X %e %E %f %F %g %G %c`) and pass values it can name a kind for — `%b` belongs to bytes, `%u` is the conversion the reference removed, and a tuple is an argument list rather than a value to render (an f-string is the other door)",
+		Rows:       []string{"Gap R.31", "L11.1", "Gap R.165"},
+		Markers: []string{
+			"which this backend does not build",
+			"whose (value, kind) pair this backend cannot build",
+			"whose kind this backend cannot name",
+		},
+		Sample: "print(\"%b\" % 3)",
 	},
 	{
 		Code:       "lower.unsupported.text-operator",

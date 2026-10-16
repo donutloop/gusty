@@ -1,25 +1,61 @@
-# String interpolation with the `%` operator (roadmap Gap R.31, ADR 0215).
+# printf-style `%` formatting on a text (roadmap Gap R.31, L11.1, ADR 0360).
 #
-# CPython formats these three lines. Pyre has no `%` formatting yet, so the interpreter refuses
-# with the operand TypeError the operand gate introduced (a catchable trap, not a substitute
-# answer), and the compiled backend refuses to lower the line at all -- which is why this program
-# is a debt row with the compiled leg recorded missing rather than a parity case.
+# CPython formats all of this. The compiled backend used to refuse every line: a compiled text is an
+# index into @str_tab, so `text % value` had no numeric meaning and ADR 0215 turned the wrong answer
+# into a refusal. The refusal is retired by this round's door (pkg/lang/percent_runtime.go), which
+# renders each conversion through the printers the module already has, and the traps below are the
+# reference's own classes — catchable, with the reference's sentence (ADR 0212, ADR 0214).
+#
+# The last four lines are the control: `%` between two numbers is still the remainder, so the probe
+# distinguishes "formatting answered" from "the operator is gone".
+
+print("%s" % 2)
+print("hi %s, you are %d" % ("Ada", 36))
+print("%d-%d" % (1, 2))
+print("%r" % "text")
+print("%a" % "it's")
+print("%05d|%-5d|%+d|% d" % (42, 42, 7, 7))
+print("%#x %#X %#o" % (255, 255, 8))
+print("%5.2f|%08.3f|%.0f" % (3.14159, 3.14159, 2.5))
+print("%c %c" % (65, 8364))
+print("%10s|%-.10s|" % ("hi", "hi"))
+print("%*d|%.2f|" % (5, 42, 3.14159))
+print("%(who)s scored %(score)d" % {"who": "Ada", "score": 7})
+print("100%% of %d" % 100)
 
 try:
-    print("%s" % 2)
+    print("%d" % "text")
 except TypeError:
-    print("str % int: TypeError")
+    print("trapped: %d wants a real number")
 
 try:
-    print("%d-%d" % (1, 2))
+    print("%x" % "text")
 except TypeError:
-    print("str % tuple: TypeError")
+    print("trapped: %x wants an integer")
 
 try:
-    print("hi %s" % "you")
+    print("%s %s" % ("one",))
 except TypeError:
-    print("str % str: TypeError")
+    print("trapped: not enough arguments")
 
-# Ordinary remainder still works, and is here so the probe distinguishes "no formatting" from
-# "no percent at all".
-print(7 % 2, -7 % 2)
+try:
+    print("%s" % ("a", "b"))
+except TypeError:
+    print("trapped: not all arguments converted")
+
+try:
+    print("%(missing)s" % {"a": 1})
+except KeyError:
+    print("trapped: no such key")
+
+try:
+    print("%c" % 3000000)
+except OverflowError:
+    print("trapped: outside the code-point range")
+
+try:
+    print("%Q" % 1)
+except ValueError:
+    print("trapped: unsupported conversion")
+
+print(7 % 2, -7 % 2, 7.5 % 2)

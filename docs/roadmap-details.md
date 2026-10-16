@@ -13535,3 +13535,89 @@ stays a refusal with a sentence that names it. Until then the row's four shapes 
 `TestAnFStringAsAValueRefusesAtTheCLIWithARow` and `TestAnFStringFieldStillRefusesInWordsThatNameTheOrigin`, the
 drift ledger carries its row, and `TestEvalFString`'s `val=  7` pin stays a skip rather than becoming an expectation
 anyone grows used to.
+
+### Gap R.31 (ADR 0360, 2026-10-16) — a text on the left of `%` formats, and the answer is a text value
+
+The row was opened on three lines that CPython answers and this backend did not:
+
+```python
+print("%s" % 2)            # 2
+print("%d-%d" % (1, 2))    # 1-2
+print("hi %s" % "you")     # hi you
+```
+
+and it closed with 150 of them. The extra width is the point: a formatting is not one construct with one
+answer, it is a renderer (15 conversions × the flag/width/precision grammar), a trap table (10 classes and
+sentences), and a *value* that then has to survive every road a text survives. Measuring only the first
+part would have reproduced the row's own history — the refusal of ADR 0215 was honest about the arithmetic
+and silent about the language, and the row's original text already said the wrong-answer version (`%d-%d`
+returned by the retired engine, `print("%s" % 2)` exiting 0 on a number nobody wrote) was worse than the
+refusal.
+
+**What the probe actually measured, in the order it was found.**
+
+1. **The door has to live in the runtime, not in Go.** The emitter writes textual IR and has no builder, and
+   the question the door answers — what is this value's kind — is answered by the object, not the AST. The
+   first draft asked each conversion's argument for its *payload* and no tag, which is ADR 0359's mistake one
+   construct earlier: a payload is a number, so every argument whose kind was not in the source reached the
+   door as a word and rendered as a number. Each conversion asks for the `(payload, tag)` pair from the pair
+   doors and no third word is offered to put an assumption in.
+2. **`rt_str_byteoff` stopped at a lead byte.** `%10s` beside `é` padded to 10 bytes, not 10 characters, and
+   the same helper is what `s[1:3]` of `"héllo"` slices with — the fold over `[]rune` and the run-time door
+   disagreed, which is ADR 0229's one-question rule violated in a file the formatting work had no business
+   touching. Fixed beside the row that found it, with a comment naming the byte-vs-character divergence.
+3. **The trap table is a first-class deliverable.** 13 of the 150 rows are traps; CPython's exact classes and
+   sentences (`%d format: a real number is required, not str`, `list indices must be integers or slices, not
+   str`, `unsupported format character 'Q' (0x51) at index 1`, `cannot convert float NaN to integer`) are the
+   pass condition, reached through the module's own raise door (ADR 0212/0214) so a program's `except TypeError`
+   matches. Because the walk keeps going after the first raise, the message machinery *seals* on the first one:
+   a missing key followed by an incomplete conversion reports the missing key, the way unwinding would.
+4. **Message constants are generated, not hand-counted.** Hand-spelled `[N x i8]` literals and hand-written tag
+   numbers produced `constant expression type mismatch` and — worse — a wrong tag that verified cleanly. The
+   block is now assembled from `ValueTagList()`, `kindForTag` and `exnClassCode` by `percentRuntimeBlock()`, every
+   message is a fixed-size generated global, and `TestPercentRuntimeTokensAreAllSubstituted` fails the build on an
+   unsubstituted token. The block also verifies on its own, with stub declarations for the 12 external runtime
+   calls it borrows, so a bad instruction is a 0.2s failure and not a `--file` failure 40 seconds later.
+5. **The answer has to travel.** Three pre-passes kept their own opinion of what a formatting is, and each
+   produced a digit rather than a refusal: `isStringExpr` (so the call-site census never learned
+   `w("%d up" % 7)` hands `w` a text — `print(t)` printed `1`, the interned index), `isFloat` (so `u = "%s" % 3.5`
+   asked the double lift for the format and the L11.2 guard refused the program), and `pairSpecFor` (so
+   `def f(v): return "%.2f" % v` called with `f(3.5)` printed `3.00`, the tag word narrowed away with the
+   string-return convention). `formatsReadAParam` is the narrow hole punched in that narrowing: an answer keeps
+   the index convention, the parameters are a different boundary.
+6. **A name is refused, never guessed.** `numericUseKind` answers `int` for any name with no record; used as a
+   pair that guess is `3.00` for `3.50`. `percentArgKindKnown` (plan) and `percentArgPair` (emitter) now read the
+   same three predicates, and a name none of them can name is a front-end refusal carrying
+   `lower.unsupported.printf-style-format`.
+7. **Two neighbours are recorded, not fixed.** `print("a\0b")` writes `a` because the print door hands `printf`
+   a `%s`, so a `%c` of 0 prints nothing where the reference writes a NUL byte; and a code point the program
+   computed can still be a surrogate, which the reference refuses with `UnicodeEncodeError` — a class the shared
+   table does not hold — so the *literal* is refused in words and the computed case is the debt.
+
+8. **A program witnesses one refusal.** The residue shapes were first written as four lines of one probe
+program, and the matrix reported a single verdict for it: a front-end refusal ends the program before its
+first line runs, so the three refusals behind the first were never reached and the probe silently claimed
+coverage it did not have. The probe keeps the one line whose refusal it can actually show (`"%d" % (2 ** 70)`,
+bounded integer, Gap R.176) and names its siblings in its own comment; each sibling is now a separate program
+in `TestPercentArgumentResidueAtTheCLI`, with the reference's answer written into the row — including the
+surrogate the program *computed*, which the compiled leg answers with `0xED 0xA0 0x80` at exit 0 where the
+reference raises `UnicodeEncodeError`, and which is pinned as that divergence rather than dressed up as a
+refusal.
+9. **A documented answer is a tested answer.** `docs/language.md` § *Printf-style `%`* states its claims as a
+fenced block whose comment is the answer the line prints and a table whose rows name a class and a sentence.
+Prose of that shape is what this loop keeps having to retract, so `TestTheLanguageDocsPercentSectionAnswersWhatItSays`
+parses the section, compiles and links each documented program, and fails if the compiled leg prints anything
+else — the positive rows are also compared against CPython, because a documented answer only the compiled leg
+gives is a documented bug. The row floors (10 answers, 13 traps) so the section cannot be thinned from the
+doc side either.
+
+**Honest residue.** `2 ** 70` and `1e100` reach the door as refusals owned by other rows (bounded ints, Gap
+R.176/ADR 0166; the float literal's exponent), a nested tuple in an argument position is refused because tuples
+are not values (`L11.3`), and an empty tuple `()` is not in the grammar at all, so `"%s" % ()` dies in the parser
+where the reference raises `TypeError`. Those four are the probe
+`programs/probe_percent_arguments_beyond_the_door.gy`, kept out of the parity probe so the formatting claim stays a
+claim about formatting; the probe is a `ProbeOnly` matrix row carrying an `OracleDebt` ledger row that names the
+four owning rows, and the residue is recorded here and in that ledger row rather than in
+`integration/testdata/cpython-debt.json`, whose row count is itself a guarded claim (six rows, asserted in
+`docs/operations.md`) that this cycle had no business re-cutting. The row stays `DONE` for what it claims — the
+conversions, the traps and the value — not for the argument shapes those other rows own.

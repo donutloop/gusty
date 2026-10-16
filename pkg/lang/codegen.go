@@ -805,25 +805,37 @@ entry:
   %kcl = select i1 %above, i32 %n, i32 %k0
   br label %scan
 scan:
-  %o = phi i32 [ 0, %entry ], [ %onext, %step ]
-  %c = phi i32 [ 0, %entry ], [ %cnext, %step ]
+  %o = phi i32 [ 0, %entry ], [ %oe, %ech ]
+  %c = phi i32 [ 0, %entry ], [ %cn, %ech ]
   %done = icmp sge i32 %c, %kcl
-  br i1 %done, label %fin, label %body
-body:
-  %at = getelementptr i8, i8* %p, i32 %o
-  %b = load i8, i8* %at
+  br i1 %done, label %fin, label %at
+at:
+  %a = getelementptr i8, i8* %p, i32 %o
+  %b = load i8, i8* %a
   %end = icmp eq i8 %b, 0
-  br i1 %end, label %fin, label %step
-step:
-  %m = and i8 %b, -64
-  %iscont = icmp eq i8 %m, -128
-  ; A code point is a byte that is NOT a continuation byte, so the count advances on the
-  ; complement — counting the continuations instead walks past every ASCII character and the
-  ; offset lands on the terminator, which is how s[1:3] came back empty.
-  %isz = zext i1 %iscont to i32
-  %one = sub i32 1, %isz
-  %cnext = add i32 %c, %one
-  %onext = add i32 %o, 1
+  %o1 = add i32 %o, 1
+  br i1 %end, label %fin, label %walk
+walk:
+  ; A code point is its lead byte AND its continuation bytes, so the walk past one character does not
+  ; stop at the second byte because that byte is not a lead byte: it stops at the first byte that is not
+  ; a continuation. Stopping on the lead byte instead is what made s[1:3] of "héllo" answer 'é' where the
+  ; language's own position-is-a-code-point rule (ADR 0225) says 'él' — a two-byte character lost its
+  ; tail, and every offset measured from it was one byte short (roadmap Gap R.47, found by the
+  ; printf-style door's character-width padding, roadmap Gap R.31).
+  %w = phi i32 [ %o1, %at ], [ %wn, %wstep ]
+  %wa = getelementptr i8, i8* %p, i32 %w
+  %wv = load i8, i8* %wa
+  %wnn = icmp ne i8 %wv, 0
+  %wm = and i8 %wv, -64
+  %wcont = icmp eq i8 %wm, -128
+  %wgo = and i1 %wcont, %wnn
+  br i1 %wgo, label %wstep, label %ech
+wstep:
+  %wn = add i32 %w, 1
+  br label %walk
+ech:
+  %cn = add i32 %c, 1
+  %oe = add i32 %w, 0
   br label %scan
 fin:
   ret i32 %o
@@ -4515,7 +4527,8 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// heap block's own text counts as a reference too — a gate that reads only the body would
 	// omit the formatter for `[1.5, "a"]` and produce a module with an undefined internal call,
 	// which is the exact failure mode the preamble above warns about.
-	needHeap := g.heapUsed || runtimeBlockReferenced(heapRuntimeIR, bodyText)
+	needHeap := g.heapUsed || g.percentUsed || runtimeBlockReferenced(heapRuntimeIR, bodyText) ||
+		runtimeBlockReferenced(percentRuntimeIR, bodyText)
 	if g.floatFmtUsed || runtimeBlockReferenced(floatRuntimeIR, bodyText) || needHeap {
 		g.globals.WriteString(floatRuntimeIR)
 	}
@@ -4552,6 +4565,21 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			g.globals.WriteString(numArithRuntimeIR)
 		}
 		g.globals.WriteString(pairFoldRuntimeIR)
+	}
+	// The printf-style formatting door (roadmap Gap R.31, ADR 0360) is its own block for the reason the
+	// two above are: a program that never formats a text carries no format walker, no argument table and
+	// no copy of the reference's eight sentences. It rides with the heap block because `%s` asks
+	// `rt_str_of_value` and the mapping form asks `rt_dict_find`, and with the arithmetic door because a
+	// wrong-kind conversion names its type through `rt_kind_name` — a referenced internal function that
+	// was never emitted is the module `llc` rejects (ADR 0173).
+	if g.percentUsed || runtimeBlockReferenced(percentRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		if !g.arithUsed && !runtimeBlockReferenced(numArithRuntimeIR, bodyText) {
+			g.globals.WriteString(numArithRuntimeIR)
+		}
+		g.globals.WriteString(percentRuntimeIR)
 	}
 	// The REPL echo's writer (roadmap L13.1, ADR 0302) rides with the heap block for the same
 	// reason the arithmetic door does: it renders through `rt_str_ptr`/`rt_str_len`, which live
@@ -5090,6 +5118,14 @@ type irGen struct {
 	// `sum` over a pair — which is what pulls in the fold door (roadmap L11.1, Gap R.146; ADR 0316). A
 	// module that never asks the door carries no ordering sentence it never reaches.
 	foldUsed bool
+	// percentUsed records that this module formats a text with `%`, which pulls in the formatting door
+	// (roadmap Gap R.31, ADR 0360). A program that never formats carries no format walker, no argument
+	// table and no copy of the reference's eight sentences.
+	percentUsed bool
+	// percentChecks counts the `%`-formatting calls this module emits. It is the negative control the
+	// IR rows read: a guard that emitted the door for a program that never formats one would move this
+	// count and fail the row that pins it at zero (ADR 0337's discipline for a conditional guard).
+	percentChecks int
 	// numChains is the gate on the `+` and `*` half of that door: the literal kind tree of what a program
 	// can store into each container's slots, level by level. `+` and `*` are answered by the reference
 	// with a joined text or a repeated list when a slot holds one, and this backend can build neither
@@ -5666,6 +5702,11 @@ func (g *irGen) attrSlot(name string) int {
 // -- has no shape to read, which left `print(out[0])` printing the index as a number. This is the
 // static half of the same question (roadmap Gap R.42, ADR 0224).
 func (g *irGen) exprIsString(e Expr) bool {
+	if g.percentIsTextExpr(e) {
+		// `"hi %s" % name` answers an @str_tab index — the same word a text literal answers — so every
+		// text road takes it without knowing what built it (roadmap Gap R.31, ADR 0360).
+		return true
+	}
 	switch v := e.(type) {
 	case *StrLit, *FString:
 		return true
@@ -5794,6 +5835,10 @@ func (g *irGen) scanStringAttrs(className string, st Stmt) {
 			}
 			if _, foldable := g.stringVal(n.Value); foldable {
 				g.strAttrs[recv+"."+at.Name.Value] = true
+			} else if g.percentIsTextExpr(n.Value) {
+				// `self.w = "%s!" % "hi"` stores an @str_tab index in the slot, so reading it back prints
+				// the text and not the position (roadmap Gap R.31, ADR 0360, ADR 0224's slot-is-the-truth).
+				g.strAttrs[recv+"."+at.Name.Value] = true
 			} else if c, ok := n.Value.(*Call); ok && g.callReturnsStr(c) {
 				g.strAttrs[recv+"."+at.Name.Value] = true
 			}
@@ -5847,6 +5892,11 @@ func (g *irGen) scanStringAttrs(className string, st Stmt) {
 // structurally: at this point in the pass the per-function records (`strVals`, `internedVars`) do not
 // exist yet, so the answer comes from the shape of the arm and from the parameter annotations.
 func returnExprIsText(e Expr, strParams map[string]bool) bool {
+	if percentFormatShapeIsText(e) {
+		// A formatting hands back the text the door rendered, which is one word of the same kind a
+		// literal is (roadmap Gap R.31, ADR 0360).
+		return true
+	}
 	switch t := e.(type) {
 	case *StrLit, *FString:
 		return true
@@ -5883,6 +5933,13 @@ func methodReturnsStr(fd *FuncDef) bool {
 				switch e := n.Expr.(type) {
 				case *StrLit, *FString:
 					found = true
+				case *BinOp:
+					// `return "%d items" % n` hands back a TEXT, and a body that says so must register the
+					// function in `strFuncs` or its caller prints the @str_tab POSITION — the same defect ADR
+					// 0290 pinned for a ternary, in a new spelling (roadmap Gap R.31, ADR 0360).
+					if percentFormatShapeIsText(e) {
+						found = true
+					}
 				case *Name:
 					if strParams[e.Value] {
 						found = true
@@ -6719,6 +6776,14 @@ func isStringExpr(e Expr) bool {
 	case *StrLit, *FString:
 		return true
 	}
+	if percentFormatShapeIsText(e) {
+		// A formatting answers a text, and this predicate is the shape question the PRE-PASSES ask — the
+		// call-site census that decides whether a parameter holds a text, the assignment census that decides
+		// whether a name is ever assigned a number. Without this arm `def w(t): print("<" + t + ">")` called
+		// as `w("%d up" % 7)` had no record of the text crossing the boundary: the concatenation refused, and
+		// plain `print(t)` printed the number under an interned string (roadmap Gap R.31, L11.1, ADR 0360).
+		return true
+	}
 	return false
 }
 
@@ -7350,16 +7415,23 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return "", false
 			}
 		}
-		length := int64(len(src))
+		// A position in this language is a code point (ADR 0225), so the fold slices a text the way the
+		// run-time door does — over code points, never bytes. Measuring bytes here is what made
+		// `s[1:3]` of "h\u00e9llo" answer 'é' when the bounds were written and 'él' when they were computed:
+		// one question, two roads, two answers, which is the defect class ADR 0229 and ADR 0232 exist to
+		// close (roadmap Gap R.47, found while the printf-style door's width padding was being matched,
+		// roadmap Gap R.31, ADR 0360).
+		runes := []rune(src)
+		length := int64(len(runes))
 		start, stop, stp := pySliceIndices(low, high, step, hasLow, hasHigh, length)
 		var sb strings.Builder
 		if stp > 0 {
 			for i := start; i < stop; i += stp {
-				sb.WriteByte(src[i])
+				sb.WriteRune(runes[i])
 			}
 		} else {
 			for i := start; i > stop; i += stp {
-				sb.WriteByte(src[i])
+				sb.WriteRune(runes[i])
 			}
 		}
 		return sb.String(), true
@@ -7781,6 +7853,14 @@ func (g *irGen) isFloat(e Expr) bool {
 		}
 		return false
 	case *BinOp:
+		if g.percentFormatOwnsBinOp(n) {
+			// A formatting answers a TEXT, and the number-shaped road reading `"%s" % 3.5` as a remainder with a
+			// float operand asked the double lift for the format itself — which the L11.2 guard refused, so
+			// `u = "%s" % 3.5` could not be bound at all, and `def f(v): return "%.2f" % v` lost the argument's
+			// tag on the way and printed `3.00` for `3.50` (roadmap Gap R.31, L11.1, ADR 0360). The operator is
+			// the same character and a different question; the plan is what tells them apart.
+			return false
+		}
 		// `/` is *true* division (PEP 238): 7 / 2 is 3.5 even when both operands are
 		// integers, so the result is a float whatever the operands are. Truncating it
 		// made the language's most common operator behave like C's, and the parity
@@ -9103,20 +9183,24 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		}
 	}
 	// A text is not a number waiting to be widened. The fall-through below converts the i32 the
-	// expression lowers to, and for a text that i32 is its index in `@str_tab` — so `print("%.2f" % 3.5)`,
-	// whose left operand is a format string this backend does not implement, emitted
-	// `sitofp i32 %t2 to double` and `frem`'d it against 3.5, answering `0.0` at exit 0 where CPython
-	// answers `3.50` and the record raises TypeError (roadmap L11.2, Gap R.165, ADR 0282). Refusing
-	// here is the same judgement the sibling shapes already make — `"%d items" % 3` and `"%s!" % "hi"`
-	// exit 1 naming the operator and both kinds — reached one road earlier: those arrive with a left
-	// operand the checker types as text, and a `%`-conversion in the literal kept this one off that path.
+	// expression lowers to, and for a text that i32 is its index in `@str_tab` — so a plain text arriving
+	// at an arithmetic operator emitted `sitofp i32 %t2 to double` and `frem`'d it against the other
+	// operand, answering `0.0` at exit 0 where the reference raises TypeError (roadmap L11.2, Gap R.165,
+	// ADR 0282). Refusing here is the same judgement the sibling shapes already make — `"%d items" % 3`
+	// and `"%s!" % "hi"` exit 1 naming the operator and both kinds — reached one road earlier: those
+	// arrive with a left operand the checker types as text.
+	//
+	// This is NOT the formatting door's territory: `"%.2f" % 3.5` never reaches here, because the door
+	// answers that shape as a text and the print road prints it (Gap R.31, ADR 0360). What is left at this
+	// guard is a text with no `%` behind it at all — `"a" * 2.5`, `"a" + 1.5` — whose reference answer is
+	// a TypeError, not a number.
 	// The record-then-refuse convention is ADR 0166's: a substitute digit is the compiler's bug.
 	// A comparison is not a numeric use: `1.0 == "a"` answers `False` in the reference and `0` here,
 	// and the equality road reaches this lift for both of its operands. Only the arithmetic operators
 	// — the ones that answer a number or raise — refuse a text operand (roadmap L11.2, Gap R.165).
 	if (isStringExpr(e) || g.exprIsString(e)) && !comparisonOpForTextGuard(g.numCtx) {
-		g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("%s is a text, which has no double to widen from: printf-style formatting — the reference's `\"%%.2f\" %% 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)", g.exprSummary(e))
-		g.noteUnlowered(e, fmt.Errorf("codegen: %s cannot be lifted to a double: it is a text, and the only text-to-number roads this backend builds are int(), float() and round(); printf-style %% formatting is owed (roadmap L11.2, Gap R.165, ADR 0166)", g.exprSummary(e)))
+		g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("%s is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)", g.exprSummary(e))
+		g.noteUnlowered(e, fmt.Errorf("codegen: %s cannot be lifted to a double: it is a text, and the only text-to-number roads this backend builds are int(), float() and round(); the formatting door answers a `%%`-format, and this operand is not one it was asked to format (roadmap L11.2, Gap R.165, ADR 0166)", g.exprSummary(e)))
 		return ""
 	}
 	// A CONTAINER has no double to widen from either, and the shape here was worse than the text case
@@ -10365,6 +10449,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// test had already excluded was in the module, and the module ran it.
 		if n.Op == "and" || n.Op == "or" {
 			return g.logicValue(b, n)
+		}
+		// `%` on a text is not the remainder: it is the formatting, and it has to be asked **before the
+		// operands are lowered** for the same reason the membership doors below it are — the numeric road
+		// lowers a text as its interned index and then does arithmetic on it, which is exactly the `0.0`
+		// that `"%.2f" % 3.5` used to print (roadmap Gap R.165, ADR 0282). The door is asked for every `%`
+		// and answers nothing at all when the left side is not a text, so an ordinary remainder keeps the
+		// road it has always had (roadmap Gap R.31, ADR 0360).
+		if n.Op == "%" {
+			// The plan is asked, not the kind predicate: a conversion this door declines still OWNS the
+			// expression, and the refusal it gives names the character and the argument. Falling through to
+			// the generic text-`%` refusal would tell the reader the operator is missing, which it is not
+			// (roadmap Gap R.31, ADR 0360's one-question rule).
+			if plan := g.percentFormatOf(n); plan.applies {
+				return g.percentFormat(b, n)
+			}
 		}
 		// Membership in a container whose slots describe themselves is decided by (payload,
 		// tag): comparing payloads alone would answer `0 in {"0": 1}` from the interned index
@@ -16967,6 +17066,13 @@ func (g *irGen) textMethodAnswersText(name string, argc int) bool {
 }
 
 func (g *irGen) printsAsInternedStr(e Expr) bool {
+	if g.percentIsTextExpr(e) {
+		// The print road and the operation road ask one question about what is a text (ADR 0229), so a
+		// formatted text prints as its text on the road that prints it and is a text on the road that
+		// compares, binds or measures it — never one on one leg and the other on the second
+		// (roadmap Gap R.31, ADR 0360).
+		return true
+	}
 	switch v := e.(type) {
 	case *StrLit:
 		// A text literal prints as its text, via rt_print_str on the index `value()` interns it to.

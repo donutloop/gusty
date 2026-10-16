@@ -628,6 +628,14 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 			return v, true, err
 		}
 	}
+	if g.percentIsTextExpr(e) {
+		// A formatting IS a text: the door answers the @str_tab index a slot holds, which is the same word
+		// an interpolation answers, so `["%d" % 7]`, `{"k": "%s" % 1}` and `d["k"] = "%s" % 1` store the
+		// text and not the position underneath it (roadmap Gap R.31, ADR 0360, ADR 0359's value half).
+		g.heapUsed = true
+		v, ferr := g.value(b, e)
+		return v, true, ferr
+	}
 	if _, isFs := e.(*FString); isFs {
 		// An interpolation IS a text: the value road builds it through the runtime string table and
 		// answers the index a slot holds, so `[f"a{n}"]`, `{f"k{n}": 1}` and `d[f"v{n}"] = 1` store the

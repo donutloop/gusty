@@ -233,6 +233,11 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 		}
 		return false
 	case *BinOp:
+		if v.Op == "%" && (percentFormatShapeIsText(v) || (g != nil && g.percentIsTextExpr(v))) {
+			// `return "%d items" % n` hands back the text the door rendered: one @str_tab index, the same
+			// word an interpolation answers (roadmap Gap R.31, ADR 0360, ADR 0359's value half).
+			return true
+		}
 		return v.Op == "+" && isStrUnder(g, v.L, params) && isStrUnder(g, v.R, params)
 	}
 	return false

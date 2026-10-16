@@ -1274,7 +1274,8 @@ Rules that the compiled backend implement:
   Three limits belong to the compiled backend and are stated rather than approximated: case folding
   covers ASCII and `strip` trims the ASCII whitespace set (the record folds and trims the full
   Unicode sets); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
-  and `%s` formatting does not exist at all (Gap R.31). A program that creates more distinct strings
+  and `%`-formatting of a text is answered by the run-time door described in § *Printf-style `%`*
+  (Gap R.31, ADR 0360). A program that creates more distinct strings
   than the table holds (4096) raises `RuntimeError`, which it can catch — the alternative, which used
   to happen, was silently reusing an entry and printing a different string than the program built.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
@@ -1338,9 +1339,14 @@ Not yet supported in the compiled backend — each is refused with a diagnostic 
 says what the reference does there, and cites the roadmap row that owes it (ADR 0166), rather than failing
 in the verifier or answering a table index:
 
-- **concatenation of a runtime string** (`s + "!"`) — building a new string needs a buffer
-  allocation the runtime does not have yet;
-- **string methods on a parameter** (`s.upper()`) — same reason;
+<!-- The list below is the refusals that still hold. Two of its original entries — "concatenation of a
+     runtime string" and "string methods on a parameter" — were falsified while the printf-style door was
+     built and have been removed: `def f(s): return s + "!"` answers `hi!` and `def f(s): return s.upper()`
+     answers `HI` on the compiled leg (ADR 0224's interned handle made them reachable, `L11.1`), and a list
+     kept here that no longer refuses would send a reader looking for a door that is open. What replaces
+     them is checked, not remembered: each line below was compiled and run before it was written.
+-->
+
 - **arithmetic on a string** (`s + 1`) — CPython raises `TypeError`; the compiled backend refuses rather
   than computing with a table index, and the record holds the answer the retired engine gave. **Ordering is not in this list**: an
   ordering of two texts is answered by `strcmp` on the bytes behind the index (ADR 0248), and
@@ -1349,6 +1355,7 @@ in the verifier or answering a table index:
   two texts, or the `TypeError` CPython raises (ADR 0250);
 - **a parameter used as both a string and a number** (`f("a")` and `f(7)`) — guessing would
   print `7` through the string table, so it stays a diagnostic.
+
 
 Before this was implemented, `d[1] = 2` did not work at all: the parser accepted the
 statement, consumed `= 2`, and threw it away, so the program ran as if the line were
@@ -3048,12 +3055,69 @@ default the *caller supplies* answers, which is what localises it to the omitted
 the same on both `def` and `lambda`). Bewise `len(xs)` on an `xs=[]` default: it prints `0`, which is what
 CPython prints, for entirely the wrong reason.
 
-Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
-printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print
-`0.0` at exit 0, because the format string's `@str_tab` index was widened into the double domain and used
-as a remainder's dividend. `%` itself is the remainder and answers on both legs — `7 % 3` is `1`,
-`-7 % 3` is `2`, `7.5 % 2` is `1.5`, `-7.5 % 2` is `0.5`, `7.5 % 2.5` is `0.0` — and a comparison is not a
-numeric use, so `1.0 == "a"` still answers `False`/`0` rather than being refused with the format string.
+Printf-style `%` on a text **formats**, on the compiled path, at the answers the reference gives
+(`Gap R.31`, `L11.1`, ADR 0360):
+
+```python
+print("%s" % 2)                                  # 2
+print("hi %s, you are %d" % ("Ada", 36))         # hi Ada, you are 36
+print("%05d|%-5d|%+d|% d" % (42, 42, 7, 7))      # 00042|42   |+7| 7
+print("%#x %#X %#o" % (255, 255, 8))             # 0xff 0XFF 0o10
+print("%5.2f|%08.3f|%.0f" % (3.14159, 3.14159, 2.5))   #  3.14|0003.142|2
+print("%r" % "text", "%a" % "it's")              # 'text' "it's"
+print("%c %c" % (65, 8364))                      # A €
+print("%*d|%.2f|" % (5, 42, 3.14159))            #    42|3.14|
+print("%(who)s scored %(score)d" % {"who": "Ada", "score": 7})   # Ada scored 7
+print("100%% of %d" % 100)                       # 100% of 100
+```
+
+The conversions answered are `%s %r %a %d %i %o %x %X %e %E %f %F %g %G %c`, with the reference's flags
+(`-`, `+`, space, `#`, `0`), its field width and precision — including the `*` and `.*` forms that take
+them from the arguments — its positional numbering `%2$s`, and its mapping form `%(key)s`. A field is
+measured in **characters**, not bytes: `%10s` beside a two-byte accent pads to ten of them. The traps are
+the reference's own classes and sentences, catchable by the `except` arm the program wrote:
+
+| program | raise |
+|---|---|
+| `"%d" % "text"` | `TypeError: %d format: a real number is required, not str` |
+| `"%x" % "text"` | `TypeError: %x format: an integer is required, not str` |
+| `"%f" % "text"` | `TypeError: must be real number, not str` |
+| `"%s %s" % ("one",)` | `TypeError: not enough arguments for format string` |
+| `"%s" % ("a", "b")` | `TypeError: not all arguments converted during string formatting` |
+| `"%(a)s" % 5` | `TypeError: format requires a mapping` |
+| `"%(a)s" % [1, 2]` | `TypeError: list indices must be integers or slices, not str` |
+| `"%(missing)s" % {"a": 1}` | `KeyError: 'missing'` |
+| `"%c" % "ab"` | `TypeError: %c requires int or char` |
+| `"%c" % 3000000` | `OverflowError: %c arg not in range(0x110000)` |
+| `"%*d" % ("x", 3)` | `TypeError: * wants int` |
+| `"%Q" % 1` | `ValueError: unsupported format character 'Q' (0x51) at index 1` |
+| `"%s %" % ("a",)` | `ValueError: incomplete format` |
+| `"%d" % float("nan")` | `ValueError: cannot convert float NaN to integer` |
+
+The answer **is a text** — the same `@str_tab` index a literal answers — so it binds (`s = "%s!" % "hi"`),
+measures (`len(s)`), concatenates, compares, reaches a text method (`s.upper()`), enters a container slot
+with its kind beside it (`print(["%d" % 7])` is `['7']`), lands in an instance slot and crosses a function
+boundary, printing its text and never the index under it (ADR 0359's rule, asked of the one predicate
+`percentIsTextExpr`).
+
+What the door declines it says in words, at compile time and in the source it was written in: a conversion
+with no renderer (`%b`, `%B`, `%u` — bytes conversions and the obsolete `%u` the reference removed) and an
+argument this backend has no value for (a nested tuple, a lambda, a generator, an integer beyond what the
+bounded-integer row covers such as `"%d" % (2 ** 70)`), which would print the number underneath it
+(`roadmap L11.1`, ADR 0360). `%` between two numbers is untouched by all of this: it
+is the remainder and answers on both legs — `7 % 3` is `1`, `-7 % 3` is `2`, `7.5 % 2` is `1.5`,
+`-7.5 % 2` is `0.5`, `7.5 % 2.5` is `0.0` — and a comparison is not a numeric use, so `1.0 == "a"` still
+answers `False`/`0`. The bug that made the operator unsafe to allow, a format string's `@str_tab` index
+widened into the double domain and used as a remainder's dividend (`print("%.2f" % 3.5)` printing `0.0` at
+exit 0, `Gap R.165`, ADR 0282), is closed by the door having the only text-`%` road in the module.
+
+A `%c` whose code point the source **spells** is refused when that code point is a surrogate (`0xD800` through
+`0xDFFF`): a surrogate has no UTF-8 encoding, and the reference refuses it with `UnicodeEncodeError` — a class
+this backend's shared exception table does not hold — so a front-end refusal naming the code point is honest
+and a three-byte answer is not. A code point the program **computed** reaches the encoder rather than the
+refusal, and is written as the bytes the encoder refused (`0xED 0xA0 0x80` for `0xD800`) at exit 0 where the
+reference raises: that divergence is the debt, and the missing door behind it is the exception class, not the
+formatter (pinned as it is by `TestPercentArgumentResidueAtTheCLI`; `roadmap Gap R.31`, ADR 0360).
 
 A value is rendered by the form its **expression names**, not by the slot that happens to hold it:
 
@@ -3186,8 +3250,9 @@ xs[1] + 1               # at run time: TypeError: can only concatenate str (not 
 the reason is that CPython does not raise there at all: `xs = [1.5, "a"]` / `i = 0` / `print(xs[i] * 2)`
 repeats the text for one index and multiplies for another, and a door whose only vocabulary is `raise`
 would answer the first wrongly. Over a container that cannot hold text both are answered — `xs = [1.5,
-2.5]` / `print(xs[i] * 2)` is `3.0` — and what they are waiting for is repetition and `%`-formatting
-themselves (Gap R.33, Gap R.31).
+2.5]` / `print(xs[i] * 2)` is `3.0` — and what `*` is waiting for is repetition itself (Gap R.33); the
+`%`-formatting half of that pair is paid (Gap R.31, ADR 0360), including a slot's value rendered by the
+printer: `xs = [3]` / `print("%d items" % xs[0])` is `3 items`.
 
 What the tag cannot settle is the **kind of the result**, which the compiler has to know before the program
 runs. A container whose slots are ints here and floats there (`xs = [1, 2.5]`) is therefore refused rather
@@ -3747,7 +3812,8 @@ answers `7.5` for `7.5` (`Gap R.164`, ADR 0280); a name written back with an ord
 words and at exit 1: a pair answer stored in a container's element or handed to another function as its argument
 (`Gap R.146`), and a pair answer read back by an augmented assignment (`Gap R.143`) — each of them measured
 first as a digit at exit 0 (`8` for `10.0`, `5` for `6.0`) and turned into a refusal rather than shipped. The
-text-`%` the guard above holds out of the door (`"%.2f" % 3.5`, `Gap R.165`) is owed beside them.
+text-`%` that row owed is paid beside them: `"%.2f" % 3.5` is `3.50` (Gap R.31, ADR 0360), and the argument it
+refuses is the one with no kind to render, not the format.
 
 
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s
@@ -3979,8 +4045,11 @@ print(n - 1)     # TypeError: unsupported operand type(s) for -: 'str' and 'int'
 The operators that answer a number or raise (`-`, unary `-`, `//`) ask the tag whatever the slot holds, and the
 raise is the reference's own sentence naming the kind the slot really holds — catchable by the `except` arm the
 program wrote. `+`, `*` and `%` are the exception, and an honest one: CPython answers `"a" + "b"`, `[1] * 2` and
-`"%d" % 3`, and this backend builds none of those from a slot yet (roadmap Gap R.82, Gap R.165), so those
-positions refuse in words rather than raise where the reference answered a value (roadmap L11.1, Gap R.146).
+`"%d" % 3`, and this backend builds the first two of those from a slot only where a pass proves the slots hold
+numbers (roadmap Gap R.82), so those positions refuse in words rather than raise where the reference answered a
+value (roadmap L11.1, Gap R.146). `%` on a **text** is a different operator and does not ask this question at
+all: it is the formatting, and it renders a slot's value through the printer, whose answer carries the slot's
+kind (Gap R.31, ADR 0360).
 
 The name reaches the **double** domain the same way — by its tag, not by a cast (ADR 0305, closing roadmap
 Gap R.148):

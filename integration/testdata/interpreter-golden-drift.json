@@ -48,12 +48,6 @@
     "actual": "{\"backend\":\"aot\",\"capability\":{\"code\":\"lower.unsupported.format-spec-needs-constant\",\"rows\":[\"Gap R.146\",\"L11.1\"],\"shape\":\"a format spec whose value the compiler cannot read\",\"suggestion\":\"drop the spec (f\\\"{v}\\\" prints it), or format a value the compiler can see at that point — the spec is applied where the value is still a word with no kind\"},\"error\":\"jit: codegen: the format spec \\\"05d\\\" needs a value this backend can read at compile time (AOT backend)\",\"errors\":[],\"exit\":1,\"ok\":false,\"phase\":\"codegen\"}"
   },
   {
-    "source": "print(\"a\" % 2)\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: not all arguments converted during string formatting",
-    "actual": "jit: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-  },
-  {
     "source": "print(\"a\" * \"b\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'str'",

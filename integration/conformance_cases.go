@@ -184,6 +184,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).
 		"probe_remainder_and_percent",
+		// printf-style `%` on a text, on the compiled path: the conversions render what the reference
+		// renders and the seven traps raise the reference's own classes — catchable, with its sentence.
+		// The record leg refused every line and the compiled leg refused to lower it, so this program was
+		// a debt row with the compiled leg recorded missing; the door that formats retired both refusals
+		// (roadmap Gap R.31, L11.1, ADR 0360). The last line is the control: `%` between two numbers is
+		// still the remainder, which is what keeps this probe from being a ban on the operator.
+		"probe_percent_format",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on the compiled path (roadmap Gap
@@ -742,6 +749,14 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
+		// One argument that never reaches the printf-style door as a (value, kind) pair: the integer beyond
+		// this backend's bounded-integer row, so the conversion has nothing to render and the door refuses it
+		// in words where CPython prints 22 digits. The program's own comment names its three siblings — the
+		// float literal's exponent, a tuple where a value goes, a COMPUTED surrogate — and why they are not
+		// lines here: a front-end refusal ends a program before its first line runs, so one program witnesses
+		// one refusal (roadmap Gap R.31, ADR 0360; the siblings are pinned one per program by
+		// `TestPercentArgumentResidueAtTheCLI`).
+		"probe_percent_arguments_beyond_the_door",
 		// A container has the methods the reference's containers have: extend, insert, index, remove,
 		// clear, update, pop, setdefault. Neither engine had any of them, so a program that reads like
 		// Python stopped at the first line. Gap R.188 / Gap R.63, ADR 0301, owner L12.11.
@@ -841,7 +856,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
 		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
-		"probe_percent_format",   // Gap R.31 — no `%` string formatting; both legs refuse
 		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
 		// A capture is a binding, so it happens in the arm that matched and nowhere else: the arms that
@@ -1142,6 +1156,20 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
 		ref:    "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}},
+	"programs/probe_percent_format": {oracle: lang.OracleMatch},
+	// The one argument shape this probe can witness: a front-end refusal ends a program before its first line
+	// runs, so a program containing a refusal witnesses only that refusal — which is why the sibling shapes are
+	// separate programs in `TestPercentArgumentResidueAtTheCLI` rather than more lines here.
+	//
+	// `2 ** 70` never becomes a (value, kind) pair: the integer is beyond what this backend's bounded-integer
+	// row covers, so the conversion has nothing to render and the door refuses it in words where CPython prints
+	// the 22 digits. The siblings named in the program's own comment — the float literal's exponent, a tuple
+	// standing where a value goes, a surrogate the program COMPUTED — are refused or answered wrongly for
+	// reasons those rows own, not because the formatter has no renderer.
+	"programs/probe_percent_arguments_beyond_the_door": {oracle: lang.OracleDebt,
+		reason: "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
+		ref:    "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",
@@ -1178,11 +1206,6 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_global_statement": {oracle: lang.OracleNA,
 		reason: "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, while the compiled backend parses `global gz` as the *expression* `global gz` and refuses the program for having no binding for `global` — it disagrees with the reference on a construct every Python reader expects",
 		ref:    "roadmap Gap R.48 (`global` is not in the language); Gap R.36 (the probe pass that found it)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-
-	"programs/probe_percent_format": {oracle: lang.OracleDebt,
-		reason: "no `%` string formatting exists yet: the record leg raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
-		ref:    "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_operand_types": {oracle: lang.OracleDebt,
