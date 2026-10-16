@@ -1,0 +1,21 @@
+# Gap R.317 — a method named like a TEXT METHOD swallows the text-method call, and the program recurses.
+#
+# `class C: def upper(self, s): return s.upper()` is a two-line program in which the body's `s.upper()` is the
+# TEXT operation (ADR 0362's road, `@rt_str_upper` behind the intern table), not a call to the class's own
+# method. Here it was resolved as one: the callee's own symbol, so every call calls itself until the stack
+# runs out and the process dies by SIGSEGV — the artifact at fault, with no traceback and nothing on stdout,
+# which is the class Gap R.203 named and ADR 0166 forbids.
+#
+# The reference prints `HI` (twice — the second line is the same body reached through a name, which is the
+# shape a real program writes when it wants the text operation and its class happens to own an `upper`).
+# The name the receiver's OWN class declares is what the door consulted; the receiver's type is a text, and
+# that is the table the call belongs to. The guard for this row is that the program never answers a value at
+# exit 0: today it dies, and a fix that printed `HI` would be the reference's answer, not `0` and not a
+# truncated address.
+class C:
+    def upper(self, s):
+        return s.upper()
+
+
+c = C()
+print(c.upper("hi"))

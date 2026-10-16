@@ -77,6 +77,22 @@ type BoolEnv struct {
 	// Lookup resolves a called name to its FuncDef, or nil. A function's answer is
 	// determined by what its body does (ADR 0254's rule, read the other way round).
 	Lookup func(string) *FuncDef
+	// MethodLookup resolves an ATTR call `recv.name(...)` to the FuncDef of the method the compiled
+	// backend dispatches to, or nil when the receiver's class is not something the compiler can
+	// name, the class does not declare that method, or more than one callable owns the name. Without
+	// it the body-reading below was reached for `f()` and never for `C().m()` — the road that made
+	// `print(C().yes())` print `1` where the reference prints True (roadmap Gap R.316).
+	MethodLookup func(recv Expr, name string) (*FuncDef, string)
+	// SelfClass is the class whose method body is being read, when the reading got there by opening
+	// a method: `self.helper()` inside that body is a call on THAT class, which the print site has
+	// no way to name (roadmap Gap R.316).
+	SelfClass string
+	// SelfLookup resolves `self.name()` of a named class — the same question MethodLookup asks, with
+	// the receiver already known.
+	SelfLookup func(class, name string) *FuncDef
+	// FieldVerdict answers `self.<field>` of a class the reading already knows: a field every write
+	// of it hands a verdict to (roadmap Gap R.316's getter half).
+	FieldVerdict func(class, field string) bool
 	// CalleeVars reports the names whose own bindings inside a called function produced a
 	// verdict. Without it, `def isit(): b = True; return b` is asked with the CALLER's names,
 	// where `b` was never assigned, so the call was not a verdict and `print(isit())` printed 1
@@ -121,6 +137,14 @@ func (env BoolEnv) of(e Expr, depth int) bool {
 	switch t := e.(type) {
 	case *BoolLit:
 		return true
+	case *Attr:
+		// `self.ready` where every write of `ready` hands back a verdict IS a verdict — the getter
+		// shape (`def held(self): return self.flag`) the reference reads as the field's own kind and
+		// the print road rendered as the stored 0/1 (roadmap Gap R.316).
+		if nm, ok := t.Obj.(*Name); ok && nm != nil && nm.Value == "self" && t.Name != nil && env.SelfClass != "" && env.FieldVerdict != nil {
+			return env.FieldVerdict(env.SelfClass, t.Name.Value)
+		}
+		return false
 	case *UnOp:
 		// `not x` is a verdict about x; `-x` is a number about x.
 		return t.Op == "not"
@@ -416,6 +440,36 @@ func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 		// printed `1` where the reference prints True (Gap R.180, the verdict half; its text half is in
 		// stringVal). Asked of the AST alone, like every other answer here: the literal dict's own slot,
 		// or the default argument when that is the arm the fold will take.
+		// A user method is a verdict when its OWN body returns only verdicts — the question the NAME
+		// road asks below and an attribute call never reached: `print(C().yes())` printed the 0/1 a
+		// verdict is stored as, where the reference prints True, and the same happened through a
+		// variable (`c = C(); print(c.is_ready())`) — roadmap Gap R.316, L15.4's remaining half, and
+		// ADR 0299's rule that a census is only honest when every road asks it.
+		if depth < boolCallDepth {
+			var fd *FuncDef
+			owner := ""
+			if nm, isName := attr.Obj.(*Name); isName && nm != nil && nm.Value == "self" && env.SelfClass != "" && env.SelfLookup != nil {
+				fd = env.SelfLookup(env.SelfClass, attr.Name.Value)
+			} else if env.MethodLookup != nil {
+				fd, owner = env.MethodLookup(attr.Obj, attr.Name.Value)
+			}
+			if fd != nil && len(fd.Body) > 0 {
+				if fd.ReturnAnno.IsBool() {
+					return true
+				}
+				sub := env
+				if env.CalleeVars != nil {
+					if e2 := env.calleeEnv(attr.Name.Value); e2 != nil {
+						sub = *e2
+					}
+				}
+				// `self.helper()` inside the body is a call on the class the BODY belongs to, not on
+				// whatever the print site can name.
+				sub.SelfClass = owner
+				saw := false
+				return bodyReturnsOnlyBools(fd.Body, sub, depth+1, &saw) && saw
+			}
+		}
 		if attr.Name.Value == "get" && (len(c.Args) == 1 || len(c.Args) == 2) {
 			if dl, isDict := attr.Obj.(*DictLit); isDict {
 				if slot, found := dictFoldSlotOf(dl, c.Args[0]); found {

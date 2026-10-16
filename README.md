@@ -314,6 +314,21 @@ catchable by the program's own `except TypeError`. Three shapes stay refused in 
 owes them (**Gap R.314**): the subscript of a built sequence, the order of two containers no name holds, and a
 repeat the compiler can see needs more slots than one object owns.
 
+**A method is a callable, so its parameter and its answer carry their kind** (roadmap Gap R.315, Gap R.316,
+Gap R.317, Gap R.318 — closed by ADR 0366). The censuses that decide what a callable's slot holds, and what its
+answer is, read `def`s; a method never entered them, so four ordinary programs answered themselves wrongly:
+`def fmt(self, s): return "x%s" % s` printed `x0`, `def rep(self, s): return s * 2` printed `0`, `def yes(self):
+return 1 == 1` printed `1` where its own function twin printed `True`, and `def upper(self, s): return
+s.upper()` called itself until the process died by SIGSEGV. All four answer the reference now: the method road
+imports the parameter census the function road grew over three cycles, the print road asks an *attribute*
+callee whether its body returns only verdicts (and what every write of a field hands it, for `return
+self.flag`), and a receiver the compiler can see is a text belongs to the case door whatever the enclosing
+class calls itself. `programs/probe_method_text_answer.gy` and `programs/probe_method_verdict_answer.gy` are
+parity rows, byte-for-byte the reference. Two shapes stay pinned where they are: a text held in a *field*
+still prints the intern position under it (**Gap R.319**, `programs/probe_method_text_field.gy`), and a
+defaulted method parameter or a `self.other()` call still refuses in words (**Gap R.320**) — never a crash,
+never exit 2.
+
 **A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
 named and left open. `print(build()[7])` is `IndexError: list index out of range` in the reference; here it was
 `codegen: index requires an inline list/dict/set literal` at exit 1 — while `ys = build()` / `print(ys[7])` had

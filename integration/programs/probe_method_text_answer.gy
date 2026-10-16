@@ -1,18 +1,20 @@
-# Gap R.315 — a text that a METHOD's body BUILDS is printed as the number underneath it.
+# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted
+# parity program now, because the census that decides what a parameter holds reads methods as well as
+# functions (ADR 0366), and every line below is the reference's answer.
 #
-# A method that TAKES A PARAMETER and returns a text its body built prints the @str_tab POSITION of
-# the text, not the text: `x0` for `"x%s" % s` and `0` for `s * 2`. The body that returns the same
-# texts answers correctly everywhere else the doors know about — at module level, as a plain function,
-# as a method with no parameter, and as a method whose body returns a text literal — so this is one
-# road's missing registration (the method's string-return census), not the doors'.
+# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab
+# POSITION of the text: `x0` for `"x%s" % s`, `0` for `s * 2`, `2` for `s + "!"`. The bodies that returned the
+# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as
+# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a
+# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never
+# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered
+# one and not the other showed up as two wrong lines rather than one.
 #
-# Both doors take the hit, which is the point of the fifth line: the formatting (ADR 0360) and the
-# repeat (ADR 0365) answer ONE predicate now, so a road that teaches one and not the other shows up as
-# two wrong lines rather than one.
+# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was
+# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the
+# census marks a position only when no call site contradicts it — which is what the last two lines measure.
 #
-# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`. The compiled leg prints `ab`, `x0`, `abab`, `0`,
-# `abab` — wrong values at exit 0, which is why this is a probe and not a parity program
-# (roadmap Gap R.315, measured with ADR 0365).
+# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.
 class C:
     def plain(self, s):
         return "ab"
@@ -29,9 +31,17 @@ class C:
     def rep(self, s):
         return "ab" * 2
 
+    def cat(self, s):
+        return s + "!"
+
+    def counted(self, s, n):
+        return n
+
 
 print(C().plain("hi"))
 print(C().fmt("hi"))
 print(C().rep_no_param())
 print(C().rep_of_param("hi"))
 print(C().rep("hi"))
+print(C().cat("ab"))
+print(C().counted("ab", 5))

@@ -13986,7 +13986,13 @@ pinned until its replacement exists.
 
 
 <a id="gap-r-315"></a>
-### R.315 — a text a method's body builds prints the intern position under it (OPEN, compiled backend, ADR 0365)
+### R.315 — a text a method's body builds prints the intern position under it (CLOSED, ADR 0366)
+
+Paid by **ADR 0366**: the method road now imports the parameter census the function road grew over three
+cycles — `strArgKinds` reads the arguments a program hands `obj.m(...)` (and, under a class-keyed name, the
+arguments a `C(...)` call hands `__init__`), and `emitClassMethod` writes the classified parameter into the
+interned-text table every text road asks. The five lines of the probe are the reference's five lines, and the
+row is a `match` (`programs/probe_method_text_answer`). What the cycle left owed is R.319 and R.320 below.
 
 ```gusty
 class C:
@@ -14010,3 +14016,140 @@ Recorded rather than parity-asserted, because a wrong value at exit 0 cannot be 
 answer: `integration/programs/probe_method_text_answer.gy` carries CPython's five lines and this backend's
 five lines in the matrix row (`programs/probe_method_text_answer`, oracle `debt`), and the row's `pins`
 name the compiled leg's exact output so a partial fix that cures one line and not the other is visible.
+
+
+<a id="gap-r-316"></a>
+### R.316 — a verdict a method hands back prints as the number underneath it (CLOSED, ADR 0366)
+
+The print road has rendered a verdict as a verdict since ADR 0257, by asking the callee's own body the
+question ADR 0254 insists be asked rather than guessed: `bodyReturnsOnlyBools`, read through the verdict
+census. That question was asked of a callee written as a NAME. `C().yes()` is an ATTR call, and the branch
+that opens a body was never reached — so the i32 the method answers with went to printf's `%d`, and six
+shapes a function already printed as `True` printed `1` at exit 0.
+
+The fix is the missing registration, not a new rendering rule. `pkg/lang/boolmethod.go` reads the program for
+the three facts the attribute branch needs — which method **one** callable owns, which class a receiver hands
+back, and what **every write** of a field hands the program — and `BoolEnv` grew four hooks over them:
+
+```go
+MethodLookup   func(recv Expr, name string) (*FuncDef, string)  // the callee, and the class that owns it
+SelfLookup     func(class, name string) *FuncDef               // `self.other()` of a known class
+SelfClass      string                                          // the class the body being read belongs to
+FieldVerdict   func(class, field string) bool                  // `self.flag`, every write a verdict
+```
+
+Two readings are worth naming because a hand-enumerated version of either is the mistake the next cycle makes.
+`self.helper()` inside a body cannot be resolved from the print *site* — the site can name no class — so the
+walk that opens a body carries the class the body belongs to with it, which is why `MethodLookup` answers two
+things and `SelfClass` exists. And `return self.flag` is a verdict only because *every* write of that name,
+anywhere in the program, hands one: a single `obj.flag = 3` retires the name for every class, because the
+compiler cannot tell which object the write reached. That rule is what keeps a number from being dressed in
+the verdict printer, and it is the rule R.319 has to copy for text.
+
+The verdict PARAMETER was already registered (Gap R.111 taught `verdictFacts` to read methods); the answer is
+this row. The guard is a paid-row table — `TestWhatTheMethodAnswerOnceOwedNowAnswers` — holding the six
+verdict shapes, the getter through a field, and the call through `self`.
+
+<a id="gap-r-317"></a>
+### R.317 — a method named like a text method swallowed the text-method call (CLOSED, ADR 0366)
+
+```gusty
+class C:
+    def upper(self, s):
+        return s.upper()
+print(C().upper("hi"))
+```
+
+`callMethod` is a sequence of roads, each keyed by the receiver's class: the module road, the container road,
+the class-method road, the dynamic-dispatch road, and below them the text road that owns `upper()`. The
+class-method and dynamic roads are keyed by the *method name*, and `upper` is a name this class declares — so
+the body's call resolved to the body, the text went in as the receiver, the dispatch read a class id out of an
+interned slot, and the program called itself until the process died by SIGSEGV: nothing on stdout, no
+traceback, the artifact at fault (the Gap R.203 class), which ADR 0166 reserves its worst sentence for.
+
+The guard is the receiver's kind, asked once, before either road:
+
+```go
+textReceiver := g.exprIsString(attr.Obj) && g.receiverClass(attr.Obj) == ""
+```
+
+A text is never an instance, so neither road can be right for a text receiver; skipping them can only turn the
+nonsense into the text's own answer or an honest refusal. `receiverClass` stays in the conjunction because a
+receiver whose class *is* known must keep its dispatch — that ordering is what keeps `c.shout("hi")` answering
+`HI!` while `c.upper("hi")` answers `HI`.
+
+The same lesson as R.315, seen from the other side of the call: the class table and the text-method table are
+both keyed by the method name, and only the receiver's kind decides which one to ask.
+
+<a id="gap-r-318"></a>
+### R.318 — the dispatch road dropped its operand's error and emitted IR `llc` rejected (CLOSED, ADR 0366)
+
+`b = Bag(True)` and `def outer(): print(b.get_flag())` emitted `rt_mkobj(i32 10, i32 )` — an empty operand —
+because the dynamic-dispatch road wrote `h, _ := g.value(b, attr.Obj)`. The empty word came from an error the
+road threw away; the module reached `llc`, which rejected it, and the CLI reported **exit 2**, the code this
+toolchain reserves for a compiler bug. The neighbouring road two lines above already issues the honest
+sentence for the same program: a compiled function body cannot read module-level state that changes (Gap R.35).
+
+The fix is propagation: the receiver and each argument return their error, so an unbuildable operand is a
+refusal at exit 1 naming the missing half and no half-emitted operand reaches the verifier. Measured against
+the commit before (`git worktree` build of HEAD), where the same source produced the same broken module: this
+is the only change in that program's behaviour, and the row's guard is that the refusal rows of
+`TestWhatTheMethodAnswerStillOwesIsFiledNotFixed` fail if any shape ever reaches `llc`/`verify` again.
+
+<a id="gap-r-319"></a>
+### R.319 — a text a method's FIELD hands back prints the intern position under it (OPEN, compiled backend, ADR 0366)
+
+```gusty
+class Box:
+    def __init__(self, v):
+        self.v = v
+    def get(self):
+        return self.v
+print(Box("hi").get())    # CPython: hi     compiled: 0
+b = Box("yo")
+print(b.get())            # CPython: yo     compiled: 1
+```
+
+The verdict twin of this program answers, because the census asks `fieldIsVerdict` — a field is a verdict only
+when every write of that name hands one. No such reading exists for text: `g.exprIsString` consults
+`internedVars` for a NAME and, faced with an attribute, has nothing to ask. The answer therefore arrives
+unlabelled and the number printer takes it, which is the @str_tab position of `hi` and of `yo`.
+
+The sibling shape is a text field read beside a text parameter — `self.w = "w"` / `return self.w + s` answers
+`2` for `"w" + "hi"` — pinned beside the two above in `TestWhatTheMethodAnswerStillOwesIsFiledNotFixed`.
+
+The fix is the same table, asked of the text roads, with the same rule: *every write of the name, or no claim*.
+A heuristic ("the class assigns a literal somewhere") is refused for the reason ADR 0366 refuses one for the
+verdict road: `self.v = 3` in one method would then print a text's position for another method's reader.
+Recorded, not parity-asserted, because a wrong value at exit 0 is not an answer: the row lives in
+`integration/programs/probe_method_text_field.gy` (`programs/probe_method_text_field`, oracle `debt`, aot pin
+`0\n1\n`) beside CPython's `hi`/`yo`.
+
+<a id="gap-r-320"></a>
+### R.320 — a defaulted method parameter, and a call that reaches its own class through `self` (OPEN, compiled backend, ADR 0366)
+
+Two method doors the dispatch has never opened, both refusing in words today and both answered by the
+reference:
+
+```gusty
+class C:
+    def greet(self, name="world"):
+        return "hi " + name            # C().greet()        → CPython: hi world
+    def outer(self, s):
+        return self.inner(s)          # C().outer("hi")    → CPython: hi!
+    def inner(self, t):
+        return t + "!"
+```
+
+The default is the sharper half, and ADR 0366 found out why the hard way: the moment the text census learned
+to intern a defaulted method parameter, the program **SIGSEGV**ed. The dispatch passes only the arguments the
+source wrote, so a parameter the defaults fill is a slot nothing wrote at the call — interning it is the
+callee's job, in its prologue, and until then the census withholds the claim (a defaulted tail position is
+evidence *against*), which leaves the call on the door it always used. `self.inner(s)` is the other half:
+`g.receiverClass` does not answer `self`, though the generator knows the class it is lowering —
+`curClassSrc`, which the verdict census already reads and the dispatch does not.
+
+Both are refusals, so both are pinned as refusals: the last two rows of
+`TestWhatTheMethodAnswerStillOwesIsFiledNotFixed` assert the shape still refuses in words, names the missing
+half, and never reaches the verifier — so a cycle that answers has to move the row rather than delete it.
+

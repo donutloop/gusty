@@ -1,0 +1,27 @@
+# Gap R.319 — a text held in a FIELD prints the intern position under it.
+#
+# `def get(self): return self.v` is the getter shape, and the field it reads holds a text: written by the
+# constructor from an argument every call site fills with a text (`self.v = v`). CPython prints `hi` and
+# `yo`; this backend prints the @str_tab POSITION of each text, at exit 0, with nothing raised and nothing
+# refusing — the outcome this backend ranks worst (ADR 0166's rule, read as the ladder ADR 0273 sets).
+#
+# The verdict twin of the same program answers since ADR 0366: `self.flag = flag` / `return self.flag`
+# prints `True`, because the census that decides whether a method's answer is a verdict asks what every
+# write of that field hands it (`methodCensusT.fieldIsVerdict`, `pkg/lang/boolmethod.go`). No such reading
+# exists for a text — `g.exprIsString` consults the intern table for a NAME and has no question to ask of
+# an attribute — so the answer arrives unlabelled and the number printer takes it.
+#
+# The same missing reading covers a text field read beside a text parameter, where the concatenation
+# answers `2` for `"w" + "hi"` because the field's slot is a number to the body; that shape is pinned
+# beside these two in `pkg/lang/method_text_test.go`.
+class Box:
+    def __init__(self, v):
+        self.v = v
+
+    def get(self):
+        return self.v
+
+
+print(Box("hi").get())
+b = Box("yo")
+print(b.get())

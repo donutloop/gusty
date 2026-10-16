@@ -123,7 +123,7 @@ func (g *irGen) scanStringBindings(stmts []Stmt) {
 			// view — marking one made a caller read a handle as an index and llc rejected the
 			// module (the async repro, caught by the suite, ADR 0166's rule about blaming the
 			// compiler). Its body is still walked, because a def inside it can be ordinary.
-			if !n.Async && (methodReturnsStr(n) || returnsStringExpr(g, n)) {
+			if !n.Async && (g.methodReturnsStr(n) || returnsStringExpr(g, n)) {
 				g.strFuncs[n.Name] = true
 			}
 			g.scanStringBindings(n.Body)
@@ -159,11 +159,20 @@ func (g *irGen) scanStringBindings(stmts []Stmt) {
 // its returns, using the same predicate the operations ask. The annotation and literal cases
 // are methodReturnsStr's; this is the rest — a subscript of a string, a char method, a call
 // to a function already known to return one.
-func returnsStringExpr(g *irGen, fd *FuncDef) bool {
+//
+// `extraTextParams` is what a caller's census already knows about the parameters — for a METHOD it is how
+// `return s.upper()` and `return s * 2` become visible at all: the shape question sees a name, and only the
+// call sites say that the name holds an interned text (roadmap Gap R.315, ADR 0366).
+func returnsStringExpr(g *irGen, fd *FuncDef, extraTextParams ...map[string]bool) bool {
 	strParams := map[string]bool{}
 	for _, p := range fd.Params {
 		if p.Annot != nil && p.Annot.Kind == KindString {
 			strParams[p.Name] = true
+		}
+	}
+	for _, m := range extraTextParams {
+		for n := range m {
+			strParams[n] = true
 		}
 	}
 	found := false
@@ -243,9 +252,36 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 			// ADR 0365; ADR 0359's value half).
 			return true
 		}
+		if repeatAnswersText(g, v, params) {
+			// `return s * 2` where the call sites are what made `s` a text (roadmap Gap R.315, ADR 0366).
+			return true
+		}
 		return v.Op == "+" && isStrUnder(g, v.L, params) && isStrUnder(g, v.R, params)
+	case nil:
+		return false
 	}
 	return false
+}
+
+// repeatAnswersText is the repeat's half of the question the shape predicate cannot answer alone: `s * 2`
+// is a text exactly when `s` is one, and at the pre-scan only the call sites say so. A container on either
+// side is the reference's TypeError rather than a repeat, and two texts is `"a" * "b"` — neither is claimed,
+// the way seqShapeIsText declines them (roadmap Gap R.315, ADR 0366 beside Gap R.33, ADR 0365).
+func repeatAnswersText(g *irGen, v *BinOp, params map[string]bool) bool {
+	if v == nil || v.Op != "*" {
+		return false
+	}
+	lText, rText := isStrUnder(g, v.L, params), isStrUnder(g, v.R, params)
+	if !lText && !rText {
+		return false
+	}
+	if lText && containerShapeOf(v.R) != "" {
+		return false
+	}
+	if rText && containerShapeOf(v.L) != "" {
+		return false
+	}
+	return !(lText && rText)
 }
 
 // emitForOverRuntimeString iterates text that exists only while the program runs. The count is

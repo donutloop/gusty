@@ -1,0 +1,57 @@
+# Gap R.316 — a verdict a METHOD hands back is the verdict the reference prints.
+#
+# Every line below is `True` in the reference and was `1` compiled, at exit 0: the method returns the answer of a
+# comparison, a containment test, an equality, the `bool` constructor, an ordering and a verdict literal. The
+# function twin of each — `def yes(): return 1 == 1` / `print(yes())` — has printed `True` since ADR 0257's verdict
+# half, because the print road asks a `*Name` call whether the callee's body returns only verdicts
+# (`bodyReturnsOnlyBools`, read through the verdict census). A method call is an attribute call, and that question
+# had only ever been asked of a name: the callee's body was never opened, and the print road fell back to the i32
+# the method answers with.
+#
+# The row is the verdict twin of Gap R.315 (a text a method's body builds), and ADR 0366 paid them together,
+# because they are one missing registration: the answer a callable hands back has to carry its kind whatever the
+# callable's spelling. `pkg/lang/boolmethod.go` is that census — which callable owns a method name, which class a
+# receiver hands back, and what every write of a field hands it.
+#
+# The last shape is the one the census can only answer from the call sites: `held` returns the FIELD `self.flag`,
+# which is a verdict because every write of `flag` in the program hands one (`self.flag = flag`, with every call
+# site passing a verdict). A field written with a number somewhere is not a verdict, and the print road prints the
+# number it holds; the text version of that reading is still owed (roadmap Gap R.319).
+class C:
+    def __init__(self, flag):
+        self.flag = flag
+
+    def yes(self):
+        return 1 == 1
+
+    def in_text(self, s):
+        return "h" in s
+
+    def same(self, s):
+        return s == "hi"
+
+    def truthy(self, s):
+        return bool(s)
+
+    def literal(self):
+        return True
+
+    def ordered(self, a, b):
+        return a < b
+
+    def held(self):
+        return self.flag
+
+    def via_self(self):
+        return self.literal()
+
+
+print(C(True).yes())
+print(C(True).in_text("hi"))
+print(C(True).same("hi"))
+print(C(True).truthy("hi"))
+print(C(True).literal())
+print(C(True).ordered(1, 2))
+print(C(True).held())
+print(C(False).held())
+print(C(True).via_self())

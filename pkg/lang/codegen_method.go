@@ -14,8 +14,52 @@ import (
 // It answers every call whose callee is an attribute: the container methods that share one layout,
 // the text methods that answer text, a user method reached through the class chain, and the
 // reference methods the backend declines to invent an answer for.
-func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName string) (string, error) {
-	// The one thing the shared container layout may not be allowed to do quietly: write. The
+// refuseUnmarkedMethodText is the method road's `strArgCheck`. A text may only arrive at a parameter the
+// text census MARKED, because the mark is what tells the body that the i32 in its slot is an @str_tab index
+// rather than a number. An unmarked parameter is one some call site filled with a non-text, or one the census
+// could not resolve to a single callable — and handing that slot a text is how `print(C().m("hi"))` answered
+// the intern POSITION at exit 0, the class this backend ranks worst. The function call road has refused the
+// shape in words since Gap J.5; only the method road was answering it quietly (roadmap Gap R.315, ADR 0366).
+//
+// Two bounds keep it honest. It fires only for an argument that is PROVABLY a text — a literal, a foldable
+// constant, an interpolation, or the answer of the formatting/repeat doors — so a name the census never
+// classified keeps the road it always had; and it stays out of the way entirely of a keyword spelling, which
+// the census resolves by parameter name elsewhere. It can only ever narrow a wrong answer.
+func (g *irGen) refuseUnmarkedMethodText(mname string, args []Expr) error {
+	for i, a := range args {
+		if _, isKw := a.(*KeywordArg); isKw {
+			return nil
+		}
+		if !g.argIsProvablyText(a) {
+			continue
+		}
+		// The census indexes a method's parameters the way the callable declares them, `self` at 0, which
+		// is why the first argument is position 1 here as it is in emitClassMethod (Gap R.111's bool arm
+		// reads the same table with the same offset).
+		if g.strParamOf[mname][i+1] {
+			continue
+		}
+		return fmt.Errorf("codegen: a text argument to method %q has no compiled word: the parameter it arrives at is not one every call site fills with a text, so the body reads the slot as a number and would print the @str_tab position under the text — annotate the parameter (`s: str`) or pass texts at every call site (roadmap Gap R.315, ADR 0366)", mname)
+	}
+	return nil
+}
+
+// argIsProvablyText is the conservative half of the gate above: what the compiler can SEE is a text at the
+// call site, as opposed to a name whose kind only the run time knows.
+func (g *irGen) argIsProvablyText(a Expr) bool {
+	if a == nil {
+		return false
+	}
+	if _, ok := g.stringVal(a); ok {
+		return true
+	}
+	if _, isFs := a.(*FString); isFs {
+		return true
+	}
+	return g.textDoorIsText(a)
+}
+
+func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName string) (string, error) { // The one thing the shared container layout may not be allowed to do quietly: write. The
 	// reference raises for every one of these on the immutable spelling — `TypeError` for the slot
 	// writes, `AttributeError` for the methods a tuple does not have — and a road that appended to a
 	// tuple happily would answer `(1, 2, 3)`, a value no program of this language can print in the
@@ -79,9 +123,25 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		}
 	}
 
+	// A receiver the compiler can see is a TEXT belongs to the text road at the bottom of this
+	// function, whatever the enclosing class happens to call itself. `class C: def upper(self, s):
+	// return s.upper()` is the shape: `upper` is a name the class declares, so the dispatch below
+	// resolved the body's call to the class's OWN symbol, every call called itself, and the process
+	// died by SIGSEGV with nothing on stdout — the artifact at fault, which ADR 0166 forbids and
+	// roadmap Gap R.317 records. A text is never an instance, so neither road below can be right for
+	// it: skipping them can only turn the nonsense into the text's own answer or a refusal in words.
+	textReceiver := g.exprIsString(attr.Obj) && g.receiverClass(attr.Obj) == ""
+
 	// Class method dispatch: `recv.m(args)` where recv's class is known.
-	if className := g.receiverClass(attr.Obj); className != "" {
+	if className := g.receiverClass(attr.Obj); className != "" && !textReceiver {
 		if fn, ok := g.resolveMethod(className, mname); ok {
+			// A text into a parameter the call sites never agreed is a text is the shape the function road
+			// has refused in words since Gap J.5 (`strArgCheck`); the method road had no such check and
+			// handed the @str_tab POSITION to a body that reads an i32 — `print(C().m("hi"))` answered the
+			// intern index at exit 0 (roadmap Gap R.315, ADR 0366).
+			if err := g.refuseUnmarkedMethodText(mname, c.Args); err != nil {
+				return "", err
+			}
 			recvHandle, err := g.value(b, attr.Obj)
 			if err != nil {
 				return "", err
@@ -104,8 +164,16 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 	// Dynamic dispatch: `recv.m(args)` where recv is a class instance whose
 	// class is unknown at compile time. Dispatch on the runtime class-id
 	// stored in instance slot 0 (set at instantiation).
-	if mname := attr.Name.Value; g.hasMethod(mname) {
-		h, _ := g.value(b, attr.Obj)
+	if mname := attr.Name.Value; g.hasMethod(mname) && !textReceiver {
+		// The receiver is read BEFORE it is wrapped: an operand the function body cannot read — a
+		// module instance reached from inside a `def` — used to come back as an empty word with its
+		// error thrown away, and the dispatch went on to emit `rt_mkobj(i32 3, i32 )`, which is not IR.
+		// An unbuildable operand is a refusal (exit 1), not a malformed module the verifier rejects
+		// (exit 2) — roadmap Gap R.318, ADR 0029's rule that no path may emit IR it cannot name.
+		h, herr := g.value(b, attr.Obj)
+		if herr != nil {
+			return "", herr
+		}
 		// Runtime dispatch operates on the canonical %obj-tagged value
 		// representation: the receiver is wrapped as {tag=instance,
 		// payload=heap-handle}, its kind tag is verified, and the payload
@@ -122,7 +190,10 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, h2))
 		argvals := make([]string, len(c.Args))
 		for i, a := range c.Args {
-			v, _ := g.value(b, a)
+			v, verr := g.value(b, a)
+			if verr != nil {
+				return "", verr
+			}
 			argvals[i] = v
 		}
 		type dynCase struct {

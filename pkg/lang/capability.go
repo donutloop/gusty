@@ -111,6 +111,14 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Sample:     "print(tuple([1, 2]))",
 	},
 	{
+		Code:       "lower.unsupported.method-text-argument",
+		Shape:      "a text handed to a METHOD parameter the call sites do not all fill with texts: the parameter carries no text mark, so the body reads the @str_tab index as a number",
+		Suggestion: "annotate the parameter (`def m(self, s: str)`) or pass a text at every call site — the mark is what tells the body its i32 slot holds a text index; a parameter one call site fills with a number has no word for both kinds yet (roadmap Gap R.315, ADR 0366). Texts to a method are answered when every call site agrees: print, `str`/`repr`, len, `in`, `==`, a `for`, the formatting, the repeat, a concatenation and the char methods all reach the doors a function's text parameter reaches",
+		Rows:       []string{"Gap R.315", "L11.1"},
+		Markers:    []string{"has no compiled word: the parameter it arrives at is not one every call site fills with a text"},
+		Sample:     "class C:\n    def m(self, s):\n        return s * 2\n\n\nprint(C().m(\"hi\"))\nprint(C().m(2))\n",
+	},
+	{
 		Code:       "lower.unsupported.sequence-operation",
 		Shape:      "an ordering of two containers no name holds, the subscript of a sequence the compiler built, or a repeat whose answer is bigger than one container object",
 		Suggestion: "bind the operands to names first — print, len, `in`, == and a for over a built sequence are all answered — and what is still missing here is the one arm that reads a slot of an object the compiler built in place, orders two containers it built, or grows an object past its 256-slot row",

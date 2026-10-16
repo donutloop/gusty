@@ -5558,6 +5558,39 @@ way the reference prints it — the qualified `Counter.bump` is what the line ta
 (ADR 0231, ADR 0354). Known limit: a method whose result
 is a `str` is still broken in the compiled backend (roadmap Gap R.42).
 
+### A method's parameter and its answer carry their kind
+
+A method is a callable, and the compiler decides what a callable's slot holds, and what its answer is,
+the same way for both spellings (ADR 0366). A parameter every call site fills with a text is an
+interned text inside the body, so every door a function's text parameter meets is a door a method's
+meets too; a body that hands back a verdict is a verdict, whoever called it:
+
+```gy
+class C:
+    def __init__(self, flag):
+        self.flag = flag          # every call site passes a verdict, so the field holds one
+
+    def fmt(self, s):             return "x%s" % s   # xhi
+    def rep(self, s):             return s * 2        # hihi
+    def yes(self):                return 1 == 1       # True, not 1
+    def held(self):               return self.flag    # True, or False
+    def via_self(self):           return self.yes()   # True
+    def upper(self, s):           return s.upper()    # HI — the case door, not a recursive call
+```
+
+Three rules keep the reading honest rather than lucky. A name more than one callable owns — two classes
+declaring `area`, or a `def` and a method sharing a word — is classified as **neither**, because the
+table is keyed by the name and one call site would dress the other's number in the string table. A
+position a call leaves to its **default** is evidence against being a text: the dispatch passes only the
+arguments the source wrote, so a defaulted slot is a word nothing wrote at the call (**Gap R.320**,
+which is also why `C().greet()` still refuses). And a text handed to a parameter the call sites never
+agreed on **refuses**, naming the missing half, rather than printing the intern position under the text.
+
+The receiver's kind, not the method's name, picks the table: `s.upper()` is the text operation even in a
+class that declares `upper` (**Gap R.317**). What a *field* hands back is read for a verdict (`self.flag`
+above) and is still owed for a text — `return self.v` of a text field prints the intern position
+(**Gap R.319**).
+
 ### A method and a helper may share a name
 
 The words that describe what a class does are usually the words that describe a helper, so this

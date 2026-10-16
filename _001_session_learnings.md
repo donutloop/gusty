@@ -12262,3 +12262,47 @@ printed by the tool for a source printed beside it.
 - **Counts move under you.** Adding a program and a probe moved four Snapshot rows (programs, matrix rows,
   divergences, `debt` verdicts) plus the owed-queue tally, and `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
   named each one rather than letting me type a guess. Re-run it after the artifact-writing runs, not before.
+
+## ADR 0366 — a method is a callable, so its parameter and its answer carry their kind (2026-10-16)
+
+- **A census keyed by a name is a census about `def`s until it reads methods.** Four programs, one root:
+  `def fmt(self, s): return "x%s" % s` printed `x0`, `def rep(self, s): return s * 2` printed `0`, `def yes(self):
+  return 1 == 1` printed `1`, and `def upper(self, s): return s.upper()` died by SIGSEGV. Each had a function twin
+  that was already right, and that pairing is the whole diagnosis — the print road asked `bodyReturnsOnlyBools` of
+  a `*Name` callee and never of an `*Attr` one, and the text census claimed args from `f(x)` and never from
+  `obj.m(x)`. The fix is one predicate per question, asked of both spellings; a method-side twin of a predicate is
+  how the two roads drift apart (ADR 0299 again, in a new costume).
+- **`internedVars` is authoritative, not additive.** Registering a method's classified parameter had to *delete*
+  the claim when the census withholds it, exactly as `funcDef` does; an additive write left a previous body's
+  claim on the same name and printed a text where the body reads a number.
+- **The census's own call sites can poison it.** `class C: def upper(self, s): return s.upper()` reported the
+  body's `s.upper()` — a zero-argument call by the walker's reading — as a call that "left position 1 to its
+  default", and the evidence-against rule unmarked the parameter the real call site had just marked. The bound had
+  to become narrower than the rule that looked natural: only a tail position with a real `Default` is evidence
+  against. A tail the signature requires is a program CPython rejects, not a kind the compiler distrusts.
+- **The receiver's kind picks the method table.** `callMethod` is a sequence of roads keyed by the *method name*;
+  the class table and the text-method table share those names, so `s.upper()` resolved to the enclosing class and
+  recursed until the address space ran out. Asking `exprIsString` before the class and dynamic-dispatch roads —
+  and keeping the class road for a receiver whose class is known — turned the artifact fault into `HI`. A text is
+  never an instance: skipping a road that could only be wrong for it can never lose an answer.
+- **`, _ :=` on a road that emits IR is an exit 2 waiting to happen.** `h, _ := g.value(b, attr.Obj)` produced
+  `rt_mkobj(i32 10, i32 )` and `llc` rejected the module, while the sentence the program deserved lived two lines
+  away in the neighbouring road. Propagating the operand's error is the difference between a compiler bug and a
+  refusal; grep your own package for `, _ := g.value(` before the next cycle does it for you (Gap R.318).
+- **A defaulted parameter is a slot nothing wrote.** The moment the census interned a method's text default, the
+  program SIGSEGVed: the dispatch passes only the arguments the source wrote, so interning a default is the
+  callee's prologue's job, not the call site's. Withholding the claim is the honest interim (Gap R.320), and the
+  refusal rows are pinned so a future cycle has to move the row rather than delete it.
+- **Fields need the "every write, or no claim" rule.** `return self.flag` is a verdict because every write of
+  `flag` in the program hands one; one `obj.flag = 3` anywhere retires the name for every class, because the
+  compiler cannot tell which object a write reached. The text twin of that reading is **Gap R.319**, pinned with
+  today's `0`/`1` beside CPython's `hi`/`yo` — a wrong value at exit 0 is filed, never asserted as an answer.
+- **Promotions are earned twice.** `probe_method_text_answer.gy` and `probe_method_verdict_answer.gy` and
+  `probe_method_shadows_text_method.gy` moved from `debt` to `match` only after `tools/recmerge` agreed to write
+  their entries — the recorder refuses a source whose compiled leg disagrees with the reference, which is the
+  check that makes the promotion a claim rather than an edit (`checked 3, added 2, entries 7741`).
+- **Process:** three conformance failures told me exactly which rows had stopped being debt; the matrix artifact
+  rewrote itself under `TestConformanceMatrix`; `TestTheRoadmapSnapshotIsMeasuredNotRemembered` named each stale
+  count (programs 219→220, rows 206→207, parity 172→174, `debt` 26→25, record 7739→7741) instead of letting me
+  type a guess. And a temporary `zz_debug_test.go` in `pkg/lang` is fine only while you remember to delete it —
+  the package's guards treat a stray test file as part of the language's evidence.

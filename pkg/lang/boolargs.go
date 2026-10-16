@@ -125,11 +125,15 @@ func verdictFacts(prog *Program) verdictFactsT {
 	// The environment the verdict question asks with. Lookup resolves a called name so that a
 	// forwarding call (`def outer(f): inner(f)`) can be read, and Shadowed keeps a program's own
 	// `def any(...)` from being answered out of the builtin table.
+	// The method-side reading: which method one callable owns, and which class a receiver hands
+	// back. The verdict question asks it so `print(C().yes())` is a verdict too (roadmap Gap R.316).
+	mcs := methodCensus(prog, nil)
 	env := func(vars map[string]bool) BoolEnv {
 		return BoolEnv{
-			Vars:     vars,
-			Lookup:   func(n string) *FuncDef { return callables[n] },
-			Shadowed: func(n string) bool { _, ok := callables[n]; return ok },
+			Vars:         vars,
+			Lookup:       func(n string) *FuncDef { return callables[n] },
+			Shadowed:     func(n string) bool { _, ok := callables[n]; return ok },
+			MethodLookup: mcs.lookup, SelfLookup: mcs.lookupClass, FieldVerdict: mcs.fieldIsVerdict,
 		}
 	}
 

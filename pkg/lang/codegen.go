@@ -61,12 +61,16 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// are asked before any IR exists so a define and its call sites cannot disagree about what a
 	// name is (roadmap Gap R.111, L11.1's remaining bool item).
 	verdict := verdictFacts(prog)
+	// Which callables hand back a text: the module's `def`s and, in a table of its own, the methods. One
+	// question, asked once, over both — a method's body emits the same doors a function's body emits, and a
+	// caller that was never told prints the @str_tab POSITION under the answer (roadmap Gap R.315, ADR 0366).
+	strFuncTable, strMethodTable := textReturningCallables(prog)
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		boolVars:    map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, calleeBoolVars: verdict.of, strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, calleeBoolVars: verdict.of, strFuncs: strFuncTable, strMethodFuncs: strMethodTable, methodCensus: methodCensus(prog, verdict.kinds), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
@@ -149,7 +153,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			// `print(get()[1])` know that `get()` is a string at all. Methods were registered
 			// this way since ADR 0224; the module's own functions were not, which is why
 			// `s[1]` worked and `get()[1]` refused (ADR 0229).
-			if methodReturnsStr(fd) {
+			if g.methodReturnsStr(fd) {
 				g.strFuncs[fd.Name] = true
 			}
 		}
@@ -805,6 +809,18 @@ type irGen struct {
 	// strFuncs names the functions that return a string, so `print(echo("yo"))` prints text
 	// and `xs.append(make_key())` stores an interned element rather than a raw index.
 	strFuncs map[string]bool
+	// strMethodFuncs is the same verdict for a method, kept in its own table because a method's IR symbol is
+	// the mangled `Class_method` while its source name is what a call site spells: registerClass moves an
+	// entry from here into `strFuncs` under the mangled symbol. Keeping the two apart is what lets a `Name`
+	// call be answered only by a `def` (roadmap Gap R.315, ADR 0366).
+	strMethodFuncs map[string]bool
+	// methodCensus is the method-side reading of the program — which method one callable owns, and
+	// which class a receiver hands back — asked by the verdict road so a verdict a METHOD hands back
+	// is rendered as one (roadmap Gap R.316, ADR 0365's follow-on to L15.4).
+	methodCensus methodCensusT
+	// curClassSrc is the class whose method is being lowered, so a `self.other()` call inside a body
+	// can be asked of that class; "" outside a method.
+	curClassSrc string
 	// strFillOf reports, per function and container parameter, which positions the body fills
 	// with strings; a call site transfers that onto the caller's own variable so printing an
 	// element later does not show a raw @str_tab index (Gap J.5).

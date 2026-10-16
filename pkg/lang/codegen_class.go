@@ -48,9 +48,11 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
 		g.markStringAttrs(cd.Name, fd)
-		if methodReturnsStr(fd) {
+		if g.methodReturnsStr(fd) || g.strMethodFuncs[fd.Name] {
 			// Registered under the mangled symbol, which is what a call site resolves to
-			// (Gap R.42, ADR 0224).
+			// (Gap R.42, ADR 0224). The shape question sees a literal or a formatting; the census half sees
+			// `return s` where the call sites are what made `s` a text, and `return s.upper()`, which is the
+			// same rendering door a function body emits (roadmap Gap R.315, ADR 0366).
 			g.strFuncs[funcName] = true
 		}
 		g.collectAttrs(fd.Body)
@@ -110,6 +112,11 @@ func (g *irGen) copyInReboundParams(b *strings.Builder, fd *FuncDef, floatRet bo
 
 // emitClassMethod emits a class method as an LLVM function with self as param 0.
 func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
+	// `self.helper()` inside a body is a call on the class being lowered, and only the generator
+	// knows which class that is: the verdict census asks it with this in hand (roadmap Gap R.316).
+	prevClass := g.curClassSrc
+	g.curClassSrc = className
+	defer func() { g.curClassSrc = prevClass }()
 	// A method is emitted i32-returning whatever its body computes, so a parameter the body rebinds to
 	// a float and returns by bare name answers the argument: the same refusal funcDef issues for a
 	// module function, asked here before the header is written so no half-emitted define is left
@@ -148,6 +155,18 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 			g.boolVars[fd.Params[i].Name] = true
 		} else {
 			delete(g.boolVars, fd.Params[i].Name)
+		}
+		// A method parameter every call site hands a TEXT to arrives as an index into the runtime string
+		// table, and inside the body it has to behave exactly like a name the body assigned a text to: the
+		// print, `str`/`repr`, `len`, `in`, `==`, the formatting, the repeat, the f-string field and the
+		// char-method roads all ask `internedVars` of the name. `funcDef` has done this for a `def` since
+		// Gap J.5; the method road never did, which is why `def fmt(self, s): return "x%s" % s` printed the
+		// intern POSITION (`x0`) where the function twin printed `xhi`, and `return s * 2` printed `0`
+		// (roadmap Gap R.315, ADR 0366). Authoritative, not additive, for the same reason the verdict arm is.
+		if g.strParamOf[fd.Name][i] {
+			g.internedVars[fd.Params[i].Name] = true
+		} else {
+			delete(g.internedVars, fd.Params[i].Name)
 		}
 	}
 	g.selfClass = className
@@ -497,15 +516,57 @@ func returnExprIsText(e Expr, strParams map[string]bool) bool {
 	}
 	return false
 }
-func methodReturnsStr(fd *FuncDef) bool {
+func methodReturnsStr(fd *FuncDef) bool { return methodReturnsStrWith(fd, nil) }
+
+// methodReturnsStr asks the census beside the shape. A body that hands back a parameter the call sites
+// fill with texts hands back a text, and a caller that was never told prints the @str_tab POSITION under
+// it — the same defect ADR 0290 pinned for a ternary arm and ADR 0360 for a formatting, arriving from the
+// method side (roadmap Gap R.315, ADR 0366). The shape question alone could not see it: at the pre-scan
+// `s` is a name, and only the call sites say what it holds.
+func (g *irGen) methodReturnsStr(fd *FuncDef) bool {
+	if fd == nil {
+		return false
+	}
+	var census map[string]bool
+	for i, p := range fd.Params {
+		if p == nil || !g.strParamOf[fd.Name][i] {
+			continue
+		}
+		if census == nil {
+			census = map[string]bool{}
+		}
+		census[p.Name] = true
+	}
+	if methodReturnsStrWith(fd, census) {
+		return true
+	}
+	// The shape predicate reads literals, annotations and the two built-text doors' SPELLINGS. The
+	// generator-side predicate reads what the operations actually answer — a char method on a text parameter,
+	// a subscript of one, a repeat of one — and is the same question `scanStringBindings` asks a `def`
+	// (roadmap Gap R.315, ADR 0366).
+	return returnsStringExpr(g, fd, census)
+}
+
+// methodReturnsStrWith is the shape question, plus whatever the caller's census already knows about the
+// parameters. `extraTextParams` is nil for a pure read of the source.
+func methodReturnsStrWith(fd *FuncDef, extraTextParams map[string]bool) bool {
+	if fd == nil {
+		return false
+	}
 	if fd.ReturnAnno != nil && fd.ReturnAnno.Kind == KindString {
 		return true
 	}
 	strParams := map[string]bool{}
 	for _, p := range fd.Params {
+		if p == nil {
+			continue
+		}
 		if p.Annot != nil && p.Annot.Kind == KindString {
 			strParams[p.Name] = true
 		}
+	}
+	for n := range extraTextParams {
+		strParams[n] = true
 	}
 	found := false
 	var walk func([]Stmt)

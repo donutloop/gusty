@@ -65,6 +65,26 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// because that one also asks for the ORDER of two containers (roadmap Gap R.33, closed by ADR 0365;
 		// the ordering half is filed as Gap R.314).
 		"sequence_builds",
+		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
+		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
+		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the
+		// row that paid it is the text census reading methods as well as functions (roadmap Gap R.315, ADR 0366).
+		// The last two lines are the control the promotion had to keep: a parameter some OTHER call site fills
+		// with a number is not marked, and the method keeps the road it always had.
+		"probe_method_text_answer",
+		// A verdict a METHOD hands back is the verdict the reference prints: `def yes(self): return 1 == 1` /
+		// `print(C().yes())` answers `True`, for a comparison, a containment test, an equality, the `bool`
+		// constructor, an ordering and a verdict literal alike. The print road asks a `*Name` callee whether
+		// its body returns only verdicts and never asked an attribute callee (roadmap Gap R.316, paid by
+		// ADR 0366 beside the text half it shares with Gap R.315); the field getter and the `self.other()`
+		// call are the same registration read from inside a body.
+		"probe_method_verdict_answer",
+		// A method whose NAME is a text method's no longer swallows the text-method call: `def upper(self, s)
+		// return s.upper()` is answered by the case door, not by the class that declares `upper`. The shape
+		// used to resolve to the class's own symbol, so every call called itself until the process died by
+		// SIGSEGV with nothing on stdout — the artifact at fault, which ADR 0166 forbids and roadmap Gap R.317
+		// records; the guard is that the answer is the reference's, not a number and not a crash.
+		"probe_method_shadows_text_method",
 		// `and`/`or` hand back the operand the test chose, on the compiled path: `2 and 3` is `3`, `"" or "d"`
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
@@ -879,13 +899,11 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
-		// A text a METHOD's body builds is printed as the `@str_tab` POSITION under it: `return "x%s" % s`
-		// answers `x0` and `return s * 2` answers `0` when the method takes a parameter, while the same bodies
-		// answer correctly at module level, as a function, and as a method with no parameter. Both text doors
-		// take the hit — the formatting (ADR 0360) and the repeat (ADR 0365) — because they answer one predicate
-		// and the method's string-return census teaches only one road. Measured with ADR 0365; the wrong values
-		// are at exit 0, which is why this is recorded rather than parity-asserted (roadmap Gap R.315).
-		"probe_method_text_answer",
+		// A text held in a FIELD prints the intern position under it: `def get(self): return self.v` for a
+		// field every write hands a text answers `0` where the reference answers `hi`, at exit 0. The verdict
+		// twin answers since ADR 0366 (`self.flag = flag` / `return self.flag` prints True); the text half is
+		// the same reading the field census has never had for text (roadmap Gap R.319).
+		"probe_method_text_field",
 		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
 		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
@@ -1201,10 +1219,10 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
 		ref:    "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	"programs/probe_method_text_answer": {oracle: lang.OracleDebt,
-		reason: "CPython prints `ab / xhi / abab / hihi / abab`; the compiled leg prints `ab / x0 / abab / 0 / abab` — the two lines whose text the body BUILT, in a method that takes a parameter, print the intern position instead. Every neighbouring position answers: module level, a plain function, a method with no parameter, a method returning a text literal. Both doors take it (the formatting's `x%s` and the repeat's `s * 2`), which is what says the missing registration is the method road's census, not either door's answer",
-		ref:    "roadmap Gap R.315 (filed with ADR 0365, which widened the one text predicate to cover the repeat as well as the formatting); the neighbour roads are ADR 0360 (Gap R.31) and ADR 0290 (a ternary's arms, the same census defect in an older spelling)",
-		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "ab\nx0\nabab\n0\nabab\n"}}},
+	"programs/probe_method_text_field": {oracle: lang.OracleDebt,
+		reason: "CPython prints `hi` and `yo`; the compiled leg prints `0` and `1` — the @str_tab POSITION of each text, at exit 0 — the @str_tab POSITION under the text, with nothing raised and nothing refusing. The getter reads a FIELD (`self.v`) whose kind no census carries: `g.exprIsString` asks the intern table of a NAME and has no question for an attribute, so the answer arrives unlabelled and the number printer takes it. The verdict twin answers since ADR 0366 — `methodCensusT.fieldIsVerdict` asks what every write of the field hands it — and the text half is the same reading, unwritten",
+		ref:    "roadmap Gap R.319 (a text a method's field hands back), beside Gap R.315 (a method's text parameter, paid by ADR 0366) and Gap R.316 (its verdict answer, paid by the same cycle)",
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0\n1\n"}}},
 	"programs/sequence_ops": {oracle: lang.OracleDebt,
 		reason: "the concat, the repeat and the text repeat are built since ADR 0365 (see programs/sequence_builds, which agrees with the reference); what keeps this program on the ledger is the ORDER of two containers — `[1, 2] < [2]` is True in CPython and the compiled leg refuses it in words, because the tagged order door reads a name the program bound and never an object the compiler built in place, so the compiled leg never completes either way and completes the refusal without spending exit 2",
 		ref:    "roadmap Gap R.33 (closed by ADR 0365 for the operations themselves) and the ordering half filed beside it as Gap R.314; Gap R.175's exit-2 half stays closed by ADR 0292",

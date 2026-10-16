@@ -23,6 +23,45 @@ import (
 // iteration order.
 
 // strArgKinds maps "function name" -> set of parameter indices that receive strings.
+// textMethods returns the methods the text census may classify, keyed by the method's OWN name — the key
+// `emitClassMethod` already asks the verdict table with (Gap R.111's bool half, ADR 0223), so the two
+// tables read a callable the same way.
+//
+// A method is classifiable only when ONE callable in the program owns that name: two classes with a `run`
+// method, or a class method and a module `def` sharing a name, means two parameter lists, and marking one
+// from the other's call site would dress a number in the string table. The ambiguity rule is boolargs.go's,
+// copied rather than shared because the two censuses answer different questions about the same position
+// (roadmap Gap R.315, ADR 0366).
+func textMethods(prog *Program, funcs map[string]*FuncDef) map[string]*FuncDef {
+	out := map[string]*FuncDef{}
+	ambiguous := map[string]bool{}
+	for _, st := range prog.Stmts {
+		cd, ok := st.(*ClassDef)
+		if !ok {
+			continue
+		}
+		for _, st2 := range cd.Body {
+			m, ok := st2.(*FuncDef)
+			if !ok || m == nil {
+				continue
+			}
+			if _, dup := out[m.Name]; dup {
+				ambiguous[m.Name] = true
+				continue
+			}
+			if _, clash := funcs[m.Name]; clash {
+				ambiguous[m.Name] = true
+				continue
+			}
+			out[m.Name] = m
+		}
+	}
+	for n := range ambiguous {
+		delete(out, n)
+	}
+	return out
+}
+
 func strArgKinds(prog *Program) map[string]map[int]bool {
 	if prog == nil {
 		return nil
@@ -33,8 +72,32 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 			funcs[fd.Name] = fd
 		}
 	}
-	if len(funcs) == 0 {
+	// A method's parameter is a parameter. The walk that reads the arguments a program hands a `def` now
+	// reads the arguments it hands `obj.m(...)`, and a method body that builds a text out of one meets the
+	// same doors a function body meets: until it did, `def fmt(self, s): return "x%s" % s` printed `x0` and
+	// `def rep(self, s): return s * 2` printed `0` — the @str_tab POSITION of the text, at exit 0 — because
+	// the body never learned the argument arriving was an interned text (roadmap Gap R.315, ADR 0366).
+	methods := textMethods(prog, funcs)
+	if len(funcs) == 0 && len(methods) == 0 {
 		return nil
+	}
+	// The one table every loop below walks: a `def` and a method are both callables with parameters, and
+	// the only difference the census honours is that a method's first parameter belongs to the receiver
+	// (roadmap Gap R.315, ADR 0366).
+	callables := map[string]*FuncDef{}
+	for n, fd := range funcs {
+		callables[n] = fd
+	}
+	for n, m := range methods {
+		callables[n] = m
+	}
+	callableNames := func() []string {
+		names := make([]string, 0, len(callables))
+		for n := range callables {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return names
 	}
 
 	w := heapASTWalker{}
@@ -253,40 +316,27 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		}
 	}
 
-	w.call = func(scope, fn string, args []Expr) {
-		// A `key=` option is a call the AST never writes: the door calls the key once per element of
-		// the container, so this scan is the only place in the compiler that can see those arguments.
-		// Until it did, the key's own body met the doors beside `len`, `s[0]` and `s.upper()` with no
-		// record of the text crossing the boundary, and a program the reference answers stopped with
-		// `len of a non-string variable` (roadmap L11.7, Gap R.264; ADR 0340's key door).
-		if _, isUser := funcs[fn]; !isUser {
-			if keyFn, elems, container, isKey := keyDoorCallSites(funcs, fn, args); isKey {
-				if elems != nil {
-					for _, el := range elems {
-						claim(scope, keyFn, 0, el)
-					}
-					return
-				}
-				// The container is a name the program wrote: the same census the ordinary call road
-				// reads answers what the key will be handed.
-				if nm, isName := container.(*Name); isName {
-					k := scopeKey(scope, nm.Value)
-					if strElemVars[k] && !notStrElem[k] {
-						mark(keyFn, 0)
-					} else if notStrElem[k] {
-						negOf(keyFn, 0)
-					}
-				}
-			}
+	// claimArgs reads the arguments ONE call site hands ONE callable. `viaMethod` is true for `obj.m(x)`,
+	// where the receiver fills the callable's first parameter: `def m(self, s)` called as `z.m("hi")` puts
+	// "hi" in slot 1, and reading it as slot 0 would mark `self` a text and leave `s` a number — the same
+	// off-by-one boolargs.go guards against (roadmap Gap R.315, ADR 0366).
+	claimArgs := func(scope, fn string, args []Expr, viaMethod bool) {
+		fd := funcs[fn]
+		if fd == nil {
+			fd = methods[fn]
+		}
+		if fd == nil {
 			return
 		}
-		fd := funcs[fn]
 		neg := func(idx int) { negOf(fn, idx) }
 		pos := 0
+		if viaMethod && len(fd.Params) > 0 && (fd.Params[0] == nil || fd.Params[0].Name == "self" || fd.Params[0].Name == "cls") {
+			pos = 1
+		}
 		for _, a := range args {
 			if kw, ok := a.(*KeywordArg); ok {
 				for i, p := range fd.Params {
-					if p.Name != kw.Name {
+					if p == nil || p.Name != kw.Name {
 						continue
 					}
 					if isStringExpr(kw.Value) {
@@ -326,16 +376,91 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 		}
 	}
 
-	seed := func() {
-		fns := make([]string, 0, len(funcs))
-		for fn := range funcs {
-			fns = append(fns, fn)
+	w.call = func(scope, fn string, args []Expr) {
+		// A `key=` option is a call the AST never writes: the door calls the key once per element of
+		// the container, so this scan is the only place in the compiler that can see those arguments.
+		// Until it did, the key's own body met the doors beside `len`, `s[0]` and `s.upper()` with no
+		// record of the text crossing the boundary, and a program the reference answers stopped with
+		// `len of a non-string variable` (roadmap L11.7, Gap R.264; ADR 0340's key door).
+		if _, isUser := funcs[fn]; !isUser {
+			if keyFn, elems, container, isKey := keyDoorCallSites(funcs, fn, args); isKey {
+				if elems != nil {
+					for _, el := range elems {
+						claim(scope, keyFn, 0, el)
+					}
+					return
+				}
+				// The container is a name the program wrote: the same census the ordinary call road
+				// reads answers what the key will be handed.
+				if nm, isName := container.(*Name); isName {
+					k := scopeKey(scope, nm.Value)
+					if strElemVars[k] && !notStrElem[k] {
+						mark(keyFn, 0)
+					} else if notStrElem[k] {
+						negOf(keyFn, 0)
+					}
+				}
+			}
+			return
 		}
-		sort.Strings(fns)
-		for _, fn := range fns {
-			fd := funcs[fn]
+		claimArgs(scope, fn, args, false)
+	}
+	// `obj.m("hi")` hands "hi" to a parameter exactly as `m("hi")` does. The walker already told this
+	// census about attribute calls (boolargs.go has read them since Gap R.111 paid the verdict half the
+	// same way); the census simply had nothing to say them to, because methods were not in its table of
+	// callables (roadmap Gap R.315, ADR 0366).
+	w.attrCall = func(scope, method string, args []Expr) {
+		// The tail of a method's parameters that this call does not name belongs to the DEFAULTS, and a
+		// default is written in the `def`, never interned at the call. Registering it as a text would
+		// hand the body an @str_tab index nothing wrote; the position is recorded as evidence against,
+		// which is how the census leaves that call on the door it already had (roadmap Gap R.315, ADR 0366).
+		if fd := callables[method]; fd != nil {
+			hasKeyword := false
+			for _, a := range args {
+				if _, isKw := a.(*KeywordArg); isKw {
+					hasKeyword = true
+				}
+			}
+			if !hasKeyword {
+				firstArg := 0
+				if len(fd.Params) > 0 && (fd.Params[0] == nil || fd.Params[0].Name == "self" || fd.Params[0].Name == "cls") {
+					firstArg = 1
+				}
+				for i := len(args) + firstArg; i < len(fd.Params); i++ {
+					// Only a DEFAULTED tail is evidence against. A parameter the signature requires and
+					// this call did not supply is a program the reference rejects with a TypeError, not a
+					// text the census must distrust — and `class C: def upper(self, s): return s.upper()`
+					// is exactly that shape, where the call the walk reports is the TEXT operation on the
+					// receiver and not a call of the user's method at all (Gap R.317's dispatch, seen from
+					// the census side).
+					if fd.Params[i] == nil || fd.Params[i].Default == nil {
+						continue
+					}
+					negOf(method, i)
+				}
+			}
+		}
+		claimArgs(scope, method, args, true)
+	}
+
+	seed := func() {
+		for _, fn := range callableNames() {
+			fd := callables[fn]
+			if fd == nil {
+				continue
+			}
+			// A method's DEFAULT reaches the body through a call that names no argument: the dispatch
+			// passes only the arguments the source wrote, so a position the defaults fill is never
+			// interned at the call site, and a body told the slot holds a text reads a word nothing
+			// wrote — `print(C().greet())` for `def greet(self, name="world")` died by SIGSEGV. The
+			// seed is withheld from a defaulted method parameter, which leaves that call on the door it
+			// has always used (roadmap Gap R.315, ADR 0366; see w.attrCall's tail rule below).
+			byDefault := methods[fn] != nil
 			for i, p := range fd.Params {
 				if p == nil {
+					continue
+				}
+				if byDefault && p.Default != nil {
 					continue
 				}
 				if isStringAnnotation(p.Annot) {
@@ -361,13 +486,11 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	// a forwarding call discovered later marks the callee's parameter too.
 	for pass := 0; pass < 8; pass++ {
 		before := snapshotStrKinds(out)
-		fns := make([]string, 0, len(funcs))
-		for fn := range funcs {
-			fns = append(fns, fn)
-		}
-		sort.Strings(fns)
-		for _, fn := range fns {
-			fd := funcs[fn]
+		for _, fn := range callableNames() {
+			fd := callables[fn]
+			if fd == nil {
+				continue
+			}
 			m := out[fn]
 			idxs := make([]int, 0, len(m))
 			for i := range m {
@@ -403,7 +526,11 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 	}
 	containerParams := heapArgKinds(prog)
 	for fn, m := range out {
-		fd := funcs[fn]
+		fd := callables[fn]
+		if fd == nil {
+			delete(out, fn)
+			continue
+		}
 		for i := range m {
 			if i >= len(fd.Params) || fd.Params[i] == nil {
 				continue
@@ -644,14 +771,21 @@ func isStringAnnotation(t *Type) bool {
 	return t.IsString()
 }
 
-// strReturningFuncs reports the functions whose `return` yields a string — a string literal,
-// an interpolated literal, a string parameter, or a call to another such function. The caller
-// needs this to print `echo("yo")` as text rather than as the index the function returns, and
-// to store `make_key()` in a container as an interned element (roadmap Gap J.5).
-func strReturningFuncs(prog *Program) map[string]bool {
+// textReturningCallables reports the callables whose `return` yields a string — a string literal, an
+// interpolated literal, a string parameter, or a call to another such function. The caller needs this to
+// print `echo("yo")` as text rather than as the index the function returns, and to store `make_key()` in a
+// container as an interned element (roadmap Gap J.5).
+//
+// It answers the two tables at once, because they are one question: a method's body emits the same doors a
+// function's does, and a caller that was never told prints the @str_tab POSITION under the text. A method is
+// in the second table only when one callable owns its name (textMethods' ambiguity rule), and a `Name` call
+// is never answered out of it — `callAnswersText` and the `*Call` arm below read `defs` alone, so a variable
+// sharing a method's name cannot inherit the verdict (roadmap Gap R.315, ADR 0366).
+func textReturningCallables(prog *Program) (defs, methods map[string]bool) {
 	out := map[string]bool{}
+	methOut := map[string]bool{}
 	if prog == nil {
-		return out
+		return out, methOut
 	}
 	funcs := map[string]*FuncDef{}
 	order := []string{}
@@ -665,6 +799,17 @@ func strReturningFuncs(prog *Program) map[string]bool {
 	}
 	// A string parameter makes `return s` a string return without any literal involved.
 	strParams := strArgKinds(prog)
+	// The methods, and which of these names belongs to a method rather than a `def`.
+	isMethod := map[string]bool{}
+	for n, m := range textMethods(prog, funcs) {
+		if _, taken := funcs[n]; taken {
+			continue
+		}
+		funcs[n] = m
+		isMethod[n] = true
+		order = append(order, n)
+	}
+	sort.Strings(order)
 	// The names the program defines for itself, so a program's own `def str(x): return x + 7` is not
 	// read as the builtin (Gap R.6's rule, ADR 0199: a fold through a builtin's meaning is only allowed
 	// where the program did not take the name).
@@ -754,7 +899,11 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			w.stmts(fd.Body)
 			for _, r := range w.returns {
 				if isStrExprIn(fd, r, 0) {
-					out[name] = true
+					if isMethod[name] {
+						methOut[name] = true
+					} else {
+						out[name] = true
+					}
 					changed = true
 					break
 				}
@@ -764,7 +913,7 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			break
 		}
 	}
-	return out
+	return out, methOut
 }
 
 // bodyBindings is the body's own assignment table (name -> every value ever bound to it), built once per

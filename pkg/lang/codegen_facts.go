@@ -300,7 +300,7 @@ func (g *irGen) forgetVarBool(name string) {
 // pkg/lang/boolvalue.go, so both legs cannot disagree about what is a bool
 // (roadmap L11.1 step 2, ADR 0257).
 func (g *irGen) printsAsBool(e Expr) bool {
-	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate, CalleeVars: g.calleeBoolVars})
+	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate, CalleeVars: g.calleeBoolVars, MethodLookup: g.methodAnswer, SelfLookup: g.selfAnswer, FieldVerdict: g.fieldAnswer})
 }
 func (g *irGen) isNoneExpr(e Expr) bool {
 	switch v := e.(type) {
