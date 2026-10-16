@@ -14,6 +14,26 @@ The codegen pass emits deterministic, opaque-pointer LLVM IR text that
 compiles cleanly with `llc -opaque-pointers`. No native LLVM C-API call path is
 used for codegen; the AOT backend emits textual IR verified by the external `llc`/`cc` toolchain.
 
+### Where the emitter lives
+
+The emitter is one Go package (`pkg/lang`) spread over the files named for the question they answer.
+An agent that wants to know "who decides this" should read the file for the construct, not grep the
+whole package:
+
+| File | Answers |
+|---|---|
+| `pkg/lang/codegen.go` | the front door — `GenerateIR`/`GenerateIRReport`, the `irGen` state one module compiles with, and the allocas-hoisting block pass |
+| `pkg/lang/codegen_value.go`, `codegen_stmt.go`, `codegen_call.go` | an expression's value, a statement, a call |
+| `pkg/lang/codegen_arith.go`, `codegen_float.go`, `codegen_minmax.go`, `codegen_truth.go`, `codegen_union.go` | a `BinOp`'s roads, doubles, `min`/`max`, an `i1`, a gradual-typing slot |
+| `pkg/lang/codegen_text.go`, `codegen_container.go`, `codegen_index.go`, `codegen_comp.go`, `codegen_match.go`, `codegen_class.go`, `codegen_instance.go`, `codegen_func.go`, `codegen_module.go` | text, containers, subscripts, comprehensions and generators, `match`, classes, instances, functions, module state |
+| `pkg/lang/codegen_gc.go`, `codegen_error.go` | the compiled root stack's bookkeeping; a raise, a `try`, a trap's sentence |
+| `pkg/lang/codegen_facts.go` | the static predicates the roads ask one another (bound name, constant text, shadowed builtin) — it emits no IR |
+| `pkg/lang/codegen_ir_*.go` | the runtime IR blocks the module is assembled from — one file per block, and `codegen_ir_arena.go` is the concatenation of the thirteen arena blocks |
+
+The `codegen_*` names are load-bearing for the suite's shape guards: `readCodegenSources`
+(`pkg/lang/codegen_sources_test.go`) discovers the emitter by that prefix, and asserts the rules the
+guards read still hold across every file.
+
 ## CLI flags (stable)
 
 | Flag | Meaning |
@@ -2048,7 +2068,7 @@ the payload as `"gc": { … }` — see `definitions.gcStats` in `--schema`:
 ### The compiled backend's report
 
 The counters live inside the compiled program, so its own runtime prints the line
-(`rt_gc_report` in `pkg/lang/codegen.go`), on fd 2 like every other tool-level line:
+(`rt_gc_report` in `pkg/lang/codegen_ir_root.go`), on fd 2 like every other tool-level line:
 
 ```
 $ gustyc --aot --gc-stats --file integration/programs/gc_precise.gy

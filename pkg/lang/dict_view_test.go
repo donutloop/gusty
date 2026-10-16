@@ -9,7 +9,6 @@
 package lang
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -113,11 +112,7 @@ func TestDictViewThroughOtherRoadsStillRefuses(t *testing.T) {
 // how the printer and the fold drift apart (the same rule as Gap R.180's one lookup).
 func TestDictViewPrinterAndFoldAgree(t *testing.T) {
 	t.Parallel()
-	body, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(body)
+	text := readCodegenSources(t)
 	if !strings.Contains(text, "func (g *irGen) dictViewElems(") {
 		t.Fatal("expected one predicate that decides which calls are dict views")
 	}

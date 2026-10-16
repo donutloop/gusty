@@ -1,5 +1,52 @@
 # Session Learnings
 
+## Refactor — the 21,473-line emitter becomes a family of files (no rule moved, no IR changed)
+
+**Change (codegen layout)**: `pkg/lang/codegen.go` was 21,473 lines — 254 functions and seven runtime
+IR templates in one file, the largest single file in the tree by more than 3× and the file every cycle
+has to open. It is now 41 files: `codegen.go` keeps the front door (`GenerateIR`/`GenerateIRReport`,
+the `irGen` state, the allocas-hoisting pass) and the rest is named for the question it answers
+(`codegen_value.go`, `codegen_stmt.go`, `codegen_call.go`, `codegen_arith.go`, `codegen_match.go`,
+`codegen_comp.go`, `codegen_text.go`, `codegen_container.go`, `codegen_index.go`, `codegen_float.go`,
+`codegen_minmax.go`, `codegen_module.go`, `codegen_gc.go`, `codegen_error.go`, `codegen_truth.go`,
+`codegen_union.go`, `codegen_instance.go`, `codegen_class.go`, `codegen_func.go`, `codegen_facts.go`)
+with one file per runtime IR block under `codegen_ir_*.go`. The 3,189-line arena template is thirteen
+fragments that `codegen_ir_arena.go` concatenates back into the one string the emitter and the IR-shape
+tests read.
+
+- **A split has to be provably a move, not a rewrite.** Two checks, both mechanical: every top-level
+  declaration's whitespace-normalised text is compared against `HEAD` (`0 missing, 0 changed`, the one
+  exception being the template that is now composed from fragments), and the thirteen fragments are
+  re-assembled with `strconv.Unquote` and compared byte-for-byte to the template they came from
+  (128,502 bytes). "It builds and the tests pass" is not evidence that a 20k-line move lost nothing —
+  a dropped helper compiles fine right up to the day a road reaches for it.
+- **A guard that names a file is a guard on that file's name.** Eight shape guards read
+  `os.ReadFile("codegen.go")` to assert that a road still asks one shared predicate, that a
+  hand-copied method list has not come back, that a fold road reads the generated table rather than
+  Go's answer. Pointing each at the front door only would have quietly shrunk seven of them to a file
+  that no longer contains the rules they guard — green, and blind. They now read
+  `readCodegenSources` (`pkg/lang/codegen_sources_test.go`), which takes the emitter by the `codegen*`
+  prefix; an absence asserted there is an absence across every road, which is what the assertion
+  always meant. `TestCodegenSourcesCoverTheEmitter` is the guard on that guard: a file renamed out of
+  the family fails rather than disappearing from the assertion.
+- **Chunk the file with `go/ast`, not with regexes.** Declaration boundaries in this file include
+  3,000-line raw strings, doc comments that belong to the declaration below them and trailing
+  commentary that belongs to the one above; the ranges come from the parser (start = doc comment,
+  end = the next declaration's start) and the import block is regenerated per file from what the
+  text actually mentions. The compiler is the only reviewer of that step, and it caught exactly the
+  two errors it is good at catching: one unused `strconv`, nothing else.
+- **A big file hides stale comments; a split flushes them out.** The arena template was documented by
+  a comment reading "GenerateIR produces LLVM IR text for prog", and `const floatRuntimeIR` carried
+  the comment that describes `raiseRuntimeIR`. Both were harmless while everything was one file and
+  both are lies once the reader is somewhere else; each now sits where it is true.
+- **What is left big is big for a reason, and it is now named.** `irGen.call` (3,134 lines),
+  `irGen.stmt` (2,062) and `irGen.value` (1,757) are each in a file of their own. They are switches
+  whose arms each take the builder and return a value and an error, which is the shape that
+  decomposes into methods — the next cycle can take them one arm at a time, and
+  `codegen_sources_test.go` is already the harness that keeps the roads in view while it does.
+- **Gate**: `make testparallel` green (`pkg/lang`, `integration`, `cmd/gustyc`, tools), `gofmt` and
+  `go vet` clean. The split is one commit; no behaviour, no IR, no record and no ledger row moved.
+
 ## Round 6 — A list literal is read by the door a list's elements are read by (roadmap Gap R.218 closed; ADR 0331; Gap R.224 filed)
 
 **Feature (codegen)**: `print(["a", "b"][0])` printed `0`, `print([1.5, 2][0])` printed `1`,

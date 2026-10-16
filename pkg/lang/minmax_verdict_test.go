@@ -132,22 +132,18 @@ func TestACandidateTheCompilerCannotReadStillPrintsTheNumber(t *testing.T) {
 // same way — so the shape is asserted at the source, not only in the behaviour rows above.
 func TestTheFoldAndTheVerdictQuestionChooseFromOneDoor(t *testing.T) {
 	t.Parallel()
-	codegen, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatalf("read codegen.go: %v", err)
-	}
 	pred, err := os.ReadFile("boolvalue.go")
 	if err != nil {
 		t.Fatalf("read boolvalue.go: %v", err)
 	}
-	source, predicate := string(codegen), string(pred)
+	source, predicate := readCodegenSources(t), string(pred)
 	for _, want := range []string{
 		"minMaxCandidateValue(el, g.foldableCandidate)", // the fold asks the shared candidate rule
 		"numericWinner(vals, wantMin)",                  // …and the shared comparison
 		"NumericCandidate: g.foldableCandidate",         // …the same one the print path asks
 	} {
 		if !strings.Contains(source, want) {
-			t.Errorf("codegen.go stopped walking the shared candidate rule (%s is missing)", want)
+			t.Errorf("the emitter stopped walking the shared candidate rule (%s is missing)", want)
 		}
 	}
 	for _, want := range []string{
@@ -162,7 +158,7 @@ func TestTheFoldAndTheVerdictQuestionChooseFromOneDoor(t *testing.T) {
 	// A second comparison written down beside the first is the drift this prevents.
 	for _, forbidden := range []string{"vals[i] < vals[best]", "vals[i] > vals[best]"} {
 		if n := strings.Count(source, forbidden); n != 0 {
-			t.Errorf("codegen.go compares min/max candidates %d time(s) by hand (%s); the winner is chosen in numericWinner", n, forbidden)
+			t.Errorf("the emitter compares min/max candidates %d time(s) by hand (%s); the winner is chosen in numericWinner", n, forbidden)
 		}
 	}
 }

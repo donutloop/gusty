@@ -19,7 +19,6 @@ package lang
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -406,16 +405,13 @@ func TestTheAsciiTrimDoorStaysDead(t *testing.T) {
 			t.Fatalf("a SIGNED byte compare is back in the emitted module — every byte from 0x80 up is whitespace to it:\n%s", firstLines(ir, 30))
 		}
 	}
-	cg, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatalf("read codegen.go: %v", err)
-	}
+	cg := readCodegenSources(t)
 	for _, bad := range []string{`strings.TrimSpace(v)`, "strings.TrimLeftFunc(v, unicode.IsSpace)", "strings.TrimRightFunc(v, unicode.IsSpace)"} {
-		if strings.Contains(string(cg), bad) {
+		if strings.Contains(cg, bad) {
 			t.Fatalf("a trim road returned to Go's answer (%s) — the fold and the door must read one artifact (roadmap L11.5, ADR 0362)", bad)
 		}
 	}
-	if n := strings.Count(string(cg), "caseFoldTrim("); n < 3 {
+	if n := strings.Count(cg, "caseFoldTrim("); n < 3 {
 		t.Fatalf("the fold roads ask the trim table %d times, want 3 — one road back on Go's answer is a fold and a door that disagree", n)
 	}
 }

@@ -1,0 +1,306 @@
+// Truth: an operand's i1, the and/or connectives, and the i32/i1 boundary the roads meet at.
+package lang
+
+import (
+	"fmt"
+	"strings"
+)
+
+// truthyValue emits an i32 0/1 for a condition, using float != 0.0
+// for float expressions (fcmp one + zext) instead of truncated ints.
+func (g *irGen) truthyValue(b *strings.Builder, e Expr) (string, error) {
+	v, err := g.truthOperandErr(b, e)
+	if err != nil {
+		// The condition used to be replaced by a false branch and the error dropped on the
+		// floor. That is the worst failure this backend can make: `print(1 if s[1] == "b" else 0)`
+		// could not lower its condition at all, and printed `0` as if the program had asked a
+		// question and been answered. A part that cannot be lowered is a compile error, reported
+		// by the caller that has the error channel (roadmap Gap R.45, ADR 0225; ADR 0166).
+		return "", err
+	}
+	return v, nil
+}
+
+// --- i1 / i32 truthiness normalisation -------------------------------------
+//
+// Conditions in this language accept any value (`if count:`, `if flag and ready:`,
+// `while total:`), and a value in IR is either an i32 (integers, booleans stored
+// as 0/1) or an i1 (the result of a comparison or boolean-logic instruction).
+// Mixing the two — `icmp ne i32 %cmp, 0` on an i1, or `br i1 %count` on an i32 —
+// is a verifier failure, so every consumer of a condition goes through these
+// helpers instead of assuming a representation.
+// markI1 records that reg holds an i1 and returns reg, so emission sites can wrap
+// the register inline.
+func (g *irGen) markI1(reg string) string {
+	if g.i1Vals == nil {
+		g.i1Vals = map[string]bool{}
+	}
+	g.i1Vals[reg] = true
+	return reg
+}
+
+// i1Reg reports whether reg was produced by a comparison / boolean-logic
+// instruction and is therefore already an i1.
+func (g *irGen) i1Reg(reg string) bool { return g.i1Vals[reg] }
+
+// asI1 normalises any scalar value to an i1 predicate usable by br/select/and/or:
+// comparison results pass straight through, everything else is tested against zero.
+func (g *irGen) asI1(b *strings.Builder, v string) string {
+	switch v {
+	case "true":
+		return "true"
+	case "false":
+		return "false"
+	}
+	if g.i1Reg(v) {
+		return v
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", t, v))
+	return g.markI1(t)
+}
+
+// asBoolI32 renders a boolean-producing expression the way the record stores
+// booleans — an i32 0/1 — so `not x`, `a and b`, `x in xs` can be printed, stored
+// in a variable and tested again instead of leaking a bare i1 into an i32 slot.
+func (g *irGen) asBoolI32(b *strings.Builder, v string) string {
+	p := g.asI1(b, v)
+	switch p {
+	case "true":
+		return "1"
+	case "false":
+		return "0"
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", t, p))
+	return t
+}
+
+// truthOperand is the condition-side helper: float falsiness goes through fcmp, a
+// comparison emits its predicate directly, everything else goes through asI1.
+func (g *irGen) truthOperand(b *strings.Builder, e Expr) string {
+	v, err := g.truthOperandErr(b, e)
+	if err != nil {
+		// Mirrors valueText: a condition that cannot be lowered is reported by the
+		// enclosing statement path, not here.
+		return g.asI1(b, "0")
+	}
+	return v
+}
+func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
+	// `if a and b:` and `while a or b:` ask only whether the answer is true, and the truth of the operand
+	// the operator chooses is the composition of the two operands' truths. That question never needs the
+	// operands to agree on a word, so it is answered here rather than by the value door — which is
+	// entitled to refuse the shapes this one can still branch on (roadmap Gap R.147, ADR 0269).
+	if n, ok := e.(*BinOp); ok && (n.Op == "and" || n.Op == "or") {
+		if chosen, decided := constantLogicArm(n); decided {
+			return g.truthyValue(b, chosen)
+		}
+		return g.logicCondition(b, n)
+	}
+	// `if x == "a":` where x carries a runtime tag — a loop variable over a container that
+	// mixes kinds. An `if` condition is lowered here, not through the expression path, so the
+	// tagged comparison gets its hook in both places (ADR 0232).
+	if n, ok := e.(*BinOp); ok && (n.Op == "==" || n.Op == "!=") {
+		if res, handled, err := g.mixedTaggedCompare(b, n); err != nil {
+			return "", err
+		} else if handled {
+			p := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, res)
+			return g.markI1(p), nil
+		}
+	}
+	// `if build():` asks whether the container the callee built has anything in it. The ordinary road has
+	// no word for that object, so the condition is asked again of the name the container door materialised
+	// for it — and the road below (`heapContainerLenFn`) already knows how to ask a container name whether
+	// it is empty, which is what a condition on a container has always meant (roadmap Gap R.67, ADR 0333).
+	if ansName, _, okAns := g.containerAnswerOperandRead(b, e, containerReadShape); okAns {
+		return g.truthOperandErr(b, ansName)
+	}
+	// Strings and containers test their *content*, never their representation: a
+	// string is an i8* and a container is a compile-time struct or a heap handle,
+	// so `if xs:` on a handle would be true even for [] and testing the string
+	// pointer is not even valid IR. Empty is false, non-empty is true.
+	if sv, ok := g.stringVal(e); ok {
+		return constI1(sv != ""), nil
+	}
+	if n, ok := g.listArgLen(e); ok {
+		return constI1(n != 0), nil
+	}
+	if fn, ok := g.heapContainerLenFn(e); ok {
+		v, err := g.value(b, e)
+		if err != nil {
+			return "", err
+		}
+		n := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s)\n", n, fn, v)
+		p := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, n)
+		return g.markI1(p), nil
+	}
+	if g.isFloat(e) {
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
+		return g.markI1(t), nil
+	}
+	// A name the arithmetic door bound is a number whose kind the objects decided at the moment the
+	// sum ran. `if n:` does not care which of the two families it is — zero is false, anything else is
+	// true — but the word the answer lives in does, so the pair is lifted to the one word that holds
+	// both and tested there (roadmap L11.1, Gap R.143).
+	if d := g.numericPairLift(b, e); d != "" {
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, d)
+		return g.markI1(t), nil
+	}
+	// An ordering whose pair-bound side is a name the arithmetic door bound is the same question with
+	// one side still unlifted; it goes through the lift rather than the tag-dispatch door below
+	// because this tag cannot say anything but int or float (roadmap Gap R.143).
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" {
+		if i1, okPair, perr := g.pairOrder(b, n); perr != nil {
+			return "", perr
+		} else if okPair {
+			return i1, nil
+		}
+	}
+	// An ordering with a slot on one side is asked of the tag **before** anything reads the operands as
+	// numbers: which arm this pair is — two numbers, two texts, or CPython's TypeError — is a run-time
+	// question, and every path below this one has already committed to one of the answers. It sits above
+	// the float test for the same reason: `isFloat` on a slot whose literal holds a float is true, and
+	// falling into the fcmp below would test a box handle against zero (roadmap L11.1, Gap R.82).
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && g.taggedOrderApplies(n) {
+		_, i1, ook, oerr := g.emitTaggedOrder(b, n)
+		if oerr != nil {
+			return "", oerr
+		}
+		if ook {
+			return i1, nil
+		}
+	}
+	// `if a < b and b < 9:` would otherwise pay for a zext and a re-test per
+	// comparison; emit the predicate itself and use it directly.
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && !g.isFloat(n.L) && !g.isFloat(n.R) {
+		// A container comparison in a condition goes through the same value-equality helper the
+		// expression path uses; `if [1] == 1:` emitted `icmp eq i32 @.lst1, 1` before, which is
+		// both invalid IR and the wrong question (ADR 0189).
+		if (n.Op == "==" || n.Op == "!=") && (g.isContainerExpr(n.L) || g.isContainerExpr(n.R)) {
+			eq, err := g.containerEquality(b, n)
+			if err != nil {
+				return "", err
+			}
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", t, eq)
+			return g.markI1(t), nil
+		}
+		// The same door as the value path: an ordering of two texts asks strcmp, because the
+		// operands at this point are two @str_tab indices and their order is the order the texts
+		// were interned (roadmap Gap R.84).
+		if g.textOrderOperands(n) {
+			_, i1, terr := g.emitTextOrder(b, n)
+			if terr != nil {
+				return "", terr
+			}
+			return i1, nil
+		}
+		// The same door as the value path, on the side a condition takes: an ordering of a slot whose
+		// kind the object carries has to reach the arms that can ask the tag, because the integer path
+		// here reads the payload of a float slot as a count (roadmap L11.1, Gap R.88).
+		if g.taggedNumberUseApplies(n) && cmpI1Op(n.Op) != "" {
+			res := g.floatBinOp(b, n)
+			if g.floatUnlowerable != "" {
+				return "", g.floatLoweringRefusal(n)
+			}
+			p := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, res)
+			return g.markI1(p), nil
+		}
+		l, err := g.value(b, n.L)
+		if err != nil {
+			return "", err
+		}
+		r, err := g.value(b, n.R)
+		if err != nil {
+			return "", err
+		}
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = %s i32 %s, %s\n", t, cmpI1Op(n.Op), l, r)
+		return g.markI1(t), nil
+	}
+	// A list literal read by a position, in the one position that asks only "is it true": the element's kind
+	// lives in the tag the builder wrote beside its payload, and truth is the tag's fact — an empty text, an
+	// empty container, None, 0.0 and False are all false, and none of that is readable off the payload alone
+	// (`[0.0, 1][0]` is false in the reference and a payload tested against zero calls it true). The pair door
+	// that answers print, str/repr and a binding answers the condition as well, through the same table the
+	// printer and the `and`/`or` operands ask (roadmap Gap R.218, ADR 0331).
+	if ix, isIdx := e.(*Index); isIdx {
+		if ll, isLit := ix.Obj.(*ListLit); isLit && !g.listLiteralFoldAnswers(ll, ix.Idx) {
+			payload, tag, okPair := g.listLiteralPair(b, ll, ix.Idx, ix.Span())
+			if !okPair {
+				return "", listLiteralOneWordErr(ll, ix.Idx)
+			}
+			return g.pairTruth(b, payload, tag), nil
+		}
+	}
+	v, err := g.value(b, e)
+	if err != nil {
+		return "", err
+	}
+	return g.asI1(b, v), nil
+}
+
+// constI1 renders a compile-time truth value as an LLVM i1 constant.
+func constI1(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+// cmpI1Op maps a comparison operator to its LLVM predicate instruction, or "" when
+// the operator is not a comparison.
+func cmpI1Op(op string) string {
+	switch op {
+	case "==", "is":
+		return "icmp eq"
+	case "!=", "is not":
+		return "icmp ne"
+	case "<":
+		return "icmp slt"
+	case "<=":
+		return "icmp sle"
+	case ">":
+		return "icmp sgt"
+	case ">=":
+		return "icmp sge"
+	}
+	return ""
+}
+func (g *irGen) andCond(b *strings.Builder, a, c string) string {
+	if a == "true" || a == "1" {
+		return c
+	}
+	if c == "true" || c == "1" {
+		return a
+	}
+	// A pattern that cannot match is a constant, and `and i1 0, x` is not IR — the fold belongs in
+	// the combinator, not in every caller (ADR 0235).
+	if a == "false" || a == "0" || c == "false" || c == "0" {
+		return "false"
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, a, c))
+	return t
+}
+func (g *irGen) orCond(b *strings.Builder, a, c string) string {
+	if a == "false" || a == "0" {
+		return c
+	}
+	if c == "false" || c == "0" {
+		return a
+	}
+	if a == "true" || a == "1" || c == "true" || c == "1" {
+		return "true"
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, a, c))
+	return t
+}

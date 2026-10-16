@@ -23,7 +23,6 @@ package lang
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -371,11 +370,7 @@ func TestTheAsciiCaseDoorStaysDead(t *testing.T) {
 // differently from the same text arriving as a parameter (ADR 0343's shape guard is the precedent).
 func TestTheFoldRoadsAskTheTableAndNotGo(t *testing.T) {
 	t.Parallel()
-	cg, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatalf("read codegen.go: %v", err)
-	}
-	src := string(cg)
+	src := readCodegenSources(t)
 	for _, o := range caseOpsOnTable {
 		if !strings.Contains(src, "caseFoldFold("+caseConstForFold(o.op)) &&
 			!strings.Contains(src, "caseMapString("+caseConstForFold(o.op)) {

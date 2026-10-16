@@ -1959,7 +1959,8 @@ falls back to dynamic dispatch.
 Every feature ships once, in the one backend, and is judged against two witnesses (ADR 0302 retired
 the AST interpreter that used to be the second engine):
 
-- **LLVM AOT codegen** — `pkg/lang/codegen.go` + `pkg/lang/closure.go`, entry
+- **LLVM AOT codegen** — `pkg/lang/codegen.go` (the front door) + the `pkg/lang/codegen_*.go` files the
+  roads and the runtime IR blocks live in + `pkg/lang/closure.go`, entry
   `Compile`: every path that runs a program — `--eval`, `--file`, `--repl`, `--emit-llvm`,
   `--verify`, `--build`, the REPL included, which compiles in-process through the LLVM JIT
   (`pkg/lang/jit_llvm.go`, entry `JIT`). Emits

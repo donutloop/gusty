@@ -127,7 +127,7 @@ String slicing works on a value the compiler can see; a string held in a *variab
 (string *literals* are supported inline), so list slicing is the primary native path. The index arithmetic
 lives in `pkg/lang/fold.go` (`pySliceIndices`, `normPosIndex` — shared code the retired engine and the
 codegen both used, which is why it survived the engine), and the lowering in the `rt_slice` runtime helper
-in `pkg/lang/codegen.go`.
+in `pkg/lang/codegen_ir_slice.go`.
 
 ## Pattern matching
 
@@ -186,7 +186,7 @@ answer beside the reference's — none of them answers silently.
 
 **AOT lowering.** Guards, or-patterns, the `_` wildcard, list-destructuring patterns, dict patterns
 and class patterns (subclass walk, per-capture presence test, aliases resolved by the front end) all
-lower to native code (`codegen.go`, ADR 0235). What a pattern still cannot ask a value is a question
+lower to native code (`codegen_match.go`, ADR 0235). What a pattern still cannot ask a value is a question
 about L11.1's tagged value word, which is the shape the four refused forms above are waiting for.
 
 ## Standard library

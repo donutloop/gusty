@@ -267,11 +267,7 @@ func TestPowerOperandKindIsAskedOnce(t *testing.T) {
 		}
 	}
 	// And the roads must actually ASK it, rather than restating a switch beside themselves.
-	cg, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatalf("read codegen.go: %v", err)
-	}
-	if !strings.Contains(string(cg), "g.powerAnswersDouble(n)") {
+	if !strings.Contains(readCodegenSources(t), "g.powerAnswersDouble(n)") {
 		t.Errorf("the print road no longer asks the shared power rule — this is how `print(4 ** 0.5)` came to print 1")
 	}
 }
@@ -346,11 +342,7 @@ func TestThePowerPredicatesReadTheProgramThroughAValueTheyAreGiven(t *testing.T)
 			break
 		}
 	}
-	cg, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatalf("read codegen.go: %v", err)
-	}
-	codegen := string(cg)
+	codegen := readCodegenSources(t)
 	if !strings.Contains(codegen, "g.powerReaders()") {
 		t.Error("codegen no longer builds the power facts per ask, so there is nothing scoping the reader to the module being compiled")
 	}

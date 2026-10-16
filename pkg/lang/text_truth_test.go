@@ -7,7 +7,6 @@
 package lang
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -130,14 +129,11 @@ func TestZfillPadsAfterASign(t *testing.T) {
 // how nine methods printed their index, and the same list existed TWICE in codegen.go.
 func TestTextMethodTableIsAskedOnce(t *testing.T) {
 	t.Parallel()
-	body, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), "func (g *irGen) textMethodAnswersText(") {
+	body := readCodegenSources(t)
+	if !strings.Contains(body, "func (g *irGen) textMethodAnswersText(") {
 		t.Fatal("expected one predicate deciding which string methods answer text")
 	}
-	if n := strings.Count(string(body), "case \"upper\", \"lower\", \"strip\":"); n != 0 {
+	if n := strings.Count(body, "case \"upper\", \"lower\", \"strip\":"); n != 0 {
 		t.Fatalf("the print road still carries a hand-copied three-method list (%d copies); ask "+
 			"g.textMethodAnswersText — the fold implements fourteen (Gap R.183)", n)
 	}

@@ -13,7 +13,6 @@
 package lang
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -120,11 +119,7 @@ func TestDictGetAnswersTheKindItsSlotHas(t *testing.T) {
 // lookup the fold performs, so a slot can never be rendered with a kind it does not have.
 func TestDictGetKindIsAskedOfTheFoldOwnLookup(t *testing.T) {
 	t.Parallel()
-	body, err := os.ReadFile("codegen.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(body)
+	text := readCodegenSources(t)
 	if !strings.Contains(text, "func (g *irGen) dictFoldSlot(") {
 		t.Fatal("expected one dict.get lookup shared by the print, void and verdict roads")
 	}
