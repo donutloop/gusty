@@ -62,6 +62,13 @@ var containerAnswerAnswered = []string{
 	"def build():\n    return [1, 2]\n\nprint(build() == [1, 2], build() == [1, 3])",
 	"def build():\n    return {\"a\": 1}\n\nys = build()\nprint(ys[\"a\"], \"a\" in ys)",
 	"def build():\n    return [1, 2]\n\nprint(build(), build())",
+	// A container ANSWER as a sequence operand: the door that builds `[1] + [2]` takes the handle the
+	// answer already carries, so `build() + [9]` and `build() * 2` are the same programs the bound form
+	// `ys = build()` always answered (roadmap Gap R.33, ADR 0365; the refusals these two used to be are
+	// Gap R.175's and Gap R.229's neighbours in the table below).
+	"def build():\n    return [1, 2]\n\nprint(build() + [9])",
+	"def build():\n    return [1, 2]\n\nprint(build() * 2)",
+	"def build():\n    return [1, 2]\n\nys = [0]\nprint(ys + build(), build() + ys)",
 	"def build():\n    return [1]\nprint(build())",
 	"def num():\n    return 5\n\nprint(num() + 1)",
 	"def txt():\n    return \"ab\"\n\nprint(txt().upper())",
@@ -102,7 +109,10 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 		mine bool // the refusal is this row's own sentence, not another road's
 	}{
 		{"a container literal's element", "def build():\n    return [1, 2]\n\nprint([build(), 3])", true},
-		{"an answer added to another container", "def build():\n    return [1, 2]\n\nprint(build() + [9])", true},
+		// `print(build() + [9])` left this table with ADR 0365: the sequence door takes the handle the
+		// container answer hands back and builds one object out of it, so the program is pinned as an
+		// ANSWER — `[1, 2, 9]`, beside the reference — in `TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt`.
+		// The literal's element is still this row's neighbour's: Gap R.229.
 		// Two positions the container answer never reached: the method road and the length road each
 		// refused this program in their own words before this row existed, and they keep those words —
 		// the row's contract is that a refusal names what is missing, not that every refusal is this

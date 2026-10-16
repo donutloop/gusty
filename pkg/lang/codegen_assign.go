@@ -263,6 +263,19 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				boundIsSlice = true
 			}
 		}
+		// A sequence the door builds binds a container exactly as a slice copy does: the name receives a
+		// fresh heap object whose slots are the operands' payloads copied with their tags, so the roads that
+		// read the name have to be told which kind it is, that the slots describe themselves, and whether
+		// the object is the immutable spelling. Without the record `print(ys)` of `ys = [1] + [2]` prints the
+		// handle, which is Gap R.230's failure one operation over (roadmap Gap R.33, ADR 0365).
+		var boundSeqOp seqOp
+		boundIsSeq := false
+		if bn, isBin := n.Value.(*BinOp); isBin && boundKind == "" {
+			if op, applies := g.seqPlanOf(bn); applies && op.kind != seqTextRepeatOp {
+				boundKind = containerKindList
+				boundSeqOp, boundIsSeq = op, true
+			}
+		}
 		// Container literals have their own lowering paths below, which register
 		// the kind themselves; only non-literal bindings (a call, an index, ...)
 		// need the inferred type to say so here.
@@ -290,6 +303,9 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		// (roadmap Gap R.230).
 		if boundIsSlice {
 			g.recordContainerSlice(nm.Value, boundSliceBase.Obj)
+		}
+		if boundIsSeq {
+			g.recordSeqBinding(nm.Value, boundSeqOp)
 		}
 		// Track the None singleton the same way containers are tracked: the variable's
 		// *latest* assignment decides how print/truthiness/equality lower, and any other

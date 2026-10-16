@@ -331,6 +331,27 @@
     },
     {
       "case": {
+        "id": "programs/sequence_builds",
+        "name": "sequence_builds.gy",
+        "source": "# Gap R.33 — the sequence operations the compiled backend BUILDS. `programs/sequence_ops.gy` above it\n# is still debt because it also asks for an ordering of two containers, which is another door; the\n# shapes here are the ones the sequence road answers: a list or tuple concatenated, a list, tuple or\n# text repeated by a whole number, and everything that reads the object back — its length, its bracketed\n# text, its equality, its membership, and the loop that walks it (ADR 0365).\nxs = [1, 2]\nys = [3]\nprint(xs + ys)\nprint(xs + ys + [4])\nprint([] + [1])\nprint([1] + [])\nprint(xs * 2)\nprint(2 * xs)\nprint(xs * 0)\nprint(xs * -1)\nprint((1, 2) + (3,))\nprint((1, 2) * 2)\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(len([1] + [2, 3]))\nprint(len(\"ab\" * 3))\nprint(3 in [1] + [3])\nprint(2 in (1,) + (2,))\nfor v in [1] + [2]:\n    print(v)\nzs = xs + ys\nprint(zs)\nprint(str(zs))\nprint(str([\"a\"] + [1]))\nprint(f\"{xs + ys}|\")\nprint(f\"{'ab' * 2}|\")\nprint(xs + ys == [1, 2, 3])\nprint(\"ab\" * 2 == \"abab\")\nprint([1, \"a\", None, True] + [2.5])\ntry:\n    print(\"a\" * 1.5)\nexcept TypeError:\n    print(\"caught the float multiplier\")\ntry:\n    print([1] + \"a\")\nexcept TypeError:\n    print(\"caught the text operand\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2, 3]\n[1, 2, 3, 4]\n[1]\n[1]\n[1, 2, 1, 2]\n[1, 2, 1, 2]\n[]\n[]\n(1, 2, 3)\n(1, 2, 1, 2)\nabab\nabab\n\n3\n6\nTrue\nTrue\n1\n2\n[1, 2, 3]\n[1, 2, 3]\n['a', 1]\n[1, 2, 3]|\nabab|\nTrue\nTrue\n[1, 'a', None, True, 2.5]\ncaught the float multiplier\ncaught the text operand\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2, 3]\n[1, 2, 3, 4]\n[1]\n[1]\n[1, 2, 1, 2]\n[1, 2, 1, 2]\n[]\n[]\n(1, 2, 3)\n(1, 2, 1, 2)\nabab\nabab\n\n3\n6\nTrue\nTrue\n1\n2\n[1, 2, 3]\n[1, 2, 3]\n['a', 1]\n[1, 2, 3]|\nabab|\nTrue\nTrue\n[1, 'a', None, True, 2.5]\ncaught the float multiplier\ncaught the text operand\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/and_or_answer_like_python",
         "name": "and_or_answer_like_python.gy",
         "source": "# and_or_answer_like_python.gy — `and`/`or` choose an operand, not a verdict.\n#\n# The reference tests the left operand and hands back whichever operand the test chose, unconverted:\n# `2 and 3` is `3`, `0 or 5` is `5`, `\"\" or \"d\"` is the text `d`, `[1] and [2]` is `[2]`. Both engines\n# answered all four with the verdict — `1`, printed at exit 0, no diagnostic — on an operator every\n# Python program uses (roadmap Gap R.147, ADR 0269).\n#\n# The rows are the whole rule, not just the four numbers above: the operand that answers keeps its own\n# representation (a float stays a float, a verdict stays a verdict, a container prints its own elements),\n# a run-time test selects rather than branches, the *condition* positions still take a verdict because a\n# condition asks only whether the answer is true, and `1 or True` stays the number `1` — the pair ADR 0261\n# refuses to break, asked here of the operator that made it.\nprint(2 and 3)\nprint(0 and 3)\nprint(0 or 5)\nprint(7 or 0)\nprint(\"\" or \"d\")\nprint(\"a\" or \"d\")\nprint(\"a\" and \"b\" and \"c\")\nprint(0 or \"\" or \"x\")\nprint([1] and [2])\nprint([] or [1, 2])\nprint(1 and 0)\nprint(1.5 and 2.5)\nprint(0.0 or 2.5)\nprint(True and False)\nprint(False or True)\nprint(True or 1)\nprint(1 or True)\nprint(None or 3)\nprint(0 or None)\nx = 3\nprint(x or \"d\")\nprint(x and 2.5)\ny = 0\nprint(y or 2.5)\nprint(y and 0)\nxs = [1, 2]\nprint(xs or \"empty\")\nd = {}\nprint(d or \"empty\")\nprint((2 and 3) + 1)\nprint((0 or 2) * 3)\nprint(1 if 2 and 0 else 0)\nif \"\" or \"d\":\n    print(\"truthy text\")\nif x and xs:\n    print(\"both filled\")\ni = 0\nwhile i and x:\n    print(\"never\")\n    i = i + 1\nprint(\"loop ended\")\nys = [True, 1]\nprint(ys[0] and ys[1])\nprint(2 and 3, \"\" or \"d\", [1] and [2])\n",
@@ -4359,7 +4380,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/178/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/179/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4373,7 +4394,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/178/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/179/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4559,8 +4580,8 @@
         "source": "# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a\n# list repeated by an int (in either operand order), two lists concatenated, and two\n# values of the same kind ordered by value. Each line agrees with CPython in the\n# interpreter. The compiled backend refuses `str * int` and emits an invalid module for\n# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.\nprint([1] + [2])\nprint([1] + [2] + [3])\nprint([1] * 3)\nprint(3 * [1])\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(\"ab\" * -1)\nprint([1] * 0)\n# Ordered comparison compares values, not handles. The result is tested rather than\n# printed: this language renders a boolean as 1 or 0, which is a separate documented\n# divergence, and what is pinned here is whether the ordering itself is right.\nif \"a\" \u003c \"b\":\n    print(\"str ordered\")\nif [1, 2] \u003c [2]:\n    print(\"list ordered\")\nif [2] \u003c [1, 2]:\n    print(\"wrong\")\nprint(len([1, 2, 3]) * 2)\n",
         "asserted": false,
         "oracle": "debt",
-        "reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
-        "ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
+        "reason": "the concat, the repeat and the text repeat are built since ADR 0365 (see programs/sequence_builds, which agrees with the reference); what keeps this program on the ledger is the ORDER of two containers — `[1, 2] \u003c [2]` is True in CPython and the compiled leg refuses it in words, because the tagged order door reads a name the program bound and never an object the compiler built in place, so the compiled leg never completes either way and completes the refusal without spending exit 2",
+        "ref": "roadmap Gap R.33 (closed by ADR 0365 for the operations themselves) and the ordering half filed beside it as Gap R.314; Gap R.175's exit-2 half stays closed by ADR 0292",
         "pins": [
           {
             "backend": "aot",
@@ -4570,21 +4591,55 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "`[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)",
+      "aot_error": "`[1, 2] \u003c [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)",
       "python_ok": true,
       "python_stdout": "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n",
       "aot_matches_python": false,
       "conformant": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
-      "oracle_ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
+      "oracle_reason": "the concat, the repeat and the text repeat are built since ADR 0365 (see programs/sequence_builds, which agrees with the reference); what keeps this program on the ledger is the ORDER of two containers — `[1, 2] \u003c [2]` is True in CPython and the compiled leg refuses it in words, because the tagged order door reads a name the program bound and never an object the compiler built in place, so the compiled leg never completes either way and completes the refusal without spending exit 2",
+      "oracle_ref": "roadmap Gap R.33 (closed by ADR 0365 for the operations themselves) and the ordering half filed beside it as Gap R.314; Gap R.175's exit-2 half stays closed by ADR 0292",
       "oracle_rules": [
         "set-order",
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+        "compiled leg failed: `[1, 2] \u003c [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_method_text_answer",
+        "name": "probe_method_text_answer.gy",
+        "source": "# Gap R.315 — a text that a METHOD's body BUILDS is printed as the number underneath it.\n#\n# A method that TAKES A PARAMETER and returns a text its body built prints the @str_tab POSITION of\n# the text, not the text: `x0` for `\"x%s\" % s` and `0` for `s * 2`. The body that returns the same\n# texts answers correctly everywhere else the doors know about — at module level, as a plain function,\n# as a method with no parameter, and as a method whose body returns a text literal — so this is one\n# road's missing registration (the method's string-return census), not the doors'.\n#\n# Both doors take the hit, which is the point of the fifth line: the formatting (ADR 0360) and the\n# repeat (ADR 0365) answer ONE predicate now, so a road that teaches one and not the other shows up as\n# two wrong lines rather than one.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`. The compiled leg prints `ab`, `x0`, `abab`, `0`,\n# `abab` — wrong values at exit 0, which is why this is a probe and not a parity program\n# (roadmap Gap R.315, measured with ADR 0365).\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "CPython prints `ab / xhi / abab / hihi / abab`; the compiled leg prints `ab / x0 / abab / 0 / abab` — the two lines whose text the body BUILT, in a method that takes a parameter, print the intern position instead. Every neighbouring position answers: module level, a plain function, a method with no parameter, a method returning a text literal. Both doors take it (the formatting's `x%s` and the repeat's `s * 2`), which is what says the missing registration is the method road's census, not either door's answer",
+        "ref": "roadmap Gap R.315 (filed with ADR 0365, which widened the one text predicate to cover the repeat as well as the formatting); the neighbour roads are ADR 0360 (Gap R.31) and ADR 0290 (a ternary's arms, the same census defect in an older spelling)",
+        "pins": [
+          {
+            "backend": "aot",
+            "stdout": "ab\nx0\nabab\n0\nabab\n"
+          }
+        ]
+      },
+      "aot_ok": true,
+      "aot_stdout": "ab\nx0\nabab\n0\nabab\n",
+      "python_ok": true,
+      "python_stdout": "ab\nxhi\nabab\nhihi\nabab\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints `ab / xhi / abab / hihi / abab`; the compiled leg prints `ab / x0 / abab / 0 / abab` — the two lines whose text the body BUILT, in a method that takes a parameter, print the intern position instead. Every neighbouring position answers: module level, a plain function, a method with no parameter, a method returning a text literal. Both doors take it (the formatting's `x%s` and the repeat's `s * 2`), which is what says the missing registration is the method road's census, not either door's answer",
+      "oracle_ref": "roadmap Gap R.315 (filed with ADR 0365, which widened the one text predicate to cover the repeat as well as the formatting); the neighbour roads are ADR 0360 (Gap R.31) and ADR 0290 (a ternary's arms, the same census defect in an older spelling)",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -4605,7 +4660,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)",
+      "aot_error": "codegen: operator \"-\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)",
       "python_ok": true,
       "python_stdout": "mul-str ok\nsub ok\ndiv ok\nnone ok\nconcat ok\norder ok\ndone\n",
       "aot_matches_python": false,
@@ -4619,7 +4674,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+        "compiled leg failed: codegen: operator \"-\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
       ]
     },
     {
@@ -4917,12 +4972,12 @@
       ]
     }
   ],
-  "rows": 202,
-  "skipped": 32,
-  "pass": 170,
+  "rows": 204,
+  "skipped": 33,
+  "pass": 171,
   "fail": 0,
-  "oracle_match": 156,
-  "oracle_debt": 24,
+  "oracle_match": 157,
+  "oracle_debt": 25,
   "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

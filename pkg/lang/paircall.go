@@ -999,12 +999,13 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 					handled = true
 					return
 				}
-				if percentFormatShapeIsText(n.Expr) && pairMentions(n.Expr, pairParamSeen(fd)) {
-					// The answer is a text, but the ARGUMENTS of the formatting are read by the pair doors, and a
-					// parameter that feeds one has to keep its tag: `def f(v): return "%.2f" % v` called with `f(3.5)`
-					// read the float half of the argument off the one-word convention and printed `3.00` at exit 0.
-					// The string-return road owns the ANSWER (an @str_tab index), which is not a reason to take the
-					// parameter's tag away with it (roadmap Gap R.31, L11.1, ADR 0360).
+				if textDoorShapeIsText(n.Expr) && pairMentions(n.Expr, pairParamSeen(fd)) {
+					// The answer is a text, but the OPERANDS of the formatting or the repeat are read by the pair
+					// doors, and a parameter that feeds one has to keep its tag: `def f(v): return "%.2f" % v` called
+					// with `f(3.5)` read the float half of the argument off the one-word convention and printed `3.00`
+					// at exit 0 — and `def f(v): return "ab" * v` reads the same word the same way. The string-return
+					// road owns the ANSWER (an @str_tab index), which is not a reason to take the parameter's tag away
+					// with it (roadmap Gap R.31, L11.1, ADR 0360; Gap R.33, ADR 0365).
 					declines = true
 					return
 				}
@@ -1733,10 +1734,11 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) boo
 func pairValueHoldsThePair(e Expr, pairParams map[string]bool, callees map[string]bool, trusted ...map[string]bool) bool {
 	switch n := e.(type) {
 	case *BinOp:
-		if percentFormatShapeIsText(n) {
-			// `q = "%.2f" % v` binds a TEXT, not a number whose family the pair carries: the door interned the
-			// answer and its word is the @str_tab index. Counting it as a pair-computed number would let the
-			// return direction hand a text back through the pair's payload (roadmap Gap R.31, ADR 0360).
+		if textDoorShapeIsText(n) {
+			// The answer of a formatting or a repeat is a TEXT, not a number whose family the pair carries: the
+			// door interned the answer and its word is the @str_tab index. Counting it as a pair-computed number
+			// would let the return direction hand a text back through the pair's payload (roadmap Gap R.31,
+			// ADR 0360; Gap R.33, ADR 0365).
 			return false
 		}
 		switch n.Op {
@@ -1902,8 +1904,9 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees, bound map[strin
 		m, sh := pairAnswerShape(n.X, pairParams, intParams, pairCallees, bound)
 		return m, sh && m
 	case *BinOp:
-		if percentFormatShapeIsText(n) {
-			// The answer of a formatting is a text, and no tag word travels beside it (roadmap Gap R.31, ADR 0360).
+		if textDoorShapeIsText(n) {
+			// The answer of a formatting or a repeat is a text, and no tag word travels beside it (roadmap
+			// Gap R.31, ADR 0360; Gap R.33, ADR 0365).
 			return false, false
 		}
 		switch n.Op {
@@ -2334,7 +2337,7 @@ func formatsReadAParam(fd *FuncDef) bool {
 		case nil:
 			return false
 		case *BinOp:
-			if percentFormatShapeIsText(n) && pairMentions(n.R, mentions) {
+			if textDoorShapeIsText(n) && pairMentions(textDoorValueOperand(n), mentions) {
 				return true
 			}
 			return has(n.L) || has(n.R)
@@ -2461,12 +2464,12 @@ func (g *pairGate) expr(e Expr) bool {
 	case *UnOp:
 		return n.Op == "-" && g.expr(n.X)
 	case *BinOp:
-		if percentFormatShapeIsText(n) {
-			// A formatting reads its ARGUMENTS through the pair doors — the door answers each one's kind from
-			// the tag beside it — while the format itself is a text the body already knows. So the position is
-			// served exactly when the argument side is, and the parameter feeding it is worth tagging
-			// (roadmap Gap R.31, L11.1, ADR 0360).
-			return g.expr(n.R)
+		if textDoorShapeIsText(n) {
+			// A formatting and a repeat each read their OPERAND through the pair doors — the door answers its
+			// kind from the tag beside it — while the text itself is a word the body already knows. So the
+			// position is served exactly when that side is, and the parameter feeding it is worth tagging
+			// (roadmap Gap R.31, L11.1, ADR 0360; Gap R.33, ADR 0365).
+			return g.expr(textDoorValueOperand(n))
 		}
 		switch n.Op {
 		case "+", "-", "*", "//", "%", "and", "or":

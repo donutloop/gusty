@@ -283,6 +283,11 @@ func (g *irGen) attrSlot(name string) int {
 // -- has no shape to read, which left `print(out[0])` printing the index as a number. This is the
 // static half of the same question (roadmap Gap R.42, ADR 0224).
 func (g *irGen) exprIsString(e Expr) bool {
+	if g.seqIsTextExpr(e) {
+		// `"ab" * 3` answers an @str_tab index — the word rt_str_repeat interns its buffer into — so every
+		// text road takes it without knowing what built it (ADR 0229's rule, roadmap Gap R.33, ADR 0365).
+		return true
+	}
 	if g.percentIsTextExpr(e) {
 		// `"hi %s" % name` answers an @str_tab index — the same word a text literal answers — so every
 		// text road takes it without knowing what built it (roadmap Gap R.31, ADR 0360).
@@ -416,9 +421,10 @@ func (g *irGen) scanStringAttrs(className string, st Stmt) {
 			}
 			if _, foldable := g.stringVal(n.Value); foldable {
 				g.strAttrs[recv+"."+at.Name.Value] = true
-			} else if g.percentIsTextExpr(n.Value) {
-				// `self.w = "%s!" % "hi"` stores an @str_tab index in the slot, so reading it back prints
-				// the text and not the position (roadmap Gap R.31, ADR 0360, ADR 0224's slot-is-the-truth).
+			} else if g.textDoorIsText(n.Value) {
+				// `self.w = "%s!" % "hi"` and `self.w = "hi!" * 2` both store an @str_tab index in the slot, so
+				// reading it back prints the text and not the position (roadmap Gap R.31, ADR 0360; Gap R.33,
+				// ADR 0365; ADR 0224's slot-is-the-truth).
 				g.strAttrs[recv+"."+at.Name.Value] = true
 			} else if c, ok := n.Value.(*Call); ok && g.callReturnsStr(c) {
 				g.strAttrs[recv+"."+at.Name.Value] = true
@@ -473,9 +479,9 @@ func (g *irGen) scanStringAttrs(className string, st Stmt) {
 // structurally: at this point in the pass the per-function records (`strVals`, `internedVars`) do not
 // exist yet, so the answer comes from the shape of the arm and from the parameter annotations.
 func returnExprIsText(e Expr, strParams map[string]bool) bool {
-	if percentFormatShapeIsText(e) {
-		// A formatting hands back the text the door rendered, which is one word of the same kind a
-		// literal is (roadmap Gap R.31, ADR 0360).
+	if textDoorShapeIsText(e) {
+		// A formatting and a repeat both hand back the text the door rendered: one @str_tab index, the same
+		// word a literal is (roadmap Gap R.31, ADR 0360; Gap R.33, ADR 0365).
 		return true
 	}
 	switch t := e.(type) {
@@ -514,10 +520,11 @@ func methodReturnsStr(fd *FuncDef) bool {
 				case *StrLit, *FString:
 					found = true
 				case *BinOp:
-					// `return "%d items" % n` hands back a TEXT, and a body that says so must register the
-					// function in `strFuncs` or its caller prints the @str_tab POSITION — the same defect ADR
-					// 0290 pinned for a ternary, in a new spelling (roadmap Gap R.31, ADR 0360).
-					if percentFormatShapeIsText(e) {
+					// `return "%d items" % n` and `return "ab" * 2` each hand back a TEXT, and a body that says so
+					// must register the function in `strFuncs` or its caller prints the @str_tab POSITION — the same
+					// defect ADR 0290 pinned for a ternary, in a new spelling (roadmap Gap R.31, ADR 0360; Gap R.33,
+					// ADR 0365).
+					if textDoorShapeIsText(e) {
 						found = true
 					}
 				case *Name:

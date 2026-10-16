@@ -35,6 +35,12 @@ var fstringValueCLIPrograms = []fstringValueCLIProg{{
 	name: "a binding",
 	src:  "n = 3\ns = f\"x{n}\"\nprint(s)\n",
 }, {
+	// A text REPEATED is the sequence door's answer, not the interpolation's (ADR 0365); it is here
+	// because the field inside it is what makes this an interpolation program, and the road that prints
+	// the answer is the one road the whole family shares.
+	name: "an interpolation repeated",
+	src:  "n = 3\nprint(f\"x{n}\" * 2)\n",
+}, {
 	name: "concatenated with a text",
 	src:  "n = 3\nprint(f\"a{n}\" + \"!\")\n",
 }, {
@@ -221,7 +227,8 @@ func TestAnFStringAsAValueRefusesAtTheCLIWithARow(t *testing.T) {
 		{"a format spec over a float", "n = 3.5\nt = f\"{n:.2f}\"\nprint(t)\n", "format spec"},
 		{"a replace over an interpolation", "n = 3\nprint(f\"a{n}b\".replace(\"b\", \"c\"))\n", "string-method replace"},
 		{"a split of an interpolation", "n = 3\nprint(f\"a{n}b\".split(\"b\"))\n", "string-method split"},
-		{"a text repeated", "n = 3\nprint(f\"x{n}\" * 2)\n", "not supported"},
+		// `f"x{n}" * 2` left this table with ADR 0365 — it prints `x3x3`, and is pinned as an ANSWER in
+		// `fstringValueCLIPrograms` above and in pkg/lang/sequence_ops_test.go beside the rest of the door.
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

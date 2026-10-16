@@ -465,6 +465,22 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 			b.WriteString(fmt.Sprintf("  call void @rt_print_container_value(i32 %s, i32 0)\n", h))
 			continue
 		}
+		// print([1] + [2]), print([1] * 3), print((1, 2) * 2) — a sequence the door builds is a fresh heap
+		// object, and only the object can say how to render it: its bit 8 sends the list printer to the
+		// per-slot tags the copy wrote (ADR 0187) and its attribute bit says whether the brackets are
+		// `[ ]` or `( )` (ADR 0361). The print road asks the dispatcher rather than choosing a printer from
+		// the expression, which is what keeps `print(xs + ys)` and `print(ys)` after `ys = xs + ys` one
+		// program written two ways (roadmap Gap R.33, ADR 0365).
+		if _, applies := g.seqBuildsContainer(a); applies {
+			h, herr := g.containerOperand(b, a)
+			if herr != nil {
+				return "", herr
+			}
+			g.heapUsed = true
+			g.tupleUsed = true
+			b.WriteString(fmt.Sprintf("  call void @rt_print_container_value(i32 %s, i32 0)\n", h))
+			continue
+		}
 		// A slice of a container lowers to `rt_slice`, whose answer is a heap HANDLE; printf's %d
 		// printed that handle as `1` where the reference prints `[2, 3]`. Ask before the numeric
 		// road does, the same way the comprehension and sorted() arms beside this do (Gap R.179).

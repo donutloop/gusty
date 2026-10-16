@@ -58,17 +58,15 @@ func TestUnsupportedStringUsesStayDiagnostics(t *testing.T) {
 		src  string
 		want string
 	}{
-		// Concatenating a runtime string is answered since ADR 0230 (rt_str_cat interns the
-		// buffer), so it is no longer a refusal — the arithmetic case below is, and it is the one
-		// that keeps a compiled string from being computed as a number. Ordering left this table
-		// for two reasons: ADR 0248 answers the module-level cases (pinned in text_order_test.go),
-		// and the case that is still refused — an ordering on a *parameter*, where the body is
-		// lowered when the JIT comes to the call — reports itself too late for Compile to see, so
-		// it is pinned where the CLI sees it, in integration/text_order_test.go's refusal table.
+		// Concatenating a runtime string is answered since ADR 0230 (rt_str_cat interns the buffer), and a
+		// REPEAT of one is answered since ADR 0365 — `def f(s): return s * 2` prints `hihi`, the row living
+		// beside the rest of the door in `sequence_ops_test.go`. What still has to report itself is the
+		// parameter the two call sites disagree about: naming it a text would print 7 through the string
+		// table, and the (null) that produced is this file's own example of an answer worse than a diagnostic.
 		{
-			"arithmetic on a string parameter",
-			"def f(s):\n    return s * 2\n\nprint(f(\"hi\"))\n",
-			"is not supported in the AOT backend",
+			"a parameter used as a text and as a number",
+			"def f(s):\n    return s * 2\n\nf(\"hi\")\nprint(f(7))\n",
+			"in the AOT backend",
 		},
 	}
 	for _, tc := range cases {

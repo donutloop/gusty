@@ -417,6 +417,17 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		}
 		g.globals.WriteString(percentRuntimeIR)
 	}
+	// The sequence doors (roadmap Gap R.33, ADR 0365) are gated the way the formatting door and the fold
+	// door are: a program that never concatenates two lists, repeats a sequence or repeats a text carries
+	// no slot copier. They ride with the heap block because the two container doors call `rt_alloc` and the
+	// text door asks `rt_str_len`/`rt_str_ptr`/`rt_str_intern`, and a referenced internal function that was
+	// never emitted is the module `llc` rejects (ADR 0173).
+	if g.seqUsed || runtimeBlockReferenced(seqRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		g.globals.WriteString(seqRuntimeIR)
+	}
 	// The case door (roadmap L11.5, ADR 0362) is gated the way the formatting door and the frame stack are:
 	// the tables are the reference's answer for 1.1 million code points, and a program that never asks a
 	// case question has no business carrying them. The block reads the interned-text table
@@ -952,6 +963,16 @@ type irGen struct {
 	// (roadmap Gap R.31, ADR 0360). A program that never formats carries no format walker, no argument
 	// table and no copy of the reference's eight sentences.
 	percentUsed bool
+	// seqUsed records that this module builds a sequence the run time assembled — a list or tuple
+	// concatenated with `+`, a sequence repeated by `*`, or a text repeated by `*` — which is what pulls
+	// in the sequence doors (`pkg/lang/codegen_ir_sequence.go`, roadmap Gap R.33, ADR 0365). A program
+	// that never concatenates or repeats carries no copier it never reaches.
+	seqUsed bool
+	// seqRuntimeMultipliers counts the repeats whose multiplier this pass could not read as a constant —
+	// a loop counter, a parameter, the answer of a call. The count is the negative control the IR rows
+	// read: a repeat whose multiplier the compiler cannot kind is the shape that still cannot be asked
+	// whether it is a whole number at run time, and the row that owns it is Gap R.314 (ADR 0365).
+	seqRuntimeMultipliers int
 	// percentChecks counts the `%`-formatting calls this module emits. It is the negative control the
 	// IR rows read: a guard that emitted the door for a program that never formats one would move this
 	// count and fail the row that pins it at zero (ADR 0337's discipline for a conditional guard).

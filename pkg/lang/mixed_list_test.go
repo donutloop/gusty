@@ -156,7 +156,9 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// membership test or a further subscript (see TestContainerSlotReadsAreAnswered); asking it to
 		// be a number is still the tagged-value gap, and the answer is a refusal, not 0.
 		{"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
-		{"xs = [[1, 2], [3]]\nprint(xs[0] * 2)\n", "needs a single static kind"},
+		// `xs[0] * 2` left this table with ADR 0365: a repeat of a slot the program holds is a SEQUENCE
+		// operation, not a number, and the door builds it — the answered rows beside this table print
+		// `[1, 2, 1, 2]`, which is what the reference prints (`TestARepeatOfASlotReadBuildsASequence`).
 		// A fold over slots asks for the elements as numbers before the tag can be consulted; that is
 		// the same hole the runtime-computed folds fell into (Gap R.71), and it stays a refusal.
 		{"xs = [[1, 2], [3]]\nprint(max(xs[0]))\n", "max requires an inline list/set/dict literal"},

@@ -80,15 +80,60 @@ func isStringExpr(e Expr) bool {
 	case *StrLit, *FString:
 		return true
 	}
-	if percentFormatShapeIsText(e) {
-		// A formatting answers a text, and this predicate is the shape question the PRE-PASSES ask — the
-		// call-site census that decides whether a parameter holds a text, the assignment census that decides
-		// whether a name is ever assigned a number. Without this arm `def w(t): print("<" + t + ">")` called
-		// as `w("%d up" % 7)` had no record of the text crossing the boundary: the concatenation refused, and
-		// plain `print(t)` printed the number under an interned string (roadmap Gap R.31, L11.1, ADR 0360).
+	if textDoorShapeIsText(e) {
+		// A formatting and a repeat both answer a text, and this predicate is the shape question the
+		// PRE-PASSES ask — the call-site census that decides whether a parameter holds a text, the assignment
+		// census that decides whether a name is ever assigned a number. Without this arm
+		// `def w(t): print("<" + t + ">")` called as `w("%d up" % 7)` had no record of the text crossing the
+		// boundary: the concatenation refused, and plain `print(t)` printed the number under an interned
+		// string (roadmap Gap R.31, L11.1, ADR 0360; the repeat's half is Gap R.33, ADR 0365).
 		return true
 	}
 	return false
+}
+
+// --- the one question a built text asks ------------------------------------------------
+//
+// Two roads in this backend answer a text the source never spelled as one: the FORMATTING (`"%s" % v`,
+// ADR 0360) and the REPEAT (`"ab" * n`, ADR 0365) — next to the INTERPOLATION (`f"a{n}"`, ADR 0359), which
+// the source does spell. Each builds or interns a text and answers the `@str_tab` INDEX a slot holds, and
+// every road that READS a text — the print legs, `str`/`repr`, a container literal's kind census, a
+// `return`, the call-site parameter census, the pair pass — has to know that fact.
+//
+// For one cycle the two doors answered the question separately: the repeat's arm lived only in
+// `exprIsString`/`printsAsInternedStr` while the formatting's arms were also in the pre-scan, the census and
+// the pair pass. The result was the same value read two ways at different exits — `print("ab" * 2)` printed
+// `abab` while `print(["ab" * 2, 1])` printed `[1, 1]` and `str("ab" * 2)` printed nothing, all at exit 0,
+// which is the class every row in this file exists to keep dead. One predicate, two arms, asked by every
+// road: ADR 0232's rule restated (roadmap Gap R.33, ADR 0365).
+
+// textDoorIsText is the per-generator question: does the door that owns this operator answer an @str_tab
+// text index for this expression? A caller that has a generator asks THIS; a pre-scan that has only the AST
+// asks `textDoorShapeIsText`.
+func (g *irGen) textDoorIsText(e Expr) bool {
+	return g.percentIsTextExpr(e) || g.seqIsTextExpr(e)
+}
+
+// textDoorShapeIsText is the pre-scan's version of the same question, reading only the spelling.
+func textDoorShapeIsText(e Expr) bool {
+	return percentFormatShapeIsText(e) || seqShapeIsText(e)
+}
+
+// textDoorValueOperand is the operand a text door reads a VALUE out of — a formatting's argument, a
+// repeat's multiplier — which is the side whose kind the pair doors may still need a tag for. The answer is
+// one interned index whatever that side holds, but taking the parameter's tag away with it is how a float
+// argument printed `3.00` (ADR 0360's lesson, applied to the repeat by ADR 0365).
+func textDoorValueOperand(n *BinOp) Expr {
+	if n == nil {
+		return nil
+	}
+	if n.Op == "*" {
+		if isStringExpr(n.L) {
+			return n.R
+		}
+		return n.L
+	}
+	return n.R
 }
 
 // stringConst resolves a string literal or a chain of `+`-concatenated string
@@ -548,11 +593,11 @@ func (g *irGen) textMethodAnswersText(name string, argc int) bool {
 	return false
 }
 func (g *irGen) printsAsInternedStr(e Expr) bool {
-	if g.percentIsTextExpr(e) {
-		// The print road and the operation road ask one question about what is a text (ADR 0229), so a
-		// formatted text prints as its text on the road that prints it and is a text on the road that
-		// compares, binds or measures it — never one on one leg and the other on the second
-		// (roadmap Gap R.31, ADR 0360).
+	if g.textDoorIsText(e) {
+		// The print road and the operation road ask ONE question about what is a text (ADR 0229), so a
+		// formatted or repeated text prints as its text on the road that prints it and is a text on the road
+		// that compares, binds or measures it — never one on one leg and the other on the second
+		// (roadmap Gap R.31, ADR 0360; Gap R.33, ADR 0365).
 		return true
 	}
 	switch v := e.(type) {

@@ -515,10 +515,11 @@ func TestCLIExitCodeContract(t *testing.T) {
 		cleanSrc: "print(1 + 1)\n",
 		trapSrc:  "raise ValueError(\"boom\")\n",
 		oobSrc:   "xs = [1]\nprint(xs[5])\n",
-		// str * int still refuses (roadmap Gap R.33). The fixture used to be a runtime-string
-		// loop, which ADR 0229 made answerable — and a fixture that quietly stops refusing
-		// quietly stops exercising the exit-code contract, so it has to move with the gap.
-		refuseSrc: "print(\"ab\" * 2)\n",
+		// The order of two containers no name holds still refuses (roadmap Gap R.314, ADR 0365). The
+		// fixture used to be a runtime-string loop, which ADR 0229 made answerable, and then
+		// `print("ab" * 2)`, which the sequence door now ANSWERS — and a fixture that quietly stops
+		// refusing quietly stops exercising the exit-code contract, so it has to move with the gap.
+		refuseSrc: "print([1, 2] < [2])\n",
 	} {
 		if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
 			t.Fatal(err)

@@ -81,10 +81,12 @@ func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		// Gap R.47 is closed: every shape this table used to hold now answers, so the rows
 		// live in TestCompiledStringSubscriptAnswersAtRuntime (checked against CPython) and
-		// TestCompiledStringWritesAnswerAtRuntime. What the compiled backend still declines is
-		// elsewhere in the roadmap: %s formatting (R.31), str * int and list concatenation
-		// (R.33), floats in containers (L11.6).
-		{"str_times_int", "print(\"ab\" * 2)\n"},
+		// TestCompiledStringWritesAnswerAtRuntime. `str * int` left with ADR 0365 — `print("ab" * 2)`
+		// prints `abab`, pinned in pkg/lang/sequence_ops_test.go and integration/string_args_test.go —
+		// so the row below is the one text shape still refused in words: an operator that would have to
+		// read a digit out of an interned table index. What else the compiled backend declines is
+		// elsewhere in the roadmap: %s formatting (R.31), floats in containers (L11.6).
+		{"text_asked_for_a_digit", "print(\"a\" - \"b\")\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

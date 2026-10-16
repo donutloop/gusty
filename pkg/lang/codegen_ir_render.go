@@ -87,6 +87,9 @@ var (
 	heapRuntimeIR     = fillRootTemplate(heapRuntimeIRTmpl)
 	numArithRuntimeIR = fillRootTemplate(numArithRuntimeIRTmpl)
 	pairFoldRuntimeIR = fillRootTemplate(pairFoldRuntimeIRTmpl)
+	// The sequence doors read the arena's tables and intern through the heap block's own door, so they
+	// are filled by the same door as every other arena-touching block (roadmap Gap R.33, ADR 0365).
+	seqRuntimeIR = fillRootTemplate(seqRuntimeIRTmpl)
 )
 
 // printfCall emits a call to @printf with the given operand type and format.

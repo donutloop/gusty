@@ -277,11 +277,12 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 			"14\n", "hands back the (payload, tag) pair",
 		},
 		{
-			// Gap R.82's shape seen from this door: one call site hands a text, whose repetition this
-			// backend builds from neither road, so the parameter stays closed and the slot call site
-			// keeps the ordinary road's refusal.
+			// Gap R.82's shape seen from this door. The TEXT half of it is answered since ADR 0365 —
+			// `twice("hi")` repeats through the sequence door and prints `hihi` — so what keeps this program
+			// refused is the other half: the slot read of a name the pass no longer trusts the binding of
+			// (L11.1, ADR 0241, ADR 0251, Gap R.191), which is the refusal the row now has to name.
 			"a text at one call site closes the parameter",
-			pairCallTwice + "print(twice(xs[0][0]))\nprint(twice(\"hi\"))\n", "14\nhihi\n", "is not supported in the AOT backend",
+			pairCallTwice + "print(twice(xs[0][0]))\nprint(twice(\"hi\"))\n", "14\nhihi\n", "cannot reach into",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

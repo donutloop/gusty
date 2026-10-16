@@ -128,6 +128,12 @@ func (g *irGen) fstringFieldIsContainer(e Expr) bool {
 	if g.callAnswersContainerObject(e) {
 		return true
 	}
+	if _, applies := g.seqBuildsContainer(e); applies {
+		// `[1] + [2]` and `[1] * 3` name a container the door builds, and a field is a RENDERING position:
+		// asking the object is the only honest answer, where the number arm below would write the handle
+		// (roadmap Gap R.33, ADR 0365 — the same rule ADR 0359 set for an interpolation's field).
+		return true
+	}
 	return containerKindFromTy(exprTyName(e)) != ""
 }
 

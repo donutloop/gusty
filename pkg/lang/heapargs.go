@@ -628,10 +628,11 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 			return v, true, err
 		}
 	}
-	if g.percentIsTextExpr(e) {
-		// A formatting IS a text: the door answers the @str_tab index a slot holds, which is the same word
-		// an interpolation answers, so `["%d" % 7]`, `{"k": "%s" % 1}` and `d["k"] = "%s" % 1` store the
-		// text and not the position underneath it (roadmap Gap R.31, ADR 0360, ADR 0359's value half).
+	if g.textDoorIsText(e) {
+		// A formatting and a repeat each ARE a text: the door answers the @str_tab index a slot holds, which is
+		// the same word an interpolation answers, so `["%d" % 7]`, `["ab" * 2]`, `{"k": "%s" % 1}` and
+		// `d["k"] = "hi" * 2` store the text and not the position underneath it (roadmap Gap R.31, ADR 0360;
+		// Gap R.33, ADR 0365; ADR 0359's value half).
 		g.heapUsed = true
 		v, ferr := g.value(b, e)
 		return v, true, ferr
@@ -2605,6 +2606,14 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 			return ok && g.containerAnswerCallIsCarriable(n)
 		}
 		return false
+	case *BinOp:
+		// `[1] + [2]`, `[1] * 3` and `(1,) * 2` are containers the same way a literal is: the door builds a
+		// fresh heap object whose slots are the operands' payloads with their tags. The one question is asked
+		// through `seqBuildsContainer` so the printer, the membership test, the comparison and the loop cannot
+		// disagree with the builder about which expressions those are (roadmap Gap R.33, ADR 0365). A text
+		// repeated by a number answers no — its answer is an @str_tab index, which every text road takes.
+		_, applies := g.seqBuildsContainer(n)
+		return applies
 	}
 	_, ok := emptyContainerLiteral(e)
 	return ok
@@ -2670,6 +2679,13 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 		case int32(TagSet):
 			return "set", true
 		}
+	case *BinOp:
+		// The concatenation of two sequences and the repeat of one are containers too, and the kind is
+		// answered by the same door that builds them, so a road that decides here and a road that builds
+		// later ask one question (roadmap Gap R.33, ADR 0365).
+		if kind, applies := g.seqBuildsContainer(n); applies {
+			return kind, true
+		}
 	}
 	return "", false
 }
@@ -2708,6 +2724,17 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 			return "", "", false
 		}
 		return hh, "", true
+	case *BinOp:
+		// A sequence the door builds is a list (in the immutable spelling or not), and the answer to both
+		// questions — decide, then build — comes from the one door (roadmap Gap R.33, ADR 0365).
+		if _, applies := g.seqBuildsContainer(n); !applies {
+			return "", "", false
+		}
+		hh, _, serr := g.seqHandleOf(b, e)
+		if serr != nil {
+			return "", "", false
+		}
+		return hh, "list", true
 	case *Slice:
 		// A slice of a list IS a list: the object is the fresh heap list `rt_slice` built out of the base's
 		// slots and their tags, so `xs[0:1][0]` reads a slot of it exactly as it reads one of a variable's
@@ -3108,6 +3135,13 @@ func (g *irGen) slotReadRefusal(e Expr, ask string) error {
 	ix, ok := e.(*Index)
 	if !ok {
 		return fmt.Errorf("%s requires an inline list/dict/set literal", ask)
+	}
+	// A sequence this backend BUILDS — `[1] + [2]`, `[1] * 3` — is neither a name nor a literal, and the
+	// generic sentence below sends the reader looking for a literal the program never wrote. The object
+	// exists, its slots are walkable, and what is missing is the door's own (payload, tag) pair coming back
+	// out of the road that built it (roadmap Gap R.314, ADR 0365).
+	if _, builds := g.seqBuildsContainer(ix.Obj); builds {
+		return fmt.Errorf("%s cannot reach into the sequence this expression builds: the object is there and its slots are walkable, but the door that built it hands back a handle and the slot read wants the payload with its tag — the arm is owed, not the shape (roadmap Gap R.314, ADR 0365)", ask)
 	}
 	nm, okName := baseName(ix)
 	if !okName {
@@ -4313,6 +4347,17 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 			return g.heapDictFrom(b, lit, "")
 		}
 		return h, nil
+	case *BinOp:
+		// A sequence the door builds — `xs + ys`, `xs * 3`, `(1, 2) * 2` — is a fresh heap object whose slots
+		// are the operands' payloads copied WITH their tags, exactly the object `rt_slice` builds for a copy,
+		// so the roads that read a container ask it of the object (roadmap Gap R.33, ADR 0365).
+		h, okSeq, serr := g.seqHandleOf(b, e)
+		if serr != nil {
+			return "", serr
+		}
+		if okSeq {
+			return h, nil
+		}
 	}
 	return "", fmt.Errorf("codegen: %s is not a container (roadmap L11.1, ADR 0189)", exprSnippet(e))
 }

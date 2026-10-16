@@ -134,11 +134,14 @@ func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
 	// *recorded* — the CLI stays alive, the exit code stays a verdict class, and the reason is
 	// readable in the payload. The panic classification itself is pinned where it can be pinned
 	// deterministically, in pkg/lang/oracle_test.go.
-	// List concatenation still refuses on the compiled path (roadmap L11.1, Gap R.175): the
-	// backend builds no runtime list-concatenate, so the leg fails while CPython prints [1, 2].
-	// `str * int` used to stand here and has been answerable since ADR 0230 — a stub-detection
-	// fixture has to point at a refusal that still exists, or it stops detecting anything.
-	src := "print([1] + [2])\n"
+	// The ORDER of two containers the compiler built in place still refuses on the compiled path
+	// (roadmap Gap R.314, measured while closing Gap R.33): the tagged order door reads a name the program
+	// bound and never a handle it built, so the leg fails while CPython prints True. List concatenation
+	// and `str * int` used to stand here and have been answerable since ADR 0365 — a stub-detection
+	// fixture has to point at a refusal that still exists, or it stops detecting anything. List concatenation and `str * int`
+	// used to stand here and have been answerable since ADR 0365 — a stub-detection fixture has to point
+	// at a refusal that still exists, or it stops detecting anything.
+	src := "print([1, 2] < [2])\n"
 	out, code := benchCLI(t, "--json", "--oracle", src)
 	if code != exitOracleDivergence && code != exitOracleNoVerdict {
 		t.Fatalf("--oracle on a refused compiled leg: exit = %d, want 6 or 7\n%s", code, out)
@@ -153,7 +156,7 @@ func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
 	if !strings.Contains(p.Legs[0].Error, "no compiled lowering") {
 		t.Errorf("the refusal should be named in the leg error, got %q", p.Legs[0].Error)
 	}
-	if !p.Legs[1].OK || p.Legs[1].Stdout != "[1, 2]\n" {
+	if !p.Legs[1].OK || p.Legs[1].Stdout != "True\n" {
 		t.Errorf("the reference should have answered while the compiled leg refused: %+v", p.Legs[1])
 	}
 }

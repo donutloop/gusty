@@ -112,11 +112,20 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	},
 	{
 		Code:       "lower.unsupported.sequence-operation",
-		Shape:      "a sequence operation on containers — concatenation, repeat, ordering — has no runtime helper",
-		Suggestion: "build the result with a loop and append, or index the operands — a container lowers to the address of a compile-time global, so an arithmetic door over two of them has no number to read",
-		Rows:       []string{"Gap R.33", "L11.1"},
-		Markers:    []string{"has no compiled lowering: the backend builds no runtime list-concatenate"},
-		Sample:     "print([1] + [2])",
+		Shape:      "an ordering of two containers no name holds, the subscript of a sequence the compiler built, or a repeat whose answer is bigger than one container object",
+		Suggestion: "bind the operands to names first — print, len, `in`, == and a for over a built sequence are all answered — and what is still missing here is the one arm that reads a slot of an object the compiler built in place, orders two containers it built, or grows an object past its 256-slot row",
+		Rows:       []string{"Gap R.314", "Gap R.33", "L11.1"},
+		Markers: []string{
+			// The three refusals this code covers, each marked by the clause that never changes: the
+			// subscript names the door that built the object, the ORDER names the door that reads a bound
+			// name, and the row cap names the row one object owns. The operand spellings around them
+			// (`[1, 2] < [2]`, `[1] * 300`) are the program's, not the backend's, so they are not markers
+			// (the same rule `lower.unsupported.text-operator` states for `on a string (…)`).
+			"the door that built it hands back a handle and the slot read wants the payload with its tag",
+			"is the tagged order door's question",
+			"past the 256 slots one container object owns",
+		},
+		Sample: "print([1, 2] < [2])",
 	},
 	{
 		Code:       "lower.unsupported.comprehension-over-text",
@@ -172,13 +181,13 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	{
 		Code:       "lower.unsupported.text-operator",
 		Shape:      "an arithmetic operator applied to a text",
-		Suggestion: "concatenate with `+` where the reference does, and build a repeat with a loop — a compiled text is an interned table index, so arithmetic over it has no meaning to read",
+		Suggestion: "concatenate with `+` and repeat with `\"ab\" * 2` — both answered since ADR 0365; what has no meaning to read is arithmetic over an interned table index, which is what a `-` or `/` between two texts would need",
 		Rows:       []string{"Gap R.31", "L11.1"},
 		// The operand's spelled kind is printed into the sentence — `on a string (a string
 		// literal)`, `on a string (*lang.Index)`, `on a string (s)` — so the marker is the half
 		// that never changes: the clause after the operand, not the operand.
 		Markers: []string{"is not supported in the AOT backend; CPython evaluates it"},
-		Sample:  "print(\"a\" * 3)",
+		Sample:  "print(\"a\" - \"b\")",
 	},
 	{
 		Code:       "lower.unsupported.format-spec-needs-constant",

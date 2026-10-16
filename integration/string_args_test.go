@@ -67,6 +67,24 @@ var stringArgCases = []struct {
 		"def pair(a, b):\n    print(a)\n    print(b)\n\npair(\"x\", \"y\")\n",
 		"x\ny\n",
 	},
+	// A text parameter repeated by a whole number is built by the sequence door (roadmap Gap R.33,
+	// ADR 0365): the answer is an ordinary interned text, so the print leg, the link-and-run leg and
+	// CPython are asked the same `hihi` — the shape used to be refused here as `lower.unsupported.text-operator`.
+	{
+		"repeat of a string parameter",
+		"def shout(s):\n    return s * 2\n\nprint(shout(\"hi\"))\n",
+		"hihi\n",
+	},
+	{
+		"repeat of a string parameter by a name",
+		"def shout(s, n):\n    return s * n\n\nprint(shout(\"hi\", 3))\n",
+		"hihihi\n",
+	},
+	{
+		"a text repeat crossing a call and a binding",
+		"def shout(s):\n    return s * 2\n\nvar = shout(\"ab\")\nprint(var, len(var), var == \"abab\")\n",
+		"abab 4 True\n",
+	},
 }
 
 func TestStringParameterProgramsMatchPython(t *testing.T) {
@@ -97,11 +115,13 @@ func TestStringParameterProgramsMatchPython(t *testing.T) {
 
 // TestUnsupportedStringUseIsADiagnosticNotBadIR: an operation the compiled backend declines must
 // report itself rather than emit IR the verifier rejects (ADR 0166). Concatenation used to be the
-// example here; it answers since ADR 0230, so the shape is repetition, which still has no
-// lowering — the contract under test is the refusal, not this particular operator.
+// example here; it answers since ADR 0230, and so does REPETITION since ADR 0365 (`shout("hi")` prints
+// `hihi`, pinned beside the door in pkg/lang/sequence_ops_test.go) — the shape that still has no lowering is
+// an arithmetic operator between two texts, which has no digit to read off an interned table index. The
+// contract under test is the refusal, not this particular operator.
 func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
 	t.Parallel()
-	src := "def shout(s):\n    return s * 2\n\nprint(shout(\"hi\"))\n"
+	src := "def shout(s):\n    return s - s\n\nprint(shout(\"hi\"))\n"
 	res, err := lang.Compile(src)
 	if err == nil {
 		t.Fatalf("expected a compile diagnostic; got IR:\n%s", res.IR)
@@ -118,9 +138,9 @@ func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
 	// rather than matching its spacing: the shape is the contract, not the byte layout.
 	out := cliRun(t, "--json", "--emit-llvm", src)
 	var payload struct {
-		OK         *bool   `json:"ok"`
-		Phase      string  `json:"phase"`
-		Error      string  `json:"error"`
+		OK         *bool  `json:"ok"`
+		Phase      string `json:"phase"`
+		Error      string `json:"error"`
 		Capability *struct {
 			Code string `json:"code"`
 		} `json:"capability"`

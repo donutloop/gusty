@@ -130,15 +130,15 @@ func TestSequenceOperationsMatchCPython(t *testing.T) {
 	}
 }
 
-// The compiled backend may legitimately fail in three ways on these shapes — refuse at compile
-// time, fail the module verifier (the known compiler bug, roadmap Gap R.33), or run and print
-// CPython's answer. It may not print something else.
+// The compiled backend answers these four shapes since ADR 0365 built the sequence door: it may no longer
+// refuse them, fail the module verifier (the known bug, roadmap Gap R.33), or print something else. The
+// three ways a gap used to be allowed to behave are now three ways to fail.
 func TestCompiledSequenceOpsNeverAnswerWrong(t *testing.T) {
 	t.Parallel()
 	shapes := []struct {
 		name string
 		src  string
-		want string // what CPython prints, for the "it ran" branch
+		want string // what CPython prints
 	}{
 		{"list concat", "print([1] + [2])\n", "[1, 2]\n"},
 		{"list repeat", "print([1] * 3)\n", "[1, 1, 1]\n"},
@@ -146,27 +146,25 @@ func TestCompiledSequenceOpsNeverAnswerWrong(t *testing.T) {
 		{"str order", "if \"a\" < \"b\":\n    print(\"yes\")\n", "yes\n"},
 	}
 	for _, sh := range shapes {
-		res, err := lang.Compile(sh.src)
-		if err != nil {
-			continue // an honest refusal at compile time
-		}
-		// An invalid module is the compiler-bug class: recorded, non-zero, and never an
-		// answer. Checked here rather than by the build helper because that helper fails the
-		// build on exactly this, which is right for a tested shape and wrong for a known gap.
-		v, verr := lang.VerifyModuleIR(res.IR, 0)
-		if verr != nil || (v != nil && !v.OK) {
-			continue
-		}
-		out, err := runAOTWithTimeout(t, sh.src, 120*time.Second)
-		if err == nil {
-			if out != sh.want {
-				t.Errorf("%s: compiled backend answered %q, want CPython's %q (or an honest refusal)", sh.name, out, sh.want)
+		sh := sh
+		t.Run(sh.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := lang.Compile(sh.src)
+			if err != nil {
+				t.Fatalf("the compiled leg refused a program the sequence door builds (Gap R.33, ADR 0365): %v", err)
 			}
-			continue
-		}
-		if strings.TrimSpace(out) != "" {
-			t.Errorf("%s: the compiled leg failed but printed %q", sh.name, out)
-		}
+			v, verr := lang.VerifyModuleIR(res.IR, 0)
+			if verr != nil || (v != nil && !v.OK) {
+				t.Fatalf("the emitted module does not verify: %v %+v", verr, v)
+			}
+			out, err := runAOTWithTimeout(t, sh.src, 120*time.Second)
+			if err != nil {
+				t.Fatalf("the compiled leg failed on a program the reference answers: %v (%q)", err, out)
+			}
+			if out != sh.want {
+				t.Fatalf("%s: compiled backend answered %q, want CPython's %q", sh.name, out, sh.want)
+			}
+		})
 	}
 }
 

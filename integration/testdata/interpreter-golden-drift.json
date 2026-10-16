@@ -3,7 +3,7 @@
     "source": "# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a\n# list repeated by an int (in either operand order), two lists concatenated, and two\n# values of the same kind ordered by value. Each line agrees with CPython in the\n# interpreter. The compiled backend refuses `str * int` and emits an invalid module for\n# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.\nprint([1] + [2])\nprint([1] + [2] + [3])\nprint([1] * 3)\nprint(3 * [1])\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(\"ab\" * -1)\nprint([1] * 0)\n# Ordered comparison compares values, not handles. The result is tested rather than\n# printed: this language renders a boolean as 1 or 0, which is a separate documented\n# divergence, and what is pinned here is whether the ordering itself is right.\nif \"a\" \u003c \"b\":\n    print(\"str ordered\")\nif [1, 2] \u003c [2]:\n    print(\"list ordered\")\nif [2] \u003c [1, 2]:\n    print(\"wrong\")\nprint(len([1, 2, 3]) * 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "stdout \"[1, 2]\\n[1, 2, 3]\\n[1, 1, 1]\\n[1, 1, 1]\\nabab\\nabab\\n\\n\\n[]\\nstr ordered\\nlist ordered\\n6\\n\"",
-    "actual": "jit: codegen: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[1, 2] \u003c [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
   },
   {
     "source": "async def f(x):\n    return x + 1\n\n\nasync def g():\n    await f(1)\n    while True:\n        return \"ok\"\n\n\nprint(await g())\n",
@@ -15,7 +15,7 @@
     "source": "class P:\n    pass\n\np = P()\n\ntry:\n    print(p.nope)\nexcept AttributeError:\n    print(\"attr ok\")\n\ntry:\n    print(int(\"abc\"))\nexcept ValueError:\n    print(\"value ok\")\n\ntry:\n    a, b = [1]\nexcept ValueError:\n    print(\"unpack ok\")\n\ntry:\n    x = 5\n    x()\nexcept TypeError:\n    print(\"call ok\")\n\ntry:\n    print(len(5))\nexcept TypeError:\n    print(\"len ok\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "stdout \"attr ok\\nvalue ok\\nunpack ok\\ncall ok\\nlen ok\\n\"",
-    "actual": "jit: codegen: unpacking the wrong number of values"
+    "actual": "jit: codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)"
   },
   {
     "source": "def scale(v):\n    return round(v, 2)\n\nprint(scale(2.345))\n",
@@ -46,18 +46,6 @@
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "{\"backend\":\"aot\",\"capability\":{\"code\":\"lower.unsupported.format-spec-needs-constant\",\"rows\":[\"Gap R.146\",\"L11.1\"],\"shape\":\"a format spec whose value the compiler cannot read\",\"suggestion\":\"drop the spec (f\\\"{v}\\\" prints it), or format a value the compiler can see at that point — the spec is applied where the value is still a word with no kind\"},\"error\":\"jit: codegen: the format spec \\\"05d\\\" needs a value this backend can read at compile time (AOT backend)\",\"errors\":[],\"exit\":1,\"ok\":false,\"phase\":\"codegen\"}"
-  },
-  {
-    "source": "print(\"a\" * \"b\")\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: can't multiply sequence by non-int of type 'str'",
-    "actual": "jit: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-  },
-  {
-    "source": "print(\"a\" * 1.5)\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: can't multiply sequence by non-int of type 'float'",
-    "actual": "jit: codegen: a string is a text, which has no double to widen from: it is not a format either, so no door gives it a digit, and the only text-to-number roads this backend builds are int(), float() and round() (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" / 2)\n",
@@ -99,13 +87,7 @@
     "source": "print([1] \u003c [\"a\"])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
-  },
-  {
-    "source": "print({\"a\": 1} + {\"b\": 2})\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: unsupported operand type(s) for +: 'dict' and 'dict'",
-    "actual": "jit: codegen: `{\"a\": 1} + {\"b\": 2}` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
   },
   {
     "source": "s = \"abc\"\ntry:\n    s[0] = \"z\"\nexcept TypeError:\n    print(\"caught\")\n",

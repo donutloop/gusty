@@ -139,10 +139,14 @@ func TestTextOrderingStillRefusedHonestly(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			// Arithmetic on a text stays refused: ADR 0248 answered orderings, not this.
-			"arithmetic_on_a_string_parameter",
-			"def f(s):\n    return s * 2\n\nprint(f(\"hi\"))\n",
-			"is not supported in the AOT backend",
+			// ADR 0365 answered the orderings a text parameter takes — `def f(s, t): return s < t` called with
+			// two texts prints `True`, both argument orders, where the door used to refuse the `*` beside it.
+			// What still stops the build is the parameter the call sites contradict: one site hands texts, the
+			// other numbers, so neither kind may be recorded and the ordering goes down with it. The reference
+			// answers the whole program, which is what makes this a refusal to keep rather than a wrong answer.
+			"an_ordering_whose_parameter_the_call_sites_disagree_about",
+			"def f(s, t):\n    return s < t\n\nprint(f(\"a\", \"b\"))\nprint(f(1, 2))\n",
+			"not supported as function arguments",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

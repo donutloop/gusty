@@ -198,6 +198,15 @@ func (g *irGen) isFloat(e Expr) bool {
 		}
 		return false
 	case *BinOp:
+		if g.seqOwnsBinOp(n) {
+			// A sequence operation answers a heap handle or an @str_tab index, never a double: `[1] * 3` builds
+			// a list and `"ab" * 2` builds a text, and the only `*` in either that reaches a float is the one
+			// the REFERENCE stops — `can't multiply sequence by non-int of type 'float'` — which the sequence
+			// door raises rather than the double lift refusing to widen a text (roadmap Gap R.33, ADR 0365;
+			// the same arrangement ADR 0360 built for the formatting, whose `%` is likewise one character and a
+			// different question).
+			return false
+		}
 		if g.percentFormatOwnsBinOp(n) {
 			// A formatting answers a TEXT, and the number-shaped road reading `"%s" % 3.5` as a remainder with a
 			// float operand asked the double lift for the format itself — which the L11.2 guard refused, so

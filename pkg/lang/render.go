@@ -262,6 +262,19 @@ func (g *irGen) renderPairContainer(b *strings.Builder, e Expr) (string, bool, e
 			return v, true, err
 		}
 	}
+	// A sequence the door built — `str([1] + [2])`, `repr(["a"] * 2)`, `f"{xs + ys}"` — is a container the
+	// same way a slice copy is: the object owns its slots, their tags and its brackets, and the pair road
+	// points that same object at the capture buffer. Asking the door rather than a second predicate is
+	// what keeps `str(xs + ys)`, `print(xs + ys)` and `ys = xs + ys` / `str(ys)` rendering one value
+	// (roadmap Gap R.33, ADR 0365; ADR 0303's one printer).
+	if h, applies, err := g.seqHandleOf(b, e); applies {
+		if err != nil {
+			return "", true, err
+		}
+		g.heapUsed = true
+		g.tupleUsed = true
+		return h, true, nil
+	}
 	// The checker's inferred type is a second witness that an operand names a container, for
 	// the shapes no builder registered: `str(set())` asks a constructor, whose handle nothing
 	// in this scope had recorded, and answering it with the digits of the heap index is

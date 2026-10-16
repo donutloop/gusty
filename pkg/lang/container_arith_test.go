@@ -162,11 +162,11 @@ func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
 	}
 }
 
-// TestContainerConcatAndRepeatRefuseRatherThanAnswer covers the half the reference ANSWERS and this
-// backend cannot: `[0] * 3` is `[0, 0, 0]` and `[1, 2] + [3]` is `[1, 2, 3]`, and there is no runtime
-// helper to build either. A refusal is the deliverable; a number is not. These rows are written so that
-// the day someone emits rt_list_concat they FAIL and get promoted.
-func TestContainerConcatAndRepeatRefuseRatherThanAnswer(t *testing.T) {
+// TestContainerConcatAndRepeatAnswersRatherThanRefuse covers the half the reference ANSWERS and this
+// backend used not to: `[0] * 3` is `[0, 0, 0]` and `[1, 2] + [3]` is `[1, 2, 3]`. The rows were written
+// as refusals — "the day someone emits rt_list_concat they FAIL and get promoted" — and ADR 0365 emitted
+// it, so they now pin the answer: a refusal on any of them is the failure, not an acceptable outcome.
+func TestContainerConcatAndRepeatAnswersRatherThanRefuse(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, want string }{
 		{"list repeat", "print([0] * 3)\n", "[0, 0, 0]\n"},
@@ -177,17 +177,14 @@ func TestContainerConcatAndRepeatRefuseRatherThanAnswer(t *testing.T) {
 		t.Run(r.name, func(t *testing.T) {
 			t.Parallel()
 			if got := captureStdout(t, r.src); got != r.want {
-				t.Errorf("interpreter printed %q, want %q — the interpreter has the sequence semantics", got, r.want)
+				t.Errorf("the record reads %q for %q, want %q", got, r.src, r.want)
 			}
 			res, err := Compile(r.src)
-			if err == nil {
-				if out := runIR(t, res.IR); out == r.want {
-					t.Log("the compiled leg now answers this; promote the row into TestContainerInArithmeticNeverExitsTwo")
-				}
-				return
+			if err != nil {
+				t.Fatalf("the compiled leg refused a program the sequence door builds (Gap R.33, ADR 0365): %v", err)
 			}
-			if !strings.Contains(err.Error(), "no compiled lowering") {
-				t.Errorf("refusal %q does not say what is missing (Gap R.38)", err)
+			if out := runIR(t, res.IR); out != r.want {
+				t.Errorf("--aot printed %q, want %q", out, r.want)
 			}
 		})
 	}

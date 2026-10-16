@@ -179,6 +179,15 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	// `if a < b and b < 9:` would otherwise pay for a zext and a re-test per
 	// comparison; emit the predicate itself and use it directly.
 	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && !g.isFloat(n.L) && !g.isFloat(n.R) {
+		// An ordering of two containers the compiler BUILT in place is the sequence door's refusal, and the
+		// condition road asks it too: without this arm the pair fell through to the generic comparison below,
+		// which rendered both sides and emitted `%t1 = icmp slt i32 @.lst1, @.lst2` — the invalid IR this row's
+		// own bug was, reported by `llc` at the compiler-bug exit code, while the value door gave the same
+		// shape honest words. One predicate, both roads (ADR 0232; roadmap Gap R.33, ADR 0365; the ordering
+		// itself is Gap R.314).
+		if msg, refuses := g.seqBuiltOrderingRefusal(n); refuses {
+			return "", fmt.Errorf("%s", msg)
+		}
 		// A container comparison in a condition goes through the same value-equality helper the
 		// expression path uses; `if [1] == 1:` emitted `icmp eq i32 @.lst1, 1` before, which is
 		// both invalid IR and the wrong question (ADR 0189).

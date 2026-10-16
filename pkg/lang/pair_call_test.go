@@ -296,7 +296,7 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 			// before ADR 0273. A refusal whose wording moved would mean the road moved.
 			"a text argument closes the parameter",
 			"def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\nprint(twice(\"hi\"))\n",
-			"is not supported in the AOT backend",
+			"roadmap", // Gap R.33 (ADR 0365) moved this shape off the text-operator road; the refusal it now gets names what is missing and cites its row
 		},
 		{
 			"a call as the argument closes the parameter",

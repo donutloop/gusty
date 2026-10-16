@@ -103,7 +103,7 @@ func TestCLIFailureCarriesTheCapabilityCode(t *testing.T) {
 	}{
 		{"list(<container>) copies", "print(list([1, 2]))", "lower.unsupported.list-copy"},
 		{"tuple(...) builds one", "print(tuple([1, 2]))", "lower.unsupported.tuple-call"},
-		{"a container beside a container", "print([1] + [2])", "lower.unsupported.sequence-operation"},
+		{"a container beside a container", "print([1, 2] < [2])", "lower.unsupported.sequence-operation"},
 		{"a text iterated by a comprehension", "print([c for c in \"abc\"])", "lower.unsupported.comprehension-over-text"},
 		{"a printf conversion with no renderer", "print(\"%b\" % 3)", "lower.unsupported.printf-style-format"},
 		{"a printf argument with no value", "print(\"%s\" % (lambda: 1))", "lower.unsupported.printf-style-format"},

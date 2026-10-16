@@ -3040,7 +3040,7 @@ other backend inaccurately is exactly the kind of claim this loop keeps having t
 refusal message should be generated from what the other path does, not pasted from a neighbour's case.
 
 <a id="gap-r-33"></a>
-### R.33 — the compiled backend cannot lower sequence operations (OPEN, compiled backend)
+### R.33 — the compiled backend cannot lower sequence operations (CLOSED by ADR 0365; what is left is Gap R.314 above)
 
 ```gusty
 print([1] + [2])   # llc rejects the module: "global variable reference must have pointer type"
@@ -13959,3 +13959,54 @@ text variable and an f-string spec over a runtime value (`Gap R.308`). A text wh
 cannot prove — an element of a mixed list, the answer of a `join` over runtime elements — refuses rather than
 print an index, which is the honest answer and not a good one. Each of those is an exit 1 refusal with a
 capability code, not an exit 0 lie.
+
+
+<a id="gap-r-314"></a>
+### R.314 — what the sequence door builds cannot yet be subscripted, ordered, or built past one object's row (OPEN, compiled backend, ADR 0365)
+
+Three shapes are left where the sequence door stopped, and each of them refuses in words with this row
+number in the sentence rather than answering:
+
+```gusty
+print(([1] + [2])[1])   # CPython: 2 — here: "cannot reach into the sequence this expression builds …"
+print([1, 2] < [2])     # CPython: True — here: the numeric road's honest refusal naming Gap R.175's door
+print([1] * 300)        # CPython: three hundred ones — here: names the 256-slot row and Gap R.271
+```
+
+The subscript is the cheapest: the door that builds the object has the object in hand and hands back a
+handle, while the slot read wants the payload together with its tag, which is one arm on the door rather
+than a new mechanism. The ordering is the same shape one step on — the tagged order door reads a name the
+program bound, and has never been asked about an object the compiler assembled in place; giving it the
+built handle is the work. The row cap is not this door's question at all: one container object is one
+256-slot entry of `@heap`, `heap_room(N)` caps nothing, and a six-hundred-slot answer is two entries, which
+is the arena question Gap R.271 already carries for `xs.append` in a loop. The guard for all three is
+`TestTheSequenceDoorStillRefusesWhatItCannotBuild`, which fails if any of them starts answering without the
+arm being written — a wrong answer at exit 0 is the outcome the ladder ranks worst, so the refusal stays
+pinned until its replacement exists.
+
+
+<a id="gap-r-315"></a>
+### R.315 — a text a method's body builds prints the intern position under it (OPEN, compiled backend, ADR 0365)
+
+```gusty
+class C:
+    def plain(self, s):      return "ab"          # ab      — right
+    def fmt(self, s):        return "x%s" % s     # x0      — CPython: xhi
+    def rep_of_param(self, s): return s * 2       # 0       — CPython: hihi
+    def rep_no_param(self):  return "ab" * 2       # abab    — right
+```
+
+The two wrong lines are the two whose text the body **built**, in a method that **takes a parameter**. A
+text is an interned `@str_tab` index beside its length (ADR 0224), and a road that knows its answer is a
+text hands the print door the pointer; a road that does not knows only the index, and the number printer
+prints it. That is the whole defect, and ADR 0365 made it measurable: the formatting door (ADR 0360) and
+the repeat door (ADR 0365) now answer **one** predicate — `textDoorIsText` in `pkg/lang/codegen_text.go` —
+so the method road that registers the formatter's answer and not the repeater's prints two wrong lines
+where it once printed one. Registering both on that road is the fix; the alternative — a second text
+predicate, one per door — is the shape that let the two doors drift apart in the first place and is
+refused for the same reason ADR 0232 refuses a second door.
+
+Recorded rather than parity-asserted, because a wrong value at exit 0 cannot be asserted as if it were an
+answer: `integration/programs/probe_method_text_answer.gy` carries CPython's five lines and this backend's
+five lines in the matrix row (`programs/probe_method_text_answer`, oracle `debt`), and the row's `pins`
+name the compiled leg's exact output so a partial fix that cures one line and not the other is visible.

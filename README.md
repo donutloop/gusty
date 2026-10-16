@@ -302,6 +302,18 @@ answer as another literal's element or as a method receiver (**Gap R.229**), a s
 (**Gap R.235**), the answer through a parameter (Gap R.154), `build() + [9]` (Gap R.175), `None` returned from
 a function (**Gap R.228**) — names the function and the door, and never exits 2.
 
+**Sequences are built, not refused** (roadmap Gap R.33, closed by ADR 0365). `[1] + [2]`, `[1] + [2] + [3]`,
+`[1] * 3`, `3 * [1]`, `(1, 2) + (3,)`, `"ab" * 2` and `2 * "ab"` compile to an object the program never wrote —
+a heap block whose slots each carry their tag, or, for a text, an `@str_tab` index, which is the word every
+text road already reads — and the object answers `print`, `str`/`repr`, an f-string field, `len`, `in`, `==` and
+a `for` the way one a literal made does. `programs/sequence_builds.gy` is a parity row, line-for-line the
+reference. What the reference **raises**, raises here too: `[1] * 2.0` and `"a" * 1.5` say
+`can't multiply sequence by non-int of type 'float'`, `"a" * "b"` names `'str'`, `[1] + "a"` names `'str'` on the
+other side, and `{"a": 1} + {"b": 2}` says `unsupported operand type(s) for +: 'dict' and 'dict'` — at exit 3,
+catchable by the program's own `except TypeError`. Three shapes stay refused in words, each naming the row that
+owes them (**Gap R.314**): the subscript of a built sequence, the order of two containers no name holds, and a
+repeat the compiler can see needs more slots than one object owns.
+
 **A subscript of that answer is read by the door that reads a variable's slot**, and ADR 0334 pays the row ADR 0326
 named and left open. `print(build()[7])` is `IndexError: list index out of range` in the reference; here it was
 `codegen: index requires an inline list/dict/set literal` at exit 1 — while `ys = build()` / `print(ys[7])` had

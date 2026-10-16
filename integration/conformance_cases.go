@@ -57,6 +57,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The number use of a slot whose kind only the run time can describe: a list of lists, and
 		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
 		"numeric_slot_arith",
+		// The sequence operations the compiled backend BUILDS: a list or tuple concatenated (one deep and
+		// chained), a list, tuple or text repeated by a whole number in either operand order, zero and a
+		// negative multiplier, and every road that reads the built object back — `print`, `str`/`repr`, an
+		// f-string field, `len`, `in`, `==` and a `for`. The program that pinned "the compiled backend cannot
+		// lower sequence operations" is this row's promotion; `programs/sequence_ops` stays a probe beside it,
+		// because that one also asks for the ORDER of two containers (roadmap Gap R.33, closed by ADR 0365;
+		// the ordering half is filed as Gap R.314).
+		"sequence_builds",
 		// `and`/`or` hand back the operand the test chose, on the compiled path: `2 and 3` is `3`, `"" or "d"`
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
@@ -871,6 +879,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
+		// A text a METHOD's body builds is printed as the `@str_tab` POSITION under it: `return "x%s" % s`
+		// answers `x0` and `return s * 2` answers `0` when the method takes a parameter, while the same bodies
+		// answer correctly at module level, as a function, and as a method with no parameter. Both text doors
+		// take the hit — the formatting (ADR 0360) and the repeat (ADR 0365) — because they answer one predicate
+		// and the method's string-return census teaches only one road. Measured with ADR 0365; the wrong values
+		// are at exit 0, which is why this is recorded rather than parity-asserted (roadmap Gap R.315).
+		"probe_method_text_answer",
 		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
 		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
@@ -1186,9 +1201,13 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints `1180591620717411303424`; the compiled leg never reaches the formatter, because `2 ** 70` is an integer outside this backend's bounded-integer row and the conversion's argument therefore has no (value, kind) pair to hand over — the refusal names the operand, the missing word and the row that owns the fix, at exit 1",
 		ref:    "roadmap Gap R.176 (the integer beyond the word, ADR 0166) beside Gap R.31 (the door that refuses rather than printing the number underneath); the siblings are L11.2 (the float literal's written forms) and L11.3 (a tuple is an argument list, not a value)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_method_text_answer": {oracle: lang.OracleDebt,
+		reason: "CPython prints `ab / xhi / abab / hihi / abab`; the compiled leg prints `ab / x0 / abab / 0 / abab` — the two lines whose text the body BUILT, in a method that takes a parameter, print the intern position instead. Every neighbouring position answers: module level, a plain function, a method with no parameter, a method returning a text literal. Both doors take it (the formatting's `x%s` and the repeat's `s * 2`), which is what says the missing registration is the method road's census, not either door's answer",
+		ref:    "roadmap Gap R.315 (filed with ADR 0365, which widened the one text predicate to cover the repeat as well as the formatting); the neighbour roads are ADR 0360 (Gap R.31) and ADR 0290 (a ternary's arms, the same census defect in an older spelling)",
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "ab\nx0\nabab\n0\nabab\n"}}},
 	"programs/sequence_ops": {oracle: lang.OracleDebt,
-		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
-		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
+		reason: "the concat, the repeat and the text repeat are built since ADR 0365 (see programs/sequence_builds, which agrees with the reference); what keeps this program on the ledger is the ORDER of two containers — `[1, 2] < [2]` is True in CPython and the compiled leg refuses it in words, because the tagged order door reads a name the program bound and never an object the compiler built in place, so the compiled leg never completes either way and completes the refusal without spending exit 2",
+		ref:    "roadmap Gap R.33 (closed by ADR 0365 for the operations themselves) and the ordering half filed beside it as Gap R.314; Gap R.175's exit-2 half stays closed by ADR 0292",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that the compiled path
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught

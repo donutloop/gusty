@@ -1963,18 +1963,33 @@ print({} + [])      # TypeError: unsupported operand type(s) for +: 'dict' and '
 print([] < {})      # TypeError: '<' not supported between instances of 'list' and 'dict'
 ```
 
-Every one of those is a real trap on **both** engines: `except TypeError:` catches it, and the message is
+Every one of those is a real trap on the compiled leg and a real trap in the reference: `except TypeError:`
+catches it, and the message is
 CPython's own words, so printing the exception prints what `python3` prints. Note that `+` follows the
 **left** operand's type — a list defines concatenation and refuses the other type, a dict does not define
 concatenation at all — so rows three and four are not mirrors of each other.
 
-Where the reference **answers** and this backend has no sequence helper, the compiled leg says so instead
-of inventing a value; the record, which has the semantics, answers:
+The sequence operations themselves are **built** (roadmap Gap R.33, closed by ADR 0365): the answer is a heap
+object the program never wrote, with a tag beside every slot, and the object prints, compares, measures,
+iterates and tests membership like the one a literal made.
 
 ```
-print([0] * 3)        # interpreter: [0, 0, 0]      compiled: refuses, naming the missing repeat helper
-print([1, 2] + [3])   # interpreter: [1, 2, 3]      compiled: refuses, naming the missing concatenate helper
-print([1] < [2])      # interpreter: True           compiled: refuses, naming the missing order helper
+print([0] * 3)        # [0, 0, 0]      print([1, 2] + [3])   # [1, 2, 3]
+print(3 * [0])        # [0, 0, 0]      print("ab" * 2)       # abab
+print((1, 2) + (3,))  # (1, 2, 3)      print(str([1] + [2])) # [1, 2]
+```
+
+Three shapes are still owed, and each refuses in words naming the row (Gap R.314) rather than guessing — in a
+value position *and* in a condition, because the value door and the condition door ask one predicate
+(ADR 0232): `%t1 = icmp slt i32 @.lst1, @.lst2` is not a module, and exit 2 is not the answer to a program
+the reference runs.
+
+```
+a = [1, 2]
+print(a < [2])        # True — the order of two CONTAINERS the program named: the tagged order road
+if [1, 2] < [2]: …    # refuses in words: neither side is a name, so no name holds the pair (Gap R.314)
+print(([1] + [2])[1]) # 2 in the reference — the built subscript is Gap R.314's
+print([1] * 300)      # 300 slots, past the 256 one object owns: Gap R.314 / Gap R.271
 ```
 
 These are owed to L11.1's tagged value word and are pinned as still-owed. Two things are deliberately
@@ -1985,8 +2000,18 @@ These are owed to L11.1's tagged value word and are pinned as still-owed. Two th
 - a **comparison over two names** of the same kind — `a = [1]` / `b = [2]` / `print(a < b)` = `True`, the
   tagged order road's question.
 
-A **text** repeated by an int (`"ab" * 2` = `abab`) is answered by the record; the compiled leg's
-refusal of it predates this section (Gap R.82) and is unchanged.
+A **text** repeated by an int (`"ab" * 2` = `abab`) is answered on both witness legs: the repeat is built by the
+same door and answers an `@str_tab` index, which is the word every text road already reads (ADR 0224; the
+refusal this row retired — Gap R.82's — is gone).
+
+One shape is answered wrongly rather than refused, and is written here rather than hidden: a **method that takes
+a parameter and returns a text its body built** prints the intern table's position under the text —
+`def fmt(self, s): return "x%s" % s` prints `x0` where the reference prints `xhi`, and
+`def rep(self, s): return s * 2` prints `0` where it prints `hihi`, both at exit 0 (**Gap R.315**, measured while
+widening the one predicate that decides what a text is). The neighbouring positions are right — module level, a
+plain function, a method with no parameter, a method returning a text literal — and the probe that keeps the
+wrong lines on the record is `integration/programs/probe_method_text_answer.gy`. Until that row is paid, spell
+such a body as a **function**, or build the text in the caller and pass it in.
 
 ### Text predicates
 

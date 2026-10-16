@@ -79,6 +79,14 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	if res, ok := g.emitDunderBinOp(b, n); ok {
 		return res, nil
 	}
+	// A sequence operation is one question, asked before any operand is lowered: is this the `+` between
+	// two sequences, or the `*` between a sequence and a whole number? Lowering the operands first is what
+	// made the shape unanswerable — a list operand lowers through the numeric road to whatever word the
+	// container wears, and the refusal this row retires was written for the time when that word was the
+	// address of a compile-time global (roadmap Gap R.33, ADR 0365).
+	if res, ok, err := g.seqOperationRoad(b, n); err != nil || ok {
+		return res, err
+	}
 	if g.isFloat(n.L) || g.isFloat(n.R) || g.taggedNumberUseApplies(n) {
 		// Which question is this? Two operands of different runtime kinds are not equal
 		// (ADR 0215's rule; ADR 0221 makes the numeric cross-kind pair the exception), and
@@ -196,6 +204,15 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	// are stored that way — membership is the payload-and-tag question, one level out
 	// (roadmap L11.1, ADR 0241).
 	if n.Op == "in" || n.Op == "not in" {
+		// `2 in [1] + [3]`: the haystack is an object this backend BUILDS, so its handle comes out of the
+		// sequence door and the object's slots answer the question. Reading it through the number road is
+		// what made the test answer False for a list the program had just concatenated (roadmap Gap R.33,
+		// ADR 0365).
+		if res, okM, mErr := g.membershipOfBuiltSequence(b, n); mErr != nil {
+			return "", mErr
+		} else if okM {
+			return res, nil
+		}
 		if _, isRead := n.R.(*Index); isRead {
 			if res, okM, mErr := g.membershipOfReadHaystack(b, n); mErr != nil {
 				return "", mErr

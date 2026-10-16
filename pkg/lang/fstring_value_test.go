@@ -322,7 +322,9 @@ func TestAnFStringAsAValueRefusesWhatHasNoRenderer(t *testing.T) {
 		{"a spec over a float", "n = 3.5\nt = f\"{n:.2f}\"\nprint(t)\n", "format spec"},
 		{"a method with no run-time road", "n = 3\nprint(f\"a{n}b\".replace(\"b\", \"c\"))\n", "string-method replace"},
 		{"a split with no run-time road", "n = 3\nprint(f\"a{n}b\".split(\"b\"))\n", "string-method split"},
-		{"a repeat of a text", "n = 3\nprint(f\"x{n}\" * 2)\n", "not supported"},
+		// An interpolation REPEATED left this table with ADR 0365: the door that builds a text out of a `%`
+		// now builds one out of a `*` too, and `f"x{n}" * 2` answers `x3x3` — pinned beside the door in
+		// `TestTheTextRepeatIsOneValueAtEveryRoadThatReadsAText`.
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

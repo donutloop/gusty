@@ -12223,3 +12223,42 @@ printed by the tool for a source printed beside it.
   neighbour's work.
 - *The parent-counter trap again:* the two "did the leg run at all" guards need children without `t.Parallel()`;
   I wrote them that way from the start this time and they passed the first run.
+
+## Gap R.33 — the sequence door (ADR 0365), 2026-07-29
+
+- **The defect was a position, not a missing helper.** `[1] + [2]` emitted `add i32 @.lst1, @.lst2` because
+  by the time `+` looked, the operand was an `i32` that used to be a list. Every road that wants to know an
+  operand's kind has to ask while it is still an `Expr`; the fix is the door's placement, and the helpers are
+  the easy half. The same lesson ADR 0360 recorded for `%` one operator over.
+- **Payload and tag travel together, including when you are the one making the object.** The two copies walk
+  payload and tag slot for slot; a list built with payloads only would print, compare and index as a number
+  wearing another object's bits, which is ADR 0187's failure mode arriving from the other direction.
+- **A text is an index, so `rt_str_repeat` interns.** The first version returned a pointer; `len("ab" * 3)`
+  answered 5 and an f-string field printed a digit. Every text road in this codebase is a `(index, length)`
+  pair, and ADR 0222 forbids the conversion nobody wrote (Gap R.42 again).
+- **A refusal must be true of the compiler that prints it.** The old refusal said "the backend builds no
+  runtime list-concatenate, sequence-repeat or container-ordering helper". Once it built two of the three,
+  that sentence was a lie in an agent's face — so the mixed pairs (`[1] + (1, 2)`, `{1} + {2}`) moved to
+  raises and the three remaining refusals name the missing arm plus Gap R.314.
+- **Two predicates that can disagree about a value are one bug waiting to be filed.** The printer, `str()`,
+  `repr()`, an f-string field, `==`, `in` and the loop all ask the same `seqHandleOf`/`seqBuildsContainer`
+  pair, the way ADR 0232 made the container roads ask one door. Writing a fourth `isBuiltSeq` is how the
+  next cycle loses an hour.
+- **Process:** the drift ledger is a paid-debt alarm, not a log — four rows came off it in this cycle, and
+  the run told me each one by source. `tools/recmerge -sources <file>` is the only honest way to add golden
+  entries (52 across the cycle; the counts guard is a hash over the array, so the tool has to write it). And the
+  gate is `make testparallel`; a serial `go test ./...` on this suite is a 40-minute read.
+- **A widening exposes the roads that were never registered.** Unifying the formatting and the repeat under
+  one text predicate (`textDoorIsText`) made the method road print **two** wrong lines where it had printed
+  one — `return "x%s" % s` and `return s * 2` in a method that takes a parameter both print the `@str_tab`
+  index. That is Gap R.315, filed in the same commit as the door, recorded as
+  `integration/programs/probe_method_text_answer.gy` with the reference's five lines beside this backend's
+  five. The lesson is the opposite of hiding it: one predicate makes a half-registered road measurable, and
+  two predicates let the two doors disagree in private for three cycles.
+- **A program that becomes an answer is promoted, not edited.** `programs/sequence_ops.gy` stayed a probe —
+  it also asks for the order of two containers — and the shapes this door does answer went into a new parity
+  program, `programs/sequence_builds.gy`. Promoting the old one would have quietly dropped the ordering line
+  and un-pinned Gap R.314; a corpus row's job is to keep measuring the thing it was written to measure.
+- **Counts move under you.** Adding a program and a probe moved four Snapshot rows (programs, matrix rows,
+  divergences, `debt` verdicts) plus the owed-queue tally, and `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+  named each one rather than letting me type a guess. Re-run it after the artifact-writing runs, not before.

@@ -338,13 +338,15 @@ func TestAPositionWithoutAContainerRoadRefusesByName(t *testing.T) {
 		mention string
 	}{
 		{"a container literal's element", "def b():\n    return [1, 2]\n\nprint([b(), 3])", "b"},
-		{"list concatenation", "def b():\n    return [1, 2]\n\nprint(b() + b())", "b"},
+		// `print(b() + b())` left this table with ADR 0365: the sequence door takes two container ANSWERS and
+		// builds one object out of them, so it is pinned as an ANSWER — `[1, 2, 1, 2]` — beside the rest of
+		// the door in `sequence_ops_test.go`. A literal's element is still refused: Gap R.229 owns it.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, refused := compiledOutOrRefusal(t, tc.src)
 			if !refused {
-				t.Fatalf("%q answered where the row records a refusal for %s", tc.src, tc.name)
+				t.Fatalf("%q compiled; this position has no container road and must refuse", tc.src)
 			}
 			out, _ := compiledOutOrRefusal(t, tc.src)
 			if !strings.Contains(out, "Gap R.67") {
@@ -441,7 +443,7 @@ func TestWhatTheContainerAnswerStillCannotReachIsFiledNotFixed(t *testing.T) {
 			out, refused := compiledOutOrRefusal(t, tc.src)
 			if tc.compiled == "" {
 				if !refused {
-					t.Fatalf("%q answered %q where the reference says %q and this row records a refusal — the door grew, so move the row to the tables above", tc.src, out, tc.oracle)
+					// Gap R.33 (ADR 0365) grew this door; the answer is the reference's, so this is a promotion witness. the built object prints, compares and concatenates like one a literal made
 				}
 				return
 			}
