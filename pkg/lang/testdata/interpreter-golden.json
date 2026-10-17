@@ -1,5 +1,58 @@
 {
  "entries": {
+"def m(v):\n    return (lambda f, g: f(g(v)))(lambda a: a + 1, lambda b: b * 2)\n\nprint(m(3))\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    base = 4\n    return [(lambda f: f(x) + base)(lambda y: y * 2) for x in [1, 2]]\n\nprint(outer())\n": {
+    "stdout": "[6, 8]\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    total = 6\n    return (lambda f, k=2: f(k) * total)(lambda n: n * 10)\n\nprint(outer())\n": {
+    "stdout": "120\n",
+    "hasStdout": true
+   },
+
+"def runner():\n    base = 4\n    return (lambda f: f(2) + base)(lambda y: y * 3)\n\nprint(runner())\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"def twice(v):\n    return (lambda f, g: f(g(v)))(lambda a: a + 1, lambda b: b * 4)\n\nprint(twice(3))\n": {
+    "stdout": "13\n",
+    "hasStdout": true
+   },
+"def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return (lambda f, k=3: f(k) + v)(lambda a: a * 2)\n\nprint(g(5))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
+
+"def h(a, b):\n    return (lambda f: f(a) + b)(lambda z: z * 2)\n\nprint(h(3, 4))\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"def k():\n    t = 7\n    return (lambda f: f(1) + t)(lambda z: z * 2)\n\nprint(k())\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"def m(v):\n    return (lambda f, g: f(g(v)))(lambda a: a * 2, lambda b: b + 1)\n\nprint(m(3))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"print([(lambda h: h(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n": {
+    "stdout": "[4, 6, 8]\n",
+    "hasStdout": true
+   },
 "def apply(f, y=10):\n    return f(y)\n\nprint(apply(lambda x: x + 1))\n": {
     "stdout": "11\n",
     "hasStdout": true

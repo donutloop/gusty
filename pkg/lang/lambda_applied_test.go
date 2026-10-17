@@ -86,6 +86,43 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 			"def use(f, g=lambda v: v + 4):\n    return f(g(2))\n\nprint(use(lambda n: n * 10))\n",
 			"60\n",
 		},
+		{
+			// roadmap L11.7 · Gap R.334 (ADR 0372): the union the two ADR-0370 roads never made. The body
+			// calls one of its own parameters AND reads a name the frame around the application owns — each
+			// half answered alone before; the clone now carries the entries its calls name beside one capture
+			// parameter per free name, and the call road fills each from the caller's own reading.
+			"a capture read by a body that calls its own parameter",
+			"def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n",
+			"12\n",
+		},
+		{
+			// All three rules in one body: an entry, a capture, and a slot the application left to its default.
+			"a capture, a called parameter and an omitted default in one body",
+			"def g(v):\n    return (lambda f, k=3: f(k) + v)(lambda a: a * 2)\n\nprint(g(5))\n",
+			"11\n",
+		},
+		{
+			"two captures beside one entry",
+			"def h(a, b):\n    return (lambda f: f(a) + b)(lambda z: z * 2)\n\nprint(h(3, 4))\n",
+			"10\n",
+		},
+		{
+			// The captured name is a LOCAL of the frame, not its parameter: the list is the names the body is
+			// free in, and the frame's own table decides whether that is a capture at all.
+			"a local of the frame captured by a body that calls its parameter",
+			"def k():\n    t = 7\n    return (lambda f: f(1) + t)(lambda z: z * 2)\n\nprint(k())\n",
+			"9\n",
+		},
+		{
+			"two entries and one capture",
+			"def m(v):\n    return (lambda f, g: f(g(v)))(lambda a: a * 2, lambda b: b + 1)\n\nprint(m(3))\n",
+			"8\n",
+		},
+		{
+			"a capture read by a body that calls its parameter, applied in a comprehension",
+			"print([(lambda h: h(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n",
+			"[4, 6, 8]\n",
+		},
 	}
 }
 
@@ -287,6 +324,59 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			name: "a higher-order recursion that omits its own defaulted parameter",
 			src:  "def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n",
 			want: "is called but is not a function this backend can build a call to",
+		},
+		{
+			// The capture reaches PAST the frame the application is written in. The nested-`def` lift (ADR 0245)
+			// owns that frame's names, and the L11.7 dependency note says the lift does not compose with this
+			// pass — the read of `a` two frames up stays the ordinary road's sentence (roadmap Gap R.330, and the
+			// half of Gap R.334 the nested-`def` lift still owes).
+			name: "a capture two frames up, read by a body that calls its own parameter",
+			src:  "def outer(a):\n    def inner(b):\n        return (lambda f: f(1) + a + b)(lambda z: z * 3)\n    return inner(2)\n\nprint(outer(4))\n",
+			want: "is called but is not a function",
+		},
+		{
+			// The frame that owns the captured name is a METHOD frame: its parameter arrives from the method
+			// call road, which is no call a capture's type can be asked of. The gate says so in ADR 0370's
+			// sentence — and names the callable `<lambda>()`, the reader-facing name ADR 0345 §3 keeps in a
+			// traceback and in a diagnostic alike, rather than the symbol the pass minted for the clone.
+			name: "a capture read by a body that calls its own parameter, in a method frame",
+			src:  "class Foo:\n    def bar(self, x):\n        return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(Foo().bar(3))\n",
+			want: `reads "x" from the frame that encloses it`,
+		},
+		{
+			// A capture whose value is not a number is L11.1's, however the body uses its parameter: the gate
+			// is asked before the body is emitted, so no clone of a container-reading body reaches the printer
+			// as a heap handle (roadmap Gap R.332, ADR 0273).
+			name: "a container capture read by a body that calls its own parameter",
+			src:  "def f(b):\n    return (lambda h: h(1) + len(b))(lambda q: q * 10)\n\nprint(f([1, 2]))\n",
+			want: "holds a container",
+		},
+		{
+			// The ENTRY-side twin of the union Gap R.334 paid. Here the lambda that reads the caller's frame is
+			// not the body the application applies but the ARGUMENT the callee calls — and an entry is a bare
+			// symbol, so `base` has no word to travel in, the pass declines, and the ordinary road answers with
+			// its generic sentence (roadmap Gap R.336). The account says the true thing:
+			// TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame pins the sentence the pass writes, and the
+			// terminal will carry it too once Gap R.337 lets a decline reach the refusal.
+			name: "an entry lambda that reads the frame its application is written in",
+			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			want: "is called but is not a function",
+		},
+		{
+			// The same decline with the callee's parameter CALLED TWICE, so the clone would have to forward the
+			// entry's capture word through the callee's own clone — the shape that makes Gap R.336 more than the
+			// one-line fix Gap R.334 was.
+			name: "an entry lambda that reads its frame, called twice by a higher-order def",
+			src:  "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+			want: "is called but is not a function",
+		},
+		{
+			// The capture is the LOOP TARGET of the frame the application is written in, on both sides at once:
+			// the body reads `shift` and the entry reads `step`. The body side is Gap R.334's and answers; the
+			// entry side is Gap R.336's, and the whole program is handed back to the ordinary road.
+			name: "an entry lambda that reads the loop target of the frame around its application",
+			src:  "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			want: "is called but is not a function",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -551,6 +641,121 @@ func TestWhatTheCallablesAccountSaysTheRecursionLeftASlotOut(t *testing.T) {
 	}
 	if len(rep.Refused) != 1 || !strings.Contains(rep.Refused[0], "recurses at line") {
 		t.Fatalf("the decline does not name the recursion audit: %v", rep.Refused)
+	}
+}
+
+// The account's witness for the entry-side twin Gap R.336 files: the pass knows WHICH name is the reason it
+// declined — the one the entry lambda reads out of the frame its application is written in — and it says so in
+// `refused`, naming the missing machinery and the row. The terminal cannot see that sentence yet (Gap R.337), so
+// the account is where the honest wording is pinned (ADR 0372).
+func TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame(t *testing.T) {
+	for _, tc := range []struct{ src, name string }{
+		{
+			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			name: "base",
+		},
+		{
+			src:  "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+			name: "base",
+		},
+		{
+			src:  "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			name: "step",
+		},
+	} {
+		doc, err := CallablesJSON(tc.src)
+		if err != nil {
+			t.Fatalf("a decline is still a document: %v", err)
+		}
+		var rep struct {
+			Rewritten bool     `json:"rewritten"`
+			Refused   []string `json:"refused"`
+		}
+		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
+		}
+		if rep.Rewritten || len(rep.Refused) != 1 {
+			t.Fatalf("the pass rewrote a program whose entry reads a frame: %s", doc)
+		}
+		for _, want := range []string{`reads "` + tc.name + `"`, "an entry is a bare symbol", "Gap R.336"} {
+			if !strings.Contains(rep.Refused[0], want) {
+				t.Fatalf("the entry refusal omits %q:\n%v", want, rep.Refused)
+			}
+		}
+	}
+}
+
+// The module shape of the union Gap R.334 opened: a clone of an applied `lambda` that calls one of its own
+// parameters AND reads the frame around its application carries BOTH lists — the entries its calls name, in
+// `calledPos` order, and one capture parameter per free name — and the call the caller emits fills the capture
+// from its OWN reading of that name (`i32 %p0`, the caller's parameter word), never a copy of the value. The
+// clone builds its call to the entry by name; no `fnptr` operand, no indirect `call` (roadmap L11.7 · Gap R.334,
+// ADR 0372).
+func TestWhatAClonedLambdaCarriesItsEntriesAndItsCaptures(t *testing.T) {
+	mod := compileSrc(t, "def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n")
+	clone := ""
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "define ") && strings.Contains(line, callableCloneInfix) {
+			clone = strings.TrimSpace(line)
+			break
+		}
+	}
+	if clone == "" {
+		t.Fatalf("the pass emitted no clone for the applied lambda:\n%s", headLines(mod, 40))
+	}
+	// One parameter for the entry the body calls, one for the capture it reads.
+	if n := strings.Count(clone, "i32 %p"); n != 2 {
+		t.Fatalf("the clone does not carry the entries AND the captures: %q", clone)
+	}
+	// The caller hands in the placeholder for the entry and its OWN word for the captured name.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*` + regexp.QuoteMeta(callableCloneInfix) + `[0-9a-f]*_\d+\(i32 0, i32 %p\d+\)`).MatchString(mod) {
+		t.Fatalf("the call does not fill the capture from the caller's own reading:\n%s", headLines(mod, 60))
+	}
+	// The clone calls the entry directly — the tuple, not a value.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*\$lambda\$[0-9a-f]+_\d+\(i32 1\)`).MatchString(mod) {
+		t.Fatalf("the clone does not call the entry directly:\n%s", headLines(mod, 60))
+	}
+	for _, junk := range []string{"ptrtoint", "inttoptr"} {
+		if strings.Contains(mod, junk) {
+			t.Fatalf("module contains the junk shape %q:\n%s", junk, headLines(mod, 40))
+		}
+	}
+}
+
+// The account's witness for the union: `capture_parameters` says how many capture parameters the declarations
+// this pass minted carry, which is the number that separates a clone of Gap R.265's self-contained body from a
+// clone of Gap R.334's capturing one (ADR 0372).
+func TestWhatTheCallablesAccountCountsTheCapturesOnAClone(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want int
+	}{{
+		src:  "print((lambda f: f(3))(lambda x: x * 2))\n",
+		want: 0,
+	}, {
+		src:  "def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n",
+		want: 1,
+	}, {
+		src:  "def h(a, b):\n    return (lambda f: f(a) + b)(lambda z: z * 2)\n\nprint(h(3, 4))\n",
+		want: 2,
+	}} {
+		doc, err := CallablesJSON(tc.src)
+		if err != nil {
+			t.Fatalf("the account failed for %q: %v", tc.src, err)
+		}
+		var rep struct {
+			Rewritten         bool `json:"rewritten"`
+			CaptureParameters int  `json:"capture_parameters"`
+		}
+		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
+		}
+		if !rep.Rewritten {
+			t.Fatalf("the pass handed this program back: %s", doc)
+		}
+		if rep.CaptureParameters != tc.want {
+			t.Fatalf("capture_parameters = %d, want %d for %s", rep.CaptureParameters, tc.want, tc.src)
+		}
 	}
 }
 

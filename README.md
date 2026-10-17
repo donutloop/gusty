@@ -90,10 +90,14 @@ gusty ships an indentation-based syntax covering:
   application may leave a parameter out because the entry tuple is the list of functions the BODY asks for — an omitted
   slot arrives with its default, and a called omitted slot with the function that default names, so
   `(lambda f, y=10: f(y))(lambda x: x + 1)` is `11` and `def apply(f, y=10): return f(y)` applied to one argument is
-  `11` too (**ADR 0371**, roadmap L11.7 · **Gap R.265**, **Gap R.276**, **Gap R.329**). A capture whose value is not a
-  number, a capture three frames up, a capture read by a body that also calls its own parameter, and an omitted slot
-  whose default is not a function the compiler can name refuse in words instead of printing a word whose kind nobody
-  asked for (**Gap R.330**–**R.332**, **Gap R.334**).
+  `11` too (**ADR 0371**, roadmap L11.7 · **Gap R.265**, **Gap R.276**, **Gap R.329**). The two lists a clone needs are
+  a union: a body that calls one of its own parameters AND reads the frame around its application gets the entries beside
+  one capture parameter per free name, so `def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)` applied is `12`,
+  `def g(v): return (lambda fn, n=3: fn(n) + v)(lambda a: a * 2)` is `11`, and
+  `[(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]]` is `[4, 6, 8]` (**ADR 0372**, **Gap R.334**). A capture
+  whose value is not a number, a capture three frames up, the ENTRY of a higher-order `def` reading the caller's frame,
+  and an omitted slot whose default is not a function the compiler can name refuse in words instead of printing a word
+  whose kind nobody asked for (**Gap R.330**–**R.332**, **Gap R.336**).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local

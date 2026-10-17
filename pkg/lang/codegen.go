@@ -128,6 +128,17 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// the same "asked of the program, not of the emission order" rule as the pair arity above).
 	g.program = prog
 	g.lambdaOrigin = map[*FuncDef]*Lambda{}
+	// A clone the defunctionalisation pass minted for an applied `lambda` that reads the frame around its
+	// application carries one extra parameter per captured name, and the call road fills those by name — so the
+	// list has to be on the table BEFORE the first call is lowered, which is the same "asked of the program,
+	// not of the emission order" rule the pair arity above reads by (roadmap L11.7 · Gap R.334, ADR 0372).
+	// The closure road fills the same table from the other end, at the moment it emits a `lambda`.
+	g.lambdaCaptures = map[string][]string{}
+	for _, s := range prog.Stmts {
+		if fd, ok := s.(*FuncDef); ok && len(fd.Captures) > 0 {
+			g.lambdaCaptures[fd.Name] = append([]string(nil), fd.Captures...)
+		}
+	}
 	// Which functions hand back a container, and which one: asked of the whole program, before any IR
 	// exists, so a `def` written below its first call and a call written below that `def` read one answer
 	// (roadmap Gap R.67, ADR 0333; the same statelessness ADR 0273 requires of the pair road's arity).

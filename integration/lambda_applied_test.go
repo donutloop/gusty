@@ -120,6 +120,33 @@ var lambdaAppliedCLIPrograms = []struct{ name, src string }{
 		"the def road with a called slot left to a lambda default",
 		"def use(f, g=lambda v: v + 4):\n    return f(g(2))\n\nprint(use(lambda n: n * 10))\n",
 	},
+	{
+		// roadmap L11.7 · Gap R.334 (ADR 0372): the body BOTH calls one of its own parameters AND reads a
+		// name from the frame the application is written in. Each half answered alone before; the clone now
+		// carries the entries its calls name AND one capture parameter per free name.
+		"a capture read by a body that calls its own parameter",
+		"def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n",
+	},
+	{
+		"a capture, a called parameter and an omitted default in one body",
+		"def g(v):\n    return (lambda f, k=3: f(k) + v)(lambda a: a * 2)\n\nprint(g(5))\n",
+	},
+	{
+		"two captures beside one entry",
+		"def h(a, b):\n    return (lambda f: f(a) + b)(lambda z: z * 2)\n\nprint(h(3, 4))\n",
+	},
+	{
+		"a local of the frame, not its parameter, captured by a body that calls its parameter",
+		"def k():\n    t = 7\n    return (lambda f: f(1) + t)(lambda z: z * 2)\n\nprint(k())\n",
+	},
+	{
+		"two entries and one capture",
+		"def m(v):\n    return (lambda f, g: f(g(v)))(lambda a: a * 2, lambda b: b + 1)\n\nprint(m(3))\n",
+	},
+	{
+		"a capture read by a body that calls its parameter, applied in a comprehension",
+		"print([(lambda h: h(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n",
+	},
 }
 
 // lambdaAppliedRefusalPrograms is the family the door cannot answer: each `want` is the sentence half the
@@ -173,10 +200,11 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"is called but is not a function",
 	},
 	{
-		// A capture read by a body that also calls its own parameter: the clone would have to carry the
-		// captured name beside the tuple of entries (roadmap Gap R.334).
-		"a capture read by a body that calls its own parameter",
-		"def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n",
+		// The capture reaches PAST the frame the application is written in, into the one that encloses it:
+		// the nested `def` lift (ADR 0245) owns that frame's names and does not compose with this pass yet
+		// (roadmap Gap R.330, and the half of Gap R.334 the lift still owes).
+		"a capture two frames up, read by a body that calls its own parameter",
+		"def outer(a):\n    def inner(b):\n        return (lambda f: f(1) + a + b)(lambda z: z * 3)\n    return inner(2)\n\nprint(outer(4))\n",
 		"is called but is not a function",
 	},
 	{
@@ -185,6 +213,31 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"the omission written inside a method body",
 		"class Box:\n    def show(self, f, y=10):\n        return f(y)\n\nprint(Box().show(lambda x: x + 2))\n",
 		"a lambda used as a value",
+	},
+	{
+		// The ENTRY-side twin of the union Gap R.334 paid: the lambda that reads the frame its application is
+		// written in is the ARGUMENT a higher-order `def` calls, and an entry is a bare symbol — the word
+		// `base` holds has nowhere to travel. The pass declines it by name (`--callables` says which name), and
+		// the ordinary road answers with its generic sentence until Gap R.337 lets the decline reach the
+		// refusal. The reference answers `4`.
+		"an entry lambda that reads the frame its application is written in",
+		"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+		"is called but is not a function",
+	},
+	{
+		// The same entry read, with the callee's parameter called TWICE: the clone would have to forward the
+		// entry's capture word through the callee's own clone (roadmap Gap R.336). The reference answers `11`.
+		"an entry lambda that reads its frame, called twice by a higher-order def",
+		"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+		"is called but is not a function",
+	},
+	{
+		// Both sides of the union at once: the body reads the frame's local `shift` (Gap R.334, answers) and
+		// the entry reads the frame's loop target `step` (Gap R.336, declines), and an all-or-nothing pass
+		// hands the whole program to the ordinary road. The reference answers `72`.
+		"an entry lambda that reads the loop target of the frame around its application",
+		"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+		"is called but is not a function",
 	},
 }
 

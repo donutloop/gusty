@@ -765,6 +765,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the application is written on — a `def` body, a method, a comprehension, a `for` body, an alias.
 		// Every group is line for line CPython (roadmap L11.7 · Gap R.265, Gap R.276, Gap R.329; ADR 0370).
 		"lambda_applied_entry_tuple",
+		// The union the two ADR-0370 roads never made: an applied `lambda` whose body BOTH calls one of its
+		// own parameters AND reads a name the frame around the application owns. The clone carries the entries
+		// its calls name and one capture parameter per free name, and the call fills each capture from the
+		// caller's OWN reading of that name. Every group is line for line CPython
+		// (roadmap L11.7 · Gap R.334; ADR 0372).
+		"lambda_applied_capture_entry",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

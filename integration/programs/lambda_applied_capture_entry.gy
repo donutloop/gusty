@@ -1,0 +1,69 @@
+# integration/programs/lambda_applied_capture_entry.gy — roadmap L11.7 · Gap R.334; ADR 0372.
+#
+# The union the two ADR-0370 roads never made. A `lambda` applied where it is written can BOTH call one of
+# its own parameters AND read a name the frame around the application owns: the defunctionalisation pass
+# gives the clone the entries its calls name, in the order the body calls them, AND one capture parameter
+# per free name, and the call the caller emits fills every capture from its OWN reading of that name — the
+# caller's parameter word, never a copy of the value. Each half answered alone before this row; neither
+# door opened the other, and the pair was refused (roadmap Gap R.334).
+#
+# Every group prints line for line what the reference prints — the matrix's job, and the reason no trap, no
+# `import`, no container and no two-frame capture sits in this file: a capture that reaches PAST the frame
+# the application is written in belongs to the `def` lift of ADR 0245, a capture handed to a HIGHER-ORDER
+# `def` as an argument is the entry-side twin roadmap Gap R.336 owns, and a capture whose value is a
+# container needs the value word that carries its own kind (roadmap L11.1).
+
+# A parameter that is CALLED and a name that is READ, in one body.
+def f(x):
+    return (lambda h: h(1) + x)(lambda q: q * 10)
+
+print(f(2))
+
+# Two captures beside one entry, and a capture that is a LOCAL of the frame rather than its parameter.
+def h(a, b):
+    return (lambda g: g(a) + b)(lambda z: z * 2)
+
+print(h(3, 4))
+
+def k():
+    t = 7
+    return (lambda g: g(1) + t)(lambda z: z * 2)
+
+print(k())
+
+# The three rules in one body: the entry the body calls, the capture it reads, and the slot the application
+# left out — which arrives with its default, read from the prototype rather than from the call.
+def g(v):
+    return (lambda fn, n=3: fn(n) + v)(lambda a: a * 2)
+
+print(g(5))
+
+# Two entries and the frame's own local handed between them.
+def m(v):
+    return (lambda fn, other: fn(other(v)))(lambda a: a * 2, lambda b: b + 1)
+
+print(m(3))
+
+# One body, two tuples, each with its own capture: the same lambda applied to two different functions gets
+# two clones, and every clone carries the reads of the frame the application is written in beside the entry
+# its call names.
+def uses(v):
+    base = 1
+    a = (lambda fn: fn(v) + base)(lambda x: x * 3)
+    b = (lambda fn: fn(v) + base)(lambda x: x * 4)
+    return a + b
+
+print(uses(5))
+
+# The application written where a statement is a call, inside a frame that owns the loop's target: the target
+# the body reads travels as a capture parameter beside the entry the body calls.
+def stepper():
+    total = 0
+    for step in [1, 2, 3]:
+        total = total + (lambda fn: fn(step) + 1)(lambda n: n * 2)
+    return total
+
+print(stepper())
+
+# The comprehension road: the target the body reads travels as a capture parameter beside the entry.
+print([(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])

@@ -137,9 +137,15 @@ type FuncDef struct {
 	// CloneOf names the original this generated clone was copied from; "" for a definition the source had.
 	// Traceback names are minted from it, so a frame reads as the function the human wrote rather than as
 	// the pass's internal spelling.
-	CloneOf    string `json:"-"`
-	Decorators []Expr `json:"decorators,omitempty"`
-	Src        Span   `json:"span,omitempty"`
+	CloneOf string `json:"-"`
+	// Captures names the extra parameters this GENERATED declaration gained for the names its body reads from
+	// the frame that encloses it: the same list the closure road appends when it emits a `lambda` as a
+	// `define` (ADR 0370), carried on the node because the defunctionalisation pass — not the frame the
+	// lambda is written in — minted this declaration, and the call road fills the parameters by name
+	// (roadmap L11.7 · Gap R.334, ADR 0372). nil for a definition the source wrote.
+	Captures   []string `json:"-"`
+	Decorators []Expr   `json:"decorators,omitempty"`
+	Src        Span     `json:"span,omitempty"`
 }
 
 func (n *FuncDef) Span() Span { return n.Src }

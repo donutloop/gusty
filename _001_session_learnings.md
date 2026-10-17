@@ -12572,3 +12572,60 @@ printed by the tool for a source printed beside it.
   any of them is missing. `integration/programs/lambda_applied_entry_tuple.gy` joined the matrix (222 → 223 programs,
   209 → 210 rows), and the Snapshot row's numbers are the artifact's — the guard quoted the right ones back at me and
   editing the prose is the fix, not relaxing the test.
+
+## ADR 0372 — a clone carries the entries its calls name AND the names its body reads (L11.7, Gap R.334, Gap R.336, Gap R.337, 2026-10-19)
+
+- **Two roads built in one cycle are not one road.** ADR 0370 gave an applied `lambda` its clone (parameters for the
+  entries its calls name, from `calledPos`) and gave a hoisted `lambda` its captures (a parameter per free name, via
+  `captureParamWord`) — and no body was ever asked for both, because the entry audit declined the program before the
+  capture road was consulted. `def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)` is the reference's `12`, and the
+  two halves answered `8` and `10` on the same build; that contrast was the whole localisation, and the fix was the
+  union the row's own plan had already named. The lesson generalises: when a pass grows a second property, ask which
+  body needs BOTH, and write that program first.
+- **The moment a fact can be read is part of the design.** The capture list is `lambdaFrameCaptures`'s answer, and that
+  question needs the frame the APPLICATION is written in — which only exists inside the pass, at the site, with
+  `r.encs[rank]` in hand. Asking it at emission time is asking it after the caller has been forgotten; asking it twice
+  in two places is two answers. So the pass asks the closure road's own reader and ships the answer on the node it
+  minted (`FuncDef.Captures`, `json:"-"` beside `SkipEmit` and `CloneOf`: `--emit-ast` and `gusty fmt` speak the source,
+  ADR 0320), and `GenerateIRReport` puts it in `g.lambdaCaptures` before the first call is lowered — the same
+  "asked of the program, not of the emission order" rule the pair-arity and container-answer scans already read by.
+- **Never grow a parameter list the source wrote.** My first draft appended the capture parameters to the enclosing
+  `def`'s own `Params`, and `def h(a, b): return (lambda f: f(a) + b)(lambda z: z * 2)` died with
+  `codegen: missing argument "b" for h`: the emitter was checking `h(3, 4)` against a prototype nobody wrote, and the
+  error named a parameter of the caller for a problem in a clone. Only the GENERATED declaration may grow, and every
+  audit needs to know which parameters the human typed — hence `callableFn.srcParams`, which the ADR 0371 arity rules
+  now read instead of `len(def.Params)`.
+- **A capture is filled with the caller's word, not with the value.** The emitted call for `def h(a, b)` reads
+  `call i32 @gy_h$lambda$…$callable$…(i32 0, i32 %p0, i32 %p1)`: the ADR 0371 placeholder at the entry and the caller's
+  own parameter words for the captures. Copying the value would print the same bytes for every program in the tables and
+  be wrong for the ones that rebind the local after the application — and it would need a word per kind, which is
+  L11.1's unmade machinery. Fidelity to the caller's read is also what keeps a captured local alive across the call.
+- **Determinism is a property of a list order, not of a hash function.** The capture list is sorted before it becomes
+  parameters; a map iteration would mint a different `define` per run and break the pass's own hash test (ADR 0273's
+  statelessness, which `--callables`' digest is the witness for).
+- **An account field earns its place by separating the case from its control.** `capture_parameters` is `0` for
+  `(lambda f: f(3))(lambda x: x * 2)`, `1` for this row's program, `2` for the two-capture one. Without it, `clones:1`,
+  `rewritten:true` and a hash described ADR 0370's self-contained clone and this clone identically, and an agent reading
+  the JSON could not tell which road answered.
+- **A refusal the reader sees can be a different sentence from the one the compiler knows, and both must be pinned.**
+  The entry-side twin — `def use(seed): base = 1; return apply1(lambda x: x + base, seed)`, the reference's `4` — is
+  declined by the pass, whose account now says `an entry lambda reads "base" from the frame its application is written
+  in … (Gap R.336)`, while the terminal still prints the ordinary road's `"fn" is called but is not a function …
+  (roadmap L11.1, ADR 0166)`, because `defunctionalizeCallables` swallows the decline and the emitter says what IT knows.
+  The old decline sentence (`a lambda passed to a parameter reads that parameter's function`) described none of these
+  programs — the name belongs to the caller, not the callee — so it was replaced with one that names the word and the
+  row, and the gap between the two surfaces is filed as **Gap R.337** rather than fixed under this row's name: it
+  changes no decision, and pretending otherwise would have made ADR 0372's tables untestable.
+- **The declined shape is where the next row lives, and it lives on the OTHER side of the same union.** The body side
+  reads the caller's frame through a capture parameter; the ENTRY side cannot, because ADR 0345 made an entry a bare
+  symbol. Giving an entry captures means the callee's clone carries them too and the clone's identity becomes the pair
+  (entry symbols, each entry's capture list), not the tuple ADR 0345/0364 hash. That is **Gap R.336**, and the hard
+  spelling — `def stepper(): … (lambda fn: fn(2) + shift)(lambda n: n * step)`, where the body reads `shift` (R.334's,
+  answers) and the entry reads `step` (R.336's, declines), and an all-or-nothing pass hands the whole program to the
+  ordinary road — is pinned instead of a soft one, because the soft one could be closed by accident.
+- **The record leg again had nothing to check.** None of the six union shapes was in
+  `pkg/lang/testdata/interpreter-golden.json`; ten sources went to `tools/recmerge` (7833 → 7844, five new), and one
+  candidate never got a record at all: the two-frames-up program is refused by this backend, so the recorder refuses to
+  write it — which is the rule that keeps a divergence on the table instead of in a file.
+  `integration/programs/lambda_applied_capture_entry.gy` joined the matrix (223 → 224 programs, 210 → 211 rows,
+  178 → 179 asserted, 164 → 165 oracle `match`), and the Snapshot's numbers moved because the artifact said they should.

@@ -103,6 +103,13 @@ type callableReport struct {
 	// `(lambda f, y=10: f(y))(lambda x: x + 1)` from its own twin `(…)(lambda x: x * 2, 5)`, which are
 	// otherwise the same clone.
 	OmittedArguments int `json:"omitted_arguments"`
+	// CaptureParameters counts the capture parameters this pass wrote onto the declarations it minted: a
+	// clone of an applied `lambda` that reads the frame around its application gains one parameter per name
+	// its body is free in, and the call road fills each from the caller's own reading. Zero means every clone
+	// this program needed was self-contained — the shape ADR 0370 cloned — while a non-zero count is the
+	// witness that a body that calls its own parameter ALSO carried a capture (roadmap L11.7 · Gap R.334,
+	// ADR 0372).
+	CaptureParameters int `json:"capture_parameters"`
 	// HigherOrderLambdas counts the lambdas that were cloned: a lambda applied where it is written whose
 	// body calls one of its own parameters is a higher-order body with no name in the source, and the pass
 	// gives it a declaration, clones it once per tuple its called parameters are asked to be, and points
@@ -679,6 +686,12 @@ type callableFn struct {
 	// by calling itself (roadmap Gap R.267, ADR 0364).
 	self   []*callableSelfSite
 	clones []*callableClone
+	// srcParams is how many parameters the PROGRAM wrote for this body. A clone of an applied `lambda` that
+	// reads the enclosing frame carries one more parameter per captured name (the closure road's rule, moved
+	// onto the node the pass minted), and those are not positions an application may name: the audit that
+	// decides whether a call fills the body is read against the source's parameters alone (roadmap L11.7 ·
+	// Gap R.334, ADR 0372).
+	srcParams int
 }
 
 // callableSite is a call of a higher-order function from outside every higher-order body.
@@ -863,7 +876,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if why := callableSelfDeclines(fn, self, positions); why != "" {
 			return nil, callableDeclinef("%s", why)
 		}
-		cf := &callableFn{def: fn, paramPos: map[string]int{}, calledPos: positions}
+		cf := &callableFn{def: fn, paramPos: map[string]int{}, calledPos: positions, srcParams: len(fn.Params)}
 		for i, p := range fn.Params {
 			cf.paramPos[p.Name] = i
 		}
@@ -911,12 +924,22 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if r.inLambda[rank] {
 			continue // a call written inside a lambda is the closure road's frame, not this pass's
 		}
-		if !callableLambdaIsSelfContained(lam) || callableLambdaBodyBlocked(lam) {
+		if callableLambdaBodyBlocked(lam) {
 			continue
 		}
 		positions, ok := r.lambdaCalledParams(lam)
 		if !ok || len(positions) == 0 {
 			continue
+		}
+		// A `lambda` that reads a name its own parameters do not bind crosses that name into the generated
+		// function as a parameter the call site fills — the closure road's rule (ADR 0370), asked here because
+		// it is this pass that mints the declaration a CLONE is copied from. Before this, an applied lambda
+		// was registered only while it read nothing outside itself, so a body that BOTH calls one of its own
+		// parameters AND reads the frame was declined by the entry audit before the capture road was ever
+		// consulted; the two roads had been built in one cycle and never met (roadmap L11.7 · Gap R.334).
+		captures, capturable := callableLambdaCaptures(r.encs[rank], prog, lam)
+		if !capturable {
+			continue // a name past the frame the application is written in: the closure lift's, not this pass's
 		}
 		body := copyASTExpr(lam.Body)
 		if body == nil {
@@ -932,14 +955,18 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 			Body:   []Stmt{&ReturnStmt{Expr: body, Src: lam.Span()}},
 			Src:    lam.Span(),
 		}
+		for _, c := range captures {
+			def.Params = append(def.Params, &Param{Name: c, Src: lam.Span()})
+		}
+		def.Captures = captures
 		def.CloneOf = callableAnonymousName
-		cf := &callableFn{def: def, paramPos: map[string]int{}, calledPos: positions, fromLambda: lam}
+		cf := &callableFn{def: def, paramPos: map[string]int{}, calledPos: positions, fromLambda: lam, srcParams: len(lam.Params)}
 		for i, p := range def.Params {
 			cf.paramPos[p.Name] = i
 		}
 		plan.fns[name] = cf
 		plan.order = append(plan.order, cf)
-		plan.arity[name] = len(def.Params)
+		plan.arity[name] = len(lam.Params)
 		plan.hoistedHO = append(plan.hoistedHO, def)
 		if plan.lambdaHO == nil {
 			plan.lambdaHO = map[*Lambda]*callableFn{}
@@ -1210,7 +1237,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 			site.slots = append(site.slots, entry)
 		}
 		site.grow = callableSiteFill(c, cf)
-		site.omitted = len(cf.def.Params) - len(c.Args)
+		site.omitted = cf.srcParams - len(c.Args)
 		cf.sites = append(cf.sites, site)
 	}
 
@@ -1240,7 +1267,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 				site.slots = append(site.slots, entry)
 			}
 			site.grow = callableSiteFill(c, cf)
-			site.omitted = len(cf.def.Params) - len(c.Args)
+			site.omitted = cf.srcParams - len(c.Args)
 			cf.sites = append(cf.sites, site)
 		}
 		if len(cf.sites) == 0 {
@@ -1582,8 +1609,13 @@ func (p *callablePlan) resolve(r *callableRead, e Expr, enc *FuncDef) (string, e
 		p.arity[x.Value] = len(fd.Params)
 		return x.Value, nil
 	case *Lambda:
-		if !callableLambdaIsClosed(r, x, enc) {
-			return "", callableDeclinef("a lambda passed to a parameter reads that parameter's function")
+		// An entry is a SYMBOL: the hoisted `define` below is what the callee's body ends up calling by name.
+		// A lambda that reads the frame its application is written in cannot be lifted out of that frame and
+		// stay right — the word the read holds would have to travel with the entry, and the only road that fills
+		// such a word is the application road's capture parameter, asked for on the ENTRY side. That is Gap
+		// R.336's machine, and the refusal says which name is waiting for it.
+		if nm, readsFrame := callableLambdaFrameRead(r, x, enc); readsFrame {
+			return "", callableDeclinef("an entry lambda reads %q from the frame its application is written in, and an entry is a bare symbol: the word that name holds would have to arrive beside it (the capture parameter of the application road, asked on the entry side — Gap R.336)", nm)
 		}
 		body := copyASTExpr(x.Body)
 		if body == nil {
@@ -1693,10 +1725,10 @@ func callableSiteOmission(c *Call, cf *callableFn) string {
 	if callableHasKeywordArgs(c.Args) {
 		return "by position: a keyword argument names a parameter the entry tuple is read for by position"
 	}
-	if len(c.Args) > len(cf.def.Params) {
+	if len(c.Args) > cf.srcParams {
 		return "more arguments than the body has parameters"
 	}
-	for pos := len(c.Args); pos < len(cf.def.Params); pos++ {
+	for pos := len(c.Args); pos < cf.srcParams; pos++ {
 		p := cf.def.Params[pos]
 		if p == nil || p.Default == nil {
 			return fmt.Sprintf("%q, which has no default to answer for it", callableParamName(p))
@@ -1731,7 +1763,7 @@ func callableSiteOperand(c *Call, cf *callableFn, pos int) Expr {
 	if pos < len(c.Args) {
 		return c.Args[pos]
 	}
-	if pos >= 0 && pos < len(cf.def.Params) && cf.def.Params[pos] != nil {
+	if pos >= 0 && pos < cf.srcParams && cf.def.Params[pos] != nil {
 		return cf.def.Params[pos].Default
 	}
 	return nil
@@ -1901,12 +1933,18 @@ func callableBoundExactly(r *callableRead, name string, want []Node) bool {
 	return true
 }
 
-// callableLambdaIsClosed asks whether a lambda can be lifted out of the function it is written in:
-// nothing it reads may be one of that function's parameters or local bindings. A lambda that reads
-// its host has a closure as its value, and this pass is about names.
-func callableLambdaIsClosed(r *callableRead, l *Lambda, host *FuncDef) bool {
+// callableLambdaFrameRead asks which name, if any, keeps a lambda from being lifted out of the frame its
+// APPLICATION is written in: a parameter of that frame, or a name the walk reached with it as the enclosing
+// function — unless the program also binds the name at module level, which a hoisted `def` can read just as
+// well as the lambda did. It answers the first such name, in the order the body reads them, so the refusal
+// can point at the one word that has nowhere to go; "" and false mean the lambda lifts as it stands.
+//
+// The name is why this asks per name rather than yes-or-no. An entry is a symbol (ADR 0345), so the read has
+// no word to travel in: the machinery that would fill it is the application road's capture parameter moved to
+// the entry side, and that is roadmap Gap R.336 (ADR 0372).
+func callableLambdaFrameRead(r *callableRead, l *Lambda, host *FuncDef) (string, bool) {
 	if host == nil {
-		return true
+		return "", false
 	}
 	locals := map[string]bool{}
 	for _, p := range host.Params {
@@ -1919,16 +1957,12 @@ func callableLambdaIsClosed(r *callableRead, l *Lambda, host *FuncDef) bool {
 			locals[n.Value] = true
 		}
 	}
-	free := callableFreeNames(l)
-	if len(free) == 0 {
-		return true
-	}
-	for _, nm := range free {
+	for _, nm := range callableFreeNames(l) {
 		if locals[nm] && !callableBoundAtModuleLevel(r, nm) {
-			return false
+			return nm, true
 		}
 	}
-	return true
+	return "", false
 }
 
 func callableEnclosedBy(r *callableRead, n *Name) *FuncDef {
@@ -1968,6 +2002,121 @@ func callableBindingInsideAnyFunc(r *callableRead, at Node) bool {
 		}
 	}
 	return false
+}
+
+// callableLambdaCaptures is the capture list the CLOSURE road would hand this `lambda`, asked at the only
+// moment it can be asked — before the clone is copied from the declaration this pass mints. It is the same
+// question `lambdaFrameCaptures` asks at emission time (ADR 0370): every name the body reads without binding
+// it, minus a name the MODULE binds (a generated `define` reaches module storage the way any other function
+// does, so taking those as parameters would change what a program that compiles today passes across the
+// boundary — Gap R.35 owns module state) and minus a predeclared name, which is a door and not a value.
+//
+// The second answer is the row's discipline: a name the ENCLOSING frame does not own is not this pass's to
+// carry. `def outer(a): def inner(b): (lambda f: f(1) + a + b)(…)` reads `a` from two frames up, and the only
+// machinery that reaches a name that far is ADR 0245's nested-`def` lift — which does not compose with this
+// pass (AGENTS.md's L11.7 dependency), because the clone's call is a plain call and the lift's env chain is
+// not in it. Declining there leaves the program to the ordinary road's sentence, which names the row that owns
+// the missing half; answering it with a word that reads nothing would be ADR 0166's bug. The order is the
+// sorted one the emission road uses, because a map iteration would mint a different `define` on every run
+// (ADR 0273's determinism rule, which the pass's own hash test holds).
+// callableCompTargets adds the targets a comprehension or generator in `node` binds to `out`: the frame that
+// hosts a comprehension owns its target, and a `lambda` applied inside one reads that name from the same
+// frame (the same scope rule `scanCompScope` and `lambdaFreeNames` already speak).
+func callableCompTargets(node interface{}, out map[string]bool) {
+	if node == nil {
+		return
+	}
+	switch n := node.(type) {
+	case nil:
+		return
+	case *Comp:
+		if n != nil && n.ForVar != nil {
+			out[n.ForVar.Value] = true
+		}
+	case *Generator:
+		if n != nil && n.ForVar != nil {
+			out[n.ForVar.Value] = true
+		}
+	case Node:
+		v := reflect.ValueOf(n)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			return
+		}
+		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+			for i := 0; i < v.Len(); i++ {
+				callableCompTargets(v.Index(i).Interface(), out)
+			}
+			return
+		}
+	}
+	v := reflect.ValueOf(node)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		callableCompTargets(v.Elem().Interface(), out)
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			callableCompTargets(v.Index(i).Interface(), out)
+		}
+	case reflect.Struct:
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			f := v.Field(i)
+			if !f.CanInterface() {
+				continue
+			}
+			switch f.Kind() {
+			case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Array, reflect.Struct:
+				if f.IsZero() && f.Kind() != reflect.Struct {
+					continue
+				}
+				callableCompTargets(f.Interface(), out)
+			}
+		}
+	}
+}
+
+func callableLambdaCaptures(enc *FuncDef, prog *Program, l *Lambda) ([]string, bool) {
+	if l == nil || l.Body == nil || prog == nil {
+		return nil, true
+	}
+	_, moduleNames := moduleEnvFor(prog)
+	own := map[string]bool{}
+	if enc != nil {
+		for _, p := range enc.Params {
+			if p != nil {
+				own[p.Name] = true
+			}
+		}
+		// What the frame BINDS — an assignment, a `for` target, a `with ... as`, a comprehension's own
+		// target — not what it merely reads. A name it only reads belongs to a frame further out, and the
+		// only machinery that reaches that far is the nested-`def` lift this pass does not compose with.
+		for nm := range bodyBoundNames(enc.Body) {
+			own[nm] = true
+		}
+		collectLocals(enc.Body, own)
+		callableCompTargets(enc.Body, own)
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, nm := range callableFreeNames(l) {
+		if isPredeclaredName(nm) || moduleNames[nm] || seen[nm] {
+			continue
+		}
+		// At module level (no enclosing `def`) the only names a body can be free in are the ones an
+		// enclosing comprehension or `for` binds around the application, and the road that lowers those
+		// already reads them at the call; inside a `def`, a name the frame does not own is the nested-`def`
+		// lift's, and this pass declines it.
+		if enc != nil && !own[nm] {
+			return nil, false
+		}
+		seen[nm] = true
+		out = append(out, nm)
+	}
+	sortStrings(out)
+	return out, true
 }
 
 // callableLambdaIsSelfContained is the stricter question a module-level alias asks: does this lambda read
@@ -2165,6 +2314,7 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 			}
 			clone.Name = cl.name
 			clone.CloneOf = cf.def.Name
+			report.CaptureParameters += len(clone.Captures)
 			if cf.fromLambda != nil {
 				// The reference names an anonymous function `<lambda>` however it reached the call, so a
 				// clone of an applied lambda is named that for every reader — the traceback frame, the line
@@ -2227,7 +2377,7 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 			}
 			node := programCalls[site.rank]
 			cl, hit := byKey[strings.Join(site.slots, "|")]
-			if !hit || len(node.Args) > len(cf.def.Params) {
+			if !hit || len(node.Args) > cf.srcParams {
 				return prog, nil
 			}
 			// The application may have left parameters out; the call the clone sees gains a word for each of

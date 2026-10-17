@@ -14492,7 +14492,7 @@ argument list reordered into positions, which is a different rewrite with its ow
 after a defaulted one is the reference's own `TypeError`. Six sources went to the record from the reference
 (7827 → 7833), and `integration/programs/lambda_applied_entry_tuple.gy` carries the family onto the matrix.
 
-### Gap R.334 — a capture read by a body that also calls its own parameter is not an entry the pass will build (OPEN)
+### Gap R.334 — a capture read by a body that also calls its own parameter is not an entry the pass will build (closed by ADR 0372)
 
 ```python
 def f(x):
@@ -14517,6 +14517,118 @@ before the capture road is consulted, so the shape that is missing is not a word
 list has to be the entries the body's calls name AND one capture per free name, with the application filling each from
 its own reading. That is the same question ADR 0370's capture gate asks — what does every call of this frame hand this
 name — asked of a frame that is itself a clone, which is why it is a row of its own and not a line of configuration.
+
+**Closed by ADR 0372 on 2026-10-19**, on the union and on nothing else. The measurement that localised it was the pair
+the row itself carried: `(lambda y: y * 2)(x)` in a `def` answered `8` and `(lambda k: k(1))(lambda q: q * 10)` in the
+same frame answered `10`, so neither the capture road nor the entry road was broken — the two had simply never been
+asked of the same body. The root cause was exactly where the row put it: `cloneCallable` minted the entry parameters
+from `calledPos` and the capture road was consulted only for a lambda that was *hoisted as a value*, never for one that
+was being cloned as an application, so the entry audit declined the program before a capture was ever counted. The fix
+is the union, assembled at the one moment it can be assembled:
+
+- `callableLambdaCaptures(prog, lam)` asks the closure road's own question — `lambdaFrameCaptures`, the same reader
+  `emitFunction` uses at emission time — of the applied `lambda`, with `r.encs[rank]` (the frame the application is
+  written in) still in hand. Module-bound names are left out, because the module-global road owns those reads, and
+  predeclared names are doors rather than captured values; the order is the order the body reads them, so two runs of
+  the same source mint the same declaration (ADR 0345's determinism rule).
+- The generated declaration carries the answer in a new pass-only field, `FuncDef.Captures`, sitting beside `SkipEmit`
+  and `CloneOf` for the same reason they do: `--emit-ast` and `gusty fmt` speak the SOURCE, so the field is `json:"-"`
+  (ADR 0320's rule that a rewrite must not mutate what the front end reports about the text).
+- `GenerateIRReport` prepopulates `g.lambdaCaptures` from those declarations BEFORE lowering. Doing it in the emitter
+  instead — appending parameters to `def.Params` as the closure road does for a hoisted lambda — was tried first and
+  is what broke `def h(a, b)`: a generated parameter is a position an ordinary call can then name, and
+  `h(3, 4)` was being checked against a parameter list the human never wrote. Registering the list and letting the
+  closure road mint the words keeps the arity of a source `def` a fact about the source.
+- `callableFn.srcParams` records the parameter count the SOURCE wrote, and every audit ADR 0371 installed reads that
+  rather than `len(def.Params)`. A generated capture is not a slot an application may fill by position.
+- The call the caller emits fills each capture from its OWN reading of the name — the caller's `i32 %p0`, its own local
+  read, never a copy of the value — which is what keeps a captured local live across the call and what makes two
+  applications of one body two clones rather than two constants.
+
+`--callables` counts the union as `capture_parameters`: 0 for `(lambda f: f(3))(lambda x: x * 2)`, 1 for the row's own
+program, 2 for `def h(a, b): return (lambda f: f(a) + b)(lambda z: z * 2)`. Without that field the account could not
+separate Gap R.265's self-contained clone from this one, which is the test's whole ability to say which road answered.
+The emitted shape for the row's program is `define i32 @gy_f$lambda$…$callable$…(i32 %p0, i32 %p1)` called as
+`(i32 0, i32 %p0)` with `%t11 = call i32 @gy_f$lambda$…(i32 1)` inside it — the `ptrtoint`-form placeholder ADR 0371
+installed for the entry, the caller's word for the capture, a direct `call` to a `define`, and no `fnptr` operand and
+no indirect `call` anywhere in the module (ADR 0345's first rejected alternative stays rejected).
+
+Four things the row does NOT claim, each pinned as a refusal beside the answer it borders. A capture that reaches PAST
+the frame the application is written in (`def outer(a): def inner(b): return (lambda f: f(1) + a + b)(…)`) is Gap
+R.330's depth problem beside the nested-`def` lift of ADR 0245, which the L11.7 `Blocked on` cell says does not compose
+with this pass. A capture whose value is not a number is L11.1's (Gap R.332) — the gate is asked before the body is
+emitted, so no clone of a container-reading body can reach the printer as a heap handle. The same read inside a METHOD
+frame is refused, and the refusal now names the callable `<lambda>()` rather than the symbol the pass minted for the
+clone, which is Gap R.325's rule applied at a sentence ADR 0345 §3 had not covered. And the ENTRY-side twin — the
+`lambda` a higher-order `def` calls, reading the caller's frame — is Gap R.336, measured in the same sitting and left
+filed because an entry is a symbol and the word it would need has no declaration to ride in.
+
+### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (OPEN)
+
+```python
+def apply1(fn, v):
+    return fn(v)
+
+def use(seed):
+    base = 1
+    return apply1(lambda x: x + base, seed)   # 4 in the reference; exit 1 here
+
+def twice(fn, seed):
+    return fn(fn(seed))
+
+def use_b(seed):
+    base = 1
+    return twice(lambda x: x * 2 + base, seed)  # 11 there; exit 1 here
+
+def stepper():
+    total = 0
+    for step in [1, 2, 3]:
+        shift = step * 10
+        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)  # 72 there; exit 1 here
+    return total
+```
+
+Each half alone answers: the same call with a self-contained entry (`apply1(lambda x: x + 1, seed)`) prints `4` at exit
+0, and the same read written on the BODY side — `(lambda fn: fn(v) + base)(…)` — is Gap R.334's answered shape. So the
+read is not the problem; the READ'S OWNER is. The pass declines, and its own account says so with the name attached:
+`an entry lambda reads "base" from the frame its application is written in, and an entry is a bare symbol: the word that
+name holds would have to arrive beside it (the capture parameter of the application road, asked on the entry side — Gap
+R.336)`. That sentence is `callableLambdaFrameRead`'s, and it replaced a decline that said `a lambda passed to a
+parameter reads that parameter's function` — true of nothing in these three programs, since `base` belongs to the caller
+and not to the callee (ADR 0166's rule that a refusal names the missing thing).
+
+Why it is a row and not a line: ADR 0345 made an ENTRY a symbol. `resolve` hoists a closed `lambda` to a module-level
+`define` and the callee's body calls it by name; there is no value, no environment and no call site at that position
+any more. A lambda that reads `base` cannot be hoisted and stay right — the read has to arrive as an argument — and the
+only machinery that fills such an argument is the application road's capture parameter, which lives on the clone of the
+APPLIED lambda, not on the callee. Threading it means the clone of `apply1`/`twice` carrying capture parameters of its
+own, filled by ITS caller, which makes the clone's identity the pair (entry symbols, each entry's capture list) rather
+than the tuple of entry symbols ADR 0345 and ADR 0364 hash today. Two applications of `twice` whose entries read
+different frames are then two clones, and the recursion road's audit has to agree. The `stepper` spelling is the hard
+case and it is in the table on purpose: the body side (`shift`) is R.334's and answers, the entry side (`step`) is this
+row's, and the pass is all-or-nothing (ADR 0345), so one declined argument hands the WHOLE program to the ordinary road
+— which is why the program's refusal is about `fn` at all.
+
+### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (OPEN)
+
+```console
+$ gustyc --callables "$use_b_program"
+{ "refused": ["defunctionalization declines: an entry lambda reads \"base\" … (Gap R.336)"] }
+$ gustyc --file use_b.gy
+gustyc: jit: codegen: "fn" is called but is not a function this backend can build a call to: … (roadmap L11.1, ADR 0166)
+```
+
+The pass knew. The terminal did not repeat it. `defunctionalizeCallables` swallows the `*callableDecline` and returns
+the untouched program — the right rule for a REWRITE (all-or-nothing, ADR 0345) and a lossy one for a DIAGNOSTIC: the
+emitter then meets a call to a parameter it was never told about and says what IT knows, which is ADR 0283's generic
+sentence pointing at the memory-model row (L11.1) that owns nothing in the program. AGENTS.md's rule is that a refusal
+names the missing machinery and the row that owns it, so a reader following the terminal goes to read the wrong ADR.
+The fix is plumbing, not semantics — a decline carried out beside the program (never a package global: `make
+testparallel` runs programs concurrently, ADR 0343) and appended to the uncallable-callable refusal when the call the
+emitter cannot build is the one the pass declined over. It is filed rather than folded into ADR 0372 because it changes
+no decision, and because ADR 0372's tables had to be written anyway: the answer tables pin what the compiled leg
+PRINTS, the account tables pin what the pass SAYS, and the pair is the honest record until this row closes and the
+terminal carries the second sentence too.
 
 ### Gap R.335 — a higher-order recursion that omits its own defaulted parameter is not a recursion the clone will follow (OPEN)
 

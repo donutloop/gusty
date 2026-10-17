@@ -90,9 +90,17 @@ func (g *irGen) lambdaCallArgs(c *Call, fnName string) (*Call, error) {
 		}
 	}
 	args := append([]Expr(nil), c.Args...)
+	// The sentence names the callable the way a reader knows it. A clone the defunctionalisation pass minted
+	// answers under the name the PROGRAM wrote — `<lambda>` for a clone of an applied lambda, `twice` for a
+	// clone of a `def` — and the minted symbol is this compiler's private spelling, which ADR 0345 §3 keeps out
+	// of a traceback and out of a diagnostic for the same reason.
+	subject := fnName
+	if fd := g.fds[fnName]; fd != nil && fd.CloneOf != "" {
+		subject = callableDisplayName(fd)
+	}
 	for _, name := range captured {
 		if kind, carriesOneWord := g.captureCarriesOneWord(name); !carriesOneWord {
-			return nil, captureWordErr(name, kind, exprSurface(&Call{Fn: &Name{Value: fnName, Src: c.Span()}, Src: c.Span()}))
+			return nil, captureWordErr(name, kind, subject+"()")
 		}
 		args = append(args, &KeywordArg{
 			Name:  name,

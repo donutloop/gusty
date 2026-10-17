@@ -5198,6 +5198,27 @@ print(apply(lambda x: x + 1))                                   # 11 — the sam
 def use(f, g=lambda v: v + 4):
     return f(g(2))
 print(use(lambda n: n * 10))                                    # 60
+
+# A body may BOTH call one of its own parameters AND read a name the frame around the application owns: the
+# clone carries the entries its calls name beside one capture parameter per free name (ADR 0372).
+def f(x):
+    return (lambda h: h(1) + x)(lambda q: q * 10)
+print(f(2))                                                     # 12
+
+def g(v):
+    return (lambda fn, n=3: fn(n) + v)(lambda a: a * 2)
+print(g(5))                                                     # 11 — entry, capture AND an omitted default
+
+def h(a, b):
+    return (lambda fn: fn(a) + b)(lambda z: z * 2)
+print(h(3, 4))                                                  # 10 — two captures beside one entry
+
+def k():
+    t = 7
+    return (lambda fn: fn(1) + t)(lambda z: z * 2)
+print(k())                                                      # 9 — the capture is a local, not a parameter
+
+print([(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])   # [4, 6, 8] — the target is the capture
 ```
 
 Two mechanisms, one per half of the title. An applied `lambda` whose body calls one of its own parameters is
@@ -5221,6 +5242,19 @@ not do is guess: a call with more arguments than the body has parameters, one th
 omitted CALLED slot whose default is a number or a container, and an omitted READ slot whose default is a container or
 `None` all keep the ordinary road's refusal, each naming the row that owns the missing machinery.
 
+The two lists a clone needs are a **union**, not a choice (**ADR 0372**, Gap R.334). A body that calls one of its own
+parameters AND reads a name the frame around its application owns gets a declaration carrying both: the entry
+parameters, in the order the body calls them, and one capture parameter per name the body is free in. The capture list
+is asked with the closure road's own reader, so the two cannot disagree about what a body is free in; a name the
+MODULE binds is not in it (the module-global road owns those reads), a predeclared name is a door rather than a value,
+and a name the enclosing frame does not itself bind is declined rather than reached — that one lives two frames up,
+which is the nested-`def` lift's territory (**ADR 0245**, Gap R.330). The application then fills each capture with the
+caller's OWN reading of that name — `call i32 @gy_…$callable$…(i32 0, i32 %p0, i32 %p1)` for `def h(a, b): return
+(lambda fn: fn(a) + b)(lambda z: z * 2)` — never a copy of the value, which is what keeps a captured local live across
+the call and keeps two applications of one body two clones rather than two constants. A capture parameter is not a
+position an application may name: the arity rules above read the parameters the SOURCE wrote. `--callables` counts the
+union as `capture_parameters`, which is how a reader tells ADR 0370's self-contained clone from this one.
+
 What still refuses, in words that name the missing half and the row that owns it:
 
 ```python
@@ -5229,11 +5263,19 @@ print((lambda f, y=10: f(y))(10))                # the CALLED slot omitted, and 
 print((lambda f, y=[]: f(y))(lambda x: len(x)))  # an omitted READ slot whose default is a list — Gap R.277
 print((lambda f, y: f(y))(lambda x: x))           # a required parameter after a defaulted one — the reference's TypeError
 
-def f(x):
-    return (lambda h: h(1) + x)(lambda q: q * 10)  # a capture beside a call of the body's own parameter — Gap R.334
-print(f(2))
+def outer(a):
+    def inner(b):
+        return (lambda fn: fn(1) + a + b)(lambda z: z * 3)   # a capture TWO frames up — Gap R.330, ADR 0245's lift
+    return inner(2)
+print(outer(4))
 
-print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))   # a capture three frames up — Gap R.330
+def apply1(fn, v):
+    return fn(v)
+
+def use(seed):
+    base = 1
+    return apply1(lambda x: x + base, seed)                  # the ENTRY reads the caller's frame — Gap R.336
+print(use(3))
 
 def f():
     xs = [1, 2]

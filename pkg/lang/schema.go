@@ -1152,6 +1152,7 @@ const astIRSchemaTemplate = `{
         "recursive_sites",
         "key_arguments",
         "omitted_arguments",
+        "capture_parameters",
         "higher_order_lambdas",
         "higher_order_functions",
         "symbols",
@@ -1198,6 +1199,10 @@ const astIRSchemaTemplate = `{
         "omitted_arguments": {
           "type": "integer",
           "description": "How many parameters the applications LEFT OUT and the pass read off the body's prototype. The entry tuple is the list of functions the body asks for, not the list the application writes, so a call may name fewer arguments than the body has parameters: '(lambda f, y=10: f(y))(lambda x: x + 1)' names the callable and leaves the read slot to its default, and '(lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10))' leaves the CALLED slot to a default that is itself a function, which is the symbol the clone builds its call to. Every such position is read from the parameter's own Default - the placeholder where the clone names the entry and reads nothing, a copy of the default's expression where the body reads the slot, and nothing at or above the last called position, which the ordinary call road fills by its own rule. Zero means every application named every slot; a non-zero count is the witness that an omission was read off the body rather than declined, and it is the only field that separates two programs whose clones are otherwise identical (roadmap L11.7, Gap R.329, ADR 0322's default fill, ADR 0371)."
+        },
+        "capture_parameters": {
+          "type": "integer",
+          "description": "How many capture parameters the declarations this pass minted carry. A clone of an applied lambda needs a parameter per thing its body asks for, and the two lists are a UNION: the entries its calls name, in the order the body calls them, and one capture parameter per name its body reads from the frame the application is written in - 'def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)' with 'print(f(2))' clones a body of one entry and one capture, and 'def h(a, b): return (lambda f: f(a) + b)(lambda z: z * 2)' of one entry and two. The application fills each capture with the caller's OWN reading of that name, never a copy of the value, and a capture parameter is not a position an application may name: the arity rules read the parameters the source wrote. Zero means every clone this program needed was self-contained, which is the shape ADR 0370 cloned; a non-zero count is the witness that a body called its own parameter AND carried a capture (roadmap L11.7, Gap R.334, ADR 0372)."
         },
         "higher_order_lambdas": {
           "type": "integer",
