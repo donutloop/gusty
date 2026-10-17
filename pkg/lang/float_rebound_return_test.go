@@ -450,71 +450,9 @@ func TestWhatTheReturnWordOfAParameterlessFloatBodySays(t *testing.T) {
 	}
 }
 
-// TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed holds the shape this cycle found and did NOT
-// fix, with the reference's answer written beside the one this toolchain prints.
-//
-// `floatVars` is one map for a whole module, not one per body: the assignment road notes "this name's
-// last write produced a double" as it emits, and nothing clears the note when the next `define` begins.
-// So a program whose FIRST body binds a name to a double teaches every LATER body that a same-named
-// name is a double —
-//
-//	def bound():
-//	    u = 9.5
-//	    return u
-//
-//	def lastWrite():
-//	    u = 2.5
-//	    u = 3
-//	    return u
-//
-//	print(bound())      # 9.5
-//	print(lastWrite())  # CPython 3 · this toolchain 3.0
-//
-// — and `lastWrite` alone answers `3` (the row above pins that), which is the whole diagnosis: the
-// answer depends on what another function in the file happened to bind. The pre-ADR-0373 build prints
-// the same `3.0` (and `0` for `bound`), so this is a filed defect, not this cycle's regression
-// (roadmap Gap R.339; the exit-code half stays pinned: a wrong value is exit 0's shame, never exit 2's).
-func TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		src   string
-		want  string // what the reference prints
-		today string // what this toolchain prints today
-		gap   string
-	}{
-		{
-			name: "a name another function bound to a double is read as a double here too",
-			src: "def bound():\n    u = 9.5\n    return u\n\n" +
-				"def lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\n" +
-				"print(bound())\nprint(lastWrite())\n",
-			want:  "9.5\n3\n",
-			today: "9.5\n3.0\n",
-			gap:   "Gap R.339",
-		},
-		{
-			// the control: the same second body alone answers the reference's bytes, which is what
-			// localises the defect to the table's scope rather than to the scan
-			name:  "the same body with no float-returning function before it",
-			src:   "def lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\nprint(lastWrite())\n",
-			want:  "3\n",
-			today: "3\n",
-			gap:   "Gap R.339",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			res, err := Compile(tc.src)
-			if err != nil {
-				t.Fatalf("%s: refused (%v) — a filed wrong answer is exit 0's defect, not a refusal (%s)", tc.name, err, tc.gap)
-			}
-			assertNoForbiddenIR(t, tc.src, res.IR)
-			got := runIR(t, res.IR)
-			if got == tc.want && tc.want != tc.today {
-				t.Fatalf("%s: the compiled leg now answers %q, the reference's own bytes — DELETE this row, %s has closed", tc.name, got, tc.gap)
-			}
-			if got != tc.today {
-				t.Errorf("%s: the compiled leg prints %q, and this row pinned %q as today's answer (reference %q, %s)",
-					tc.name, got, tc.today, tc.want, tc.gap)
-			}
-		})
-	}
-}
+// The filed table this file used to carry (「the float answer word still owes」, two rows, both
+// Gap R.339) is DELETED, as its own rule required: ADR 0374 gave each body its own float-variable
+// table, and the group of two bodies now answers the reference's `9.5` / `3`. The answers live in
+// `float_frame_test.go`, whose rows are judged on both legs, and what is still owed there is the
+// float accumulator inside a body (Gap R.340) and the nested `def` that stores through its
+// enclosing frame's alloca (Gap R.341).

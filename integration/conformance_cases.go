@@ -778,6 +778,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the low word of the double — `0` — and the derived one printed `0` with a parameter in sight
 		// (roadmap L11.6 · Gap R.3c, Gap R.338; ADR 0254, ADR 0373).
 		"float_answer_word",
+		"float_frame_table",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

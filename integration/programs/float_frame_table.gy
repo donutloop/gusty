@@ -1,0 +1,133 @@
+# integration/programs/float_frame_table.gy — roadmap Gap R.339, ADR 0375.
+#
+# The float-variable table — 「whose last assignment in this body produced a double」 — was one map for
+# a whole module and was never cleared between `define`s. A body therefore read whatever the
+# previously-emitted body had written, and a program's answer depended on the order the compiler
+# happened to lower things in:
+#
+#   def bound():
+#       u = 9.5
+#       return u
+#
+#   def lastWrite():
+#       u = 2.5
+#       u = 3
+#       return u
+#
+#   print(lastWrite())                    # 3 in the reference, 3.0 here — and `lastWrite` ALONE
+#                                         # answered 3, which is the whole diagnosis
+#
+# ADR 0373 had settled WHICH write a read answers (the last one); this row is about WHOSE writes the
+# table holds. The cure is the rule the module already trusts for every other per-frame kind table —
+# `beginScope` installs the container/bool/None/text tables per scope, and the float table was the
+# sibling it never installed (ADR 0163 closed this disease for the tables that exist).
+#
+# The shapes are crossed on purpose: a name shared by two `def`s, by three, by a `def` and a method
+# in both orders, and by the module's own frame and a callee. The loudest row is `between()` called
+# in one line beside a float-returning neighbour — the SAME function, answering two ways in one
+# print, which no single-function test could ever have seen.
+#
+# Two families are absent on purpose, and both are named with today's answer in
+# `pkg/lang/float_frame_test.go` and `integration/float_frame_test.go`. A `for`-driven float
+# accumulator INSIDE a body prints `0` where the reference prints `6.0` (roadmap Gap R.340; the
+# module-level twin is the last row below, and it answers). And a body may not read module state
+# that changes at all — `RATE = 2.5` above `def scale(v): return v * RATE` is the `Gap R.35`
+# refusal, which is a different row and stays open.
+
+
+def bound():
+    u = 9.5
+    return u
+
+
+def lastWrite():
+    u = 2.5
+    u = 3
+    return u
+
+
+print(bound(), lastWrite())                  # 9.5 3   — the row, in one line
+
+
+def first3():
+    v = 1.5
+    return v
+
+
+def seven():
+    v = 7
+    return v
+
+
+def again2():
+    v = 2.0
+    return v
+
+
+print(first3(), seven(), again2())            # 1.5 7 2.0 — three bodies, one name, three kinds
+print(seven(), first3(), seven())             # 7 1.5 7   — one function, called twice, answering once
+
+
+def promoted(x):
+    x = x + 1.5
+    return x
+
+
+def laterInt():
+    x = 4
+    return x
+
+
+print(promoted(1.0), laterInt(), promoted(2)) # 2.5 4 3.5 — a promoted parameter stays in its define
+
+
+class Box:
+    def show(self):
+        u = 9.5
+        return 1
+
+
+def afterMethod():
+    u = 3
+    return u
+
+
+print(Box().show(), afterMethod())            # 1 3 — a method's double does not leak forward
+
+
+def beforeMethod():
+    s = 2.5
+    return s
+
+
+class Plain:
+    def value(self):
+        s = 6
+        return s
+
+
+print(beforeMethod(), Plain().value())        # 2.5 6 — nor does a function's leak backward
+
+
+shared = 9.5
+
+
+def readsOwn():
+    shared = 3
+    return shared
+
+
+print(readsOwn(), shared)                     # 3 9.5 — main's float is not the callee's local
+
+
+def withALambda():
+    z = 2.5
+    return (lambda: 8)()
+
+
+print(withALambda())                          # 8 — a lambda minted mid-body keeps its own table
+
+total = 0.0
+for i in [1, 2, 3]:
+    total = total + i
+print(total)                                  # 6.0 — the module-level accumulator (the R.340 control)

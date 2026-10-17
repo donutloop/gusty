@@ -12688,3 +12688,62 @@ printed by the tool for a source printed beside it.
   overwritten before the return (Gap R.290's family), `def twice(): return half() + half()` (Gap R.331's
   return-kind registration), and the module-wide float table (Gap R.339) — each with its own row, its own
   sentence, and a test that fails when it closes.
+
+## ADR 0375 — the float-variable table a body reads is that body's own writes (L11.6 · Gap R.339; two rows filed)
+
+- **The bug was found by the matrix, and by nothing else.** `print(bound()) / print(lastWrite())`
+  printed `3.0` where CPython prints `3`, and every single-function case in the suite agreed with
+  CPython, because each of them asks ONE function at a time. An order-dependent answer is invisible to
+  a test that asks one thing at a time — the only witness that puts several bodies in one file is the
+  conformance matrix, which is why `float_answer_word.gy` is where the pair was found (it failed the
+  matrix, got cut out of the asserted program, and became Gap R.339 with the reference's bytes beside
+  today's). **Lesson kept:** when a defect is "the answer depends on what else is in the file", the
+  regression suite must be a program, not a table of isolated snippets.
+- **Prefer the mechanism the codebase already trusts over a hand-rolled one.** My first patch swapped
+  the float table inside `funcDef` — it fixed the reported program and left the *rule* false, because
+  the method emitter and the closure lift emit bodies without ever going through `funcDef`. The module
+  already has `beginScope()` ("which names are containers … are facts about a single scope") installing
+  the container/bool/None/text tables, and `enterBody()` for the two roads that skip it; putting the
+  float table (and its `doubleSlot` companion) in both, behind one helper in `float_frame.go`, is the
+  version the method rows in the answer table accept. **Writing the witness table before choosing the
+  fix is what caught the half-open version** — `a method's float local is not the next function's float`
+  fails the `funcDef`-only patch.
+- **Read the row's own Definition-of-done before writing tests.** Gap R.339's Evidence cell already
+  said the filed table is "DELETED when its rows agree, and `float_answer_word.gy` regains the
+  `lastWrite` group it lost". Honouring that literally was the difference between a fix and a fix plus
+  the restored witness: the pair is back in the asserted program, the filed test is gone, and the IR
+  claim (`define double @gy_a()` / `define i32 @gy_b()` / `define double @gy_c()` in one module) is
+  what stops a future "fix" that only redirects the printer.
+- **Two agents in one checkout is a hazard, and `git add -A` is the sharp end of it.** The previous
+  cycle's commit swept *another agent's* in-flight files into it because the whole tree was staged. This
+  cycle ran in its own `git worktree` off `HEAD` (`git worktree add ../gusty-r339 -b cycle/r339-head`),
+  with explicit paths staged and never `-A`, so neither agent could contaminate the other's commit.
+  Related courtesy: **0374 was left unclaimed** — the applied-`lambda` rows already in flight cite that
+  number in three source comments — and this row took 0375, with the reason written into the ADR header.
+- **The artifact owns its own formatting; use the tool that writes it.** Deleting one stale record entry
+  with `json.load`/`json.dump` re-wrote all 52k lines of `interpreter-golden.json` (Go's encoder and
+  Python's disagree about escapes and indentation) and `git checkout` was the only clean way back.
+  `tools/recmerge` *appends into the record's own text* "so no existing byte moves" — the fix for a stale
+  entry is to never write it (rename the source before recording, then record the one text you want).
+- **`recmerge` refuses what the tracker still owes.** Gap R.340's `def loopAcc(): … / print(loopAcc())`
+  could not be recorded (`got "0"`, `want "6.0"`) — which is the record doing its job: an entry is
+  written from the reference only with the compiled leg agreeing. Those shapes live in the filed tables,
+  with a guard that fails if the answer moves in EITHER direction (including into a refusal, which for a
+  wrong value would be a new defect).
+- **`cliRunCode` sees stdout; diagnostics are on stderr.** Two filed rows "failed" with an empty
+  message because they grepped the captured stdout for `Gap R.35` / the `llc` sentence. Exit codes come
+  from `cliRunCode`, sentences come from `cliRun` (`CombinedOutput`). Pin both, from the right helper.
+- **Let the count guards edit the docs for you.** `TestTheRoadmapSnapshotIsMeasuredNotRemembered`,
+  `TestTheArtifactTableCountsAreTheFilesOwn`, `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn`,
+  `TestTheCLISuitesArtifactCountsAreTheFilesOwn` and `TestTheRecordCountTheCLIKitQuotesIsTheFilesOwn` each
+  name the file and the stale number (`docs/operations.md says 7858 sources … the file holds 7872`). Run
+  them first, patch what they name, and the docs cannot drift from the artifacts.
+- **Same-package helpers collide with test helpers.** `firstLine` already existed in `oracle.go`; a
+  test-file helper needs a name the package does not already use (`headLineOf`). `go vet` finds this
+  before `go test` runs anything.
+- **Filed rather than absorbed:** **Gap R.340** (a `for`-driven float accumulator inside a body prints
+  `0`, the same loop at module level prints `6.0`) and **Gap R.341** (a nested `def` sharing a name with
+  its enclosing body's float local stores through the *enclosing* frame's alloca — `llc` rejects the
+  module, exit 2, ADR 0166's code for a compiler bug). Both measured identical before and after this
+  change; `allocd` was deliberately NOT folded into the new helper, because bundling it would have made
+  the commit two rules and hidden which one a green test was proving.

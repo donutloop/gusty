@@ -5579,6 +5579,35 @@ it starts so the result cannot depend on the order a map happens to iterate in. 
 settles it**, because the read answers the last write's word: `u = 2.5` / `u = 3` / `return u`
 answers `3`, not `3.0` (ADR 0373, roadmap Gap R.3c and Gap R.338).
 
+**Whose writes that table holds is the same question one level up** (ADR 0375, roadmap Gap R.339). The
+table 「whose last write produced a double」 belongs to ONE body: two functions may use the same spelling
+for different kinds, and neither one's answer is decided by which `define` the compiler happened to
+lower first.
+
+```gy
+def bound():
+    u = 9.5
+    return u         # 9.5
+
+def lastWrite():
+    u = 2.5
+    u = 3
+    return u         # 3 — not 3.0, and not 3.0 because `bound` exists
+
+def seven():
+    v = 7
+    return v
+
+print(seven(), bound(), seven())   # 7 9.5 7 — one function, called twice, answering once
+```
+
+The body's table is its own assignments plus the parameters its own float convention promotes; the
+enclosing frame's table comes back intact when a nested `def`, a method or an applied `lambda` finishes,
+so a body in the middle of a statement does not take its frame's float facts with it. What a body may
+read from the **module** is a separate question — see the module-scope section, roadmap Gap R.35 — and a
+module float a body reads still refuses: `RATE = 2.5` above `def scale(v): return v * RATE` is refused in
+words rather than answered by borrowing a table from wherever it was written.
+
 What the rule deliberately does **not** promote is an answer that is not that double, because
 promoting it would put an `i32` in a `double`'s word — the same bug in the other direction:
 `return int(x)` and `return round(x)` answer with an int whatever arrives, `return x > 2`
