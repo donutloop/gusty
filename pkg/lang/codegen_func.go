@@ -12,19 +12,54 @@ import (
 
 // emitLambda registers a lambda as a generated anonymous FuncDef and emits
 // its closure IR, returning the generated function name so Call can invoke it.
+//
+// The generated `define` lives at module level, because a `define` cannot nest inside the `define`
+// the lambda is written in — so a name the lambda reads from the frame that encloses it has nowhere
+// to be read from, and `(lambda y: y * 2)(x)` written in a body that binds `x` died with
+// `undefined name "x"` where the reference answers `8` (roadmap L11.7, Gap R.265). The name is
+// carried the way a nested `def` carries its captures: the question is the one closureInfoFor
+// already asks, and the answer arrives as one extra parameter per captured name, filled by the call
+// road (lambdaCallArgs) with the caller's own reading of that name. A lambda that reads nothing
+// outside itself gains nothing and is emitted exactly as it always was.
+// lambdaFuncDef is the one spelling of what a `lambda` becomes: an anonymous declaration whose body is a
+// single `return` of the lambda's expression. Both roads that need to ask a question of a lambda's body —
+// the one that emits its `define` and the one that asks, from a call site, what that `define` answers with
+// — build it here, so the two cannot ask about different programs (roadmap L11.7, Gap R.265, ADR 0370).
+func lambdaFuncDef(lam *Lambda) *FuncDef {
+	return &FuncDef{
+		Params: append([]*Param(nil), lam.Params...),
+		Body:   []Stmt{&ReturnStmt{Expr: lam.Body}},
+	}
+}
+
 func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 	name := fmt.Sprintf("lambda_%d", g.lambdaCounter)
 	g.lambdaCounter++
-	fd := &FuncDef{
-		Name:   name,
-		Params: lam.Params,
-		Body:   []Stmt{&ReturnStmt{Expr: lam.Body}},
+	fd := lambdaFuncDef(lam)
+	fd.Name = name
+	captured := g.lambdaFrameCaptures(lam)
+	// The captured names are asked of the frame that owns them BEFORE its `define` is emitted: a name the
+	// print door and the arithmetic roads describe as anything but a plain number has no word to cross
+	// with, and asking after the body has been lowered lets the body's own refusal — written as if the
+	// name were a local of the lambda — be the sentence the program reads.
+	for _, c := range captured {
+		if kind, carries := g.nameCarriesOneWord(c); !carries {
+			return "", captureWordErr(c, kind, name+"()")
+		}
 	}
-	// emit the lambda FuncDef at module level (globals), not the current
-	// statement builder, so the `define` is not nested inside main.
-	if err := g.funcDef(&g.globals, fd); err != nil {
-		return "", err
+	if len(captured) > 0 {
+		for _, c := range captured {
+			fd.Params = append(fd.Params, &Param{Name: c, Src: lam.Span()})
+		}
+		if g.lambdaCaptures == nil {
+			g.lambdaCaptures = map[string][]string{}
+		}
+		g.lambdaCaptures[name] = captured
 	}
+	// The generated function is registered BEFORE its body is emitted, because the body may itself apply a
+	// lambda, and the question that application's capture asks — what do this frame's calls hand to that
+	// parameter? — is answered by looking the frame up in the table the call roads read. No call the source
+	// wrote can name `lambda_N`, so registering early cannot redirect anything.
 	if g.funcs == nil {
 		g.funcs = map[string]bool{}
 	}
@@ -33,7 +68,252 @@ func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 		g.fds = map[string]*FuncDef{}
 	}
 	g.fds[name] = fd
+	if g.lambdaOrigin == nil {
+		g.lambdaOrigin = map[*FuncDef]*Lambda{}
+	}
+	g.lambdaOrigin[fd] = lam
+	// emit the lambda FuncDef at module level (globals), not the current
+	// statement builder, so the `define` is not nested inside main.
+	//
+	// The nested emission does not own the frame it was called from, and it used to take that frame with it:
+	// `funcDef` ends by clearing the parameter table, the current function, the environment captures and the
+	// root-frame flag, so the statement that contained the lambda went on reading its OWN frame through empty
+	// tables — `(lambda y: y * 2)(x)` inside a body that binds `x` died with `undefined name "x"`, the name the
+	// reference hands to the call (roadmap L11.7, Gap R.265). The frame goes in and comes back out unchanged,
+	// the way `emitClosureDef` already treats the frame it emits a closure from.
+	frame := g.enterFrame()
+	// A `lambda` that answers a double may only be emitted where the frame around it can answer one. A
+	// plain `def` can — `funcDef` reads the body's own answer and emits `define double` — but a closure
+	// body and a method body are emitted as `i32` functions whatever their bodies do, so the double the
+	// lambda answers would be returned from an `i32` function and `llc` would reject the module: exit 2,
+	// the code ADR 0166 reserves for a compiler bug. Saying which word is missing is the alternative
+	// (roadmap L11.6, Gap R.265, Gap R.276, ADR 0370).
+	if funcReturnsFloat(g, fd) && !lambdaFrameAnswersDoubles(g) {
+		kind := "a closure"
+		if g.emittingMethod {
+			kind = "a method"
+		}
+		return "", fmt.Errorf("codegen: %s answers a float, and it is applied inside %s, which answers one i32 word whatever its body does: the double has no word to travel back in, and the module that tried would be rejected by llc (ADR 0166). Give the body a plain `def` of its own and call that; the one-word answer of %s is roadmap L11.6, and this row is L11.7 · Gap R.265, Gap R.276", name, kind, kind)
+	}
+	// The generated `define` goes into a buffer of its own and joins the module only once it is complete.
+	// Writing it into `g.globals` as soon as it was ready — which is what the road used to do, so the
+	// `define` is not nested inside `main` — was right exactly once per function: the roads that emit a body
+	// themselves (the class road's methods, the closure lift's nested `def`s) are ALSO writing into
+	// `g.globals`, so a lambda applied inside one appended its `define` into the MIDDLE of the enclosing
+	// `define`'s text, and `llc` reported `multiple definition of local value named 'gc.frame.base'` at
+	// exit 2 for a program the reference runs (roadmap L11.7, Gap R.265; ADR 0166 reserves exit 2 for a
+	// compiler bug). They wait in `g.lambdaDefines` instead, which is written beside the other
+	// module-level text.
+	var def strings.Builder
+	err := g.funcDef(&def, fd)
+	frame.leave(g)
+	if err != nil {
+		return "", err
+	}
+	g.lambdaDefines.WriteString(def.String())
 	return name, nil
+}
+
+// lambdaFrameAnswersDoubles reports whether the frame a `lambda` is being emitted in can answer with a
+// double at all. Only the `funcDef` road reads a body's answer and chooses the function's word; the
+// closure lift and the class road emit an `i32` define unconditionally.
+func lambdaFrameAnswersDoubles(g *irGen) bool {
+	return !g.envMode && !g.emittingMethod
+}
+
+// lambdaFrameState is the emitting frame's own state, saved around the emission of a `define` the
+// frame does not own and restored when that emission is over. `funcDef` is written to be the outermost
+// road for one function: it clears the parameter table, the current function, the generator handle, the
+// environment captures and the root-frame flag on its way out, all of which belong to whoever called it.
+// The nested-`def` road has always restored them (`emitClosureDef`'s `savedFrame`); this is the same
+// courtesy, kept by the lambda road, which emits a `define` in the middle of a body (roadmap L11.7,
+// Gap R.265).
+type lambdaFrameState struct {
+	params      map[string]string
+	paramSlot   map[string]bool
+	closures    map[string]*closureInfo
+	decorated   map[string]bool
+	envMode     bool
+	envCaptures map[string]int
+	envParam    string
+	inFunc      bool
+	curFunc     string
+	curFD       *FuncDef
+	method      bool
+	genHandle   string
+	frameOpen   bool
+}
+
+func (g *irGen) enterFrame() lambdaFrameState {
+	return lambdaFrameState{
+		params: g.params, paramSlot: g.paramSlot,
+		closures: g.closures, decorated: g.decorated,
+		envMode: g.envMode, envCaptures: g.envCaptures, envParam: g.envParam,
+		inFunc: g.inFunc, curFunc: g.curFunc, curFD: g.curFD, genHandle: g.genHandle, frameOpen: g.frameOpen,
+		method: g.emittingMethod,
+	}
+}
+
+func (f lambdaFrameState) leave(g *irGen) {
+	g.params, g.paramSlot = f.params, f.paramSlot
+	g.closures, g.decorated = f.closures, f.decorated
+	g.envMode, g.envCaptures, g.envParam = f.envMode, f.envCaptures, f.envParam
+	g.inFunc, g.curFunc, g.genHandle, g.frameOpen = f.inFunc, f.curFunc, f.genHandle, f.frameOpen
+	g.curFD = f.curFD
+	g.emittingMethod = f.method
+}
+
+// lambdaFrameCaptures answers which names an applied lambda reads from outside itself — the names its body
+// is free in. It is the closure question the nested-`def` road asks (`closureInfoFor`), asked with the
+// binding rule rather than the table rule: `closureInfoFor` keeps only the names the *enclosing frame's*
+// tables already list, which is the right filter for a `def` whose captures the frame hands it, and the
+// wrong one for a lambda, whose enclosing frame is a `define` that has no table for the names it owns.
+// `(lambda y: (lambda z: x + y + z)(100))(1)` is the case the difference decides: the inner lambda is free
+// in `x`, the frame two levels up binds it, and filtering by the frame's tables deleted the capture and
+// left `undefined name "x"` where the reference answers `111` (roadmap L11.7, Gap R.265, Gap R.276).
+//
+// What the caller's road then does with the name is the frame's own business: it reads it the way the frame
+// reads it anywhere, and a name the frame does not bind is the program's error to report, in the same
+// words the reference uses.
+//
+// A name the module binds is NOT a capture: a generated `define` reaches module storage the way any
+// other function does, and taking those names as parameters would change what a program that
+// compiles today passes across the boundary (Gap R.35 is the row that owns module state).
+func (g *irGen) lambdaFrameCaptures(lam *Lambda) []string {
+	if !g.inFunc || lam == nil || lam.Body == nil {
+		return nil
+	}
+	free := map[string]bool{}
+	lambdaFreeNames(lam, free)
+	out := []string{}
+	for _, c := range sortedSet(free) {
+		if isPredeclaredName(c) {
+			continue
+		}
+		if g.moduleNames[c] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// sortedSet lists a name set in the order the run must see it in: the capture parameters are appended in
+// this order, and a map iteration would mint a different `define` on every run (ADR 0273's determinism
+// rule, which the pass's own hash test holds).
+func sortedSet(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sortStrings(out)
+	return out
+}
+
+// lambdaFreeNames collects the names a `lambda` reads without binding them, into `out`. The scan is
+// scope-aware in the one way that matters here: a nested binding form — another `lambda`, a comprehension,
+// a nested `def` — owns its own parameters and targets, and nothing bound in there is a capture of this
+// lambda. A nested `def` is not scanned at all: its body is that `def`'s scope, and the closure lift (ADR
+// 0245) is the road that carries names into it.
+func lambdaFreeNames(lam *Lambda, out map[string]bool) {
+	if lam == nil {
+		return
+	}
+	bound := map[string]bool{}
+	for _, p := range lam.Params {
+		if p != nil {
+			bound[p.Name] = true
+		}
+	}
+	scanFreeIn(lam.Body, bound, out)
+}
+
+func scanFreeIn(n Node, bound, out map[string]bool) {
+	if n == nil || reflect.ValueOf(n).IsNil() {
+		return
+	}
+	switch x := n.(type) {
+	case *Name:
+		if !bound[x.Value] {
+			out[x.Value] = true
+		}
+		return
+	case *Lambda:
+		lambdaFreeNames(x, out)
+		return
+	case *FuncDef, *ClassDef:
+		return // another declaration's own scope
+	case *Comp:
+		scanCompScope(x.Iter, x.ForVar, x.Elems, x.Keys, x.Vals, x.Cond, bound, out)
+		return
+	case *Generator:
+		scanCompScope(x.Iter, x.ForVar, x.Elems, nil, nil, x.Cond, bound, out)
+		return
+	}
+	v := reflect.ValueOf(n)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		return
+	}
+	e := v.Elem()
+	if e.Kind() != reflect.Struct {
+		return
+	}
+	t := e.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := e.Field(i)
+		switch f.Kind() {
+		case reflect.Slice, reflect.Array:
+			if !nodeField(f.Type().Elem()) {
+				continue
+			}
+			for k := 0; k < f.Len(); k++ {
+				if !f.Index(k).IsNil() {
+					scanFreeIn(f.Index(k).Interface().(Node), bound, out)
+				}
+			}
+		case reflect.Interface, reflect.Ptr:
+			if f.IsNil() || !nodeField(f.Type()) {
+				continue
+			}
+			scanFreeIn(f.Interface().(Node), bound, out)
+		}
+	}
+}
+
+// scanCompScope walks a comprehension's parts with its own target bound: the iterable the loop ranges over
+// is read outside that binding, and everything else is read inside it.
+func scanCompScope(iter Expr, forVar *Name, elems, keys, vals []Expr, cond Expr, bound, out map[string]bool) {
+	scanFreeIn(iter, bound, out)
+	inner := childScope(bound)
+	if forVar != nil {
+		inner[forVar.Value] = true
+	}
+	for _, e := range elems {
+		scanFreeIn(e, inner, out)
+	}
+	for _, k := range keys {
+		scanFreeIn(k, inner, out)
+	}
+	for _, v := range vals {
+		scanFreeIn(v, inner, out)
+	}
+	scanFreeIn(cond, inner, out)
+}
+
+func childScope(bound map[string]bool) map[string]bool {
+	inner := make(map[string]bool, len(bound)+2)
+	for k, v := range bound {
+		inner[k] = v
+	}
+	return inner
+}
+
+var nodeInterfaceType = reflect.TypeOf((*Node)(nil)).Elem()
+
+// nodeField reports whether a struct field can hold an AST node. `*Type`, `Span` and `string` cannot,
+// which is what keeps the scan from wandering into the annotation grammar.
+func nodeField(t reflect.Type) bool {
+	return t.Kind() == reflect.Interface && t.Implements(nodeInterfaceType)
 }
 
 // lookupFuncDef resolves a called name to its definition so the bool predicate can read the
@@ -329,6 +609,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.params = map[string]string{}
 	g.paramSlot = nil
 	g.curFunc = g.fnName(fd)
+	g.curFD = fd
 	// The word a function returns is a fact about its body, not about its last line. `floatRet` below
 	// asks `isFloat` of each `return` *expression*, which is enough for `return x + 0.0` and nothing at
 	// all for `return x` — and a body that has just stored a double into its parameter's slot then has no
@@ -559,6 +840,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.params = map[string]string{}
 	g.paramSlot = nil
 	g.curFunc = ""
+	g.curFD = nil
 	g.inFunc = false
 	return nil
 }

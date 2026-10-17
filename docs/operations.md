@@ -768,7 +768,8 @@ test tables forbid `ptrtoint`/`inttoptr` across the whole probe set. A clone rep
 wrote (`twice`, not `twice$callable$1a2b3c4d`) to a traceback and to `--debug-info`.
 
 **Machine path.** `gustyc --callables <src>` prints the pass's own account as JSON — `rewritten`, `clones`,
-`hoisted_lambdas`, `rewritten_call_sites`, `recursive_sites`, `key_arguments`, `higher_order_functions`,
+`hoisted_lambdas`, `rewritten_call_sites`, `recursive_sites`, `key_arguments`, `higher_order_lambdas`,
+`higher_order_functions`,
 `symbols`, `refused` —
 described by the schema's `definitions.callablePassReport` (`gustyc --schema`). `recursive_sites` is how many
 calls written inside a higher-order function's own body now name that function's own clone — the number that says
@@ -776,7 +777,12 @@ whether a recursion is in hands the compiler has (ADR 0364, roadmap Gap R.267). 
 `key=` arguments of `sorted`/`min`/`max` the pass pointed at the callable they name — the hook positions the
 compiler, not the source, calls, which is the witness that a hook spelled as a name reached the declaration
 instead of the payload word (ADR 0369, roadmap Gap R.281; the count is in the plan's `hash`, so two programs
-differing only in a hook the pass answered cannot share a digest). Exit codes: `0` with the document,
+differing only in a hook the pass answered cannot share a digest). `higher_order_lambdas` is **ADR 0370**'s, how many
+of those clones were `lambda`s applied where they were written rather than `def`s the program declared — the witness
+that an applied `lambda` was specialised into a `define` its own application calls by name, with no `fnptr` operand and
+no indirect `call` anywhere in the module (roadmap L11.7 · Gap R.265, Gap R.276). Such a clone reports `<lambda>` in
+`higher_order_functions`, the reader-facing name a traceback speaks, while `symbols` keeps the minted link name.
+Exit codes: `0` with the document,
 `1` when the source cannot be parsed. `refused` carries why the pass declined, with its roadmap citation, and is
 *not* the sentence the user is shown for the program: a decline leaves the program where it was.
 
@@ -1145,7 +1151,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 7785 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 7827 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (325 rows — seven went paid with **ADR 0365** on 2026-07-29: `print([0] * 3)`, `print(3 * [0])`, `print([1, 2] + [3])`, `print("ab" * 2)`, `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now answers or raises the reference's own `TypeError` for, and the same cycle owed rows back for the ORDER of two containers no name holds (`if [1, 2] < [2]: print("yes")` and its two siblings), which the door refuses in words rather than corrupting into `icmp slt i32 @.lst1, @.lst2` — **Gap R.314**). Before that, the one that left with **ADR 0360** on 2026-10-16 is the printf row `print("a" % 2)`, which the formatting door now raises the record's own `TypeError: not all arguments converted during string formatting` for, so the row went paid rather than edited; three went paid with **ADR 0359** on 2026-10-17 (`f"hello"`, `f"plain"`, `f"a{1}b"` standing where a VALUE goes, each refused with “f-string requires a constant expression (AOT backend)” since the backend had one) and one arrived with it (**Gap R.308**, a format spec over a value the compiler cannot read), which is how paying a row is supposed to look: the paid rows un-skipped `TestEvalFString`, and the rest of that test got asked for the first time; four went paid with **ADR 0356/0357** on 2026-10-16: the comprehension over a list the escape analysis had been deleting, the two `s[0] = …` store-to-immutable traps whose class and sentence the compiled backend now raises, and `show(1 == 1)` / `show(True)` whose print of a parameter the pair road now renders the record's way; seven more changed *shape*, from "cannot build a program the engine ran" to a named divergence, which is the ratchet doing its job rather than rows disappearing) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (20 rows — three went paid with **ADR 0365**: `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now raises the reference's own `TypeError` for or builds outright; before that `print("a" % 2)` went paid with **ADR 0360** beside its twin above; two are Gap L.5's, where the record holds the interleaved line and CPython agrees with the compiled leg: there the record is the debt, ADR 0302) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (6 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1722,10 +1728,11 @@ not comments, so a future re-recording cannot silently undo them.
   `benchBaseline` definitions in `--schema`.
 - `--callables <src>` → the function-value pass's own account of the source:
   `{"tool":"callable-values","pass":"defunctionalize-callables","hash":"…","rewritten":true,`
-  `"clones":1,"hoisted_lambdas":1,"rewritten_call_sites":2,"recursive_sites":0,"key_arguments":0,"higher_order_functions":["twice"],`
+  `"clones":1,"hoisted_lambdas":1,"rewritten_call_sites":2,"recursive_sites":0,"key_arguments":0,"higher_order_lambdas":0,"higher_order_functions":["twice"],`
   `"symbols":[…],"refused":[]}` — the `callablePassReport` definition in `--schema` (roadmap L11.7, ADR 0345;
   `recursive_sites` is ADR 0364's, the self-calls a clone answered by calling itself; `key_arguments` is ADR 0369's,
-  the hook `key=` arguments retargeted to the callable they name).
+  the hook `key=` arguments retargeted to the callable they name; `higher_order_lambdas` is ADR 0370's, the clones that
+  were applied `lambda`s, which report `<lambda>` rather than a name the program wrote).
   `rewritten` is `false` and `refused` carries one sentence when the pass declined: the program is then exactly
   what it was before the pass, and the refusal a user is shown is the one the backend already had.
 

@@ -1151,6 +1151,7 @@ const astIRSchemaTemplate = `{
         "rewritten_call_sites",
         "recursive_sites",
         "key_arguments",
+        "higher_order_lambdas",
         "higher_order_functions",
         "symbols",
         "refused"
@@ -1193,12 +1194,16 @@ const astIRSchemaTemplate = `{
           "type": "integer",
           "description": "How many key= arguments the pass pointed at the callable they name. A hook-bearing builtin - sorted, min, max - calls its key once per element, so the position is a call the source never wrote and the AST does not show: 'neg = lambda v: 0 - v' with 'sorted(xs, key=neg)' binds the callable to a name, while the declaration the pass minted for it lives under a generated symbol. The retarget is what lets the door call the function instead of the word, and the count is the witness that it happened (roadmap L11.7, Gap R.281, ADR 0340's key door, ADR 0345's alias road)."
         },
+        "higher_order_lambdas": {
+          "type": "integer",
+          "description": "How many lambdas the pass cloned. A lambda applied where it is written whose body calls one of its own parameters - '(lambda f: f(3))(lambda x: x * 2)' - is a higher-order body with no name in the source: the pass gives it a declaration, clones it once per distinct tuple of functions its called parameters are asked to be, and points the application at the clone, so the callable never has to exist as a value. Zero means the program wrote no such lambda; when the program wrote one and the pass could not prove it, the 'refused' list says which shape stopped the plan (roadmap L11.7, Gap R.265)."
+        },
         "higher_order_functions": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "The functions whose bodies call one of their own parameters, in the order the source declares them."
+          "description": "The functions whose bodies call one of their own parameters, in the order the source declares them. An applied lambda that is cloned appears under the symbol its declaration carries, because the source wrote no name for it; a reader meets it as <lambda>, the reference's own word."
         },
         "symbols": {
           "type": "array",

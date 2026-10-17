@@ -95,8 +95,14 @@ type callableReport struct {
 	RecursiveSites int `json:"recursive_sites"`
 	// KeyArguments counts the `key=` arguments the pass pointed at the callable they name — the hook
 	// positions the door calls and the source never wrote as a call (roadmap L11.7, Gap R.281).
-	KeyArguments    int      `json:"key_arguments"`
-	HigherOrderFunc []string `json:"higher_order_functions"`
+	KeyArguments int `json:"key_arguments"`
+	// HigherOrderLambdas counts the lambdas that were cloned: a lambda applied where it is written whose
+	// body calls one of its own parameters is a higher-order body with no name in the source, and the pass
+	// gives it a declaration, clones it once per tuple its called parameters are asked to be, and points
+	// the application at the clone (roadmap L11.7, Gap R.265). Zero means the program wrote no such lambda;
+	// a program that wrote one and was declined says so in `refused`.
+	HigherOrderLambdas int      `json:"higher_order_lambdas"`
+	HigherOrderFunc    []string `json:"higher_order_functions"`
 	// Symbols are the IR names the pass minted — clones and hoisted lambdas — so a caller that reads
 	// `--emit-llvm` can tell a definition this pass wrote from one the program wrote.
 	Symbols []string `json:"symbols"`
@@ -165,7 +171,20 @@ type callableWalk struct {
 	// the closure pass builds. Rewriting a call through that boundary is not this pass's contract, so
 	// such a call site declines the whole rewrite instead of being rewritten half.
 	inLambda int
+	// onPath holds the nodes the walk is currently inside; depth counts the frames it has opened. A
+	// rewritten AST can point back at a node that encloses the very call naming it — a self-call whose
+	// callee was pointed at the declaration that owns the body is that shape — and a walk that trusts
+	// the tree to be a tree dies in the runtime instead of in a sentence the program could be shown.
+	// The guard is a path set plus a depth cap: descending is refused only for a node this path is
+	// already inside, so a shared (acyclic) node is still visited on every route to it and the k-th-call
+	// ordinal the pass rewrites by is untouched, while a cycle is cut where it closes.
+	onPath map[uintptr]bool
+	depth  int
 }
+
+// callableWalkDepthCap is the belt beside the path set: no source the parser writes nests expressions
+// thousands deep, so a walk that reaches it is walking something a tree is not.
+const callableWalkDepthCap = 2000
 
 // callableWalker builds a walk from a visitor. The walk is handed out as a pointer so that the
 // visitor and the walk read the same lambda-depth counter, which is what lets a visitor ask "am I
@@ -198,6 +217,16 @@ func (w *callableWalk) node(n Node, enc *FuncDef) {
 	if fd, ok := n.(*FuncDef); ok {
 		enc = fd
 	}
+	p := v.Pointer()
+	if w.onPath == nil {
+		w.onPath = map[uintptr]bool{}
+	}
+	if w.onPath[p] || w.depth >= callableWalkDepthCap {
+		return
+	}
+	w.onPath[p] = true
+	w.depth++
+	defer func() { delete(w.onPath, p); w.depth-- }()
 	if _, isLambda := n.(*Lambda); isLambda {
 		w.inLambda++
 		defer func() { w.inLambda-- }()
@@ -633,6 +662,12 @@ type callableFn struct {
 	calledPos []int          // parameter indexes the body calls, ascending
 	sites     []*callableSite
 	inner     []*callableInner
+	// fromLambda is the lambda whose application this higher-order body came from, nil for a `def` the
+	// program wrote. A lambda that is applied where it is written and calls one of its own parameters is
+	// a higher-order body with no name in the source; the pass gives it a declaration, clones it once per
+	// tuple its called parameters are asked to be, and points the application at the clone (roadmap
+	// L11.7 · Gap R.265). The declaration itself is never emitted — only its clones are.
+	fromLambda *Lambda
 	// self is every call of this function written inside its own body, which each of its clones answers
 	// by calling itself (roadmap Gap R.267, ADR 0364).
 	self   []*callableSelfSite
@@ -716,6 +751,15 @@ type callablePlan struct {
 	order   []*callableFn
 	aliases map[string]string // `g = f` retargeted to `f`, when nothing else reads `g`
 	hoisted []*FuncDef        // lambdas given declarations of their own
+	// hoistedHO holds the declarations this pass minted for lambdas that are APPLIED where they are
+	// written and call one of their own parameters. Unlike `hoisted`, these are never appended to the
+	// program: every application was pointed at one of their clones, and emitting the body the clones
+	// were copied from would put a `define` in the module that calls a parameter nothing filled (roadmap
+	// L11.7 · Gap R.265).
+	hoistedHO []*FuncDef
+	// lambdaHO maps each such lambda node to the higher-order record minted for it, so the reading finds
+	// its single application site by node identity rather than by a name the source never wrote.
+	lambdaHO map[*Lambda]*callableFn
 	// argHoists records, for the hoisted lambdas that sit in an argument position, which call and which
 	// argument slot to point at the name the pass minted.
 	argHoists []callableArgHoist
@@ -825,6 +869,65 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if len(cf.def.Body) == 0 {
 			return nil, callableDeclinef("%q has no body to clone", cf.def.Name)
 		}
+	}
+
+	// An applied lambda whose body calls one of its own parameters is the same higher-order body as a
+	// `def` that does, written at the place it is called:
+	//
+	//	print((lambda f: f(3))(lambda x: x * 2))
+	//
+	// The `def` road clones one body per tuple of functions its called parameters are asked to be, and
+	// nothing about that construction needs a name in the source — only a body and the call that fills it.
+	// The lambda is therefore given a declaration of its own (the hoist the argument and binding roads
+	// already have), registered as the higher-order function that declaration describes, and cloned by
+	// the same code; the one difference is that the declaration itself is never emitted, because every
+	// call the program wrote has been pointed at a clone. A lambda the pass cannot prove — one that
+	// reads a name the frame owns, one whose body reaches a nested lambda or a comprehension, one whose
+	// application does not fill its parameters — is left exactly where it was, with the refusal the
+	// ordinary road gives it (roadmap L11.7 · Gap R.265; ADR 0345's construction, ADR 0249's rule that a
+	// shape the pass cannot state is refused rather than answered by coincidence).
+	for rank, c := range r.calls {
+		lam, isLambda := c.Fn.(*Lambda)
+		if !isLambda || lam == nil || lam.Body == nil {
+			continue
+		}
+		if r.inLambda[rank] {
+			continue // a call written inside a lambda is the closure road's frame, not this pass's
+		}
+		if !callableLambdaIsSelfContained(lam) || callableLambdaBodyBlocked(lam) {
+			continue
+		}
+		positions, ok := r.lambdaCalledParams(lam)
+		if !ok || len(positions) == 0 {
+			continue
+		}
+		body := copyASTExpr(lam.Body)
+		if body == nil {
+			return nil, callableDeclinef("the applied lambda at line %d could not be copied", c.Span().Line)
+		}
+		name, ok := plan.freshName(callableDisplayNameOf(r.encs[rank])+callableLambdaInfix, lam)
+		if !ok {
+			return nil, callableDeclinef("no name could be minted for the applied lambda at line %d", c.Span().Line)
+		}
+		def := &FuncDef{
+			Name:   name,
+			Params: append([]*Param(nil), lam.Params...),
+			Body:   []Stmt{&ReturnStmt{Expr: body, Src: lam.Span()}},
+			Src:    lam.Span(),
+		}
+		def.CloneOf = callableAnonymousName
+		cf := &callableFn{def: def, paramPos: map[string]int{}, calledPos: positions, fromLambda: lam}
+		for i, p := range def.Params {
+			cf.paramPos[p.Name] = i
+		}
+		plan.fns[name] = cf
+		plan.order = append(plan.order, cf)
+		plan.arity[name] = len(def.Params)
+		plan.hoistedHO = append(plan.hoistedHO, def)
+		if plan.lambdaHO == nil {
+			plan.lambdaHO = map[*Lambda]*callableFn{}
+		}
+		plan.lambdaHO[lam] = cf
 	}
 
 	// Module-level aliases. `g = twice` is a function with no value today; when every call of `g` can
@@ -1092,6 +1195,38 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		cf.sites = append(cf.sites, site)
 	}
 
+	// The applied lambdas' own call sites. A `def` may be called from anywhere in the program, so its
+	// sites are found by walking every call; a lambda written as a callee has exactly one — the
+	// application the source wrote beside it — and that site is read by the same door: every called
+	// parameter is resolved to the function the argument asks for, an argument that is a closed lambda
+	// is given a declaration of its own, and anything the reading cannot name declines the whole program
+	// (roadmap L11.7 · Gap R.265).
+	for _, cf := range plan.order {
+		if cf.fromLambda == nil {
+			continue
+		}
+		for rank, c := range r.calls {
+			if c.Fn != cf.fromLambda {
+				continue
+			}
+			if callableHasKeywordArgs(c.Args) || len(c.Args) != len(cf.def.Params) {
+				return nil, callableDeclinef("the application of the lambda at line %d does not fill the parameters", cf.fromLambda.Span().Line)
+			}
+			site := &callableSite{rank: rank}
+			for _, pos := range cf.calledPos {
+				entry, err := plan.resolve(r, c.Args[pos], r.encs[rank])
+				if err != nil {
+					return nil, err
+				}
+				site.slots = append(site.slots, entry)
+			}
+			cf.sites = append(cf.sites, site)
+		}
+		if len(cf.sites) == 0 {
+			return nil, callableDeclinef("the lambda whose body calls its own parameter is never applied")
+		}
+	}
+
 	// The inner calls: where the parameter is the callee. Each must be a call of a plain name, of the
 	// parameter, passing the arity the entries are declared with.
 	for _, cf := range plan.order {
@@ -1187,6 +1322,80 @@ func callableCalledParams(r *callableRead, fn *FuncDef, passed map[*Name]bool) (
 		positions = append(positions, i)
 	}
 	return positions, true
+}
+
+// lambdaCalledParams answers which of an applied lambda's own parameters its body calls —
+// callableCalledParams' question, asked of a body the source never gave a name. The rules are the
+// `def` road's, unchanged: the parameters are distinct and none is a predeclared name, a called
+// parameter is a plain slot (no default, no `function`/`Callable` annotation, which is ADR 0284's road
+// to walk), and every one of its occurrences in the body is the callee of a call. The entry-arity audit
+// `callableInnerAgrees` is asked of these positions unchanged (roadmap L11.7 · Gap R.265).
+func (r *callableRead) lambdaCalledParams(l *Lambda) ([]int, bool) {
+	if l == nil || l.Body == nil {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for _, p := range l.Params {
+		if p == nil || seen[p.Name] || isPredeclaredName(p.Name) {
+			return nil, false
+		}
+		seen[p.Name] = true
+	}
+	var positions []int
+	for i, p := range l.Params {
+		if !r.onlyCalledInLambda(l, p.Name) {
+			continue
+		}
+		if p.Default != nil || callableAnnotIsCallable(p.Annot) {
+			return nil, false
+		}
+		positions = append(positions, i)
+	}
+	return positions, true
+}
+
+// onlyCalledInLambda is onlyCalledInBody for a lambda body. The record's name table is keyed by the
+// enclosing `def`, which a lambda written inside one shares — so the question is asked by walking the
+// body and matching each occurrence against the callee set the program-wide read built, which is a
+// statement about the node, not about its spelling (the same node-identity rule `callsOfParam` walks
+// with, and the reason a parameter the body also reads, stores or returns is never substituted).
+func (r *callableRead) onlyCalledInLambda(l *Lambda, param string) bool {
+	seen, called := 0, 0
+	var w callableWalk
+	w.visit = func(n Node, enc *FuncDef) {
+		if nm, isName := n.(*Name); isName && nm.Value == param {
+			seen++
+			if r.calleeNames[nm] {
+				called++
+			}
+		}
+	}
+	w.expr(l.Body, nil)
+	return seen > 0 && seen == called
+}
+
+// callableLambdaBodyBlocked is callableBodyBlocked for a lambda the program never named. Each entry is
+// a scope or a value this pass does not own: a nested lambda or `def` brings a frame the clone has no
+// entry tuple for, a comprehension or generator builds its own bindings, a `with`/`match`/import brings
+// state the reading never numbered, and an attribute, subscript or slice reads a value the callable
+// would have to BE — which is the one thing this pass does not make. A blocked shape keeps the refusal
+// the ordinary road gives it, and keeps its own roadmap row.
+func callableLambdaBodyBlocked(l *Lambda) bool {
+	if l == nil || l.Body == nil {
+		return true
+	}
+	blocked := false
+	var w callableWalk
+	w.visit = func(n Node, enc *FuncDef) {
+		switch n.(type) {
+		case *Lambda, *FuncDef, *ClassDef, *Comp, *Generator, *YieldStmt, *YieldFromStmt, *AwaitExpr,
+			*AssignExpr, *WithStmt, *MatchStmt, *ImportStmt, *TypeAliasStmt, *ExternDecl,
+			*Attr, *Index, *Slice:
+			blocked = true
+		}
+	}
+	w.expr(l.Body, nil)
+	return blocked
 }
 
 // callableAnnotIsCallable asks whether an annotation is the one that declares a parameter to be
@@ -1503,6 +1712,12 @@ func callableHoistNamesDistinct(plan *callablePlan) bool {
 		}
 		seen[h.Name] = true
 	}
+	for _, h := range plan.hoistedHO {
+		if h == nil || seen[h.Name] {
+			return false
+		}
+		seen[h.Name] = true
+	}
 	return true
 }
 
@@ -1799,6 +2014,12 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 			}
 			clone.Name = cl.name
 			clone.CloneOf = cf.def.Name
+			if cf.fromLambda != nil {
+				// The reference names an anonymous function `<lambda>` however it reached the call, so a
+				// clone of an applied lambda is named that for every reader — the traceback frame, the line
+				// table, the callable in a diagnostic — and never the symbol this pass minted (ADR 0345 §3).
+				clone.CloneOf = callableAnonymousName
+			}
 			// The two lists come from the same walk over structurally identical trees, so the k-th call
 			// of the clone is the k-th call of the source body. The lengths are checked rather than
 			// assumed: a call pointed at the wrong `define` is worse than no rewrite at all.
@@ -1996,8 +2217,26 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 		return prog, nil
 	}
 	for _, cf := range plan.order {
-		report.HigherOrderFunc = append(report.HigherOrderFunc, cf.def.Name)
+		// A reader meets a clone by the name the source wrote, and a lambda has no name in the source:
+		// the reference's own word for it is `<lambda>`, and that is what the account, the traceback and
+		// the `--lang` lines print. The minted symbol stays where a machine wants it — `symbols`
+		// (roadmap L11.7, ADR 0320's rule for a rewritten definition, ADR 0370).
+		if cf.fromLambda != nil {
+			report.HigherOrderFunc = append(report.HigherOrderFunc, "<lambda>")
+			report.HigherOrderLambdas++
+		} else {
+			report.HigherOrderFunc = append(report.HigherOrderFunc, callableDisplayName(cf.def))
+		}
+		for _, cl := range cf.clones {
+			report.Symbols = append(report.Symbols, cl.name)
+		}
 	}
+	for _, h := range plan.hoisted {
+		if h != nil {
+			report.Symbols = append(report.Symbols, h.Name)
+		}
+	}
+	sortStrings(report.Symbols)
 	report.Rewritten = true
 	report.Hash = callablePlanHash(report)
 	return fresh, report
@@ -2414,8 +2653,12 @@ func marshalCallableReport(rep callableReport) (string, error) {
 func callablePlanHash(rep *callableReport) string {
 	h := fnv.New64a()
 	if rep != nil {
-		fmt.Fprintf(h, "%s|%d|%d|%d|%d|%d|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
-			rep.RecursiveSites, rep.KeyArguments, strings.Join(rep.HigherOrderFunc, ","))
+		// `higher_order_functions` carries the READER's names — `<lambda>` for a cloned lambda, which is
+		// how a human and an agent alike should see it — so it cannot be the whole of a fingerprint. The
+		// minted symbols are what make two different programs hash apart, and they are in the document
+		// already (roadmap L11.7, ADR 0345's determinism claim, ADR 0370).
+		fmt.Fprintf(h, "%s|%d|%d|%d|%d|%d|%s|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
+			rep.RecursiveSites, rep.KeyArguments, strings.Join(rep.HigherOrderFunc, ","), strings.Join(rep.Symbols, ","))
 	}
 	return fmt.Sprintf("%016x", h.Sum64())
 }

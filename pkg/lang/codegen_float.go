@@ -298,6 +298,14 @@ func (g *irGen) isFloat(e Expr) bool {
 		k := g.ternaryKind(n)
 		return k == ternaryArmIsDouble || k == ternaryBothAreDoubles
 	case *Call:
+		if lam, isLambda := n.Fn.(*Lambda); isLambda {
+			// An immediately applied `lambda` answers what its body answers, and the road that emitted its
+			// `define` already decided which word that is. Asking anything else is how the call and the
+			// print door disagreed about the same value: `print((lambda m: m / 2)(3))` called a `define
+			// double` and then handed the double to `%d`, and `llc` rejected the module — exit 2, the code
+			// ADR 0166 reserves for a compiler bug (roadmap L11.6, Gap R.265, ADR 0370).
+			return funcReturnsFloat(g, lambdaFuncDef(lam))
+		}
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
 				// A function the program defined and that returns a float is a fact about
@@ -554,6 +562,19 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		}
 		return g.floatBinOp(b, n)
 	case *Call:
+		if lam, isLambda := n.Fn.(*Lambda); isLambda && funcReturnsFloat(g, lambdaFuncDef(lam)) {
+			// An applied `lambda` whose body answers a double answers it from its own `define`: ask the
+			// declaration the emit road builds for it, and take the double the call already produces.
+			// Falling through to the default below lowered the call through the integer road and widened
+			// the word it had already truncated, so `print((lambda m: m / 2)(3))` reached `llc` as a
+			// `sitofp` of a double and the module was rejected — exit 2, the code ADR 0166 reserves for a
+			// compiler bug (roadmap L11.6, Gap R.265, ADR 0370).
+			t, err := g.call(b, n)
+			if err != nil {
+				return ""
+			}
+			return t
+		}
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok && g.builtinShadowed(id.Value) && !g.floatFuncs[id.Value] {
 				// The name is the program's, so this is an ordinary call — and a call in this

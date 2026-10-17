@@ -121,6 +121,13 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// a working program, Gap R.219's open remainder in Gap R.229 and Gap R.230, ADR 0368).
 	g.pairCallAsked = map[string]bool{}
 	g.pairTagDeclared = map[string]bool{}
+	// The tree the emitter is lowering, kept for the one question a capture asks about a parameter: what do
+	// the calls hand to it. A lambda's body is read by the AST scans as part of the expression it sits in, so
+	// a name used ONLY inside a lambda has no call-site record of its own, and the capture road has to ask
+	// the calls directly rather than trust a table the scan never filled (roadmap L11.7 · Gap R.265;
+	// the same "asked of the program, not of the emission order" rule as the pair arity above).
+	g.program = prog
+	g.lambdaOrigin = map[*FuncDef]*Lambda{}
 	// Which functions hand back a container, and which one: asked of the whole program, before any IR
 	// exists, so a `def` written below its first call and a call written below that `def` read one answer
 	// (roadmap Gap R.67, ADR 0333; the same statelessness ADR 0273 requires of the pair road's arity).
@@ -530,6 +537,8 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// marks were recorded as offsets into `globals` and into the body builder, and those two
 	// address spaces become one here (L8.5, ADR 0231).
 	out.WriteString(g.strGlobals.String())
+	// The generated `lambda` definitions, in the region the roads that own a `define` never write into.
+	out.WriteString(g.lambdaDefines.String())
 	globalsPrefix := out.Len()
 	out.WriteString(g.globals.String())
 	EmitABI(&g.decls)
@@ -756,9 +765,25 @@ type irGen struct {
 	gcReport   bool
 	globals    strings.Builder
 	strGlobals strings.Builder // string constants, emitted at top of IR
-	decls      string
-	sym        map[string]string // variable -> load temp
-	allocd     map[string]bool   // alloca emitted?
+	// lambdaDefines holds the `define`s the lambda road minted. They cannot join `g.globals` as they are
+	// finished: a method body and a closure body are themselves being written into that stream, so a
+	// lambda applied inside one — the shape `(lambda y: y + 1)(x)` written in a method — landed in the
+	// MIDDLE of the enclosing `define` and `llc` answered `multiple definition of local value named
+	// 'gc.frame.base'` (roadmap L11.7, Gap R.265, ADR 0370). Module-level `define`s may come in any
+	// order, so they wait here and are written beside the other module-level text.
+	lambdaDefines strings.Builder
+	// captureWordMemo and captureWordAsking are the state of the gate that types a capture by asking the
+	// frame's own call sites (ADR 0370): one verdict per (frame, parameter), and the set of questions this
+	// answer is being derived from, which is what turns a definition that refers to itself into a refusal
+	// rather than into a recursion that reaches the runtime's stack limit.
+	captureWordMemo   map[string]captureWordAnswer
+	captureWordAsking map[string]bool
+	// programCallList is `callableCallsOf(g.program)` walked once: the reflective walk is the pass's and
+	// is not cheap, and the gate above asks it per capture.
+	programCallList []*Call
+	decls           string
+	sym             map[string]string // variable -> load temp
+	allocd          map[string]bool   // alloca emitted?
 	// rtComps records the comprehensions whose elements are computed at runtime, so a
 	// consumer (sum/min/max/len folding) cannot read an empty compile-time element set and
 	// answer 0 for a list that has elements (roadmap L11.7, ADR 0192).
@@ -957,6 +982,19 @@ type irGen struct {
 	// lambdas maps a variable name bound to a lambda to its generated
 	// FuncDef name, so `f = lambda x: ...; f(3)` resolves in Call.
 	lambdas map[string]string
+	// lambdaCaptures records, for each generated anonymous function, the names its body reads from the
+	// frame the lambda was written in — the parameters and locals of the enclosing body, or the names an
+	// enclosing closure received through `%env`. Each one is a parameter this file added to the generated
+	// `define` and a keyword argument the call road fills with the caller's own reading of that name
+	// (roadmap L11.7, Gap R.265; the question is closureInfoFor's, ADR 0245's lift).
+	lambdaCaptures map[string][]string
+	// program is the tree this module is being lowered from — the program AFTER the defunctionalisation
+	// pass, which is the tree every door reads — so a question about a parameter's callers is asked of the
+	// calls that will actually be emitted (roadmap L11.7, Gap R.265).
+	program *Program
+	// lambdaOrigin maps each `define` this file minted for a lambda back to the lambda node it came from,
+	// which is how an inline application `(lambda k: …)(2)` is recognised as a call of that frame.
+	lambdaOrigin map[*FuncDef]*Lambda
 	// floatVars tracks variables whose last assignment produced a double.
 	floatVars map[string]bool
 	// unionVars holds names annotated with a union type (e.g. `int | float`);
@@ -968,11 +1006,23 @@ type irGen struct {
 	// floatFuncs tracks user functions that return a double.
 	floatFuncs map[string]bool
 	// curFunc tracks the user function currently being emitted.
-	curFunc      string
-	listVars     map[string]bool
-	runtimeDicts map[string]bool
-	runtimeSets  map[string]bool
-	heapUsed     bool
+	curFunc string
+	// curFD is the declaration of the frame currently being emitted — the `def`, the nested `def` the
+	// closure lift lowered, or the method the class road emitted. `curFunc` is a name, and only the
+	// `funcDef` road knows how to turn one back into a declaration; the roads that emit a body without
+	// passing through `funcDef` carry the declaration here instead, which is what lets a lambda written
+	// in a closure or a method body ask what that frame's calls hand to the parameter it captures
+	// (roadmap L11.7, Gap R.276).
+	curFD *FuncDef
+	// emittingMethod says the frame being emitted is a method body. The class road emits every method as
+	// an `i32` function whatever its body answers — it passes `floatRet=false` to the very road that
+	// decides a body's word — so a `lambda` applied in a method body that answers a double has no word to
+	// return in, and the module `llc` rejects is the alternative to saying so (roadmap L11.6, ADR 0370).
+	emittingMethod bool
+	listVars       map[string]bool
+	runtimeDicts   map[string]bool
+	runtimeSets    map[string]bool
+	heapUsed       bool
 	// echoOn records that this module was built for a caller that wants the value of a snippet
 	// back (the REPL, `--eval`), and echoUsed that the module actually calls the writer — which
 	// is what gates echoRuntimeIR. Roadmap L13.1, ADR 0302.

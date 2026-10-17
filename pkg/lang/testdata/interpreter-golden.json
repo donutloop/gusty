@@ -1,5 +1,211 @@
 {
  "entries": {
+"class Foo:\n    def bar(self, x):\n        return (lambda y: y + 1)(x)\n\nprint(Foo().bar(3))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def add(a):\n    def inner(b):\n        return (lambda c: c + a + b)(1)\n    return inner(2)\n\nprint(add(3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def apply1(fn, v):\n    return fn(v)\n\nprint(apply1(lambda x: (lambda y: y * 2)(x), 4))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return (lambda y: y * 2)(x)\n\nprint(f(4))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    a = 7\n    b = 1\n    def bump(n):\n        return (lambda m: m + a + b)(n)\n    return bump(4)\n\nprint(outer())\n": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
+
+"def outer(x):\n    y = x + 1\n    return (lambda z: z + y)(2)\n\nprint(outer(3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def twice(x):\n    return x * 2\n\ndef use(f):\n    return f(3)\n\nprint(use(twice))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def twice(x):\n    return x * 2\n\nprint(twice(2), (lambda x: x * 2)(2))\n": {
+    "stdout": "4 4\n",
+    "hasStdout": true
+   },
+
+"print((lambda f, g, x: f(g(x)) + g(f(x)))(lambda v: v + 1, lambda v: v * 2, 3))\n": {
+    "stdout": "15\n",
+    "hasStdout": true
+   },
+
+"print((lambda f: f(1) + f(2))(lambda x: x * 3))\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"print((lambda f: f(3))(lambda x: x * 2))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print((lambda m: m / 2)(3))\n": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: (lambda y: x + y)(1))(2))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: x * 2.5)(3))\n": {
+    "stdout": "7.5\n",
+    "hasStdout": true
+   },
+
+"print([(lambda k: k * 2)(x) for x in [1, 2, 3]])\n": {
+    "stdout": "[2, 4, 6]\n",
+    "hasStdout": true
+   },
+
+"twice = lambda x: x * 2\nprint(twice(21))\n": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+"class Foo:\n    def bar(self, x):\n        return (lambda y: y + 1)(x)\n\nprint(Foo().bar(3))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def add(a):\n    def inner(b):\n        return (lambda c: c + a + b)(1)\n    return inner(10)\n\nprint(add(100))": {
+    "stdout": "111\n",
+    "hasStdout": true
+   },
+
+"def counter():\n    total = 0\n    def bump(n):\n        return (lambda m: m + total)(n)\n    return bump(5)\n\nprint(counter())": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print([(lambda k: k * 2)(x) for x in [1, 2, 3]])": {
+    "stdout": "[2, 4, 6]\n",
+    "hasStdout": true
+   },
+"def apply1(fn, v):\n    return fn(v)\n\nprint(apply1(lambda x: x + 1, 2))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    t = v * 2\n    return (lambda k: k + t)(1)\n\nprint(f(3))": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    b = 42\n    f = lambda: b\n    return f()\n\nprint(outer())": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+
+"def outer(v):\n    f = lambda x: x + v\n    return f(1)\n\nprint(outer(1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def outer(v):\n    f = lambda: v * 2\n    return f()\n\nprint(outer(3))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, -1, -2], key=lambda v: abs(v)))": {
+    "stdout": "[-1, -2, 3]\n",
+    "hasStdout": true
+   },
+"def apply(f, x):\n    return f(x)\n\nprint(apply(lambda x: x + 1, 1))\nprint(apply(lambda x: x + 10, 10))": {
+    "stdout": "2\n20\n",
+    "hasStdout": true
+   },
+
+"def apply1(fn, v):\n    return fn(v)\n\nprint(apply1(lambda x: (lambda y: y * 2)(x), 4))": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def calling(fn, a, b):\n    return fn(a) + fn(b)\n\nprint(calling(lambda x: x * 2, 3, 4))": {
+    "stdout": "14\n",
+    "hasStdout": true
+   },
+
+"def calling(fn, a, b):\n    return fn(a) + fn(b)\n\nprint(calling(lambda x: x * 2, 3, 4))\nprint(calling(lambda x: x * 3, 1, 2))": {
+    "stdout": "14\n9\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    return (lambda k: k + v)(1)\n\nprint(f(2))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return (lambda y: y * 2)(x)\n\nprint(f(4))": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def outer(x):\n    y = x + 1\n    return (lambda z: z + y)(2)\n\nprint(outer(3))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, v):\n    return fn(fn(v))\n\nprint(twice(lambda x: x * 3, 2))": {
+    "stdout": "18\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, x):\n    return fn(fn(x))\n\nprint(twice(lambda n: n * 3, 2))\nprint(twice(lambda n: n * 4, 1))": {
+    "stdout": "18\n16\n",
+    "hasStdout": true
+   },
+
+"def use(cb):\n    return cb(1)\n\nprint(use(lambda x: x + 1))\nprint(use(lambda x: x * 3))": {
+    "stdout": "2\n3\n",
+    "hasStdout": true
+   },
+
+"f = lambda x: x * 2\n\nprint((lambda g: g(3))(f))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print((lambda f, g, x: f(g(x)) + g(f(x)))(lambda a: a * 2, lambda b: b + 1, 3))": {
+    "stdout": "15\n",
+    "hasStdout": true
+   },
+
+"print((lambda f: f(1) + f(2))(lambda x: x * 3))": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"print((lambda f: f(3))(lambda x: x * 2))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"print((lambda f: f(3))(lambda x: x * 2.5))": {
+    "stdout": "7.5\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: (lambda y: x + y)(1))(2))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
 "# integration/programs/lambda_default_param.gy — roadmap Gap R.263, ADR 0352.\n#\n# A `lambda`'s parameter list is spelled the same way a `def`'s is. Before this row the parser's lambda loop\n# read plain names and stopped at `=`:\n#\n#   f = lambda x, y=1: x + y\n#   print(f(1))           # parse error at 1:16: expected \":\"   ← this toolchain\n#                         # 2                                     ← the reference\n#\n# `def` got its defaults from `parseParam()` and `lambda` got a hand-written loop, because a lambda's body\n# separator and an annotation's introducer are the same `:` — a real worry, and no worry at all for an `=`,\n# which is not an operator and so stops `parseExpr()` on its own. Everything past the grammar was already\n# built: the function-value pass hoists the lambda, ADR 0322's rule that a callable's options live at the\n# call reads the default there, and the arity check already counted `to N`.\n#\n# The shapes are deliberately crossed. A default that is a call, a module name, a conditional, a dict\n# literal and a text containing a colon each exercise a different part of \"the default is an expression\";\n# the keyword call, the omitted call and the full call exercise the three ways a call site can answer. The\n# `def` rows beside them are the parity claim — this row moves a `lambda` to where a `def` already was, so a\n# `def` that moved would mean the two roads were never the same road.\n#\n# Two families are absent on purpose. A default that is not a number or a text (`y=None`, `xs=[]`, `w={}`)\n# prints `0` here where the reference prints `None`, `[]` and `{}` (roadmap Gap R.277), and a `lambda` that\n# reads a name from the function it is written inside refuses with `undefined name` while the identical\n# nested `def` answers (roadmap Gap R.276). A corpus row that refuses, or that prints a number for an object,\n# cannot be compared with the reference — so they are filed, with today's answer, in\n# `pkg/lang/lambda_default_param_test.go`.\n\nf = lambda x, y=1: x + y\nprint(f(1))                                     # 2   — the row: omitted\nprint(f(1, 5))                                  # 6   — supplied\nprint(f(1, y=9))                                # 10  — by keyword\n\ng = lambda x=2, y=3: x * y\nprint(g(), g(2), g(2, 5))                       # 6 6 10\n\ndef two():\n    return 2\n\nh = lambda n, v=two(): n * v\nprint(h(3), h(3, 4))                            # 6 12\n\nSTEP = 2\nscale = lambda n, k=STEP: n * k\nprint(scale(3), scale(3, 5))                    # 6 15\n\nflag = True\ncond = lambda n, w=1 if flag else 2: n + w\nprint(cond(10))                                 # 11\n\ngreet = lambda who, tag=\"?\": who + tag\nprint(greet(\"z\"))                               # z?\n\n# a name in a default resolves where a `def`'s default would resolve it: module scope, not the caller's\nk = 100\nshadow = lambda n, k=3: n * k\nprint(shadow(2), k)                             # 6 100\n\n# the bodies that already worked must keep working, and the hook now appears in both spellings. The inline\n# lambda answered all along; binding the same lambda to a NAME and passing the name used to land on the payload\n# word instead of a callable — `TypeError: 'int' object is not callable` where a `def` in the same position\n# answers [3, 2, 1] — until ADR 0369 retargeted the `key=` argument to the declaration the pass mints for the\n# lambda (roadmap Gap R.281; the named rows below are the ones that row was written for).\nprint(sorted([3, 1, 2], key=lambda v: 0 - v))    # [3, 2, 1]\nneg = lambda v: 0 - v\nprint(sorted([3, 1, 2], key=neg))                 # [3, 2, 1]  — the same hook, read out of a name\nprint(sorted([3, 1, 2], key=neg, reverse=True))   # [1, 2, 3]\nprint(min([3, 1, 2], key=neg), max([3, 1, 2], key=neg))   # 3 1\npick = lambda v: 1 if v else 2\nprint(pick(True), pick(False))                  # 1 2\nplain = lambda: 5\nprint(plain())                                  # 5\n\ndef apply(fn, v):\n    return fn(v, 2)\n\nprint(apply(lambda a, b: a * b, 4))             # 8\n\n# the `def` road beside it — the parity claim\ndef d(a=2, b=3):\n    return a * b\n\nprint(d(), d(5), d(5, 5))                       # 6 15 25\nprint(d(1, b=9))                                # 9\n": {
     "stdout": "2\n6\n10\n6 6 10\n6 12\n6 15\n11\nz?\n6 100\n[3, 2, 1]\n[3, 2, 1]\n[1, 2, 3]\n3 1\n1 2\n5\n8\n6 15 25\n9\n",
     "hasStdout": true

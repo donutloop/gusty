@@ -12465,3 +12465,60 @@ printed by the tool for a source printed beside it.
   answerable (the mode for refusals); writing new answers is the default mode. The record went 7762 → 7785, every
   entry written from CPython with the compiled leg cross-checked, and the corpus program that had been written
   *around* this gap (`lambda_default_param.gy`, whose header said so) grew its named-hook rows back.
+
+## ADR 0370 — an applied `lambda` is a function this backend can build a call to (L11.7, Gap R.265, Gap R.276, 2026-10-19)
+
+- **Key the clone on the caller, not on the callee.** `(lambda f: f(1) + f(2))(lambda x: x * 3)` and
+  `(lambda f: f(3))(lambda x: x * 2)` apply *the same written lambda* at two different argument tuples. My first cut
+  registered the higher-order body under the inner `Lambda` node, so the second application was pointed at the clone
+  built for the first and answered `6` for a program whose answer is `9` — a wrong value at exit 0, on a shape the row
+  had just been declared paid. The key is the **call node**: an entry belongs to an application, and the argument tuple
+  an entry means is the one that application writes.
+- **A `lambda` is a declaration; ask the binding rule, not the frame's table.** Deriving a lambda's captures from
+  `closureInfoFor` — the nested-`def` road's filter over names the enclosing frame has a slot for — deleted `x` from
+  `(lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1)`'s two-frame twin, because `x` is bound by a lambda and
+  not by a frame table. `lambdaFreeNames` (with `scanFreeIn`/`scanCompScope`/`childScope` for the scopes a body opens)
+  is the question the language asks; the table is one road's answer to it.
+- **Ask the call sites, not just the body.** `def f(v): return (lambda k: k + v)(1)` applied as `f(2.5)` is invisible
+  to the body's float tables: inside the body `v` is a parameter of nobody. `captureParamWord` therefore scans
+  `callableCallsOf` for every call of the frame — including the clone ownership `g.lambdaOrigin[fd] == fn` and the
+  parameter's own `Default` — and types the capture from what the program actually hands in. The alternative was a
+  truncated number at exit 0.
+- **A gate is worth nothing if it is asked after the thing it gates.** The capture-word check has to run **before**
+  `emitLambdaBody`, because emitting the body is what commits the module to an `i32` per capture. Asked afterwards it
+  could only report on a module it had already built, and the only honest thing left to do with that module was to
+  throw it away — which is exactly when a wrong value escapes into the `printf` that was emitted for it.
+- **`g.params` is the only trustworthy "is this a parameter?".** `paramSlot` is empty for a parameter the body never
+  rebinds, so `isParam` was false for exactly the captures that matter — a body reads `x` and never writes it. The
+  symptom was a captured parameter answering `0` at exit 0. Ask the map, not the slot map.
+- **Two roads streaming their own `define` into `g.globals` at once is a collision waiting to happen.** A lambda
+  emitted inside a method or a closure body landed in the middle of the enclosing `define` and `llc` answered
+  `multiple definition of local value named 'gc.frame.base'`. The fix is a third stream — `g.lambdaDefines`, written
+  after `g.strGlobals` in `GenerateIR` — plus `g.curFD`, because `g.curFunc` is set only by the `funcDef` road and the
+  closure and method roads bypass it (they now save/restore `inFunc`/`curFD`/`emittingMethod`, and `emitClosureDef`
+  gives its body its **own** `%<name>.raiseexit` label before restoring the enclosing one).
+- **When a neighbour's road answers one word, refuse rather than emit a module `llc` rejects.** A float-answering
+  lambda applied inside a closure or a method has no word to travel back in; the temptation was to emit the `double`
+  call and let the verifier be the problem. `lambdaFrameAnswersDoubles` refuses at exit 1 instead, because ADR 0166
+  makes an exit 2 a compiler bug on a program the reference runs — and the module really was rejected: that is how
+  `print((lambda m: m / 2)(3))` presented itself before `isFloat`/`floatValue` learned that a call of a `Lambda` can
+  answer a float (`call double @gy_lambda_0` printed through a `%d`).
+- **The record cannot be widened by the thing under test.** All 39 new sources were written by `tools/recmerge`, which
+  asks CPython and cross-checks the compiled leg, and it refuses to record a source whose compiled leg refuses or
+  disagrees. Three of my table rows turned out to be *refusals* I had mistaken for answers (`(lambda f: y=…)` with the
+  default omitted, `(lambda f: f(3))(abs)`, a capture three frames up) — `recmerge` caught all three by refusing to
+  write them, which is the soundness property doing its job as a test-time oracle.
+- **A wrong answer that predates the commit is still a wrong answer, and belongs in a row.** Module-level
+  `t = "hey"` above `print((lambda: t)())` prints `0` at exit 0 — and printed `0` on the stash-built before-binary
+  too. It is not this row's regression, so it is **Gap R.331**, filed with the reference's answer beside it and the
+  record rows carrying `hey`, rather than being absorbed into this commit or dropped from the table.
+- **A filed table's own rule is delete, not edit.** `TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed` pinned
+  two `Gap R.276` refusals with the instruction "close it and delete this case"; both cases went in the same commit as
+  the fix, and what remains in that table is what is still refused (the value-word wall, **Gap R.332**). A guard that
+  quietly keeps asserting a fixed shape is a test that has stopped testing.
+- **The tracker's counts are guards, not notes.** `TestTheRoadmapSnapshotIsMeasuredNotRemembered`,
+  `TestTheArtifactTableCountsAreTheFilesOwn` and `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn` failed
+  the moment the record grew (7785 → 7827) and the ADR count moved (360 → 361, highest `0370`); each names the file
+  whose number is the truth, and editing the sentence is the fix — the test is not to be relaxed. The record leg also
+  cannot be satisfied by an answer the backend wrote, and `TestTheAppliedLambdaFamilyIsOnTheRecord` fails if a row's
+  record disappears, so coverage cannot be deleted by deleting a record.

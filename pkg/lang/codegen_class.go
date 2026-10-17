@@ -203,7 +203,15 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// A method that assigns to one of its parameters gets a slot for it, like any
 	// other rebinding body (Gap R.3).
 	g.copyInReboundParams(&g.globals, fd, false)
+	savedInFunc := g.inFunc
+	savedFD := g.curFD
+	savedMethod := g.emittingMethod
+	g.emittingMethod = true
 	g.inFunc = true
+	// The frame the roads below read a name against, for the same reason `funcDef` carries it: a lambda
+	// written in a method body that reads the method's own parameter asks this declaration what its
+	// calls hand to it (roadmap L11.7, Gap R.276).
+	g.curFD = fd
 	// A method's locals are frame slots like any other body's, so they carry the same flags (ADR 0228).
 	doneMethodFlags := g.enterBoundFlags(fd, fd.Body)
 	defer doneMethodFlags()
@@ -226,7 +234,9 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	fmt.Fprintf(&g.globals, "%s:\n", g.funcRaiseExit)
 	g.gcCloseFrame(&g.globals)
 	g.globals.WriteString("  ret i32 0\n}\n")
-	g.inFunc = false
+	g.inFunc = savedInFunc
+	g.curFD = savedFD
+	g.emittingMethod = savedMethod
 	g.frameOpen = savedFrame
 	g.curFnSrc = prevFnSrc
 	g.deferred = prevDeferred

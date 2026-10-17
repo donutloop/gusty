@@ -12370,6 +12370,24 @@ parameter's scope with it. A name error for a bound parameter is not an honest r
 sentences and says which one is the bug. The fix is the pass's own clone road applied to a lambda body, plus
 hoisting an inner lambda together with the one that encloses it.
 
+**Closed (ADR 0370, 2026-10-19).** Both sentences went, and they went for different reasons — which is what made the
+row two shapes rather than one. The first (`(lambda f: f(3))(lambda x: x * 2)` → `6`) was the pass refusing to see an
+applied `lambda` as a higher-order body at all: the pass registered a `def` whose parameter is called, and a `lambda`
+is a function declaration in disguise, so it registers one now. The registration is keyed on the **call node**, not on
+the inner lambda — keying on the inner lambda was the first wrong turn, and it folded two applications of one written
+lambda into a single entry, so the second application was pointed at a clone built for the first's argument tuple and
+answered `6` for a program whose answer is `9`. The second sentence (`apply1(lambda x: (lambda y: y * 2)(x), 4)`) was
+never a call-roads bug at all: the inner lambda's `x` is a name the *outer* frame owns, so what was missing was a
+capture list, and the reported `undefined name "x"` was the name lookup answering for a frame nobody had asked it
+about. That program prints `8`, and the shape is answered at four more depths in `pkg/lang/lambda_applied_test.go`.
+
+The refusals the row leaves standing are named rather than hidden: a called parameter the program asks to be a
+predeclared name (`(lambda f: f(3))(abs)`, which keeps ADR 0283's door and its sentence), an application that omits a
+defaulted parameter (**Gap R.329**), and a capture three frames up whose kind no call site states (**Gap R.330**). The
+account reports the clone under `<lambda>` — the reader-facing name, the one a traceback speaks — with
+`higher_order_lambdas` counting it, and `pkg/lang/schema.go` describes the field so an agent can ask the census what
+it cloned without scraping prose.
+
 ### Gap R.266 — a function a call produces is not a value
 
 `def picker(): return lambda x: x + 1` / `print(picker()(2))` refuses, and so does the branch-selected twin. The
@@ -12730,6 +12748,39 @@ of them.
 The fix is the capture list, not a global: making the module hold `b` would answer this program by breaking
 the per-scope rule ADR 0351 spent a cycle establishing (`def g(y): return y` is a body's own binding, not
 module state), which is the reason the two rows are cited against each other.
+
+**Closed (ADR 0370, 2026-10-19).** A `lambda`'s capture list is now the set of names its body is **free in** — asked
+with the binding rule (`lambdaFreeNames`, with `scanFreeIn`/`scanCompScope`/`childScope` for the scopes a lambda's own
+body opens) and not with the enclosing frame's *table* rule: `closureInfoFor`'s filter is the nested-`def` road's, and
+asking it deleted `x` from a nested-lambda program that binds `x` one frame up. Each capture becomes one more parameter
+of the generated `define`, and the application fills it with the caller's own reading of that name — the same read the
+frame makes anywhere else in its body, which is why a capture of a *parameter* works even when the body never rebinds
+it (`g.params`, not `paramSlot`, is the only reliable "is this a parameter?" test; asking the slot is what made a
+captured parameter answer `0` silently).
+
+Two root causes the row's own framing hid. First, `collectNames` in `pkg/lang/closure.go` had **no `*Lambda` arm**: a
+closure body whose only read of a name sat inside a lambda got an empty capture list, so
+`def counter(): total = 0` / `def bump(n): return (lambda m: m + total)(n)` could not see a name its own closure already
+owned, while the nested-`def` control the row contrasts against answered `5` on the same build. Second, the capture-word
+gate has to be asked **before** the body is emitted, because emitting the body is what commits the module to a word:
+`valueCarriesOneWord` is asked of every capture; a name the frame tables cannot type is refused in the sentence that
+names L11.1 and this row; and a parameter the caller supplies or omits is typed by asking **every call of the frame**
+(`captureParamWord` scans `callableCallsOf`, including the clone ownership `g.lambdaOrigin[fd] == fn` and the
+parameter's own `Default`) — `def f(v): return (lambda k: k + v)(1)` applied as `f(2.5)` is invisible to the body's own
+float tables, which is the hole that would otherwise print a truncated number at exit 0.
+
+The road's own guards, each of which was a defect found on the way: the generated `define`s go to `g.lambdaDefines`
+(the method and closure roads are concurrently streaming their own `define`s into `g.globals`, and a lambda emitted
+inside one produced `multiple definition of local value named 'gc.frame.base'`); `emitClosureDef` saves and restores
+`inFunc`/`curFD` and gives its body its **own** `%<name>.raiseexit` label, printed before the enclosing
+`funcRaiseExit` is restored; `lambdaFrameAnswersDoubles` refuses a float-answering lambda applied inside a closure or a
+method rather than emitting a module `llc` would reject — **exit 2 is never the answer to give a program the reference
+runs** (ADR 0166); and `isFloat`/`floatValue` grew the `Call`-of-`Lambda` arm that answers
+`print((lambda m: m / 2)(3))` with `1.5`, where the build before emitted `call double @gy_lambda_0` against a `%d` and
+left the toolchain at exit 2. `TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed` had its two `Gap R.276` cases
+**deleted**, as its own rule requires; what is left standing is the value that cannot cross as one word
+(**Gap R.332**) and a module-level name of a non-number kind read by an applied lambda (**Gap R.331**, the same wrong
+answer the pre-ADR-0370 binary prints — `0` for `"hey"`, `1` for `True`, at the exit code that means the program ran).
 
 ### Gap R.277 — a default argument that is not a scalar is never bound: the parameter reads `0`
 
@@ -14396,3 +14447,100 @@ with a fabricated `0`. That is the silent-wrong-answer family, one step worse th
 failure, and both predate this cycle (measured at the pre-0369 binary for all three spellings of the key and with
 the key absent). The fix is the registration, not a refusal: a body whose returns say list/dict/set is registered
 as answering a container, the handle is read as one, and the tag travels beside it.
+
+### Gap R.329 — an application that omits a `lambda`'s defaulted parameter is not an entry the pass will build (OPEN)
+
+```python
+print((lambda f, y=10: f(y))(lambda x: x + 1))   # 11 in the reference; exit 1 here
+print((lambda f, y=10: f(y))(lambda x: x * 2, 5)) # 11 here too — with both arguments, at exit 0
+```
+
+ADR 0370 registered the applied lambda as a higher-order body, which is the half the row owned; the entry-arity audit
+then declined this one, because the call site does not name a tuple of functions for the defaulted slot, and the
+ordinary road answered with ADR 0283's sentence about `"f"`. The answered twin beside it is the localisation: nothing
+about the body differs, only the arity of the application. The entry tuple should be the one the *body* asks for — an
+omitted parameter whose `Default` is a function literal contributes that literal to the tuple, and a default that is
+not a function contributes the word the body's own read of the parameter needs, which is the question
+`captureParamWord` already asks a capture.
+
+### Gap R.330 — a capture three frames up has no call site to ask (OPEN)
+
+```python
+print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))  # 111 in the reference; exit 1 here
+print((lambda x: (lambda y: x + y)(1))(2))                        # 3 here — two frames, answered
+```
+
+The refusal is `lambda_2() reads "x" from the frame that encloses it, and that name holds a value no call in the
+program can be asked about`. It is the gate working: ADR 0370 types a capture by asking every call of the frame what it
+hands that parameter, and at this depth the name belongs to a frame that no call in the program names, so the question
+has no answer to read and the gate refuses rather than carry a word whose kind it cannot state (ADR 0273). The fix is
+to carry the capture through the frame that owns it — an intermediate `lambda` whose body applies another `lambda`
+re-exports the names its own body is free in but does not bind, so the innermost capture is filled by the intermediate
+call site and the outer frame is never reached directly. That is what a nested `def` does, and what the `collectNames`
+`*Lambda` arm ADR 0370 added makes reachable.
+
+### Gap R.331 — a `lambda` applied at module level whose body reads a non-number module name answers the payload word (OPEN)
+
+```python
+t = "hey"
+print((lambda: t)())   # hey in the reference; 0 here, at exit 0
+b = True
+print((lambda: b)())   # True in the reference; 1 here, at exit 0
+```
+
+Not a regression from ADR 0370 — the pre-0370 binary prints the same two bytes — and not the capture gate's hole: a
+module-level name is not a capture, so it reaches the body through the module-global road, and the print door
+downstream of a call is never told the call answers a text or a bool. The same two programs written **inside a `def`**
+are refused by ADR 0370's gate with the sentence that names L11.1, which is what localises this to the module road and
+why the row is a return-kind registration rather than a new gate: `funcReturnsFloat` is the template ADR 0370 needed
+to answer `print((lambda m: m / 2)(3))`, and the text and bool arms of the same question are missing for every body,
+lambda or not. Both programs are on the record with the reference's `hey` and `True`, so the compiled leg cannot
+silently keep the `0`.
+
+### Gap R.332 — a captured name whose value is not a number has no word to travel in (OPEN)
+
+```python
+def f():
+    xs = [1, 2]
+    return (lambda: len(xs) + 1)()   # 3 in the reference; refused here
+```
+
+The text, bool and `None` forms refuse too, where the reference prints `hey`, `True` and `None`. ADR 0370's capture
+parameters carry one `i32` — enough for a number, and for a function the pass has specialised into a name, which is
+what the row owed. Every other kind would cross as a heap handle, a string-table index or a truncated number, which is
+ADR 0273's failure wearing this row's coat, so `captureCarriesOneWord` asks the value tables the print door and the
+arithmetic roads already read, **before** the body is emitted, and refuses. The refusal names the capture, the kind,
+the road that would carry it (L11.1) and this row (L11.7 · Gap R.265, Gap R.276); it also names the two ways to write
+the same program that do answer today — pass the value to the call, or write the body as a nested `def`. The fix is the
+(payload, tag) pair ADR 0368 gives a call's answer, two words at the call site instead of one.
+
+### Gap R.333 — a module-level text read inside a `lambda` body calls a runtime entry the module never defines, and exits 0 (OPEN)
+
+```python
+t = "hey"
+print((lambda: t)())   # hey in the reference
+```
+
+The emitted body is:
+
+```llvm
+define i32 @gy_lambda_0() {
+  %gc.frame.base = alloca i32
+  call void @rt_frame_open(i32* %gc.frame.base)
+  %t1 = call i32 @rt_str_intern2(i8* @.str1, i8* @.str2)   ; no define, no declare, anywhere
+  ...
+```
+
+and `llc-20` answers, on both the linked module and the in-process-JIT module:
+
+```
+llc-20: error: /tmp/gusty-jit-…/jit.ll:8:18: error: use of undefined value '@rt_str_intern2'
+```
+
+The toolchain printed `0` and exited **0**. That is two defects standing in one program. The first is Gap R.2's, and
+it has a guard already — `pkg/lang/runtime_block_emit_test.go` asserts that a module which *calls* `@rt_str_intern2`
+*defines* it — but the guard covers the roads that register the runtime block, and the lambda body's module-name read
+emits the call without registering anything. The second is ADR 0166's: a module `llc` rejects is an exit **2**, the
+code that means "the compiler is broken", and it is not allowed to be the run a program got. `def f(): return "hey"`
+above `print(f())` answers `hey`, which localises both halves to the lambda road's emission, and the pre-ADR-0370
+build prints the same `0` at the same exit code, which is why the row is filed rather than folded into ADR 0370.

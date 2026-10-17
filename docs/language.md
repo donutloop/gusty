@@ -5151,6 +5151,68 @@ still refuses is the container, not the key: `xs = [3, 1, 2]` with `sorted(xs, k
 carry each element to the call, and it refuses in the same words whatever spelling the key wears — name, `def`
 or inline (**Gap R.254**, roadmap L11.1).
 
+### An applied `lambda` is a function this backend can build a call to (L11.7, Gap R.265, Gap R.276, ADR 0370)
+
+A `lambda` that is **applied where it is written** is a function declaration, not a value — and the compiler now
+reads it that way, so its body may call its own parameters and may read the frame that encloses it:
+
+```python
+print((lambda f: f(3))(lambda x: x * 2))                        # 6
+print((lambda f, g, x: f(g(x)) + g(f(x)))(lambda v: v + 1, lambda v: v * 2, 3))   # 15
+print((lambda f: f(1) + f(2))(lambda x: x * 3))                 # 9
+print((lambda x: x * 2.5)(3))                                   # 7.5
+print((lambda m: m / 2)(3))                                     # 1.5
+
+def apply1(fn, v):
+    return fn(v)
+print(apply1(lambda x: (lambda y: y * 2)(x), 4))                # 8 — an inner lambda keeps the outer parameter
+
+def f(x):
+    return (lambda y: y * 2)(x)                                 # a lambda applied inside a `def`
+print(f(4))                                                     # 8
+
+def outer(x):
+    y = x + 1
+    return (lambda z: z + y)(2)                                 # the capture comes from the caller's frame
+print(outer(3))                                                 # 6
+
+class Foo:
+    def bar(self, x):
+        return (lambda y: y + 1)(x)                             # a lambda applied inside a method
+print(Foo().bar(3))                                             # 4
+
+print([(lambda k: k * 2)(x) for x in [1, 2, 3]])                # [2, 4, 6]
+```
+
+Two mechanisms, one per half of the title. An applied `lambda` whose body calls one of its own parameters is
+registered as a **higher-order body**: it is given a declaration, cloned once per distinct tuple of functions its
+called parameters are asked to be, and its own application is pointed at the clone — so the callable never has to
+exist as a value, and no `fnptr` word or indirect `call` is emitted anywhere (**ADR 0345**'s rejected alternative
+stays rejected). A `lambda` that reads a name its own parameters do not bind gains one **capture parameter** per such
+name; the list is the set of names the body is *free in*, asked with the binding rule, and the application fills each
+one with the caller's own reading of that name. `gustyc --callables` reports the clones under the reader-facing name
+`<lambda>`, with `higher_order_lambdas` counting them.
+
+What still refuses, in words that name the missing half and the row that owns it:
+
+```python
+print((lambda f: f(3))(abs))                     # a called parameter asked to be a builtin — Gap R.329's neighbour
+print((lambda f, y=10: f(y))(lambda x: x + 1))   # an application that omits the default — Gap R.329
+print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))   # a capture three frames up — Gap R.330
+
+def f():
+    xs = [1, 2]
+    return (lambda: len(xs) + 1)()               # a capture whose value is not a number — Gap R.332
+```
+
+A capture crosses as one `i32` word, which can say a number and nothing else; the gate asks the value tables the print
+door and the arithmetic roads already read **before** the body is emitted, so these are refusals at exit 1 rather than
+a handle, a string-table index or a truncated number printed at exit 0 (**ADR 0273**). A `lambda` that *answers* a
+float is refused inside a closure or a method for the same reason turned inside out: those bodies answer one `i32`
+whatever they do, so the module that tried would be rejected by `llc` — an **exit 2**, which ADR 0166 reserves for a
+compiler bug. A `lambda` that is neither applied nor called — used as a *value*, returned from a function, stored in a
+container — remains **Gap R.266**'s refusal.
+
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in the compiled backend: the AOT codegen folds `int` on

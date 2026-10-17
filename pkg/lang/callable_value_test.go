@@ -127,9 +127,16 @@ func TestThePassLeavesWhatItCannotProveToTheOlderRefusals(t *testing.T) {
 			"names function, which the compiled backend has no value for"},
 		{"function stored in a container", "def d2(x: int) -> int:\n    return x * 2\n\nxs = [d2]\nprint(len(xs))\n",
 			"names function, which the compiled backend has no value for"},
-		{"lambda that reads its enclosing variable", "def outer(v):\n    f = lambda x: x + v\n    return f(1)\n\nprint(outer(1))\n",
-			`undefined name "v"`},
-		{"lambda that calls its own parameter", "print((lambda f: f(3))(lambda x: x * 2))\n",
+		{
+			// A `lambda` whose body reads a name the module binds is not a capture: the generated `define`
+			// reaches module storage the way any other function does, and the name is read from there
+			// (Gap R.35 owns module state). What the frame owns is the capture's own question.
+			"lambda that reads a name nothing binds", "def outer(v):\n    f = lambda x: x + undefined_in_both\n    return f(1)\n\nprint(outer(1))\n",
+			`undefined name "undefined_in_both"`},
+		{
+			// A parameter that is called with something the pass cannot resolve to a function: the clone
+			// has nothing to bind, and the call is the value word's question (roadmap L11.1).
+			"a lambda whose parameter is called with a builtin", "print((lambda f: f(3))(abs))\n",
 			"is called but is not a function this backend can build a call to"},
 		{"lambda returned from a function", "def picker():\n    return lambda x: x + 1\n\nprint(picker()(2))\n",
 			"a lambda used as a value has no compiled representation"},

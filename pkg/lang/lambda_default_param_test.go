@@ -274,9 +274,13 @@ func TestNoLambdaDefaultProgramExitsTwo(t *testing.T) {
 // today's answer beside the reference's, so none of it can quietly become normal. Each case is DELETED — not
 // edited — when its fix lands.
 //
-//   - a `lambda` binds no capture list, so a name it reads from the function it is written in is
-//     `undefined name` — while the identical shape with a nested `def` answers, in the same file, on the same
-//     build (roadmap Gap R.276, which is what makes this a lambda row and not a closure row);
+//   - a `lambda` binds no capture list, so a name it reads from the function it is written in was
+//     `undefined name` — while the identical shape with a nested `def` answered, in the same file, on the
+//     same build (roadmap Gap R.276, which is what made this a lambda row and not a closure row). The two
+//     cases this row filed — `f = lambda: b` reading the enclosing local, `f = lambda: v * 2` reading the
+//     enclosing parameter — ANSWER now and were DELETED from this table, as its rule requires; what the row
+//     still owes is the value that cannot cross as one i32 word, and it is filed beside L11.1 rather than
+//     here, in `TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords`;
 //   - **a default that is not a scalar is never bound**: `def d(y=None): return y` prints `0` at exit 0 where
 //     the reference prints `None`; `xs=[]` prints `0` for `[]` and `w={}` prints `0` for `{}`; `y is None` is
 //     `False`. Every scalar default answers, and a container default *supplied by the caller* answers — so the
@@ -296,16 +300,6 @@ func TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 		trap    string // when today's answer is a raise, the message it names
 		gap     string
 	}{
-		{
-			desc: "a lambda reads the enclosing function's local", gap: "Gap R.276",
-			src:  "def outer():\n    b = 42\n    f = lambda: b\n    return f()\n\nprint(outer())",
-			want: "42", refusal: `undefined name "b"`,
-		},
-		{
-			desc: "a lambda reads the enclosing function's parameter", gap: "Gap R.276",
-			src:  "def outer(v):\n    f = lambda: v * 2\n    return f()\n\nprint(outer(3))",
-			want: "6", refusal: `undefined name "v"`,
-		},
 		{
 			// the control: the nested `def` that does the same thing answers
 			desc: "the nested def beside it answers", gap: "Gap R.276's control",

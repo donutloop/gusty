@@ -227,10 +227,13 @@ var recursiveRefused = []struct {
 		owns:    "Gap R.267",
 	},
 	{
-		// the recursion is written where no clone's frame reaches
+		// the recursion is written where no clone's frame reaches. The sentence is ADR 0370's: the closure
+		// road's collector gained the `*Lambda` arm, so the name the body reads from the enclosing frame is
+		// now NAMED as a capture that cannot cross — which is what Gap R.265 said to do with a name error for
+		// a bound parameter (`undefined name "f"` was that error, and the row called it not an honest refusal).
 		name:     "a recursion written inside a lambda",
 		src:      "def run(n, f):\n    if n <= 0:\n        return 0\n\n    h = lambda k: run(k, f)\n    return f(n) + h(n - 1)\n\nprint(run(2, lambda v: v))",
-		names:    `undefined name "f"`,
+		names:    `reads "f" from the frame that encloses it`,
 		decline:  "",
 		owns:     "Gap R.265",
 		frontEnd: true,

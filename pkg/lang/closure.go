@@ -121,6 +121,13 @@ func collectNames(node interface{}, out map[string]bool) {
 		for _, a := range n.Args {
 			collectNames(a, out)
 		}
+	case *Lambda:
+		// A `lambda` is an expression, and the frame that encloses it binds names its body reads:
+		// `def outer(): total = 0; def bump(n): return (lambda m: m + total)(n)` reads `total` from
+		// inside a lambda, and a walk that stops at the `lambda` keyword never sees the read, hands the
+		// closure an empty capture list, and dies with `undefined name` on a name the frame owns
+		// (roadmap L11.7, Gap R.276).
+		collectNames(n.Body, out)
 	case *ListLit:
 		for _, e := range n.Elems {
 			collectNames(e, out)
@@ -244,6 +251,14 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	// way out, so its locals retain nothing once it returns (ADR 0181).
 	savedFrame := g.frameOpen
 	g.gcOpenFrame(b)
+	savedInFunc := g.inFunc
+	savedFD := g.curFD
+	// The body unwinds to a label inside ITS OWN `define`. A closure had no label of its own and read
+	// the enclosing function's, so a `return 1 / 0` written in a nested `def` branched to a block that
+	// does not exist in its function and `llc` rejected the module — exit 2, the code ADR 0166 reserves
+	// for a compiler bug, for a program the reference runs (roadmap L11.7, Gap R.276, ADR 0370).
+	savedRaiseExit := g.funcRaiseExit
+	g.funcRaiseExit = name + ".raiseexit"
 	g.params = map[string]string{}
 	g.paramSlot = nil
 	for i, p := range ci.params {
@@ -258,6 +273,11 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	g.fds[ci.name] = fd
 	g.envParam = "%env"
 	g.inFunc = true
+	// The frame the roads below read a name against: a capture of a lambda written in this body asks
+	// this `def` what its calls hand to that parameter, and the answer needs the declaration (roadmap
+	// L11.7, Gap R.276). `curFunc` is the funcDef road's own marker and a closure body never passes
+	// through it, which is why the frame is carried as the declaration itself.
+	g.curFD = fd
 	// A closure that rebinds one of its parameters reads a slot, not the incoming
 	// register (Gap R.3) — and so does the environment capture above, which is why
 	// the capture site consults paramSlot too.
@@ -287,11 +307,22 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 			}
 		}
 	}
-	g.inFunc = false
+	g.inFunc = savedInFunc
+	g.curFD = savedFD
 	if !strings.HasSuffix(strings.TrimSpace(b.String()), "ret ") {
 		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 0\n")
 	}
+	// The unwinding arm of the body: it closes the frame this `define` opened and answers without a
+	// value, and the caller's own check of the raise flag (ADR 0218) is what turns it into a
+	// propagation — the same shape `funcDef` gives a `def`. The label is printed while the frame still
+	// owns it and the enclosing function's is put back afterwards: the body above branches to this one,
+	// and printing the label after the restore spells a block nobody jumps to and leaves that jump
+	// pointing at nothing.
+	fmt.Fprintf(b, "%s:\n", g.funcRaiseExit)
+	g.funcRaiseExit = savedRaiseExit
+	g.gcCloseFrame(b)
+	fmt.Fprintf(b, "  ret i32 0\n")
 	fmt.Fprintf(b, "}\n")
 	g.frameOpen = savedFrame
 	g.envMode = false

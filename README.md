@@ -80,6 +80,16 @@ gusty ships an indentation-based syntax covering:
   The elements of a container the program built at run time still refuse, and say so (**Gap R.254**). A function that is *read* rather than called — `print(f)`, `xs = [f]`, a function a call
   returns — still refuses in words, because no `fnptr` word exists to hold it; `gustyc --callables <src>` prints
   what the pass decided about a program, including how many self-calls it answered (`recursive_sites`).
+- **An applied `lambda`** — a `lambda` applied where it is written is read as the function declaration it is, so its
+  body may call its own parameters and may read the frame that encloses it:
+  `(lambda f: f(3))(lambda x: x * 2)` is `6`, `(lambda f, g, x: f(g(x)) + g(f(x)))(…)` is `15`,
+  `apply1(lambda x: (lambda y: y * 2)(x), 4)` is `8`, `def f(x): return (lambda y: y * 2)(x)` applied is `8`, a lambda
+  applied inside a method or a comprehension answers, and `(lambda m: m / 2)(3)` prints `1.5` — because each lambda is
+  emitted as a real `define`, cloned once per tuple its called parameters are asked to be, with one capture parameter
+  per name its body is free in and the application filling each from the caller's own reading (**ADR 0370**, roadmap
+  L11.7 · **Gap R.265**, **Gap R.276**). A capture whose value is not a number, a capture three frames up, and an
+  application that omits a defaulted parameter refuse in words instead of printing a word whose kind nobody asked for
+  (**Gap R.329**–**R.332**).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local
@@ -440,7 +450,8 @@ caught `too many arguments for g` where CPython says `<lambda>`. `gustyc --calla
 account — clones, hoisted lambdas, minted symbols, and the shape it declined, with the row that owns it — and the
 seven shapes still refused each got a row: **Gap R.263** (a `lambda` with a default parameter never reaches the
 pass because the parser refuses it), **R.264** (a hook lambda whose body asks a door the call site cannot answer),
-**R.265** (a `lambda` that calls its own parameter, and a `lambda` inside a `lambda`), **R.266** (a function a
+**R.265** (a `lambda` that calls its own parameter, and a `lambda` inside a `lambda` — closed since by **ADR 0370**),
+**R.266** (a function a
 call produces), **R.267** (a higher-order body that calls itself — closed since by **ADR 0364**), **R.268** (a bound method or a `__call__`
 object as a callable), **R.269** (`list.sort` still refusing the options `sorted` was taught to read).
 
@@ -1856,7 +1867,9 @@ falls back to dynamic dispatch.
   already answered for a `def`. The probe session that built the tables found seven shapes the reference answers
   and this build does not, and filed each instead of absorbing it: the parameter that reads `0` because a
   non-scalar default was never bound (**Gap R.277** — a wrong number at the exit code of success, `def` included),
-  the `lambda` that cannot read the function it is written in while the nested `def` beside it can (**R.276**), a
+  the `lambda` that cannot read the function it is written in while the nested `def` beside it can (**R.276** —
+  answered since **ADR 0370**: a `lambda`'s capture list is the names its body is free in, and each crosses as a
+  parameter the application fills), a
   hook lambda bound to a name and called as an `int` (**R.281** — answered since **ADR 0369**: the `key=` argument
   is retargeted to the declaration the pass minted for the lambda, so `sorted([3, 1, 2], key=neg)` prints
   `[3, 2, 1]`), `*args`/`**kwargs` (**R.278**), a trailing comma
