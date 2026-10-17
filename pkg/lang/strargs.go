@@ -632,13 +632,7 @@ func keyDoorCallSites(funcs map[string]*FuncDef, fn string, args []Expr) (string
 	}
 	// The door calls the key with exactly one argument, and refuses or raises when the definition
 	// cannot take one. The scan speaks only where the door will call.
-	required := 0
-	for _, p := range fd.Params {
-		if p != nil && p.Default == nil {
-			required++
-		}
-	}
-	if len(fd.Params) == 0 || required > 1 {
+	if !keyDoorCallsOneArgument(fd) {
 		return "", nil, nil, false
 	}
 	switch fn {
@@ -693,6 +687,26 @@ func keyDoorOptions(fn string, args []Expr) (pos []Expr, key Expr, ok bool) {
 		}
 	}
 	return pos, key, true
+}
+
+// keyDoorCallsOneArgument answers whether the ordering door will CALL this key at all. The reference
+// calls a key with exactly one element and stops a key that cannot take one (`f() takes 0 positional
+// arguments but 1 was given`) or that is missing a required one (`f() missing 1 required positional
+// argument: 'y'`); a key the door raises for is not a call, so neither the parameter census nor the
+// defunctionalisation pass may claim it as one. One rule, read by every caller that decides whether a
+// hook calls its key (roadmap L11.7, Gap R.264, Gap R.281; ADR 0340, ADR 0233's rule against a second
+// answer for one construct).
+func keyDoorCallsOneArgument(fd *FuncDef) bool {
+	if fd == nil || len(fd.Params) == 0 {
+		return false
+	}
+	required := 0
+	for _, p := range fd.Params {
+		if p != nil && p.Default == nil {
+			required++
+		}
+	}
+	return required <= 1
 }
 
 // keyDoorCandidates is the census's reading of the same three calls: the expressions the door will

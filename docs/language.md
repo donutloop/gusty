@@ -3169,6 +3169,9 @@ g = d2
 print(g(4))                                      # 8 — the alias is called as d2
 print(sorted([3, 1, 2], key=lambda x: 0 - x))    # [3, 2, 1] — the hook lambda gets a declaration
 print(max([1, 3, 2], key=lambda x: 0 - x))       # 1
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))                # [3, 2, 1] — the same hook read out of a NAME (Gap R.281)
+print(sorted([3, 1, 2], key=neg, reverse=True))   # [1, 2, 3]
 ```
 
 The boundary is *called* versus *read*. A function that flows to a position which keeps one word for a value
@@ -3189,8 +3192,11 @@ is an ordinary expression, so a call (`y=two()`), a module name (`k=STEP`), a co
 *definition's* scope, not the caller's. What still refuses is Gaps R.255, R.264, R.265, R.266, R.268
 and R.269, plus the shapes ADR 0352 measured and filed rather than absorbed: a `lambda` that reads a variable
 of the function it is written in (**Gap R.276**), `*args`/`**kwargs` and a trailing comma in any parameter
-list (**Gap R.278**, **Gap R.279**), a hook read out of a name it was bound to (**Gap R.281**), and a container
-default beside a higher-order call (**Gap R.282**).
+list (**Gap R.278**, **Gap R.279**) and a container
+default beside a higher-order call (**Gap R.282**). A hook read out of a name a `lambda` was bound to is no
+longer among them: `neg = lambda v: 0 - v` with `sorted([3, 1, 2], key=neg)` answers `[3, 2, 1]` since
+**ADR 0369** closed **Gap R.281**, because the pass now retargets the `key=` argument to the declaration it
+minted for the lambda (see § A hook reads its key from the name a lambda was bound to).
 
 One default shape does not merely refuse — it **answers wrongly**, and is called out here rather than
 discovered by chance: a default whose value is not a number or a text is never bound to the parameter, so the
@@ -5105,6 +5111,45 @@ L11.1); candidates of two kinds (`max("bbb", 1, key=…)`) need the same word (*
 call road has no answer for raises CPython's `TypeError` (**Gap R.255**, **Gap R.248**); and the door's answer
 indexed **inline** (`print(sorted(…, key=…)[0])`) asks the index road for a name to read (**L11.1**) — bind it
 to a name, as above, and it answers.
+
+### A hook reads its key from the name a lambda was bound to (L11.7, Gap R.281, ADR 0369)
+
+The key may be a **name**, and the name may hold a `lambda`:
+
+```python
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))                  # [3, 2, 1]
+print(min([3, 1, 2], key=neg))                     # 3
+print(max([3, 1, 2], key=neg))                     # 1
+print(sorted([3, 1, 2], key=neg, reverse=True))    # [1, 2, 3]
+
+two = neg                                          # the same callable, a second name
+print(sorted([3, 1, 2], key=two))                  # [3, 2, 1]
+
+shout = lambda s: s.upper()
+print(sorted(["b", "A", "a"], key=shout))           # ['A', 'a', 'b']
+par = lambda v: v % 2
+print(sorted([3, 2, 1], key=par))                  # [2, 3, 1] — equal keys keep the written order
+
+keyed = lambda v, w=1: 0 - v - w                   # ADR 0352's defaults, beside this row
+print(sorted([3, 1, 2], key=keyed))                # [3, 2, 1]
+```
+
+Before **ADR 0369** every line above died with `TypeError: 'int' object is not callable` at exit 3, while the
+same hook written inline (`key=lambda v: 0 - v`) or declared (`def neg(v): return 0 - v`) answered. The reason
+is that a `key=` is a call the source never wrote: the defunctionalisation pass retargets every *call* of a
+name it gave a declaration to, and this position is not a call, so the name kept holding the payload word `0`
+and the door called that. The row is the alias road performed one argument outward — the `key=` argument is
+rebuilt to name the declaration the pass minted for the lambda, the `key=` keyword itself surviving so the door
+still reads the call the reference reads, and a name the pass cannot resolve leaves the program exactly as it
+was. `gustyc --callables` reports the count as `key_arguments`.
+
+The diagnostics keep the program's words and the reference's: an arity trap says
+`TypeError: <lambda>() takes 0 positional arguments but 1 was given` — the reference's line, not the generated
+symbol — and a `def`'d key keeps its own name in the same sentence (**Gap R.325**, closed beside this row). What
+still refuses is the container, not the key: `xs = [3, 1, 2]` with `sorted(xs, key=neg)` needs the value word to
+carry each element to the call, and it refuses in the same words whatever spelling the key wears — name, `def`
+or inline (**Gap R.254**, roadmap L11.1).
 
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,

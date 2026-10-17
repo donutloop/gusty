@@ -1857,7 +1857,9 @@ falls back to dynamic dispatch.
   and this build does not, and filed each instead of absorbing it: the parameter that reads `0` because a
   non-scalar default was never bound (**Gap R.277** — a wrong number at the exit code of success, `def` included),
   the `lambda` that cannot read the function it is written in while the nested `def` beside it can (**R.276**), a
-  hook lambda bound to a name and called as an `int` (**R.281**), `*args`/`**kwargs` (**R.278**), a trailing comma
+  hook lambda bound to a name and called as an `int` (**R.281** — answered since **ADR 0369**: the `key=` argument
+  is retargeted to the declaration the pass minted for the lambda, so `sorted([3, 1, 2], key=neg)` prints
+  `[3, 2, 1]`), `*args`/`**kwargs` (**R.278**), a trailing comma
   (**R.279**), the arity door a `lambda` reaches that a `def` does not (**R.280**), and a container default that
   stops the pass for an unrelated higher-order call (**R.282**).
 - **A dict key is asked, not spelled (Gap R.221, ADR 0353)** — `d = {None: 3.5}` / `print(d[None])` printed

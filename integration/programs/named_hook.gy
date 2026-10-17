@@ -1,0 +1,70 @@
+# A hook that reads its key out of the NAME a lambda was bound to calls the function
+# (roadmap L11.7 · Gap R.281, ADR 0345's alias road at the argument position, ADR 0340's key door).
+
+# `sorted`, `min` and `max` call their `key=` argument once per element. That call is written by
+# neither the programmer nor the AST: the door emits it. So the `key=` slot is the one place where a
+# NAME holds a callable without being spelled as a callee — and it was the one place the
+# defunctionalisation pass did not look. Binding the hoisted lambda to a name left the name holding
+# the payload word `0`, and the door called that word:
+#
+#   neg = lambda v: 0 - v
+#   print(sorted([3, 1, 2], key=neg))   #  TypeError: 'int' object is not callable  ← this toolchain
+#                                       #  [3, 2, 1]                                ← the reference
+#
+# Two controls localised it, and both are in this file: the hook written INLINE answers, and the hook
+# written as a `def` answers. The hoist worked and the call worked; the retarget stopped one position
+# short of the argument the compiler itself calls.
+#
+# The row is the alias road performed outward. A name the pass gave a declaration of its own is
+# retargeted in the `key=` slot to that declaration, exactly as a call's callee is retargeted, so the
+# door meets a name with a `define` behind it and emits an ordinary direct call — no `fnptr`, no
+# indirect `call`, no cast handle, and the value word still carries one payload (ADR 0345's refusal to
+# invent one). `key_arguments` in `gustyc --callables` is the witness that the retarget happened.
+#
+# The key's ANSWER kind is the door's business too: it compares numbers as numbers and texts as
+# interned words, so a group below hands each of the two comparators a lambda through a name. A tie
+# keeps the order the program wrote, which is the stability ADR 0191's sorter promised and which a
+# call through a name has no business losing.
+#
+# What stays absent on purpose: a container the program built at RUN time. `xs = [3, 1, 2]` with
+# `sorted(xs, key=neg)` refuses in words on all three spellings of the key — `def`, inline lambda and
+# name alike — because the door would have to carry an element to the key and the value word has no
+# kind to carry (roadmap L11.1). A non-callable key still raises the reference's TypeError, with
+# `<lambda>` naming the arity of a key lambda rather than the symbol the pass minted (ADR 0166).
+
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))                  # [3, 2, 1]  — the row
+print(min([3, 1, 2], key=neg))                     # 3          — the smallest key wins
+print(max([3, 1, 2], key=neg))                     # 1          — the biggest one does
+print(sorted([3, 1, 2], key=neg, reverse=True))    # [1, 2, 3]  — the same comparator, counted back
+
+# the same callable under a second name: the alias road, read where the door calls
+two = neg
+print(sorted([3, 1, 2], key=two))                  # [3, 2, 1]
+print(min([3, 1, 2], key=two), max([3, 1, 2], key=neg))  # 3 1
+
+# one name, three hooks, one declaration behind all of them
+print(sorted([1, 2, 3], key=neg), max([1, 2, 3], key=neg), min([1, 2, 3], key=neg))
+
+# the key answers a TEXT: the door orders interned words, and a tie keeps the written order
+label = lambda v: "a" if v > 1 else "b"
+print(sorted([3, 1, 2], key=label))                # [3, 2, 1]
+shout = lambda s: s.upper()
+print(sorted(["b", "A", "a"], key=shout))           # ['A', 'a', 'b']
+par = lambda v: v % 2
+print(sorted([3, 2, 1], key=par))                  # [2, 3, 1]  — stable through a name
+
+# the lambda's own parameter shapes beside the hook (ADR 0352)
+keyed = lambda v, w=1: 0 - v - w
+print(sorted([3, 1, 2], key=keyed))                # [3, 2, 1]
+
+# the controls: every spelling of the same hook that answered before this row opened
+def dec(v):
+    return 0 - v
+
+print(sorted([3, 1, 2], key=dec))                  # [3, 2, 1]  — the `def`'d name
+print(sorted([3, 1, 2], key=lambda v: 0 - v))      # [3, 2, 1]  — written inline
+print(sorted([-3, 1, -2], key=abs))                # [1, -2, -3] — a builtin
+print(sorted([3, 1, 2], key=None))                 # [1, 2, 3]  — key=None is no key at all
+print(sorted([], key=neg))                         # []         — the key is never called
+print(neg(1), sorted([3, 1, 2], key=neg))          # -1 [3, 2, 1] — the name is called directly too

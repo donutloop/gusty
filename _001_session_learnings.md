@@ -12424,3 +12424,44 @@ printed by the tool for a source printed beside it.
   repository. `grep` cost seconds each; the reasoning they were supporting was worth none of the time it
   would have taken to "fix" them. Every claim in the ADR's consequences table is a line of measured output
   from `/tmp/matrix/run.sh`, not a deduction from a function name I expected to find.
+
+## ADR 0369 — a hook reads its key from the name a lambda was bound to (Gap R.281, Gap R.325, 2026-10-18)
+
+- **A position the compiler calls is a position the compiler must tell itself about.** `sorted(xs, key=neg)`
+  with `neg = lambda v: 0 - v` died with `TypeError: 'int' object is not callable` because the defunctionalisation
+  pass rewrites *calls*, and a `key=` is not one — the door emits it. The AST shows an expression; the semantics
+  contain a call. Every soundness argument in `pkg/lang/callable_value.go` is "this name is only ever a callee,
+  tested by node identity", and node identity cannot see a callee that lives in an option. The fix is not a new
+  mechanism: it is `keyDoorOptions`, the reader the door and ADR 0363's census already share, plus a set that says
+  *a name here is being called*. Three readers of one construct would have been the real bug.
+- **The two controls were the whole diagnosis, and they were already in the tracker.** Gap R.281's cell recorded
+  that the inline hook answers and the `def` hook answers. Once I trusted that, the space of causes collapsed to
+  "the name", and the row was an argument-position retarget rather than a new callable representation. A gap row
+  that records its controls is worth more than a gap row that records its symptom; the symptom alone would have
+  pointed at the door.
+- **Measure the before-binary again, even for a row you think you understand.** `gustyc_base` (HEAD~0 built from
+  a stash) showed that five shapes I had just "broken" or "fixed" were identical before and after: `print(neg)`
+  answering `undefined name`, a callable reaching a user-defined hook's parameter, and a body returning a folded
+  container printing `0` or dying at exit 2. Those are not this row's regressions — they are three new rows
+  (Gaps R.326, R.327, R.328) filed instead of quietly absorbed, and one of them (`ret i32 @.lst1`) is an exit-2
+  compiler bug on a program with no function value in it. Without the before-binary I would have "fixed" two of
+  them in this commit and missed the third entirely.
+- **A diagnostic that prints a generated symbol is a bug with an existing helper for it.** After the retarget the
+  AST holds `neg$lambda$a78954b_0`, and the key door builds its messages from that AST, so the arity trap said
+  `neg$lambda$a78954b_0() takes 0 positional arguments…` where CPython says `<lambda>()…`. `callableSurfaceName`
+  already solved this for the call road; the door was simply not calling it. The lesson is the one ADR 0166 keeps
+  teaching: minting a name is a promise that the name stays private, and every new surface that reads the
+  rewritten tree is a place that promise can break. Gap R.325 is filed for the leak's pre-existing half and paid
+  beside the row that made it reachable from a binding.
+- **Count the rewrite into the hash.** `key_arguments` went into the report and into `callablePlanHash` in the same
+  edit, because the second is the guard for the first: two programs differing only in a hook the pass answered
+  would otherwise share a digest, and every lit-style row that reads that digest would certify one rewrite for
+  two. The test (`TestTheNamedHookAccountCountsItsKeys`) adds a second hook and fails if the hash stands still.
+- **The withdrawal is correct even when the sentence after it is wrong.** `print(neg)` shows the pass doing its job
+  — `rewritten: false`, `refused: ["the rewrite was withdrawn: …used a function as a value"]` — and the *emitter*
+  then deleting the binding so the read becomes `undefined name`. A guard that only reads the pass's account would
+  pass. Read the whole program's outcome, not the component's verdict.
+- **Record leg, reference leg, and the recorder's own mode.** `tools/recmerge -check` asserts a source is *not*
+  answerable (the mode for refusals); writing new answers is the default mode. The record went 7762 → 7785, every
+  entry written from CPython with the compiled leg cross-checked, and the corpus program that had been written
+  *around* this gap (`lambda_default_param.gy`, whose header said so) grew its named-hook rows back.

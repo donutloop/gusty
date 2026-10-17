@@ -753,6 +753,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// source, so `def run(v, fn)` calls `fn` by name too. Every group is line for line CPython
 		// (roadmap Gap R.267, Gap R.313; ADR 0364).
 		"recursive_callable",
+		// A hook that reads its key out of the NAME a lambda was bound to: the defunctionalisation pass
+		// retargets the `key=` argument to the declaration it minted for that lambda, so the door that
+		// calls the key once per element calls a `define` rather than the payload word `0`. Every group is
+		// line for line CPython (roadmap L11.7 · Gap R.281, ADR 0369).
+		"named_hook",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -190,6 +190,7 @@ the document is:
   "hoisted_lambdas": 3,
   "rewritten_call_sites": 2,
   "recursive_sites": 1,
+  "key_arguments": 1,
   "higher_order_functions": ["twice", "down"],
   "symbols": [
     "down$callable$421441b4_0",
@@ -219,6 +220,12 @@ function:
   or that the pass declined the recursion — in which case `refused` says which shape, naming the parameter and the
   line (ADR 0364, roadmap Gap R.267). A clone that recursed through the un-specialised entry could not leave this
   field at a plausible value by accident.
+- `key_arguments` says how many `key=` arguments of `sorted`/`min`/`max` the pass pointed at the callable they
+  name. The hook position is a call the source never wrote and the AST does not show — the door calls the key once
+  per element — so a name written there (`neg = lambda v: 0 - v` with `sorted(xs, key=neg)`) is the one place a
+  callable sits in an argument rather than a callee. The count is the witness that the door will call a `define`
+  rather than the payload word the name otherwise holds (ADR 0369, roadmap Gap R.281); it is also in `hash`, so two
+  programs whose only difference is a hook the pass answered cannot share a digest.
 - `hash` is a digest of the rewrite. One source gives one hash; two runs that disagree are a compiler that cannot
   compile the same program twice.
 

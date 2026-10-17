@@ -14249,3 +14249,150 @@ fires where no tag is read costs a program that compiles today, and the referenc
 CPython's answer beside the compiled one for all five shapes and fails on **either** side — if a door opens, the row
 must be deleted before the suite goes green.
 
+
+<a id="gap-r-281"></a>
+### Gap R.281 — a hook that reads its key from a name reached the payload, not the callable (CLOSED by ADR 0369)
+
+The row was filed by ADR 0352 with the measurement in its cell, because the row was not about hooks at all: it was
+about the one position where a NAME holds a callable and is never spelled as a callee. `sorted`, `min` and `max`
+call their `key=` argument once per element — a call the programmer did not write and the AST does not contain,
+emitted by the door in `pkg/lang/call_key.go`. ADR 0345's pass retargets every call of a name it gave a declaration
+to, and this position is not a call, so the retarget stopped one argument short:
+
+```python
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))     # TypeError: 'int' object is not callable   ← this toolchain
+                                      # [3, 2, 1]                                 ← the reference
+```
+
+The two controls in the row's cell are the diagnosis, and both were true before this cycle and after it: the same
+hook written inline answers, and the same hook written as a `def` answers. The hoist worked, the call worked, the
+comparator worked. The name `neg` was the problem — the pass had deleted its binding and left the read of it
+holding the `0` that Gap R.277's defaults read, and the door called the word.
+
+**The decision (ADR 0369).** A call position is retargeted, and the `key=` slot is a call position. Four pieces,
+none of them a new mechanism:
+
+* `callableKeySlotOf` asks `keyDoorOptions` — the reading the door and ADR 0363's parameter census already share —
+  which argument of a `sorted`/`min`/`max` call stands in the `key=` slot. A third reading of one construct is
+  ADR 0233's second answer, so the pass borrowed the existing one instead of writing its own.
+* `callableRead.keySlots` records that a name written there is *called*. The pass's whole soundness argument is
+  that a callable name is only ever a callee, tested by node identity; a key slot is a callee the AST does not show,
+  and without the record the leak check withdrew a rewrite that had done nothing wrong.
+* `chaseCallableName` walks the chain — `neg = lambda v: 0 - v` then `two = neg` is one callable wearing two names —
+  to the symbol the callable actually lives under, and the argument is rebuilt as a `Name` for it. The `KeywordArg`
+  node and its `key` name survive the rebuild: the door reads its options by NAME, and flattening `key=f` into a
+  positional argument would have moved the program past the reference's own reading of the call (ADR 0340).
+* `key_arguments` counts the retargets, into the account an agent reads (`gustyc --callables`) and into the plan
+  hash. Two programs whose only difference is a hook the pass answered must not certify each other through one
+  digest, or every lit-style row that reads the hash reads one answer for two rewrites.
+
+The emitted module is the whole claim in three lines:
+
+```
+define i32 @gy_neg$lambda$a78954b_0(i32 %p0) { … }
+%t5 = call i32 @gy_neg$lambda$a78954b_0(i32 3)
+call void @rt_frame_push(i8* @rt.frame.name._lambda_, i32 2)
+```
+
+A `define`, a direct `call`, and the reference's own `<lambda>` in the traceback frame. No `fnptr`, no indirect
+`call`, no `ptrtoint`/`inttoptr` — ADR 0345's rejected alternatives stay rejected, and the key's answer kind still
+picks the comparator, so a lambda answering a text orders by the interned word exactly as the inline spelling does
+(`sorted(["b", "A", "a"], key=shout)` → `['A', 'a', 'b']`).
+
+**What the row is not.** The pass is still all-or-nothing, and the shapes it cannot resolve still come back
+untouched: a name also read as a value, a name bound twice, the program's own `sorted`, a key naming nothing the
+program declared. The refusals that remain are named on their own rows — a run-time container is L11.1's value word
+(the door cannot carry an element to the key on any spelling of it), a lambda-bound name *read* as a value is
+Gap R.326, and a container answer that leaves a body is Gap R.327/R.328. What changed is only that the hook
+spelled as a name is no longer among the programs that answer `int`.
+
+The witnesses are `pkg/lang/named_hook_test.go` (eighteen answered sources on the linked and JIT legs, the rewritten
+AST, the module's `define`/`call` pair, seven raises, two refusals, the account's field and hash, and five programs
+the pass must leave alone) and `integration/named_hook_test.go` (the same family against a live `python3` at the
+CLI, the raises at exit 3, the refusals at exit 1, exit 2 forbidden everywhere). `integration/programs/named_hook.gy`
+is the 209th matrix row with oracle `match`, and the record leg holds the 23 sources this row first asked, written
+from the reference by `tools/recmerge` with the compiled leg cross-checked (7762 → 7785). The three cases that pinned
+this row's raise in `TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed` were deleted with the row, as that
+table's own message instructs; the row and both of its controls now live in the answered table.
+
+<a id="gap-r-325"></a>
+### Gap R.325 — the key door named the symbol the compiler minted (CLOSED beside ADR 0369)
+
+Retargeting the key made the AST hold a name no program contains, and the door's sentences are written from that
+AST. Before the fix, the binary at the pre-0369 commit already said:
+
+```
+TypeError: sorted$lambda$c4319c9a_0() takes 0 positional arguments but 1 was given
+sorted(xs, key=neg$lambda$a78954b_0) is refused: the order comes from calling neg$lambda$a78954b_0 on every element …
+```
+
+A reader cannot grep either line, and the reference's own sentence is `<lambda>() takes 0 positional arguments but 1
+was given`. The call road already had the answer — `callableSurfaceName`, written for `too many arguments for
+<lambda>` — but the key door built its messages from `keyAnswer.spelling` and `exprSurface(key)`, which after the
+rewrite are the minted symbol.
+
+The fix is one word read from the same helper: `keyAnswer.spelling` is `callableSurfaceName` of the resolved name,
+and the sentences written before a `keyAnswer` exists (the run-time-container refusals) ask the new `keyExprWord`.
+Both are asserted — the raises by their exact sentence, the refusals by failing on the presence of `$lambda$` at
+all — and the leak's inline half is pinned too, so the row cannot close by forgetting where it came from.
+
+<a id="gap-r-326"></a>
+### Gap R.326 — a lambda-bound name read as a value dies with `undefined name`, not the capability sentence (OPEN)
+
+`xs.append(lambda x: x)` refuses with `lower.unsupported.lambda-read-as-value`. `neg = lambda v: 0 - v` /
+`print(neg)` — the same value, one statement earlier — exits 1 with `undefined name "neg" (no binding for it;
+assign it before use) — the reference reports the same error`, which is a sentence about a variable the program
+assigned on the line above.
+
+The pass is not the defect: `--callables` says `rewritten: false` with `the rewrite was withdrawn: the program it
+produced still used a function as a value`, which is the correct verdict. The defect is what happens next — the
+emitter compiles the untouched `neg = lambda v: 0 - v` by hoisting the lambda into a declaration and never binding
+the name, so the read has nothing behind it and the ordinary undefined-name door speaks for a shape the capability
+table already has a code for. Measured 2026-10-18 at the pre-0369 binary as well, so it is not this cycle's doing;
+it surfaced while probing what the withdrawal leaves standing.
+
+<a id="gap-r-327"></a>
+### Gap R.327 — a body that returns a folded container hands `llc` the global (OPEN)
+
+```python
+def go():
+    return sorted([3, 1, 2])
+
+print(go())
+```
+
+is `llc-20: error: global variable reference must have pointer type / ret i32 @.lst1` at **exit 2** where the
+reference prints `[1, 2, 3]`; `return reversed([3, 1, 2])` dies the same way. `return [3, 1, 2]` and
+`return {"a": 1}` answer correctly, so the fold — not the container — is the difference: `sorted`/`reversed` over a
+literal produce a compile-time list *global*, and the return road puts it where a register belongs. Exit 2 is
+ADR 0166's compiler-bug code, and this fires on a program with no function value anywhere in it. Filed 2026-10-18
+while looking for a hook whose answer leaves a body; present at the pre-0369 binary.
+
+<a id="gap-r-328"></a>
+### Gap R.328 — a folded container bound to a local and returned prints `0` at exit 0 (OPEN)
+
+```python
+def go():
+    ys = sorted([3, 1, 2])
+    return ys
+
+print(go())                          # 0 here, [1, 2, 3] in the reference
+```
+
+and the keyed twin, which is the shape this cycle reached:
+
+```python
+neg = lambda v: 0 - v
+def go():
+    return sorted([3, 1, 2], key=neg)
+
+print(go())                          # 0 here, [3, 2, 1] in the reference
+```
+
+No answer-kind scan registers the body as handing back a container — neither the pair road nor `answerKindPlan`,
+which today answers numbers and texts — so the caller reads the heap handle as a number and the program succeeds
+with a fabricated `0`. That is the silent-wrong-answer family, one step worse than Gap R.327's honest verifier
+failure, and both predate this cycle (measured at the pre-0369 binary for all three spellings of the key and with
+the key absent). The fix is the registration, not a refusal: a body whose returns say list/dict/set is registered
+as answering a container, the handle is read as one, and the tag travels beside it.

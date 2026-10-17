@@ -56,11 +56,16 @@ k = 100
 shadow = lambda n, k=3: n * k
 print(shadow(2), k)                             # 6 100
 
-# the bodies that already worked must keep working. The hook lambda is written INLINE on purpose: bind the
-# same lambda to a name and pass the name, and the call lands on the payload word instead of a callable —
-# `TypeError: 'int' object is not callable` where a `def` in the same position answers [3, 2, 1] (roadmap Gap
-# R.281, filed with today's answer in pkg/lang/lambda_default_param_test.go).
+# the bodies that already worked must keep working, and the hook now appears in both spellings. The inline
+# lambda answered all along; binding the same lambda to a NAME and passing the name used to land on the payload
+# word instead of a callable — `TypeError: 'int' object is not callable` where a `def` in the same position
+# answers [3, 2, 1] — until ADR 0369 retargeted the `key=` argument to the declaration the pass mints for the
+# lambda (roadmap Gap R.281; the named rows below are the ones that row was written for).
 print(sorted([3, 1, 2], key=lambda v: 0 - v))    # [3, 2, 1]
+neg = lambda v: 0 - v
+print(sorted([3, 1, 2], key=neg))                 # [3, 2, 1]  — the same hook, read out of a name
+print(sorted([3, 1, 2], key=neg, reverse=True))   # [1, 2, 3]
+print(min([3, 1, 2], key=neg), max([3, 1, 2], key=neg))   # 3 1
 pick = lambda v: 1 if v else 2
 print(pick(True), pick(False))                  # 1 2
 plain = lambda: 5

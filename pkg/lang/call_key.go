@@ -66,7 +66,11 @@ const (
 // program. modeKnown/mode say how the KEY's answers compare — 0 orders payloads as numbers, 1 orders
 // them as indices into the intern table, the two modes @rt_elem_gt already answers.
 type keyAnswer struct {
-	pos        keyPosition
+	pos keyPosition
+	// spelling is the word a diagnostic calls this callable: the program's own name for a `def` or a
+	// builtin, the reference's `<lambda>` for a lambda the defunctionalisation pass gave a declaration of
+	// its own (ADR 0345 §3), and the source text for anything else. It is never the symbol the compiler
+	// minted — a reader cannot grep a line that does not exist (ADR 0166).
 	spelling   string
 	name       string
 	raiseType  string
@@ -155,6 +159,9 @@ func (g *irGen) keyDoorOf(e Expr) keyAnswer {
 		return ans
 	}
 	name := nm.Value
+	// The program's word for the callable, never the symbol a pass minted for it: every sentence this
+	// door writes about a name speaks this word (ADR 0166, ADR 0345 §3).
+	ans.spelling = callableSurfaceName(name)
 	if g.builtinShadowed(name) {
 		// The program's own name, not the builtin's. Its kind is answerable from the notebooks; an
 		// answer that cannot be read is L11.7's own sentence, not an invention of this row.
@@ -213,7 +220,7 @@ func (g *irGen) keyDoorOf(e Expr) keyAnswer {
 // reference's, because the reference calls the key with exactly one argument and says so when the
 // function cannot take one.
 func (g *irGen) userFunctionKey(name string, fd ...*FuncDef) keyAnswer {
-	ans := keyAnswer{spelling: name, name: name}
+	ans := keyAnswer{spelling: callableSurfaceName(name), name: name}
 	def := g.fds[name]
 	if len(fd) == 1 && fd[0] != nil {
 		def = fd[0]
@@ -234,13 +241,13 @@ func (g *irGen) userFunctionKey(name string, fd ...*FuncDef) keyAnswer {
 	case len(def.Params) == 0:
 		ans.pos = keyRaises
 		ans.raiseType = "TypeError"
-		ans.raiseMsg = fmt.Sprintf("%s() takes 0 positional arguments but 1 was given", name)
+		ans.raiseMsg = fmt.Sprintf("%s() takes 0 positional arguments but 1 was given", ans.spelling)
 		return ans
 	case required > 1:
 		missing := def.Params[required-1]
 		ans.pos = keyRaises
 		ans.raiseType = "TypeError"
-		ans.raiseMsg = fmt.Sprintf("%s() missing %d required positional argument%s: '%s'", name, required-1, pluralWord(required-1), missing.Name)
+		ans.raiseMsg = fmt.Sprintf("%s() missing %d required positional argument%s: '%s'", ans.spelling, required-1, pluralWord(required-1), missing.Name)
 		return ans
 	case len(def.Params) > 1 && required == 1:
 		// One required parameter and optional extras: callable with one argument, exactly as the
@@ -265,7 +272,7 @@ func (g *irGen) userFunctionKey(name string, fd ...*FuncDef) keyAnswer {
 // the raise for a builtin that cannot run on that element (`len(3)` is the reference's `TypeError:
 // object of type 'int' has no len()`, and it comes from the road, not from a sentence written here).
 func (g *irGen) builtinKey(name string) keyAnswer {
-	ans := keyAnswer{pos: keyCallable, spelling: name, name: name}
+	ans := keyAnswer{pos: keyCallable, spelling: callableSurfaceName(name), name: name}
 	switch name {
 	case "len", "abs", "ord", "int":
 		ans.mode, ans.modeKnown = 0, true
@@ -579,6 +586,17 @@ func (g *irGen) keyWordKind(name string) (string, bool) {
 	return "", false
 }
 
+// keyExprWord is the word a diagnostic calls a key by when it has the ARGUMENT rather than a keyAnswer:
+// the same reading `keyDoorOf` writes into `keyAnswer.spelling`, for the sentences the door writes before
+// it asks the key what it is. A key the pass retargeted holds the symbol it minted (`neg$lambda$…_0`) in
+// the AST, and neither the program nor the reference spells a callable that way (ADR 0166, ADR 0345 §3).
+func keyExprWord(e Expr) string {
+	if nm, isName := e.(*Name); isName {
+		return callableSurfaceName(nm.Value)
+	}
+	return exprSurface(e)
+}
+
 // keyedAnswer is the door's answer to a call it took over: done means the caller must not lower the
 // call any other way, handle is the register (or the empty string when err carries a refusal).
 type keyedAnswer struct {
@@ -617,7 +635,7 @@ func (g *irGen) keyedSortedCall(b *strings.Builder, c *Call, handleOnly bool) ke
 		return keyedAnswer{done: true, handle: "0"}
 	}
 	if len(pos) != 1 {
-		return keyedAnswer{done: true, err: fmt.Errorf("codegen: sorted(...) with `key=%s` is refused over %d positional arguments: the reference takes the iterable alone positionally — its answer for a second one is TypeError: sorted expected 1 argument, got 2 — and this language's documented constant repeat flag is read only when no key is given (roadmap L11.7, Gap R.249)", exprSurface(key), len(pos))}
+		return keyedAnswer{done: true, err: fmt.Errorf("codegen: sorted(...) with `key=%s` is refused over %d positional arguments: the reference takes the iterable alone positionally — its answer for a second one is TypeError: sorted expected 1 argument, got 2 — and this language's documented constant repeat flag is read only when no key is given (roadmap L11.7, Gap R.249)", keyExprWord(key), len(pos))}
 	}
 	ans := g.keyDoorOf(key)
 	switch ans.pos {
@@ -632,7 +650,7 @@ func (g *irGen) keyedSortedCall(b *strings.Builder, c *Call, handleOnly bool) ke
 	operand := pos[0]
 	lit, isList := operand.(*ListLit)
 	if !isList {
-		return keyedAnswer{done: true, err: fmt.Errorf("codegen: sorted(%s, key=%s) is refused: the order comes from calling %s on every element, and the elements of that container exist only at run time — the call would have to carry an element to the key, which is the value word's job (roadmap L11.1, L11.7). The same container without a key is answered by @rt_sort (ADR 0339, ADR 0191)", exprSurface(operand), exprSurface(key), exprSurface(key))}
+		return keyedAnswer{done: true, err: fmt.Errorf("codegen: sorted(%s, key=%s) is refused: the order comes from calling %s on every element, and the elements of that container exist only at run time — the call would have to carry an element to the key, which is the value word's job (roadmap L11.1, L11.7). The same container without a key is answered by @rt_sort (ADR 0339, ADR 0191)", exprSurface(operand), keyExprWord(key), keyExprWord(key))}
 	}
 	if err := g.keyedOrderError(lit.Elems, ans); err != nil {
 		return keyedAnswer{done: true, err: err}
@@ -698,12 +716,12 @@ func (g *irGen) keyedMinMaxCall(b *strings.Builder, c *Call) keyedAnswer {
 		if lit, isLit := pos[0].(*ListLit); isLit {
 			elems = lit.Elems
 		} else if len(pos) == 1 {
-			return keyedAnswer{done: true, err: fmt.Errorf("codegen: %s(%s, key=%s) is refused: the candidates are a container the program built at run time, and the key would be called on words that only exist there — calling across that gap needs the value word (roadmap L11.1, L11.7)", fn.Value, exprSurface(pos[0]), exprSurface(key))}
+			return keyedAnswer{done: true, err: fmt.Errorf("codegen: %s(%s, key=%s) is refused: the candidates are a container the program built at run time, and the key would be called on words that only exist there — calling across that gap needs the value word (roadmap L11.1, L11.7)", fn.Value, exprSurface(pos[0]), keyExprWord(key))}
 		}
 	case len(pos) >= 2:
 		elems = pos
 	default:
-		return keyedAnswer{done: true, err: fmt.Errorf("codegen: %s with `key=%s` has no candidates (roadmap L11.7)", fn.Value, exprSurface(key))}
+		return keyedAnswer{done: true, err: fmt.Errorf("codegen: %s with `key=%s` has no candidates (roadmap L11.7)", fn.Value, keyExprWord(key))}
 	}
 	if len(elems) == 0 {
 		g.keyedEmptyTrap(b, isMin, sp)

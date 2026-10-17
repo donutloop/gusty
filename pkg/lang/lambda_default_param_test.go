@@ -343,23 +343,6 @@ func TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 			want: "5", today: "5",
 		},
 		{
-			// the hoisted lambda, bound to a NAME and passed to a hook: the name holds the payload word
-			// where the `def` in the same position holds a callable, so the hook's call lands on an int.
-			desc: "a lambda bound to a name and passed to a hook", gap: "Gap R.281",
-			src:  "neg = lambda v: 0 - v\nprint(sorted([3, 1, 2], key=neg))",
-			want: "[3, 2, 1]", trap: "'int' object is not callable",
-		},
-		{
-			desc: "the same hook with a def answers", gap: "Gap R.281's control",
-			src:  "def neg(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=neg))",
-			want: "[3, 2, 1]", today: "[3, 2, 1]",
-		},
-		{
-			desc: "the same hook lambda written inline answers", gap: "Gap R.281's control",
-			src:  "print(sorted([3, 1, 2], key=lambda v: 0 - v))",
-			want: "[3, 2, 1]", today: "[3, 2, 1]",
-		},
-		{
 			// the container default is answered on its own (the answered table above) and defeats the
 			// function-value pass for an UNRELATED higher-order call when the two share a program.
 			desc: "a container default beside a higher-order call", gap: "Gap R.282",

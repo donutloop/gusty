@@ -1150,6 +1150,7 @@ const astIRSchemaTemplate = `{
         "hoisted_lambdas",
         "rewritten_call_sites",
         "recursive_sites",
+        "key_arguments",
         "higher_order_functions",
         "symbols",
         "refused"
@@ -1187,6 +1188,10 @@ const astIRSchemaTemplate = `{
         "recursive_sites": {
           "type": "integer",
           "description": "How many calls written inside a higher-order function's own body now name that function's own clone: the recursion a clone answers by calling itself, one per self-call the pass rewrote. Zero means no higher-order recursion was in the program, or that the pass declined it — in which case Refused says which. Counting the self-call is what makes the recursion auditable: a clone that recursed through the un-specialized entry would have taken the answer with it (roadmap L11.7, Gap R.267, ADR 0364)."
+        },
+        "key_arguments": {
+          "type": "integer",
+          "description": "How many key= arguments the pass pointed at the callable they name. A hook-bearing builtin - sorted, min, max - calls its key once per element, so the position is a call the source never wrote and the AST does not show: 'neg = lambda v: 0 - v' with 'sorted(xs, key=neg)' binds the callable to a name, while the declaration the pass minted for it lives under a generated symbol. The retarget is what lets the door call the function instead of the word, and the count is the witness that it happened (roadmap L11.7, Gap R.281, ADR 0340's key door, ADR 0345's alias road)."
         },
         "higher_order_functions": {
           "type": "array",

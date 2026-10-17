@@ -92,7 +92,10 @@ type callableReport struct {
 	// RecursiveSites counts the calls of a higher-order function, written inside its own body, that a
 	// clone now answers by calling itself — the recursion the pass follows rather than declines
 	// (roadmap Gap R.267, ADR 0364).
-	RecursiveSites  int      `json:"recursive_sites"`
+	RecursiveSites int `json:"recursive_sites"`
+	// KeyArguments counts the `key=` arguments the pass pointed at the callable they name — the hook
+	// positions the door calls and the source never wrote as a call (roadmap L11.7, Gap R.281).
+	KeyArguments    int      `json:"key_arguments"`
 	HigherOrderFunc []string `json:"higher_order_functions"`
 	// Symbols are the IR names the pass minted — clones and hoisted lambdas — so a caller that reads
 	// `--emit-llvm` can tell a definition this pass wrote from one the program wrote.
@@ -123,6 +126,14 @@ type callableRead struct {
 	// is then a test of node identity, not of spelling: `f(1)` counts as a call, `print(f)` does
 	// not, and a same-named local rebinds nothing silently.
 	calleeNames map[*Name]bool
+
+	// keySlots holds the *Name nodes that stand in the `key=` slot of one of the ordering builtins.
+	// That position is a call the SOURCE never wrote and the AST does not show: the door calls the key
+	// once per element of the container (ADR 0340). A name written there is therefore being CALLED,
+	// not read, which is the difference between `sorted(xs, key=neg)` answering and being handed back
+	// as a program that "uses a function as a value" (roadmap L11.7, Gap R.281; the same position
+	// ADR 0363 taught the parameter census to read).
+	keySlots map[*Name]bool
 
 	// bound records every place the program binds a name, with the node that binds it. The pass
 	// refuses any name it cannot prove is bound in exactly the one place it is reasoning about.
@@ -267,7 +278,45 @@ func callableReadProgram(prog *Program) *callableRead {
 	var w2 callableWalk
 	w2.visit = func(n Node, enc *FuncDef) { r.bind(n) }
 	w2.stmts(prog.Stmts, nil)
+	// The hook positions, asked once the program's own functions are known — `def sorted(...)` is the
+	// program's function and its `key=` is an ordinary parameter, so the question needs the table.
+	r.keySlots = map[*Name]bool{}
+	for _, c := range r.calls {
+		if _, nm, ok := callableKeySlotOf(r, c); ok {
+			r.keySlots[nm] = true
+		}
+	}
 	return r
+}
+
+// callableKeySlotOf reads a call the way its door reads it and answers which argument stands in the
+// `key=` slot, as a Name. It is the SAME reading the door and the parameter census use —
+// `keyDoorOptions` — so the three cannot disagree about which call has a key and which does not
+// (ADR 0233's rule against a second answer for one construct). A call whose callee is the program's
+// own `sorted`/`min`/`max`, one whose options the door would refuse or raise on, and one with no key
+// at all all answer "no slot" (roadmap L11.7, Gap R.281).
+func callableKeySlotOf(r *callableRead, c *Call) (int, *Name, bool) {
+	fn, isName := c.Fn.(*Name)
+	if !isName || !isPredeclaredName(fn.Value) {
+		return 0, nil, false
+	}
+	if _, user := r.fds[fn.Value]; user {
+		return 0, nil, false
+	}
+	_, keyExpr, ok := keyDoorOptions(fn.Value, c.Args)
+	if !ok || keyExpr == nil {
+		return 0, nil, false
+	}
+	nm, isKey := keyExpr.(*Name)
+	if !isKey {
+		return 0, nil, false
+	}
+	for i, a := range c.Args {
+		if kw, isKw := a.(*KeywordArg); isKw && kw.Name == "key" && kw.Value == keyExpr {
+			return i, nm, true
+		}
+	}
+	return 0, nil, false
 }
 
 func (r *callableRead) bind(n Node) {
@@ -648,6 +697,15 @@ type callableArgHoist struct {
 	name string
 }
 
+// callableKeyRet is one `key=` argument the pass retargets, by the place its call holds among the
+// program's calls and the argument slot the option was written in.
+type callableKeyRet struct {
+	rank int
+	pos  int
+	from string
+	to   string
+}
+
 // callablePlan is the whole rewrite, decided before a single node is copied.
 type callablePlan struct {
 	fns map[string]*callableFn
@@ -665,6 +723,13 @@ type callablePlan struct {
 	// check asks "is this lambda one the plan gave a declaration to?" and answers it by node
 	// identity, so a lambda the plan never resolved still blocks the rewrite.
 	hoistOrigin []*Lambda
+	// keyRets are the `key=` arguments this pass points at a callable by its real symbol. A name
+	// written in that slot is called by the door, but the emitter cannot call a name that has no
+	// declaration behind it: `neg = lambda v: 0 - v` hands the callable to the name `neg`, and the
+	// declaration lives under the symbol this pass minted. The retarget is the same rewrite the
+	// alias road performs on a call's callee, performed on the argument the door calls (roadmap
+	// L11.7, Gap R.281; ADR 0345's alias road, ADR 0340's key door).
+	keyRets []*callableKeyRet
 	// arity records, for every name a call site may be asked to substitute, how many parameters the
 	// function behind that name takes. A declared function answers from its own declaration; a hoisted
 	// lambda answers from the lambda. The clone's body calls the name with the arguments the parameter
@@ -854,6 +919,43 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		plan.aliases[tgt.Value] = name
 	}
 
+	// An ALIAS OF A NAME is the same callable spelled twice: `neg = lambda v: 0 - v` / `two = neg` /
+	// `print(two(3))` is CPython's `-3`, and the pass could only reach it when the right-hand name came
+	// from a `def`. The rule is the alias road's own — the name's whole history must be this one binding
+	// and the calls it stands for — chased one more link, so a callable the pass itself gave a
+	// declaration to can be handed on under a second name (roadmap L11.7, Gap R.281).
+	for _, s := range prog.Stmts {
+		a, ok := s.(*AssignStmt)
+		if !ok {
+			continue
+		}
+		tgt, ok := a.Target.(*Name)
+		if !ok {
+			continue
+		}
+		if _, taken := plan.aliases[tgt.Value]; taken {
+			continue
+		}
+		rhs, ok := a.Value.(*Name)
+		if !ok || tgt.Value == rhs.Value {
+			continue
+		}
+		if isPredeclaredName(tgt.Value) || isPredeclaredName(rhs.Value) {
+			continue
+		}
+		target, ok := plan.chaseCallableName(r, rhs.Value)
+		if !ok {
+			continue
+		}
+		if !callableBoundExactly(r, tgt.Value, []Node{a}) {
+			continue
+		}
+		if n, known := plan.arity[target]; known {
+			plan.arity[tgt.Value] = n
+		}
+		plan.aliases[tgt.Value] = target
+	}
+
 	// A closed lambda in an argument position is given a declaration here, so the door that reads the
 	// argument already knows how to call a named callable meets one it can name: `sorted(xs, key=lambda x:
 	// -x)` and `max(xs, key=lambda v: -v)` ask ADR 0340's key road, which calls a function by the ordinary
@@ -907,10 +1009,35 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		}
 	}
 
+	// The hook's key: the one argument the compiler, not the source, calls. A name written in that
+	// slot is the callable, and the door reaches it the way a call reaches a name — by the symbol the
+	// callable lives under. For `def neg(v)` that symbol is `neg` and the door already answers; for
+	// `neg = lambda v: 0 - v` the declaration this pass minted lives under a generated name and the
+	// written name has nothing behind it, which is what made the door call a word instead of a function
+	// and the program die with the reference's own `TypeError: 'int' object is not callable` at exit 3
+	// (roadmap L11.7, Gap R.281; ADR 0340's door, ADR 0345's alias road).
+	for rank, c := range r.calls {
+		pos, nm, ok := callableKeySlotOf(r, c)
+		if !ok {
+			continue
+		}
+		target, isAlias := plan.aliases[nm.Value]
+		if !isAlias || target == nm.Value {
+			continue // a `def`'d name is already the symbol the door calls
+		}
+		if _, isDef := r.fds[target]; !isDef {
+			if _, minted := plan.arity[target]; !minted {
+				continue // nothing named by that word to call: the door refuses, as it always did
+			}
+		}
+		plan.keyRets = append(plan.keyRets, &callableKeyRet{rank: rank, pos: pos, from: nm.Value, to: target})
+	}
+
 	// The pass has work to do only when something asked for it: a higher-order body to clone, an alias
-	// whose calls can be pointed at the function they mean, or a lambda argument the pass can name. An
-	// ordinary program is handed back with one comparison spent on it.
-	if len(plan.fns) == 0 && len(plan.aliases) == 0 && len(plan.argHoists) == 0 {
+	// whose calls can be pointed at the function they mean, a lambda argument the pass can name, or a
+	// hook's key that names a callable under another symbol. An ordinary program is handed back with one
+	// comparison spent on it.
+	if len(plan.fns) == 0 && len(plan.aliases) == 0 && len(plan.argHoists) == 0 && len(plan.keyRets) == 0 {
 		// The recursion gets one more chance to explain itself. A pair of functions that call a parameter
 		// and hand it to each other is a recursion no clone can be written for — and it registers no
 		// higher-order function at all, because handing the callable to the other body is a use as a value
@@ -920,7 +1047,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if why := callableMutualHigherOrderDecline(r); why != "" {
 			return nil, callableDeclinef("%s", why)
 		}
-		return nil, &callableDecline{why: "no function calls its own parameter, no name aliases one, and no lambda argument needs a declaration"}
+		return nil, &callableDecline{why: "no function calls its own parameter, no name aliases one, no lambda argument needs a declaration, and no hook's key names a callable under another symbol"}
 	}
 
 	// The call sites: each is read against the definition it targets, and each called parameter is
@@ -1143,6 +1270,38 @@ func callableEntryIsLayable(fd *FuncDef) error {
 		}
 	}
 	return nil
+}
+
+// chaseCallableName follows a name to the symbol its callable lives under. A chain of module-level
+// bindings — `neg = lambda v: 0 - v` then `two = neg` — is one callable wearing the two names the
+// program wrote, and every question the pass asks about a callable is asked of the symbol it was
+// given. The chain ends at a `def`'s own name or at a declaration this pass minted; a name that ends
+// anywhere else names no callable at all, and the caller leaves the program to the refusal the door
+// already has (roadmap L11.7, Gap R.281).
+func (p *callablePlan) chaseCallableName(r *callableRead, name string) (string, bool) {
+	if name == "" {
+		return "", false
+	}
+	seen := map[string]bool{}
+	cur := name
+	for {
+		if seen[cur] {
+			return "", false // a binding cycle names no callable either
+		}
+		seen[cur] = true
+		target, isAlias := p.aliases[cur]
+		if !isAlias {
+			break
+		}
+		cur = target
+	}
+	if _, isDef := r.fds[cur]; isDef {
+		return cur, true
+	}
+	if _, minted := p.arity[cur]; minted {
+		return cur, true
+	}
+	return "", false
 }
 
 func (p *callablePlan) resolve(r *callableRead, e Expr, enc *FuncDef) (string, error) {
@@ -1772,6 +1931,33 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 		fresh.Stmts = kept
 	}
 
+	// (3c) The hook's key: the option the door calls is pointed at the callable's own symbol, so the
+	// road underneath it meets a name with a declaration behind it (roadmap L11.7, Gap R.281). The
+	// keyword itself survives — the door reads its options by NAME, and a rewrite that flattened
+	// `key=f` into a positional argument would move the program past the reference's own reading of it
+	// (ADR 0340).
+	for _, kr := range plan.keyRets {
+		if kr.rank < 0 || kr.rank >= len(programCalls) {
+			return prog, nil
+		}
+		node := programCalls[kr.rank]
+		if kr.pos < 0 || kr.pos >= len(node.Args) {
+			return prog, nil
+		}
+		kw, isKw := node.Args[kr.pos].(*KeywordArg)
+		if !isKw || kw.Name != "key" {
+			return prog, nil
+		}
+		nm, isName := kw.Value.(*Name)
+		if !isName || nm.Value != kr.from {
+			return prog, nil
+		}
+		redo := *kw
+		redo.Value = &Name{Value: kr.to, Src: kw.Value.Span()}
+		node.Args[kr.pos] = &redo
+		report.KeyArguments++
+	}
+
 	// (4) The declarations the pass generated, and the mark on the ones it replaced: a higher-order
 	// body asks the question its clones answer, so emitting it would put an unbuildable call in the
 	// module — while its name stays behind for `xs = [apply]` to be refused against.
@@ -1868,7 +2054,17 @@ func callableNoFunctionValuesLeft(prog *Program, plan *callablePlan) bool {
 		if !functions[n.Value] {
 			continue
 		}
-		if !check.calleeNames[n] {
+		if check.calleeNames[n] {
+			continue
+		}
+		// The one position that is a call without looking like one: a hook's `key=`. The ordering door
+		// calls the key once per element, so a name written there is being called and not read — but only
+		// where the door will actually make that call, which is `keyDoorCallsOneArgument`, the rule the
+		// door and the parameter census already read (a key the door raises for — `f() takes 0 positional
+		// arguments but 1 was given` — is not a call), asked of the program the pass produced so a symbol
+		// this pass minted is in front of it. A program that names such a key still reads as a function
+		// reaching a value position (roadmap L11.7, Gap R.281, Gap R.264).
+		if !check.keySlots[n] || !keyDoorCallsOneArgument(check.fds[n.Value]) {
 			return false
 		}
 	}
@@ -2218,8 +2414,8 @@ func marshalCallableReport(rep callableReport) (string, error) {
 func callablePlanHash(rep *callableReport) string {
 	h := fnv.New64a()
 	if rep != nil {
-		fmt.Fprintf(h, "%s|%d|%d|%d|%d|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
-			rep.RecursiveSites, strings.Join(rep.HigherOrderFunc, ","))
+		fmt.Fprintf(h, "%s|%d|%d|%d|%d|%d|%s", rep.Pass, rep.Clones, rep.HoistedLambdas, rep.RewrittenCallNum,
+			rep.RecursiveSites, rep.KeyArguments, strings.Join(rep.HigherOrderFunc, ","))
 	}
 	return fmt.Sprintf("%016x", h.Sum64())
 }
