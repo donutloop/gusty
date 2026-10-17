@@ -974,6 +974,28 @@ ADR 0333 paid the half of that row which is not a double: `def f(): return {"k":
 `{'k': 1}`. The half where the **caller's double** becomes a slot of the answer (`def f(x): return {"k": x}` /
 `print(f(1.0))`, still `0`) is left to the pair road on purpose — see the carve-out under ADR 0333 below.
 
+**The float table a body reads is that body\u2019s own writes** (ADR 0375, closing Gap R.339). ADR 0373 had
+settled which write a read answers \u2014 the last one \u2014 and left whose writes the table holds at all. The map
+was allocated once per module and nothing cleared it between `define`s, so a body read whatever the
+previously-emitted body had written: `def bound(): u = 9.5 / return u` above `def lastWrite(): u = 2.5 /
+u = 3 / return u` printed the reference\u2019s `9.5` and **`3.0`** where `lastWrite` alone printed `3`, and
+`print(b(), a(), b())` answered `7.0 1.5 7.0` for one function called three times in one line. The IR was
+wrong, not just the rendering: the return word is chosen by asking `isFloat` through that same table, so
+the int-returning body opened `define double @gy_b()` \u2014 a function returning a double it never computed.
+The cure is the mechanism the module already trusts: `beginScope` installs the container, bool, None and
+text tables per scope, and `floatVars`/`doubleSlot` were the per-frame kind tables it never installed
+(ADR 0163 closed this disease for the tables that were on the list). `enterBodyFloatTable` is now the one
+place that installs them, called by `beginScope` and \u2014 for the roads that emit a body without it, the method
+emitter and the closure lift \u2014 by `enterBody`; the frame\u2019s own map comes back on the way out, so a `lambda`
+or nested `def` minted mid-statement neither takes its frame\u2019s float facts nor leaves its own behind. What a
+body may read from the *module* is a different row and is unchanged: `RATE = 2.5` above
+`def scale(v): return v * RATE` still refuses with the module-state sentence (Gap R.35). Two shapes came
+out of the same measurement and are filed rather than absorbed, both identical before and after: a
+`for`-driven float accumulator inside a body, which prints `0` where the reference prints `6.0` while the
+same loop at module level prints `6.0` (Gap R.341), and a nested `def` that shares a name with its
+enclosing body\u2019s float local, whose store goes through the enclosing frame\u2019s alloca so `llc` rejects the module
+and the program leaves **exit 2** \u2014 ADR 0166\u2019s code for a compiler bug (Gap R.342).
+
 The element of a comprehension over a container the program built is free to **branch**, and the loop had to
 be told (ADR 0255, closing Gap R.100). `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit
 2** — `llc` rejecting *PHI node entries do not match predecessors* — because the zero guard `/` carries

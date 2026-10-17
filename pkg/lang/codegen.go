@@ -1310,7 +1310,15 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	saved := g.funcLocals
 	g.funcLocals = map[string]bool{}
 	collectLocals(body, g.funcLocals)
-	return func() { g.funcLocals = saved }
+	// A body that begins its locals also begins its FLOAT table. The two roads that call this helper — the
+	// closure lift's nested `def` and the class road's method — do not call `beginScope`, and left the float
+	// table out of both helpers, so a method's float `self`/parameter and a lifted closure's local leaked
+	// into whatever body was lowered next (roadmap L11.6, Gap R.339, **ADR 0375**; `float_frame.go` is the rule).
+	savedFloats := g.enterBodyFloatTable()
+	return func() {
+		g.funcLocals = saved
+		savedFloats()
+	}
 }
 func (g *irGen) noteUnlowered(where any, err error) {
 	what := "an expression"
@@ -1345,6 +1353,14 @@ func (g *irGen) beginScope() func() {
 	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
 	savedNone := g.noneVars
 	savedBool := g.boolVars
+	// The float table joins its siblings. `floatVars` answers 「whose last assignment in THIS body
+	// produced a double」, and it is read by `isFloat`'s name arm, by the print door, by the comparison
+	// road, by the verdict census and by the heap-argument road — every one of them asking about a name in
+	// the body being lowered. It was the one per-frame kind table this helper did not install, which made
+	// the answer to a question about THIS body's `u` come from whatever the previously-emitted body last
+	// wrote to a name of the same spelling (roadmap L11.6, Gap R.339, **ADR 0375**; `float_frame.go` is the rule, and it
+	// is why the undo is one call rather than a second opinion).
+	savedFloats := g.enterBodyFloatTable()
 	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
@@ -1381,6 +1397,7 @@ func (g *irGen) beginScope() func() {
 		g.dictKeyInt, g.dictValInt = savedKNum, savedVNum
 		g.mixedDicts, g.mixedSets = savedMixDict, savedMixSet
 		g.digitLoopVars = savedDigit
+		savedFloats()
 	}
 }
 

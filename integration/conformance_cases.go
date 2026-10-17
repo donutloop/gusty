@@ -785,6 +785,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// Every line is what CPython prints for the same file
 		// (roadmap Gap R.340; ADR 0374, the ternary half of ADR 0275).
 		"ternary_arms",
+		"float_frame_table",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -36,3 +36,14 @@ print(derived())
 print(derivedTwice())
 print(takenOut())
 print(calledFromABody())
+
+
+def lastWrite():
+    u = 2.5
+    u = 3
+    return u
+
+
+print(lastWrite())                                # 3 — the Gap R.339 pair, back in the program it was
+                                                  # cut out of: `bound` above writes `u` as a double,
+                                                  # and this body's OWN last write is the integer 3

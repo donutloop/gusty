@@ -14640,7 +14640,7 @@ LOOKED like a third defect, `def twice(): return half() + half()`, answers `3.0`
 group of the conformance program: a callee's answer word is the callee's own question, and the caller
 reads what the `define` says.
 
-### Gap R.339 — the float-variable table is one map for a whole module, so one body's binding decides another's answer (OPEN)
+### Gap R.339 — the float-variable table is one map for a whole module, so one body's binding decides another's answer (closed by ADR 0375)
 
 ```python
 def bound():
@@ -14680,6 +14680,28 @@ written WITH this pair in it and the conformance matrix failed on it (`aot="…3
 the wrong bytes, and the pair is pinned in
 `pkg/lang/float_rebound_return_test.go::TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed` — reference
 answer beside today's, exit 2 forbidden, and the row deleted when the two agree.
+
+**Closed by ADR 0375 (2026-10-19).** The per-body table is installed by `enterBodyFloatTable`
+(`pkg/lang/float_frame.go`) from the two places a body begins — `beginScope`, which already installs the
+container, bool, None and interned-text tables for the same reason, and `enterBody`, which is the road the
+method emitter and the closure lift take without calling `beginScope`. The frame's own map comes back on
+the way out, so a nested `define` inherits its enclosing body's table *by restoration*, not by accident.
+`funcDef` decides the return word through the new table, which is why the IR leg is part of the claim:
+before, the int-returning body of `print(b(), a(), b())` opened `define double @gy_b()` — a function
+returning a double it never computed — and the same `b()` answered `7.0` in one position of a `print` and
+`7` in another.
+
+What the row explicitly does NOT answer is whether a body may read a module-level float at all: that is
+Gap R.35, and `RATE = 2.5` above `def scale(v): return v * RATE` still refuses, unchanged, with the
+module-state sentence. `TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion` pins that refusal in the
+same file as the fix, so the two rows cannot be mistaken for one another by the next reader. The `lastWrite`
+pair is back in `programs/float_answer_word.gy`, the asserted program it was cut out of, and
+`TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed` is deleted, as its own rule required.
+
+Two defects surfaced by the same measurement are **filed below rather than absorbed here**: a `for`-driven
+float accumulator inside a body (Gap R.341) and a nested `def` that stores through its enclosing frame's
+alloca (Gap R.342). Both are identical on the pre-ADR-0375 build.
+
 
 ### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (OPEN)
 
@@ -14955,3 +14977,61 @@ What this row leaves to its neighbours, filed rather than smoothed over:
 - **a loop whose arm is a call pays the forwarding blocks on every pass**, which belongs to the
   block-placement family (Gap R.290's neighbourhood) and not to this defect: the answer is right, the
   module is five labels and three jumps per conditional.
+### Gap R.341 — a `for`-driven float accumulator inside a body answers the void word (OPEN)
+
+```python
+def loopAcc():
+    t = 0.0
+    for i in [1, 2, 3]:
+        t = t + i
+    return t
+
+print(loopAcc())      # 6.0 in the reference, 0 here — at the exit code of success
+```
+
+The identical three lines at module level answer `6.0`, and that twin is a row of
+`integration/programs/float_frame_table.gy`, so the difference is the BODY and not the accumulator: the
+unrolled-`for` road and the body's `double` return word do not agree about where the running total lives.
+Measured on 2026-10-19 while writing **ADR 0375**, and it is filed rather than folded into that row
+because it answers the same before and after — the float table is per body now, and this shape's `0`
+did not move, which is what localises it to the loop/return roads rather than to the table.
+
+It cannot be recorded: `tools/recmerge` refuses a source whose compiled leg prints other bytes than the
+reference's, so the pair is pinned in `pkg/lang/float_frame_test.go`
+(`TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion`) and `integration/float_frame_test.go`
+(`TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed`), each guarded to fail the day the program prints
+`6.0` — a wrong value is exit 0's defect, never a refusal's, so the guard also fails if this becomes a
+refusal.
+
+### Gap R.342 — a nested `def` sharing a name with its enclosing body's float local stores through the enclosing alloca, and `llc` rejects the module (OPEN)
+
+```python
+def outer():
+    def inner():
+        w = 3
+        return w
+    w = 1.5
+    return inner()
+
+print(outer())        # 3 in the reference; here `llc-20` rejects the module and the program leaves exit 2
+```
+
+Inside `inner`, codegen emits `store i32 %t7, i32* %_w` — and `%_w` is the ENCLOSING frame's alloca, so
+the module the toolchain hands `llc` has a store through a slot that no `define` allocated:
+
+```
+llc-20: error: /tmp/gusty-jit-…/jit.ll:4347:23: error: use of undefined value '%_w'
+  store i32 %t7, i32* %_w
+```
+
+Exit **2** is ADR 0166's code for a compiler bug, and an ordinary program the reference runs to completion
+must not leave it. Renaming either binding compiles, which is the signature of a name-keyed table that one
+road resets and another does not: `beginScope` resets `allocd` (「which slots exist」), and the closure lift
+is the road that does not call it — it goes through `enterBody`, which since ADR 0375 installs the float
+table but not the slot table. Measured the same on the pre-ADR-0375 build, so it is a row and not
+collateral. The sibling to read beside it is **Gap R.274** (the nested `def`'s closure-slot global minted
+with no owner in it) and **Gap R.49** (the same disease on the module side, cured by ADR 0351).
+
+Pinned as an exit-2 row — deliberately — by `TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed` and
+`TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion`, both of which fail the day the program stops
+dying in `llc`, in either direction.
