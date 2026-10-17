@@ -123,30 +123,82 @@ func reboundParams(fd *FuncDef, isFloat func(Expr) bool) map[string]bool {
 // A refusal is what ADR 0166 asks for here: an answer that is a truncated word, printed happily, is
 // the compiler's bug (roadmap L11.6, Gap R.3c, ADR 0196 — the tagged value word is what makes this
 // shape answerable rather than refuseable).
-func returnedFloatRebindings(fd *FuncDef, isFloat func(Expr) bool) []string {
-	if fd == nil || len(fd.Params) == 0 {
+func returnedFloatRebindings(fd *FuncDef, isFloat func(Expr) bool, askWithFloats func(floats []string, ask func() bool) bool) []string {
+	if fd == nil {
 		return nil
 	}
+	// No early return for a parameterless body: the lie this scan exists to catch is about the NAME the
+	// return reads back, not about where the name came from, and `def f():` / `u = 9.5` / `return u` reads
+	// back a name the body bound with no parameter in sight — the module emitted `define i32 @gy_f()`, the
+	// slot held a `double`, and the read answered the low word of the double, which is `0` for 9.5 and
+	// printed at the exit code of success. A body with parameters can be refused for want of a word for
+	// them; a body with none has no such obstacle, which is why the gate below asks `doubleReturnCarriable`
+	// rather than this scan deciding it (roadmap L11.6, Gap R.3c, Gap R.338).
 	bindings := map[string][]Expr{}
 	scanRebinds(fd.Body, bindings)
 	returned := map[string]bool{}
 	scanBareReturns(fd.Body, returned)
+	// Which names the body ENDS UP holding as doubles. It is the LAST write that decides, because that is
+	// the write whose word the read answers — `floatVars` tracks "whose last assignment produced a double",
+	// and a scan asking "was any binding ever a float" promoted `u = 2.5` / `u = 3` / `return u` to a double
+	// answer and printed `3.0` where the reference prints `3` (roadmap Gap R.338). A binding reads names the
+	// body may bind elsewhere, so the table is settled by repetition: `v = u * 2` is a double only once `u`
+	// is one, and `u` is one only once ITS binding is asked.
+	last := map[string]Expr{}
+	for nm, vals := range bindings {
+		if len(vals) == 0 {
+			continue
+		}
+		if v := vals[len(vals)-1]; v != nil {
+			last[nm] = v
+		}
+	}
+	tasks := map[string]bool{}
+	for round := 0; round < 8; round++ {
+		moved := false
+		// The float table the round asks against is snapshotted before it starts, so the answer cannot depend
+		// on the order the map happens to iterate in (roadmap ADR 0273's determinism rule).
+		known := namesWhereTrue(tasks)
+		for nm, v := range last {
+			ask := func() bool { return isFloat != nil && isFloat(v) }
+			got := false
+			if askWithFloats != nil {
+				got = askWithFloats(known, ask)
+			} else {
+				got = ask()
+			}
+			if got != tasks[nm] {
+				tasks[nm] = got
+				moved = true
+			}
+		}
+		if !moved {
+			break
+		}
+	}
 	var out []string
 	// Every name the return reads back, whether it arrived as an argument or was bound inside the
 	// body: `y = x + 0.5` / `return y` is the same lie as the parameter form, and answers 0.
-	for nm, vals := range bindings {
-		if !returned[nm] {
-			continue
-		}
-		for _, v := range vals {
-			if v != nil && isFloat != nil && isFloat(v) {
-				out = append(out, nm)
-				break
-			}
+	for nm := range returned {
+		if tasks[nm] {
+			out = append(out, nm)
 		}
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	sort.Strings(out)
+	return out
+}
+
+// namesWhereTrue is the settled part of the scan's float table, in a stable order so a run of this scan
+// cannot depend on map iteration (roadmap ADR 0273's determinism rule).
+func namesWhereTrue(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for nm, on := range m {
+		if on {
+			out = append(out, nm)
+		}
 	}
 	sort.Strings(out)
 	return out

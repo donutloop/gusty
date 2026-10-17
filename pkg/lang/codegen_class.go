@@ -127,7 +127,7 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// Asked for every shape the return can read the rebound name in — including the ternary arm, which the
 	// module-function gate refuses separately and which a method would otherwise answer as a truncated
 	// i32 select (`c.m(1.0)` printing 1 for 2.5) (roadmap L11.6, Gap R.3c, Gap R.102, ADR 0196).
-	if bad := returnedFloatRebindings(fd, g.isFloat); len(bad) > 0 {
+	if bad := returnedFloatRebindings(fd, g.isFloat, g.withFloatNames); len(bad) > 0 {
 		g.noteUnlowered(fd, fmt.Errorf("%q is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)", bad[0]))
 		return
 	}

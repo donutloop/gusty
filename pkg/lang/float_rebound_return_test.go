@@ -304,3 +304,217 @@ func TestAReboundParameterReturnBranchesOnTheBodyNotTheLastLine(t *testing.T) {
 		t.Errorf("a function with no float rebind was promoted anyway:\n%s", plain.IR)
 	}
 }
+
+// TestWhatAFloatTheBodyBindsToItsOwnNameAndReturnsAnswersTheDouble is the half of the return word
+// that had no gate at all: not a parameter the body rebound, but a name the BODY itself bound to a
+// double and handed back by bare name. The scan this file exists for asked its question of
+// parameters, and a body with no parameters was answered before it was asked —
+//
+//	def f():
+//	    u = 2.5
+//	    return u
+//	print(f())     # CPython 9.5 … and the compiled leg printed 0, at the exit code of success
+//
+// `define i32 @gy_f()`, a `double` slot the body had just stored into, and the read answered the low
+// word of the double: `0` for 9.5, `0` for 2.5. Nothing about the program is unusual — it is the
+// first float program a beginner writes — and the neighbouring shape with one parameter has answered
+// correctly since ADR 0254, which is what makes the no-parameter form a hole in the gate rather than
+// a boundary of the language (roadmap L11.6, Gap R.3c, Gap R.338, ADR 0373).
+//
+// The derived name is the same question one step further on. `v = u * 2` is a double only because
+// `u` is, and a scan that reads each binding once, in whatever order the map iterates, says no and
+// emits the truncated word for the second name too:
+//
+//	def f():
+//	    u = 2.5
+//	    v = u * 2
+//	    return v   # CPython 5.0 · the single-pass scan printed 0
+//
+// So the scan now settles its float table by repetition and asks each question inside
+// `withFloatNames`, which is the table the emitted body will act on — one table, one answer, the
+// rule ADR 0273 wrote for the pair road read by the return road.
+func TestWhatAFloatTheBodyBindsToItsOwnNameAndReturnsAnswersTheDouble(t *testing.T) {
+	t.Parallel()
+	asked := 0
+	for _, tc := range []struct{ name, src, want string }{
+		// ---- the shape the hole was.
+		{"a local float returned by bare name, no parameters in sight",
+			"def f():\n    u = 9.5\n    return u\n\nprint(f())\n", "9.5\n"},
+		{"the same body with the arithmetic ON the return",
+			"def f():\n    u = 9.5\n    return u * 2\n\nprint(f())\n", "19.0\n"},
+		{"the derived name: a double built from a double and returned bare",
+			"def f():\n    u = 2.5\n    v = u * 2\n    return v\n\nprint(f())\n", "5.0\n"},
+		{"the derived name built from an int literal on the right",
+			"def f():\n    v = 2.5 * 2\n    return v\n\nprint(f())\n", "5.0\n"},
+		{"two derivations deep",
+			"def f():\n    u = 2.5\n    v = u * 2\n    w = v + 1\n    return w\n\nprint(f())\n", "6.0\n"},
+		{"a local float through a parameter of the same body",
+			"def f(x):\n    u = 2.5\n    v = u * x\n    return v\n\nprint(f(2))\n", "5.0\n"},
+		{"the promoted answer read twice, from two call sites",
+			"def f():\n    u = 1.5\n    v = u + u\n    return v\n\nprint(f(), f())\n", "3.0 3.0\n"},
+		{"a promoted function called from inside another function",
+			"def half():\n    u = 3.0\n    v = u / 2\n    return v\n\ndef twice():\n    return half() + half()\n\nprint(twice())\n", "3.0\n"},
+		{"a float bound through a conditional assignment",
+			"def f(c):\n    u = 1.5 if c else 2.5\n    v = u * 2\n    return v\n\nprint(f(True))\n", "3.0\n"},
+		// ---- what the widened scan must NOT promote: the LAST write decides, because the read
+		// answers the last write's word. A name the body ends up holding an int is an int, and
+		// promoting it would print `3.0` where the reference prints `3`.
+		{"a float binding overwritten by an int before the return",
+			"def f():\n    u = 2.5\n    u = 3\n    return u\n\nprint(f())\n", "3\n"},
+		{"the answer taken out of the float domain by int()",
+			"def f():\n    u = 2.5\n    return int(u)\n\nprint(f())\n", "2\n"},
+		{"the answer taken out of the float domain by round()",
+			"def f():\n    u = 2.5\n    return round(u)\n\nprint(f())\n", "2\n"},
+		{"a name the body binds to a float but never returns",
+			"def f():\n    u = 2.5\n    return 4\n\nprint(f())\n", "4\n"},
+		{"an int-only body is untouched by the widened scan",
+			"def f():\n    u = 2\n    v = u * 3\n    return v\n\nprint(f())\n", "6\n"},
+	} {
+		// No t.Parallel() on these subtests: the `asked` counter below is the guard that the RECORD leg
+		// is being walked, and a parallel subtest has not started by the time the loop finishes.
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s (%q): refused: %v", tc.name, tc.src, err)
+			}
+			assertNoForbiddenIR(t, tc.src, res.IR)
+			if out := runIR(t, res.IR); out != tc.want {
+				t.Errorf("%s: AOT ran %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+			if HasGoldenAnswer(tc.src) {
+				asked++
+				want := goldenStdout(silentReporter{}, tc.src)
+				if out := compiledRunIsTheBackend(t, tc.src); out != want {
+					t.Errorf("%s: the compiled leg ran %q, the record says %q\nsrc: %s", tc.name, out, want, tc.src)
+				}
+			}
+		})
+	}
+	if asked == 0 {
+		t.Fatal("no row of this table is covered by the record: the record leg is not being walked")
+	}
+}
+
+// TestWhatTheReturnWordOfAParameterlessFloatBodySaysIsTheIR half of the same rule: the module must
+// say `define double @gy_f()` and end in `ret double` for a body that binds a name to a double and
+// returns it, and must keep saying `define i32` for the same source with the float written away
+// before the return. A gate that promoted everything with a `double` alloca in it would answer the
+// programs above correctly and be wrong in the other direction, so both halves are pinned.
+func TestWhatTheReturnWordOfAParameterlessFloatBodySays(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src, head, absent string
+	}{
+		{"a returned float local is a double-returning function",
+			"def f():\n    u = 9.5\n    return u\n\nprint(f())\n",
+			"define double @gy_f()", "ret i32"},
+		{"a derived returned float is a double-returning function",
+			"def f():\n    u = 2.5\n    v = u * 2\n    return v\n\nprint(f())\n",
+			"define double @gy_f()", "ret i32"},
+		{"a local whose last write is an int is not",
+			"def f():\n    u = 2.5\n    u = 3\n    return u\n\nprint(f())\n",
+			"define i32 @gy_f()", "ret double"},
+		{"a body with no float at all is not",
+			"def f():\n    u = 2\n    v = u * 3\n    return v\n\nprint(f())\n",
+			"define i32 @gy_f()", "ret double"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s: refused: %v", tc.name, err)
+			}
+			at := strings.Index(res.IR, tc.head)
+			if at < 0 {
+				t.Fatalf("%s: the module has no %q:\n%s", tc.name, tc.head, res.IR)
+			}
+			body := res.IR[at:]
+			if stop := strings.Index(body, "\n}\n"); stop >= 0 {
+				body = body[:stop]
+			}
+			if strings.Contains(body, tc.absent) {
+				t.Errorf("%s: the body carries %q it must not:\n%s", tc.name, tc.absent, body)
+			}
+			if strings.HasPrefix(tc.head, "define double") && !strings.Contains(body, "alloca double") {
+				t.Errorf("%s: the promoted body has no double slot to read its answer from:\n%s", tc.name, body)
+			}
+			// The negative half is the RETURN WORD, which is what this gate decides: an int-only body
+			// keeps `define i32`. A body whose float binding is overwritten before the return may still
+			// carry a dead `alloca double` — the assignment road allocated it before the last write
+			// settled — and that is an optimisation opportunity (Gap R.290's dead-allocation family),
+			// not a wrong answer, so it is not what this row judges.
+			if strings.HasPrefix(tc.head, "define i32") && strings.Contains(body, "ret double") {
+				t.Errorf("%s: a body the scan must not promote returns a double:\n%s", tc.name, body)
+			}
+		})
+	}
+}
+
+// TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed holds the shape this cycle found and did NOT
+// fix, with the reference's answer written beside the one this toolchain prints.
+//
+// `floatVars` is one map for a whole module, not one per body: the assignment road notes "this name's
+// last write produced a double" as it emits, and nothing clears the note when the next `define` begins.
+// So a program whose FIRST body binds a name to a double teaches every LATER body that a same-named
+// name is a double —
+//
+//	def bound():
+//	    u = 9.5
+//	    return u
+//
+//	def lastWrite():
+//	    u = 2.5
+//	    u = 3
+//	    return u
+//
+//	print(bound())      # 9.5
+//	print(lastWrite())  # CPython 3 · this toolchain 3.0
+//
+// — and `lastWrite` alone answers `3` (the row above pins that), which is the whole diagnosis: the
+// answer depends on what another function in the file happened to bind. The pre-ADR-0373 build prints
+// the same `3.0` (and `0` for `bound`), so this is a filed defect, not this cycle's regression
+// (roadmap Gap R.339; the exit-code half stays pinned: a wrong value is exit 0's shame, never exit 2's).
+func TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		src   string
+		want  string // what the reference prints
+		today string // what this toolchain prints today
+		gap   string
+	}{
+		{
+			name: "a name another function bound to a double is read as a double here too",
+			src: "def bound():\n    u = 9.5\n    return u\n\n" +
+				"def lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\n" +
+				"print(bound())\nprint(lastWrite())\n",
+			want:  "9.5\n3\n",
+			today: "9.5\n3.0\n",
+			gap:   "Gap R.339",
+		},
+		{
+			// the control: the same second body alone answers the reference's bytes, which is what
+			// localises the defect to the table's scope rather than to the scan
+			name:  "the same body with no float-returning function before it",
+			src:   "def lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\nprint(lastWrite())\n",
+			want:  "3\n",
+			today: "3\n",
+			gap:   "Gap R.339",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s: refused (%v) — a filed wrong answer is exit 0's defect, not a refusal (%s)", tc.name, err, tc.gap)
+			}
+			assertNoForbiddenIR(t, tc.src, res.IR)
+			got := runIR(t, res.IR)
+			if got == tc.want && tc.want != tc.today {
+				t.Fatalf("%s: the compiled leg now answers %q, the reference's own bytes — DELETE this row, %s has closed", tc.name, got, tc.gap)
+			}
+			if got != tc.today {
+				t.Errorf("%s: the compiled leg prints %q, and this row pinned %q as today's answer (reference %q, %s)",
+					tc.name, got, tc.today, tc.want, tc.gap)
+			}
+		})
+	}
+}

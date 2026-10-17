@@ -1,0 +1,38 @@
+def addf(x):
+    x = x + 1.5
+    return x
+
+
+def bound():
+    u = 9.5
+    return u
+
+
+def derived():
+    u = 2.5
+    v = u * 2
+    return v
+
+
+def derivedTwice():
+    u = 2.5
+    v = u * 2
+    w = v + 1
+    return w
+
+
+def takenOut():
+    u = 2.5
+    return int(u)
+
+
+def calledFromABody():
+    return bound() + bound()
+
+
+print(addf(1.0), addf(2))
+print(bound())
+print(derived())
+print(derivedTwice())
+print(takenOut())
+print(calledFromABody())

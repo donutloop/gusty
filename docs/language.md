@@ -5548,6 +5548,37 @@ function because a name in that count happens to hold a double, ADR 0263), a
 name bound inside the body (`y = x + 0.5; return y`), and any of those inside `if`, `while`,
 `try` or recursion.
 
+The rule is about the **name the return reads back**, not about where that name came from, so a
+body with no parameters at all is inside it — and that body used to be answered *before the
+question was asked*, because the scan began with `if len(fd.Params) == 0 { return nil }`:
+
+```gy
+def f():
+    u = 9.5          # the body binds a double to its own name
+    return u         # `return u` says nothing about the answer's kind
+
+print(f())           # CPython 9.5, and the compiled leg printed 0 at exit 0
+```
+
+`define i32 @gy_f()`, a `double` slot the body had just stored into, and the read answered the low
+word of that double. The second shape the same scan could not answer is the **derived** name, and
+it is the reason the scan now settles its float table by repetition instead of reading each binding
+once:
+
+```gy
+def f():
+    u = 2.5
+    v = u * 2        # a double because `u` is one
+    return v         # CPython 5.0; a single-pass scan said no and emitted the truncated word
+```
+
+Each round asks its questions inside `withFloatNames` — the same table the emitted body will act
+on — so the answer the scan gives and the answer the instructions give are one answer (ADR 0273's
+rule that a scan which decides must not keep a second opinion), and the round is snapshotted before
+it starts so the result cannot depend on the order a map happens to iterate in. **The last write
+settles it**, because the read answers the last write's word: `u = 2.5` / `u = 3` / `return u`
+answers `3`, not `3.0` (ADR 0373, roadmap Gap R.3c and Gap R.338).
+
 What the rule deliberately does **not** promote is an answer that is not that double, because
 promoting it would put an `i32` in a `double`'s word — the same bug in the other direction:
 `return int(x)` and `return round(x)` answer with an int whatever arrives, `return x > 2`

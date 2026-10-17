@@ -771,6 +771,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// caller's OWN reading of that name. Every group is line for line CPython
 		// (roadmap L11.7 · Gap R.334; ADR 0372).
 		"lambda_applied_capture_entry",
+		// The word a function RETURNS is a fact about its BODY, read the same way whether the body has a
+		// parameter or not: a name the body bound to a double and handed back by bare name, a DERIVED name
+		// (`v = u * 2` / `return v`), the answer read through another call, and the answer the body takes
+		// out of the float domain again with `int()`. Before ADR 0373 the parameterless spellings printed
+		// the low word of the double — `0` — and the derived one printed `0` with a parameter in sight
+		// (roadmap L11.6 · Gap R.3c, Gap R.338; ADR 0254, ADR 0373).
+		"float_answer_word",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

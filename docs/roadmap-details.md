@@ -14563,6 +14563,124 @@ clone, which is Gap R.325's rule applied at a sentence ADR 0345 §3 had not cove
 `lambda` a higher-order `def` calls, reading the caller's frame — is Gap R.336, measured in the same sitting and left
 filed because an entry is a symbol and the word it would need has no declaration to ride in.
 
+### Gap R.338 — a function that binds its own name to a float returned the low word of the double (closed by ADR 0373)
+
+```python
+def f():
+    u = 9.5
+    return u          # 9.5 in the reference; this backend printed 0 at exit 0
+
+def g():
+    v = 2.5 * 2
+    return v          # 5.0 there; 0 here
+
+def h():
+    u = 2.5
+    v = u * 2
+    return v          # 5.0 there; 0 here, and NOT fixed by the first program's fix
+```
+
+Three programs, one class of answer, and all three are the first float function a person writes. The
+emitted module said `define i32 @gy_f()`; the body had just executed `store double %t3, double* %_u`,
+and the read answered the low word of that double — which is `0` for 9.5, `0` for 2.5, and `0` for
+5.0. Exit code 0, stdout a number, no diagnostic anywhere: ADR 0166's bug, shipped as an answer.
+
+The gate that exists for exactly this is `returnedFloatRebindings`, and ADR 0254 built it to close the
+parameter-shaped form of the same lie (`def addf(x): x = x + 1.5` / `return x`). It opened with
+
+```go
+if fd == nil || len(fd.Params) == 0 {
+    return nil
+}
+```
+
+and that second clause is a hypothesis about the *wrong noun*. The scan is about the name the return
+reads back; where that name came from is a different question, and a body that binds its own name to
+`9.5` has no parameter to be blamed for. Nothing about the parameterless body makes the answer easier
+to carry, either — the obstacle that forces a refusal in this family is a *parameter* whose word is a
+heap handle or a `@str_tab` index, and that question is `doubleReturnCarriable`'s, which stayed put.
+So removing the guard could not widen any refusal: for a body with no parameters the guard was not a
+refusal, it was silence.
+
+The second defect was behind the first, and the measurement that found it is the reason this is a row
+rather than a one-line fix. With the guard removed, `u = 9.5` / `return u` answered `9.5`, but
+`u = 2.5` / `v = u * 2` / `return v` still printed `0` — and so did the same body **with** a parameter,
+which is the sign that the scan, not the parameter list, was the half that was broken:
+`returnedFloatRebindings` asked `isFloat` of each name's binding ONCE, in Go's map order, with no
+notion that `v`'s answer depends on `u`'s. Reach `v` first and the answer is no, and the function is
+emitted with the truncated return word whatever the other binding says.
+
+**Closed by ADR 0373 on 2026-10-19**, by two changes to that one function and one refactor beside it:
+
+- The scan keeps the **last** binding of every name rather than asking whether any binding was ever a
+  float, because the read answers the *last write's* word. That distinction is not decoration: an
+  "was it ever a float" scan promotes `u = 2.5` / `u = 3` / `return u` and prints `3.0` where the
+  reference prints `3` — the same class of wrong answer, pointed the other way. It is the rule
+  `floatVars` already applies while emitting, read by the scan.
+- The scan then settles its float table by **repetition**: each round snapshots the names it currently
+  holds as doubles, asks every binding's question against that snapshot, and stops when a round moves
+  nothing. `v = u * 2` is a double only once `u` is one, `u` is one only once its own binding is asked,
+  and the snapshot is what keeps the result from depending on which order Go's map happens to iterate
+  in (ADR 0273's determinism rule; the pass's own compile-twice test holds the same line from the
+  other side).
+- Each question is asked inside `(*irGen).withFloatNames`, the copy-add-restore of the float-variable
+  table that `floatReboundReturnAsksForTheDouble` had been building privately. The scan and the
+  emission now read one table, so `funcReturnsFloat`'s answer about a body, `isFloat`'s answer about
+  one of its expressions, and the assignment road's decision while emitting cannot disagree — which is
+  precisely the agreement whose absence produced the `define double` with an `ret i32` that ADR 0166
+  counts as a rejected module. `emitClassMethod` passes the same helper, so a method and a function
+  agree about what a float IS and differ only in what they can carry.
+
+Left standing, and named rather than absorbed: a method whose body binds its own name to a double and
+returns it still refuses, because a method's return word is fixed at `i32` together with the
+receiver's; a dead `alloca double` survives in a body whose float binding is overwritten before the
+return (the dead-allocation family, Gap R.290); and the module-wide `floatVars` map, which makes one
+body's float binding decide another body's answer — **Gap R.339**, its own section below. The shape that
+LOOKED like a third defect, `def twice(): return half() + half()`, answers `3.0` on both legs and is a
+group of the conformance program: a callee's answer word is the callee's own question, and the caller
+reads what the `define` says.
+
+### Gap R.339 — the float-variable table is one map for a whole module, so one body's binding decides another's answer (OPEN)
+
+```python
+def bound():
+    u = 9.5
+    return u          # 9.5 here too (ADR 0373)
+
+def lastWrite():
+    u = 2.5
+    u = 3
+    return u          # CPython 3 · this toolchain 3.0 — but 3 when the file holds ONLY this body
+
+print(bound())
+print(lastWrite())
+```
+
+The second body is the same program ADR 0373's own table answers `3` for. Written below a body that
+binds the same NAME to a double, it answers `3.0`. Nothing in `lastWrite` changed; what changed is what
+the file had emitted before it.
+
+`g.floatVars` is the table every float question asks — `isFloat` for the print door, the arithmetic, the
+negation, `logic_value`, `heapargs`, `list_index_kind`, `codegen_facts` — and the assignment road writes
+into it ("this name's last write produced a double") as it emits. There is one per module, and no
+statement clears it between `define`s. So the table is not "what is this body's name"; it is "what has
+this toolchain seen since `main` started", and any predicate that reads it is answering a question about
+one body with evidence from all of them.
+
+Why it is a row and not a line: the fix is the table's SCOPE, and every reader of the table has to be
+asked which question it is asking. The `saved`/`merged`/`restore` pair in `withFloatNames` — the helper
+ADR 0373 extracted so a scan and an emission could not hold two opinions — is already the shape of the
+per-body table; what is missing is installing a settled one at the moment each body's slots are decided,
+instead of inheriting the previous body's history. A nested `lambda` then inherits its enclosing body's
+table explicitly, which is the rule the closure road already uses for captured names.
+
+The measure that keeps it honest is in the tracker's own artifact: `programs/float_answer_word.gy` was
+written WITH this pair in it and the conformance matrix failed on it (`aot="…3.0…"` against
+`python="…3…"`). The group was cut out of the asserted program rather than the ledger edited to accept
+the wrong bytes, and the pair is pinned in
+`pkg/lang/float_rebound_return_test.go::TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed` — reference
+answer beside today's, exit 2 forbidden, and the row deleted when the two agree.
+
 ### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (OPEN)
 
 ```python

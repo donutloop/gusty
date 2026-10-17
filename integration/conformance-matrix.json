@@ -3831,6 +3831,27 @@
     },
     {
       "case": {
+        "id": "programs/float_answer_word",
+        "name": "float_answer_word.gy",
+        "source": "def addf(x):\n    x = x + 1.5\n    return x\n\n\ndef bound():\n    u = 9.5\n    return u\n\n\ndef derived():\n    u = 2.5\n    v = u * 2\n    return v\n\n\ndef derivedTwice():\n    u = 2.5\n    v = u * 2\n    w = v + 1\n    return w\n\n\ndef takenOut():\n    u = 2.5\n    return int(u)\n\n\ndef calledFromABody():\n    return bound() + bound()\n\n\nprint(addf(1.0), addf(2))\nprint(bound())\nprint(derived())\nprint(derivedTwice())\nprint(takenOut())\nprint(calledFromABody())\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "2.5 3.5\n9.5\n5.0\n6.0\n2\n19.0\n",
+      "python_ok": true,
+      "python_stdout": "2.5 3.5\n9.5\n5.0\n6.0\n2\n19.0\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4512,7 +4533,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/187/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/188/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4526,7 +4547,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/187/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/188/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5104,11 +5125,11 @@
       ]
     }
   ],
-  "rows": 211,
+  "rows": 212,
   "skipped": 32,
-  "pass": 179,
+  "pass": 180,
   "fail": 0,
-  "oracle_match": 165,
+  "oracle_match": 166,
   "oracle_debt": 24,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

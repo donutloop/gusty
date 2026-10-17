@@ -12629,3 +12629,62 @@ printed by the tool for a source printed beside it.
   write it — which is the rule that keeps a divergence on the table instead of in a file.
   `integration/programs/lambda_applied_capture_entry.gy` joined the matrix (223 → 224 programs, 210 → 211 rows,
   178 → 179 asserted, 164 → 165 oracle `match`), and the Snapshot's numbers moved because the artifact said they should.
+
+## ADR 0373 — the return word of a float-answering body comes from the body, not from its parameter list (L11.6 · Gap R.3c, Gap R.338, Gap R.339, 2026-10-19)
+
+- **A guard can be a hypothesis wearing a coat.** `returnedFloatRebindings` — the gate ADR 0254 built so
+  a function's return word stops coming from the *shape* of its `return` line — opened with
+  `if fd == nil || len(fd.Params) == 0 { return nil }`. The scan is about the NAME the return reads back;
+  where the name came from is a different question. `def f(): u = 9.5 / return u` is the first float
+  function anybody writes, and this backend printed `0` at exit 0 — `define i32 @gy_f()` over a body
+  that had just executed `store double`, the read answering the double's low word. Deleting the guard was
+  one line; the row is about noticing that the guard had no reason attached to it.
+- **The wrong answer was two deep, and the second one only appeared once the first was gone.** With the
+  guard removed, `return u` answered `9.5` and `v = u * 2` / `return v` still printed `0` — and kept
+  printing `0` even with a parameter in the signature, which is the tell that the SCAN was broken and not
+  the parameter list. `v` is a double only because `u` is one, and the scan asked `isFloat` of each
+  binding once, in Go's map order. Repetition to a fixed point, over a per-round snapshot, is four lines
+  and is order-independent; a single pass is a coin flip you can't reproduce in a bug report.
+- **"Was it EVER a float" is the wrong question, and the wrong answer to it is the same bug backwards.**
+  The scan keeps the LAST binding of each name, because the read answers the last write's word:
+  `u = 2.5` / `u = 3` / `return u` must answer `3`, and the "any binding" version prints `3.0`. The unit
+  table pins both, and the IR table pins `define double`/`ret double` on one side and `define i32` with
+  no `ret double` on the other — a gate that promoted everything containing an `alloca double` would pass
+  the value table and be wrong in the other direction.
+- **One table, one answer, again (ADR 0273, read by a new road).** `floatReboundReturnAsksForTheDouble`
+  had been building a copy-add-restore of `floatVars` privately. That is now `withFloatNames`, and the
+  scan asks its questions inside it, so `funcReturnsFloat`'s answer about a body, `isFloat`'s answer about
+  one of its expressions, and the assignment road's decision mid-emission are three readings of one map.
+  The `return -x` story in Gap R.3c — a `define double` with an `ret i32`, `llc` rejecting the module — is
+  what you get when they are not, and it is why the method road now passes the same helper instead of
+  asking the question cold.
+- **The conformance program is a lie detector, and this time it caught ME.** `float_answer_word.gy` was
+  written with a `lastWrite` group in it; `TestConformanceMatrix` failed it with
+  `aot="…3.0…" python="…3…"`. That is a real wrong answer at exit 0 — pre-existing (the pre-ADR-0373
+  build prints the same `3.0`), and caused by `g.floatVars` being ONE MAP FOR THE WHOLE MODULE: the
+  assignment road notes "this name's last write was a double" as it emits and nothing clears the note at
+  the next `define`, so what an earlier body bound decides what a later body's same-named name IS. The
+  group was cut out of the asserted program and filed as **Gap R.339** with the reference's bytes pinned
+  beside today's in `TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed`; the ledger was not edited to
+  accept `3.0`. Had I written the roadmap prose instead of the program, this would have shipped.
+- **The record leg had nothing to check, again.** None of the fourteen float-return shapes was in
+  `pkg/lang/testdata/interpreter-golden.json`; they went through `tools/recmerge` (the record to **7858**
+  sources), each recorded from the reference with the compiled leg cross-checked before the entry was
+  written — and the test that asks the record leg fails if NO row of its table is covered, so the guard
+  cannot quietly become a no-op.
+- **A parallel subtest is a counter you never read.** `if asked == 0 { t.Fatal(...) }` after a loop of
+  `t.Run(func(t){ t.Parallel() … })` reports "the record leg is not being walked" on a green run, because
+  the subtests have not started by the time the loop returns. Counters that a guard reads belong in serial
+  subtests.
+- **The probe binary has to be rebuilt before it is trusted, and a probe you did not rebuild is not
+  evidence.** This cycle carried a working note claiming module-level floats were folded into compiled
+  bodies and that a `def f(): u = RATE` program answered; the tree has no such code (`git diff` showed
+  three files, none of them the module road), and the probe outputs that "proved" it came from a
+  `/tmp/gustyc` built at some earlier state. The behaviour that matters here was re-measured twice with
+  freshly built binaries — `-tags=llvm20` and untagged agree, byte for byte — and the module-float row
+  (Gap R.35) is still 🟨 `PARTIAL`, not "done", which is what the tracker now says.
+- **Filed rather than absorbed:** the method whose body binds its own name to a double (a method's return
+  word is fixed with the receiver's), the dead `alloca double` a body leaves when the float binding is
+  overwritten before the return (Gap R.290's family), `def twice(): return half() + half()` (Gap R.331's
+  return-kind registration), and the module-wide float table (Gap R.339) — each with its own row, its own
+  sentence, and a test that fails when it closes.

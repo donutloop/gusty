@@ -63,6 +63,36 @@ func TestAFunctionReturningAReboundFloatAnswersLikeCPython(t *testing.T) {
 			"def h(x):\n    x = x + 1.5\n    return x\n\nprint(h(1.0) + h(2.0))\n", "6.0\n"},
 		{"promoted_function_beside_a_nested_def",
 			"def outer(x):\n    x = x + 0.5\n    def inner(y):\n        return y\n    return x + inner(0)\n\nprint(outer(1.0))\n", "1.5\n"},
+		// The half ADR 0373 added: the name the BODY bound, with no parameter in the signature to
+		// carry the blame. Each of these printed the low word of the double (`0`) at exit 0 before the
+		// scan was asked, because the scan returned early for a body with no parameters and read each
+		// binding's float question once, in map order (roadmap L11.6, Gap R.3c, Gap R.338).
+		{"local_float_returned_bare_no_parameters",
+			"def f():\n    u = 9.5\n    return u\n\nprint(f())\n", "9.5\n"},
+		{"local_float_with_the_arithmetic_on_the_return",
+			"def f():\n    u = 9.5\n    return u * 2\n\nprint(f())\n", "19.0\n"},
+		{"derived_local_float_returned_bare",
+			"def f():\n    u = 2.5\n    v = u * 2\n    return v\n\nprint(f())\n", "5.0\n"},
+		{"derived_local_float_from_a_literal_product",
+			"def f():\n    v = 2.5 * 2\n    return v\n\nprint(f())\n", "5.0\n"},
+		{"derived_local_float_two_steps_deep",
+			"def f():\n    u = 2.5\n    v = u * 2\n    w = v + 1\n    return w\n\nprint(f())\n", "6.0\n"},
+		{"derived_local_float_times_a_parameter",
+			"def f(x):\n    u = 2.5\n    v = u * x\n    return v\n\nprint(f(2))\n", "5.0\n"},
+		{"promoted_answer_read_from_two_call_sites",
+			"def f():\n    u = 1.5\n    v = u + u\n    return v\n\nprint(f(), f())\n", "3.0 3.0\n"},
+		{"promoted_answer_called_from_another_function",
+			"def half():\n    u = 3.0\n    v = u / 2\n    return v\n\ndef twice():\n    return half() + half()\n\nprint(twice())\n", "3.0\n"},
+		{"float_bound_through_a_conditional_assignment",
+			"def f(c):\n    u = 1.5 if c else 2.5\n    v = u * 2\n    return v\n\nprint(f(True))\n", "3.0\n"},
+		// The last write decides, so these stay in the word the reference answers them in: an int, not
+		// a double wearing a `.0`.
+		{"local_whose_last_write_is_an_int",
+			"def f():\n    u = 2.5\n    u = 3\n    return u\n\nprint(f())\n", "3\n"},
+		{"local_float_taken_out_of_the_domain_by_int",
+			"def f():\n    u = 2.5\n    return int(u)\n\nprint(f())\n", "2\n"},
+		{"local_float_never_returned",
+			"def f():\n    u = 2.5\n    return 4\n\nprint(f())\n", "4\n"},
 		// The convention always saw these; pinned so promotion cannot unsee them.
 		{"return_expression_already_a_float",
 			"def scaled(x):\n    x = x * 2.0\n    return x + 0.0\n\nprint(scaled(1.5))\n", "3.0\n"},

@@ -383,6 +383,15 @@ func hasValueReturn(v reflect.Value) bool {
 // return expression and a unary minus says nothing, and the module came out rejected (roadmap
 // L11.6, Gap R.3c, ADR 0166).
 func (g *irGen) floatReboundReturnAsksForTheDouble(fd *FuncDef, atStake []string) bool {
+	return g.withFloatNames(atStake, func() bool { return funcReturnsFloat(g, fd) })
+}
+
+// withFloatNames runs one question with the named added to the float-variable table the predicate reads, on a
+// COPY of that table. It is the whole reason a scan and an emission can be said to ask the same question: the
+// answer `funcReturnsFloat` gives a body, the answer `isFloat` gives one of its expressions, and the answer the
+// assignment road will act on while emitting are then facts about one table rather than three readings of it
+// (roadmap ADR 0273's rule that a scan which decides must not keep a second opinion, L11.6, Gap R.3c, Gap R.338).
+func (g *irGen) withFloatNames(atStake []string, ask func() bool) bool {
 	saved := g.floatVars
 	merged := make(map[string]bool, len(saved)+len(atStake))
 	for k, v := range saved {
@@ -392,7 +401,7 @@ func (g *irGen) floatReboundReturnAsksForTheDouble(fd *FuncDef, atStake []string
 		merged[nm] = true
 	}
 	g.floatVars = merged
-	needs := funcReturnsFloat(g, fd)
+	needs := ask()
 	g.floatVars = saved
 	return needs
 }
@@ -626,7 +635,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// emitted wrong, because the emitted form is `sitofp i32 @.lst1 to double` and `llc` rejects it
 	// (roadmap ADR 0166; see `returnedFloatRebindings` and `doubleReturnCarriable`).
 	if !floatRet {
-		if bad := returnedFloatRebindings(fd, g.isFloat); len(bad) > 0 {
+		if bad := returnedFloatRebindings(fd, g.isFloat, g.withFloatNames); len(bad) > 0 {
 			// The gate asks the same question the instructions below will ask, so the word the
 			// `ret` writes and the word the value arrives in cannot disagree — which is what the
 			// module verifier checks and what `return -x` used to get wrong in silence.

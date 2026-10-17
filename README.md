@@ -952,7 +952,16 @@ same question the emitted instructions ask (`isFloat`, over the body with the re
 they became), so the `ret` and the value it writes cannot disagree, and the family answers: the bare name,
 `return x * 2`, `x % 3`, `abs(x)`, `abs(-x)`, `return -x` — which had been an `llc` rejection, `ret i32` under a
 `define double`, ever since the body learned to negate a double — the local spelling `y = x + 0.5; return y`,
-and any of them inside `if`, `while`, `try`, recursion or a default. What is not that double keeps its own word
+and any of them inside `if`, `while`, `try`, recursion or a default. **The rule is about the name the return
+reads back, not about where that name came from** (ADR 0373, closing Gap R.338): the gate began with
+`if len(fd.Params) == 0 { return nil }`, so `def f(): u = 9.5` / `return u` / `print(f())` — the first float
+function a person writes — emitted `define i32 @gy_f()` over a `double` slot and printed the low word of the
+double, `0`, at the exit code of success; and `v = u * 2` / `return v` printed `0` even **with** a parameter,
+because the scan asked each name's float question once, in map order, with no notion that `v` is a double
+only once `u` is. Both are answered now: the scan keeps the **last** binding of every name (which is why
+`u = 2.5` / `u = 3` / `return u` says `3` and not `3.0`) and settles its float table by repetition, each round
+asked inside `withFloatNames` — the one table the emitted body acts on, so the `ret`, `isFloat` and the
+assignment road cannot hold three opinions about one value. What is not that double keeps its own word
 (`int(x)`, `round(x)`, `x > 2`, a user callee), and where the one convention would have to hand a container
 handle or an interned text the `double` word — a parameter the body also reads, or any method — the program is
 refused in words, naming the variable whose double has nowhere to go. Three shapes came out of that sweep and
