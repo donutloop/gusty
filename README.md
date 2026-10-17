@@ -86,10 +86,14 @@ gusty ships an indentation-based syntax covering:
   `apply1(lambda x: (lambda y: y * 2)(x), 4)` is `8`, `def f(x): return (lambda y: y * 2)(x)` applied is `8`, a lambda
   applied inside a method or a comprehension answers, and `(lambda m: m / 2)(3)` prints `1.5` — because each lambda is
   emitted as a real `define`, cloned once per tuple its called parameters are asked to be, with one capture parameter
-  per name its body is free in and the application filling each from the caller's own reading (**ADR 0370**, roadmap
-  L11.7 · **Gap R.265**, **Gap R.276**). A capture whose value is not a number, a capture three frames up, and an
-  application that omits a defaulted parameter refuse in words instead of printing a word whose kind nobody asked for
-  (**Gap R.329**–**R.332**).
+  per name its body is free in and the application filling each from the caller's own reading (**ADR 0370**), and an
+  application may leave a parameter out because the entry tuple is the list of functions the BODY asks for — an omitted
+  slot arrives with its default, and a called omitted slot with the function that default names, so
+  `(lambda f, y=10: f(y))(lambda x: x + 1)` is `11` and `def apply(f, y=10): return f(y)` applied to one argument is
+  `11` too (**ADR 0371**, roadmap L11.7 · **Gap R.265**, **Gap R.276**, **Gap R.329**). A capture whose value is not a
+  number, a capture three frames up, a capture read by a body that also calls its own parameter, and an omitted slot
+  whose default is not a function the compiler can name refuse in words instead of printing a word whose kind nobody
+  asked for (**Gap R.330**–**R.332**, **Gap R.334**).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local

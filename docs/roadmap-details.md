@@ -14448,20 +14448,97 @@ failure, and both predate this cycle (measured at the pre-0369 binary for all th
 the key absent). The fix is the registration, not a refusal: a body whose returns say list/dict/set is registered
 as answering a container, the handle is read as one, and the tag travels beside it.
 
-### Gap R.329 — an application that omits a `lambda`'s defaulted parameter is not an entry the pass will build (OPEN)
+### Gap R.329 — an application that omits a `lambda`'s defaulted parameter is not an entry the pass will build (closed by ADR 0371)
 
 ```python
-print((lambda f, y=10: f(y))(lambda x: x + 1))   # 11 in the reference; exit 1 here
-print((lambda f, y=10: f(y))(lambda x: x * 2, 5)) # 11 here too — with both arguments, at exit 0
+print((lambda f, y=10: f(y))(lambda x: x + 1))    # 11 in the reference; exit 1 before ADR 0371
+print((lambda f, y=10: f(y))(lambda x: x * 2, 5)) # 10 on both roads — the twin that names the slot
+
+def apply(f, y=10):
+    return f(y)
+print(apply(lambda x: x + 1))                      # 11 in the reference; the same refusal, on the `def` road
+
+print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))  # 60 in the reference; exit 1 before
 ```
 
-ADR 0370 registered the applied lambda as a higher-order body, which is the half the row owned; the entry-arity audit
-then declined this one, because the call site does not name a tuple of functions for the defaulted slot, and the
-ordinary road answered with ADR 0283's sentence about `"f"`. The answered twin beside it is the localisation: nothing
-about the body differs, only the arity of the application. The entry tuple should be the one the *body* asks for — an
-omitted parameter whose `Default` is a function literal contributes that literal to the tuple, and a default that is
-not a function contributes the word the body's own read of the parameter needs, which is the question
-`captureParamWord` already asks a capture.
+ADR 0370 registered the applied lambda as a higher-order body, which was the half the row owned; the entry-arity
+audit then declined this one, because the call site does not name a tuple of functions for the defaulted slot, and the
+ordinary road answered with ADR 0283's sentence about `"f"`. The answered twin beside it was the localisation: nothing
+about the body differs, only the arity of the application. Two audits were in play, and both read the call's argument
+list as the body's parameter list — `len(c.Args) != len(def.Params)` at the site loop, and the `Default != nil` drop in
+`callableCalledParams`/`lambdaCalledParams`, which removed any defaulted parameter from `calledPos` before the first
+audit could even be reached. That second rule was written when the pass had no way to name what a defaulted slot
+holds, and the way turned out to exist: `resolve` answers an expression with the symbol of the function it names, so
+a default that IS a function — an inline `lambda`, or a plain name — is an entry, and the omission is readable.
+
+ADR 0371 made the tuple the body's. `callableSiteOmission` is the only arity audit a call is read against: every
+position at or beyond the arguments written must have a default, and a called one must have a default that names a
+function. `callableSiteOperand` resolves an omitted position from the parameter's own `Default` rather than from an
+argument — the same expression the body would have seen, which is the only expression whose symbol can stand in the
+body's call. `callableSiteFill` writes into the retargeted call the words the application left out, up to the last
+position the body calls: the placeholder where the clone names the entry and reads nothing, a copy of the default's
+expression where the body reads the slot (which is what the ordinary road would have evaluated for an omitted
+argument anyway, ADR 0322), and nothing at or above the last called position, so the call road keeps sole ownership of
+the default fill. `--callables` reports the count as `omitted_arguments`, because the two programs above are otherwise
+indistinguishable in the emitted module.
+
+The refusals the row leaves standing are named by shape rather than by the same sentence, which is the point of
+paying a row instead of widening a refusal: an omitted CALLED slot whose default is not a function keeps the
+value-word sentence (L11.1, ADR 0166 — the reference raises `TypeError: 'int' object is not callable` there, and asking
+the value what it is needs the tag); an omitted READ slot whose default is a container, a `None` or a call keeps Gap
+R.277's road, because binding an omitted container default arrives as a (payload, tag) pair and the entry tuple has
+one word to carry it in; a keyword argument at such a site keeps the ordinary road, since reading it needs the
+argument list reordered into positions, which is a different rewrite with its own trap; and a required parameter
+after a defaulted one is the reference's own `TypeError`. Six sources went to the record from the reference
+(7827 → 7833), and `integration/programs/lambda_applied_entry_tuple.gy` carries the family onto the matrix.
+
+### Gap R.334 — a capture read by a body that also calls its own parameter is not an entry the pass will build (OPEN)
+
+```python
+def f(x):
+    return (lambda h: h(1) + x)(lambda q: q * 10)   # 12 in the reference; exit 1 here
+
+def g(x):
+    return (lambda y: y * 2)(x)                     # 8 here — the capture alone, answered (ADR 0370)
+
+def h(x):
+    return (lambda k: k(1))(lambda q: q * 10)       # 10 here — the call of a parameter alone, answered
+
+for k in [1, 2, 3]:
+    print((lambda m, w=100: m(k) + w)(lambda q: q * 10))  # 110/120/130 there; exit 1 here
+```
+
+The refusal is `"h" is called but is not a function this backend can build a call to` — ADR 0283's ordinary-road
+sentence, arriving because the pass declined. The two halves are each answered on the same build, and that contrast is
+the localisation: ADR 0370 built the clone road (`cloneCallable` mints the parameters the entries travel in, in
+`calledPos` order) and the capture road (`captureParamWord` decides the word each free name travels in) in the same
+cycle, and neither function looks at the other's decision. A body that needs both is declined by the entry audit
+before the capture road is consulted, so the shape that is missing is not a word but a union: the clone's parameter
+list has to be the entries the body's calls name AND one capture per free name, with the application filling each from
+its own reading. That is the same question ADR 0370's capture gate asks — what does every call of this frame hand this
+name — asked of a frame that is itself a clone, which is why it is a row of its own and not a line of configuration.
+
+### Gap R.335 — a higher-order recursion that omits its own defaulted parameter is not a recursion the clone will follow (OPEN)
+
+```python
+def run(n, f=lambda x: x):
+    return 0 if n == 0 else f(n) + run(n - 1)
+print(run(3))            # 6 in the reference; exit 1 here
+print(run(3, lambda x: x))  # 6 there too — naming every parameter is refused as well
+```
+
+The refusal is the ordinary road's `"f" is called but is not a function this backend can build a call to`, and the
+account says what actually happened: `"run" recurses at line 2 without filling every parameter positionally, which a
+clone cannot answer for the recursion` — ADR 0364's audit, the one clause of the omission rule **ADR 0371** did not
+extend. Every other call of a higher-order function is now read against the body; a call of that function from inside
+its own body still has to name every position, and that requirement is not mere conservatism. A clone is chosen by the
+tuple of functions its called parameters are asked to be, and the recursion road follows a self-call by handing each
+called parameter back to its own position (`fact(n, f)` calls `fact$tuple(n - 1, f)`, ADR 0364). A self-call that
+writes fewer arguments than the body has parameters leaves that tuple with a hole — and the answer is not the ordinary
+road's default fill, because for a CALLED slot the right word is the entry the enclosing clone was itself cloned for,
+which is a fact about the clone rather than about the call site. The fix is therefore a small one with a real
+distinction in it: read the self-site's tuple from the enclosing clone, and relax the audit to the one
+`callableSiteOmission` already applies outside the body, so the two roads ask the same question of the same body.
 
 ### Gap R.330 — a capture three frames up has no call site to ask (OPEN)
 

@@ -18,6 +18,7 @@ package lang
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,49 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 		{"two entries of the same shape answer each other", "def use(cb):\n    return cb(1)\n\nprint(use(lambda x: x + 1))\nprint(use(lambda x: x * 3))\n", "2\n3\n"},
 		{"the same call at two tuples", "def calling(fn, a, b):\n    return fn(a) + fn(b)\n\nprint(calling(lambda x: x * 2, 3, 4))\nprint(calling(lambda x: x * 3, 1, 2))\n", "14\n9\n"},
 		{"a key= hook whose body calls a builtin", "print(sorted([3, -1, -2], key=lambda v: abs(v)))\n", "[-1, -2, 3]\n"},
+		{
+			// roadmap L11.7 · Gap R.329 (ADR 0370): the application OMITS the parameter the body reads. The
+			// entry tuple is the list of functions the BODY asks for, so the left-out slot arrives with its
+			// default and the called one with the entry. The row above that passes BOTH arguments is the same
+			// body — nothing about the program differs but how many words the application wrote.
+			"an application that omits the lambda's defaulted read parameter",
+			"print((lambda f, y=10: f(y))(lambda x: x + 1))\n",
+			"11\n",
+		},
+		{
+			// The twin, naming the slot: the road the row above had to reach.
+			"an application that names the lambda's defaulted parameter",
+			"print((lambda f, y=10: f(y))(lambda x: x * 2, 5))\n",
+			"10\n",
+		},
+		{
+			// A read slot left out BELOW the called one keeps its default's word: the clone reads nothing
+			// at that position and the ordinary call road fills it the way it fills any omitted argument.
+			"an application that omits between a called slot and a read slot",
+			"print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))\n",
+			"46\n",
+		},
+		{
+			// The omitted parameter is itself CALLED, and its default names the function: the entry the
+			// clone builds a call to is the one the default writes, which is what the body would have seen
+			// had the application named nothing else (roadmap Gap R.329).
+			"an application that omits a called parameter whose default is a lambda",
+			"print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))\n",
+			"60\n",
+		},
+		{
+			// The same omission on the `def` road — the roadmap's other sentence: a higher-order def, its
+			// CALLED parameter named, its READ parameter left to its default.
+			"a higher-order def called with its called slot named and its read slot defaulted",
+			"def apply(f, y=10):\n    return f(y)\n\nprint(apply(lambda x: x + 1))\n",
+			"11\n",
+		},
+		{
+			// …and the def whose called slot is left to a lambda default.
+			"a higher-order def called with a called slot left to a lambda default",
+			"def use(f, g=lambda v: v + 4):\n    return f(g(2))\n\nprint(use(lambda n: n * 10))\n",
+			"60\n",
+		},
 	}
 }
 
@@ -208,11 +252,40 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			want: `reads "x" from the frame that encloses it`,
 		},
 		{
-			// The application does not name a tuple for the defaulted slot, so the entry-arity audit
-			// declines and the ordinary road answers with its own sentence. The twin that passes BOTH
-			// arguments is in the answer table — nothing about the body differs (roadmap Gap R.329).
-			name: "an application that omits the lambda's defaulted parameter",
-			src:  "print((lambda f, y=10: f(y))(lambda x: x + 1))\n",
+			// An application that omits a parameter the body CALLS has to leave the function somewhere,
+			// and a number is not one: the entry tuple would carry "10" as the slot's function, which is
+			// the shape ADR 0166's value word is the answer to. The reference raises TypeError here
+			// (`<lambda>() missing 1 required positional argument: 'f'`), and this backend is the ordinary
+			// road's refusal until the row that owns the value word closes (roadmap Gap R.329, Gap R.31).
+			name: "an application that omits a CALLED parameter that has no default",
+			src:  "print((lambda f, y=10: f(y))(10))\n",
+			want: "is called but is not a function this backend can build a call to",
+		},
+		{
+			// The omission lands on a parameter the body READS whose default is a list. Binding an
+			// omitted default is Gap R.277's road — a container default has to arrive as (payload, tag)
+			// and the entry tuple has one word to carry it in, so the pass declines rather than read a
+			// heap handle as a count (roadmap Gap R.277, ADR 0273's rule over an unanswered shape).
+			name: "an application whose omitted read parameter defaults to a container",
+			src:  "print((lambda f, y=[]: f(y))(lambda x: len(x)))\n",
+			want: "is called but is not a function this backend can build a call to",
+		},
+		{
+			// A required parameter after a defaulted one is not an entry the pass can name a position
+			// for, and the reference raises TypeError on the same program (ADR 0283's rule over the
+			// unanswered shape — roadmap Gap R.329).
+			name: "an application whose omitted slot is followed by a required one",
+			src:  "print((lambda f, y: f(y))(lambda x: x))\n",
+			want: "is called but is not a function this backend can build a call to",
+		},
+		{
+			// The recursion road's own audit: an application OUTSIDE the body may leave a defaulted slot
+			// to its default (the row above), but a call of the higher-order function from inside its own
+			// body has to name every position, because the clone follows a recursion by handing each called
+			// parameter back to its own position — a recursion that omits one has no tuple to follow
+			// (roadmap Gap R.335, the half of the omission ADR 0364's road does not read).
+			name: "a higher-order recursion that omits its own defaulted parameter",
+			src:  "def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n",
 			want: "is called but is not a function this backend can build a call to",
 		},
 	} {
@@ -377,6 +450,107 @@ func TestWhatAClonedLambdaIsEmittedAsAFunctionAndCalledByName(t *testing.T) {
 		if j >= len(fields) || !strings.HasPrefix(fields[j], "@") {
 			t.Fatalf("a call does not name a function: %q", trimmed)
 		}
+	}
+}
+
+// The module shape of an application that leaves a parameter out: the clone's own `define` carries every
+// parameter the BODY asks for, the retargeted `call` names it with the placeholder word at the position the body
+// calls, and the defaults the application did not write arrive from the prototype — the same road that fills
+// them for a `def` called with too few arguments (ADR 0322). No `fnptr` operand, no indirect `call`, and the
+// clone builds its call to the entry by name (roadmap L11.7 · Gap R.329, ADR 0371).
+func TestWhatAnOmittedArgumentStillEntersTheClonePositionally(t *testing.T) {
+	mod := compileSrc(t, "print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))\n")
+	clone := ""
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "define ") && strings.Contains(line, callableCloneInfix) {
+			clone = strings.TrimSpace(line)
+			break
+		}
+	}
+	if clone == "" {
+		t.Fatalf("the pass emitted no clone for the applied lambda:\n%s", headLines(mod, 40))
+	}
+	// The body asks for three: the entry it calls, and the two slots it reads.
+	if n := strings.Count(clone, "i32 %p"); n != 3 {
+		t.Fatalf("the clone does not carry the parameters the body asks for: %q", clone)
+	}
+	// The application wrote ONE argument. The call the clone sees carries the placeholder where the entry
+	// sits and the two defaults the application left out, read from the prototype.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*` + regexp.QuoteMeta(callableCloneInfix) + `[0-9a-f]*_\d+\(i32 0, i32 3, i32 40\)`).MatchString(mod) {
+		t.Fatalf("the retargeted call does not carry the omitted defaults:\n%s", headLines(mod, 60))
+	}
+	// The clone calls the entry by name — the whole point of the tuple.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*\$lambda\$[0-9a-f]+_\d+\(i32 %p1\)`).MatchString(mod) {
+		t.Fatalf("the clone does not call the entry directly:\n%s", headLines(mod, 60))
+	}
+	for _, junk := range []string{"ptrtoint", "inttoptr"} {
+		if strings.Contains(mod, junk) {
+			t.Fatalf("module contains the junk shape %q:\n%s", junk, headLines(mod, 40))
+		}
+	}
+}
+
+// The account's own witness: an omission is reported as an omission, so two programs whose clones are
+// otherwise identical are told apart by the document rather than by a diff of IR (roadmap Gap R.329, ADR 0371).
+func TestWhatTheCallablesAccountSaysWhichParametersTheApplicationsLeftOut(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want int
+	}{{
+		src:  "print((lambda f, y=10: f(y))(lambda x: x * 2, 5))\n",
+		want: 0,
+	}, {
+		src:  "print((lambda f, y=10: f(y))(lambda x: x + 1))\n",
+		want: 1,
+	}, {
+		src:  "print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))\n",
+		want: 2,
+	}, {
+		src:  "print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))\n",
+		want: 1,
+	}} {
+		doc, err := CallablesJSON(tc.src)
+		if err != nil {
+			t.Fatalf("the account failed for %q: %v", tc.src, err)
+		}
+		var rep struct {
+			Rewritten        bool `json:"rewritten"`
+			OmittedArguments int  `json:"omitted_arguments"`
+		}
+		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
+		}
+		if !rep.Rewritten {
+			t.Fatalf("the pass handed this program back: %s", doc)
+		}
+		if rep.OmittedArguments != tc.want {
+			t.Fatalf("omitted_arguments = %d, want %d for %s", rep.OmittedArguments, tc.want, tc.src)
+		}
+	}
+}
+
+// The recursion road's own audit speaks HERE, in the account, and not in the sentence the user is shown: a
+// call of the higher-order function from inside its own body must name every position, because a clone follows a
+// recursion by handing each called parameter back to its own place (roadmap Gap R.335, ADR 0364's audit — the
+// half of the omission the recursion road does not yet read).
+func TestWhatTheCallablesAccountSaysTheRecursionLeftASlotOut(t *testing.T) {
+	doc, err := CallablesJSON("def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n")
+	if err != nil {
+		t.Fatalf("a decline is still a document: %v", err)
+	}
+	var rep struct {
+		Rewritten        bool     `json:"rewritten"`
+		OmittedArguments int      `json:"omitted_arguments"`
+		Refused          []string `json:"refused"`
+	}
+	if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+		t.Fatalf("the account is not JSON: %v\n%s", err, doc)
+	}
+	if rep.Rewritten || rep.OmittedArguments != 0 {
+		t.Fatalf("a declined recursion reports a rewrite: %s", doc)
+	}
+	if len(rep.Refused) != 1 || !strings.Contains(rep.Refused[0], "recurses at line") {
+		t.Fatalf("the decline does not name the recursion audit: %v", rep.Refused)
 	}
 }
 

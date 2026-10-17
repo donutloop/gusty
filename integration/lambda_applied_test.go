@@ -93,6 +93,33 @@ var lambdaAppliedCLIPrograms = []struct{ name, src string }{
 		"the control: the same body written as a def",
 		"def twice(x):\n    return x * 2\n\ndef use(f):\n    return f(3)\n\nprint(use(twice))\n",
 	},
+	{
+		// roadmap L11.7 · Gap R.329 (ADR 0370): the application OMITS the parameter the body reads. The
+		// entry tuple is the list of functions the BODY asks for — the slot the call left out arrives with
+		// its default, the called one with the entry. The twin below, naming both, is the same body.
+		"an application that omits the lambda's defaulted read parameter",
+		"print((lambda f, y=10: f(y))(lambda x: x + 1))\n",
+	},
+	{
+		"an application that names the lambda's defaulted parameter",
+		"print((lambda f, y=10: f(y))(lambda x: x * 2, 5))\n",
+	},
+	{
+		"an application that omits between a called slot and a read slot",
+		"print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))\n",
+	},
+	{
+		"an application that omits a called parameter whose default is a lambda",
+		"print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))\n",
+	},
+	{
+		"the same omission on the def road: called slot named, read slot defaulted",
+		"def apply(f, y=10):\n    return f(y)\n\nprint(apply(lambda x: x + 1))\n",
+	},
+	{
+		"the def road with a called slot left to a lambda default",
+		"def use(f, g=lambda v: v + 4):\n    return f(g(2))\n\nprint(use(lambda n: n * 10))\n",
+	},
 }
 
 // lambdaAppliedRefusalPrograms is the family the door cannot answer: each `want` is the sentence half the
@@ -130,9 +157,34 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"is called but is not a function",
 	},
 	{
-		"an application that omits the defaulted parameter of the lambda it applies",
-		"print((lambda f, y=10: f(y))(lambda x: x + 1))\n",
+		// The omission leaves the CALLED slot with a number: the entry tuple would have to carry "10" as
+		// the function the clone calls, which is the question ADR 0166's value word answers. The reference
+		// raises TypeError on it (`'int' object is not callable`) — roadmap Gap R.329, Gap R.31.
+		"an application whose omitted slot is followed by a required one",
+		"print((lambda f, y: f(y))(lambda x: x))\n",
 		"is called but is not a function",
+	},
+	{
+		// The omission lands on a slot the body READS whose default is a list: binding an omitted container
+		// default is Gap R.277's road, and the entry tuple has one word to carry it in — so the pass
+		// declines and the ordinary road answers, rather than reading a heap handle as a count.
+		"an application whose omitted read slot defaults to a container",
+		"print((lambda f, y=[]: f(y))(lambda x: len(x)))\n",
+		"is called but is not a function",
+	},
+	{
+		// A capture read by a body that also calls its own parameter: the clone would have to carry the
+		// captured name beside the tuple of entries (roadmap Gap R.334).
+		"a capture read by a body that calls its own parameter",
+		"def f(x):\n    return (lambda h: h(1) + x)(lambda q: q * 10)\n\nprint(f(2))\n",
+		"is called but is not a function",
+	},
+	{
+		// The same omission written in a method body: the callable would have to reach a method frame, the
+		// road Gap R.150/R.151 owns — the def-shaped twin above answers, the method-shaped one is shut.
+		"the omission written inside a method body",
+		"class Box:\n    def show(self, f, y=10):\n        return f(y)\n\nprint(Box().show(lambda x: x + 2))\n",
+		"a lambda used as a value",
 	},
 }
 

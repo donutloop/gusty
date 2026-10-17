@@ -12522,3 +12522,53 @@ printed by the tool for a source printed beside it.
   whose number is the truth, and editing the sentence is the fix — the test is not to be relaxed. The record leg also
   cannot be satisfied by an answer the backend wrote, and `TestTheAppliedLambdaFamilyIsOnTheRecord` fails if a row's
   record disappears, so coverage cannot be deleted by deleting a record.
+## ADR 0371 — an application that omits a parameter is read against the body's entry tuple (L11.7, Gap R.329, Gap R.334, Gap R.335, 2026-10-19)
+
+- **The arity audit a CALL needs is not the arity audit a CLONE needs.** `print((lambda f, y=10: f(y))(lambda x: x +
+  1))` is the reference's `11` and this build refused it, while the twin that writes both arguments answered `10`.
+  Nothing about the body differs — the two programs emit the same `define`, and the only difference is how many words
+  the application wrote. Two audits were reading the call's argument list as the body's parameter list:
+  `len(c.Args) != len(def.Params)` at the site loop, and the `Default != nil` drop inside
+  `callableCalledParams`/`lambdaCalledParams`, which removed every defaulted parameter from `calledPos` *before* the
+  first audit could even be reached. The second was the deeper one, and it was written for an honest reason — the pass
+  had no way to name what a defaulted slot holds — which had simply stopped being true: `resolve` already answers an
+  expression with the symbol of the function it names, so a default that IS a function is an entry.
+- **An omitted position is read from the parameter, never from the argument.** `callableSiteOperand(c, cf, pos)` takes
+  the argument when the call wrote one and the parameter's own `Default` when it did not. That is the same expression
+  the body would have seen, and it is the only expression whose symbol can stand in the body's call. The first draft
+  kept a `*KeywordArg` unwrap in it, which was dead code — `callableSiteOmission` declines a keyworded call before any
+  position is read — and dead code in an audit is a claim that the audit does not cover what it covers.
+- **Write only what the last called position forces you to write.** `callableSiteFill` grows the retargeted call up to
+  `max(calledPos)` and no further: the placeholder where the clone calls the entry by name and reads nothing, a *copy*
+  of the default's expression at a position in between that the body reads, and nothing at or above the last called
+  one — the ordinary call road owns the default fill (ADR 0322), and a pass that duplicates that rule owns two rules
+  that can disagree. `print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))` → `46` is the witness: the emitted call
+  reads `call i32 @gy_…$callable$…(i32 0, i32 3, i32 40)` — the placeholder at the entry's position, the prototype's
+  defaults everywhere else, filled by the road that already knew how.
+- **Build the new argument list before you touch the node.** The rewrite mutates the AST the planner walked, so a
+  `node.Args = append(node.Args, copy)` followed by a bail on a later check leaves a program half-rewritten and
+  returns it as `prog, nil` — an "unchanged" program that is not unchanged. The list is now assembled, audited
+  (`pos >= len(grown) || grown[pos] == nil` for every called position), and only then assigned.
+- **An account field has to separate the programs it claims to separate.** My first `omitted_arguments` counted the
+  words the pass *wrote*, and the roadmap's two headline programs — the omission and its twin — both reported `0`,
+  because in both cases the call road filled the defaults. The field now counts the parameters the applications left
+  out and the pass read off the body (`site.omitted`), which is the fact an agent is asking about; the twin reports
+  `0`, the omission `1`, the two-omission program `2`. A machine-readable witness that cannot distinguish the case from
+  its control is not a witness.
+- **Declines are not refusals, and the account is where they are visible.** The recursion variant — `def run(n,
+  f=lambda x: x): return 0 if n == 0 else f(n) + run(n - 1)` — reaches the ordinary road's `"f" is called but is not a
+  function …` at the terminal, and only `--callables` says why: `"run" recurses at line 2 without filling every
+  parameter positionally`. Both sentences are pinned, one in the refusal table and one over the document, because the
+  terminal and the account are allowed to differ and neither is allowed to drift silently (roadmap Gap R.335).
+- **Two new rows came out of doing the row, and both are named by their shape.** A body that calls its own parameter
+  *while* reading a name from the enclosing frame (`def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)`, the
+  reference's `12`) is **Gap R.334** — the clone road and the capture road were built in the same cycle and never met,
+  `cloneCallable` minting the entry parameters while `captureParamWord` decides the captures, neither consulting the
+  other. The recursion variant is **Gap R.335**. Each half of R.334 answers on its own, which is the localisation, and
+  each was written as a refusal row naming its row before it was written down anywhere else.
+- **The record leg had nothing to check.** Not one of the `lambda f, y=10` family was in
+  `pkg/lang/testdata/interpreter-golden.json`, so a table over them would have "passed" by comparing nothing; six
+  sources went to the recorder (`tools/recmerge`, 7827 → 7833) and `TestTheAppliedLambdaFamilyIsOnTheRecord` fails if
+  any of them is missing. `integration/programs/lambda_applied_entry_tuple.gy` joined the matrix (222 → 223 programs,
+  209 → 210 rows), and the Snapshot row's numbers are the artifact's — the guard quoted the right ones back at me and
+  editing the prose is the fix, not relaxing the test.

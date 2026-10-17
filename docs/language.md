@@ -5182,6 +5182,22 @@ class Foo:
 print(Foo().bar(3))                                             # 4
 
 print([(lambda k: k * 2)(x) for x in [1, 2, 3]])                # [2, 4, 6]
+
+# The application may write FEWER arguments than the body has parameters: the entry tuple is the list of
+# functions the BODY asks for, so a slot the call left out arrives with its default, and a called slot the
+# call left out arrives with the function that default names (ADR 0371).
+print((lambda f, y=10: f(y))(lambda x: x + 1))                  # 11 — the same body as the row above
+print((lambda f, y=10: f(y))(lambda x: x * 2, 5))               # 10 — the twin that names the slot
+print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))         # 46 — the read slot left out below the called one
+print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))   # 60 — the called slot defaults to a lambda
+
+def apply(f, y=10):
+    return f(y)
+print(apply(lambda x: x + 1))                                   # 11 — the same omission on the `def` road
+
+def use(f, g=lambda v: v + 4):
+    return f(g(2))
+print(use(lambda n: n * 10))                                    # 60
 ```
 
 Two mechanisms, one per half of the title. An applied `lambda` whose body calls one of its own parameters is
@@ -5193,11 +5209,30 @@ name; the list is the set of names the body is *free in*, asked with the binding
 one with the caller's own reading of that name. `gustyc --callables` reports the clones under the reader-facing name
 `<lambda>`, with `higher_order_lambdas` counting them.
 
+An application does not have to name every parameter. **The entry tuple is read off the body, not off the call**
+(**ADR 0371**, Gap R.329): for every position the call left out, the parameter must carry a default, and a default on
+a parameter the body *calls* must itself name a function — a `lambda` written inline or a plain name — because that is
+the symbol the clone builds its call to. The retargeted call is then entered positionally up to the last parameter the
+body calls: a called position the application omitted carries a placeholder the clone never reads, a position in
+between that the body reads carries a copy of the default's own expression, and positions at or above the last called
+one are left for the ordinary call road to fill, which keeps sole ownership of the default rule (**ADR 0322**).
+`--callables` reports how many parameters your applications left out, read off the body, as `omitted_arguments`. What the rule will
+not do is guess: a call with more arguments than the body has parameters, one that names any argument by keyword, an
+omitted CALLED slot whose default is a number or a container, and an omitted READ slot whose default is a container or
+`None` all keep the ordinary road's refusal, each naming the row that owns the missing machinery.
+
 What still refuses, in words that name the missing half and the row that owns it:
 
 ```python
-print((lambda f: f(3))(abs))                     # a called parameter asked to be a builtin — Gap R.329's neighbour
-print((lambda f, y=10: f(y))(lambda x: x + 1))   # an application that omits the default — Gap R.329
+print((lambda f: f(3))(abs))                     # a called parameter asked to be a builtin — the value word, L11.1
+print((lambda f, y=10: f(y))(10))                # the CALLED slot omitted, and the default is a number — L11.1
+print((lambda f, y=[]: f(y))(lambda x: len(x)))  # an omitted READ slot whose default is a list — Gap R.277
+print((lambda f, y: f(y))(lambda x: x))           # a required parameter after a defaulted one — the reference's TypeError
+
+def f(x):
+    return (lambda h: h(1) + x)(lambda q: q * 10)  # a capture beside a call of the body's own parameter — Gap R.334
+print(f(2))
+
 print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))   # a capture three frames up — Gap R.330
 
 def f():

@@ -1151,6 +1151,7 @@ const astIRSchemaTemplate = `{
         "rewritten_call_sites",
         "recursive_sites",
         "key_arguments",
+        "omitted_arguments",
         "higher_order_lambdas",
         "higher_order_functions",
         "symbols",
@@ -1193,6 +1194,10 @@ const astIRSchemaTemplate = `{
         "key_arguments": {
           "type": "integer",
           "description": "How many key= arguments the pass pointed at the callable they name. A hook-bearing builtin - sorted, min, max - calls its key once per element, so the position is a call the source never wrote and the AST does not show: 'neg = lambda v: 0 - v' with 'sorted(xs, key=neg)' binds the callable to a name, while the declaration the pass minted for it lives under a generated symbol. The retarget is what lets the door call the function instead of the word, and the count is the witness that it happened (roadmap L11.7, Gap R.281, ADR 0340's key door, ADR 0345's alias road)."
+        },
+        "omitted_arguments": {
+          "type": "integer",
+          "description": "How many parameters the applications LEFT OUT and the pass read off the body's prototype. The entry tuple is the list of functions the body asks for, not the list the application writes, so a call may name fewer arguments than the body has parameters: '(lambda f, y=10: f(y))(lambda x: x + 1)' names the callable and leaves the read slot to its default, and '(lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10))' leaves the CALLED slot to a default that is itself a function, which is the symbol the clone builds its call to. Every such position is read from the parameter's own Default - the placeholder where the clone names the entry and reads nothing, a copy of the default's expression where the body reads the slot, and nothing at or above the last called position, which the ordinary call road fills by its own rule. Zero means every application named every slot; a non-zero count is the witness that an omission was read off the body rather than declined, and it is the only field that separates two programs whose clones are otherwise identical (roadmap L11.7, Gap R.329, ADR 0322's default fill, ADR 0371)."
         },
         "higher_order_lambdas": {
           "type": "integer",

@@ -3789,6 +3789,27 @@
     },
     {
       "case": {
+        "id": "programs/lambda_applied_entry_tuple",
+        "name": "lambda_applied_entry_tuple.gy",
+        "source": "# integration/programs/lambda_applied_entry_tuple.gy — roadmap L11.7 · Gap R.265, Gap R.276, Gap R.329; ADR 0370.\n#\n# A `lambda` whose body calls one of its own parameters is a function this backend can build a call to:\n# the defunctionalisation pass gives it a declaration, clones it once per TUPLE of functions its called\n# parameters are asked to be, and points the application at the clone — so the callable never has to exist\n# as a value and no `fnptr` operand or indirect `call` is emitted (ADR 0345's rejected alternative stays\n# rejected). The same rule reads an application that OMITS a parameter: the entry tuple is the list of\n# functions the BODY asks for, so a left-out slot arrives with its default and a called one with the entry\n# the default names (roadmap Gap R.329). A `lambda` that reads a name its own parameters do not bind gains\n# one capture parameter the call site fills (roadmap Gap R.276).\n#\n# Every group prints line for line what the reference prints — the matrix's job, and the reason no trap,\n# no `import` and no untyped container sits in this file.\n\n# An applied lambda calling its own parameter, and calling two of them at once.\nprint((lambda f: f(3))(lambda x: x * 2))\nprint((lambda f, g, x: f(g(x)) + g(f(x)))(lambda v: v + 1, lambda v: v * 2, 3))\nprint((lambda f: f(1) + f(2))(lambda x: x * 3))\n\n# A `def` whose parameter is called: the same tuple, spelled with a name.\ndef apply1(fn, v):\n    return fn(v)\n\nprint(apply1(lambda x: x + 1, 2))\nprint(apply1(lambda x: (lambda y: y * 2)(x), 4))\n\n# One clone per tuple: the same body asked to be two different things.\ndef twice(fn, v):\n    return fn(fn(v))\n\nprint(twice(lambda x: x * 3, 2))\nprint(twice(lambda n: n * 4, 1))\n\n# The Gap R.329 shape and its twin: the application writes ONE word fewer than the body has parameters, so\n# the read slot arrives with its default and the called slot with the entry. Nothing about the body differs.\nprint((lambda f, y=10: f(y))(lambda x: x + 1))\nprint((lambda f, y=10: f(y))(lambda x: x * 2, 5))\n\ndef use(f, y=10):\n    return f(y)\n\nprint(use(lambda x: x + 1))\nprint(use(lambda x: x * 3, 3))\n\n# The omitted parameter is itself CALLED, and its default names the function the clone calls by symbol —\n# the answer the body would have got had the application named nothing else.\nprint((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))\n\ndef call_it(f, g=lambda v: v * 3):\n    return f(g(2))\n\nprint(call_it(lambda n: n - 1))\n\n# A name from the frame that encloses the lambda, the read slot left out below the called one, and a hook\n# whose body reads the frame's own local.\ndef outer(x):\n    y = x + 1\n    return (lambda z: z + y)(2)\n\nprint(outer(3))\nprint((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))\n\n# The application written where a statement is a call: inside a `for` body, the loop's target handed IN as\n# an argument, the read slot left out and the called slot named. A capture beside a call of the lambda's\n# own parameter is the shape roadmap Gap R.334 owns, so the target travels as an argument here.\nfor k in [1, 2, 3]:\n    print((lambda h, t, w=100: h(t) + w)(lambda q: q * 10, k))\n\n# The method road: the frame that owns the captured name is a method frame, and the clone lives beside it.\nclass Foo:\n    def bar(self, x):\n        return (lambda m: m + 1)(x)\n\nprint(Foo().bar(3))\n\n# The comprehension road, and the alias road — `g = f` then `g(x)` calls the same entry.\nprint([(lambda k: k * 2)(x) for x in [1, 2, 3]])\n\ndouble = lambda x: x * 2\nprint(double(21))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "6\n15\n9\n3\n8\n18\n16\n11\n10\n11\n9\n60\n5\n6\n46\n110\n120\n130\n4\n[2, 4, 6]\n42\n",
+      "python_ok": true,
+      "python_stdout": "6\n15\n9\n3\n8\n18\n16\n11\n10\n11\n9\n60\n5\n6\n46\n110\n120\n130\n4\n[2, 4, 6]\n42\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4470,7 +4491,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/185/prog.ll:26:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/186/prog.ll:26:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4484,7 +4505,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/185/prog.ll:26:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/186/prog.ll:26:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5062,11 +5083,11 @@
       ]
     }
   ],
-  "rows": 209,
+  "rows": 210,
   "skipped": 32,
-  "pass": 177,
+  "pass": 178,
   "fail": 0,
-  "oracle_match": 163,
+  "oracle_match": 164,
   "oracle_debt": 24,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

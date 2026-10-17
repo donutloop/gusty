@@ -758,6 +758,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// calls the key once per element calls a `define` rather than the payload word `0`. Every group is
 		// line for line CPython (roadmap L11.7 · Gap R.281, ADR 0369).
 		"named_hook",
+		// An applied `lambda` whose body calls one of its own parameters is a function this backend can
+		// build a call to, and an application that OMITS one of the body's parameters is read against the
+		// tuple the BODY asks for: the slot the call left out arrives with its default, and a called slot
+		// the call left out arrives with the function that default names. The program also walks the roads
+		// the application is written on — a `def` body, a method, a comprehension, a `for` body, an alias.
+		// Every group is line for line CPython (roadmap L11.7 · Gap R.265, Gap R.276, Gap R.329; ADR 0370).
+		"lambda_applied_entry_tuple",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

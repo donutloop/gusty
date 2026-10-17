@@ -1,0 +1,80 @@
+# integration/programs/lambda_applied_entry_tuple.gy — roadmap L11.7 · Gap R.265, Gap R.276, Gap R.329; ADR 0370.
+#
+# A `lambda` whose body calls one of its own parameters is a function this backend can build a call to:
+# the defunctionalisation pass gives it a declaration, clones it once per TUPLE of functions its called
+# parameters are asked to be, and points the application at the clone — so the callable never has to exist
+# as a value and no `fnptr` operand or indirect `call` is emitted (ADR 0345's rejected alternative stays
+# rejected). The same rule reads an application that OMITS a parameter: the entry tuple is the list of
+# functions the BODY asks for, so a left-out slot arrives with its default and a called one with the entry
+# the default names (roadmap Gap R.329). A `lambda` that reads a name its own parameters do not bind gains
+# one capture parameter the call site fills (roadmap Gap R.276).
+#
+# Every group prints line for line what the reference prints — the matrix's job, and the reason no trap,
+# no `import` and no untyped container sits in this file.
+
+# An applied lambda calling its own parameter, and calling two of them at once.
+print((lambda f: f(3))(lambda x: x * 2))
+print((lambda f, g, x: f(g(x)) + g(f(x)))(lambda v: v + 1, lambda v: v * 2, 3))
+print((lambda f: f(1) + f(2))(lambda x: x * 3))
+
+# A `def` whose parameter is called: the same tuple, spelled with a name.
+def apply1(fn, v):
+    return fn(v)
+
+print(apply1(lambda x: x + 1, 2))
+print(apply1(lambda x: (lambda y: y * 2)(x), 4))
+
+# One clone per tuple: the same body asked to be two different things.
+def twice(fn, v):
+    return fn(fn(v))
+
+print(twice(lambda x: x * 3, 2))
+print(twice(lambda n: n * 4, 1))
+
+# The Gap R.329 shape and its twin: the application writes ONE word fewer than the body has parameters, so
+# the read slot arrives with its default and the called slot with the entry. Nothing about the body differs.
+print((lambda f, y=10: f(y))(lambda x: x + 1))
+print((lambda f, y=10: f(y))(lambda x: x * 2, 5))
+
+def use(f, y=10):
+    return f(y)
+
+print(use(lambda x: x + 1))
+print(use(lambda x: x * 3, 3))
+
+# The omitted parameter is itself CALLED, and its default names the function the clone calls by symbol —
+# the answer the body would have got had the application named nothing else.
+print((lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10)))
+
+def call_it(f, g=lambda v: v * 3):
+    return f(g(2))
+
+print(call_it(lambda n: n - 1))
+
+# A name from the frame that encloses the lambda, the read slot left out below the called one, and a hook
+# whose body reads the frame's own local.
+def outer(x):
+    y = x + 1
+    return (lambda z: z + y)(2)
+
+print(outer(3))
+print((lambda f, k=3, n=40: f(k) + n)(lambda x: x * 2))
+
+# The application written where a statement is a call: inside a `for` body, the loop's target handed IN as
+# an argument, the read slot left out and the called slot named. A capture beside a call of the lambda's
+# own parameter is the shape roadmap Gap R.334 owns, so the target travels as an argument here.
+for k in [1, 2, 3]:
+    print((lambda h, t, w=100: h(t) + w)(lambda q: q * 10, k))
+
+# The method road: the frame that owns the captured name is a method frame, and the clone lives beside it.
+class Foo:
+    def bar(self, x):
+        return (lambda m: m + 1)(x)
+
+print(Foo().bar(3))
+
+# The comprehension road, and the alias road — `g = f` then `g(x)` calls the same entry.
+print([(lambda k: k * 2)(x) for x in [1, 2, 3]])
+
+double = lambda x: x * 2
+print(double(21))

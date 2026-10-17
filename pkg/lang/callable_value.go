@@ -96,6 +96,13 @@ type callableReport struct {
 	// KeyArguments counts the `key=` arguments the pass pointed at the callable they name — the hook
 	// positions the door calls and the source never wrote as a call (roadmap L11.7, Gap R.281).
 	KeyArguments int `json:"key_arguments"`
+	// OmittedArguments counts the parameters the applications LEFT OUT and the pass read off the body's
+	// prototype: the entry tuple is the list of functions the BODY asks for, so a call may name fewer
+	// arguments than the body has parameters, each of which the pass reads from the parameter instead of
+	// from the argument (roadmap L11.7 · Gap R.329, ADR 0371). It is the field that separates
+	// `(lambda f, y=10: f(y))(lambda x: x + 1)` from its own twin `(…)(lambda x: x * 2, 5)`, which are
+	// otherwise the same clone.
+	OmittedArguments int `json:"omitted_arguments"`
 	// HigherOrderLambdas counts the lambdas that were cloned: a lambda applied where it is written whose
 	// body calls one of its own parameters is a higher-order body with no name in the source, and the pass
 	// gives it a declaration, clones it once per tuple its called parameters are asked to be, and points
@@ -678,7 +685,17 @@ type callableFn struct {
 type callableSite struct {
 	rank  int      // index among all calls in the program's preorder
 	slots []string // which function each called parameter is asked to be, in calledPos order
-	args  []int    // unused placeholder for arity auditing
+	// grow holds the arguments the rewritten call must gain so the clone is entered positionally up to
+	// the last parameter it calls: the placeholder word for a called position the application left out
+	// (the clone calls the entry by name and reads nothing there), a copy of the default's own
+	// expression for a position in between that the body reads (roadmap L11.7 · Gap R.329, ADR 0371).
+	grow []Expr
+	// omitted is how many parameters the application left out altogether — every one of them read from the
+	// parameter's own Default by the audit, whether or not the rewritten call needed a word written there.
+	// It is the number the account reports (roadmap Gap R.329, ADR 0371).
+	omitted int
+	// args is the unused arity-audit placeholder the `def` road never needed.
+	args []int
 }
 
 // callableInner is a call *of a parameter* inside a higher-order body.
@@ -1181,17 +1198,19 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 				continue // a call of the function from inside its own body is the self-call's business
 			}
 		}
-		if callableHasKeywordArgs(c.Args) || len(c.Args) != len(cf.def.Params) {
-			return nil, callableDeclinef("the call of %q at line %d does not fill the parameters", name, c.Span().Line)
+		if why := callableSiteOmission(c, cf); why != "" {
+			return nil, callableDeclinef("the call of %q at line %d %s", name, c.Span().Line, why)
 		}
 		site := &callableSite{rank: rank}
 		for _, pos := range cf.calledPos {
-			entry, err := plan.resolve(r, c.Args[pos], r.encs[rank])
+			entry, err := plan.resolve(r, callableSiteOperand(c, cf, pos), r.encs[rank])
 			if err != nil {
 				return nil, err
 			}
 			site.slots = append(site.slots, entry)
 		}
+		site.grow = callableSiteFill(c, cf)
+		site.omitted = len(cf.def.Params) - len(c.Args)
 		cf.sites = append(cf.sites, site)
 	}
 
@@ -1209,17 +1228,19 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 			if c.Fn != cf.fromLambda {
 				continue
 			}
-			if callableHasKeywordArgs(c.Args) || len(c.Args) != len(cf.def.Params) {
-				return nil, callableDeclinef("the application of the lambda at line %d does not fill the parameters", cf.fromLambda.Span().Line)
+			if why := callableSiteOmission(c, cf); why != "" {
+				return nil, callableDeclinef("the application of the lambda at line %d %s", cf.fromLambda.Span().Line, why)
 			}
 			site := &callableSite{rank: rank}
 			for _, pos := range cf.calledPos {
-				entry, err := plan.resolve(r, c.Args[pos], r.encs[rank])
+				entry, err := plan.resolve(r, callableSiteOperand(c, cf, pos), r.encs[rank])
 				if err != nil {
 					return nil, err
 				}
 				site.slots = append(site.slots, entry)
 			}
+			site.grow = callableSiteFill(c, cf)
+			site.omitted = len(cf.def.Params) - len(c.Args)
 			cf.sites = append(cf.sites, site)
 		}
 		if len(cf.sites) == 0 {
@@ -1312,11 +1333,16 @@ func callableCalledParams(r *callableRead, fn *FuncDef, passed map[*Name]bool) (
 		if !r.onlyCalledInBody(fn, p.Name, passed) {
 			continue
 		}
-		// A parameter the body calls has to be a plain slot: a default would be filled by a value the
-		// clone cannot see, and a parameter declared `function` or `Callable[...]` is ADR 0284's road to
-		// walk — that machinery decides the shape of such a call and its trap today, and a clone written
-		// over the top of it would answer the same program by two roads.
-		if p.Default != nil || callableAnnotIsCallable(p.Annot) {
+		// A parameter the body calls has to arrive as a plain slot or as a default the pass can name: a
+		// default that is a number, a container or a call would be filled by a value the clone cannot see,
+		// and a parameter declared `function` or `Callable[...]` is ADR 0284's road to walk — that machinery
+		// decides the shape of such a call and its trap today, and a clone written over the top of it would
+		// answer the same program by two roads. A `lambda` or a name as the default is the one shape that
+		// does have a symbol to substitute, which is what an entry is (roadmap Gap R.329, ADR 0371).
+		if callableAnnotIsCallable(p.Annot) {
+			return nil, false
+		}
+		if p.Default != nil && !callableDefaultNamesAFunction(p.Default) {
 			return nil, false
 		}
 		positions = append(positions, i)
@@ -1346,7 +1372,13 @@ func (r *callableRead) lambdaCalledParams(l *Lambda) ([]int, bool) {
 		if !r.onlyCalledInLambda(l, p.Name) {
 			continue
 		}
-		if p.Default != nil || callableAnnotIsCallable(p.Annot) {
+		// The `def` road's rule, unchanged: a called parameter is a plain slot, or carries a default the
+		// pass can name as a function — the case an application that OMITS the parameter is read through
+		// (roadmap L11.7 · Gap R.329, ADR 0371).
+		if callableAnnotIsCallable(p.Annot) {
+			return nil, false
+		}
+		if p.Default != nil && !callableDefaultNamesAFunction(p.Default) {
 			return nil, false
 		}
 		positions = append(positions, i)
@@ -1609,6 +1641,125 @@ func callableHasKeywordArgs(args []Expr) bool {
 		}
 	}
 	return false
+}
+
+// callablePositionCalled asks whether a parameter index is one the body calls, i.e. one whose entry the
+// clone's tuple carries.
+func callablePositionCalled(cf *callableFn, pos int) bool {
+	for _, p := range cf.calledPos {
+		if p == pos {
+			return true
+		}
+	}
+	return false
+}
+
+// callableDefaultNamesAFunction is the one shape of default a CALLED parameter may carry: a `lambda`
+// written inline, or a plain name. Those are the two spellings `resolve` can answer with a symbol, which
+// is what an entry has to be. `*args`, an annotation, a subscript, a call — all name nothing the pass can
+// put in a call position, so a called parameter carrying one of them stays the ordinary road's refusal
+// (roadmap L11.7 · Gap R.329, ADR 0283's rule that a refusal is what an unanswered shape gets, ADR 0371).
+func callableDefaultNamesAFunction(e Expr) bool {
+	switch x := e.(type) {
+	case *Lambda:
+		return callableLambdaIsSelfContained(x) && !callableLambdaBodyBlocked(x)
+	case *Name:
+		return !isPredeclaredName(x.Value)
+	}
+	return false
+}
+
+// callableDefaultAnswersScalar is the other half of the same question, asked of a parameter the body READS
+// rather than calls: a default the call site has to bind is only safe when it is a literal number, text or
+// bool, because those are the defaults whose binding the call road already answers. `None`, a list, a dict,
+// a set, a tuple and a call are the shapes whose omitted binding reads the payload word instead of the
+// value — roadmap Gap R.277 owns that, and this pass declines rather than route a program through it
+// (ADR 0273's rule that a wrong value is worse than a door that shuts).
+func callableDefaultAnswersScalar(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *StrLit, *BoolLit:
+		return true
+	}
+	return false
+}
+
+// callableSiteOmission is the entry tuple's own arity audit, and the ONLY one a call is read against: the
+// tuple is the list of functions the body asks for, so a call is readable when it names — or leaves a
+// default to name — every position the body calls. A call that writes more arguments than the body has
+// parameters, or that names its arguments by keyword, is a call whose positions this pass cannot read and
+// keeps the ordinary road's sentence; a call that omits a parameter with no default omits an argument the
+// reference itself would have demanded (roadmap L11.7 · Gap R.329, ADR 0371).
+func callableSiteOmission(c *Call, cf *callableFn) string {
+	if callableHasKeywordArgs(c.Args) {
+		return "by position: a keyword argument names a parameter the entry tuple is read for by position"
+	}
+	if len(c.Args) > len(cf.def.Params) {
+		return "more arguments than the body has parameters"
+	}
+	for pos := len(c.Args); pos < len(cf.def.Params); pos++ {
+		p := cf.def.Params[pos]
+		if p == nil || p.Default == nil {
+			return fmt.Sprintf("%q, which has no default to answer for it", callableParamName(p))
+		}
+		if callablePositionCalled(cf, pos) {
+			if !callableDefaultNamesAFunction(p.Default) {
+				return fmt.Sprintf("the callable parameter %q, whose default is not a function this backend can build a call to", callableParamName(p))
+			}
+			continue
+		}
+		if !callableDefaultAnswersScalar(p.Default) {
+			return fmt.Sprintf("%q, whose default is a value the call road binds as a payload word — roadmap Gap R.277 owns that binding", callableParamName(p))
+		}
+	}
+	return ""
+}
+
+// callableParamName is the word a refusal prints for a parameter the tree did not name.
+func callableParamName(p *Param) string {
+	if p == nil {
+		return "?"
+	}
+	return p.Name
+}
+
+// callableSiteOperand answers which expression names the function a call hands the parameter at `pos`: the
+// argument the call wrote there, or — when the call left the position out — the parameter's own default,
+// which is what the body sees there and therefore what the entry has to be (roadmap Gap R.329, ADR 0371).
+func callableSiteOperand(c *Call, cf *callableFn, pos int) Expr {
+	// The audit above is what makes the positional reading sound: a call that named any argument by
+	// keyword is declined, so position `pos` of the argument list is position `pos` of the parameters.
+	if pos < len(c.Args) {
+		return c.Args[pos]
+	}
+	if pos >= 0 && pos < len(cf.def.Params) && cf.def.Params[pos] != nil {
+		return cf.def.Params[pos].Default
+	}
+	return nil
+}
+
+// callableSiteFill is the argument list the rewritten call gains so the clone is entered positionally up
+// to the last parameter it calls. Every position the application left out below that point gets a word:
+// the placeholder for a called one (the clone never reads the slot — it calls the entry by name), a copy of
+// the default for a read one (which is what the call road's own default fill would evaluate). Positions at
+// or above the last called one are left out: the call road reads their defaults unchanged (ADR 0322).
+func callableSiteFill(c *Call, cf *callableFn) []Expr {
+	last := -1
+	for _, pos := range cf.calledPos {
+		if pos > last {
+			last = pos
+		}
+	}
+	var out []Expr
+	for pos := len(c.Args); pos <= last; pos++ {
+		if callablePositionCalled(cf, pos) {
+			out = append(out, &IntLit{Value: 0, Text: callablePlaceholderText})
+			continue
+		}
+		if pos >= 0 && pos < len(cf.def.Params) && cf.def.Params[pos] != nil && cf.def.Params[pos].Default != nil {
+			out = append(out, cf.def.Params[pos].Default)
+		}
+	}
+	return out
 }
 
 func (p *callablePlan) cloneName(base, key string) (string, bool) {
@@ -2076,17 +2227,36 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 			}
 			node := programCalls[site.rank]
 			cl, hit := byKey[strings.Join(site.slots, "|")]
-			if !hit || len(node.Args) != len(cf.def.Params) {
+			if !hit || len(node.Args) > len(cf.def.Params) {
 				return prog, nil
 			}
-			node.Fn = &Name{Value: cl.name, Src: node.Fn.Span()}
-			for _, pos := range cf.calledPos {
-				if pos >= len(node.Args) {
+			// The application may have left parameters out; the call the clone sees gains a word for each of
+			// them up to the last one it calls — the placeholder for a called slot, which the clone never
+			// reads, and a copy of the default's own expression for a slot the body reads, which is what the
+			// call road would have evaluated for an omitted argument anyway (roadmap Gap R.329, ADR 0322,
+			// ADR 0371). The new list is built and audited before anything is written, so a site this pass
+			// cannot finish leaves the program exactly as it was rather than half-rewritten.
+			grown := make([]Expr, 0, len(node.Args)+len(site.grow))
+			grown = append(grown, node.Args...)
+			for _, e := range site.grow {
+				copied := copyASTExpr(e)
+				if copied == nil {
 					return prog, nil
 				}
-				node.Args[pos] = &IntLit{Value: 0, Text: callablePlaceholderText, Src: node.Args[pos].Span()}
+				grown = append(grown, copied)
+			}
+			for _, pos := range cf.calledPos {
+				if pos >= len(grown) || grown[pos] == nil {
+					return prog, nil
+				}
+			}
+			node.Args = grown
+			node.Fn = &Name{Value: cl.name, Src: node.Fn.Span()}
+			for _, pos := range cf.calledPos {
+				node.Args[pos] = &IntLit{Value: 0, Text: callablePlaceholderText, Src: node.Span()}
 			}
 			report.RewrittenCallNum++
+			report.OmittedArguments += site.omitted
 		}
 	}
 
