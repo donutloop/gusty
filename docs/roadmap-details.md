@@ -14701,9 +14701,10 @@ Gap R.35 still owes, in `TestTheModuleFloatGateRefusesWhatItCannotPromise`. The 
 pair is back in `programs/float_answer_word.gy`, the asserted program it was cut out of, and
 `TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed` is deleted, as its own rule required.
 
-Two defects surfaced by the same measurement are **filed below rather than absorbed here**: a `for`-driven
-float accumulator inside a body (Gap R.341) and a nested `def` that stores through its enclosing frame's
-alloca (Gap R.342). Both are identical on the pre-ADR-0375 build.
+Two defects surfaced by the same measurement were **filed below rather than absorbed here**: a `for`-driven
+float accumulator inside a body (Gap R.341, since closed by **ADR 0377**) and a nested `def` that stores
+through its enclosing frame's alloca (Gap R.342, since closed by **ADR 0378**). Both were identical on the
+pre-ADR-0375 build, which is what made each of them a row rather than collateral.
 
 
 ### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (OPEN)
@@ -15006,7 +15007,7 @@ reference's, so the pair is pinned in `pkg/lang/float_frame_test.go`
 `6.0` — a wrong value is exit 0's defect, never a refusal's, so the guard also fails if this becomes a
 refusal.
 
-### Gap R.342 — a nested `def` sharing a name with its enclosing body's float local stores through the enclosing alloca, and `llc` rejects the module (OPEN)
+### Gap R.342 — a nested `def` sharing a name with its enclosing body's float local stored through the enclosing alloca, and `llc` rejected the module (CLOSED by ADR 0378)
 
 ```python
 def outer():
@@ -15016,11 +15017,11 @@ def outer():
     w = 1.5
     return inner()
 
-print(outer())        # 3 in the reference; here `llc-20` rejects the module and the program leaves exit 2
+print(outer())        # 3 in the reference; here `llc-20` rejected the module and the program left exit 2
 ```
 
-Inside `inner`, codegen emits `store i32 %t7, i32* %_w` — and `%_w` is the ENCLOSING frame's alloca, so
-the module the toolchain hands `llc` has a store through a slot that no `define` allocated:
+Inside `inner`, codegen emitted `store i32 %t7, i32* %_w` — and `%_w` was the ENCLOSING frame's alloca, so
+the module the toolchain handed `llc` had a store through a slot that no `define` allocated:
 
 ```
 llc-20: error: /tmp/gusty-jit-…/jit.ll:4347:23: error: use of undefined value '%_w'
@@ -15028,17 +15029,134 @@ llc-20: error: /tmp/gusty-jit-…/jit.ll:4347:23: error: use of undefined value 
 ```
 
 Exit **2** is ADR 0166's code for a compiler bug, and an ordinary program the reference runs to completion
-must not leave it. Renaming either binding compiles, which is the signature of a name-keyed table that one
+must not leave it. Renaming either binding compiled, which is the signature of a name-keyed table that one
 road resets and another does not: `beginScope` resets `allocd` (「which slots exist」), and the closure lift
 is the road that does not call it — it goes through `enterBody`, which since ADR 0375 installs the float
-table but not the slot table. Measured the same on the pre-ADR-0375 build, so it is a row and not
+table but not the slot table. Measured the same on the pre-ADR-0375 build, so it was a row and not
 collateral. The sibling to read beside it is **Gap R.274** (the nested `def`'s closure-slot global minted
 with no owner in it) and **Gap R.49** (the same disease on the module side, cured by ADR 0351).
 
-Pinned as an exit-2 row — deliberately — by `TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed` and
-`TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion`, both of which fail the day the program stops
-dying in `llc`, in either direction.
+**The cure (ADR 0378) is the frame entry, in one file.** `pkg/lang/frame_slots.go` states the rule — a body
+owns its own `allocd`, `gcRootSeen` and `freshSlots` — and hands out `enterFrameSlots`, which installs NEW
+maps and returns the undo, so the enclosing frame's bookkeeping comes back whole (a nested body is emitted in
+the *middle* of its frame's lowering; clearing the maps instead would have destroyed the record of slots the
+enclosing frame still owns, which is what `emitFreeOld` and `copyInReboundParams` read). `enterBody` takes it,
+`beginScope` delegates to it, and both body-emitting roads take it **before** the entry-block allocas: the
+written-flag table (ADR 0228) had the identical hole one level down, because `emitBoundAllocas` writes the
+allocas of whichever body's flags are installed and both roads asked it before installing their own.
 
+**The probe, and the four shapes beyond the one that was filed.** Twenty programs on one axis — *which frame
+owns the name* — each asked of the compiled leg and the reference. Five reached exit 2:
+
+| shape | `llc` said | the reference |
+|---|---|---|
+| nested `def` sharing a float-named local | `use of undefined value '%_w'` | `3` |
+| nested `def` with a possibly-unwritten local | `use of undefined value '%bnd_z'` | `UnboundLocalError` |
+| method with a possibly-unwritten local | `use of undefined value '%bnd_z'` | `UnboundLocalError` |
+| nested `def` binding the container its enclosing body binds | `use of undefined value '%_xs'` | `11` |
+| nested `def` binding the text its enclosing body binds | `use of undefined value '%_s'` | `7` |
+
+Two of the five were container and text collisions rather than float ones, which is the measurement that says
+the fault was the frame entry and not the float convention — and the container/text rows had been *wrong
+answers* (`0`) at Gap R.332's road, which is why they are not the same row. The two unwritten-local rows now
+raise what the reference raises, catchably, at exit 3 (`TestTheUnwrittenLocalTrapIsTheProgramsExceptionNotThe
+Compilers`), which is ADR 0214's distinction: a frame slot the compiler owns versus a raise the program owns.
+
+**The audit, so the rule cannot rot back.** `pkg/lang/frame_audit.go` walks the shipped module — after
+`attachFrameStack`, before `hoistAllocas` — and asks of each `define` whether every slot-shaped pointer operand
+it reads (`%_…`, `%_…_tag`, `%_ctr…`, `%bnd_…`) was allocated by an `alloca` in *that* function. Its failure is
+`*lang.IRInvariantError`, classified by the CLI exactly like an `llc` rejection: exit 2, and under `--json` the
+`invariant` object naming the audit, the function, the slot and the instruction (`definitions.irInvariant`).
+`llc` already caught this class; what it could not do was say which function, which slot, or whose fault it
+was — it named a file under `/tmp`. Asked only when nothing else refused, so a program the compiler declined
+is still reported as the refusal it got.
+
+What the fix deliberately does **not** do is seed a nested body's table from the enclosing frame: a captured
+name travels in the environment (`%env`), not in the enclosing frame's dead stack slots, and sharing the cell
+would be ADR 0351's 「per scope」 deleted. Three shapes the same probe reached stay filed instead: **Gap
+R.345** (a lifted `def` whose body answers a double), **Gap R.346** (two nested `def`s of one spelling), and
+**Gap R.332**/**R.337** (a `def` nested inside a *method* is not lifted at all).
+
+Witnesses: `pkg/lang/frame_slots_test.go` (answers, traps, catchability, the IR rows that pair each store with
+the `alloca` in the same `define`, the audit asked directly with forged and legal modules, the wiring rows, and
+`TestTheFrameEntryIsAnEntryAndNotARename` asked of the Go value), `integration/frame_slots_test.go` (both
+compiled legs against CPython, **exit 2 in any row is a failure of the file**), `cmd/gustyc/ir_invariant_test.go`
+(the class and the payload), the asserted conformance row `integration/programs/nested_def_shares_a_slot.gy`, and
+15 record entries added through `tools/recmerge`. The two exit-2 rows that pinned this defect —
+`TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion` and `TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed`'s
+R.342 case — were deleted as their own text required.
+
+
+### Gap R.345 — a lifted `def` whose body answers a double answers `0` at exit 0 (OPEN)
+
+```python
+def outer():
+    def inner():
+        w = 1.5
+        return w
+    w = 3
+    return inner()
+
+print(outer())        # 1.5 in the reference; 0 here, at the exit code of success
+```
+
+ADR 0378 gave the lifted closure its own slot, and the slot is the right shape — the module says so:
+
+```
+define internal i32 @inner_env(i32 %env) {   # the lift opens itself, whatever the body computes
+  %_w = alloca double                        # the closure's own slot, correctly its own
+  %t1 = fadd double 0.0, 1.5e+00
+  store double %t1, double* %_w
+  %_w.ld1 = load i32, i32* %_w               # read back through the low word
+  ret i32 %_w.ld1                            # → 0
+}
+```
+
+This is ADR 0377's return-word fold **unwritten on this one road**: the `def` road folds the body's writes to
+choose `define double` vs `define i32`, and the closure lift has never asked the question — it opens
+`define internal i32 …_env(i32 %env)` unconditionally, and the trampoline beside it too (the half Gap R.341's
+row named as next-open). The frame entry is not the fix and did not change it: the row is identical on the
+pre-ADR-0378 build. The inverse shape — the nested body taking the int and the enclosing body the float — is
+the one Gap R.342 closed, so the two rows together say the lift road still has a word question to answer.
+
+Pinned as a filed row by `pkg/lang/frame_slots_test.go`'s `TestWhatTheFrameEntryLeavesStandingIsFiledNotFixed`,
+whose message moves the source into the answer table the day it prints `1.5`. It cannot be recorded: the
+record's entry is the reference's answer, and `tools/recmerge` refuses a source whose compiled leg disagrees.
+
+
+### Gap R.346 — two nested `def`s of the same spelling in two frames collide on the global the lift mints (OPEN)
+
+```python
+def a():
+    def inner():
+        return 1
+    return inner()
+
+def b():
+    def inner():
+        return 2
+    return inner()
+
+print(a() + b())      # 3 in the reference; here exit 2
+```
+
+```
+llc-20: error: redefinition of global '@inner_slot'
+@inner_slot = internal global i32 0
+```
+
+The closure lift mints one `internal global` per closure to hand the closure's environment cell a name, and
+mints it from the closure's *spelling* alone — so two `def inner` in two unrelated frames mint the same symbol
+twice and the module is malformed before anyone looks at the values. Verified identical on the pre-ADR-0378
+build, which is what makes it a row rather than this cycle's collateral: no frame-entry change mints or names
+globals. It is ADR 0228's minting read without an owner, the same shape **Gap R.274** filed for the nested
+`def`'s slot global — the minted name needs the frame that owns it in the name, which is also why this program
+cannot be written twice in one file today.
+
+Found by writing the cycle's conformance program: the first draft named two nested `def`s `inner`, and the
+program died in `llc` before the frame rule was ever exercised. Pinned by
+`TestWhatTheFrameEntryLeavesStandingIsFiledNotFixed` (its `dies` row fails when the module starts to compile),
+and `integration/programs/nested_def_shares_a_slot.gy` renames one binding and says why in its comments.
 
 ### Gap R.35 — a compiled function body reads the module's float; the module's container is still owed (PARTIAL, float half closed by ADR 0376)
 

@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -141,69 +140,17 @@ func TestWhatFloatTableABodyReadsAnswersLikeCPython(t *testing.T) {
 	}
 }
 
-// TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed holds what this cycle measured and did NOT fix,
-// each row with the reference's answer beside the one the toolchain gives, and each naming the row
-// that owes the fix. The two Gap R.335-era refusals are here for a different reason: they are the
-// proof that ADR 0375's frame rule is not a half-answer to the module-state question (Gap R.35),
-// which is the neighbouring row. Its float half closed under ADR 0376 and the two rows that pinned it
-// were deleted as their own rules required; the `for`-driven accumulator that ADR 0377 closed joined
-// them, and the rows above are what is left owed.
-func TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed(t *testing.T) {
-	for _, tc := range []struct {
-		name, src, want, today, gap, refusesWith, diesIn string
-	}{
-		{
-			// Gap R.342: the nested def's store goes through the ENCLOSING frame's alloca; `llc` rejects
-			// the module and the program leaves exit 2, ADR 0166's code for a compiler bug. Pinned as
-			// exit 2 on purpose: the row exists to be deleted when the exit code stops being 2.
-			name:   "a_nested_def_sharing_a_name_with_its_enclosing_bodys_float_dies_in_llc",
-			src:    "def outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\nprint(outer())\n",
-			want:   "3\n",
-			gap:    "Gap R.342",
-			diesIn: "use of undefined value '%_w'",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			if _, ok := cpythonPlainOut(t, dir, tc.src); !ok {
-				t.Fatalf("the reference failed to answer this program: src: %s", tc.src)
-			}
-			path := writeSrc(t, t.TempDir(), "float_frame_filed.gy", tc.src)
-			if tc.diesIn != "" {
-				_, code := cliRunCode(t, "--aot", path)
-				if code != 2 {
-					t.Fatalf("%s: exit %d, not the 2 this row pins — the module leg changed; when the program "+
-						"prints the reference's %q, DELETE this row (%s)", tc.gap, code, tc.want, tc.gap)
-				}
-				// the `llc` sentence is a diagnostic, and a diagnostic is stderr: ask the leg that can see it
-				if out := cliRun(t, "--aot", path); !strings.Contains(out, tc.diesIn) {
-					t.Fatalf("%s: the module no longer dies with %q:\n%s", tc.gap, tc.diesIn, out)
-				}
-				return
-			}
-			if tc.refusesWith != "" {
-				_, code := cliRunCode(t, "--aot", path)
-				if code != 1 {
-					t.Fatalf("%s: exit %d, want 1 (a front-end refusal, %s)", tc.gap, code, tc.gap)
-				}
-				if out := cliRun(t, "--aot", path); !strings.Contains(out, tc.refusesWith) {
-					t.Fatalf("%s: the refusal does not name the row that owes the answer (%s):\n%s", tc.gap, tc.refusesWith, out)
-				}
-				return
-			}
-			out, code := cliRunCode(t, "--aot", path)
-			if code != 0 {
-				t.Fatalf("%s: exit %d, want 0 (a wrong value is exit 0's defect, never a refusal's): %s",
-					tc.gap, code, out)
-			}
-			if out == tc.want && tc.want != tc.today {
-				t.Fatalf("%s: the compiled leg now prints the reference's %q — DELETE this row (%s)", tc.gap, tc.want, tc.gap)
-			}
-			if out != tc.today {
-				t.Errorf("%s: the compiled leg prints %q, and this row pinned %q (reference %q, %s)",
-					tc.gap, out, tc.today, tc.want, tc.gap)
-			}
-		})
-	}
-}
+// The row this file used to keep here — Gap R.342, the nested `def` that stored through its ENCLOSING
+// frame's alloca and left exit 2 with `llc`'s `use of undefined value '%_w'` — is DELETED, as its own text
+// required: ADR 0378 gives every road that emits a body the frame entry that body's slots live in
+// (`pkg/lang/frame_slots.go`), and the program now prints the reference's `3` on the compiled leg, the record
+// leg and the reference leg. It answers in `integration/frame_slots_test.go`, beside the CLI rows that fail on
+// exit 2 in any shape and the conformance program
+// `integration/programs/nested_def_shares_a_slot.gy` (asserted, `OracleMatch`).
+//
+// The table went with the row rather than staying behind: an empty answer table passes, and a passing test
+// that asserts nothing is how a deleted row keeps its green (the lesson the ADR 0377 cycle wrote down). What
+// this file still owns is the frame rule's own answer table above (`floatFramePrograms`), and the two rows
+// that keep ADR 0375's frame rule apart from Gap R.35's module-state question — `pkg/lang/module_float_test.go`
+// owns those rows (`TestTheModuleFloatDoorDoesNotAnswerWhatTheFrameAnswers`,
+// `TestTheModuleFloatGateRefusesWhatItCannotPromise`), and what they refuse is still refused.

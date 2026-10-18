@@ -194,6 +194,25 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	g.deferred = nil
 	prevFnSrc := g.curFnSrc
 	g.curFnSrc = className + "." + fd.Name
+	savedInFunc := g.inFunc
+	savedFD := g.curFD
+	savedMethod := g.emittingMethod
+	g.emittingMethod = true
+	g.inFunc = true
+	// The frame the roads below read a name against, for the same reason `funcDef` carries it: a lambda
+	// written in a method body that reads the method's own parameter asks this declaration what its
+	// calls hand to it (roadmap L11.7, Gap R.276).
+	g.curFD = fd
+	// A method's locals are frame slots like any other body's, so they carry the same flags (ADR 0228) —
+	// and that table has to be the METHOD's before a single line of its frame is emitted. Asking
+	// `emitBoundAllocas` while the ENCLOSING body's flags were still installed allocated the enclosing
+	// body's locals inside this `define`, marked them allocated in the method's frame table, and left this
+	// body's own possibly-unwritten name with no flag to set: `store i8 1, i8* %bnd_z` reached `llc` as
+	// `use of undefined value`, exit 2, for a method with a local on a path that may not write it
+	// (roadmap L11.6 · Gap R.342, ADR 0378 — the same missing frame entry the closure lift had, and the
+	// same one helper now takes: `enterBody` above, `frame_slots.go` the rule).
+	doneMethodFlags := g.enterBoundFlags(fd, fd.Body)
+	defer doneMethodFlags()
 	// A method is program source, so it gets a DISubprogram of its own; the pass only ever puts
 	// locations inside a function that registered one, which is what keeps the compiler's own
 	// runtime blocks out of the line table (ADR 0231).
@@ -211,18 +230,6 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// A method that assigns to one of its parameters gets a slot for it, like any
 	// other rebinding body (Gap R.3).
 	g.copyInReboundParams(&g.globals, fd, false)
-	savedInFunc := g.inFunc
-	savedFD := g.curFD
-	savedMethod := g.emittingMethod
-	g.emittingMethod = true
-	g.inFunc = true
-	// The frame the roads below read a name against, for the same reason `funcDef` carries it: a lambda
-	// written in a method body that reads the method's own parameter asks this declaration what its
-	// calls hand to it (roadmap L11.7, Gap R.276).
-	g.curFD = fd
-	// A method's locals are frame slots like any other body's, so they carry the same flags (ADR 0228).
-	doneMethodFlags := g.enterBoundFlags(fd, fd.Body)
-	defer doneMethodFlags()
 	for _, st := range fd.Body {
 		// A refusal inside a method body used to be dropped on the floor, which turned a source
 		// error the front end should name into an incomplete function definition and a toolchain

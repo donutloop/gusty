@@ -5734,6 +5734,31 @@ name resolves to any `def` of that scope, wherever it is written. A `def` inside
 statements create no scope of their own; a nested `def` is visible to the whole body it is
 written in, so sibling nested defs may call each other.
 
+**One name, one stack slot — per frame** (ADR 0351, per-frame ownership settled by ADR 0378). A name bound
+by a nested `def` and by the body that encloses it is TWO slots, not one shared cell, and the two answers
+cannot see each other:
+
+```gy
+def outer():
+    def inner():
+        w = 3          # inner's own slot
+        return w
+    w = 1.5             # outer's own slot, a different word in a different frame
+    return inner()
+
+print(outer())          # 3, what the reference answers
+```
+
+A nested body reads the names its frame owns through the closure environment, never through the enclosing
+frame's slots — which are dead by the time a closure runs — so a name the two frames both bind is two
+allocations, two written-flags where one is possibly unwritten (ADR 0228), and two root registrations
+(ADR 0181: it is the slot's address that identifies a variable to the collector). Before ADR 0378 the two
+roads that emit a body without passing through the plain `def` road — the closure lift and a class's method
+emitter — asked the enclosing frame which slots existed, and the program left at exit 2 with `llc`'s
+`use of undefined value` rather than an answer. Reading a name a frame does *not* own is unchanged: the
+lookup order (local, then the closure environment, then the module) is the one the scoping section above
+states, and a module-level name a body reads is still roadmap Gap R.35's row.
+
 What is **not** hoisted is code that runs immediately. A call at module or class top level
 and a decorator expression both evaluate where they are written, so their names must
 already be bound:

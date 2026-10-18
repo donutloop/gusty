@@ -992,10 +992,45 @@ body may read from the *module* is a different row and is unchanged: `RATE = 2.5
 `def scale(v): return v * RATE` it is closed below by ADR 0376. Two shapes came
 out of the same measurement and are filed rather than absorbed, both identical before and after: a
 `for`-driven float accumulator inside a body, which prints `0` where the reference prints `6.0` while the
-same loop at module level prints `6.0` (Gap R.341), and a nested `def` that shares a name with its
-enclosing body\u2019s float local, whose store goes through the enclosing frame\u2019s alloca so `llc` rejects the module
-and the program leaves **exit 2** \u2014 ADR 0166\u2019s code for a compiler bug (Gap R.342).
+same loop at module level prints `6.0` (Gap R.341, closed below by ADR 0377), and a nested `def` that shares
+a name with its enclosing body's float local, whose store went through the enclosing frame's alloca so `llc`
+rejected the module and the program left **exit 2** (Gap R.342, closed below by ADR 0378, which found that the
+slot table had the same hole the float table had).
 
+
+**A body's stack slots belong to the frame that emits the body** (ADR 0378, closing Gap R.342). `g.allocd`
+answers 「does this name already have a stack slot in the frame being emitted『, and one map answered it for a
+whole module. The `def` road reset it (`beginScope`); the two roads that emit a body without passing through
+`funcDef` -- the closure lift and the class road's method emitter -- never did, so both read the ENCLOSING
+body's table:
+
+```py
+def outer():
+    def inner():
+        w = 3              # asks outer's table: "already allocated" -- no alloca for inner
+        return w
+    w = 1.5                # store i32 %t7, i32* %_w -- in a define that never allocated %_w
+    return inner()
+print(outer())             # CPython 3 -- this toolchain before ADR 0378: exit 2, `use of undefined value '%_w'`
+```
+
+Renaming either binding compiled, which is the signature of a name-keyed table that one road resets and
+another does not. The written-flag table (ADR 0228) had the same hole one level down: both roads asked
+`emitBoundAllocas` before installing their own flags, so a nested `def` or a method with a local on a path that
+may not write it set `%bnd_z` in a frame that had none. Five shapes reached exit 2 that way, three lines of
+ordinary source each, and two of them were container and text collisions rather than float ones -- the tell
+that the fault was the frame entry and not the float convention. The cure is one rule in one new file:
+`enterFrameSlots` installs a body's own `allocd`/`gcRootSeen`/`freshSlots` and hands the enclosing frame's back,
+taken by `enterBody` -- the helper the method and lift roads share with `beginScope`, which now delegates to it
+so there is no second copy of the table to forget -- before a single line of that frame is emitted.
+`frame_audit.go` is the guard that keeps the rule true: the compiler walks the module it produced and refuses a
+`define` that reads a slot-shaped operand its own body never allocated, naming the function, the slot and the
+instruction, and failing as `*lang.IRInvariantError` -- exit **2**, the same class an `llc` rejection gets and
+the same `--json` shape, because a compiler bug must never reach the reader as a defect in their program
+(ADR 0211). Three neighbours the probe reached stay filed rather than absorbed, all identical before and after:
+a lifted `def` whose body answers a double prints `0` at exit 0 (Gap R.345, ADR 0377's fold unwritten on the
+lift road), two nested `def`s of the same spelling in two frames collide on the global the lift mints (Gap
+R.346, exit 2 again), and a `def` nested inside a method is not lifted at all (Gap R.332).
 
 **A body's return word is chosen by folding its writes, not by asking only its newest one** (ADR 0377,
 closing Gap R.341). ADR 0373 settled that a read answers a name's LAST write, and the scan that picks a

@@ -1,0 +1,87 @@
+# A name bound by two frames at once is two slots, not one (roadmap L11.6 · Gap R.342, ADR 0378).
+#
+# `g.allocd` answers 「does this name already have a stack slot in the frame being emitted」, and one map
+# used to answer it for a whole module. The `def` road reset it; the closure lift and the class road's
+# method emitter never did, so a nested `def` emitted inside a body asked the ENCLOSING body's table,
+# was told 「allocated」, got no `alloca` — and the enclosing body, whose slot the answer had been, then
+# stored through a name its own `define` never had. `llc-20` answered `use of undefined value '%_w'` and
+# a three-line program left at exit 2, the code ADR 0166 reserves for a compiler bug. The written-flag
+# table (ADR 0228) had the same hole one level down: `%bnd_z` for a local on a path that may not write it.
+#
+# Every answer below is CPython's own for this source, and the matrix row is asserted (`OracleMatch`), so
+# the two compiled legs cannot certify each other — they share the table that was the bug.
+
+def outer():
+    def inner():
+        w = 3
+        return w
+    w = 1.5
+    return inner()
+
+def containerFrame():
+    def take():
+        xs = [7, 8]
+        return xs[0] + len(xs)
+    xs = [1, 2]
+    return take() + len(xs)
+
+def textFrame():
+    def tell():
+        s = "hi"
+        return len(s)
+    s = "hello"
+    return tell() + len(s)
+
+def threeFrames():
+    def a():
+        v = 1
+        return v
+    def b():
+        v = 2
+        return v
+    v = 3
+    return a() + b() + v
+
+def captureStillTravels():
+    n = 40
+    def add(k):
+        return k + n
+    return add(2)
+
+def methodSharesAContainerName():
+    return Box().hold(True) + len([3, 4, 5])
+
+class Box:
+    def hold(self, ok):
+        ys = [1, 2]
+        if ok:
+            z = 4
+        return len(ys) + z
+
+def unwrittenInsideALiftedDef():
+    # NOT named `inner`: two nested `def`s of the SAME spelling in two different frames collide on the
+    # global the lift mints for the closure (`@inner_slot = internal global` twice) and `llc` refuses the
+    # module at exit 2 — pre-existing, identical on the pre-ADR 0378 build, and roadmap **Gap R.346**'s row.
+    def mayNotWrite(flag):
+        if flag:
+            z = 1
+        return z
+    try:
+        return mayNotWrite(False)
+    except UnboundLocalError:
+        return -1
+
+def unwrittenInsideAMethod():
+    try:
+        return Box().hold(False)
+    except UnboundLocalError:
+        return -2
+
+print(outer())
+print(containerFrame())
+print(textFrame())
+print(threeFrames())
+print(captureStillTravels())
+print(methodSharesAContainerName())
+print(unwrittenInsideALiftedDef())
+print(unwrittenInsideAMethod())

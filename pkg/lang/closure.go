@@ -237,6 +237,30 @@ func collectLocals(node interface{}, out map[string]bool) {
 // emitClosureDef emits a nested closure as a top-level env function.
 func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef) {
 	name := ci.name + "_env"
+	// A lifted `def` is a BODY, so it enters the frame it emits — its locals, its float table and its
+	// slot table are its own, never the enclosing body's (roadmap L11.6 · Gap R.342, ADR 0378;
+	// `frame_slots.go` and `float_frame.go` are the two rules and `enterBody` is the one helper that
+	// carries both). It takes them BEFORE the entry-block allocas below for the same reason:
+	// `emitBoundAllocas` writes the slots of whichever body's written-flags are installed, and asking it
+	// while the enclosing frame's flags were still installed emitted the enclosing body's `%_w` inside
+	// this `define`, marked it allocated in this frame's table, and left the enclosing body's own store
+	// to `%_w` with nothing to store through — Gap R.342's `use of undefined value '%_w'`, and the same
+	// mechanism behind `use of undefined value '%bnd_z'` for a nested `def`'s own unwritten local
+	// (ADR 0228's flags, which a lifted closure had never been given its own copy of).
+	savedFrame := g.frameOpen
+	savedInFunc := g.inFunc
+	savedFD := g.curFD
+	savedRaiseExit := g.funcRaiseExit
+	g.inFunc = true
+	// The frame the roads below read a name against: a capture of a lambda written in this body asks
+	// this `def` what its calls hand to that parameter, and the answer needs the declaration (roadmap
+	// L11.7, Gap R.276). `curFunc` is the funcDef road's own marker and a closure body never passes
+	// through it, which is why the frame is carried as the declaration itself.
+	g.curFD = fd
+	doneBody := g.enterBody(fd.Body)
+	defer doneBody()
+	doneFlags := g.enterBoundFlags(fd, fd.Body)
+	defer doneFlags()
 	// A closure is program source under another name: register it so its body gets locations
 	// under the nested `def` it came from (ADR 0231).
 	g.dbgDefine(b, name, ci.name, fd.Src)
@@ -245,19 +269,15 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 		fmt.Fprintf(b, ", i32 %%p%d", i)
 	}
 	fmt.Fprintf(b, ") {\n")
-	// Written-flags for the closure's possibly-unwritten locals, inside the brace (ADR 0228).
+	// Written-flags for THIS closure's possibly-unwritten locals, inside the brace (ADR 0228).
 	g.emitBoundAllocas(b)
 	// The closure body is a call too: it opens its own root frame and pops it on the
 	// way out, so its locals retain nothing once it returns (ADR 0181).
-	savedFrame := g.frameOpen
 	g.gcOpenFrame(b)
-	savedInFunc := g.inFunc
-	savedFD := g.curFD
 	// The body unwinds to a label inside ITS OWN `define`. A closure had no label of its own and read
 	// the enclosing function's, so a `return 1 / 0` written in a nested `def` branched to a block that
 	// does not exist in its function and `llc` rejected the module — exit 2, the code ADR 0166 reserves
 	// for a compiler bug, for a program the reference runs (roadmap L11.7, Gap R.276, ADR 0370).
-	savedRaiseExit := g.funcRaiseExit
 	g.funcRaiseExit = name + ".raiseexit"
 	g.params = map[string]string{}
 	g.paramSlot = nil
@@ -272,20 +292,10 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	g.funcs[ci.name] = true
 	g.fds[ci.name] = fd
 	g.envParam = "%env"
-	g.inFunc = true
-	// The frame the roads below read a name against: a capture of a lambda written in this body asks
-	// this `def` what its calls hand to that parameter, and the answer needs the declaration (roadmap
-	// L11.7, Gap R.276). `curFunc` is the funcDef road's own marker and a closure body never passes
-	// through it, which is why the frame is carried as the declaration itself.
-	g.curFD = fd
 	// A closure that rebinds one of its parameters reads a slot, not the incoming
 	// register (Gap R.3) — and so does the environment capture above, which is why
 	// the capture site consults paramSlot too.
 	g.copyInReboundParams(b, fd, false)
-	doneBody := g.enterBody(fd.Body)
-	defer doneBody()
-	doneFlags := g.enterBoundFlags(fd, fd.Body)
-	defer doneFlags()
 	for _, st := range fd.Body {
 		if err := g.stmt(b, st); err != nil {
 			// The body of a closure used to be emitted with its errors thrown away. A statement

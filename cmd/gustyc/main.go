@@ -869,6 +869,27 @@ func reportCompileErr(err error, jsonOut bool) int {
 	if errors.As(err, &pes) || strings.HasPrefix(err.Error(), "parse error") || strings.Contains(err.Error(), "unexpected token") {
 		return reportParseErr(err, jsonOut)
 	}
+	// The compiler's own audit of the module it emitted is the ADR 0166 class, not a source error: the
+	// program parsed, analysed and lowered, and what came out is malformed. It reaches here through
+	// `--emit-llvm`, `--check`-adjacent and the debug-artifact paths, where no external tool ever held the
+	// module, and it leaves with the compiler-bug code for the same reason an `llc` rejection does
+	// (roadmap L11.6 · Gap R.342, ADR 0378; docs/operations.md § Exit codes).
+	var invariant *lang.IRInvariantError
+	if errors.As(err, &invariant) {
+		if jsonOut {
+			b, jerr := json.Marshal(map[string]any{
+				"ok": false, "phase": "codegen", "error": err.Error(), "exit": exitIRVerify,
+				"capability": capabilityField(err.Error()),
+				"invariant":  invariantField(invariant),
+			})
+			if jerr == nil {
+				fmt.Println(string(b))
+				return exitIRVerify
+			}
+		}
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitIRVerify
+	}
 	if jsonOut {
 		payload := map[string]any{
 			"ok": false, "phase": "compile", "error": err.Error(), "exit": exitCompileError,
@@ -883,6 +904,26 @@ func reportCompileErr(err error, jsonOut bool) int {
 		return exitCompileError
 	}
 	return reportParseErr(err, jsonOut)
+}
+
+// invariantField is the machine path's answer to "which slot, in which function?" — the payload's
+// `invariant` object, carried only by a failure the compiler's own audit of its artifact raised
+// (`*lang.IRInvariantError`, roadmap L11.6 · Gap R.342, ADR 0378).
+//
+// The sentence already names all three, and a reader should not have to take a name out of a sentence to
+// file it: the audit knows the `define`, the slot and the instruction as data, so the payload carries them
+// as data. `capability` is `null` beside it because an invariant violation is not a missing lowering — the
+// compiler is not declining a shape here, it is reporting that it built one wrongly.
+func invariantField(e *lang.IRInvariantError) map[string]any {
+	if e == nil {
+		return nil
+	}
+	return map[string]any{
+		"audit":       e.Subject,
+		"function":    e.Fn,
+		"slot":        e.Slot,
+		"instruction": strings.TrimSpace(e.Line),
+	}
 }
 
 // capabilityField is the machine path's answer to "what was I refused?" — the payload's optional
@@ -929,6 +970,14 @@ func toolchainExit(err error) int {
 	}
 	var rejection *lang.ToolchainRejectionError
 	if errors.As(err, &rejection) {
+		return exitIRVerify
+	}
+	// The compiler's own audit of the module it produced says the same thing `llc` would have said, earlier
+	// and in a sentence that names the function and the slot: the artifact is broken, which is ADR 0166's
+	// class and nothing else (roadmap L11.6 · Gap R.342, ADR 0378). Reporting it as a compile error would
+	// tell the reader their program is wrong when the compiler is.
+	var invariant *lang.IRInvariantError
+	if errors.As(err, &invariant) {
 		return exitIRVerify
 	}
 	return exitCompileError

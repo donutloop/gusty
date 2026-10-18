@@ -584,6 +584,22 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	if g.raiseUsed {
 		moduleText, marks, _ = attachFrameStack(moduleText, g.dbgMarks, g.dbgFuncs, globalsPrefix, bodyPrefix)
 	}
+	// The frame-slot audit, asked of the bytes `llc` would have been handed: every slot a `define` reads must
+	// be a slot that SAME `define` allocated. It is not a lint. The bug it catches is roadmap Gap R.342 — a
+	// body emitted without entering its own frame read the ENCLOSING frame's `%_w`, `llc` answered
+	// `use of undefined value '%_w'`, and three lines of ordinary source left at exit 2 with a temp path and
+	// an external tool's stack trace to explain a compiler bug. The compiler saying it first names the
+	// function and the slot instead of a filename under /tmp, and it is the reason the rule in
+	// `frame_slots.go` cannot quietly rot back: a road that adds a body without entering its frame fails
+	// here rather than in the field (roadmap L11.6 · Gap R.342, ADR 0378).
+	//
+	// Asked only when nothing else refused: a program the compiler already declined is reported as the
+	// refusal it got, not as a second opinion about the half-module it left behind.
+	if g.emitErr == nil {
+		if err := auditFrameSlots(moduleText); err != nil {
+			return "", nil, err
+		}
+	}
 	// The line table is added to the module as assembled text, before the slot hoisting that
 	// moves allocation instructions to the top of their function: a hoisted `alloca` keeps the
 	// `!dbg` it was tagged with, so the slot stays attributed to the assignment that created it
@@ -1328,9 +1344,18 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	// table out of both helpers, so a method's float `self`/parameter and a lifted closure's local leaked
 	// into whatever body was lowered next (roadmap L11.6, Gap R.339, **ADR 0375**; `float_frame.go` is the rule).
 	savedFloats := g.enterBodyFloatTable()
+	// …and it begins the SLOT table too, for the same reason and by the same argument. `allocd` answers
+	// 「does this name already have a stack slot in the frame being emitted」, and a frame is exactly as
+	// wide as one body: the closure lift asked it while emitting a nested `def`, found the ENCLOSING body's
+	// answer, skipped the `alloca` for the closure's own `w`, and the enclosing body — whose slot the answer
+	// had been — then wrote through `%_w` in a `define` that had never allocated it. `llc` refused the module
+	// and an ordinary three-line program left at exit 2, ADR 0166's code for a compiler bug (roadmap
+	// L11.6 · **Gap R.342**, ADR 0378; `frame_slots.go` is the rule, and `auditFrameSlots` is its guard).
+	savedSlots := g.enterFrameSlots()
 	return func() {
 		g.funcLocals = saved
 		savedFloats()
+		savedSlots()
 	}
 }
 func (g *irGen) noteUnlowered(where any, err error) {
@@ -1362,8 +1387,7 @@ func (g *irGen) noteUnlowered(where any, err error) {
 // module-level code free `%_d` before main had allocated it, producing a module LLVM
 // rejects.
 func (g *irGen) beginScope() func() {
-	savedAlloc, savedRoots := g.allocd, g.gcRootSeen
-	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
+	savedList, savedDict, savedSet := g.listVars, g.runtimeDicts, g.runtimeSets
 	savedNone := g.noneVars
 	savedBool := g.boolVars
 	// The float table joins its siblings. `floatVars` answers 「whose last assignment in THIS body
@@ -1378,12 +1402,13 @@ func (g *irGen) beginScope() func() {
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
 	savedDigit := g.digitLoopVars
-	g.allocd = map[string]bool{}
-	g.gcRootSeen = map[string]bool{}
+	// The slot tables come from the one helper every road that emits a body now takes — the `def` road
+	// through here, the method and closure-lift roads through `enterBody` — so there is no second copy of
+	// 「which slots does this frame own」 to forget (roadmap L11.6 · Gap R.342, ADR 0378).
+	savedSlots := g.enterFrameSlots()
 	g.listVars = map[string]bool{}
 	g.runtimeDicts = map[string]bool{}
 	g.runtimeSets = map[string]bool{}
-	g.freshSlots = map[string]bool{}
 	g.noneVars = map[string]bool{}
 	g.boolVars = map[string]bool{}
 	g.listElemStr = map[string]bool{}
@@ -1399,9 +1424,8 @@ func (g *irGen) beginScope() func() {
 	g.internedVars = map[string]bool{}
 	g.digitLoopVars = map[string]bool{}
 	return func() {
-		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
 		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
-		g.freshSlots = savedFresh
+		savedSlots()
 		g.noneVars = savedNone
 		g.boolVars = savedBool
 		g.listElemStr, g.setElemStr = savedLStr, savedSStr

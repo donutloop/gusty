@@ -1,5 +1,71 @@
 # Session Learnings
 
+## Round 7 - A body's stack slots belong to the frame that emits the body (roadmap Gap R.342 closed; ADR 0378; Gap R.345, Gap R.346 filed)
+
+**Change (codegen)**: one rule, in a new file. `g.allocd` answers 「does this name already have a stack slot in
+the frame being emitted」 and one map answered it for a whole module, because the only road that reset it was
+`beginScope`. The two roads that emit a body without passing through `funcDef` - the closure lift
+(`emitClosureDef`) and the class road's method emitter (`emitClassMethod`) - read the ENCLOSING frame's table,
+so a nested `def` that bound a name its enclosing body also bound was told 「already allocated」, got no
+`alloca`, and the enclosing body then stored through a slot its own `define` never had: `llc-20: use of
+undefined value '%_w'`, exit 2, ADR 0166's code for a compiler bug, for three lines the reference runs.
+`pkg/lang/frame_slots.go` now owns the rule (`enterFrameSlots` installs NEW maps and returns the undo) and it
+is taken by `enterBody`, which the two roads already share with `beginScope` - so the fix is not "give the lift
+road the missing reset" but "there is no road that can miss it". The previous cycle had deliberately left
+`allocd` out of its own helper and filed it as this row, and keeping that separation is why this commit is one
+rule and not two.
+
+**The written-flag table had the same hole one level down, and the ordering was the bug.** Both roads called
+`emitBoundAllocas` BEFORE installing their own body's written-flags (ADR 0228), so the entry block allocated
+the ENCLOSING body's locals inside this `define`, marked them allocated in this frame's table, and left this
+body's possibly-unwritten name with no flag: `use of undefined value '%bnd_z'` for
+`def inner(c): if c: z = 1; return z`. Two of the five exit-2 shapes the probe found were therefore traps that
+should have been `UnboundLocalError` - and they now are, catchably, at the program's exit code (ADR 0214's
+distinction: a frame slot the compiler owns versus a raise the program owns).
+
+**Probe before patch, and let the probe choose its own axis.** Twenty programs on ONE axis - *which frame owns
+the name* - each asked of the compiled leg and CPython. The filed row was one of them. The haul: the float
+collision, two unwritten-flag shapes, a nested `def` binding the container its enclosing body binds (`%_xs`)
+and one binding the TEXT (`%_s`). The last two are why "it was the float convention" was the wrong hypothesis:
+the container and text roads ask `allocd` too (to release an old binding), so any name-shaped table read by the
+wrong frame fails the same way. The three shapes that stayed wrong went to the tracker as rows rather than
+into my diff: **Gap R.345** (a lifted `def` whose body answers a double prints `0` at exit 0 - the slot is a
+`double`, the `define` is `i32`, `ret i32 %_w.ld1` truncates it: ADR 0377's fold unwritten on the lift road),
+**Gap R.346** (two nested `def`s of the same spelling collide on `@inner_slot = internal global` - exit 2 again,
+found because this cycle's own conformance program named two nested `def`s `inner`), and the already-owned
+Gap R.332/R.337 (a `def` nested inside a METHOD is not lifted at all).
+
+**Where `llc` was the only witness, the compiler should be the first one.** `pkg/lang/frame_audit.go` now walks
+the shipped module - after `attachFrameStack`, before `hoistAllocas`, and only when nothing else refused - and
+asks of each `define` whether every slot-shaped pointer operand it reads (`%_...`, `%_..._tag`, `%_ctrN`,
+`%bnd_...`) was allocated by an `alloca` in THAT function. Failing as `*lang.IRInvariantError` rather than as
+an ordinary codegen error is the point: the CLI classifies it with `*lang.ToolchainRejectionError`, so the
+program leaves at exit 2 (ADR 0166) with `"phase": "codegen"` and an `invariant` object naming the audit, the
+function, the slot and the instruction (`definitions.irInvariant`). `llc` caught this class all along and
+named a file under `/tmp`; a rule that survives only in an external tool's error text can rot back on the next
+road that emits a body, which is exactly how this defect happened to ADR 0351's per-scope rule.
+
+**Process lessons.** (1) **A shell keeps its cwd between tool calls.** After one `cd ../gusty-r342 && ...`, the
+next five commands - greps, probes, a `go build` - ran in the WORKTREE while I believed they ran in the main
+checkout; two "missing helper" mysteries and one phantom test failure were exactly that. Every command in a
+multi-checkout session starts with an absolute `cd`, and a `pwd` in the output is cheaper than an hour. (2)
+**Verify that a claimed gate exists before claiming it passed.** The previous cycle's notes record
+`make check-golden-coverage`/`check-roadmap-tables`/`check-conformance-tables` as green; this checkout has no
+such targets and no `cmd/check-golden-coverage`. The guards that ARE real -
+`golden_artifact_counts_test.go`, `roadmap_snapshot_test.go`, `roadmap_evidence_test.go`, `docs_citations_test.go` -
+edited my docs for me, and each one names the file and the stale number. (3) **Record what the rule decided.**
+Fifteen sources went through `tools/recmerge` (it refuses any entry whose compiled leg disagrees with the
+reference), which moved the record 7932 -> 7947 and made the count guards rewrite `docs/operations.md`,
+`AGENTS.md` and the roadmap snapshot for me. A new answer table that no record covers is an untested table:
+`TestABodysSlotsAreItsOwnFrame` fails on `asked == 0` so the record leg cannot quietly stop being walked.
+(4) **An answer that is right for both compiled legs proves nothing** - they share the table that was the bug.
+The conformance program `integration/programs/nested_def_shares_a_slot.gy` is registered `OracleMatch`, so
+CPython is the witness, and every CLI row fails on exit 2 as well as on a wrong byte. (5) A test that mutates a
+shared counter from `t.Parallel()` subtests reads zero: the `asked == 0` guard ran before its own children
+did. Sequential subtests, like the file this pattern came from. (6) The schema is a consumer contract: adding
+`invariant` to a payload without adding `definitions.irInvariant` would have been caught only by the agent
+reading it, so `cmd/gustyc/ir_invariant_test.go` asserts the payload's member is declared.
+
 ## Round 6 — A body's return word is chosen by folding its writes (roadmap Gap R.341 closed; ADR 0377)
 
 **Change (codegen)**: one scan, `returnedFloatRebindings` in `pkg/lang/params.go`. It answers, before any

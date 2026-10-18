@@ -229,68 +229,15 @@ func headLineOf(s string) string {
 	return s
 }
 
-// TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion keeps the two rows apart. Gap R.339 is about
-// WHOSE writes a body reads; Gap R.35 is about what a body may read at all, and seeding the body's
-// table from the module would have been that row's work in this commit. The refusals and the answers
-// live in `float_frame_test.go` (`TestCompiledFunctionBodiesCannotSeeModuleState`) and in
-// `TestModuleFloatReadByBody`; the two rows left here are the defects this cycle measured and filed
-// instead of absorbing, and the message each one expects must name the row that owes the answer.
-//
-// One filed row remains here, measured while writing this rule and filed rather than fixed, pre-existing
-// (identical on the pre-ADR-0374 build). Its sibling — the `for`-driven float accumulator that answered
-// the void word — closed under **ADR 0377** and now sits in `floatFramePrograms` answering the
-// reference's `6.0`, which is where a control row belongs:
-//
-//   - Gap R.342 — a nested `def` that shares a name with a float local of its enclosing body emits a
-//     store to the ENCLOSING frame's alloca (`store i32 %t7, i32* %_w`), `llc` rejects the module and
-//     the program leaves exit 2, which ADR 0166 reserves for a compiler bug.
-func TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name, src, want, today, gap, rejects, names string
-	}{
-		{
-			name:    "a nested def sharing a name with its enclosing body's float local dies in llc",
-			src:     "def outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\nprint(outer())\n",
-			want:    "3\n",
-			gap:     "Gap R.342",
-			rejects: "use of undefined value '%_w'",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.rejects != "" {
-				got, err := RunSource(tc.src)
-				if err == nil {
-					t.Fatalf("%s: the compiled leg no longer dies in `llc` — it printed %q (the reference prints %q); "+
-						"when those two agree, DELETE this case\n\t%s", tc.gap, got, tc.want, tc.src)
-				}
-				if !strings.Contains(err.Error(), tc.rejects) {
-					t.Fatalf("%s: the module rejection changed from %q to:\n%v", tc.gap, tc.rejects, err)
-				}
-				return
-			}
-			if tc.today == "" {
-				msg := compiledRefusalOf(tc.src)
-				if msg == "" {
-					t.Fatalf("%s: expected a refusal, the program compiled (the reference prints %q)", tc.gap, tc.want)
-				}
-				if tc.names != "" && !strings.Contains(msg, tc.names) {
-					t.Fatalf("%s: the refusal does not name the row that owes the answer (%s): %s", tc.gap, tc.names, msg)
-				}
-				return
-			}
-			got := compiledRunIsTheBackend(t, tc.src)
-			if got == tc.want && tc.want != tc.today {
-				t.Fatalf("%s: the compiled leg now answers %q, the reference's own bytes — DELETE this row, %s has closed",
-					tc.name, got, tc.gap)
-			}
-			if got != tc.today {
-				t.Errorf("%s: the compiled leg prints %q, and this row pinned %q (reference %q, %s)",
-					tc.name, got, tc.today, tc.want, tc.gap)
-			}
-		})
-	}
-}
+// The row this file used to keep here — Gap R.342, the nested `def` that stored through its ENCLOSING
+// frame's alloca and died in `llc` — is DELETED, as its own rule required: ADR 0378 gives every road that
+// emits a body the frame entry that body's slots live in, and the program now prints the reference's `3`.
+// It answers in `frame_slots_test.go`, on the compiled leg, the record leg and the reference leg, beside
+// the IR row that pins the `alloca` inside the `define` that stores through it. What the two rows were for
+// — proving ADR 0375's frame rule is not a half-answer to Gap R.35's module-state question — is still
+// pinned where it always was, in `module_float_test.go`: `TestTheModuleFloatDoorDoesNotAnswerWhatTheFrameAnswers`
+// asks both rules of one program, and `TestTheModuleFloatGateRefusesWhatItCannotPromise` still refuses the
+// module container and the two positions that have no word.
 
 // TestTheBodyFloatTableIsInstalledByEveryRoadThatEmitsABody is the guard the rule needs to stay true:
 // the two roads that begin a body — `funcDef` through `beginScope`, and the method/closure-lift roads

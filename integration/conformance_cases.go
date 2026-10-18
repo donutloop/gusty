@@ -795,6 +795,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// file (roadmap Gap R.35's float half; ADR 0376, beside ADR 0227's slot and ADR 0375's frame).
 		"module_float_read",
 		"module_float_state",
+		// A name bound by two frames at once is two slots, not one: a nested `def` that shares a name with
+		// its enclosing body's local, the same shape over a container and a text, three frames on one name,
+		// a capture that still travels, a method and a function binding one container name, and the two
+		// possibly-unwritten locals the lift and the method emitter now give their own flag to. Every answer
+		// is CPython's, and the row is ASSERTED, so the two compiled legs cannot certify each other — they
+		// share the table that was the bug (roadmap L11.6 · Gap R.342, ADR 0378).
+		"nested_def_shares_a_slot",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -1283,6 +1290,11 @@ var oracleLedger = map[string]oracleDecl{
 	// program's own header, in roadmap Gap R.47, and in ADR 0229.
 	"programs/runtime_string_ops":    {oracle: lang.OracleMatch},
 	"programs/runtime_string_writes": {oracle: lang.OracleMatch},
+	// Gap R.342 closed (ADR 0378): one name, one slot, per FRAME. The lift road and the method emitter read
+	// the ENCLOSING body's slot table, so a store survived whose `alloca` did not and `llc` refused the
+	// module — exit 2, ADR 0166's code for a compiler bug — for programs of three lines each. CPython runs
+	// this program to the last line, so the row is a plain `match` and needs no pins.
+	"programs/nested_def_shares_a_slot": {oracle: lang.OracleMatch},
 	"programs/unwritten_slot_trap": {oracle: lang.OracleNA,
 		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; the compiled leg prints the same first line and raises the same class, which it did not before ADR 0228 -- it printed 0 for the unbound call and exited 0",
 		ref:    "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",

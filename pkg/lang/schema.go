@@ -1090,7 +1090,19 @@ const astIRSchemaTemplate = `{
         },
         "backend": { "type": "string", "description": "The one backend: \"aot\" (ADR 0302)." },
         "exit": { "type": "integer", "description": "The exit code the process answers with (docs/operations.md § Exit codes, ADR 0211)." },
-        "capability": { "$ref": "#/definitions/capabilityRefusal" }
+        "capability": { "$ref": "#/definitions/capabilityRefusal" },
+        "invariant": { "$ref": "#/definitions/irInvariant" }
+      }
+    },
+    "irInvariant": {
+      "type": "object",
+      "required": ["audit", "function", "slot", "instruction"],
+      "description": "The compiler's own audit of the module it emitted (pkg/lang/frame_audit.go, roadmap L11.6 and Gap R.342, ADR 0378): the failure behind exit 2 when a define reads a frame slot that no alloca in that same function created. A compiler bug, reported by the compiler with the names a reader would otherwise have to take out of a sentence, or out of the external verifier's rejection of a temp file. Carried by the invariant member of a toolFailure whose exit is 2; capability is null beside it, because the compiler is not declining a shape here, it is reporting that it built one wrongly.",
+      "properties": {
+        "audit": { "type": "string", "description": "Which audit said it (frame-slot audit), so more than one can share the class and a reader can tell them apart without reading the sentence." },
+        "function": { "type": "string", "description": "The symbol of the define whose body broke the rule: the program's function where the program has one, the IR spelling otherwise." },
+        "slot": { "type": "string", "description": "The slot-shaped name that was read as a pointer and never allocated in that function: a variable slot (underscore-prefixed), a tag slot beside one, a loop counter, or a written-flag (bnd_-prefixed)." },
+        "instruction": { "type": "string", "description": "The offending instruction, verbatim from the emitted module." }
       }
     },
     "varianceRule": {
