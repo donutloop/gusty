@@ -1,0 +1,43 @@
+RATE = 2.5
+COUNT = 4
+OFFSET = -1.5
+HALF = 10 / 4
+
+def scale(v):
+    return v * RATE
+
+def shifted(x):
+    return x + OFFSET
+
+def warm():
+    return RATE > 2
+
+def total():
+    return COUNT * RATE
+
+def quartered():
+    return HALF / 2
+
+def doubled():
+    return RATE * 2
+
+def with_default(v=RATE):
+    return v * 2
+
+def build():
+    return [RATE, RATE + 1]
+
+def outer():
+    print(RATE)
+    return scale(2)
+
+print(scale(3))
+print(shifted(2))
+print(warm())
+print(total())
+print(quartered())
+print(doubled())
+print(with_default())
+print(with_default(4))
+print(build())
+print(outer())

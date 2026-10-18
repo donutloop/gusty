@@ -56,7 +56,7 @@ func (g *irGen) enterBoundFlags(fd *FuncDef, body []Stmt) func() {
 	for nm := range cand {
 		// A parameter is written by the call itself, and a name the module owns is read from
 		// elsewhere: neither is a frame slot this body may leave unwritten.
-		if params[nm] || g.moduleSlots[nm] != "" || g.moduleConsts[nm] != nil {
+		if params[nm] || g.moduleSlots[nm] != "" || g.moduleFloatSlots[nm] != "" || g.moduleConsts[nm] != nil {
 			continue
 		}
 		if bad[nm] || !ok[nm] {

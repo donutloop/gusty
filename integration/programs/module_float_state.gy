@@ -1,0 +1,29 @@
+RATE = 2.5
+
+def show():
+    print(RATE)
+
+def scaled(v):
+    return v * RATE
+
+show()
+scaled(3)
+RATE = 9.5
+show()
+print(scaled(3))
+RATE = RATE * 2
+print(scaled(2))
+RATE = 1.0
+
+def shadowed():
+    RATE = 7.5
+    return RATE
+
+print(shadowed())
+print(scaled(4))
+FLAG = True
+
+def flag():
+    return FLAG
+
+print(flag())

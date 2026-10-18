@@ -214,8 +214,10 @@ func headLineOf(s string) string {
 
 // TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion keeps the two rows apart. Gap R.339 is about
 // WHOSE writes a body reads; Gap R.35 is about what a body may read at all, and seeding the body's
-// table from the module would have been that row's work in this commit. The refusal rows below are
-// what those programs get, and the message must name the row that owes the answer.
+// table from the module would have been that row's work in this commit. The refusals and the answers
+// live in `float_frame_test.go` (`TestCompiledFunctionBodiesCannotSeeModuleState`) and in
+// `TestModuleFloatReadByBody`; the two rows left here are the defects this cycle measured and filed
+// instead of absorbing, and the message each one expects must name the row that owes the answer.
 //
 // The last two rows are NEW defects, measured while writing this rule and filed rather than fixed
 // here, both pre-existing (identical on the pre-ADR-0374 build):
@@ -230,20 +232,6 @@ func TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want, today, gap, rejects, names string
 	}{
-		{
-			name:  "a module float read by a body is still the module-state refusal",
-			src:   "RATE = 2.5\n\ndef scale(v):\n    return v * RATE\n\nprint(scale(3))\n",
-			want:  "7.5\n",
-			gap:   "Gap R.35",
-			names: "Gap R.35",
-		},
-		{
-			name:  "a module float the module itself computed is answered by neither row",
-			src:   "HALF = 10 / 4\n\ndef h():\n    return HALF * 2\n\nprint(h())\n",
-			want:  "5.0\n",
-			today: "0\n",
-			gap:   "Gap R.35",
-		},
 		{
 			name:  "a float accumulator driven by a for inside a body answers the void word",
 			src:   "def loopAcc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\nprint(loopAcc())\n",

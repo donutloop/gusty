@@ -79,6 +79,12 @@ func (g *irGen) stmtAugAssign(b *strings.Builder, st Stmt, n *AugAssignStmt) err
 				return fmt.Errorf("codegen: %q on %q writes a double into the i32 slot the variable already has: the first assignment decided its kind, and re-deciding it needs the (payload, tag) pair the tagged value word still owed here would carry — assign a float to give the variable one (roadmap L11.1, Gap R.88, ADR 0166)", n.Op, nm.Value)
 			}
 			if !g.allocd[nm.Value] {
+				if !g.inFunc && g.moduleFloatSlots[nm.Value] != "" && g.storeModuleFloat(b, nm.Value, v) {
+					// `RATE = 2.5` then `RATE += 1.5` writes the ONE slot every read consults, and mints no
+					// `%_RATE` for the module to disagree with (roadmap Gap R.35, `module_float.go`; the
+					// ADR 0351 rule that a name's binding roads all write the same store).
+					return nil
+				}
 				// The slot is the variable's, allocated once — `t = 0.0` then `t += 1.5` asked for
 				// a second `%_t` and llc rejected the module for the duplicate (measured beside
 				// roadmap Gap R.96; the plain-assignment branch above already asked `allocd`).
@@ -912,6 +918,15 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			g.emitUnionStore(b, nm.Value, n.Value)
 			g.forgetTaggedBinding(nm.Value) // the union's own tag word is the record now (Gap R.142)
 			return nil
+		}
+		if !g.inFunc && !g.allocd[nm.Value] && g.moduleFloatSlots[nm.Value] != "" && g.isFloat(n.Value) {
+			// The module binds its DOUBLE in the slot a body reads: `RATE = 2.5` above
+			// `def scale(v): return v * RATE` is the pair this road writes and `module_float.go`
+			// decides, and no `%_RATE` alloca is minted, because one name has one slot (ADR 0351's
+			// rule, carried to the double word for roadmap Gap R.35).
+			if g.storeModuleFloat(b, nm.Value, g.floatValue(b, n.Value)) {
+				return nil
+			}
 		}
 		if g.storeModuleScalar(b, nm.Value, v) {
 			// The module's state lives in a module global, so a body called later reads what

@@ -2583,9 +2583,37 @@ for i in range(n):
   print(read(), LATE)      # 8 8
   ```
 
+  A module name holding a **float** is state too, and reaches a body through a global of its own
+  (`@gy_mod_<name> = global double`) that the top level writes and the body loads when it runs (ADR 0376).
+  The gate admits a name only where the module's own bindings are numbers the compiler can see — a float
+  literal, a negated one, or arithmetic over literals (`RATE = 7 / 2`, `AREA = 2.0 * 3`, `RATE = RATE * 2`)
+  — and nothing else ever binds it. A name whose value comes from a call (`RATE = float(x)`, `RATE = xs[0]`)
+  is refused rather than answered with a number nobody wrote, and a name a body also *assigns* stays that
+  body's local, exactly as the rule above:
+
+  ```py
+  RATE = 2.5
+
+  def scale(v):
+      return v * RATE      # 7.5 — the module's own double, read at call time
+
+  def shadow():
+      RATE = 1.0           # shadow()'s OWN binding; the module keeps 2.5
+      return RATE
+
+  print(scale(3), shadow(), RATE)    # 7.5 1.0 2.5
+  ```
+
+  Two positions still refuse the module's float by name, both because the *word* is missing rather than the
+  value: a **method** that returns it (a method has an `i32` return word whatever its body computes — read
+  it into a local, or print it from the body), and a plain read in a position the compiler kept `i32`. A
+  nested `def` returning it is refused the same way. Both are L11.6 · Gap R.3c's missing return word.
+
   What a body still cannot reach is module *containers* (`len(xs)`, `xs.append(v)` for a module-level
-  list) and module names holding floats: those are refused, with a message naming module state and the
-  missing machinery rather than misdescribing the value (roadmap Gap R.35's remaining half, Gap L11.6).
+  list): refused, with a message naming module state and the missing machinery rather than misdescribing
+  the value (roadmap Gap R.35's remaining half; a container's word is a heap handle that has to be rooted
+  and whose element operations come from the scope a binding settles). A module-level **text** read by a
+  body prints the intern position today (`Gap R.343`).
 
 - **A name the body binds is the body's own, and an unwritten read raises** (ADR 0228). Whether a name
   is local is decided by what the body binds *anywhere inside itself*, not by how far the text has got,

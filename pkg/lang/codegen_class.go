@@ -131,6 +131,14 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 		g.noteUnlowered(fd, fmt.Errorf("%q is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)", bad[0]))
 		return
 	}
+	// The same gate, asked of the module's double: a method that hands back `RATE` would load
+	// `@gy_mod_RATE` inside a `define i32`, which `llc` rejects — exit 2, the code the exit-code
+	// contract reserves for a compiler bug. Refused here, in words, with the row that owns the missing
+	// half (roadmap Gap R.35 read from the class side; L11.6 · Gap R.3c is the return word it needs).
+	if nm := returnedModuleFloat(fd, g.moduleFloatOwns); nm != "" {
+		g.noteUnlowered(fd, fmt.Errorf("%q is the module's float and this method returns it: a method is emitted with an i32 return word, so the module global's double has no word to travel in — print the value from the body instead, or wait for the method's own double return word (roadmap Gap R.35 read from the class side; L11.6, Gap R.3c, ADR 0196 is the return word it needs; ADR 0166 why nothing malformed is emitted)", nm))
+		return
+	}
 	prevParams := g.params
 	prevSlot := g.paramSlot
 	prevSelf := g.selfClass

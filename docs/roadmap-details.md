@@ -14691,10 +14691,13 @@ before, the int-returning body of `print(b(), a(), b())` opened `define double @
 returning a double it never computed — and the same `b()` answered `7.0` in one position of a `print` and
 `7` in another.
 
-What the row explicitly does NOT answer is whether a body may read a module-level float at all: that is
-Gap R.35, and `RATE = 2.5` above `def scale(v): return v * RATE` still refuses, unchanged, with the
-module-state sentence. `TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion` pins that refusal in the
-same file as the fix, so the two rows cannot be mistaken for one another by the next reader. The `lastWrite`
+What the row explicitly did NOT answer is whether a body may read a module-level float at all: that was
+Gap R.35, and `RATE = 2.5` above `def scale(v): return v * RATE` refused, unchanged, with the module-state
+sentence. `TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion` pinned that refusal in the same file as
+the fix, so the two rows could not be mistaken for one another by the next reader. **ADR 0376 has since
+closed that half**: the two refusal rows this cycle pinned were deleted from that table and moved into the
+answer table, which is how the guard knew, and what remains refused is the module CONTAINER — the half
+Gap R.35 still owes, in `TestTheModuleFloatGateRefusesWhatItCannotPromise`. The `lastWrite`
 pair is back in `programs/float_answer_word.gy`, the asserted program it was cut out of, and
 `TestWhatTheFloatAnswerWordStillOwesIsFiledNotFixed` is deleted, as its own rule required.
 
@@ -15035,3 +15038,85 @@ with no owner in it) and **Gap R.49** (the same disease on the module side, cure
 Pinned as an exit-2 row — deliberately — by `TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed` and
 `TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion`, both of which fail the day the program stops
 dying in `llc`, in either direction.
+
+
+### Gap R.35 — a compiled function body reads the module's float; the module's container is still owed (PARTIAL, float half closed by ADR 0376)
+
+ADR 0227 built the mechanism and left a hole in it on purpose: `moduleSlots` maps a name to an `i32`
+global, a double does not fit an `i32`, and so every module-level float a body named was answered with the
+module-state refusal — exit 1, at a program CPython runs. The refusal was honest and it was also the last
+place in the float family where the module had no word, once ADR 0373 had settled which write a read
+answers and ADR 0375 whose.
+
+ADR 0376 gives the double the sibling it was missing: `@gy_mod_<NAME> = global double`, written by `@main`
+in source order and loaded by any body that reads the name without binding it. The gate is what makes that
+safe, and it is written as a *rejection* list rather than an allowance, because the compiler can promise a
+word only for a number it can see:
+
+- every module binding of the name is a float literal, a negated one, or arithmetic over literal numbers
+  (`RATE = 7 / 2`, `AREA = 2.0 * 3`, and `RATE = RATE * 2` — the module doubling what it already holds,
+  which `@main` replays in the order the source wrote);
+- nothing else binds the name — no `for` target, `with ... as`, `match` capture, unpacking, `import`;
+- no body that reads the name also writes it (ADR 0220), and no parameter carries it;
+- it is not a folded module constant already (a name bound once to a literal is a value, and ADR 0227's
+  fold is cheaper than a global; `TestTheModuleFloatIsAGlobalAndNotAnAlloca` keeps that control, together
+  with the one that says a module float no body reads keeps its alloca byte for byte).
+
+The two roads are deliberately unequal, and that inequality is the design: `floatValue` loads the global,
+`valueName` (the i32 road) refuses the name, because one i32 slot, `select` or `ret` cannot carry a double
+and emitting the load anyway is the `mul i32 %p1, <double>` that `llc` rejects at exit 2. A method is
+refused before its `define` is written — a method has an i32 return word whatever its body computes, which
+is ADR 0196's rule about a rebound parameter, extended to the module's double — and a nested `def` is
+refused by the i32 road's sentence, which names the body so the reader learns the same expression in a
+top-level `def` does compile.
+
+What stays owed, in the same table as the answers: a module-level **container** read by a body. A
+container's word is a heap handle, which has to be rooted against the collector, and its element
+operations come from the per-scope notebooks ADR 0341 settles at a *binding*; a global handle buys none of
+that, and a half-working container is exactly the trade this repo refuses. `xs = [1, 2, 3]` above
+`def f(): print(xs)` therefore still refuses, and `TestTheModuleFloatGateRefusesWhatItCannotPromise` keeps
+that refusal beside the eleven shapes that now answer, so "half closed" cannot be read as "closed".
+
+### Gap R.343 — a module-level TEXT read by a compiled body answers the intern position (OPEN)
+
+Filed while writing ADR 0376's tables, and identical on the pre-ADR build: `NAME = "world"` above
+`def greet(): print(NAME)` prints **`0`** at exit 0 where the reference prints `world`. It is the same door
+as Gap R.35 with the other half of ADR 0227's word list: `moduleSlotNames` admits a name whose module
+bindings are "scalar", an interned text is an index, the index travels through the `i32` global correctly,
+and the print road downstream of the load is never told the `i32` it is holding is an index into
+`@str_tab` — so it prints the number, which is `0` for the first interned literal.
+
+Two things make it a row rather than a footnote. It prints at exit **0**, which is the class of defect this
+repo files rather than ships (ADR 0166, ADR 0273); and the cure is not the float door — a text needs the
+`internedVars` marking a parameter carries (Gap R.315, ADR 0366) to reach the print, `str`/`repr`, `len`,
+`in`, `==` and formatting doors, which is per-body state the module road does not have. The ADR 0227 slot
+is fine; what is missing is the kind on the other end of it.
+
+Pinned by `TestWhatTheModuleTextDoorStillOwes`, which asserts today's `0` and the reference's `world`
+beside it and fails the day the two agree.
+
+### Gap R.344 — printing a float-returning call whose argument arrives as a double emits an i32 store of a double, and `llc` rejects the module (OPEN)
+
+Filed while writing ADR 0376's tables, and identical on the pre-ADR build — none of these programs mentions
+a module float at all:
+
+```
+def f(v):
+    return v + 1.0
+print(f(2.0))          # reference 3.0 · this toolchain: llc-20 rejects the module, exit 2
+```
+
+`f` is promoted correctly (`define double @gy_f(double %p0, ...)`) and the call is emitted correctly
+(`call double`); what is missing is the *answer* word. `return v + 1.0` is a shape ADR 0254's return-kind
+table does not register, so the `print` downstream takes the tagged-value road and emits
+`store i32 %t8, i32* %t105` with `%t8` a `double` — a module `llc-20` refuses, which ADR 0166 makes exit
+**2**, the code reserved for a compiler bug, on an ordinary program the reference runs in three lines.
+
+Where the boundary falls is measurable and narrow: `return v * 2`, `return v`, `return v + 1` and
+`return RATE * 2` all answer the reference, while `return v + 1.0`, `return 2.0 * v` and
+`return v * 2.0` reach the bad `store`. It is the promoted parameter meeting a *literal float in the
+returned expression* that has no registered answer kind. The shapes ADR 0376's programs use are the ones
+the table answers, which is why the conformance legs are green while this row is open.
+
+Pinned as an exit-2 row by `TestWhatTheFloatAnswerWordOfACallStillOwes`, which fails — in either direction
+— the day the program stops dying in `llc`.

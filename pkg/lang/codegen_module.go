@@ -100,7 +100,7 @@ func moduleEnvFor(prog *Program) (map[string]Expr, map[string]bool) {
 // needs no slot at all), and whose module-level assignments are all scalar. A container is left out on
 // purpose: reading a module list as a handle without the container operations behind it would trade an
 // honest refusal for a half-working answer (Gap R.35's remaining half, ADR 0227).
-func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool) map[string]string {
+func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool, ownedByFloat map[string]bool) map[string]string {
 	slots := map[string]string{}
 	if prog == nil {
 		return slots
@@ -126,6 +126,59 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool)
 			scalar[nm.Value] = scalar[nm.Value] && scalarValue(as.Value)
 		}
 	}
+	reads := moduleBodyReads(prog, all)
+	for nm := range reads {
+		if _, isConst := consts[nm]; isConst {
+			continue // a value needs no slot
+		}
+		if ownedByFloat[nm] {
+			// `scalarValue` reads a BinOp's OPERANDS, not its operator, so `HALF = 7 / 2` looks like an
+			// i32 tree here and is a double in the reference. The float door owns that name — two globals
+			// with one symbol is the `llc` error ADR 0166 counts as the compiler's bug.
+			continue
+		}
+		if !scalar[nm] {
+			continue
+		}
+		slots[nm] = irSymbol("gy_mod_" + nm)
+	}
+	return slots
+}
+func scalarValue(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *StrLit, *BoolLit, *NoneLit:
+		return true
+	case *BinOp:
+		return scalarValue(n.L) && scalarValue(n.R)
+	case *UnOp:
+		return scalarValue(n.X)
+	}
+	return false
+}
+
+// moduleBodyReads answers, for the whole program, the one question both module tables ask: which
+// module-bound names does some function, method or closure body READ without binding them itself?
+//
+// It is asked per SCOPE, not per program.
+//
+// A `def`'s parameter is a binding of that body, and a body's own assignment shadows the module for
+// the whole body exactly as it does in the reference. So `def g(y): return y` reads its PARAMETER and
+// says nothing whatsoever about a module-level `y`. Asked without the scope, this walk handed every
+// name that any body mentioned a module global (`@gy_mod_y`) — including the names the module itself
+// binds to a main-frame alloca — and the read road then consulted a slot no store ever visited:
+// `y = 2` / `for y in [10, 20]: print(y)` printed `2` twice at the exit code of success, and `y += 3`
+// stored to an `%_y` that had never been allocated and left `llc` rejecting the module at exit 2
+// (roadmap Gap R.49, ADR 0351). A name still gets its global when ANY body reads it without binding
+// it — `def g(y): pass` and `def h(): return y` in one program both need what `h` asks for.
+//
+// The `i32` table (`moduleSlotNames`) and the float table (`moduleFloatSlotNames`, `module_float.go`)
+// ask this ONE question and then disagree about what to do with the answer, which is the whole reason
+// the walk lives here rather than inside either of them: two copies would be two scope rules.
+func moduleBodyReads(prog *Program, all map[string]bool) map[string]bool {
+	reads := map[string]bool{}
+	if prog == nil {
+		return reads
+	}
 	// Which names do bodies read? — asked per SCOPE, not per program.
 	//
 	// A `def`'s parameter is a binding of that body, and a body's own assignment shadows the module for
@@ -137,9 +190,19 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool)
 	// stored to an `%_y` that had never been allocated and left `llc` rejecting the module at exit 2
 	// (roadmap Gap R.49, ADR 0351). A name still gets its global when ANY body reads it without binding
 	// it — `def g(y): pass` and `def h(): return y` in one program both need what `h` asks for.
-	reads := map[string]bool{}
 	var walk func(node interface{}, shadow map[string]bool)
 	var mark func(e Expr, shadow map[string]bool)
+	// outerScope copies the enclosing body's bindings into the set the inner body shadows with; a
+	// nested `def` therefore shadows what encloses it as well as what it binds itself, which is the
+	// scoping the reference applies (and the closures that depend on reading *through* it are refused,
+	// roadmap Gap R.68).
+	outerScope := func(shadow map[string]bool) map[string]bool {
+		inner := make(map[string]bool, len(shadow)+2)
+		for k := range shadow {
+			inner[k] = true
+		}
+		return inner
+	}
 	mark = func(e Expr, shadow map[string]bool) {
 		switch n := e.(type) {
 		case *Name:
@@ -165,18 +228,38 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool)
 			for _, el := range n.Elems {
 				mark(el, shadow)
 			}
+		// A container literal reads every element, and a body that returns one reads them all: the
+		// walk had arms for the arithmetic and the call but not for the containers, so
+		// `RATE = 2.5` above `def h(): return [RATE]` recorded NO read, the name got no global, and the
+		// read was refused for a program the reference answers (`[2.5]`).
+		case *ListLit:
+			for _, el := range n.Elems {
+				mark(el, shadow)
+			}
+		case *SetLit:
+			for _, el := range n.Elems {
+				mark(el, shadow)
+			}
+		case *DictLit:
+			for _, k := range n.Keys {
+				mark(k, shadow)
+			}
+			for _, v := range n.Vals {
+				mark(v, shadow)
+			}
+		case *CondExpr:
+			mark(n.Cond, shadow)
+			mark(n.If, shadow)
+			mark(n.Else, shadow)
+		// A `lambda` is a body, so it shadows its own parameters exactly as a `def` does — the reference
+		// does not let `lambda RATE: RATE` read the module's `RATE`, and the walk must not either.
+		case *Lambda:
+			inner := outerScope(shadow)
+			for _, pa := range n.Params {
+				inner[pa.Name] = true
+			}
+			mark(n.Body, inner)
 		}
-	}
-	// outerScope copies the enclosing body's bindings into the set the inner body shadows with; a
-	// nested `def` therefore shadows what encloses it as well as what it binds itself, which is the
-	// scoping the reference applies (and the closures that depend on reading *through* it are refused,
-	// roadmap Gap R.68).
-	outerScope := func(shadow map[string]bool) map[string]bool {
-		inner := make(map[string]bool, len(shadow)+2)
-		for k := range shadow {
-			inner[k] = true
-		}
-		return inner
 	}
 	walk = func(node interface{}, shadow map[string]bool) {
 		switch n := node.(type) {
@@ -262,27 +345,13 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool)
 			walk(st, nil)
 		}
 	}
-	for nm := range reads {
-		if _, isConst := consts[nm]; isConst {
-			continue // a value needs no slot
+	for _, st := range prog.Stmts {
+		switch st.(type) {
+		case *FuncDef, *ClassDef:
+			walk(st, nil)
 		}
-		if !scalar[nm] {
-			continue
-		}
-		slots[nm] = irSymbol("gy_mod_" + nm)
 	}
-	return slots
-}
-func scalarValue(e Expr) bool {
-	switch n := e.(type) {
-	case *IntLit, *StrLit, *BoolLit, *NoneLit:
-		return true
-	case *BinOp:
-		return scalarValue(n.L) && scalarValue(n.R)
-	case *UnOp:
-		return scalarValue(n.X)
-	}
-	return false
+	return reads
 }
 
 // moduleBindingNames records the names a module-level statement *binds* -- the left-hand sides, the

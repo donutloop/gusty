@@ -192,7 +192,10 @@ func TestAParameterNameIsNotAModuleBinding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			consts, all := moduleEnvFor(mustParse(t, tc.src))
-			slots := moduleSlotNames(mustParse(t, tc.src), consts, all)
+			// No name here is the module's double, so the float table that would take one away is empty;
+			// the i32 gate is asked the question it was asked before module globals had a double word of their
+			// own (roadmap Gap R.35, ADR 0376).
+			slots := moduleSlotNames(mustParse(t, tc.src), consts, all, nil)
 			for _, nm := range tc.want {
 				if _, ok := slots[nm]; !ok {
 					t.Errorf("%q reads %s from a body that does not bind it, so it needs a module global; the gate gave it none (slots: %s)", tc.src, nm, slotKeys(slots))

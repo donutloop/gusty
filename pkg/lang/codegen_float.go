@@ -271,10 +271,15 @@ func (g *irGen) isFloat(e Expr) bool {
 		}
 		return false
 	case *Name:
-		if g.floatVars != nil {
-			return g.floatVars[n.Value]
+		if g.floatVars != nil && g.floatVars[n.Value] {
+			return true
 		}
-		return false
+		// The module's own double, read from a body that never binds the name. Asked AFTER the
+		// body's table — ADR 0375's rule that 「what did THIS body write」 is answered by that table
+		// and nothing else — and answered by a table of its own, so a body reading `RATE` learns the
+		// word from the module global it is about to load, not from whatever body was lowered last
+		// (roadmap Gap R.35, `module_float.go`).
+		return g.moduleFloatOwns(n.Value)
 	case *Attr:
 		// `mod.NAME` for a data import: the value is a literal the program never wrote, and the only
 		// reason the compiler knows `math.PI` is a double is that the module declares it as one.
@@ -488,6 +493,11 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	case *Name:
 		if g.floatTemps != nil && g.floatTemps[n.Value] {
 			return n.Value
+		}
+		if g.moduleFloatOwns(n.Value) {
+			// The module holds this name's double; the body reads it where it stands, at the moment
+			// the call runs (roadmap Gap R.35, `module_float.go`).
+			return g.loadModuleFloat(b, n.Value)
 		}
 		if g.floatVars != nil && g.floatVars[n.Value] {
 			t := g.newTmp()

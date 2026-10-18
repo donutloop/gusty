@@ -150,7 +150,12 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	g.moduleBinds = map[string][]Expr{}
 	scanRebinds(prog.Stmts, g.moduleBinds)
 	g.strArgBindCache = map[string][]Expr{}
-	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames)
+	g.moduleFloatSlots = moduleFloatSlotNames(prog, g.moduleConsts, g.moduleNames)
+	floatOwned := map[string]bool{}
+	for nm := range g.moduleFloatSlots {
+		floatOwned[nm] = true
+	}
+	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames, floatOwned)
 	// Which container variables are still the literal they were bound to, which is what decides
 	// whether reading one of their slots can be checked against the tag the builder wrote (ADR 0241).
 	g.containerLits = containerLiteralsOf(prog)
@@ -170,6 +175,9 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	g.fdAlias = map[*FuncDef]*FuncDef{}
 	for nm, sym := range g.moduleSlots {
 		g.moduleSlotDecls += fmt.Sprintf("@%s = global i32 0 ; module binding %q, read by a function body (ADR 0227)\n", sym, nm)
+	}
+	for nm, sym := range g.moduleFloatSlots {
+		g.moduleSlotDecls += fmt.Sprintf("@%s = global double 0.0 ; module float binding %q, read by a function body (roadmap Gap R.35)\n", sym, nm)
 	}
 	// Debug records are opt-in; the marks that make them are one append per statement
 	// and per function definition, collected whether or not they will be used, because
@@ -1265,6 +1273,11 @@ type irGen struct {
 	// that looks a name up "when it runs" requires (ADR 0220's rule, implemented for the compiled
 	// backend by ADR 0227). Containers stay refused -- the element ops are the missing machinery.
 	moduleSlots map[string]string
+	// moduleFloatSlots is the same door for the DOUBLE word: the module names that some body reads
+	// and that every module binding of the module's fills with a float, each stored in its own
+	// `global double`. Containers are still not here at all — a container's word is a heap handle that
+	// has to be rooted, which is Gap R.35's other half (`module_float.go`, roadmap Gap R.35).
+	moduleFloatSlots map[string]string
 	// moduleSlotDecls is the IR declaring those globals.
 	moduleSlotDecls string
 	// moduleNames is every name the module binds, constant or not. A read of one that is not a

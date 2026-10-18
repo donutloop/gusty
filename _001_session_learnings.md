@@ -1,5 +1,70 @@
 # Session Learnings
 
+## Round 5 — The module's float gets a global of its own (roadmap Gap R.35's float half closed; ADR 0376; Gap R.343, Gap R.344 filed)
+
+**Change (codegen)**: ADR 0227 gave compiled bodies one mechanism for module state — a module global that
+`@main` writes and any body loads — and built it for the `i32` word only, because `moduleSlots` holds an
+`i32` and a double does not fit it. Every module-level float a body named therefore drew the module-state
+refusal at exit 1: `RATE = 2.5` above `def scale(v): return v * RATE` was a three-line program CPython runs
+and this toolchain declined. `pkg/lang/module_float.go` is the missing sibling: `moduleFloatSlotNames`
+chooses the names that earn `@gy_mod_<name> = global double`, `moduleFloatOwns` is the one read-side
+question, `loadModuleFloat`/`storeModuleFloat` are the load and the binding, and `refuseModuleFloat` is the
+sentence the i32 road says when it is handed the name. `codegen_module.go`'s scope walk came out of
+`moduleSlotNames` as `moduleBodyReads` so both doors ask one function which names a body reads without
+binding (ADR 0273's rule against two opinions), and the two tables stay disjoint by construction: the
+`i32` door is now handed the float names and leaves them alone.
+
+**The gate, because a global can only promise what it can see.** A name is admitted only when every
+module-level binding of it is a float literal, a negated one, or arithmetic over literal numbers, nothing
+else ever binds it (no `for` target, `with ... as`, `match` capture, unpacking, `import`), and no body that
+reads it also writes it. `RATE = float(x)` and `RATE = xs[0]` are refused rather than answered with `0.0`,
+and the refusal rows live in the same table as the answers so a half-closed row cannot be read as closed.
+`RATE = RATE * 2` is allowed and is worth pausing on: the module is reading its own previous binding, which
+is safe precisely because `@main` replays the stores in source order — the first binding's absence is
+CPython's `NameError`, so the gate asks whether the name was already seen before it lets the expression
+mention it.
+
+**Answers measured against CPython** (`tools/recmerge` wrote 22 of them, refusing the one whose legs
+disagreed): `print(scale(3))` → `7.5`; two bodies reading one global → `5.0 3.5`; the module rebinding the
+number between two calls → `2.5` then `9.5`; `RATE = 2.5 / RATE = RATE * 2` then `def half(): return RATE /
+2` → `2.5`; `RATE += 1.0` feeding a body → `3.5`; `HALF = 10 / 4` → `5.0`; a negative literal, a comparison,
+a list element, a default argument, a recursion and a method that prints the product all answer the
+reference. The controls matter as much: a module float no body reads keeps its `%_RATE = alloca double` and
+gains no global, a once-bound int literal is still folded with no `@gy_mod_COUNT`, and a rebound int still
+gets `@gy_mod_COUNT = global i32` — the two doors did not merge.
+
+**Where the refusals are right, and what they cost.** A method returning the module's double is refused
+before its header is written, the way ADR 0196 refuses a method that returns a rebound parameter: a method
+is `define i32` whatever its body computes. Measured first — `class C: def f(self): return 2.5` prints `2`
+today, so the refusal replaces a silently truncated number and an `llc` rejection with exit 1 and the
+construct named. Same for a nested `def`, and the sentence now names the body (`a nested def (outer.inner)`)
+because the same expression in a top-level `def` is promoted to `define double` and compiles: naming the
+body is the difference between a refusal an agent can act on and one it cannot.
+
+**Two defects filed, not absorbed, both identical on the pre-ADR build:**
+- **Gap R.343** — `NAME = "world"` above `def greet(): print(NAME)` prints `0` at **exit 0**. The i32 slot
+  is fine; the interned index arrives with nothing telling the print road it is an index. That marking is
+  per-body state (Gap R.315's `internedVars`), which the module road does not have.
+- **Gap R.344** — `def f(v): return v + 1.0` / `print(f(2.0))` emits `store i32 %t8, …` over a `double`,
+  `llc-20` rejects the module, and an ordinary three-line program leaves **exit 2**. The promotion and the
+  call are both right; the ANSWER kind for a returned binop over a promoted parameter and a float literal
+  is missing from ADR 0254's table. The boundary is measured and narrow (`v * 2`, `v`, `v + 1` answer the
+  reference; `v + 1.0`, `2.0 * v`, `v * 2.0` do not), which is what makes it a row rather than a hunch.
+
+**Process lessons.** (1) The `read` tool served a stale view of a file I was mid-edit on three times and I
+wasted a stretch re-adding code that was already present — once a file is open for editing, `sed -n`/`grep`
+through `bash` are the ground truth, and a build is the tiebreaker. (2) A guard that says "DELETE this row,
+the row has closed" did its job: two rows pinning the module float as a refusal failed the moment the half
+closed, and the right action was to move them into the answer table rather than delete them. (3) Where the
+project has a precedent I should copy the *precedent*, not improvise an interface: `returnedFloatRebindings`
+already shows how to refuse a body that computes a double with the wrong word, and `returnedModuleFloat` is
+that function asked of the module's table. (4) The two-roads design was forced by an `llc` failure rather
+than chosen for elegance, and it is the correct shape: the float road loads, the i32 road refuses, and each
+is honest about the word it has. A `double` reaching an `i32` slot is exit 2, and exit 2 is never an answer
+a program gets. (5) Keep the conformance programs inside the shapes the backend actually answers: two
+programs that were "obviously right" contained a Gap R.344 shape each and had to be rewritten, which is the
+matrix earning its keep on new files.
+
 ## Round 4 — Tuple unpacking binds by the element's tag (roadmap Gap R.144 closed; ADR 0367; Gap R.321, Gap R.322, Gap R.323 filed)
 
 **Change (codegen)**: `emitTupleAssign` in `pkg/lang/codegen_assign.go` lowered every right-hand

@@ -1,5 +1,113 @@
 {
  "entries": {
+"RATE = 2.5\n\ndef show():\n    print(RATE)\n\ndef scaled(v):\n    return v * RATE\n\nshow()\nscaled(3)\nRATE = 9.5\nshow()\nprint(scaled(3))\nRATE = RATE * 2\nprint(scaled(2))\nRATE = 1.0\n\ndef shadowed():\n    RATE = 7.5\n    return RATE\n\nprint(shadowed())\nprint(scaled(4))\nFLAG = True\n\ndef flag():\n    return FLAG\n\nprint(flag())\n": {
+    "stdout": "2.5\n9.5\n28.5\n38.0\n7.5\n4.0\nTrue\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\nCOUNT = 4\nOFFSET = -1.5\nHALF = 10 / 4\n\ndef scale(v):\n    return v * RATE\n\ndef shifted(x):\n    return x + OFFSET\n\ndef warm():\n    return RATE \u003e 2\n\ndef total():\n    return COUNT * RATE\n\ndef quartered():\n    return HALF / 2\n\ndef doubled():\n    return RATE * 2\n\ndef with_default(v=RATE):\n    return v * 2\n\ndef build():\n    return [RATE, RATE + 1]\n\ndef outer():\n    print(RATE)\n    return scale(2)\n\nprint(scale(3))\nprint(shifted(2))\nprint(warm())\nprint(total())\nprint(quartered())\nprint(doubled())\nprint(with_default())\nprint(with_default(4))\nprint(build())\nprint(outer())\n": {
+    "stdout": "7.5\n0.5\nTrue\n10.0\n1.25\n5.0\n5.0\n8\n[2.5, 3.5]\n2.5\n5.0\n",
+    "hasStdout": true
+   },
+"AREA = 2.0 * 3\n\ndef show():\n    return AREA + 0.5\n\nprint(show())\n": {
+    "stdout": "6.5\n",
+    "hasStdout": true
+   },
+
+"COUNT = 4\nRATE = 2.5\n\ndef total():\n    return COUNT * RATE\n\nprint(total())\n": {
+    "stdout": "10.0\n",
+    "hasStdout": true
+   },
+
+"FLAG = True\n\ndef f():\n    return FLAG\n\nprint(f())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"HALF = 10 / 4\n\ndef h():\n    return HALF * 2\n\nprint(h())\n": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"OFFSET = -1.5\n\ndef shift(x):\n    return x + OFFSET\n\nprint(shift(2.0))\n": {
+    "stdout": "0.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\nclass C:\n    def area(self, w):\n        print(w * RATE)\n        return 0\n\nC().area(3)\n": {
+    "stdout": "7.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef a():\n    return RATE * 2\n\ndef b(v):\n    return v + RATE\n\nprint(a(), b(1))\n": {
+    "stdout": "5.0 3.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef build():\n    return [RATE, RATE + 1]\n\nprint(build())\n": {
+    "stdout": "[2.5, 3.5]\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef f():\n    RATE = 1.0\n    return RATE\n\nprint(f())\nprint(RATE)\n": {
+    "stdout": "1.0\n2.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef scale(RATE):\n    return RATE * 2\n\nprint(scale(3.0))\nprint(scale(2))\n": {
+    "stdout": "6.0\n4\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef scale(v):\n    return v * RATE\n\nprint(scale(3))\n": {
+    "stdout": "7.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef scale(v=RATE):\n    return v * 2\n\nprint(scale())\n": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef show():\n    print(RATE)\n\nshow()\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef show():\n    print(RATE)\n\nshow()\nRATE = 9.5\nshow()\n": {
+    "stdout": "2.5\n9.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\n\ndef warm():\n    return RATE \u003e 2\n\nprint(warm())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\nRATE += 1.0\n\ndef show():\n    return RATE\n\nprint(show())\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\nRATE = RATE * 2\n\ndef half():\n    return RATE / 2\n\nprint(half())\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"RATE = 2.5\nprint(RATE)\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"SCALE = 2.0\n\ndef scaled():\n    total = 0\n    for i in [1, 2, 3]:\n        total = total + i\n    return total * SCALE\n\nprint(scaled())\n": {
+    "stdout": "12.0\n",
+    "hasStdout": true
+   },
+
+"STEP = 1.5\n\ndef down(n):\n    if n \u003c= 0:\n        return 0.0\n    return STEP + down(n - 1)\n\nprint(down(3))\n": {
+    "stdout": "4.5\n",
+    "hasStdout": true
+   },
 "# integration/programs/float_frame_table.gy — roadmap Gap R.339, ADR 0375.\n#\n# The float-variable table — 「whose last assignment in this body produced a double」 — was one map for\n# a whole module and was never cleared between `define`s. A body therefore read whatever the\n# previously-emitted body had written, and a program's answer depended on the order the compiler\n# happened to lower things in:\n#\n#   def bound():\n#       u = 9.5\n#       return u\n#\n#   def lastWrite():\n#       u = 2.5\n#       u = 3\n#       return u\n#\n#   print(lastWrite())                    # 3 in the reference, 3.0 here — and `lastWrite` ALONE\n#                                         # answered 3, which is the whole diagnosis\n#\n# ADR 0373 had settled WHICH write a read answers (the last one); this row is about WHOSE writes the\n# table holds. The cure is the rule the module already trusts for every other per-frame kind table —\n# `beginScope` installs the container/bool/None/text tables per scope, and the float table was the\n# sibling it never installed (ADR 0163 closed this disease for the tables that exist).\n#\n# The shapes are crossed on purpose: a name shared by two `def`s, by three, by a `def` and a method\n# in both orders, and by the module's own frame and a callee. The loudest row is `between()` called\n# in one line beside a float-returning neighbour — the SAME function, answering two ways in one\n# print, which no single-function test could ever have seen.\n#\n# Two families are absent on purpose, and both are named with today's answer in\n# `pkg/lang/float_frame_test.go` and `integration/float_frame_test.go`. A `for`-driven float\n# accumulator INSIDE a body prints `0` where the reference prints `6.0` (roadmap Gap R.341; the\n# module-level twin is the last row below, and it answers). And a body may not read module state\n# that changes at all — `RATE = 2.5` above `def scale(v): return v * RATE` is the `Gap R.35`\n# refusal, which is a different row and stays open.\n\n\ndef bound():\n    u = 9.5\n    return u\n\n\ndef lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\n\nprint(bound(), lastWrite())                  # 9.5 3   — the row, in one line\n\n\ndef first3():\n    v = 1.5\n    return v\n\n\ndef seven():\n    v = 7\n    return v\n\n\ndef again2():\n    v = 2.0\n    return v\n\n\nprint(first3(), seven(), again2())            # 1.5 7 2.0 — three bodies, one name, three kinds\nprint(seven(), first3(), seven())             # 7 1.5 7   — one function, called twice, answering once\n\n\ndef promoted(x):\n    x = x + 1.5\n    return x\n\n\ndef laterInt():\n    x = 4\n    return x\n\n\nprint(promoted(1.0), laterInt(), promoted(2)) # 2.5 4 3.5 — a promoted parameter stays in its define\n\n\nclass Box:\n    def show(self):\n        u = 9.5\n        return 1\n\n\ndef afterMethod():\n    u = 3\n    return u\n\n\nprint(Box().show(), afterMethod())            # 1 3 — a method's double does not leak forward\n\n\ndef beforeMethod():\n    s = 2.5\n    return s\n\n\nclass Plain:\n    def value(self):\n        s = 6\n        return s\n\n\nprint(beforeMethod(), Plain().value())        # 2.5 6 — nor does a function's leak backward\n\n\nshared = 9.5\n\n\ndef readsOwn():\n    shared = 3\n    return shared\n\n\nprint(readsOwn(), shared)                     # 3 9.5 — main's float is not the callee's local\n\n\ndef withALambda():\n    z = 2.5\n    return (lambda: 8)()\n\n\nprint(withALambda())                          # 8 — a lambda minted mid-body keeps its own table\n\ntotal = 0.0\nfor i in [1, 2, 3]:\n    total = total + i\nprint(total)                                  # 6.0 — the module-level accumulator (the R.341 control)\n": {
     "stdout": "9.5 3\n1.5 7 2.0\n7 1.5 7\n2.5 4 3.5\n1 3\n2.5 6\n3 9.5\n8\n6.0\n",
     "hasStdout": true

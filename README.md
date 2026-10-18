@@ -989,12 +989,38 @@ place that installs them, called by `beginScope` and \u2014 for the roads that e
 emitter and the closure lift \u2014 by `enterBody`; the frame\u2019s own map comes back on the way out, so a `lambda`
 or nested `def` minted mid-statement neither takes its frame\u2019s float facts nor leaves its own behind. What a
 body may read from the *module* is a different row and is unchanged: `RATE = 2.5` above
-`def scale(v): return v * RATE` still refuses with the module-state sentence (Gap R.35). Two shapes came
+`def scale(v): return v * RATE` it is closed below by ADR 0376. Two shapes came
 out of the same measurement and are filed rather than absorbed, both identical before and after: a
 `for`-driven float accumulator inside a body, which prints `0` where the reference prints `6.0` while the
 same loop at module level prints `6.0` (Gap R.341), and a nested `def` that shares a name with its
 enclosing body\u2019s float local, whose store goes through the enclosing frame\u2019s alloca so `llc` rejects the module
 and the program leaves **exit 2** \u2014 ADR 0166\u2019s code for a compiler bug (Gap R.342).
+
+
+**A compiled body reads the module's float out of the module's own global** (ADR 0376, closing the float
+half of Gap R.35). ADR 0227 built the mechanism and left a hole in it deliberately: `moduleSlots` maps a
+name to an `i32` global, a double does not fit an `i32`, and so every module-level float a body named was
+answered with the module-state refusal, at exit 1, for a program CPython runs. `RATE = 2.5` above
+`def scale(v): return v * RATE` printed `7.5` in the reference and nothing here. The double already had a
+word, a slot type, a printer and a return convention after ADR 0373 and ADR 0375; what it had never had was
+the module's half of the pair. `@gy_mod_<name> = global double` is that half: `@main` writes it in source
+order and any body that reads the name without binding it loads it, at call time, so a module that rebinds
+the number between two calls is answered twice and differently. The gate is the safety of the whole thing,
+written as a rejection list because a global can only promise a word for a number the compiler can see:
+every module binding must be a float literal or arithmetic over literals (`RATE = 7 / 2`, `AREA = 2.0 * 3`,
+and `RATE = RATE * 2`, the module doubling what it already holds), no `for` target, `with ... as`, `match`
+capture, unpacking or `import` may touch the name, and no body that reads it may also write it. A name
+whose value comes from a call is refused rather than answered with a number nobody wrote, and the i32 road
+refuses the name outright rather than handing `llc` a `mul i32` over a `double` — exit 2, which the exit-code
+contract reserves for a compiler bug. A method that returns the module's double is refused before its
+header is written, by ADR 0196's rule for a rebound parameter: a method is `define i32` whatever its body
+computes. The module **container** is still refused, and still owed — a heap handle has to be rooted against
+the collector and its element operations come from the scope a binding settles (ADR 0341) — and it sits in the
+same test table as the shapes that now answer, so a half-closed row cannot be read as a closed one. Two
+neighbours came out of writing those tables and are filed rather than absorbed, both identical on the
+pre-ADR build: a module-level **text** read by a body prints the intern position (`0` for `world`, Gap
+R.343), and printing a float-returning call whose argument arrives as a double emits an `i32` store of a
+`double` so `llc` rejects the module at **exit 2** (Gap R.344).
 
 The element of a comprehension over a container the program built is free to **branch**, and the loop had to
 be told (ADR 0255, closing Gap R.100). `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit

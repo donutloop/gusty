@@ -149,44 +149,7 @@ func TestWhatFloatTableABodyReadsAnswersLikeCPython(t *testing.T) {
 func TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want, today, gap, refusesWith, diesIn string
-	}{
-		{
-			// Gap R.341: a `for`-driven float accumulator inside a body answers the void word, while the
-			// identical loop at module level (a row in the table above) answers 6.0.
-			name:  "a_float_accumulator_inside_a_body_answers_the_void_word",
-			src:   "def loopAcc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\nprint(loopAcc())\n",
-			want:  "6.0\n",
-			today: "0\n",
-			gap:   "Gap R.341",
-		},
-		{
-			// Gap R.342: the nested def's store goes through the ENCLOSING frame's alloca; `llc` rejects
-			// the module and the program leaves exit 2, ADR 0166's code for a compiler bug. Pinned as
-			// exit 2 on purpose: the row exists to be deleted when the exit code stops being 2.
-			name:   "a_nested_def_sharing_a_name_with_its_enclosing_bodys_float_dies_in_llc",
-			src:    "def outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\nprint(outer())\n",
-			want:   "3\n",
-			gap:    "Gap R.342",
-			diesIn: "use of undefined value '%_w'",
-		},
-		{
-			// Gap R.35, not Gap R.339: a body may not read module state that changes, and the sentence
-			// has to say so.
-			name:        "a_module_float_read_by_a_body_is_the_module_state_refusal",
-			src:         "RATE = 2.5\n\ndef scale(v):\n    return v * RATE\n\nprint(scale(3))\n",
-			want:        "7.5\n",
-			gap:         "Gap R.35",
-			refusesWith: "Gap R.35",
-		},
-		{
-			// the same row's silent face, kept pinned so the two cannot be confused for closed
-			name:  "a_module_float_the_module_itself_computed_prints_the_void_word",
-			src:   "HALF = 10 / 4\n\ndef h():\n    return HALF * 2\n\nprint(h())\n",
-			want:  "5.0\n",
-			today: "0\n",
-			gap:   "Gap R.35",
-		},
-	} {
+	}{} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()

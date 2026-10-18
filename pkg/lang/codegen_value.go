@@ -6,6 +6,7 @@ package lang
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -394,6 +395,24 @@ func (g *irGen) valueName(b *strings.Builder, e Expr, n *Name) (string, error) {
 		// also binds K (ADR 0220), and reading it from the module would answer 5 for 1.
 		if folded, ok := g.moduleConsts[n.Value]; ok && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
 			return g.value(b, folded)
+		}
+		if g.moduleFloatOwns(n.Value) {
+			// The module holds this name's double, and this position keeps ONE i32 word for a value:
+			// the roads that read a number ask `isFloat` and take the float road, which loads the
+			// module's global. A road that reaches here has not asked, and answering it with the double
+			// register would hand `llc` a `mul i32 … <double>` — exit 2, the code the exit-code contract
+			// reserves for a compiler bug (ADR 0166). So the name is refused here, by name, with the
+			// road that owns it (roadmap Gap R.35, `module_float.go`).
+			return "", g.refuseModuleFloat(n.Value)
+		}
+		if os.Getenv("GY_DEBUG_MF") != "" && g.moduleNames[n.Value] {
+			fmt.Fprintf(os.Stderr, "[read] %q inFunc=%v slots=%q allocd=%v funcLocals=%v params=%v\n", n.Value, g.inFunc, g.moduleFloatSlots[n.Value], g.allocd[n.Value], g.funcLocals != nil && g.funcLocals[n.Value], func() string {
+				s := ""
+				for k := range g.params {
+					s += k + ","
+				}
+				return s
+			}())
 		}
 		if g.moduleNames[n.Value] && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
 			return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (CPython answers this program; compiled module globals are roadmap Gap R.35)", n.Value)

@@ -786,6 +786,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// (roadmap Gap R.340; ADR 0374, the ternary half of ADR 0275).
 		"ternary_arms",
 		"float_frame_table",
+		// The module's double, read from a body: the answer a call gives when the number it multiplies
+		// was bound at module level and not in the body. One file reads the module's word from nine
+		// shapes — arithmetic, a comparison, a print, a list element, a default, a nested body — and
+		// the other makes it STATE: the same body called before and after the module rebinds the name
+		// answers two numbers, a body that binds the name answers a third, and a bool the module bound
+		// answers the i32 door that was here first. Every line is what CPython prints for the same
+		// file (roadmap Gap R.35's float half; ADR 0376, beside ADR 0227's slot and ADR 0375's frame).
+		"module_float_read",
+		"module_float_state",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
