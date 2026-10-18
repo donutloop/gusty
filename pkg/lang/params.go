@@ -144,28 +144,56 @@ func returnedFloatRebindings(fd *FuncDef, isFloat func(Expr) bool, askWithFloats
 	// answer and printed `3.0` where the reference prints `3` (roadmap Gap R.338). A binding reads names the
 	// body may bind elsewhere, so the table is settled by repetition: `v = u * 2` is a double only once `u`
 	// is one, and `u` is one only once ITS binding is asked.
-	last := map[string]Expr{}
-	for nm, vals := range bindings {
-		if len(vals) == 0 {
-			continue
-		}
-		if v := vals[len(vals)-1]; v != nil {
-			last[nm] = v
-		}
-	}
+	// Which write asks the question is answered by the LAST one, and the fold below walks every write to
+	// get there. Asking the last write alone is what left a loop accumulator unproved (roadmap Gap R.341):
+	// the last write of
+	//
+	//	def loopAcc():
+	//	    t = 0.0
+	//	    for i in [1, 2, 3]:
+	//	        t = t + i
+	//	    return t
+	//
+	// is `t + i`, whose own `isFloat` asks about `t` — the very name whose kind this scan has not decided
+	// yet — and about an int loop variable, so the answer came back "not a double", the body was emitted
+	// `define i32`, and the accumulator's double slot was read out through the i32 return word: `0` at the
+	// exit code of success, where the same loop written at module level answers `6.0`. A read of the name
+	// by its own newest value is INHERITED, not unanswered, and that is what the fold says: a write that
+	// reads the name asks its question with the kind the earlier writes already gave it.
+	//
+	// The order is the source's, because the LAST write still decides everything it can decide on its own:
+	// `u = 2.5` then `u = 3` folds to `true` and then to `false`, which is ADR 0373's rule and the
+	// reference's answer (`3`, not `3.0`), and the fold only carries a kind forward where the newest
+	// spelling did not state one.
 	tasks := map[string]bool{}
 	for round := 0; round < 8; round++ {
 		moved := false
 		// The float table the round asks against is snapshotted before it starts, so the answer cannot depend
 		// on the order the map happens to iterate in (roadmap ADR 0273's determinism rule).
 		known := namesWhereTrue(tasks)
-		for nm, v := range last {
-			ask := func() bool { return isFloat != nil && isFloat(v) }
+		for nm, vals := range bindings {
+			if len(vals) == 0 {
+				continue
+			}
 			got := false
-			if askWithFloats != nil {
-				got = askWithFloats(known, ask)
-			} else {
-				got = ask()
+			for _, v := range vals {
+				if v == nil {
+					continue // a pattern binding says nothing about a kind
+				}
+				ask := func() bool { return isFloat != nil && isFloat(v) }
+				// The name asks its own newest write with the kind the writes before it produced: that
+				// is the fold, and the only thing it adds over asking the last write alone.
+				atStake := known
+				if got {
+					atStake = append(append([]string{}, known...), nm)
+				}
+				one := false
+				if askWithFloats != nil {
+					one = askWithFloats(atStake, ask)
+				} else {
+					one = ask()
+				}
+				got = one
 			}
 			if got != tasks[nm] {
 				tasks[nm] = got

@@ -997,6 +997,32 @@ enclosing body\u2019s float local, whose store goes through the enclosing frame\
 and the program leaves **exit 2** \u2014 ADR 0166\u2019s code for a compiler bug (Gap R.342).
 
 
+**A body's return word is chosen by folding its writes, not by asking only its newest one** (ADR 0377,
+closing Gap R.341). ADR 0373 settled that a read answers a name's LAST write, and the scan that picks a
+`define`'s return word was built on exactly that — which is right when the newest write states a kind and
+helpless when it merely reads the name back:
+
+```py
+def loopAcc():
+    t = 0.0
+    for i in [1, 2, 3]:
+        t = t + i      # the LAST write of t; isFloat(t + i) asks about t, whose kind is what is being decided
+    return t
+print(loopAcc())       # CPython 6.0 · this toolchain before ADR 0377: 0, at exit 0
+```
+
+`isFloat` consulted a table the scan had not filled and found an `int` loop variable on the other side, so
+the body was emitted `define i32` and the emitted module said the whole thing in two instructions —
+`store double \u2026, double* %_t` beside `%_t.ld = load i32, i32* %_t`. The identical loop at module level
+answers `6.0`, because `@main` has no return word to choose: the control that localised the wrong `0` to
+the scan rather than to the arithmetic. The scan now **folds** the body's writes in source order, asking
+each against the kinds the earlier ones produced, so a newest write that states a kind still decides and a
+newest write that inherits one is asked with its seed's kind. ADR 0373's rule is not merely unfixed but
+pinned inside the new table: `u = 2.5` / `u = 3` / `return u` still answers `3`, an `int` accumulator still
+answers `6`, and a float accumulator finally rebound to `3` still answers `3` — which is precisely why the
+tempting one-line alternative, seeding the scan from “any write was ever a float”, was rejected: it
+reopens Gap R.338 and prints `3.0`.
+
 **A compiled body reads the module's float out of the module's own global** (ADR 0376, closing the float
 half of Gap R.35). ADR 0227 built the mechanism and left a hole in it deliberately: `moduleSlots` maps a
 name to an `i32` global, a double does not fit an `i32`, and so every module-level float a body named was

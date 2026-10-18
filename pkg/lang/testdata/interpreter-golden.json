@@ -1,5 +1,19 @@
 {
  "entries": {
+"def acc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    t = 3\n    return t\n\nprint(acc())\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def loopAcc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\nprint(loopAcc())\n": {
+    "stdout": "6.0\n",
+    "hasStdout": true
+   },
+
+"def loopInt():\n    t = 0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\nprint(loopInt())\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
 "RATE = 2.5\n\ndef show():\n    print(RATE)\n\ndef scaled(v):\n    return v * RATE\n\nshow()\nscaled(3)\nRATE = 9.5\nshow()\nprint(scaled(3))\nRATE = RATE * 2\nprint(scaled(2))\nRATE = 1.0\n\ndef shadowed():\n    RATE = 7.5\n    return RATE\n\nprint(shadowed())\nprint(scaled(4))\nFLAG = True\n\ndef flag():\n    return FLAG\n\nprint(flag())\n": {
     "stdout": "2.5\n9.5\n28.5\n38.0\n7.5\n4.0\nTrue\n",
     "hasStdout": true

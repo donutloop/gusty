@@ -14980,7 +14980,7 @@ What this row leaves to its neighbours, filed rather than smoothed over:
 - **a loop whose arm is a call pays the forwarding blocks on every pass**, which belongs to the
   block-placement family (Gap R.290's neighbourhood) and not to this defect: the answer is right, the
   module is five labels and three jumps per conditional.
-### Gap R.341 — a `for`-driven float accumulator inside a body answers the void word (OPEN)
+### Gap R.341 — a `for`-driven float accumulator inside a body answered the void word (closed by ADR 0377)
 
 ```python
 def loopAcc():
@@ -15120,3 +15120,20 @@ the table answers, which is why the conformance legs are green while this row is
 
 Pinned as an exit-2 row by `TestWhatTheFloatAnswerWordOfACallStillOwes`, which fails — in either direction
 — the day the program stops dying in `llc`.
+
+
+The cure, and the line it had to walk (ADR 0377). `returnedFloatRebindings` is the scan that says, before
+any instruction exists, which of a body's names end up holding doubles — because the answer picks the
+`define`'s return word, its parameter words, and the convention every call site emitted earlier is already
+committed to (ADR 0273's reason the scan exists at all). ADR 0373 made it ask the **last** write, which is
+right for `u = 2.5` / `u = 3` / `return u` — and silent for an accumulator, because the last write of a
+loop accumulator reads the very name whose kind is being decided. `isFloat(t + i)` looked up `t`, found an
+empty table and an int loop variable, and the body was emitted `define i32`; the IR then showed the whole
+mistake in two lines, a `store double` into the accumulator's slot and a `load i32` out of it.
+
+The fix folds the writes in source order and asks each one against the kinds the earlier ones produced, so
+a newest write that **states** a kind still decides (`u = 2.5` then `3` → int; a float accumulator later
+rebound to `3` → int) and a newest write that **inherits** one (`t = t + i`) is asked with the kind the
+seed gave it. Four rows in `floatFramePrograms` hold all four corners of that table, two of them being
+precisely the cases ADR 0373 exists for — which is the reason the fold was chosen over the tempting
+"was it ever a float" seeding, the one change that would have quietly reopened R.338 and printed `3.0`.

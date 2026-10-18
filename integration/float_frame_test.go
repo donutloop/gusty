@@ -145,11 +145,24 @@ func TestWhatFloatTableABodyReadsAnswersLikeCPython(t *testing.T) {
 // each row with the reference's answer beside the one the toolchain gives, and each naming the row
 // that owes the fix. The two Gap R.335-era refusals are here for a different reason: they are the
 // proof that ADR 0375's frame rule is not a half-answer to the module-state question (Gap R.35),
-// which is the neighbouring row and stays open.
+// which is the neighbouring row. Its float half closed under ADR 0376 and the two rows that pinned it
+// were deleted as their own rules required; the `for`-driven accumulator that ADR 0377 closed joined
+// them, and the rows above are what is left owed.
 func TestWhatTheFrameRuleLeavesStandingIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want, today, gap, refusesWith, diesIn string
-	}{} {
+	}{
+		{
+			// Gap R.342: the nested def's store goes through the ENCLOSING frame's alloca; `llc` rejects
+			// the module and the program leaves exit 2, ADR 0166's code for a compiler bug. Pinned as
+			// exit 2 on purpose: the row exists to be deleted when the exit code stops being 2.
+			name:   "a_nested_def_sharing_a_name_with_its_enclosing_bodys_float_dies_in_llc",
+			src:    "def outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\nprint(outer())\n",
+			want:   "3\n",
+			gap:    "Gap R.342",
+			diesIn: "use of undefined value '%_w'",
+		},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()

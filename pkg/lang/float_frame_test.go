@@ -79,6 +79,23 @@ var floatFramePrograms = []struct {
 		"def lastWrite():\n    u = 2.5\n    u = 3\n    return u\n\nprint(lastWrite())\n", "3\n"},
 	{"the float body alone (the control)",
 		"def bound():\n    u = 9.5\n    return u\n\nprint(bound())\n", "9.5\n"},
+	// ---- the accumulator ADR 0377 closed: a body's LAST write to a float reads the name itself, so the
+	// scan that chooses the return word has to FOLD the body's writes rather than ask only the newest one.
+	// The control beside it is the same loop at module level, which always answered `6.0` and is what
+	// localised the wrong `0` to the scan rather than to the arithmetic; the two rows after it are the
+	// rules that must NOT move — an int accumulator stays an int, and a float accumulator finally
+	// rebound to an int answers the int, which is ADR 0373's last-write rule read through the fold.
+	{"a for-driven float accumulator inside a body answers the seed's kind",
+		"def loopAcc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\n" +
+			"print(loopAcc())\n", "6.0\n"},
+	{"the same accumulator at module level (the control)",
+		"t = 0.0\nfor i in [1, 2, 3]:\n    t = t + i\nprint(t)\n", "6.0\n"},
+	{"an int accumulator driven by a for stays an int",
+		"def loopInt():\n    t = 0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\n" +
+			"print(loopInt())\n", "6\n"},
+	{"a float accumulator later rebound to an int answers the int",
+		"def acc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    t = 3\n    return t\n\n" +
+			"print(acc())\n", "3\n"},
 	// ---- the module's own frame is a body too: main's float must not reach a callee's local.
 	{"main's float local is not the callee's local",
 		"def body():\n    u = 3\n    return u\n\nu = 9.5\nprint(body())\nprint(u)\n", "3\n9.5\n"},
@@ -219,11 +236,11 @@ func headLineOf(s string) string {
 // `TestModuleFloatReadByBody`; the two rows left here are the defects this cycle measured and filed
 // instead of absorbing, and the message each one expects must name the row that owes the answer.
 //
-// The last two rows are NEW defects, measured while writing this rule and filed rather than fixed
-// here, both pre-existing (identical on the pre-ADR-0374 build):
+// One filed row remains here, measured while writing this rule and filed rather than fixed, pre-existing
+// (identical on the pre-ADR-0374 build). Its sibling — the `for`-driven float accumulator that answered
+// the void word — closed under **ADR 0377** and now sits in `floatFramePrograms` answering the
+// reference's `6.0`, which is where a control row belongs:
 //
-//   - Gap R.341 — a float accumulator driven by a `for` inside a body answers `0` at exit 0, while
-//     the identical loop at module level answers the reference's `6.0`;
 //   - Gap R.342 — a nested `def` that shares a name with a float local of its enclosing body emits a
 //     store to the ENCLOSING frame's alloca (`store i32 %t7, i32* %_w`), `llc` rejects the module and
 //     the program leaves exit 2, which ADR 0166 reserves for a compiler bug.
@@ -232,21 +249,6 @@ func TestTheFrameRuleIsNotAnAnswerToTheModuleStateQuestion(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want, today, gap, rejects, names string
 	}{
-		{
-			name:  "a float accumulator driven by a for inside a body answers the void word",
-			src:   "def loopAcc():\n    t = 0.0\n    for i in [1, 2, 3]:\n        t = t + i\n    return t\n\nprint(loopAcc())\n",
-			want:  "6.0\n",
-			today: "0\n",
-			gap:   "Gap R.341",
-		},
-		{
-			// the control that localises it to the body: the identical loop at module level
-			name:  "the same accumulator at module level answers the reference",
-			src:   "t = 0.0\nfor i in [1, 2, 3]:\n    t = t + i\nprint(t)\n",
-			want:  "6.0\n",
-			today: "6.0\n",
-			gap:   "Gap R.341",
-		},
 		{
 			name:    "a nested def sharing a name with its enclosing body's float local dies in llc",
 			src:     "def outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\nprint(outer())\n",

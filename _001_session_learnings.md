@@ -1,5 +1,42 @@
 # Session Learnings
 
+## Round 6 — A body's return word is chosen by folding its writes (roadmap Gap R.341 closed; ADR 0377)
+
+**Change (codegen)**: one scan, `returnedFloatRebindings` in `pkg/lang/params.go`. It answers, before any
+instruction exists, which of a body's names end up holding doubles — so it decides the `define`'s return
+word, its parameter words, and the convention every call site emitted earlier is already committed to.
+ADR 0373 had it ask the **last** write per name. That is right when the newest write states a kind and
+silent when the newest write merely reads the name back: the last write of a loop accumulator is
+`t = t + i`, `isFloat` looked `t` up in a table the scan had not filled, found an int loop variable on the
+other side, said "not a double", and the body was emitted `define i32`. The IR showed the mistake as two
+adjacent instructions — `store double %t10, double* %_t` and `%_t.ld4 = load i32, i32* %_t` — and
+`print(loopAcc())` printed `0` at the exit code of success where the reference prints `6.0`. The fix folds
+the writes in source order and asks each against the kinds the earlier ones produced, including the name's
+own inherited kind.
+
+**The row's own control did the diagnosing.** The identical loop at module level answers `6.0`, because
+`@main` chooses no return word: that single contrast ruled out the arithmetic, the float table and the
+printer, and left the scan. ADR 0375's cycle had already filed it with exactly that control written into
+the table, and closing it was a matter of reading the filed rows honestly and deleting them where they
+said to.
+
+**What had to stay fixed, and how it was pinned before the fix was written.** ADR 0373's rule is the whole
+danger here: "make the scan see more writes" is one line, and the one line that suggests itself — seed a
+name as a double if ANY of its writes ever was one — reopens Gap R.338 and prints `3.0` for
+`u = 2.5` / `u = 3` / `return u`. So the four corners went into `floatFramePrograms` as answer rows: the
+accumulator (`6.0`), the module-level control (`6.0`), the int accumulator (`6`, not `6.0`), and the float
+accumulator finally rebound to an int (`3`). The last two are ADR 0373 living inside ADR 0377's own table:
+the newest write still decides everything it can state, and only inherits where it states nothing.
+
+**Process lessons.** (1) Two "DELETE this row" guards in two packages both failed the moment the fix
+worked, and both named the file and the reason; the discipline of writing a filed row that describes its
+own deletion is what made closing this a ten-minute edit rather than an archaeology dig. (2) I over-deleted
+with a slice-based edit and destroyed a still-owed neighbouring row (Gap R.342) in the same table;
+`git diff <parent> HEAD -- <file>` caught it because the repo's habit of putting every removed row in the
+commit's own diff makes a stray deletion self-evident — and the recovery was to restore the row and re-run
+the pin, not to trust the green run. (3) A green suite is not proof that a table still has rows: an empty
+table passes. When a script deletes table entries, assert the surviving count.
+
 ## Round 5 — The module's float gets a global of its own (roadmap Gap R.35's float half closed; ADR 0376; Gap R.343, Gap R.344 filed)
 
 **Change (codegen)**: ADR 0227 gave compiled bodies one mechanism for module state — a module global that
