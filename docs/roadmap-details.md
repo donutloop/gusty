@@ -14851,3 +14851,107 @@ emits the call without registering anything. The second is ADR 0166's: a module 
 code that means "the compiler is broken", and it is not allowed to be the run a program got. `def f(): return "hey"`
 above `print(f())` answers `hey`, which localises both halves to the lambda road's emission, and the pre-ADR-0370
 build prints the same `0` at the same exit code, which is why the row is filed rather than folded into ADR 0370.
+
+### Gap R.340 — a conditional expression ran the arm its test rejected (closed by ADR 0374)
+
+```python
+def boom():
+    print("boom")
+    return 1
+
+
+x = 5
+print(1 if x > 0 else boom())      # CPython `1`      · this backend printed `boom` then `1`
+print(boom() if x < 0 else 2)      # CPython `2`      · this backend printed `boom` then `2`
+print(1 if x > 0 else 1 // 0)      # CPython `1`      · ZeroDivisionError, exit 3 — from the dead arm
+
+
+def fact(n):
+    return 1 if n <= 1 else n * fact(n - 1)
+
+
+print(fact(5))                     # CPython `120`    · "the compiled root stack is full", exit 2
+```
+
+The first two rows are ADR 0166's wrong-answer-at-the-exit-code-of-success; the third is a program that
+dies of a raise it never performed; the fourth is the worst of the family, because the artifact was
+*killed* rather than returning — the code the contract reserves for a broken compiler.
+
+`--emit-llvm` named the cause on the spot. The whole conditional was one instruction whose operand list
+contained the call:
+
+```llvm
+;t4 = icmp sgt i32 %_x.ld1, 0
+%t8 = select (i1 %t7, i32 1, i32 %t5)      ; %t5 was produced by the call emitted above this line
+```
+
+A `select` has no unreachable operand. Both of its operands are *arguments*, which means the run time
+executed both arms' instructions before the instruction chose between their results. ADR 0026 chose the
+instruction, and the arms were lowered beside the test so that the `select` could take them as operands
+— an arrangement that is only sound while an arm is a value.
+
+ADR 0275 had already paid this for the two operators that choose an operand, `and` and `or`: evaluate the
+first, branch on its truth, evaluate the second **only in the block the branch enters**, and meet the two
+answers at a block-parameter `phi`. That ADR names the ternary as the second half of the same bug and
+leaves it on the eager road. This is that half: `(*irGen).ternaryBranch` in `pkg/lang/ternary_arms.go` is
+`logicSkeleton` for a test with two arms behind it, and the two lowerings that answer a ternary —
+`ternaryI32` and `ternaryDouble` in `pkg/lang/ternary_number.go` — ask it before either arm is emitted.
+
+The shape costs five labels (`tern.then`, `tern.else`, `tern.thenfwd`, `tern.elsefwd`, `tern.merge`), two
+unconditional jumps, one `br i1` and one `phi` per answer. The two one-instruction forwarding blocks are
+not decoration, twice over: a `phi`'s incoming block has to be a real predecessor and this generator
+tracks no current-block state (ADR 0275's reason), and an arm that contains a call does not *end* where
+the door left it — the call road closes with an `@exn_flag` test that branches to the enclosing
+function's raise-exit or to a fresh continuation block, so the arm's last instruction lives in a block
+this door did not name. Naming a forwarding block that the door owns, and having the arm jump to it, is
+what makes both facts line up. It is also what makes a trap in a rejected arm impossible instead of
+merely unobserved: the arm's raise unwinds to `main.raiseexit` with the frames the arm's own call pushed,
+and `rt_die` prints `File "prog", line 2, in boom` for a raise the taken arm really performed.
+
+Both arms are built into a **scratch builder**, and nothing reaches the caller until both answered — the
+same rule ADR 0275 learned when a half-emitted door left a module with a block that had no terminator and
+`llc` reported the compiler's mistake as the program's (Gap R.149).
+
+**The gate is `ternaryArmsNeedBranch`, and "harmless" is a short list, not a long one.** An arm may still
+be folded into the `select` when it provably cannot do anything except answer a value: a literal; a name
+read the ADR 0228 written-flag machinery proves was written; `+ - * & | ^ << >>` over literals of one
+domain and the six orderings over two literals that belong to the same domain; `not` and unary minus of a
+literal. Everything else is "may act", because in this backend the ways an expression reaches the run
+time are not a node type — a subscript raises `IndexError`/`KeyError`, `//` and `%` raise
+`ZeroDivisionError`, an ordering of two kinds raises `TypeError`, a call raises and prints whatever its
+body does, a container literal allocates, a comprehension loops. The first measurement of this row said
+"the arm is a call", and that is the gate that would have shipped the third program above: `1 // 0`
+raises with no call in sight, and so do `xs[9]` and `d["k"]`.
+
+The written-slot question is asked from the same tables `checkBound` reads, which is not a performance
+detail. An `UnboundLocalError` is an effect, and its guard cannot sit above the test: both operands of a
+`select` dominate the test, so the flag is read for both arms whatever runs. Before this change
+
+```python
+def f(flag):
+    if flag:
+        y = 7
+    return (1 if flag else y) + 0
+```
+
+raised for a name the taken arm never mentions, at exit 3, from the arm the program never reached.
+
+**The fold stays.** Two literal arms, or arithmetic over literals, still produce the instruction ADR 0026
+put here and ADR 0262 pinned, and `TestATernaryWithPureArmsIsStillASelect` asserts both halves of that —
+the `select` is present *and* no `tern.merge` block exists. A pair of values has no effects to order, so
+the two roads disagree about nothing except instruction count, and ADR 0273's rule is that a correctness
+gate may not take an instruction away from a program that compiles and answers today.
+
+What this row leaves to its neighbours, filed rather than smoothed over:
+
+- **a container arm reaches the assembler as a global.** `[1, 2] if c > 0 else [3]` now lowers each
+  literal beside its own branch, and the two arms meet at `phi i32 [ @.lst1, %tern.thenfwd ], [ @.lst2,
+  %tern.elsefwd ]` — which is the same `i32 @.lstN` operand `llc` has rejected since Gap R.128 filed it,
+  arriving through a `phi` instead of a `select`. The probe `programs/probe_ternary_container_arms.gy`
+  keeps its per-leg pin; the answer is L11.1's tagged handle, not a fifth label.
+- **arms that disagree on a word still refuse,** as ADR 0166 requires: `print(2 if x else 3.5)` says the
+  arms do not agree on a word. Putting an arm behind a branch cannot promote it into a word it does not
+  have, and the refusal is `L11.1`'s to earn.
+- **a loop whose arm is a call pays the forwarding blocks on every pass**, which belongs to the
+  block-placement family (Gap R.290's neighbourhood) and not to this defect: the answer is right, the
+  module is five labels and three jumps per conditional.

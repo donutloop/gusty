@@ -1070,6 +1070,20 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A **conditional expression runs the arm its test chose** (ADR 0374, closing `Gap R.340` — the second half
+of ADR 0275). `a if c else b` used to be one LLVM `select` with both arms lowered beside the test, and a
+`select` has no unreachable operand: both of its operands are arguments, so the run time had already done
+whatever the rejected arm does before the instruction picks. `print(1 if x > 0 else boom())` printed
+`boom`; `print(1 if x > 0 else 1 // 0)` died of a `ZeroDivisionError` the program never performed; and
+`def fact(n): return 1 if n <= 1 else n * fact(n - 1)` never returned, because the recursive call was
+unconditional and a base case that is a value rather than a stop fills the root stack — exit 2, the code
+this contract reserves for a broken compiler. Now a pair the compiler can prove answers a value and nothing
+else (literals, arithmetic and orderings over literals of one domain, a read of a slot the checker proves
+was written) still folds to the `select` ADR 0262 pinned, and every other arm is lowered **inside the
+block the branch enters**, the two answers meeting at a block-parameter `phi` — so the rejected arm's call,
+division, subscript and unwritten-slot test are not in the module on that path at all, while the arm that
+DOES run still raises its own class at exit 3 with its own frame in the traceback.
+
 A ternary with **text arms** prints the text, not the intern table's position (ADR 0290, closing `Gap R.173`
 and paying `Gap R.127`'s text half). `print("y" if 1 else "n")` exited 0 with `0`, and
 `print("big" if x > 2 else "small")` with `0` or `1` depending on which way the test went — those digits are

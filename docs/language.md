@@ -876,13 +876,47 @@ The compiled program also says what language it is: the artifact's `DW_AT_langua
 
 ## Ternary conditional expressions
 
-`then if cond else otherwise` (Python-style ternary) is supported in both the
-interpreter and the AOT codegen. The condition is an or-level expression; the
+`then if cond else otherwise` (Python-style ternary) is a value chosen by a test, and the compiled
+backend runs exactly one of its two arms. The condition is an or-level expression; the
 `else` branch is a full expression, so nested ternaries bind right:
 `1 if 0 else 2 if 1 else 3` is `1 if 0 else (2 if 1 else 3)`.
 
-In the AOT path, a constant condition folds to the taken branch, and a runtime
-condition (a comparison, or `and`/`or`) lowers to an LLVM `select`. The select's word is the
+**The arm the test did not choose is not evaluated** (roadmap Gap R.340, ADR 0374 — the ternary half
+of ADR 0275's `and`/`or`). Nothing in a rejected arm reaches the run time: not a call, so not the line
+that call prints; not a division, so not its `ZeroDivisionError`; not a subscript, so not its
+`IndexError`/`KeyError`; not a read of a slot that is unwritten on that path, so not its
+`UnboundLocalError`. Four programs say the shape:
+
+```python
+def boom():
+    print("boom")
+    return 1
+
+
+x = 5
+print(1 if x > 0 else boom())        # 1     — `boom` is never called
+print(1 if x > 0 else 1 // 0)        # 1     — no ZeroDivisionError from the rejected arm
+
+
+def fact(n):                          # 120   — the base case is a stop, not merely a value
+    return 1 if n <= 1 else n * fact(n - 1)
+
+
+print(fact(5))
+```
+
+A pair of arms that can provably do nothing but answer a value — literals, arithmetic and orderings
+over literals of one domain, `not`/unary minus of a literal, a read of a slot the checker proves was
+written — is still folded into one LLVM `select`, because for that pair the two roads disagree about
+nothing except how many instructions the module carries. Anything else is lowered behind a branch:
+the test once in the block the caller stands in, a `br i1` to `tern.then` / `tern.else`, each arm
+emitted **only inside the block the branch enters**, and one block-parameter `phi` per answer meeting
+them at `tern.merge` (`pkg/lang/ternary_arms.go`, the same skeleton ADR 0275 gave `and`/`or`). Which
+side a program is on is the gate `ternaryArmsNeedBranch`, and the gate's default is the direction that
+costs an instruction and never the direction that runs a program's effects.
+
+In the AOT path, a constant condition folds to the taken branch, and a runtime condition that chooses
+between two pure arms lowers to an LLVM `select`. The select's word is the
 arms' word, asked once — `ternaryKind` in `pkg/lang/ternary_number.go` — and read by the renderer,
 the arithmetic and the gate that picks a function's return word, so the four cannot disagree about
 what the same expression is (roadmap Gap R.102, ADR 0262):
@@ -899,10 +933,16 @@ what the reference's own promotion means: `(1 if c else 2.5) * 2` multiplies a `
 holding such an arm says so on the object, so `print([1.5 if c > 0 else 2.5])` is `[2.5]` (ADR 0259's
 `boolSlotExpr` has a float sibling, `floatSlotExpr`, for the same reason).
 
-What the same question cannot answer yet is an arm that is text or a container: the compiled leg
-prints the interned index (`print("a" if c else "b")` is `0`) or puts the container's own global in the
-select and the assembler rejects the module (exit 2). Those are roadmap Gaps R.127 and R.128, each
-pinned per leg rather than skipped.
+What the same question cannot answer yet is an arm that is a **container**, and it fails in two pre-existing
+places rather than one. Two container arms meet at a `phi` whose operand is the literal's own global
+(`phi i32 [ @.lst1, … ], [ @.lst2, … ]`), which is the operand `llc` rejects — **exit 2**, this compiler's bug
+and not the program's, on roadmap Gap R.128's pinned row `programs/probe_ternary_container_arms.gy`. And a
+container arm beside an arm the element-typing door cannot follow (`[1] if c else [boom()]`) is refused by
+that door — `list literal elements must be integers, not int` — the same sentence it said before this
+construct was lowered behind a branch. Neither is the branch's to fix: the answer is L11.1's tagged handle.
+A mixed pair — one arm a double, the other an `i32`, the test a run-time fact — is still refused in
+words rather than truncated, and that refusal is roadmap L11.1's tagged value word to earn: a gate that
+puts an arm behind a branch cannot promote an arm into a word it does not have.
 
 ## Truthiness
 

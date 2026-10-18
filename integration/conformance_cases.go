@@ -778,6 +778,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the low word of the double — `0` — and the derived one printed `0` with a parameter in sight
 		// (roadmap L11.6 · Gap R.3c, Gap R.338; ADR 0254, ADR 0373).
 		"float_answer_word",
+		// The arm the test rejected is not evaluated: a call that prints, a division, a subscript and a
+		// missing key in the DEAD arm contribute nothing, a recursion whose base case is an arm STOPS, and
+		// the arm the test chose still raises its own class. Beside them the pair of arms the `select`
+		// road always answered — two literals over a run-time test — still prints the same bytes.
+		// Every line is what CPython prints for the same file
+		// (roadmap Gap R.340; ADR 0374, the ternary half of ADR 0275).
+		"ternary_arms",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

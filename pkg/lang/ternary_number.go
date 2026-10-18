@@ -92,6 +92,19 @@ func (g *irGen) ternaryDouble(b *strings.Builder, n *CondExpr) string {
 	if taken, ok := constantTestArm(n); ok {
 		return g.floatValue(b, taken)
 	}
+	// An arm that can act is a program the test chooses, not an operand of the instruction that picks
+	// after the choosing is done (Gap R.340, ADR 0374).
+	if g.ternaryArmsNeedBranch(n) {
+		out, ok, berr := g.ternaryBranch(b, n, "double", func(bb *strings.Builder, e Expr) (string, error) {
+			return g.floatValue(bb, e), nil
+		})
+		if berr != nil || !ok {
+			// The same signal the eager road used for an arm it could not put in a double: the caller is
+			// told, and nothing is answered as 0.0.
+			return ""
+		}
+		return out
+	}
 	cond, err := g.truthyValue(b, n.Cond)
 	if err != nil || cond == "" {
 		return ""
@@ -127,6 +140,28 @@ func (g *irGen) ternaryI32(b *strings.Builder, n *CondExpr) (string, error) {
 	switch k := g.ternaryKind(n); k {
 	case ternaryBothAreDoubles, ternaryArmDisagrees:
 		return "", ternaryWordErr(n, k)
+	}
+	// The arm the test rejected does not run (roadmap Gap R.340, ADR 0374). A `select` has no
+	// unreachable operand — both of its operands are arguments, so the run time has already executed
+	// whatever the rejected arm does (a call that prints, a division that raises, a subscript that
+	// raises, a slot whose written-flag still reads 0) before the instruction picks. Only a pair this
+	// file can prove answers a value and nothing else may still be folded into the one instruction
+	// ADR 0262 put here; everything else is lowered inside the block the branch enters.
+	if g.ternaryArmsNeedBranch(n) {
+		out, ok, berr := g.ternaryBranch(b, n, "i32", func(bb *strings.Builder, e Expr) (string, error) {
+			v, verr := g.value(bb, e)
+			if verr != nil || v == "" {
+				return "", verr
+			}
+			return v, nil
+		})
+		if berr != nil {
+			return "", berr
+		}
+		if !ok {
+			return "", ternaryArmBranchRefusal(n)
+		}
+		return out, nil
 	}
 	// Two TEXT arms take the same select an int pair takes, and they need it: `value()` renders a text as
 	// its @str_tab index, so without this the index was printed as a number and

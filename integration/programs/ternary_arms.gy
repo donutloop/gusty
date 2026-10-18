@@ -1,0 +1,77 @@
+# The conditional expression runs the arm its test chose (roadmap Gap R.340, ADR 0374).
+#
+# Every DEAD arm below does something a program would notice — prints, divides by zero, indexes past
+# the end, reads a missing key — and none of it happens. The TAKEN arms still raise their own class, and
+# the recursions whose base case is an arm actually stop. The last group is the pair the `select` road
+# always answered, kept so the branch cannot cost it.
+#
+# Each function spells its own parameter name. Two bodies that share one name share the module's float
+# table today, and a name one body bound to a double is read as a double by every later body — that is
+# the filed defect roadmap Gap R.339 owns, and this program is about which arm runs, not about that.
+
+def shout():
+    print("SHOUT")
+    return "loud"
+
+
+def shoutTwice():
+    print("SHOUT TWICE")
+    return 2.5
+
+
+def boom():
+    print("boom")
+    return 7
+
+
+def countdown(step):
+    return 0 if step == 0 else 1 + countdown(step - 1)
+
+
+def scaled(step):
+    return 0.0 if step == 0 else 1.5 + scaled(step - 1)
+
+
+def factorial(count):
+    return 1 if count <= 1 else count * factorial(count - 1)
+
+
+def sign(value):
+    return "zero" if value == 0 else ("pos" if value > 0 else "neg")
+
+
+def onlyIfWritten(flag):
+    if flag:
+        y = 7
+    return (1 if flag else y) + 0
+
+
+x = 5
+print(1 if x > 0 else boom())
+print(boom() if x < 0 else 2)
+print("yes" if x > 0 else shout())
+print(2.5 if x > 0 else shoutTwice())
+print(1 if x > 0 else 1 // 0)
+xs = [1, 2]
+print(3 if x > 0 else xs[9])
+d = {}
+print(4 if x > 0 else d["k"])
+print(5 if x > 0 else boom())
+print(7 if 1 else 9)
+print(1 if x > 2 else 2)
+print(1 + 1 if x > 2 else 2 + 2)
+c = 1
+e = 1
+print((2 if e else boom()) if c else boom())
+g = lambda v: 1 if v else boom()
+print(g(True))
+print(onlyIfWritten(True))
+print(countdown(3), countdown(0), countdown(10))
+print(countdown(200))
+print(scaled(3))
+print(factorial(5))
+print(sign(0), sign(3), sign(-2))
+total = 0
+for i in range(6):
+    total = total + (i if i % 2 == 0 else boom())
+print(total)

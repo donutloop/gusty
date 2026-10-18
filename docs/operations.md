@@ -1166,7 +1166,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 7858 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 7892 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (325 rows — seven went paid with **ADR 0365** on 2026-07-29: `print([0] * 3)`, `print(3 * [0])`, `print([1, 2] + [3])`, `print("ab" * 2)`, `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now answers or raises the reference's own `TypeError` for, and the same cycle owed rows back for the ORDER of two containers no name holds (`if [1, 2] < [2]: print("yes")` and its two siblings), which the door refuses in words rather than corrupting into `icmp slt i32 @.lst1, @.lst2` — **Gap R.314**). Before that, the one that left with **ADR 0360** on 2026-10-16 is the printf row `print("a" % 2)`, which the formatting door now raises the record's own `TypeError: not all arguments converted during string formatting` for, so the row went paid rather than edited; three went paid with **ADR 0359** on 2026-10-17 (`f"hello"`, `f"plain"`, `f"a{1}b"` standing where a VALUE goes, each refused with “f-string requires a constant expression (AOT backend)” since the backend had one) and one arrived with it (**Gap R.308**, a format spec over a value the compiler cannot read), which is how paying a row is supposed to look: the paid rows un-skipped `TestEvalFString`, and the rest of that test got asked for the first time; four went paid with **ADR 0356/0357** on 2026-10-16: the comprehension over a list the escape analysis had been deleting, the two `s[0] = …` store-to-immutable traps whose class and sentence the compiled backend now raises, and `show(1 == 1)` / `show(True)` whose print of a parameter the pair road now renders the record's way; seven more changed *shape*, from "cannot build a program the engine ran" to a named divergence, which is the ratchet doing its job rather than rows disappearing) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (20 rows — three went paid with **ADR 0365**: `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now raises the reference's own `TypeError` for or builds outright; before that `print("a" % 2)` went paid with **ADR 0360** beside its twin above; two are Gap L.5's, where the record holds the interleaved line and CPython agrees with the compiled leg: there the record is the debt, ADR 0302) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (6 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1924,6 +1924,36 @@ never answered with the `0`/`1` that stood here while the whole expression was a
 
 `//` floor division lowers to `sdiv`, also mirroring
 the record. Literal operands are constant-folded.
+
+## The conditional expression `a if c else b` (AOT codegen)
+
+An arm the test rejected is not evaluated (roadmap **Gap R.340**, **ADR 0374**) — the same rule ADR 0275
+bought for `and` / `or` (above), applied to the construct that has an arm on each side of the test. Three
+roads, asked in `pkg/lang/ternary_arms.go` and `pkg/lang/ternary_number.go`:
+
+- a test the source wrote picks its arm at compile time, and the other arm is not in the module at all;
+- a pair of arms that can provably do nothing but answer a value — a literal, arithmetic or an ordering
+  over literals of one domain, `not`/unary minus of a literal, a read of a slot the checker proves was
+  written — is still one LLVM `select`, the instruction ADR 0026 put here and ADR 0262 pinned; the module
+  `print(1.5 if c > 0 else 2.5)` emits is the module it always emitted, byte for byte;
+- anything else is lowered behind a branch: the test once in the block the caller stands in, `br i1` to
+  `tern.then` / `tern.else`, **each arm emitted only inside the block the branch enters**, and one
+  block-parameter `phi` per answer at `tern.merge`. Each arm jumps to a forwarding block (`tern.thenfwd`,
+  `tern.elsefwd`) the door owns, because an arm whose lowering contains a call ends in the exception-check
+  block that call's road opened and a `phi` can only name a predecessor this door named.
+
+What the run time therefore never executes is everything written in the arm the test rejected: the call and
+the line it prints, the `// 0` and its `ZeroDivisionError`, the subscript and its `IndexError`/`KeyError`,
+and the written-flag test for a slot that is unwritten on that path (an `UnboundLocalError` is an effect,
+and a `select`'s guards all dominate its test). A trap in the arm that DOES run is unaffected: exit 3, the
+arm's own class and sentence, and a traceback whose frame list includes the function the arm called. `llc`
+rejecting a module — **exit 2**, the code that means this compiler is broken — is a bug in this file's
+family, and the recursion rows in `pkg/lang/ternary_arms_test.go` forbid it: `def fact(n): return 1 if n
+<= 1 else n * fact(n - 1)` returns `120` instead of filling the root stack.
+
+Two shapes the branch does not rescue, both pinned per leg rather than skipped: arms that are containers
+reach the assembler as the literal's own global (`phi i32 [ @.lst1, … ]`, roadmap Gap R.128), and arms that
+disagree on a word are refused in words (`lower.unsupported.ternary-arms-disagree`, roadmap L11.1).
 
 ## Builtins: sum / min / max / abs (AOT codegen)
 

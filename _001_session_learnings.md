@@ -12688,3 +12688,70 @@ printed by the tool for a source printed beside it.
   overwritten before the return (Gap R.290's family), `def twice(): return half() + half()` (Gap R.331's
   return-kind registration), and the module-wide float table (Gap R.339) — each with its own row, its own
   sentence, and a test that fails when it closes.
+
+## ADR 0374 — a conditional expression runs the arm its test chose (Gap R.340, 2026-10-18)
+
+- **A door nothing calls is a hypothesis, not a change.** This cycle inherited `pkg/lang/ternary_arms.go`
+  already written — `ternaryBranch`, the gate, the silence list, four tables of tests, an ADR — and
+  `go build ./...` green, because a method nobody calls compiles as happily as one everybody calls. The
+  tell was that the new tests failed exactly as the defect predicts (`boom\n1\n`, `want "1\n"`): the two
+  lowerings that answer a ternary, `ternaryI32` and `ternaryDouble`, still lowered both arms beside the test
+  and folded the pair into one `select`. Before believing any file that arrives already written, ask which
+  call site reaches it: `grep -rn ternaryBranch pkg/lang` answered in one second what an hour of reading the
+  door could not.
+- **A `select` is the bug whenever an arm is a program.** Both operands of a `select` are *arguments*, so the
+  run time executed both arms to answer one of them. `print(1 if x > 0 else boom())` printed `boom`,
+  `print(1 if x > 0 else 1 // 0)` raised from the arm the test had already rejected, and — the face that
+  turned a wrong answer into a compiler bug — `def fact(n): return 1 if n <= 1 else n * fact(n - 1)` never
+  returned, because the recursive call sat unconditionally in the block with the test: the base case was a
+  value and not a stop, the root stack filled, and the harness reported a dead artifact at **exit 2**. The
+  fix is not new machinery — it is ADR 0275's `logicSkeleton` for the construct that has an arm on each side
+  of the test.
+- **The gate's default has to be the expensive direction, because "has an effect" is not a node type here.**
+  The first cut of the gate asked "is the arm a call", and that is the gate that would have shipped the
+  `1 // 0` program: a division raises with no call in sight, and so do `xs[9]`, `d["k"]`, an ordering of two
+  kinds, a container literal's allocation, a comprehension's loop. So the list is inverted — an arm may be
+  folded only when it is provably a value and nothing else (a literal, a name the checker proves written,
+  `+ - * & | ^ << >>` and the six orderings over literals of one domain, `not`/unary minus of a literal) —
+  and everything else costs five labels and a `phi`. ADR 0273's rule kept the fold where it is free: the
+  pure-pair `select` is pinned in *both* directions, present in one test and `tern.merge` forbidden in it.
+- **An `UnboundLocalError` is an effect, and asking the written-slot question twice asks it wrongly.**
+  `if flag:` / `y = 7` / `return (1 if flag else y) + 0` raised for a name the taken arm never mentions,
+  because the ADR 0228 flag test is emitted where the read is lowered and a `select`'s operands all dominate
+  its test. `readMayTrap` reads `boundFlags`/`boundSlots` — the same tables `checkBound` consults — rather
+  than keeping a second opinion about which reads can trap (ADR 0273 again: one table, one answer).
+- **A `phi` needs two things a `select` never did.** Its incoming block must be a real predecessor, and an
+  arm whose lowering contains a call does not end where the door left it: the call road closes with an
+  `@exn_flag` test that branches to the enclosing function's raise-exit or to a fresh continuation block.
+  The one-instruction forwarding blocks (`tern.thenfwd`, `tern.elsefwd`) solve both at once, and they are
+  what make a trap in a rejected arm impossible instead of merely unobserved — the raise unwinds with the
+  frames the arm's own call pushed, so `rt_die` still prints `in boom` for the arm that really ran.
+- **A conformance program is a lie detector that also fires on your neighbours.** `programs/ternary_arms.gy`
+  failed the matrix with `aot=""`: `def scaled(n): return 0.0 if n == 0 else 1.5 + scaled(n - 1)` written
+  above `def fact(n): return 1 if n <= 1 else n * fact(n - 1)` made `fact`'s arms "disagree on a word",
+  because the two bodies share a parameter NAME and `g.floatVars` is one map for the whole module — the
+  measurement **Gap R.339** already owns. The honest options were the program's spelling or the ledger, and I
+  took the program's: each function now spells its own parameter (`step`, `count`, `value`), the reason is
+  written in the program's header comment and in the ADR, and no expectation was edited to make `fact` look
+  right. Reordering the same two functions on a pre-change build reproduced it, which is how I know the row
+  it belongs to is R.339 and not this one.
+- **The branch does not rescue a container arm, and saying so is part of landing it.**
+  `[1, 2] if c > 0 else [3]` still reaches `llc` as `phi i32 [ @.lst1, %tern.thenfwd ], [ @.lst2,
+  %tern.elsefwd ]` — the same literal-global-in-value-position operand Gap R.128 has pinned since it was
+  filed, now arriving through a `phi` instead of a `select`. Same probe, same exit 2, same owner (L11.1's
+  tagged handle); the probe was not re-pinned, because nothing about its answer changed.
+- **Differential-build the refusal you add.** A new refusal sentence can turn a program that compiles today
+  into exit 1, so each table was run through a `git worktree` build of `HEAD` beside the working tree before
+  anything was believed about which shapes changed answer. That is also how the shared-name `fact`/`scaled`
+  refusal was proved pre-existing rather than a regression from this door.
+- **The record leg had nothing to check — again — and `tools/recmerge` is the only way to give it something.**
+  None of the 34 untaken-arm/recursion/trap programs was in `pkg/lang/testdata/interpreter-golden.json`;
+  `goldenStdoutIs`/`goldenRunError` fail on a *missing* record, so the tests were red until the recorder ran,
+  and it refuses an entry the compiled leg will not agree to (record: **7892**). Four of the 34 are trap
+  rows: the entry carries CPython's class and sentence, which is what makes "the branch swallowed the raise"
+  a failing case rather than a passing one.
+- **Every count in the docs is the artifact's, and five guards say so.** Adding 34 sources, one ADR and one
+  conformance program moved `AGENTS.md`, `docs/operations.md`, and the Snapshot's record / ADR / program /
+  matrix / oracle / queue rows; `golden_artifact_counts_test.go`, `docs_artifact_counts_test.go` and
+  `roadmap_snapshot_test.go` failed until each cell matched the file, which is the cheapest possible price
+  for a table that says "measured, not remembered".
