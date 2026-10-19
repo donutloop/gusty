@@ -60,6 +60,22 @@ func (g *irGen) callBuiltins(b *strings.Builder, c *Call, fnName string) (string
 		// the moment of the call; this backend decides at the compile door, and says so with the half
 		// it is missing rather than the word "unsupported" alone (ADR 0166's vocabulary, and the
 		// tagged value word of roadmap L11.1 is what would let the question be asked at run time).
-		return "", fmt.Errorf("codegen: %q is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)", fnName)
+		//
+		// The one thing this road cannot know for itself is whether a rewrite was ever on the table for
+		// this call. The defunctionalisation pass is all-or-nothing (ADR 0345): when it could not prove
+		// one shape it hands the WHOLE program back, and the call it was meant to build lands here, where
+		// the only thing visible is a name with no `define` behind it. The pass knew more — which name, and
+		// why the word had no way to travel — and said it in its own account, which until now the terminal
+		// never showed (roadmap L11.7 · Gap R.337, ADR 0379). So the pass's sentence is QUOTED beside this
+		// one, byte for byte as `gustyc --callables <src>` prints it in `refused`, under a label that says
+		// who is speaking: an agent reading `--json` sees the two accounts of one refusal agree, and a
+		// reader sees which roadmap row owns the missing half. A program the pass never spoke about — one
+		// it had no work for at all — keeps the sentence below byte for byte, which is what the row that
+		// filed this defect demanded.
+		msg := fmt.Sprintf("codegen: %q is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)", fnName)
+		if g.callablePassWord != "" {
+			msg += fmt.Sprintf(" — the defunctionalisation pass (roadmap L11.7, ADR 0345) refused to rewrite this program before this call was ever reached, and said: %s — the same account prints beside `gustyc --callables <src>` (roadmap Gap R.337)", g.callablePassWord)
+		}
+		return "", fmt.Errorf("%s", msg)
 	}
 }

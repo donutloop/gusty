@@ -3252,7 +3252,10 @@ reading a `def`'d name; what it
 changed is that a function the program *calls* no longer needs a word to travel in. A clone reports the name the
 program wrote — a traceback and `--debug-info` say `twice`, and a hoisted `lambda` says `<lambda>`, the
 reference's own word for it. `gustyc --callables <src>` prints the pass's own account of a source (what it
-specialised, how many self-calls it answered, and the shape it declined). A **`lambda`'s parameter list is spelled the same way a `def`'s
+specialised, how many self-calls it answered, and the shape it declined) — and when the call that account declined
+over is the call the emitter cannot name, the refusal QUOTES that sentence, under a label that says who is speaking
+(**ADR 0379**, roadmap Gap R.337). A program the pass never spoke about — `t = 1` / `print(t())`, whose only problem
+is a name that was never a function — gets the plain sentence, with nothing appended to it. A **`lambda`'s parameter list is spelled the same way a `def`'s
 is** — `f = lambda x, y=1: x + y` / `print(f(1))` is `2`, and the call may omit `y`, supply it positionally, or
 name it (`f(1, y=9)` is `10`) — since **ADR 0352** closed Gap R.263, which had been a parse error. The default
 is an ordinary expression, so a call (`y=two()`), a module name (`k=STEP`), a conditional and a value with a

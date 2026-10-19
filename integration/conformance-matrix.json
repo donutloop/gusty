@@ -5141,7 +5141,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)",
+      "aot_error": "codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166) — the defunctionalisation pass (roadmap L11.7, ADR 0345) refused to rewrite this program before this call was ever reached, and said: defunctionalization declines: the rewrite was withdrawn: the program it produced still used a function as a value (roadmap L11.7, ADR 0345) — the same account prints beside `gustyc --callables \u003csrc\u003e` (roadmap Gap R.337)",
       "python_ok": true,
       "python_stdout": "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n",
       "aot_matches_python": false,
@@ -5155,7 +5155,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
+        "compiled leg failed: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166) — the defunctionalisation pass (roadmap L11.7, ADR 0345) refused to rewrite this program before this call was ever reached, and said: defunctionalization declines: the rewrite was withdrawn: the program it produced still used a function as a value (roadmap L11.7, ADR 0345) — the same account prints beside `gustyc --callables \u003csrc\u003e` (roadmap Gap R.337)"
       ]
     },
     {

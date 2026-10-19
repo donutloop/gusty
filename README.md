@@ -456,7 +456,13 @@ answers from the *record* when the record holds the source, so four probes passe
 anything; and a hoisted lambda reported its binding as its name until a CLI row that had been passing by accident
 caught `too many arguments for g` where CPython says `<lambda>`. `gustyc --callables <src>` prints the pass's own
 account — clones, hoisted lambdas, minted symbols, and the shape it declined, with the row that owns it — and the
-seven shapes still refused each got a row: **Gap R.263** (a `lambda` with a default parameter never reaches the
+terminal now quotes that account where it matters: when the pass withdrew a rewrite and the emitter is left refusing
+the call the rewrite would have built, the refusal carries the pass's sentence verbatim, under a label that says who
+is speaking, so `def use(seed):` / `return apply1(lambda x: x + base, seed)` tells the reader `an entry lambda reads
+"base" from the frame its application is written in … Gap R.336` rather than pointing them at the memory-model row
+that owns nothing in the program — while a program the pass never spoke about keeps the old sentence byte for byte,
+and `--json` still classifies the longer message as `lower.unsupported.indirect-call` (**ADR 0379**, **Gap R.337**).
+The seven shapes still refused each got a row: **Gap R.263** (a `lambda` with a default parameter never reaches the
 pass because the parser refuses it), **R.264** (a hook lambda whose body asks a door the call site cannot answer),
 **R.265** (a `lambda` that calls its own parameter, and a `lambda` inside a `lambda` — closed since by **ADR 0370**),
 **R.266** (a function a

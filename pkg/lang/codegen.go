@@ -50,8 +50,10 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// — the container-answer scan, the text and float return scans, the pair road's arity — are whole-program
 	// reads of this same tree, and a rewrite that arrived after them would be a second opinion about a
 	// program they had already answered. A program the pass cannot see through is handed back untouched,
-	// with the refusal it always had.
-	prog = defunctionalizeCallables(prog)
+	// with the refusal it always had — and with what the pass said while refusing it, which is the half the
+	// emitter cannot work out for itself (roadmap Gap R.337, ADR 0379; the sentence rides to the emitter as
+	// a value, beside the program it describes, because ADR 0343 forbids the package global this used to be).
+	prog, callableSaid := defunctionalizeCallablesTelling(prog)
 	imports, err := resolveImports(prog, moduleSearchFor(opts))
 	if err != nil {
 		return "", nil, err
@@ -90,6 +92,11 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		boolVars:    map[string]bool{},
 		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, calleeBoolVars: verdict.of, strFuncs: strFuncTable, strMethodFuncs: strMethodTable, methodCensus: methodCensus(prog, verdict.kinds), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	// What the defunctionalisation pass had to say about THIS program, taken from the same call that
+	// produced it: "" for a program the pass rewrote, and for one it found it had no work for at all.
+	// The door that refuses a call with no `define` behind it is the one that reads it, because that is
+	// the call the rewrite would have built (roadmap L11.7 · Gap R.337, ADR 0379).
+	g.callablePassWord = callableSaid
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
@@ -797,9 +804,16 @@ type irGen struct {
 	// gcReport is this module's own copy of the collector self-report switch, taken from the run's options
 	// (or the process default, for a caller that has no options). Reading the package switch from three
 	// places during emission made the answer depend on what some other compile had set (ADR 0343).
-	gcReport   bool
-	globals    strings.Builder
-	strGlobals strings.Builder // string constants, emitted at top of IR
+	gcReport bool
+	// callablePassWord is the defunctionalisation pass's own sentence about the program being lowered,
+	// carried in from the call in GenerateIRReport that produced the program beside it — "" unless the
+	// pass had a shape it wanted to build and could not prove. It is per-module state, not a package
+	// variable, for ADR 0343's reason: two compiles in flight must not answer each other's refusals.
+	// The one door that reads it is `callBuiltins`, refusing a call no `define` stands behind — the call
+	// the withdrawn rewrite would have built (roadmap L11.7 · Gap R.337, ADR 0379).
+	callablePassWord string
+	globals          strings.Builder
+	strGlobals       strings.Builder // string constants, emitted at top of IR
 	// lambdaDefines holds the `define`s the lambda road minted. They cannot join `g.globals` as they are
 	// finished: a method body and a closure body are themselves being written into that stream, so a
 	// lambda applied inside one — the shape `(lambda y: y + 1)(x)` written in a method — landed in the

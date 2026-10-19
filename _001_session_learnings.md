@@ -12981,3 +12981,54 @@ printed by the tool for a source printed beside it.
   module, exit 2, ADR 0166's code for a compiler bug). Both measured identical before and after this
   change; `allocd` was deliberately NOT folded into the new helper, because bundling it would have made
   the commit two rules and hidden which one a green test was proving.
+
+## ADR 0379 — the pass's decline is quoted beside the call it refused (L11.7 · Gap R.337, 2026-10-19)
+
+- **A correct rewrite rule can be a lossy diagnostic, and the loss is invisible to every test that
+  only checks the answer.** `defunctionalizeCallables` handing back the untouched program is ADR 0345's
+  all-or-nothing rule and exactly right; the fact that the sentence explaining WHY never reached the
+  terminal was invisible to 40+ refusal rows that each asserted `strings.Contains(msg, want)` — the
+  generic sentence was in the message, so every row was green while the reader was sent to read the
+  wrong ADR (`L11.1`, which owns nothing in a program whose only problem is an ENTRY reading its
+  caller's frame). The row that knew the answer (`Gap R.336`) was named only inside `--callables`, which
+  nobody consults from a terminal. **Lesson kept:** when a refusal is "correct", ask what the reader
+  learns from it, not only whether the row's substring is present.
+- **Pin the absence, or the append is unconditional.** The first patch appended the decline whenever
+  the pass had spoken, and every new case passed. The row's own Definition of done contains the second
+  half — *a program the pass never spoke about keeps the generic sentence byte for byte* — and writing
+  that case is what found the bug in the fix: the pass's "no function calls its own parameter, …"
+  decline is true of EVERY first-order program, including `t = 1 / print(t())`, so a quotation stamped
+  on that refusal would talk about a pass that had nothing to say while destroying a sentence agents
+  match on. The answer was a field (`noWork` on `*callableDecline`), not a prose comparison — a
+  decline that is a fact about the pass must not be classified by string equality with the pass's own
+  wording, which any edit to that wording would silently reclassify.
+- **Two faces of one compile need one owner for a sentence.** `--callables` had
+  "the rewrite was withdrawn: …" as a literal inside the reporter; the terminal needed the same words.
+  Pulling them into `callableRewriteWithdrawn()` — one function, both callers — is what lets the test
+  assert `strings.Contains(refusal, account.refused[0])` byte for byte instead of hoping. The same rule
+  covers the plan-time decline: `defunctionalizeCallablesTelling` returns `err.Error()`, the very method
+  the account prints, so the two cannot drift even though they are produced in different places.
+- **The quotation must not move the capability code.** ADR 0346's classifier matches markers and takes
+  the longest, so appending a sentence is exactly how `lower.unsupported.indirect-call` can silently
+  become some other row's code — an agent's branch stops firing and nothing goes red. Every row of both
+  new files therefore asserts the code for the LONGER message, and the CLI file asserts it out of the
+  `--json` payload rather than the library. A quotation is not a new shape; the tests are what make that
+  a fact rather than an intention.
+- **The all-or-nothing pass has two ways back to the untouched tree, and only one had a sentence.** The
+  plan-time decline (`planDefunctionalization` returns `*callableDecline`) and the post-write invariant
+  (`callableNoFunctionValuesLeft` fails, `applyDefunctionalization` returns `prog, nil`) are different
+  failures; the second was reported only by a string literal in the JSON reporter. `writeDefunctionalization`
+  was extracted so both entry points share the writing, and the withdrawal is now a decline in the same
+  shape — which is also the reason the table for "what the pass hands back" has four rows and not two.
+- **Byte-for-byte means written out, not imported from the road.** The control rows compare against a
+  sentence spelled out in the test file, so editing `callBuiltins`' message fails a case. A helper that
+  rebuilt the expectation from the same format string would have made the guard tautological.
+- **The record leg needs the same discipline as the fix.** Two of the four rewritten regression programs
+  had never been recorded; `tools/recmerge` added them (7947 → 7949) with the compiled leg
+  cross-checked, and the record-leg test fails if NO row of its table matches a record entry — a table
+  that silently skips everything is a leg that stopped walking.
+- **Worktree discipline held.** This cycle ran in its own `git worktree` off `HEAD`
+  (`gusty-round3`, branch `cycle/round3-head`) with explicit paths staged and never `-A`, because a
+  second agent is mid-flight in `../gusty-r339`. `push` remains impossible from this sandbox:
+  `sign_and_send_pubkey: signing failed for ED25519 … agent refused operation`, and `gh` is unauthenticated
+  — so the commits stay local and the branch is the artifact.

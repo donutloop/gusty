@@ -821,7 +821,14 @@ type callablePlan struct {
 
 // callableDeclineError is returned in place of a plan; the program is left alone, which is the
 // pass's only safe answer and the reason a decline needs no ceremony.
-type callableDecline struct{ why string }
+type callableDecline struct {
+	why string
+	// noWork marks the one answer that is not about the program in front of the reader: the pass had
+	// nothing to do here, as it has nothing to do for every first-order program in the corpus. It is a
+	// fact about the pass, not about the call the emitter is refusing, so it is the one decline that
+	// must not be pasted onto a refusal sentence (roadmap Gap R.337, ADR 0379).
+	noWork bool
+}
 
 func (e *callableDecline) Error() string {
 	// The citation rides on the sentence because the account an agent reads (`gustyc --callables`, the
@@ -833,6 +840,33 @@ func (e *callableDecline) Error() string {
 
 func callableDeclinef(format string, args ...any) error {
 	return &callableDecline{why: fmt.Sprintf(format, args...)}
+}
+
+// callableRewriteWithdrawn is the account of a plan the pass made and then could not carry out — the
+// second way the program comes back untouched, beside a refusal to plan one at all. It is a sentence
+// in the decline's own shape because the two readers of it have to see one sentence: `gustyc
+// --callables` prints it as the document's `refused`, and the emitter's uncallable-callable refusal
+// appends it byte for byte (roadmap L11.7 · Gap R.337, ADR 0379).
+func callableRewriteWithdrawn() error {
+	return callableDeclinef("the rewrite was withdrawn: the program it produced still used a function as a value")
+}
+
+// callableDeclineIsNoWork answers the one question a reader of a refusal needs before repeating a
+// decline: did the pass have work to do and fail at it, or did it simply find nothing to rewrite?
+// "no function calls its own parameter, …" is true of every first-order program in the corpus —
+// including the ones whose only problem is a call to a name that was never a function — and pasting
+// it onto the emitter's refusal would say nothing about the program in front of the reader while
+// breaking the byte-for-byte sentence that refusal has had since ADR 0166. Only a decline that names
+// a shape the pass wanted to build and could not is worth appending (roadmap Gap R.337, ADR 0379).
+func callableDeclineIsNoWork(err error) bool {
+	d, ok := err.(*callableDecline)
+	return ok && d != nil && d.noWork
+}
+
+// callableNoWorkDecline is the pass's "nothing for me to do here" answer, named so the question
+// above can be asked without comparing prose at the call sites.
+func callableNoWorkDecline() error {
+	return &callableDecline{noWork: true, why: "no function calls its own parameter, no name aliases one, no lambda argument needs a declaration, and no hook's key names a callable under another symbol"}
 }
 
 // planDefunctionalization reads a program and decides its rewrite, or declines. It mutates nothing.
@@ -1194,7 +1228,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if why := callableMutualHigherOrderDecline(r); why != "" {
 			return nil, callableDeclinef("%s", why)
 		}
-		return nil, &callableDecline{why: "no function calls its own parameter, no name aliases one, no lambda argument needs a declaration, and no hook's key names a callable under another symbol"}
+		return nil, callableNoWorkDecline()
 	}
 
 	// The call sites: each is read against the definition it targets, and each called parameter is
@@ -2288,6 +2322,33 @@ func defunctionalizeCallables(prog *Program) *Program {
 	return out
 }
 
+// defunctionalizeCallablesTelling runs the pass and hands back, beside the program the emitter is to
+// lower, the sentence the pass has to say about THAT program: "" when it rewrote the tree — there is
+// nothing to explain about a rewrite — and when its only answer was that the program held no work for
+// it. Everything else is a shape the pass wanted to build, could not prove, and withdrew from; the
+// emitter is about to refuse a call that rewrite would have built, and what the pass knew at that
+// moment is more than the emitter can know on its own (roadmap L11.7 · Gap R.337, ADR 0379).
+//
+// The sentence travels as a VALUE, next to the program it describes, for the same reason ADR 0343
+// made the toolchain and the name-readers values: a package global holding it would let one compile
+// answer another's refusal, and the suite runs programs beside each other.
+func defunctionalizeCallablesTelling(prog *Program) (*Program, string) {
+	plan, err := planDefunctionalization(prog)
+	if err != nil {
+		if callableDeclineIsNoWork(err) {
+			return prog, ""
+		}
+		return prog, err.Error()
+	}
+	out, rep := writeDefunctionalization(prog, plan)
+	if rep == nil {
+		// The plan was made and the rewrite pulled back. The pass's own account calls this the
+		// withdrawal it is, in the same words `--callables` prints, so one run cannot tell two stories.
+		return out, callableRewriteWithdrawn().Error()
+	}
+	return out, ""
+}
+
 // applyDefunctionalization returns the program codegen should see, plus the pass's account of what
 // it did. A decline returns the caller's program unchanged, and a nil report: the pass's absence is
 // always representable, which is what makes it safe to run unconditionally.
@@ -2296,6 +2357,13 @@ func applyDefunctionalization(prog *Program) (*Program, *callableReport) {
 	if err != nil {
 		return prog, nil
 	}
+	return writeDefunctionalization(prog, plan)
+}
+
+// writeDefunctionalization performs the plan the reading produced. Every audit below that fails
+// returns the CALLER's program and a nil report rather than a half-rewritten tree, which is why the
+// pass can run on a program it has never seen before and cost nothing when it is wrong about it.
+func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *callableReport) {
 	fresh := copyProgramAST(prog)
 	if fresh == nil {
 		return prog, nil
@@ -2946,7 +3014,9 @@ func CallablesJSON(src string) (string, error) {
 	sort.Strings(doc.Symbols)
 	_, rep := applyDefunctionalization(prog)
 	if rep == nil {
-		doc.Refused = append(doc.Refused, "the rewrite was withdrawn: the program it produced still used a function as a value")
+		// One sentence, one owner: the emitter's refusal appends exactly this text beside the call it
+		// could not build, so a reader who asks both in one run reads one story (Gap R.337, ADR 0379).
+		doc.Refused = append(doc.Refused, callableRewriteWithdrawn().Error())
 		return marshalCallableReport(doc)
 	}
 	rep.Symbols = doc.Symbols

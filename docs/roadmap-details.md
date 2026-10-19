@@ -14397,7 +14397,9 @@ assign it before use) — the reference reports the same error`, which is a sent
 assigned on the line above.
 
 The pass is not the defect: `--callables` says `rewritten: false` with `the rewrite was withdrawn: the program it
-produced still used a function as a value`, which is the correct verdict. The defect is what happens next — the
+produced still used a function as a value` (wrapped in the decline's own 「defunctionalization declines: … (roadmap
+L11.7, ADR 0345)」 frame since **ADR 0379**, so that the terminal can quote the same bytes beside the call it refused),
+which is the correct verdict. The defect is what happens next — the
 emitter compiles the untouched `neg = lambda v: 0 - v` by hoisting the lambda into a declaration and never binding
 the name, so the read has nothing behind it and the ordinary undefined-name door speaks for a shape the capability
 table already has a code for. Measured 2026-10-18 at the pre-0369 binary as well, so it is not this cycle's doing;
@@ -14753,7 +14755,7 @@ case and it is in the table on purpose: the body side (`shift`) is R.334's and a
 row's, and the pass is all-or-nothing (ADR 0345), so one declined argument hands the WHOLE program to the ordinary road
 — which is why the program's refusal is about `fn` at all.
 
-### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (OPEN)
+### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (closed by ADR 0379)
 
 ```console
 $ gustyc --callables "$use_b_program"
@@ -14773,6 +14775,36 @@ emitter cannot build is the one the pass declined over. It is filed rather than 
 no decision, and because ADR 0372's tables had to be written anyway: the answer tables pin what the compiled leg
 PRINTS, the account tables pin what the pass SAYS, and the pair is the honest record until this row closes and the
 terminal carries the second sentence too.
+
+**Closed 2026-10-19 by ADR 0379.** The plumbing is three lines wide and one value deep. `defunctionalizeCallablesTelling`
+runs the reading and the writing that `applyDefunctionalization` had always run and returns, beside the program, the
+sentence the pass would tell about it — `""` when it rewrote the tree (there is nothing to explain about a rewrite) and
+`""` when its only answer was the one it gives every first-order program in the corpus, which is why `t = 1` /
+`print(t())` still gets ADR 0166's sentence with nothing appended to it. That second case is the one that makes this a
+test and not a print: the 「nothing for me to do」 decline now carries a `noWork` mark on the `*callableDecline` itself,
+so the question 「did the pass have work it wanted and fail?」 is asked of a field rather than decided by comparing prose.
+`GenerateIRReport` copies the sentence onto that module's own `irGen.callablePassWord` — per-module state, not a package
+variable, because the suite runs programs beside each other and a global there would let one compile answer another's
+refusal; the case that pins it compiles a declined program and a no-work program alternately, in both orders, and asks
+each message to stay its own. `callBuiltins` then QUOTES the sentence under a label that says who is speaking, in the
+same bytes `--callables` prints in `refused` — the withdrawal (`the rewrite was withdrawn: …`), the second way a program
+comes back untouched, became one function with one wording so both faces could not drift apart. Measured on the shipped
+tool, both compiled roads:
+
+```console
+$ gustyc --eval use.gy
+gustyc: jit: codegen: "fn" is called but is not a function this backend can build a call to: … (roadmap L11.1, ADR 0166)
+  — the defunctionalisation pass (roadmap L11.7, ADR 0345) refused to rewrite this program before this call was ever
+    reached, and said: defunctionalization declines: an entry lambda reads "base" from the frame its application is
+    written in, and an entry is a bare symbol: … (Gap R.336) (roadmap L11.7, ADR 0345)
+  — the same account prints beside `gustyc --callables <src>` (roadmap Gap R.337)
+```
+
+at exit **1**, with `--json` classifying the longer message as `lower.unsupported.indirect-call` exactly as the short one
+was — the quotation is a quotation, not a new shape, and the classifier's most-specific-marker rule is pinned against it
+for every row of both new files (ADR 0346's failure mode is an agent's branch that stops firing silently). What the row
+demanded, and what the two files answer, is the trio: the citation reaches the terminal, the un-declined program keeps
+its sentence byte for byte, and the account and the terminal agree in ONE run.
 
 ### Gap R.335 — a higher-order recursion that omits its own defaulted parameter is not a recursion the clone will follow (OPEN)
 

@@ -1,5 +1,14 @@
 {
  "entries": {
+"def apply1(fn, v):\n    return fn(v)\n\nprint(apply1(lambda x: x + 1, 41))\n": {
+    "stdout": "42\n",
+    "hasStdout": true
+   },
+
+"def fact(n, f):\n    return 1 if n == 0 else f(n) + fact(n - 1, f)\n\nprint(fact(4, lambda v: v))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
 "class C:\n    def m(self):\n        ys = [1, 2]\n        return len(ys)\n\ndef use():\n    ys = [3, 4, 5]\n    return C().m() + len(ys)\n\nprint(use())\n": {
     "stdout": "5\n",
     "hasStdout": true
