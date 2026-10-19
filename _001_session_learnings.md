@@ -13032,3 +13032,50 @@ printed by the tool for a source printed beside it.
   second agent is mid-flight in `../gusty-r339`. `push` remains impossible from this sandbox:
   `sign_and_send_pubkey: signing failed for ED25519 … agent refused operation`, and `gh` is unauthenticated
   — so the commits stay local and the branch is the artifact.
+
+## ADR 0380 — a capture travels one step: the frame that owns a name answers for the one below it (L11.7 · Gap R.330, 2026-10-19)
+
+- **A gate is a question, and a question can be aimed at the wrong table.** The refusal read like an honest door —
+  「a capture crosses as one i32 word, which cannot say what the value is… a value no call in the program can be
+  asked about」 — and it was a true statement about the *scan* and a false one about the *value*. A capture parameter
+  is a position the source never wrote: `lambdaCallArgs` appends it to a copy of the call at emission time, so
+  `callArgAt` can never find it. Two frames deep worked only by accident (the forwarded name sat beside a position the
+  outer application filled). **Lesson kept:** when a gate says "nothing can tell me", ask whether the gate is asking a
+  position that exists in its own data model, or one it invented downstream. The fix was not to weaken the gate — it was
+  to ask the frame that SUPPLIES the value, which had answered the question all along.
+- **Forward a verdict, never a permission.** The tempting one-liner was "a forwarded capture is a parameter, and
+  parameters are the caller's business — skip the check". Because the record I keep is the *verdict* the supplying frame
+  reached (`kind`, `carries`) rather than a boolean "allowed", a text/float/container at the bottom of a chain is refused
+  exactly as it is one frame up. Three new refusal rows exist for that reason alone, and they are the rows that make the
+  "no new wrong answers at exit 0" claim checkable rather than rhetorical.
+- **A scan that reports through a binder is a bug waiting for the door that reads it.** `scanFreeIn`'s `*Lambda` arm
+  handed the walk to `lambdaFreeNames`, which seeds binders with the NESTED lambda's parameters only — so the enclosing
+  body reported a name it binds itself as free in itself. Nothing noticed for as long as the road existed because the
+  only consumer was a gate that refused first. The symptom, once the gate was fixed, was perfect: `multiple values for
+  argument "y"`, a CPython sentence spoken by a compiler that had minted `%p0` and `%p2` both named `y`. **Lesson
+  kept:** when fixing a gate, expect the door behind it to speak; the gate's silence is not evidence about the road.
+- **The reference's own error messages are a compiler's best free test oracle.** Both defects this cycle found announced
+  themselves with CPython sentences — `multiple values for argument` (duplicate forwarded parameter) and `undefined
+  name` (filed as Gap R.348). A refusal whose wording belongs to the language is a signal that the compiler is
+  describing its own bookkeeping in the program's vocabulary.
+- **Pin the pre-existing control beside the newly-reachable wrong answer.** Unlocking the gate made one program compile
+  that prints `0` where the reference prints `[111, 111]` — a container answered by the outermost of three lambdas. The
+  one-frame spelling (`print((lambda x: [x for q in [1, 2]])(9))`) prints `0` on the pre-ADR build too, so both are filed
+  (Gap R.331's answer-kind door) with the control in the same table: the row fails in either direction, and the pair is
+  what proves the defect is the answer door's rather than this cycle's. It is not on the record — `tools/recmerge` asks
+  the reference and cross-checks the compiled leg, and a source whose legs disagree has no answer to write.
+- **Write the IR assertion in the emitted language, not in the AST's.** The claim "a capture travels one step" is a fact
+  about which registers an inner `call` reads: `call i32 @gy_lambda_2(i32 100, i32 %p1, i32 %p0)` inside
+  `define i32 @gy_lambda_1(i32 %p0, i32 %p1)`. Asserting the headers and that every argument register is within the
+  enclosing `define`'s arity is checkable without a second model of what forwarding should mean; asserting "the outer
+  frame's value reaches the inner body" would have been a claim about the AST that any of three wrong IRs could satisfy.
+- **Per-compile state is the rule, again.** The verdict table is keyed by `*FuncDef` and allocated beside
+  `g.lambdaOrigin`, because this repository has already removed the package-level version of exactly this shape twice
+  (ADR 0343's Gap R.259/R.260). A memo that survives a compile is a memo two compiles can lose an argument with.
+- **The row's Definition of done is a test instruction.** Gap R.330 said "the row moves to the answer table with `111`
+  as the expectation and the refusal case is DELETED"; doing it in that order (delete the pin, then move the program) is
+  what keeps a filed row from quietly becoming a permanent second truth about the language.
+- **Worktree discipline held.** This cycle ran in its own `git worktree` off `HEAD` (`gusty-round4`, branch
+  `cycle/round4-head`) with explicit paths staged and never `-A`, because two other worktrees (`gusty-r339`,
+  `gusty-round3`) carry another agent's in-flight edits. `push` remains impossible from this sandbox
+  (`sign_and_send_pubkey: … agent refused operation`, `gh` unauthenticated), so the branch is the artifact.

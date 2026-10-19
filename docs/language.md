@@ -5319,12 +5319,39 @@ parameters, in the order the body calls them, and one capture parameter per name
 is asked with the closure road's own reader, so the two cannot disagree about what a body is free in; a name the
 MODULE binds is not in it (the module-global road owns those reads), a predeclared name is a door rather than a value,
 and a name the enclosing frame does not itself bind is declined rather than reached — that one lives two frames up,
-which is the nested-`def` lift's territory (**ADR 0245**, Gap R.330). The application then fills each capture with the
+which is the nested-`def` lift's territory (**ADR 0245**, **Gap R.347**). The application then fills each capture with the
 caller's OWN reading of that name — `call i32 @gy_…$callable$…(i32 0, i32 %p0, i32 %p1)` for `def h(a, b): return
 (lambda fn: fn(a) + b)(lambda z: z * 2)` — never a copy of the value, which is what keeps a captured local live across
 the call and keeps two applications of one body two clones rather than two constants. A capture parameter is not a
 position an application may name: the arity rules above read the parameters the SOURCE wrote. `--callables` counts the
 union as `capture_parameters`, which is how a reader tells ADR 0370's self-contained clone from this one.
+
+A `lambda` applied inside a `lambda` that is itself applied reads a frame the program never names, and a capture
+travels **one step per frame** (**ADR 0380**, Gap R.330):
+
+```python
+print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))     # 111
+print((lambda a: (lambda b: (lambda c: (lambda d: a + b + c + d)(4))(3))(2))(1))   # 10
+
+def threeDeep():
+    x = 1
+    return (lambda y: (lambda z: x + y + z)(100))(10)                # 111 — the owner is a `def` local
+```
+
+Each generated `define` carries its OWN forwarded tail — the middle frame spells `y` and gains `x`, the deepest spells
+`z` and gains `x` and `y` — and each inner application is filled from the registers of the `define` it is written in:
+`call i32 @gy_lambda_2(i32 100, i32 %p1, i32 %p0)` inside `define i32 @gy_lambda_1(i32 %p0, i32 %p1)`. Two rules make
+that work, and both are questions about a frame rather than about a call site. A **free name** is what a body reads
+after the binders OF THAT BODY are subtracted, so a nested `lambda`'s reads are filtered against the parameter list of
+the frame being asked: the middle frame above gains `x` and NOT `y`, which it already spells, and a scan that asked
+the nested body in isolation would mint a second parameter of a name the frame binds itself (the reference's own
+`multiple values for argument 'y'`, which this backend refuses rather than answers). And a capture **asked of a
+forwarded name** is answered by the frame that SUPPLIES it — the verdict the supplying frame gave when it handed the
+value over, kept for the frame that received it — because a capture parameter is a position no application in the
+program spells, so the call-site scan that types an ordinary parameter has no argument to read there. The verdict is
+the supplying frame's own answer, which is why the deep road carries a refusal as faithfully as it carries an answer:
+the same chain whose outermost body hands a text, a float or a container to the frames below is still refused at
+exit 1, naming the kind and **Gap R.332** (**ADR 0273**: a door that cannot answer says so).
 
 What still refuses, in words that name the missing half and the row that owns it:
 
@@ -5336,7 +5363,7 @@ print((lambda f, y: f(y))(lambda x: x))           # a required parameter after a
 
 def outer(a):
     def inner(b):
-        return (lambda fn: fn(1) + a + b)(lambda z: z * 3)   # a capture TWO frames up — Gap R.330, ADR 0245's lift
+        return (lambda fn: fn(1) + a + b)(lambda z: z * 3)   # a capture TWO frames up, by a body that calls its parameter — Gap R.347, ADR 0245's lift
     return inner(2)
 print(outer(4))
 

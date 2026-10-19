@@ -95,9 +95,13 @@ gusty ships an indentation-based syntax covering:
   one capture parameter per free name, so `def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)` applied is `12`,
   `def g(v): return (lambda fn, n=3: fn(n) + v)(lambda a: a * 2)` is `11`, and
   `[(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]]` is `[4, 6, 8]` (**ADR 0372**, **Gap R.334**). A capture
-  whose value is not a number, a capture three frames up, the ENTRY of a higher-order `def` reading the caller's frame,
+  travels ONE STEP PER FRAME, so a `lambda` applied inside an applied `lambda` reads a name two lambdas up: each
+  generated `define` gains its own forwarded tail and each inner application is filled from the registers of the `define`
+  it sits in — `(lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1)` is `111`, four binding forms deep is `10`, a
+  `def` local owned three frames up is `111`, and a name the middle frame shadows is not forwarded at all (**ADR 0380**,
+  **Gap R.330**). A capture whose value is not a number, the ENTRY of a higher-order `def` reading the caller's frame,
   and an omitted slot whose default is not a function the compiler can name refuse in words instead of printing a word
-  whose kind nobody asked for (**Gap R.330**–**R.332**, **Gap R.336**).
+  whose kind nobody asked for (**Gap R.331**, **Gap R.332**, **Gap R.336**).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local

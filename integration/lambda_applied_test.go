@@ -66,6 +66,37 @@ var lambdaAppliedCLIPrograms = []struct{ name, src string }{
 		"print((lambda x: (lambda y: x + y)(1))(2))\n",
 	},
 	{
+		// roadmap L11.7 · Gap R.330 (ADR 0380): the name belongs to a frame TWO lambdas above. Each frame
+		// forwards it one step — the middle body already has `y` as a parameter and gains only `x` — and the
+		// deepest body reads both. Its refusal row below is DELETED, as that row's Definition of done says.
+		"a name two lambdas up, forwarded by the frame in between",
+		"print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))\n",
+	},
+	{
+		"four binding forms deep",
+		"print((lambda a: (lambda b: (lambda c: (lambda d: a + b + c + d)(4))(3))(2))(1))\n",
+	},
+	{
+		"a capture three frames deep whose owner is a def local",
+		"def f():\n    x = 1\n    return (lambda y: (lambda z: x + y + z)(100))(10)\n\nprint(f())\n",
+	},
+	{
+		// The middle frame SHADOWS the outer name: the reference reads the inner binding, and a capture road
+		// that forwarded the shadowed name would have minted a second parameter of the same spelling.
+		"a capture the middle frame shadows",
+		"print((lambda x: (lambda x: (lambda z: x + z)(1))(5))(99))\n",
+	},
+	{
+		// The owner is a `def` two frames up and the frames in between are lambdas: this is the shape the
+		// nested-`def` lift (ADR 0245) already carried for a `def`, and the lambda road now carries it too.
+		"a closure-captured name read by a body two lambdas deep",
+		"def add(a):\n    def inner(b):\n        return (lambda c: (lambda d: c + d + a + b)(1))(2)\n    return inner(10)\n\nprint(add(100))\n",
+	},
+	{
+		"a closure-captured name beside one the middle lambda binds",
+		"def outer():\n    total = 0\n    def bump(n):\n        return (lambda m: (lambda k: m + n + total + k)(1))(2)\n    return bump(5)\n\nprint(outer())\n",
+	},
+	{
 		"a lambda applied in a def that reads two of the enclosing frame's names",
 		"def outer():\n    a = 7\n    b = 1\n    def bump(n):\n        return (lambda m: m + a + b)(n)\n    return bump(4)\n\nprint(outer())\n",
 	},
@@ -169,9 +200,18 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"a bool",
 	},
 	{
-		"a capture three frames up, whose kind no call site states",
-		"print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))\n",
-		"L11.7",
+		// The capture is a CONTAINER three frames deep too: the word that would carry it is L11.1's, and the
+		// depth is not a reason to answer the print door with a heap handle (Gap R.332's rule, at depth).
+		"a container capture three frames up",
+		"def g():\n    b = [1, 2]\n    return (lambda y: (lambda z: len(b) + y + z)(100))(10)\n\nprint(g())\n",
+		"holds a container",
+	},
+	{
+		// The same depth with a TEXT: the forwarding carries the verdict the supplying frame gave, and that
+		// verdict was "a text" — which is a refusal, not a permission (Gap R.332).
+		"a text capture three frames up",
+		"def g():\n    t = \"hey\"\n    return (lambda y: (lambda z: t + str(y) + str(z))(100))(10)\n\nprint(g())\n",
+		"a text",
 	},
 	{
 		"a float-answering lambda applied inside a method",
@@ -200,9 +240,11 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"is called but is not a function",
 	},
 	{
-		// The capture reaches PAST the frame the application is written in, into the one that encloses it:
-		// the nested `def` lift (ADR 0245) owns that frame's names and does not compose with this pass yet
-		// (roadmap Gap R.330, and the half of Gap R.334 the lift still owes).
+		// The capture reaches PAST the frame the application is written in, into the one that encloses it, AND
+		// the body calls its own parameter: the nested `def` lift (ADR 0245) owns that frame's names and does not
+		// compose with the higher-order road (roadmap **Gap R.347**, the half of Gap R.334 the lift still owes).
+		// The READ-only twin — the same depth, a body that reads both names and calls nothing — answers since
+		// ADR 0380, two rows above.
 		"a capture two frames up, read by a body that calls its own parameter",
 		"def outer(a):\n    def inner(b):\n        return (lambda f: f(1) + a + b)(lambda z: z * 3)\n    return inner(2)\n\nprint(outer(4))\n",
 		"is called but is not a function",

@@ -134,6 +134,44 @@ func capturedNamePrograms() []struct{ name, src, want string } {
 		{"a lambda reads a local of the function it is applied in", "def outer(x):\n    y = x + 1\n    return (lambda z: z + y)(2)\n\nprint(outer(3))\n", "6\n"},
 		{"a lambda reads its own enclosing lambda's parameter", "print((lambda x: (lambda y: x + y)(1))(2))\n", "3\n"},
 		{"a lambda reads a value the frame bound two lines up", "def f(v):\n    t = v * 2\n    return (lambda k: k + t)(1)\n\nprint(f(3))\n", "7\n"},
+		{
+			// roadmap Gap R.330: the name belongs to a frame TWO lambdas above. Each frame forwards the
+			// name one step — the middle body has `y` as its own parameter and gains only `x` — so the
+			// deepest body reads both, and no frame reaches past the one that owns the name. These three
+			// rows are what that refusal was: it is DELETED, as that row's Definition of done requires.
+			"a name two lambdas up",
+			"print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))\n",
+			"111\n",
+		},
+		{
+			"a capture two lambdas up beside a name the middle frame binds itself",
+			"print((lambda a: (lambda b: (lambda c: (a + b) * c)(2))(3))(4))\n",
+			"14\n",
+		},
+		{
+			"four binding forms deep",
+			"print((lambda a: (lambda b: (lambda c: (lambda d: a + b + c + d)(4))(3))(2))(1))\n",
+			"10\n",
+		},
+		{
+			// The name is a LOCAL of a `def`, and every frame between that binding and the read forwards it.
+			"a capture three frames deep whose owner is a def local",
+			"def f():\n    x = 1\n    return (lambda y: (lambda z: x + y + z)(100))(10)\n\nprint(f())\n",
+			"111\n",
+		},
+		{
+			// A name the middle frame shadows is not the outer one: the reference reads the inner binding,
+			// and the capture road must not have forwarded the shadowed name into the deepest body.
+			"a capture two lambdas up that the middle frame shadows",
+			"print((lambda x: (lambda x: (lambda z: x + z)(1))(5))(99))\n",
+			"6\n",
+		},
+		{
+			// Two names, two different owners: `a` belongs to the outermost body, `b` to the middle one.
+			"two captures from two different frames, read by the deepest body",
+			"print((lambda a: (lambda b: (lambda c: a * 100 + b * 10 + c)(3))(2))(1))\n",
+			"123\n",
+		},
 		{"a lambda bound to a name reads the enclosing parameter", "def outer(v):\n    f = lambda x: x + v\n    return f(1)\n\nprint(outer(1))\n", "2\n"},
 		{"a lambda bound to a name reads the enclosing local", "def outer():\n    b = 42\n    f = lambda: b\n    return f()\n\nprint(outer())\n", "42\n"},
 		{"a lambda bound to a name reads the enclosing parameter twice", "def outer(v):\n    f = lambda: v * 2\n    return f()\n\nprint(outer(3))\n", "6\n"},
@@ -282,13 +320,6 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			want: "answers a float, and it is applied inside a closure",
 		},
 		{
-			// Three binding forms deep: the name belongs to a frame two lambdas above, and the
-			// capture road reads the frame the application is written in.
-			name: "a name two lambdas up",
-			src:  "print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))\n",
-			want: `reads "x" from the frame that encloses it`,
-		},
-		{
 			// An application that omits a parameter the body CALLS has to leave the function somewhere,
 			// and a number is not one: the entry tuple would carry "10" as the slot's function, which is
 			// the shape ADR 0166's value word is the answer to. The reference raises TypeError here
@@ -326,10 +357,11 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			want: "is called but is not a function this backend can build a call to",
 		},
 		{
-			// The capture reaches PAST the frame the application is written in. The nested-`def` lift (ADR 0245)
-			// owns that frame's names, and the L11.7 dependency note says the lift does not compose with this
-			// pass — the read of `a` two frames up stays the ordinary road's sentence (roadmap Gap R.330, and the
-			// half of Gap R.334 the nested-`def` lift still owes).
+			// The capture reaches PAST the frame the application is written in AND the body calls its own
+			// parameter, so the higher-order road needs the clone and the pass will not build one: the
+			// nested-`def` lift (ADR 0245) owns that frame's names and does not compose with the pass. A body that
+			// only READS at that depth has answered since ADR 0380; a body that both reads there and calls its
+			// parameter is the half of Gap R.334 the lift still owes (roadmap **Gap R.347**).
 			name: "a capture two frames up, read by a body that calls its own parameter",
 			src:  "def outer(a):\n    def inner(b):\n        return (lambda f: f(1) + a + b)(lambda z: z * 3)\n    return inner(2)\n\nprint(outer(4))\n",
 			want: "is called but is not a function",
@@ -361,6 +393,26 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			name: "an entry lambda that reads the frame its application is written in",
 			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
 			want: "is called but is not a function",
+		},
+		{
+			// The verdict a forwarding frame records is the SUPPLYING frame's own answer, so a kind the door
+			// cannot carry is refused at the bottom of the chain exactly as it is at the top: the deep road
+			// carries a verdict, it does not manufacture one (Gap R.332's rule, asked at depth).
+			name: "a container capture three frames up",
+			src:  "def g():\n    b = [1, 2]\n    return (lambda y: (lambda z: len(b) + y + z)(100))(10)\n\nprint(g())\n",
+			want: "holds a container",
+		},
+		{
+			name: "a text capture three frames up",
+			src:  "def g():\n    t = \"hey\"\n    return (lambda y: (lambda z: t + str(y) + str(z))(100))(10)\n\nprint(g())\n",
+			want: `holds a text`,
+		},
+		{
+			// The supplied value is a number by the time the deepest body reads it, but the frame that owns
+			// the name hands the chain a float: the refusal travels the same one step the value does.
+			name: "a float capture three frames up, handed to the chain by a call site",
+			src:  "print((lambda x: (lambda y: (lambda z: x + y + z)(100.0))(10))(1.5))\n",
+			want: `holds a float`,
 		},
 		{
 			// The same decline with the callee's parameter CALLED TWICE, so the clone would have to forward the
@@ -461,6 +513,29 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 			gap:   "Gap R.331",
 		},
 		{
+			// The CONTROL for the two rows below, and the reason neither is this cycle's disease: an applied
+			// `lambda` whose ANSWER is a container already printed the heap handle at the pre-ADR-0380 binary,
+			// with no capture deeper than one frame in sight. The answer door registers what a `def` hands back
+			// (ADR 0333, ADR 0368) and registers nothing for a `lambda`.
+			name:  "an applied lambda that answers a comprehension prints the handle (one frame deep: pre-existing)",
+			src:   "print((lambda x: [x for q in [1, 2]])(9))\n",
+			want:  "[9, 9]\n",
+			today: "0\n",
+			gap:   "Gap R.331",
+		},
+		{
+			// The same door, reached by the deep road this cycle opened: the deepest body answers a number and
+			// the OUTERMOST answers a list, so the forwarded captures all work — `%p1` and `%p0` reach
+			// `@gy_lambda_2` — and the program dies one instruction later, where an answer that is a container
+			// has no word. Pinned as the wrong answer it is (exit 0, no raise) rather than recorded: the record
+			// cannot hold a source whose two legs disagree.
+			name:  "a container answered by the outermost of three forwarding lambdas prints the handle",
+			src:   "print((lambda x: [(lambda y: (lambda z: x + y + z)(100))(10) for q in [1, 2]])(1))\n",
+			want:  "[111, 111]\n",
+			today: "0\n",
+			gap:   "Gap R.331",
+		},
+		{
 			// the control: the same body inside a `def` is refused in words, not answered wrongly
 			name:  "the same read inside a def is a refusal, not a wrong answer",
 			src:   "def f():\n    t = \"hey\"\n    return (lambda: t)()\n\nprint(f())\n",
@@ -508,6 +583,102 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 // The IR the rewrite owes: the application names a function, and no call is made
 // through a value.
 // ---------------------------------------------------------------------------
+
+// TestWhatADeepCaptureIsForwardedByTheFrameThatOwnsIt is the IR half of roadmap Gap R.330: a name owned by
+// a frame TWO lambdas up travels one step at a time. Each generated `define` therefore carries its own
+// forwarded tail — the middle body spells `y` and gains `x`, the deepest spells `z` and gains `x` and `y` —
+// and each inner application is filled from the registers of the `define` it is written in, which is what
+// "one step" means in the emitted text. The negative half matters as much as the positive: the middle frame
+// already has `y` as a parameter, so a free-name scan that asked a nested body in isolation would mint a
+// SECOND parameter of that spelling, and the application would fill the name twice (the reference's own
+// `multiple values for argument`, which `callUserFunc` refuses).
+func TestWhatADeepCaptureIsForwardedByTheFrameThatOwnsIt(t *testing.T) {
+	t.Parallel()
+	mod := compileSrc(t, "print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))\n")
+	mustVerifyWithLLC(t, mod)
+	for _, want := range []string{
+		"define i32 @gy_lambda_0(i32 %p0)",                   // the outer body: its own `x`, nothing forwarded
+		"define i32 @gy_lambda_1(i32 %p0, i32 %p1)",          // `y` spelled, `x` forwarded — `y` NOT forwarded
+		"define i32 @gy_lambda_2(i32 %p0, i32 %p1, i32 %p2)", // `z` spelled, `x` and `y` forwarded
+		"call i32 @gy_lambda_1(i32 10, i32 %p0)",             // the middle call, filled from the outer frame
+		"call i32 @gy_lambda_2(i32 100, i32 %p1, i32 %p0)",   // the deep call, filled from the MIDDLE frame
+	} {
+		if !strings.Contains(mod, want) {
+			t.Fatalf("the forwarded module is missing %q:\n%s", want, headLines(mod, 60))
+		}
+	}
+	// Every argument of an inner application is a value the CALLING define can see: a register the enclosing
+	// `define` was handed, or a constant. A capture that reached past its own frame would name a register
+	// that belongs to a different function, and `llc` would be the one to notice.
+	for _, line := range strings.Split(mod, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.Contains(trimmed, "= call i32 @gy_lambda_") && !strings.HasPrefix(trimmed, "call i32 @gy_lambda_") {
+			continue
+		}
+		for _, field := range strings.Split(trimmed, "(") {
+			for _, word := range strings.Split(field, ",") {
+				word = strings.TrimSpace(strings.TrimSuffix(word, ")"))
+				if !strings.HasPrefix(word, "%p") {
+					continue
+				}
+				if n := paramRegisterIndex(word); n >= 3 {
+					t.Fatalf("an inner application reads %s, past the arity of any frame here:\n%s", word, trimmed)
+				}
+			}
+		}
+	}
+	// No value crosses as an address: the whole family stays out of `ptrtoint`/`inttoptr`, which is ADR 0345's
+	// promise about a function value and is easier to break the day a capture is filled from a slot.
+	for _, forbidden := range []string{"ptrtoint", "inttoptr"} {
+		if strings.Contains(mod, forbidden) {
+			t.Fatalf("the forwarded module contains %q", forbidden)
+		}
+	}
+}
+
+// paramRegisterIndex reads the position out of a `%pN` register name; a name that is not one answers -1 so
+// the caller's check ignores it.
+func paramRegisterIndex(word string) int {
+	rest := strings.TrimPrefix(word, "%p")
+	n := 0
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return -1
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
+// TestWhatAShadowedCaptureIsNotForwardedTwice asks the free-name question the way the reference does: a
+// nested body's reads are filtered against the binders of the body being asked about, so a name the middle
+// frame spells as a parameter never becomes a capture of the middle frame. The symptom of getting this
+// wrong is a `define` with the same name twice in its parameter list and a call that fills it twice.
+func TestWhatAShadowedCaptureIsNotForwardedTwice(t *testing.T) {
+	t.Parallel()
+	mod := compileSrc(t, "print((lambda x: (lambda x: (lambda z: x + z)(1))(5))(99))\n")
+	mustVerifyWithLLC(t, mod)
+	if !strings.Contains(mod, "define i32 @gy_lambda_1(i32 %p0)") {
+		t.Fatalf("the middle frame gained a capture for a name it binds itself:\n%s", headLines(mod, 60))
+	}
+	for _, line := range strings.Split(mod, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "define i32 @gy_lambda_") {
+			continue
+		}
+		seen := map[string]bool{}
+		header := line[strings.Index(line, "("):]
+		for _, field := range strings.Split(header, ",") {
+			field = strings.TrimSpace(strings.Trim(field, "()"))
+			if field == "" {
+				continue
+			}
+			if seen[field] {
+				t.Fatalf("a generated frame declares %q twice: %s", field, strings.TrimSpace(line))
+			}
+			seen[field] = true
+		}
+	}
+}
 
 func TestWhatAClonedLambdaIsEmittedAsAFunctionAndCalledByName(t *testing.T) {
 	mod := compileSrc(t, "def twice(fn, v):\n    return fn(fn(v))\n\nprint(twice(lambda x: x * 3, 2))\n")

@@ -14828,21 +14828,47 @@ which is a fact about the clone rather than about the call site. The fix is ther
 distinction in it: read the self-site's tuple from the enclosing clone, and relax the audit to the one
 `callableSiteOmission` already applies outside the body, so the two roads ask the same question of the same body.
 
-### Gap R.330 — a capture three frames up has no call site to ask (OPEN)
+### Gap R.330 — a capture three frames up has no call site to ask (CLOSED by ADR 0380)
 
 ```python
-print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))  # 111 in the reference; exit 1 here
-print((lambda x: (lambda y: x + y)(1))(2))                        # 3 here — two frames, answered
+print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))  # 111 in the reference; exit 1 before ADR 0380
+print((lambda x: (lambda y: x + y)(1))(2))                        # 3 — two frames, answered all along
 ```
 
-The refusal is `lambda_2() reads "x" from the frame that encloses it, and that name holds a value no call in the
-program can be asked about`. It is the gate working: ADR 0370 types a capture by asking every call of the frame what it
-hands that parameter, and at this depth the name belongs to a frame that no call in the program names, so the question
-has no answer to read and the gate refuses rather than carry a word whose kind it cannot state (ADR 0273). The fix is
-to carry the capture through the frame that owns it — an intermediate `lambda` whose body applies another `lambda`
-re-exports the names its own body is free in but does not bind, so the innermost capture is filled by the intermediate
-call site and the outer frame is never reached directly. That is what a nested `def` does, and what the `collectNames`
-`*Lambda` arm ADR 0370 added makes reachable.
+The refusal was `lambda_2() reads "x" from the frame that encloses it, and that name holds a value no call in the
+program can be asked about`. Read it again as a statement about the door rather than the program: ADR 0370 types a
+capture by asking every call of the frame what it hands to that parameter, and a **capture parameter is not a position
+the source wrote an argument for** — `lambdaCallArgs` appends it, by name, to a copy of the call, during emission.
+`callArgAt` therefore finds nothing at that index, `captureParamWordOf` returns `captureWordUnaskable`, and the gate
+refused a question it had asked of the wrong table. The two-frame twin answered only because the forwarded name sat
+beside a position the outer application filled; its value came from the caller's own read all along.
+
+The fix is the one this row prescribed, and it is what ADR 0245's `%env` chain has always done for a nested `def`: a
+capture travels **one step per frame**, each generated `define` gaining its own forwarded tail and each inner
+application being filled from the registers of the `define` it is written in. Two questions had to be moved off the
+call site and onto the frame.
+
+* **Which names does this frame forward?** A nested `lambda`'s reads were reported straight into the enclosing scan,
+  so the middle frame counted `y` — a name it spells as a parameter — as free in itself and gained a *second*
+  parameter of that spelling, which the application then filled twice: `multiple values for argument "y"`, the
+  reference's own words spoken by a compiler that had invented the collision. The nested body's reads are now filtered
+  against the binders of the body being asked about, the same rule the comprehension arm beside it already spoke. A
+  name the middle frame shadows (`(lambda x: (lambda x: …)(5))(99)`) is forwarded nowhere.
+* **What kind does a forwarded name hold?** The frame that SUPPLIES the value answered that question when it handed
+  the value over — `emitLambda`'s gate, and the application's own, both asked with the supplying frame on the tables —
+  and that verdict is now kept per generated frame and name, consulted before the call-site scan. So the deepest frame
+  is answered by the middle frame's reading of the name, which is answered by the outer frame's, which is answered by
+  the argument the program wrote: one chain, one opinion at each link.
+
+The honesty of the design is the part worth keeping in mind for the next capture row: the verdict is *forwarded*, not
+invented. A chain that ends in a text, a float or a container is refused at the bottom exactly as the same read is
+refused one frame up — three new rows pin that — because the verdict the chain carries is the supplying frame's own
+`nameCarriesOneWord` answer, and that answer was a refusal (**Gap R.332**, **ADR 0273**).
+
+What the same family still owes, measured by this cycle's probe and filed rather than absorbed: a higher-order body
+(a `lambda` that calls its own parameter) written INSIDE an applied `lambda` is declined by the pass, whose `inLambda`
+mark hands such a call to the closure road (**Gap R.347**); and a comprehension's own target, read by a body at the
+bottom of a chain, refuses with `undefined name` (**Gap R.348**). Both are identically refused on the pre-ADR build.
 
 ### Gap R.331 — a `lambda` applied at module level whose body reads a non-number module name answers the payload word (OPEN)
 
@@ -15287,3 +15313,51 @@ rebound to `3` → int) and a newest write that **inherits** one (`t = t + i`) i
 seed gave it. Four rows in `floatFramePrograms` hold all four corners of that table, two of them being
 precisely the cases ADR 0373 exists for — which is the reason the fold was chosen over the tempting
 "was it ever a float" seeding, the one change that would have quietly reopened R.338 and printed `3.0`.
+
+### Gap R.347 — a higher-order `lambda` written inside an applied `lambda` is declined by the pass (OPEN)
+
+```python
+print((lambda y: (lambda f: f(y))(lambda q: q * 3))(4))            # 12 in the reference; exit 1 here
+
+def use(v):
+    return (lambda y: (lambda f: f(y) + v)(lambda q: q * 3))(4)   # 17 in the reference; exit 1 here
+
+def use1(v):
+    return (lambda f: f(v) + 1)(lambda q: q * 3)                  # 16 here too — the `def`-level control
+```
+
+The refusal is the ordinary road's `"f" is called but is not a function this backend can build a call to`, and the
+reason is one mark in the walk: `defunctionalizeCallables` records, beside every call, whether the walk was inside a
+`lambda` when it reached it (`r.inLambda`), and skips those applications when registering higher-order bodies — the
+call is the closure road's frame, not the pass's. That rule is what keeps a `lambda` body's own recursion from being
+cloned under the wrong ownership, and it has the consequence above: a body that CALLS one of its own parameters,
+written inside a `lambda` that is itself applied, is never registered, so the closure road emits it and the call to the
+parameter meets the door that needs a function *value* — the word L11.1 owns.
+
+ADR 0380 measured this while walking the capture chain these programs also contain (the chain itself now answers: the
+same shapes with the call replaced by a read print the reference's bytes). It is filed rather than folded in because
+the fix is the pass's, not the capture road's: the clone road already emits a body outside the frame that wrote it, so
+the open question is whose registers fill a clone's parameters when the body is a `lambda` inside a `lambda`, which is
+exactly the question ADR 0372 answered for captures and ADR 0345 answered for entries.
+
+### Gap R.348 — a comprehension's own target, read by a `lambda` body, is `undefined name` (OPEN)
+
+```python
+print([(lambda z: z + x)(1) for x in [10, 20]])                          # [11, 21] here: undefined name "x"
+print([(lambda y: y + x)(2) for x in [10, 20]])                          # [12, 22] — same
+print([(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20]])       # [13, 23] — same, three frames deep
+print([(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])      # [4, 6, 8] — answered: x is an ARGUMENT
+```
+
+The control is the last line, and it is on both legs: the same target, passed to a body as an entry the pass clones,
+answers the reference's list. What differs is where the name is *read* — an argument is lowered by the comprehension
+road itself, which has the target on its tables, while a body reads it from inside the `define` the closure road minted
+for that body, and the comprehension installs its target nowhere that frame can see. `lambdaFrameCaptures` therefore
+does report `x` as a name the body is free in (it is), and the application that has to fill it cannot read it: the
+compile dies at the read, `undefined name "x" (no binding for it; assign it before use)`.
+
+ADR 0380 measured all three depths and every one behaves identically on the pre-ADR build, which is what localises this
+to the comprehension road rather than to the forwarding rule that row installed: the chain forwards a name that exists
+in a frame, and this shape is a name the loop binds and no frame ever received. The neighbouring roads have the answer
+beside it — a `for` target and a container-slice binding each record the name they bind for the frames that read it —
+and the fix is that same installation, asked of the comprehension's target.

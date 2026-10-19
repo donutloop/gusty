@@ -1,0 +1,76 @@
+# integration/programs/lambda_capture_chain.gy — roadmap L11.7 · Gap R.330; ADR 0380.
+#
+# A `lambda` applied inside a `lambda` that is itself applied: the name the deepest body reads belongs to a
+# frame TWO lambdas above, and no call in the program names that frame's forwarded parameter. The road that
+# fills a capture asks the frame the application is written in, so each frame forwards the name ONE step —
+# the middle body spells `y` and gains `x`, the deepest spells `z` and gains `x` and `y` — and the deepest
+# application is filled from the registers of the `define` it is written in. A scan that asked a nested body
+# in isolation would also hand the middle frame a second parameter for the name it binds itself, which is
+# the reference's own `multiple values for argument` (roadmap Gap R.330).
+#
+# Every group prints line for line what the reference prints — the matrix's job, and the reason no capture
+# of a container, a text or a float sits in this file: those are refused in words until the value word that
+# carries its own kind exists (roadmap L11.1, Gap R.332), a capture handed to a HIGHER-ORDER `def` as an
+# ARGUMENT is the entry-side twin roadmap Gap R.336 owns, and a comprehension's own target read by a body
+# this deep is the front-end road roadmap Gap R.347 files.
+
+# Three binding forms deep, the number owned by the outermost one.
+print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))
+
+# Four binding forms deep.
+print((lambda a: (lambda b: (lambda c: (lambda d: a + b + c + d)(4))(3))(2))(1))
+
+# The middle frame binds `b` itself, so only `a` crosses into it, and the deepest body reads both.
+print((lambda a: (lambda b: (lambda c: (a + b) * c)(2))(3))(4))
+
+# Two names, two owners: `a` belongs to the outermost body, `b` to the middle one.
+print((lambda a: (lambda b: (lambda c: a * 100 + b * 10 + c)(3))(2))(1))
+
+# The middle frame SHADOWS the outer name: the reference reads the inner binding, and the shadowed name is
+# not forwarded past the frame that hides it.
+print((lambda x: (lambda x: (lambda z: x + z)(1))(5))(99))
+
+# The owner is a `def` local and the frames in between are lambdas: every frame between the binding and the
+# read forwards it.
+def threeDeep():
+    x = 1
+    return (lambda y: (lambda z: x + y + z)(100))(10)
+
+print(threeDeep())
+
+# The owner is two `def` frames up and the frames in between mix a closure lift and two lambdas: the lift
+# (ADR 0245) carried this shape for a nested `def`, and the lambda road now carries it for a body applied
+# inside a body.
+def add(a):
+    def inner(b):
+        return (lambda c: (lambda d: c + d + a + b)(1))(2)
+
+    return inner(10)
+
+print(add(100))
+
+def counter():
+    total = 1
+    def bump(n):
+        return (lambda m: (lambda k: m + n + total + k)(1))(2)
+
+    return bump(5)
+
+print(counter())
+
+# A capture read at the bottom of the chain, beside a name the middle frame owns.
+def use(v):
+    base = 2
+    return (lambda y: (lambda z: z * 3 + base + v + y)(4))(1)
+
+print(use(5))
+
+# The chain written where a statement is a call, inside a loop: the target the deepest body reads travels
+# through the frames between it and the loop.
+def stepper():
+    total = 0
+    for step in [1, 2, 3]:
+        total = total + (lambda y: (lambda z: z + step + y)(1))(2)
+    return total
+
+print(stepper())

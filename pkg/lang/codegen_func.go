@@ -43,9 +43,15 @@ func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 	// with, and asking after the body has been lowered lets the body's own refusal — written as if the
 	// name were a local of the lambda — be the sentence the program reads.
 	for _, c := range captured {
-		if kind, carries := g.nameCarriesOneWord(c); !carries {
+		kind, carries := g.nameCarriesOneWord(c)
+		if !carries {
 			return "", captureWordErr(c, kind, name+"()")
 		}
+		// The verdict is the middle frame's own answer about the name it forwards: a body applied inside
+		// this one asks what `x` is, `x` is a capture parameter of this frame, and no call the source wrote
+		// names that position. What the frame around the application said — asked HERE, while that frame is
+		// still on the tables — is the only answer there is (roadmap L11.7 · Gap R.330).
+		g.recordCaptureVerdict(fd, c, kind, carries)
 	}
 	if len(captured) > 0 {
 		for _, c := range captured {
@@ -239,7 +245,19 @@ func scanFreeIn(n Node, bound, out map[string]bool) {
 		}
 		return
 	case *Lambda:
-		lambdaFreeNames(x, out)
+		// A nested `lambda` binds its OWN parameters, so what it reads is not automatically what this body
+		// is free in: the names the nested body reaches have to be filtered against the binders this body
+		// already has, or `(lambda y: (lambda z: x + y + z)(100))` reports `y` as free — a name the middle
+		// frame spells as a parameter — and the capture road appends a SECOND parameter of that spelling to
+		// the `define`, which the application then fills twice and `callUserFunc` refuses as `multiple
+		// values for argument "y"` (roadmap L11.7 · Gap R.330).
+		inner := map[string]bool{}
+		lambdaFreeNames(x, inner)
+		for nm := range inner {
+			if !bound[nm] {
+				out[nm] = true
+			}
+		}
 		return
 	case *FuncDef, *ClassDef:
 		return // another declaration's own scope

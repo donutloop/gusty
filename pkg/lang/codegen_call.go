@@ -99,9 +99,14 @@ func (g *irGen) lambdaCallArgs(c *Call, fnName string) (*Call, error) {
 		subject = callableDisplayName(fd)
 	}
 	for _, name := range captured {
-		if kind, carriesOneWord := g.captureCarriesOneWord(name); !carriesOneWord {
+		kind, carriesOneWord := g.captureCarriesOneWord(name)
+		if !carriesOneWord {
 			return nil, captureWordErr(name, kind, subject+"()")
 		}
+		// The same verdict, kept for the frame that RECEIVES the value: this call fills the capture
+		// parameter, so what the caller's tables say about the name is what arrives in that position, and a
+		// body applied deeper in cannot ask the source call sites about it (Gap R.330).
+		g.recordCaptureVerdict(g.fds[fnName], name, kind, carriesOneWord)
 		args = append(args, &KeywordArg{
 			Name:  name,
 			Value: &Name{Value: name, Src: c.Span()},
@@ -258,7 +263,78 @@ type captureWordAnswer struct {
 	carries bool
 }
 
+// recordCaptureVerdict keeps what the frame AROUND an application said about a name its callee forwards as
+// a capture parameter. The two roads that mint such a parameter — `emitLambda`, which reads the names an
+// applied body is free in, and the defunctionalisation pass's clone, whose `Captures` the pass settled —
+// both ask the question while the supplying frame is the one on the tables, which is the only moment the
+// answer exists: a capture parameter is appended after every parameter the source spelled, so no call in
+// the program can be scanned for the argument it hands that position.
+//
+// The entry is consulted by `captureParamWordOf` for a frame asked about its OWN forwarded name, which is
+// what a body applied inside a forwarding body does ((lambda x: (lambda y: (lambda z: x + y + z)(100))
+// (10))(1), roadmap L11.7 · Gap R.330). An absent entry is not a verdict: the question falls back to the
+// call-site scan, and a scan with no argument to read stays the refusal it always was (ADR 0273).
+func (g *irGen) recordCaptureVerdict(fd *FuncDef, name, kind string, carries bool) {
+	if fd == nil || name == "" {
+		return
+	}
+	if g.lambdaCaptureVerdicts == nil {
+		g.lambdaCaptureVerdicts = map[*FuncDef]map[string]captureWordAnswer{}
+	}
+	if g.lambdaCaptureVerdicts[fd] == nil {
+		g.lambdaCaptureVerdicts[fd] = map[string]captureWordAnswer{}
+	}
+	g.lambdaCaptureVerdicts[fd][name] = captureWordAnswer{kind: kind, carries: carries}
+}
+
+// mintedCaptureVerdict reads back what the supplying frame said, for a name that IS one of the parameters
+// this frame was GIVEN rather than one its source parameter list spelled. The "was given" test is the
+// position: captures are appended after every spelled parameter, so a name whose FIRST parameter sits
+// inside the trailing capture block is the compiler's, and one shadowed by a spelled parameter of the same
+// spelling stays the program's own and keeps being asked of its call sites.
+func (g *irGen) mintedCaptureVerdict(fd *FuncDef, name string) (captureWordAnswer, bool) {
+	if fd == nil || g.lambdaCaptureVerdicts == nil {
+		return captureWordAnswer{}, false
+	}
+	caps := g.lambdaCaptures[fd.Name]
+	if len(caps) == 0 {
+		return captureWordAnswer{}, false
+	}
+	isCapture := false
+	for _, c := range caps {
+		if c == name {
+			isCapture = true
+			break
+		}
+	}
+	if !isCapture {
+		return captureWordAnswer{}, false
+	}
+	first := -1
+	for i, p := range fd.Params {
+		if p != nil && p.Name == name {
+			first = i
+			break
+		}
+	}
+	if first < 0 || first < len(fd.Params)-len(caps) {
+		return captureWordAnswer{}, false // shadowed by a parameter the source spelled: ask its callers
+	}
+	ans, ok := g.lambdaCaptureVerdicts[fd][name]
+	return ans, ok
+}
+
 func (g *irGen) captureParamWordOf(fd *FuncDef, name string) (string, bool) {
+	// A capture parameter is a position no call in the program names: it was appended to the parameter
+	// list by the road that minted this `define`, and the application that fills it spells the argument by
+	// NAME at a place the AST never wrote it. Asking the call sites about it answers "no call in the
+	// program can be asked about", which is true of the scan and false of the value — and it is the whole
+	// reason a capture three frames deep is refused while the same capture one frame deep answers
+	// (roadmap L11.7 · Gap R.330). The frame that SUPPLIES the name answered this question when it handed
+	// the value over; that is the answer this frame gives.
+	if ans, ok := g.mintedCaptureVerdict(fd, name); ok {
+		return ans.kind, ans.carries
+	}
 	idx := -1
 	for i, p := range fd.Params {
 		if p != nil && p.Name == name {

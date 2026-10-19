@@ -135,6 +135,9 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// the same "asked of the program, not of the emission order" rule as the pair arity above).
 	g.program = prog
 	g.lambdaOrigin = map[*FuncDef]*Lambda{}
+	// The forwarded-capture verdicts are per compile, like every other table here: two compiles alive at
+	// once must not answer each other's capture question (ADR 0343's rule against toolchain state).
+	g.lambdaCaptureVerdicts = map[*FuncDef]map[string]captureWordAnswer{}
 	// A clone the defunctionalisation pass minted for an applied `lambda` that reads the frame around its
 	// application carries one extra parameter per captured name, and the call road fills those by name — so the
 	// list has to be on the table BEFORE the first call is lowered, which is the same "asked of the program,
@@ -1044,6 +1047,15 @@ type irGen struct {
 	// lambdaOrigin maps each `define` this file minted for a lambda back to the lambda node it came from,
 	// which is how an inline application `(lambda k: …)(2)` is recognised as a call of that frame.
 	lambdaOrigin map[*FuncDef]*Lambda
+	// lambdaCaptureVerdicts remembers, for each `define` minted for a lambda or a clone, what the frame
+	// AROUND the application said about each name the body forwards as a capture parameter. A capture
+	// parameter is not a position the source ever wrote an argument for, so the call-site scan
+	// `captureParamWordOf` runs has no row to read for it — and a body applied INSIDE a body that is
+	// itself forwarding a capture ((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1)) asks that
+	// scan about the middle frame's forwarded `x` and is refused for want of an argument no program could
+	// write. The verdict the supplying frame gave at the moment the middle `define` was gated is the
+	// answer, and this table is where it is kept (roadmap L11.7 · Gap R.330).
+	lambdaCaptureVerdicts map[*FuncDef]map[string]captureWordAnswer
 	// floatVars tracks variables whose last assignment produced a double.
 	floatVars map[string]bool
 	// unionVars holds names annotated with a union type (e.g. `int | float`);

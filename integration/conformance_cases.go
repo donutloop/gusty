@@ -771,6 +771,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// caller's OWN reading of that name. Every group is line for line CPython
 		// (roadmap L11.7 · Gap R.334; ADR 0372).
 		"lambda_applied_capture_entry",
+		// A `lambda` applied inside a `lambda` that is itself applied: the name the deepest body reads belongs
+		// to a frame TWO lambdas above, and a capture travels ONE step per frame — each generated `define`
+		// gains its own forwarded tail, and each inner application is filled from the registers of the
+		// `define` it is written in. A shadowed name is not forwarded, a `def` local two lambdas up is, and
+		// the same chain written across a closure lift and a loop answers too. Every group is line for line
+		// CPython (roadmap L11.7 · Gap R.330; ADR 0380).
+		"lambda_capture_chain",
 		// The word a function RETURNS is a fact about its BODY, read the same way whether the body has a
 		// parameter or not: a name the body bound to a double and handed back by bare name, a DERIVED name
 		// (`v = u * 2` / `return v`), the answer read through another call, and the answer the body takes
