@@ -809,6 +809,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// is CPython's, and the row is ASSERTED, so the two compiled legs cannot certify each other — they
 		// share the table that was the bug (roadmap L11.6 · Gap R.342, ADR 0378).
 		"nested_def_shares_a_slot",
+		// A comprehension's clause list is the nested loop its clauses spell: the flattening idiom
+		// (`[y for x in rows for y in x]`), the product of two literals and of two ranges, a filter that
+		// belongs to the clause it follows, the same spelling bound twice, a set, a dict, a comprehension
+		// bound and read back, and a generator expression carrying the clause list. The second `for` used
+		// to be a `parse error: expected "]"`, so none of this existed; every line here is what CPython
+		// prints for the same file (roadmap Gap R.352, ADR 0383).
+		"comprehension_clauses",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

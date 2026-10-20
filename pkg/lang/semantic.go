@@ -1731,23 +1731,28 @@ func plural(n int) string {
 }
 
 func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
-	// infer the iterable's element type to bind the comprehension variable
-	it := an.inferExpr(n.Iter)
+	// Bind every clause's variable in a fresh scope, in the order the clauses read. The iterable of the
+	// clause on the right is analysed with the targets to its LEFT already defined: `[y for x in rows for
+	// y in x]` walks a name the previous clause bound, and calling that `undefined name` refuses the
+	// flattening idiom the reference runs (roadmap Gap R.352).
 	var elem *Type
-	if it != nil && it.Kind == KindIterator {
-		elem = it.Elem
-	} else {
-		elem = TDyn()
-	}
-	// bind the comprehension variable in a fresh scope so the condition
-	// and body can reference it (e.g. `[x * 2 for x in xs]`).
 	old := an.scope
 	an.scope = newScope(old)
-	if n.ForVar != nil {
-		an.scope.define(n.ForVar.Value, elem)
-	}
-	if n.Cond != nil {
-		an.inferExpr(n.Cond)
+	for _, cl := range n.compClauses() {
+		// The iterable is analysed FIRST, in the scope the earlier clauses already populated: `for y in x`
+		// reads the `x` the clause to its left bound.
+		it := an.inferExpr(cl.Iter)
+		e := TDyn()
+		if it != nil && it.Kind == KindIterator {
+			e = it.Elem
+		}
+		elem = e
+		if cl.Target != nil {
+			an.scope.define(cl.Target.Value, e)
+		}
+		if cl.Cond != nil {
+			an.inferExpr(cl.Cond)
+		}
 	}
 	var e *Type
 	if len(n.Elems) > 0 {

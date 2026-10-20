@@ -573,29 +573,113 @@ const (
 	CompGenerator
 )
 
+// CompClause is one `for … in … [if …]` clause of a comprehension's clause list. The list is the
+// grammar Python has: `[y for x in rows for y in x]` is TWO clauses read left to right, each one
+// seeing the targets the earlier ones bound, and the whole comprehension is the nested loop those
+// clauses spell (roadmap Gap R.352, ADR 0381's measurement of it).
+type CompClause struct {
+	Target *Name `json:"target"`
+	Iter   Expr  `json:"iter"`
+	Cond   Expr  `json:"cond,omitempty"`
+	Src    Span  `json:"span,omitempty"`
+}
+
+func (n *CompClause) Span() Span { return n.Src }
+
 type Comp struct {
-	Kind   CompKind `json:"kind"`
-	Elems  []Expr   `json:"elems"`          // for list/set
-	Keys   []Expr   `json:"keys,omitempty"` // for dict
-	Vals   []Expr   `json:"vals,omitempty"`
-	ForVar *Name    `json:"for_var"`
-	Iter   Expr     `json:"iter"`
-	Cond   Expr     `json:"cond,omitempty"`
-	Src    Span     `json:"span,omitempty"`
-	Ty     string   `json:"inferred,omitempty"`
+	Kind  CompKind `json:"kind"`
+	Elems []Expr   `json:"elems"`          // for list/set
+	Keys  []Expr   `json:"keys,omitempty"` // for dict
+	Vals  []Expr   `json:"vals,omitempty"`
+	// ForVar, Iter and Cond are the FIRST clause, kept spelled out because that is how every road
+	// that ever read a comprehension reads one. Clauses is the whole list; a one-clause
+	// comprehension has Clauses == [ {ForVar, Iter, Cond} ], and a road that has not grown the
+	// nesting asks compIsSingleClause before it trusts these three.
+	ForVar  *Name         `json:"for_var"`
+	Iter    Expr          `json:"iter"`
+	Cond    Expr          `json:"cond,omitempty"`
+	Clauses []*CompClause `json:"clauses,omitempty"`
+	Src     Span          `json:"span,omitempty"`
+	Ty      string        `json:"inferred,omitempty"`
 }
 
 func (n *Comp) Span() Span { return n.Src }
 func (n *Comp) exprNode()  {}
 
+// compClauses answers a comprehension's clause list, and — because the field is new and an AST built
+// by an older pass or a hand-built test AST carries only the first clause — synthesises the one
+// clause from ForVar/Iter/Cond when the list is absent. Every reader of the list goes through here,
+// so a comprehension can never have "no clauses" and no one has to ask.
+func (n *Comp) compClauses() []*CompClause {
+	if n == nil {
+		return nil
+	}
+	if len(n.Clauses) > 0 {
+		return n.Clauses
+	}
+	if n.ForVar == nil {
+		return nil
+	}
+	return []*CompClause{{Target: n.ForVar, Iter: n.Iter, Cond: n.Cond, Src: n.ForVar.Src}}
+}
+
+// compIsSingleClause is the guard every road that has not grown the nesting asks: one clause is what
+// this backend has always lowered, and more than one is the question Gap R.352 owns.
+func compIsSingleClause(n *Comp) bool { return len(n.compClauses()) <= 1 }
+
+// compTargets names every name a comprehension binds — one per clause, in the order the clauses read.
+// Anything that asks "what does this comprehension bind?" asks it here, so a second clause cannot bind a
+// name behind a scanner's back (roadmap Gap R.352).
+func (n *Comp) compTargets() []*Name {
+	clauses := n.compClauses()
+	out := make([]*Name, 0, len(clauses))
+	for _, cl := range clauses {
+		if cl.Target != nil {
+			out = append(out, cl.Target)
+		}
+	}
+	return out
+}
+
 // Generator is a generator expression `(x for x in iter)`.
+// Clauses is the generator expression's clause list, carried for the same reason a comprehension carries
+// one: the parser reads them all, and a node that silently kept only the first would answer a
+// two-clause generator with a one-clause answer (roadmap Gap R.352).
 type Generator struct {
-	Elems  []Expr `json:"elems"`
-	ForVar *Name  `json:"for_var"`
-	Iter   Expr   `json:"iter"`
-	Cond   Expr   `json:"cond,omitempty"`
-	Src    Span   `json:"span,omitempty"`
-	Ty     string `json:"inferred,omitempty"`
+	Elems   []Expr        `json:"elems"`
+	ForVar  *Name         `json:"for_var"`
+	Iter    Expr          `json:"iter"`
+	Cond    Expr          `json:"cond,omitempty"`
+	Clauses []*CompClause `json:"clauses,omitempty"`
+	Src     Span          `json:"span,omitempty"`
+	Ty      string        `json:"inferred,omitempty"`
+}
+
+// compClauses answers a generator expression's clause list, synthesising the one clause from
+// ForVar/Iter/Cond when the list is absent (an AST built before the field existed, or a hand-built one).
+func (n *Generator) compClauses() []*CompClause {
+	if n == nil {
+		return nil
+	}
+	if len(n.Clauses) > 0 {
+		return n.Clauses
+	}
+	if n.ForVar == nil {
+		return nil
+	}
+	return []*CompClause{{Target: n.ForVar, Iter: n.Iter, Cond: n.Cond, Src: n.ForVar.Src}}
+}
+
+// compTargets names every name a generator expression binds, one per clause.
+func (n *Generator) compTargets() []*Name {
+	clauses := n.compClauses()
+	out := make([]*Name, 0, len(clauses))
+	for _, cl := range clauses {
+		if cl.Target != nil {
+			out = append(out, cl.Target)
+		}
+	}
+	return out
 }
 
 func (n *Generator) Span() Span { return n.Src }

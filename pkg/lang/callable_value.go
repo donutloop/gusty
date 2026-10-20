@@ -395,8 +395,8 @@ func (r *callableRead) bind(n Node) {
 			r.bindName(x.As.Value, x)
 		}
 	case *Comp:
-		if x.ForVar != nil {
-			r.bindName(x.ForVar.Value, x)
+		for _, t := range x.compTargets() {
+			r.bindName(t.Value, x)
 		}
 	case *Generator:
 		if x.ForVar != nil {
@@ -2064,8 +2064,10 @@ func callableCompTargets(node interface{}, out map[string]bool) {
 	case nil:
 		return
 	case *Comp:
-		if n != nil && n.ForVar != nil {
-			out[n.ForVar.Value] = true
+		// Every clause binds a name, and a scan that saw only the first reported the second as a free
+		// name of the enclosing frame (roadmap Gap R.352).
+		for _, t := range n.compTargets() {
+			out[t.Value] = true
 		}
 	case *Generator:
 		if n != nil && n.ForVar != nil {
@@ -2234,10 +2236,12 @@ func callableFreeNames(l *Lambda) []string {
 			for _, e := range x.Vals {
 				walkNode(e, b)
 			}
-			walkNode(x.Iter, b)
-			walkNode(x.Cond, b)
-			if x.ForVar != nil {
-				delete(out, x.ForVar.Value)
+			for _, cl := range x.compClauses() {
+				walkNode(cl.Iter, b)
+				walkNode(cl.Cond, b)
+				if cl.Target != nil {
+					delete(out, cl.Target.Value)
+				}
 			}
 			return
 		case *Generator:

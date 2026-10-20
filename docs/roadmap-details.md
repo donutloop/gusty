@@ -15514,18 +15514,43 @@ at an exit code the reference never reaches. Printing the same expression is cor
 that is correct, because the variable path goes to `rt_get_elem`. The door needs to ask what the object IS (the question
 `print` asks) instead of asking what the compiler folded.
 
-### Gap R.352 — a comprehension's second `for` clause does not parse (OPEN)
+### Gap R.352 — a comprehension's second `for` clause does not parse (DONE — ADR 0383, 2026-10-20)
 
 ```python
 print([y for x in [[1, 2]] for y in x])            # the reference: [1, 2]
 print([[x, y] for x in [1, 2] for y in [3, 4]])    # the reference: [[1, 3], [1, 4], [2, 3], [2, 4]]
 ```
 
-Both are refused by the parser — `parse error at 1:28: expected "]"` — because the grammar carries ONE `for` clause. The
-flattening idiom is not unsupported-at-run-time, it does not parse, and the diagnostic points at a bracket. What the row needs
-is the clause list in the grammar (`for`/`if` repeated left to right, each clause able to see the targets before it) and the
-nesting lowered as nested loops, with ADR 0381's target installation once per clause; the semantic walk (`scanCompScope`) and
-the free-name scan already treat a comprehension's targets as its own, so the scoping half is in place.
+Both were refused by the parser — `parse error at 1:28: expected "]"` — because the grammar carried ONE `for` clause. The
+flattening idiom was not unsupported-at-run-time, it did not parse, and the diagnostic pointed at a bracket.
+
+**What the record already said.** `pkg/lang/testdata/interpreter-golden.json` holds 46 sources with two or more `for` clauses,
+and they carry the retired engine's answers — `[[1, 3], [1, 4], [2, 3], [2, 4]]`, `[2, 3]` for the double-filtered
+`[x for x in [1, 2, 3] if x > 1 for y in [10, 20] if y > 10]`, `[1, 2, 3, 4]` for the flattening. None of them was on the drift
+ledger, because the ledger compares *answers* and a source the compiled front end cannot parse produces none: the artifact held
+the right answer while the suite reported a green that had never asked the question.
+
+**Two wrong answers found on the way.** Building the second clause produced `[[x, y] for x in [1] for y in [[3]]]` → `[[1, 1]]`
+(the nested **fold** binding a loop variable to an item's lowered word — a container literal lowers to its index in the module's
+container table) and `{x: y for x in [1, 2] for y in [10, 20] if y > x}` → `{1: 10, 2: 10}` (a fold that kept the first value a key
+was written with, where a dict keeps the position and the last value). Both were measured against the reference inside the same
+cycle that shipped the grammar, and neither survives it: the first is refused (`Gap R.355`), the second answers `{1: 20, 2: 20}`.
+
+**The rule.** `parseCompClauses` reads `for NAME in ITER [if COND]` repeated; `Comp.Clauses`/`Generator.Clauses` carry it, with
+`ForVar`/`Iter`/`Cond` kept as the first clause so the roads that read one clause keep reading one. `nestedComp`
+(`pkg/lang/codegen_comp_nested.go`) is the door: `nestedCompFold` evaluates the element under every binding — gated by
+`compFoldItemIsAPlainNumber`, because a fold writes a global and a global has no tag table (ADR 0259) — and
+`nestedCompRuntimeList` builds the heap object through `rt_append_tagged`, one slot allocated per clause target, which is ADR 0381's
+rule applied to a whole clause list. A clause's filter belongs to that clause and skips the rest of the nest, which is the
+difference between `[2, 3]` and `[2, 3, 2, 3]`.
+
+**Witness.** `pkg/lang/comp_clause_test.go` (parse shapes, 18 answer rows with `Compile` asserted, 16 of the same programs on the
+record leg where a missing record is a hard failure, 4 filed rows, the formatter round trip, and a one-clause ladder),
+`integration/comp_clause_test.go` (the CLI against CPython, refusals at exit 1 with exit 2 forbidden, `--fmt`), and
+`integration/programs/comprehension_clauses.gy` — matrix row `programs/comprehension_clauses`, `oracle: match`, line-for-line
+CPython. Nineteen sources went to `tools/recmerge` (the record to 8049). What the door still cannot walk is
+`Gap R.355` (an element that is a container storing a clause's non-number binding), `Gap R.356` (a clause over a container the run
+time built), and a clause over a text or a float, which refuses one clause in too and belongs to `L11.1`.
 
 ### Gap R.353 — a set or dict comprehension whose element or value is a call refuses (OPEN)
 
@@ -15570,3 +15595,65 @@ which is the trade ADR 0273 forbids. Until then the five rows are pinned in
 that the answer is not a refusal, and that no module reaches the compiler-bug exit code; they are not on the record,
 because `tools/recmerge` asks the reference and cross-checks the compiled leg, and a source whose two legs disagree has
 no answer to write.
+
+### Gap R.355 — a comprehension element that is a container storing a clause's non-number binding answers the handle (OPEN, measured while landing ADR 0383, owner `codegen`)
+
+```python
+print([[x, y] for x in [1] for y in [[3]]])    # the reference: [[1, [3]]]      here (first build): [[1, 1]]  at exit 0
+```
+
+The element of a nested list comprehension is lowered through the same road a literal is: an `@.lst`/`@.dict`/`@.set` **global**, one
+`i32` per slot. That is sound while each slot holds a number, because the number *is* the word. It is not sound when the slot holds a
+loop variable that a clause bound to a container — the value that reaches the slot is the container's index in the module's table, and
+the tag that says so lives in the object the clause walked, which a global has no way to consult (ADR 0232's three facts about a
+container, one of them dropped). ADR 0259 retired this shape one clause deep for `True`/`None`/text/float elements for exactly the same
+reason; a clause list is the same trap with the item one level further away.
+
+**Today it is refused.** `compElemContainerMentionsAnUntaggableSlot` asks, at the leaf of the nest, whether the element stores a clause
+target whose item is not a number, and the road answers
+
+```
+codegen: `[[x, y] for x in [1] for y in [[3]]]` element stores `y`, which its clause bound to [3]: the container
+literal the element builds keeps one word per slot, and the kind that word's meaning depends on is not in it (roadmap Gap R.355)
+```
+
+— exit 1, capability `lower.unsupported.comprehension-clause-element-keeps-one-word`, `llc` never reached.
+
+**What would close it.** Build the element's container through the constructors a literal's elements already go through —
+`heapListFromTagged`, `rt_dict_put_tagged`, `rt_set_add_tagged` (ADR 0306, ADR 0310) — writing the clause's payload *and* its tag into
+each slot the element names, which is what the runtime arm already does for an element that is not itself a container literal. Until
+then the shape is pinned as a refusal in `pkg/lang/comp_clause_test.go#TestWhatTheClauseListStillCannotWalkIsFiledNotFixed` and
+`integration/comp_clause_test.go#TestWhatTheClauseListStillCannotWalkRefusesInItsOwnWords`, each with the reference's answer beside it
+and exit 2 forbidden; it is not on the record, because `tools/recmerge` asks the reference first and a source whose two legs disagree
+has no answer to write.
+
+### Gap R.356 — a clause whose iterable is a container the run time built refuses, while the same container one clause in answers (OPEN, measured while landing ADR 0383, owner `codegen`)
+
+```python
+rows = [[1, 2], [3, 4]]
+print([y for x in rows for y in x])   # the reference: [1, 2, 3, 4]     here: refused
+xs = [1, 2]
+print([x + y for x in xs for y in [3]])   # the reference: [4, 5]       here: refused
+```
+
+One clause over the same name answers (`print([x + 1 for x in xs])` is `[2, 3, 4]`), because the single-clause road owns
+`runtimeCompLoop`: a real counter block, `@rt_list_len` and `@rt_get_elem`, the tag asked of the object when its slots mix kinds
+(ADR 0185, ADR 0244), a dict's entry doubling, a set's members, a text's characters. The nested road has no such loop — it *unrolls*,
+so it can only walk what it can enumerate where the compiler stands: a list literal, a constant `range()`, or a name an earlier clause
+bound to one of those. `rows` is none of those, and the refusal says so:
+
+```
+codegen: clause `for x in rows` walks rows, a container the run time builds: a clause list is unrolled today over list
+literals, constant range()s, and names an earlier clause bound to one of those, and the nested run-time loop this shape needs is
+owed (roadmap Gap R.356)
+```
+
+— exit 1, capability `lower.unsupported.comprehension-clause-over-runtime-container`.
+
+**What would close it.** Either lower each clause the way the `for` statement lowers its iterable — one counter block per clause, the
+append in the innermost — or desugar the clause list to the `for` road's own statement loops (`ForStmt` per clause, an `append` call in
+the innermost body), which inherits that road's tags, its dict-key and text-character arms, and its escape-analysis record for free, and
+is the plan the ADR names as the tempting one. Both are gated on the same discipline as ADR 0273: a clause's iterable is walked only once
+its existence is proved (a call's answer asks `callAnswersContainer` first, Gap R.67), because `rt_list_len` measures a `0` exactly as
+happily as it measures a list — which is how `[x for x in h(3)]` once printed `[]` at exit 0.
+

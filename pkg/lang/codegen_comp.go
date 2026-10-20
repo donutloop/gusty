@@ -598,11 +598,22 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 // compItems derives the items a comprehension walks at compile time: an inline list literal of
 // constant integers, or range(start, stop[, step]) with constant bounds. Anything else — a
 // container variable, a builtin that builds a list — has no compile-time length, and the caller
+// compItems derives the items a comprehension walks at compile time: an inline list literal of
+// constant integers, or range(start, stop[, step]) with constant bounds. Anything else — a
+// container variable, a builtin that builds a list — has no compile-time length, and the caller
 // answers it with the runtime loop (roadmap L11.7, ADR 0192).
 func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
+	return g.compItemsOf(c.Iter)
+}
+
+// compItemsOf is `compItems` asked of ONE iterable rather than of a whole comprehension — the question
+// a clause list asks clause by clause, and the reason it is a separate function is that a later clause
+// walks a name an earlier clause bound, which the caller hands back here already resolved to the
+// literal that name was bound to (roadmap Gap R.352).
+func (g *irGen) compItemsOf(iter Expr) ([]int64, []Expr, error) {
 	var items []int64
 	var itemExprs []Expr
-	if ll, ok := c.Iter.(*ListLit); ok {
+	if ll, ok := iter.(*ListLit); ok {
 		for _, el := range ll.Elems {
 			v, ok := g.foldConstInt(el)
 			if !ok {
@@ -613,7 +624,7 @@ func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
 		}
 		return items, itemExprs, nil
 	}
-	if r, ok := c.Iter.(*Call); ok {
+	if r, ok := iter.(*Call); ok {
 		// The caller only asks for items from a range(); anything else has no compile-time length to
 		// enumerate, and reaching here with a call that is not one is a routing bug, not an input to
 		// guess at. The zero-argument shape is the one that used to fall through to the `Args[0]`
@@ -654,7 +665,7 @@ func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
 		}
 		return items, itemExprs, nil
 	}
-	return nil, nil, fmt.Errorf("codegen: a comprehension over %s is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)", exprSurface(c.Iter))
+	return nil, nil, fmt.Errorf("codegen: a comprehension over %s is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)", exprSurface(iter))
 }
 
 // foldConstUnder folds one operand of a comprehension with the loop variable bound to one item,
@@ -760,6 +771,12 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 	if !ok || (c.Kind != CompSet && c.Kind != CompDict) {
 		return nil, false
 	}
+	// The fold below reads ONE clause. A clause-list comprehension is folded by the nested road, which
+	// binds each clause's own target; folding one clause and calling it the program is a wrong answer, so
+	// this door declines the pair (roadmap Gap R.352).
+	if !compIsSingleClause(c) {
+		return nil, false
+	}
 	if c.ForVar == nil || len(c.Elems) > 1 || len(c.Keys) > 1 || len(c.Vals) > 1 {
 		return nil, false
 	}
@@ -827,6 +844,12 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	}
 	if c.Kind != CompList && c.Kind != CompSet && c.Kind != CompDict {
 		return "", fmt.Errorf("codegen: unsupported comprehension kind %d", c.Kind)
+	}
+	// A clause list — `[y for x in rows for y in x]` — is the nested loop its clauses spell. The roads
+	// below all walk ONE clause, so a comprehension with more than one comes here first, and comes back
+	// answered or comes back refused in the row's own words: never a wrong answer (roadmap Gap R.352).
+	if !compIsSingleClause(c) {
+		return g.nestedComp(b, c)
 	}
 	// A container variable as the iterable has no compile-time length, so this comprehension runs
 	// as a real loop over the heap list. The check comes before the item derivation because that
@@ -980,6 +1003,25 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 // The iterable is unrolled at codegen time when it is a constant range() call
 // or list literal (mirroring comp()); each element is appended to the list.
 func (g *irGen) genExpr(b *strings.Builder, gen *Generator) (string, error) {
+	// A generator expression with a clause list is not refused at the parser any more, and this road
+	// still unrolls only ONE clause — so a multi-clause generator asks the comprehension road's nested
+	// door, which owns the loop nest, rather than being unrolled on one clause only and answering a
+	// two-clause generator with a one-clause answer (roadmap Gap R.352). Both roads end at a heap list
+	// handle, which is what the caller expects; the generator's own clause list is the argument.
+	if len(gen.compClauses()) > 1 {
+		if len(gen.Elems) != 1 {
+			return "", fmt.Errorf("codegen: a generator expression with %d elements has no compiled lowering", len(gen.Elems))
+		}
+		return g.nestedComp(b, &Comp{
+			Kind:    CompList,
+			Elems:   gen.Elems,
+			Clauses: gen.Clauses,
+			ForVar:  gen.ForVar,
+			Iter:    gen.Iter,
+			Cond:    gen.Cond,
+			Src:     gen.Src,
+		})
+	}
 	var items []int64
 	if r, ok := gen.Iter.(*Call); ok {
 		// the parser represents a range(...) iterable as a Call (mirroring

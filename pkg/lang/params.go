@@ -513,8 +513,8 @@ func scanCompBinds(e Expr, into map[string][]Expr) {
 	walk = func(x Expr) {
 		switch n := x.(type) {
 		case *Comp:
-			if n.ForVar != nil {
-				into[n.ForVar.Value] = append(into[n.ForVar.Value], nil)
+			for _, t := range n.compTargets() {
+				into[t.Value] = append(into[t.Value], nil)
 			}
 			for _, el := range n.Elems {
 				walk(el)
@@ -525,8 +525,10 @@ func scanCompBinds(e Expr, into map[string][]Expr) {
 			for _, v := range n.Vals {
 				walk(v)
 			}
-			walk(n.Iter)
-			walk(n.Cond)
+			for _, cl := range n.compClauses() {
+				walk(cl.Iter)
+				walk(cl.Cond)
+			}
 		case *BinOp:
 			walk(n.L)
 			walk(n.R)

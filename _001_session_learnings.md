@@ -1,5 +1,60 @@
 # Session Learnings
 
+## Round 9 - A comprehension reads a clause list, and its door answers or says so (roadmap Gap R.352 closed; ADR 0383; Gaps R.355 and R.356 filed)
+
+**Change (parser, AST, codegen)**: the grammar had one `for` clause, so `[y for x in rows for y in x]` — the flattening
+idiom, the matrix, the product of two ranges — died at `parse error at 1:28: expected "]"`. Not a missing runtime
+feature: a syntax error, with a diagnostic pointing at a bracket. The AST now carries `Comp.Clauses`/`Generator.Clauses`
+(a `[]*CompClause` of `{target, iter, cond}`), and `ForVar`/`Iter`/`Cond` stay as the FIRST clause, because that is how
+every road that ever read a comprehension reads one — a road that has not grown the nesting asks `compIsSingleClause`
+before it trusts the three legacy fields, and that question is the seam between "supports one clause" and "silently
+ignores the rest".
+
+The lesson of the cycle is what the record leg was worth while nobody was reading it for this. `testdata/interpreter-golden.json`
+holds **46** sources with two or more `for` clauses — the retired engine's parser had the clause list, the compiled front end's did
+not — and the drift ledger listed none of them, because the ledger compares two answers and a source the compiled leg cannot parse
+produces none. `print([[x, y] for x in [1, 2] for y in [3, 4]])` has been on record as `[[1, 3], [1, 4], [2, 3], [2, 4]]` the whole
+time, and the suite reported a green that had never asked the question. A missing record failing a case is what finally forced the
+question: 16 of the answered rows are refused by the test if the artifact stops carrying them.
+
+**Two wrong answers, both found by measuring rather than by reviewing.** The first was the nested **fold** binding a loop variable to
+an item's *lowered word*: `[[x, y] for x in [1] for y in [[3]]]` answered `[[1, 1]]` for CPython's `[[1, [3]]]`, because a container
+literal lowers to its index in the module's container table and the fold wrote that integer into the element's static slot. ADR 0259
+retired this exact shape one clause deep for `True`/`None`/text/float elements; a clause list is the same trap with the item one level
+further away. The gate is now `compFoldItemIsAPlainNumber` — a fold may bind only an `*IntLit`, and anything else sends the whole
+comprehension to the arm that writes payload and tag together. The second was `{x: y for x in [1, 2] for y in [10, 20] if y > x}`
+answering `{1: 10, 2: 10}`: the fold had a comment saying a later entry replaces the earlier one's value and code that returned on the
+second write. A dict keeps the key's position and the last value; a set keeps whichever member it saw, because a set's order is not a
+fact. Both were fixed by asking CPython inside the same cycle that shipped the grammar — and the shape the fold still cannot answer is
+**refused** (`Gap R.355`), because the alternative is a plausible list at the exit code of success.
+
+**Three refusals, three codes, one sentence each.** A clause over a container the run time built (`Gap R.356` — one clause over that
+same name *answers*, because the one-clause road owns a real counter loop and the nested road unrolls); an element that is a container
+storing a clause's non-number binding (`Gap R.355`); a set or dict nest whose element is not a constant (the fold-only road Gap R.353
+already names). Each went into `pkg/lang/capability.go` so `--json` answers `{code, shape, suggestion, rows}` instead of a bare
+`codegen:` string, and `go run ./tools/captable` re-splices the docs table the registry guards. `compSurfaceOf` — the words a refused
+comprehension is quoted in — had to learn the program's own brackets: it printed `[for x in [1] for y in [2]]` for a **set**
+comprehension, which describes a program nobody wrote.
+
+**Every reader had to be told the list exists**, and that was the wider risk than the lowering: the semantic analyzer binds each
+clause target (`inferComp`), and `scanCompScope`, `callable_value`'s binding/free scans, `numeric_slot_door`, `scanCompBinds`, `lsp` and
+the formatter all walked `ForVar` alone. A formatter that writes one clause of a two-clause loop deletes half the program on save —
+which is a worse defect than the one the row fixes — so the round trip is asserted both ways: the written source re-parses to the same
+clause count, and formatting is a fixed point.
+
+**Deliberately not done.** The tempting implementation was to desugar a nest to the `for` road's own statement loops, which already
+walk a run-time container, a dict's keys and a text's characters with the tags in place; it is `Gap R.356`'s plan and it stays there,
+because an expression position emitting statements has to keep the frame, escape-analysis and `noteFrameTarget` books in three roads at
+once, and doing that badly trades a clean refusal for a wrong answer. The generator road delegates a nest to `nestedComp` rather than
+unrolling one clause; printing a generator is still the pre-existing eagerness divergence the record carries one clause in.
+
+**Witness**: `pkg/lang/comp_clause_test.go` (clause-shape parses, 18 answer rows against the reference with `Compile` asserted, 16 of
+the same programs on the record leg, 4 filed rows pinned to their own refusal sentences and to the row that owns them, the formatter
+round trip, and a one-clause ladder that fails if any pre-existing road changes answer), `integration/comp_clause_test.go` (the CLI
+against CPython on every engine, refusals at exit 1 with exit 2 forbidden, `--fmt` at the CLI), and
+`integration/programs/comprehension_clauses.gy` — matrix row `programs/comprehension_clauses`, `oracle: match`, line-for-line CPython.
+19 sources through `tools/recmerge` (the record 8030 → 8049), 0 dropped, 0 changed.
+
 ## Round 8 - An ordering asks its pair before the lowering (roadmap Gap R.85 and Gap R.202 closed; ADR 0382; Gap R.354 filed)
 
 **Change (codegen)**: one door, in a new file. `<`, `<=`, `>`, `>=` had no rule for a pair of kinds that do not order,

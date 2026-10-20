@@ -464,11 +464,16 @@ func computeNumericSlotChains(prog *Program) *numericSlotChains {
 				walkExpr(n.Keys[i])
 				walkExpr(n.Vals[i])
 			}
-			walkExpr(n.Cond)
-			if n.ForVar != nil {
-				binds(n.ForVar, n.Iter)
+			// Each clause binds its own name FROM its own iterable — the fact this scan exists to know —
+			// and a scan that read only the first left the second clause's target unclassified
+			// (roadmap Gap R.352).
+			for _, cl := range n.compClauses() {
+				if cl.Target != nil {
+					binds(cl.Target, cl.Iter)
+				}
+				walkExpr(cl.Iter)
+				walkExpr(cl.Cond)
 			}
-			walkExpr(n.Iter)
 		case *Generator:
 			for _, el := range n.Elems {
 				walkExpr(el)

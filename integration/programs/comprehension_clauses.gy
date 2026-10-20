@@ -1,0 +1,51 @@
+# comprehension_clauses.gy — a comprehension's clause list is the nested loop its clauses spell
+# (roadmap Gap R.352, ADR 0383).
+#
+# `[y for x in rows for y in x]` is two clauses read left to right: the first binds `x` to one item of
+# its iterable, the second runs INSIDE it and binds `y` to one item of ITS iterable, and the element is
+# evaluated once per combination, filters included. The reference has always read it that way; here the
+# second `for` was a `parse error: expected "]"`, so the flattening idiom — rows of rows, a matrix, a
+# pair of ranges — did not parse at all.
+#
+# Every line below is what CPython prints for the same file. What this backend still cannot walk — a
+# clause over a container the run time built, a clause over texts or floats, an element that is itself a
+# container storing a clause's non-number binding — is refused in words, and lives in the filed tables of
+# `pkg/lang/comp_clause_test.go` and `integration/comp_clause_test.go` rather than in this program,
+# because a conformance program is a claim of parity and a refusal is not one.
+
+# the row's own flattening: rows of rows, walked one level in
+print([y for x in [[1, 2], [3, 4]] for y in x])
+print([y for x in [[5]] for y in x])
+print([y for x in [[]] for y in x])
+print([y for x in [] for y in [1]])
+
+# the product of two ranges, and of two literals, as pairs and as sums
+print([[x, y] for x in [1, 2] for y in [3, 4]])
+print([(x, y) for x in [1] for y in [2]])
+print([x + y for x in [1, 2] for y in [3, 4]])
+print([x * 10 + y for x in range(2) for y in range(2)])
+print([x + y + z for x in [1] for y in [2] for z in [3]])
+
+# a filter belongs to the clause it follows: the inner one skips a combination, the outer one skips the
+# whole inner loop
+print([x + y for x in [1, 2] for y in [3, 4] if y > 3])
+print([x for x in [1, 2, 3] if x > 1 for y in [10, 20] if y > 10])
+print([y for x in [1, 2] if x > 1 for y in [7, 8]])
+
+# the same spelling twice: the second clause rebinds the name, and the element sees the later binding
+print([x for x in [1] for x in [2]])
+
+# a set, a dict, and a comprehension bound and read back every way it can be
+print({x + y for x in [1] for y in [2]})
+print({x: y for x in [1] for y in [2]})
+xs = [y for x in [[1, 2], [3]] for y in x]
+print(xs)
+print(len(xs))
+print(2 in xs)
+for v in xs:
+    print(v)
+
+# a generator expression carries the clause list too, and is what the loop below walks
+gen = (x + y for x in [1, 2] for y in [3])
+for v in gen:
+    print(v)

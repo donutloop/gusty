@@ -1,5 +1,97 @@
 {
  "entries": {
+"# comprehension_clauses.gy — a comprehension's clause list is the nested loop its clauses spell\n# (roadmap Gap R.352, ADR 0383).\n#\n# `[y for x in rows for y in x]` is two clauses read left to right: the first binds `x` to one item of\n# its iterable, the second runs INSIDE it and binds `y` to one item of ITS iterable, and the element is\n# evaluated once per combination, filters included. The reference has always read it that way; here the\n# second `for` was a `parse error: expected \"]\"`, so the flattening idiom — rows of rows, a matrix, a\n# pair of ranges — did not parse at all.\n#\n# Every line below is what CPython prints for the same file. What this backend still cannot walk — a\n# clause over a container the run time built, a clause over texts or floats, an element that is itself a\n# container storing a clause's non-number binding — is refused in words, and lives in the filed tables of\n# `pkg/lang/comp_clause_test.go` and `integration/comp_clause_test.go` rather than in this program,\n# because a conformance program is a claim of parity and a refusal is not one.\n\n# the row's own flattening: rows of rows, walked one level in\nprint([y for x in [[1, 2], [3, 4]] for y in x])\nprint([y for x in [[5]] for y in x])\nprint([y for x in [[]] for y in x])\nprint([y for x in [] for y in [1]])\n\n# the product of two ranges, and of two literals, as pairs and as sums\nprint([[x, y] for x in [1, 2] for y in [3, 4]])\nprint([(x, y) for x in [1] for y in [2]])\nprint([x + y for x in [1, 2] for y in [3, 4]])\nprint([x * 10 + y for x in range(2) for y in range(2)])\nprint([x + y + z for x in [1] for y in [2] for z in [3]])\n\n# a filter belongs to the clause it follows: the inner one skips a combination, the outer one skips the\n# whole inner loop\nprint([x + y for x in [1, 2] for y in [3, 4] if y \u003e 3])\nprint([x for x in [1, 2, 3] if x \u003e 1 for y in [10, 20] if y \u003e 10])\nprint([y for x in [1, 2] if x \u003e 1 for y in [7, 8]])\n\n# the same spelling twice: the second clause rebinds the name, and the element sees the later binding\nprint([x for x in [1] for x in [2]])\n\n# a set, a dict, and a comprehension bound and read back every way it can be\nprint({x + y for x in [1] for y in [2]})\nprint({x: y for x in [1] for y in [2]})\nxs = [y for x in [[1, 2], [3]] for y in x]\nprint(xs)\nprint(len(xs))\nprint(2 in xs)\nfor v in xs:\n    print(v)\n\n# a generator expression carries the clause list too, and is what the loop below walks\ngen = (x + y for x in [1, 2] for y in [3])\nfor v in gen:\n    print(v)\n": {
+    "stdout": "[1, 2, 3, 4]\n[5]\n[]\n[]\n[[1, 3], [1, 4], [2, 3], [2, 4]]\n[(1, 2)]\n[4, 5, 5, 6]\n[0, 1, 10, 11]\n[6]\n[5, 6]\n[2, 3]\n[7, 8]\n[2]\n{3}\n{1: 2}\n[1, 2, 3]\n3\nTrue\n1\n2\n3\n4\n5\n",
+    "hasStdout": true
+   },
+"xs = (x * y for x in [1, 2] for y in [10, 20])\nt = 0\nfor v in xs:\n    t = t + v\nprint(t)\n": {
+    "stdout": "90\n",
+    "hasStdout": true
+   },
+
+"xs = (x + y for x in [1, 2] for y in [3])\nfor v in xs:\n    print(v)\n": {
+    "stdout": "4\n5\n",
+    "hasStdout": true
+   },
+"print([(x, y) for x in [1] for y in [2]])\n": {
+    "stdout": "[(1, 2)]\n",
+    "hasStdout": true
+   },
+
+"print([[x, y] for x in [1, 2] for y in [3, 4]])\n": {
+    "stdout": "[[1, 3], [1, 4], [2, 3], [2, 4]]\n",
+    "hasStdout": true
+   },
+
+"print([x + y + z for x in [1] for y in [2] for z in [3]])\n": {
+    "stdout": "[6]\n",
+    "hasStdout": true
+   },
+
+"print([x + y for x in [1, 2] for y in [3, 4] if y \u003e 3])\n": {
+    "stdout": "[5, 6]\n",
+    "hasStdout": true
+   },
+
+"print([x + y for x in [1, 2] for y in [3, 4]])\n": {
+    "stdout": "[4, 5, 5, 6]\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [1, 2, 3] if x \u003e 1 for y in [10, 20] if y \u003e 10])\n": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [1] for x in [2]])\n": {
+    "stdout": "[2]\n",
+    "hasStdout": true
+   },
+
+"print([x*10 + y for x in range(2) for y in range(2)])\n": {
+    "stdout": "[0, 1, 10, 11]\n",
+    "hasStdout": true
+   },
+
+"print([y for x in [1, 2] if x \u003e 1 for y in [7, 8]])\n": {
+    "stdout": "[7, 8]\n",
+    "hasStdout": true
+   },
+
+"print([y for x in [[1, 2], [3, 4]] for y in x])\n": {
+    "stdout": "[1, 2, 3, 4]\n",
+    "hasStdout": true
+   },
+
+"print([y for x in [[5]] for y in x])\n": {
+    "stdout": "[5]\n",
+    "hasStdout": true
+   },
+
+"print([y for x in [[]] for y in x])\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print([y for x in [] for y in [1]])\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print({x + y for x in [1] for y in [2]})\n": {
+    "stdout": "{3}\n",
+    "hasStdout": true
+   },
+
+"print({x: y for x in [1] for y in [2]})\n": {
+    "stdout": "{1: 2}\n",
+    "hasStdout": true
+   },
+
+"xs = [y for x in [[1, 2], [3]] for y in x]\nprint(xs)\nprint(len(xs))\n": {
+    "stdout": "[1, 2, 3]\n3\n",
+    "hasStdout": true
+   },
 "d = {\"k\": 5}\nprint(d[\"k\"] \u003e 1)\n": {
     "stdout": "True\n",
     "hasStdout": true

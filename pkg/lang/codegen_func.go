@@ -278,7 +278,7 @@ func scanFreeIn(n Node, bound, out map[string]bool) {
 	case *FuncDef, *ClassDef:
 		return // another declaration's own scope
 	case *Comp:
-		scanCompScope(x.Iter, x.ForVar, x.Elems, x.Keys, x.Vals, x.Cond, bound, out)
+		scanCompClauseList(x, x.Elems, x.Keys, x.Vals, bound, out)
 		return
 	case *Generator:
 		scanCompScope(x.Iter, x.ForVar, x.Elems, nil, nil, x.Cond, bound, out)
@@ -332,6 +332,31 @@ func scanCompScope(iter Expr, forVar *Name, elems, keys, vals []Expr, cond Expr,
 		scanFreeIn(v, inner, out)
 	}
 	scanFreeIn(cond, inner, out)
+}
+
+// scanCompClauseList is the same scan asked of a CLAUSE LIST. Each clause's iterable is scanned in the
+// scope the EARLIER clauses' targets already populate — `for y in x` reads `x`, and `x` is bound by the
+// clause to its left, so it is not a free name the enclosing frame has to supply — and each target joins
+// the scope before that clause's own filter and, at the end, the element are scanned (roadmap Gap R.352:
+// a scan that knew only the first target reported `undefined name "y"` for the flattening idiom).
+func scanCompClauseList(c *Comp, elems, keys, vals []Expr, bound, out map[string]bool) {
+	inner := childScope(bound)
+	for _, cl := range c.compClauses() {
+		scanFreeIn(cl.Iter, inner, out)
+		if cl.Target != nil {
+			inner[cl.Target.Value] = true
+		}
+		scanFreeIn(cl.Cond, inner, out)
+	}
+	for _, e := range elems {
+		scanFreeIn(e, inner, out)
+	}
+	for _, k := range keys {
+		scanFreeIn(k, inner, out)
+	}
+	for _, v := range vals {
+		scanFreeIn(v, inner, out)
+	}
 }
 
 func childScope(bound map[string]bool) map[string]bool {

@@ -1702,6 +1702,12 @@ func (g *irGen) compElemPrintsAsText(c *Comp) bool {
 	if c == nil || len(c.Elems) != 1 || c.ForVar == nil {
 		return false
 	}
+	// The identity question is asked of ONE clause's target against THAT clause's iterable; with a clause
+	// list the element could copy any of them and the iterable that decides the kind is whichever bound
+	// it, so this door stays out and the object is asked at run time (roadmap Gap R.352).
+	if !compIsSingleClause(c) {
+		return false
+	}
 	nm, isName := c.Elems[0].(*Name)
 	if !isName || nm.Value != c.ForVar.Value {
 		// An element that computes something (`[n.upper() for n in names]`) is answered by the
@@ -2191,6 +2197,9 @@ func (g *irGen) taggedLoopVarRead(b *strings.Builder, name string, sp Span) (pay
 func (g *irGen) compElemIsTaggedLoopVar(c *Comp) bool {
 	if c == nil || len(c.Elems) != 1 || c.ForVar == nil {
 		return false
+	}
+	if !compIsSingleClause(c) {
+		return false // the same reason as compElemPrintsAsText: one clause's question, not a clause list's
 	}
 	nm, isName := c.Elems[0].(*Name)
 	if !isName || nm.Value != c.ForVar.Value {

@@ -484,10 +484,14 @@ func buildIndex(prog *Program, src string) *docIndex {
 			}
 			walkExpr(n.Body, owner)
 		case *Comp:
-			walkExpr(n.ForVar, owner)
-			walkExpr(n.Iter, owner)
-			if n.Cond != nil {
-				walkExpr(n.Cond, owner)
+			for _, cl := range n.compClauses() {
+				if cl.Target != nil {
+					walkExpr(cl.Target, owner)
+				}
+				walkExpr(cl.Iter, owner)
+				if cl.Cond != nil {
+					walkExpr(cl.Cond, owner)
+				}
 			}
 			for _, el := range n.Elems {
 				walkExpr(el, owner)

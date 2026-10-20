@@ -1082,6 +1082,29 @@ R.350), a subscript on a runtime-built comprehension traps with `IndexError` (Ga
 second `for` clause does not parse (Gap R.352), and a set or dict comprehension whose element is a call
 refuses while the list twin answers (Gap R.353).
 
+**A comprehension's clause list is the nested loop its clauses spell** (ADR 0383, closing Gap R.352). The grammar carried
+ONE `for` clause, so the idiom Python programmers write without thinking was not a half-supported feature but a syntax error pointing at a
+bracket — and the record leg had been holding the right answers to 46 of those sources the whole time, invisible to a drift ledger that only
+compares answers:
+
+```py
+print([y for x in [[1, 2], [3, 4]] for y in x])    # CPython [1, 2, 3, 4]
+                                                   # this toolchain before ADR 0383: parse error at 1:28: expected "]"
+print([[x, y] for x in [1, 2] for y in [3, 4]])    # CPython [[1, 3], [1, 4], [2, 3], [2, 4]]  · before: parse error at 1:31
+```
+
+`parseCompClauses` reads `for NAME in ITER [if COND]` repeated, left to right, each clause seeing the targets before it; `Comp.Clauses` carries
+it and `ForVar`/`Iter`/`Cond` stay as the first clause so every road that ever read a comprehension still reads one. `pkg/lang/codegen_comp_nested.go`
+is the door, with two arms: a fold that evaluates the element under every binding (which keeps `sum([x+y for x in [1,2] for y in [3,4]])` at
+`20`), and a runtime builder that appends one element per combination through `rt_append_tagged`, giving each clause its own slot — ADR 0381's
+rule, applied to a whole clause list instead of one target. A filter belongs to the clause it follows and skips the whole rest of the nest, which
+is the difference between `[2, 3]` and `[2, 3, 2, 3]`. Two answers that were **wrong at exit 0** were found and raised out of the language on the
+way: a fold that bound a container item as its lowered table index (`[[x,y] for x in [1] for y in [[3]]]` as `[[1, 1]]`, now **Gap R.355**'s
+refusal), and a dict fold that kept the first value a key was written with (`{1: 10, 2: 10}` for `{1: 20, 2: 20}`). What the nest cannot walk says
+so, with a capability code and the row that owns it — a clause over a container the run time built is **Gap R.356** (`rows = [[1,2],[3,4]]` /
+`[y for x in rows for y in x]`), and a clause over a text or a float is refused one clause in too (`L11.1`). The formatter writes every clause it
+read: a `gustyc --fmt` that printed the first one only would delete half of a program on save.
+
 **An ordering between two kinds that do not order raises what the reference raises** (ADR 0382, closing Gap R.85 and
 Gap R.202). A comparison never sees the kinds: by the time the ordering road runs, `None` has lowered to the word `0`
 and a text to an index into `@str_tab`, so `1 < None` is an `icmp slt i32 1, 0` — a true thing to say about two

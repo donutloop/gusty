@@ -48,6 +48,37 @@ List, dict, and set comprehensions are supported on the compiled backend. Dict/s
 dict, `{x for x in [1,2]}` a set. The `if` filter is the comprehension's on every kind —
 `{x for x in xs if x > 1}` parses (ADR 0234). See ADR 0095.
 
+**A comprehension carries a clause list** (ADR 0383, closing Gap R.352). A `for` clause may be repeated —
+`for NAME in ITER [if COND]` each time, read left to right, each clause running inside the ones before it and able to see the
+targets they bound. That is the whole of the flattening idiom and the whole of the product:
+
+```gy
+print([y for x in [[1, 2], [3, 4]] for y in x])   # [1, 2, 3, 4]   — rows of rows, walked one level in
+print([[x, y] for x in [1, 2] for y in [3, 4]])   # [[1, 3], [1, 4], [2, 3], [2, 4]]
+print([x*10 + y for x in range(2) for y in range(2)])   # [0, 1, 10, 11]
+print([x + y + z for x in [1] for y in [2] for z in [3]])   # [6]
+```
+
+**A filter belongs to the clause it follows**, and it decides whether the whole rest of the nest runs — which is the difference
+between `[2, 3]` and `[2, 3, 2, 3]`:
+
+```gy
+print([x for x in [1, 2, 3] if x > 1 for y in [10, 20] if y > 10])   # [2, 3]
+print([y for x in [1, 2] if x > 1 for y in [7, 8]])                  # [7, 8] — the outer filter skips the inner loop
+```
+
+Each clause's target is a binding of the frame that hosts the comprehension (ADR 0381), installed once per clause, so an element
+reads every one of them the way it reads a loop variable; a later clause may rebind an earlier spelling, and then the element sees
+the later binding (`[x for x in [1] for x in [2]]` is `[2]`). A generator expression carries the same list, and looping over one
+walks the product: `for v in (x + y for x in [1, 2] for y in [3]):` prints `4`, `5`.
+
+What the compiled backend does not yet walk refuses by naming itself (exit 1, one capability code each, `llc` never reached): a
+**clause over a container the run time built** — `rows = [[1, 2], [3, 4]]` / `[y for x in rows for y in x]`, where one clause over
+the same name answers, because that loop is a real loop and the nest is unrolled (roadmap **Gap R.356**); an **element that is
+itself a container storing a clause's non-number binding** — `[[x, y] for x in [1] for y in [[3]]]`, whose static table keeps one
+word per slot and the tag that gives the word meaning is not in it (**Gap R.355**); a **set or dict nest whose element is not a
+constant** (Gap R.353's door); and a **clause over a text or a float**, which is refused one clause in too (`L11.1`).
+
 **A `{…}` display ends at its brace.** A `for` after the closing brace finishes a display only when
 the display is the whole expression — the call-argument form `len({x * x} for x in xs)`. Inside a list
 display the `for` belongs to the *enclosing* comprehension, so the braces hold an element and not a

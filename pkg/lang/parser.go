@@ -1932,32 +1932,80 @@ func (p *parser) parseLambda() (Expr, error) {
 	return lm, nil
 }
 
-// parseGeneratorTail parses `for var in iter [if cond]` for a generator
-// expression `(elem for var in iter [if cond])`, returning a Generator.
-func (p *parser) parseGeneratorTail(elem Expr) (*Generator, error) {
-	if err := p.expectKeyword("for"); err != nil {
-		return nil, err
-	}
-	vt := p.next()
-	if vt.Kind != TokIdent {
-		return nil, fmt.Errorf("expected generator variable name")
-	}
-	if err := p.expectKeyword("in"); err != nil {
-		return nil, err
-	}
-	iter, err := p.parseExprPrec(precOr)
-	if err != nil {
-		return nil, err
-	}
-	var cond Expr
-	if p.peek().IsKeyword("if") {
+// parseCompClauses parses a comprehension's clause list: one or more `for NAME in ITER [if COND]`
+// clauses, read left to right, each clause seeing the targets the earlier ones bound (roadmap
+// Gap R.352 — the grammar has never had ONE `for` clause, and until this row the second one was a
+// parse error, which is how the flattening idiom `for x in rows for y in x` disappeared).
+//
+// Each clause's filter is an or-level expression, not a ternary, for the reason ADR 0234 gave for
+// the iterable: a `COND` parsed as a full expression is a ternary, and the ternary eats the NEXT
+// clause's own `if` — `if x if y` is two filters that AND, which is what the reference makes of it,
+// and a ternary spelled there is a syntax error in the reference too.
+func (p *parser) parseCompClauses() ([]*CompClause, error) {
+	var clauses []*CompClause
+	for {
+		sys := p.peek()
+		if err := p.expectKeyword("for"); err != nil {
+			return nil, err
+		}
+		v := p.peek()
+		if v.Kind != TokIdent {
+			return nil, p.errorf(v, "expected comprehension variable")
+		}
 		p.next()
-		cond, err = p.parseExprPrec(precOr)
+		if err := p.expectKeyword("in"); err != nil {
+			return nil, err
+		}
+		iter, err := p.parseExprPrec(precOr)
 		if err != nil {
 			return nil, err
 		}
+		cl := &CompClause{Target: &Name{Value: v.Text, Src: v.Span}, Iter: iter, Src: sys.Span}
+		for p.peek().IsKeyword("if") {
+			p.next()
+			cond, err := p.parseExprPrec(precOr)
+			if err != nil {
+				return nil, err
+			}
+			if cl.Cond == nil {
+				cl.Cond = cond
+			} else {
+				// Two `if` clauses on one `for` are one filter that is the AND of them — CPython's
+				// own reading, and the same short-circuit `and` the operator road lowers.
+				cl.Cond = &BinOp{Op: "and", L: cl.Cond, R: cond, Src: cond.Span()}
+			}
+		}
+		clauses = append(clauses, cl)
+		if !p.peek().IsKeyword("for") {
+			break
+		}
 	}
-	return &Generator{Elems: []Expr{elem}, ForVar: &Name{Value: vt.Text}, Iter: iter, Cond: cond}, nil
+	if len(clauses) == 0 {
+		return nil, fmt.Errorf("expected a comprehension `for` clause")
+	}
+	return clauses, nil
+}
+
+// compFirstClause copies clause zero into the fields every road that ever read a comprehension reads,
+// so a one-clause comprehension is exactly the node it was and a multi-clause one carries the whole
+// list in Clauses as well.
+func compFirstClause(c *Comp) {
+	if c == nil || len(c.Clauses) == 0 {
+		return
+	}
+	cl := c.Clauses[0]
+	c.ForVar, c.Iter, c.Cond = cl.Target, cl.Iter, cl.Cond
+}
+
+// parseGeneratorTail parses `for var in iter [if cond]` for a generator
+// expression `(elem for var in iter [if cond])`, returning a Generator.
+func (p *parser) parseGeneratorTail(elem Expr) (*Generator, error) {
+	clauses, err := p.parseCompClauses()
+	if err != nil {
+		return nil, err
+	}
+	first := clauses[0]
+	return &Generator{Elems: []Expr{elem}, ForVar: first.Target, Iter: first.Iter, Cond: first.Cond, Clauses: clauses}, nil
 }
 
 func (p *parser) parseListOrComp() (Expr, error) {
@@ -1979,32 +2027,15 @@ func (p *parser) parseListOrComp() (Expr, error) {
 		}
 		break
 	}
-	// comprehension: `[x for x in iter if cond]`
+	// comprehension: `[x for x in iter if cond]`, and since Gap R.352 the clause list Python has —
+	// `[y for x in rows for y in x]` is two clauses read left to right.
 	if p.peek().IsKeyword("for") {
-		p.next()
-		v := p.peek()
-		if v.Kind != TokIdent {
-			return nil, p.errorf(v, "expected comprehension variable")
-		}
-		p.next()
-		if err := p.expectKeyword("in"); err != nil {
-			return nil, err
-		}
-		// The iterable is an or-level expression (not a ternary): a ternary
-		// here would greedily consume the comprehension\x27s own `if` filter.
-		iter, err := p.parseExprPrec(precOr)
+		clauses, err := p.parseCompClauses()
 		if err != nil {
 			return nil, err
 		}
-		c := &Comp{Kind: CompList, Elems: elems, ForVar: &Name{Value: v.Text, Src: v.Span}, Iter: iter, Src: t.Span}
-		if p.peek().IsKeyword("if") {
-			p.next()
-			cond, err := p.parseExpr()
-			if err != nil {
-				return nil, err
-			}
-			c.Cond = cond
-		}
+		c := &Comp{Kind: CompList, Elems: elems, Clauses: clauses, Src: t.Span}
+		compFirstClause(c)
 		if err := p.expectOp("]"); err != nil {
 			return nil, err
 		}
@@ -2069,34 +2100,19 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			}
 		}
 	}
-	// Support `{... for x in iter}`: a comprehension 'for' inside the braces.
+	// Support `{... for x in iter [if c] for y in x}`: the comprehension's clause list inside the braces.
 	if p.peek().IsKeyword("for") {
-		p.next() // 'for'
-		v := p.next()
-		p.next() // 'in'
-		// The iterable stops at `or`, exactly as the list comprehension above does: a
-		// full expression here is a ternary, and the ternary eats the comprehension's own
-		// `if` filter — `{x for x in xs if x > 1}` parsed as `{x for x in (xs if x > 1 …)}`
-		// and demanded an `else` (roadmap Gap J.2, ADR 0234).
-		iter, err := p.parseExprPrec(precOr)
+		clauses, err := p.parseCompClauses()
 		if err != nil {
 			return nil, err
 		}
-		vn := &Name{Value: v.Text, Src: v.Span}
-		var comp *Comp
+		comp := &Comp{Clauses: clauses, Src: t.Span}
 		if isDict {
-			comp = &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter}
+			comp.Kind, comp.Keys, comp.Vals = CompDict, keys, vals
 		} else {
-			comp = &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter}
+			comp.Kind, comp.Elems = CompSet, elems
 		}
-		if p.peek().IsKeyword("if") {
-			p.next()
-			cond, err := p.parseExpr()
-			if err != nil {
-				return nil, err
-			}
-			comp.Cond = cond
-		}
+		compFirstClause(comp)
 		if err := p.expectOp("}"); err != nil {
 			return nil, err
 		}
@@ -2110,34 +2126,18 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	// comprehension's, so the display stops here and `parseListOrComp` builds the comprehension over
 	// this literal (roadmap Gap R.74, ADR 0244: `[{1, 2} for x in xs]` is a list of sets, not a set).
 	if p.inListLit == 0 && p.peek().IsKeyword("for") {
-		p.next() // 'for'
-		v := p.peek()
-		if v.Kind != TokIdent {
-			return nil, p.errorf(v, "expected comprehension variable")
-		}
-		p.next()
-		vn := &Name{Value: v.Text, Src: v.Span}
-		if err := p.expectKeyword("in"); err != nil {
-			return nil, err
-		}
-		// As above: the iterable is an or-level expression so the `if` filter stays the
-		// comprehension's, not a ternary's (Gap J.2, ADR 0234).
-		iter, err := p.parseExprPrec(precOr)
+		clauses, err := p.parseCompClauses()
 		if err != nil {
 			return nil, err
 		}
-		var cond Expr
-		if p.peek().IsKeyword("if") {
-			p.next()
-			cond, err = p.parseExpr()
-			if err != nil {
-				return nil, err
-			}
-		}
+		comp := &Comp{Clauses: clauses, Src: t.Span}
 		if isDict {
-			return &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter, Cond: cond, Src: t.Span}, nil
+			comp.Kind, comp.Keys, comp.Vals = CompDict, keys, vals
+		} else {
+			comp.Kind, comp.Elems = CompSet, elems
 		}
-		return &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter, Cond: cond, Src: t.Span}, nil
+		compFirstClause(comp)
+		return comp, nil
 	}
 	if isDict {
 		return &DictLit{Keys: keys, Vals: vals, Src: t.Span}, nil

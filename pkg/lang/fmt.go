@@ -494,14 +494,21 @@ func writeComp(sb *strings.Builder, x *Comp) {
 	}
 }
 
+// writeCompTail writes every clause of the comprehension's clause list. A formatter that wrote only the
+// first would silently DROP the rest of the loop, so the clause list is what the printer walks — the same
+// list the parser built and the same list `--emit-ast` reports (roadmap Gap R.352).
 func writeCompTail(sb *strings.Builder, x *Comp) {
-	sb.WriteString(" for ")
-	writeExpr(sb, x.ForVar, 0)
-	sb.WriteString(" in ")
-	writeExpr(sb, x.Iter, 0)
-	if x.Cond != nil {
-		sb.WriteString(" if ")
-		writeExpr(sb, x.Cond, 0)
+	for _, cl := range x.compClauses() {
+		sb.WriteString(" for ")
+		if cl.Target != nil {
+			writeExpr(sb, cl.Target, 0)
+		}
+		sb.WriteString(" in ")
+		writeExpr(sb, cl.Iter, 0)
+		if cl.Cond != nil {
+			sb.WriteString(" if ")
+			writeExpr(sb, cl.Cond, 0)
+		}
 	}
 }
 
