@@ -10,9 +10,11 @@
 #
 # Every group prints line for line what the reference prints — the matrix's job, and the reason no capture
 # of a container, a text or a float sits in this file: those are refused in words until the value word that
-# carries its own kind exists (roadmap L11.1, Gap R.332), a capture handed to a HIGHER-ORDER `def` as an
-# ARGUMENT is the entry-side twin roadmap Gap R.336 owns, and a comprehension's own target read by a body
-# this deep is the front-end road roadmap Gap R.347 files.
+# carries its own kind exists (roadmap L11.1, Gap R.332), and a capture handed to a HIGHER-ORDER `def` as an
+# ARGUMENT is the entry-side twin roadmap Gap R.336 owns. The last group is the chain written INSIDE a
+# comprehension, where the name the deepest body reads is the target the comprehension binds for itself —
+# a binding of that scope, installed in the frame hosting it and forwarded one step per frame like any other
+# (roadmap L11.7 · Gap R.348).
 
 # Three binding forms deep, the number owned by the outermost one.
 print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))
@@ -74,3 +76,18 @@ def stepper():
     return total
 
 print(stepper())
+
+# The same chain inside a comprehension. `x` is the comprehension's OWN binding: not module state (the
+# reference leaks a comprehension's target nowhere), not a register the generated `define` owns, and read
+# here from three frames down — so the host installs it, the frame that hosts the application forwards it,
+# and the deepest body reads the word the application filled from the host's slot. The module never binds
+# `x` anywhere in this file: a module that DID spell the name answers the module's value at the bottom of a
+# capture chain, which is roadmap Gap R.349's wrong answer and not this row's.
+print([(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20]])
+
+# The target read by a body one frame deep, over a run-time container: the loop stores each item into the
+# slot the application reads the capture word from.
+def scale(ys):
+    return [(lambda z: z * x)(2) for x in ys]
+
+print(scale([1, 2, 3]))

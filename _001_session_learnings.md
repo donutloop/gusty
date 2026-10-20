@@ -13079,3 +13079,42 @@ printed by the tool for a source printed beside it.
   `cycle/round4-head`) with explicit paths staged and never `-A`, because two other worktrees (`gusty-r339`,
   `gusty-round3`) carry another agent's in-flight edits. `push` remains impossible from this sandbox
   (`sign_and_send_pubkey: … agent refused operation`, `gh` unauthenticated), so the branch is the artifact.
+
+## ADR 0381 — a comprehension's target is a binding of the frame that hosts it (Gap R.348, 2026-10-20)
+
+- **A file with no callers is a design document, not a feature.** `pkg/lang/frame_targets.go` arrived with ADR 0380
+  carrying the whole rule — the counter, the release, the predicate, the per-frame entry wired into `beginScope` and
+  `enterBody` — and nothing called the writer or the reader. The row read as "half-implemented"; the honest reading is
+  "described, not wired", and the distinction changed what I looked for: not a bug in a rule, but the two call sites the
+  rule was written to have. Revert-and-measure proved it: with the two `note/forget` calls and the one `frameOwnsTarget`
+  ask removed, the three DoD programs print `undefined name "x"` and nothing else changes.
+- **Ask whether the "before" output was ever measured, before quoting it.** I began this cycle carrying a note (mine,
+  from earlier in the session) that said the failure came out of codegen with a `(hint: …)` clause and that the top-level
+  bare-expression spelling answered `[11, 21]`. Re-running the probe showed the hint text exists nowhere in the tree and
+  the bare expression does answer — a fold path — while the `print(...)` form did not. Two of my three remembered facts
+  were plausible inventions; the third was real. Everything in the ADR and the roadmap row is output I ran in this turn.
+- **Build the baseline in a worktree, or you will compare against yourself.** `git stash` + rebuild did not give me a
+  pre-change binary: `frame_targets.go` is untracked, so the stashed tree still had it and would not compile. `git worktree
+  add /tmp/base 946b272` gave the real "before", and it is what proved the five neighbours (R.349–R.353) are not mine —
+  including the `[[y for y in [1, 2]] for x in [10, 20]]` face, which is exit 2 on the baseline and stays exit 2.
+- **A conformance program is a witness, not a scratch pad.** The DoD asked me to put the chain in a comprehension inside
+  `lambda_capture_chain.gy`; the extra witness I liked (`x = 1000` beside the comprehension, to pin the nearer-binding
+  rule) poisoned the whole file — every capture named `x` in the program started reading the module's global and the
+  matrix's program printed `1110` for `111`. Removing it was right twice over: the file prints line for line what the
+  reference prints again, and the poisoning shape is a real defect with a real name (Gap R.349) that I would have hidden
+  inside a green program.
+- **The recorder is the review.** Eleven sources went to `tools/recmerge`. The `x = 5` one came back refused *before* the
+  fix, because CPython says `[11, 21]` and the compiled leg said `[6, 6]`; after the fix it was accepted. That single
+  tool behaviour is a better proof of a wrong-answer fix than any assertion I could have written in the test.
+- **Table-shaped docs have failure modes only a scanner finds.** Two of my five new queue rows used `Pri` labels
+  (`160aa`, `160ab`) outside `queuePri`'s `^[0-9]+[a-z]?$`, and the snapshot scanner stopped at them: the tracker
+  reported 214 rows where the file held 259 and 45 rows of owed work went invisible. The guard failed loudly and named the
+  shape (that is what `countQueueRows`'s `hidden` tally exists for, ADR 0343's cycle); the lesson is to run
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered` immediately after inserting rows, not at the end.
+- **`--callables` said nothing changed, and that is the machine path being honest.** The defunctionalisation pass still
+  declines this program — the ordinary lambda road answers it — so the pass report is identical before and after, and
+  `--json` carries the answer at `"exit": 0`. A row that changed the emitter rather than the pass should not move the
+  pass's numbers, and a cycle that moved them all would be a cycle worth interrogating.
+- **Push status.** Same sandbox limitation as the last cycle: `git push origin HEAD` fails with
+  `sign_and_send_pubkey: … agent refused operation` (`gh` unauthenticated), so the commit is the artifact and it is
+  pushed-or-not reported rather than claimed.

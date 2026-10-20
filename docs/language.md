@@ -94,6 +94,50 @@ verdict** (`{True for x in [1]}`, `{1: True for x in [1]}`), which folds to a co
 nowhere to write the tag; the record holds all three answers and the compiled path owes them (roadmap
 Gap R.116).
 
+## A comprehension has a scope, and its target belongs to it
+
+A comprehension is a binding construct, not a loop written at the use site. Its target is a binding
+**of the comprehension**: the module never learns the spelling, and the two programs below are the same
+program to this back end and to the reference — the second is refused, in the reference by
+`NameError`, here by the shared front end (ADR 0381):
+
+```
+print([x for x in [1, 2]])   # [1, 2]
+print(x)                     # error: undefined name "x"
+```
+
+What that binding *is*, inside the comprehension, is the part a program can see. An element position
+reads the target the way any name is read, and a `lambda` body written inside the comprehension reads
+it too — the body is emitted as a function of its own, and the target reaches it as one more parameter
+that the application fills from the loop's own slot, which is how a `for` variable and a `def` local
+have always travelled (ADR 0370, ADR 0380, and roadmap L11.7 · Gap R.348 for this case):
+
+```
+print([(lambda z: z + x)(1) for x in [10, 20]])                     # [11, 21]
+print([(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20]])  # [13, 23]
+print([(lambda z: z + x)(1) for x in [10, 20] if x > 15])           # [21]  — the filter is one scope too
+```
+
+Three rules come with it, and each is observable:
+
+- **The nearer binding answers.** If the module also spells the name, the target wins —
+  `x = 5` then `print([(lambda z: z + x)(1) for x in [10, 20]])` is `[11, 21]`, not `[6, 6]`. This is
+  the same precedence a `def` local has over a module global of the same spelling.
+- **A body owns only what is written inside it.** A `def` whose body hosts a comprehension binds that
+  comprehension's target; the comprehension the module bound is a different name, and reaches the body
+  as a parameter if the body reads it at all.
+- **A target still has to fit in the word a capture travels in.** With `xs = [[1], [2]]`, the program
+  `print([(lambda z: x)(1) for x in xs])` is refused in words (it names roadmap L11.1): a capture
+  crosses as one `i32` and cannot say what the value is, which is the same gate that refuses a captured
+  container, text or float anywhere else, reached by a loop variable instead of a local. Reading the
+  target *as an argument* — `[(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]]`, which is
+  `[4, 6, 8]` — is a different door, and answers for values this one refuses.
+
+The mirror image is worth stating because the two roads look identical in the source: a **`for`
+statement's** target at the module level *is* module state, because the reference leaks it
+(`for x in [1, 2]: pass` then `print(x)` prints `2` there and here). A compiled body that reads such a
+name meets the module-global rule (roadmap Gap R.35) instead, in different words, on purpose.
+
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
 Sequence slicing is supported on strings and lists:

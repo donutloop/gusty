@@ -99,7 +99,12 @@ gusty ships an indentation-based syntax covering:
   generated `define` gains its own forwarded tail and each inner application is filled from the registers of the `define`
   it sits in — `(lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1)` is `111`, four binding forms deep is `10`, a
   `def` local owned three frames up is `111`, and a name the middle frame shadows is not forwarded at all (**ADR 0380**,
-  **Gap R.330**). A capture whose value is not a number, the ENTRY of a higher-order `def` reading the caller's frame,
+  **Gap R.330**). A comprehension's own target is a binding of the frame that hosts it, so a body written inside the
+  comprehension reads it the same way: `[(lambda z: z + x)(1) for x in [10, 20]]` is `[11, 21]`,
+  `[(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20]]` is `[13, 23]`, and where the module spells the same name
+  the target answers, not the module — `x = 5` then that first program is `[11, 21]`, the `[6, 6]` it printed before is
+  on the record as the wrong answer it was (**ADR 0381**, **Gap R.348**). A capture whose value is not a number, the
+  ENTRY of a higher-order `def` reading the caller's frame,
   and an omitted slot whose default is not a function the compiler can name refuse in words instead of printing a word
   whose kind nobody asked for (**Gap R.331**, **Gap R.332**, **Gap R.336**).
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
@@ -1041,6 +1046,41 @@ the same `--json` shape, because a compiler bug must never reach the reader as a
 a lifted `def` whose body answers a double prints `0` at exit 0 (Gap R.345, ADR 0377's fold unwritten on the
 lift road), two nested `def`s of the same spelling in two frames collide on the global the lift mints (Gap
 R.346, exit 2 again), and a `def` nested inside a method is not lifted at all (Gap R.332).
+
+**A comprehension's target is a binding of the frame that hosts it** (ADR 0381, closing Gap R.348). The
+comprehension road had always allocated the loop variable's slot and stored each item into it — and had
+always recorded the name nowhere, so the one road that asks a frame what that frame owns came back saying
+nothing:
+
+```py
+print([(lambda z: z + x)(1) for x in [10, 20]])   # CPython [11, 21] — this toolchain before ADR 0381:
+                                                  # `undefined name "x"`, blamed on the program
+x = 5
+print([(lambda z: z + x)(1) for x in [10, 20]])   # CPython [11, 21] — here: [6, 6], at exit 0
+```
+
+The body of an applied `lambda` is emitted as a `define` of its own, and a `define` reaches neither another
+`define`'s registers nor the module's storage for a name the module never bound — so the read of the target
+inside the body died at the read, while the SAME target handed to that call as an argument answered all
+along (`[(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]]` is `[4, 6, 8]`), which is what located
+the hole in the read and not in the loop. ADR 0380 had measured the shape, filed it, and written the rule
+down in `pkg/lang/frame_targets.go` with no caller on either side — a law with no police, and a distinct
+thing from a half-implementation: the code that would have refused differently existed, only the wiring was
+absent. Two calls in the two comprehension roads (`noteFrameTarget` beside the slot, `forgetFrameTarget`
+when the element and the filter have lowered — the binding's span), and one ask in the capture road,
+ordered: a name the frame owns as its own target is a capture *whatever the module also binds*, and only
+then does the module table get to answer. That ordering is the `[6, 6]` fix, and it is the reason the
+recorder could not record that source before the change — `tools/recmerge` asks CPython first and turns away
+an answer the compiled leg disagrees with. The gate ADR 0370 installed was not widened: a target bound to a
+container, a text or a float is refused in that gate's own words at exit 1. The `for` road keeps its
+mirror-image rule, because its scoping is the mirror image — a module-level `for` target IS module state,
+and a body reading one still meets Gap R.35's different sentence — and both are pinned in one file so the
+two roads cannot quietly merge. Five neighbours came out of the probe and are filed, not absorbed: a capture
+of a name the module also spells answers the module at exit 0 (Gap R.349), a comprehension inside a
+comprehension answers one flat list and in another face hands `llc` a global as a payload at **exit 2** (Gap
+R.350), a subscript on a runtime-built comprehension traps with `IndexError` (Gap R.351), a comprehension's
+second `for` clause does not parse (Gap R.352), and a set or dict comprehension whose element is a call
+refuses while the list twin answers (Gap R.353).
 
 **A body's return word is chosen by folding its writes, not by asking only its newest one** (ADR 0377,
 closing Gap R.341). ADR 0373 settled that a read answers a name's LAST write, and the scan that picks a

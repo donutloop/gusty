@@ -836,6 +836,10 @@ type irGen struct {
 	decls           string
 	sym             map[string]string // variable -> load temp
 	allocd          map[string]bool   // alloca emitted?
+	// frameTargets counts the names the frame now being emitted binds for ITSELF — today, a comprehension's
+	// own target — which is the question the capture roads ask before they mint a parameter for a name
+	// (roadmap L11.7 · Gap R.348; `frame_targets.go` is the rule).
+	frameTargets map[string]int
 	// rtComps records the comprehensions whose elements are computed at runtime, so a
 	// consumer (sum/min/max/len folding) cannot read an empty compile-time element set and
 	// answer 0 for a list that has elements (roadmap L11.7, ADR 0192).
@@ -1370,6 +1374,10 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	// table out of both helpers, so a method's float `self`/parameter and a lifted closure's local leaked
 	// into whatever body was lowered next (roadmap L11.6, Gap R.339, **ADR 0375**; `float_frame.go` is the rule).
 	savedFloats := g.enterBodyFloatTable()
+	// …and the table of names the frame binds for itself, for the same reason: the comprehension a body
+	// hosts is the body's own binding, and what the host frame bound reaches it as a parameter and not as
+	// a slot (roadmap L11.7 · Gap R.348).
+	savedTargets := g.beginFrameTargets()
 	// …and it begins the SLOT table too, for the same reason and by the same argument. `allocd` answers
 	// 「does this name already have a stack slot in the frame being emitted」, and a frame is exactly as
 	// wide as one body: the closure lift asked it while emitting a nested `def`, found the ENCLOSING body's
@@ -1381,6 +1389,7 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	return func() {
 		g.funcLocals = saved
 		savedFloats()
+		savedTargets()
 		savedSlots()
 	}
 }
@@ -1428,7 +1437,11 @@ func (g *irGen) beginScope() func() {
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
 	savedDigit := g.digitLoopVars
-	// The slot tables come from the one helper every road that emits a body now takes — the `def` road
+	// …and so does the table of names the frame binds for ITSELF. A comprehension's target belongs to the
+	// frame that hosts the comprehension, and a body emitted inside one owns only the targets written
+	// inside it (roadmap L11.7 · Gap R.348; `frame_targets.go` is the rule).
+	savedTargets := g.beginFrameTargets()
+	// The slot tables come from the one helper every body-emitting road now takes — the `def` road
 	// through here, the method and closure-lift roads through `enterBody` — so there is no second copy of
 	// 「which slots does this frame own」 to forget (roadmap L11.6 · Gap R.342, ADR 0378).
 	savedSlots := g.enterFrameSlots()
@@ -1460,6 +1473,7 @@ func (g *irGen) beginScope() func() {
 		g.dictKeyInt, g.dictValInt = savedKNum, savedVNum
 		g.mixedDicts, g.mixedSets = savedMixDict, savedMixSet
 		g.digitLoopVars = savedDigit
+		savedTargets()
 		savedFloats()
 	}
 }

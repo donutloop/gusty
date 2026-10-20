@@ -15340,7 +15340,7 @@ the fix is the pass's, not the capture road's: the clone road already emits a bo
 the open question is whose registers fill a clone's parameters when the body is a `lambda` inside a `lambda`, which is
 exactly the question ADR 0372 answered for captures and ADR 0345 answered for entries.
 
-### Gap R.348 — a comprehension's own target, read by a `lambda` body, is `undefined name` (OPEN)
+### Gap R.348 — a comprehension's own target, read by a `lambda` body, is `undefined name` (CLOSED by ADR 0381)
 
 ```python
 print([(lambda z: z + x)(1) for x in [10, 20]])                          # [11, 21] here: undefined name "x"
@@ -15361,3 +15361,165 @@ to the comprehension road rather than to the forwarding rule that row installed:
 in a frame, and this shape is a name the loop binds and no frame ever received. The neighbouring roads have the answer
 beside it — a `for` target and a container-slice binding each record the name they bind for the frames that read it —
 and the fix is that same installation, asked of the comprehension's target.
+
+
+**What the fix is.** ADR 0380 had already written the rule — `pkg/lang/frame_targets.go`, with the `frameTargets` counter on `irGen` and the
+per-frame entry sitting beside ADR 0378's slot table and ADR 0375's float table in both `beginScope` and `enterBody`. What it
+did not have was a caller. The writer and the reader were both missing: no comprehension ever told the table it had bound a
+name, and no road that asks a frame what it owns ever asked this question of it. So the row was not half-implemented, it was
+half-*described*, and the difference matters to whoever reads it next: the code that would have refused differently had been
+written, and only the wiring was absent.
+
+Two calls, in the two roads that own a comprehension's loop:
+
+```go
+lv := loopVarName(c.ForVar)
+if !g.allocd[lv] {
+        b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", lv))
+        g.gcReg(b, lv)
+        g.allocd[lv] = true
+}
+g.noteFrameTarget(lv)          // the frame now owns this name — see frame_targets.go
+defer g.forgetFrameTarget(lv)  // …for exactly the element and the filter, and no longer
+```
+
+and one ask, in the road that decides what a `lambda` captures:
+
+```go
+if g.frameOwnsTarget(c) {
+        out = append(out, c)   // the frame's OWN binding: a capture, whatever the module also binds
+        continue
+}
+if !g.inFunc || g.moduleNames[c] {
+        continue               // module state (Gap R.35) and the top level's absence of one, unchanged
+}
+```
+
+Three things are load-bearing in those lines, and each has a test that fails if it is disturbed.
+
+**The span.** `noteFrameTarget` runs where the slot is allocated and `forgetFrameTarget` on the way out of lowering the
+element and the filter, because that is the binding's scope. A table left standing past the comprehension would let the next
+expression capture a name its own frame never bound — and mint a parameter for a register no `define` owns, which is the
+module `llc` rejects at exit 2 (Gap R.342's disease one table over).
+
+**The order.** `frameOwnsTarget` is asked BEFORE `moduleNames`, and that ordering is the `[6, 6]` fix. The module's binding
+and the loop's binding of the same spelling are two bindings; the one nearer the read is the one the read sees, which is the
+rule ADR 0220 wrote for module reads and ADR 0172 for slots. Answering from the module was not a rough edge, it was the wrong
+value at the exit code of success — and it is the row `tools/recmerge` refused to record before the fix went in, because the
+recorder asks CPython first and will not file an answer the compiled leg disagrees with.
+
+**The table is per frame.** `beginFrameTargets` installs a fresh map for a body and hands the host's back on the way out.
+That is why `print([(lambda z: z)(1) for x in [1, 2]])` followed by a `def` whose own comprehension binds `x` answers twice,
+correctly, with two different `x`s: what the host frame bound reaches a body as a parameter, never as a slot.
+
+The gate ADR 0370 installed was not widened. A target the one word cannot carry — a container from `xs = [[1], [2]]`, a float
+from `xs = [1.5, 2.5]`, a text from `xs = ["a", "b"]` — is refused by the same sentence as any other uncapturable value, at
+exit 1, naming L11.1 as the row that owns the word.
+
+The emitted module says the change plainly. For `print([(lambda z: z + x)(1) for x in [10, 20]])`:
+
+```llvm
+define i32 @gy_lambda_0(i32 %p0, i32 %p1)      ; `z` spelled, `x` forwarded by the capture road
+…
+  store i32 10, i32* %_x                       ; the host frame's slot, one store per item
+  %_x.ld1 = load i32, i32* %_x
+  %t6 = call i32 @gy_lambda_0(i32 1, i32 %_x.ld1)
+```
+
+**What stayed filed.** Five neighbours measured on the way through this row, each on the pre-ADR build as well, each with its own row: **Gap R.349**
+(a capture of a name the module also spells answers the module, at exit 0), **Gap R.350** (a comprehension inside a
+comprehension, `llc`-rejecting in one face), **Gap R.351** (a subscript on a runtime-built comprehension traps), **Gap R.352**
+(a comprehension's second `for` clause does not parse), **Gap R.353** (a set or dict comprehension whose element is a call
+refuses). One more stays refused by design rather than by omission: a capture handed to a higher-order `def` as an argument is
+Gap R.336's, because an entry is a bare symbol (ADR 0345) and this row made the read visible, not the word portable.
+
+### Gap R.349 — a capture of a name the module also spells answers the module (OPEN)
+
+```python
+x = 1000
+print((lambda x: (lambda y: x + y)(5))(1))     # the reference: 6      here: 1005, exit 0
+
+def f(x):
+    return (lambda y: x + y)(5)
+print(f(1))                                    # the reference: 6      here: 1005, exit 0
+
+print((lambda x: (lambda y: (lambda z: x + y + z)(1))(5))(1))   # the reference: 7   here: 1006, exit 0
+```
+
+The name the deepest body reaches is a **parameter** of the frame above it. `lambdaFrameCaptures` keeps the rule ADR 0370 wrote
+— *a name the module binds is not a capture, because a generated `define` reaches module storage the way any other function
+does* — and applies it before asking the frame anything. For a name the frame does not bind, that is right, and Gap R.35 owns
+changing it. For a name the frame DOES bind, nearer than the module, it is the wrong value at the exit code of success: the
+capture parameter is never minted, so the body reads `@gy_x` where it should read `%p1`.
+
+This is the remaining half of the ordering Gap R.348 installed. `frameOwnsTarget` answers for a name a comprehension bound;
+the frame's parameter table (`g.params`, both the spellings the source wrote and the tails the capture road appended) has to be
+asked with the same precedence before `moduleNames` may answer. The tell is the same as R.348's: renaming the module binding
+makes the program answer correctly, which is what a name-keyed table with the wrong precedence looks like.
+
+### Gap R.350 — a comprehension inside a comprehension (OPEN)
+
+```python
+print([[x + y for y in [1, 2]] for x in [10, 20]])   # the reference: [[11, 12], [21, 22]]   here: [1, 2], exit 0
+print([[y for y in [1, 2]] for x in [10, 20]])       # the reference: [[1, 2], [1, 2]]        here: exit 2, llc rejects
+print([(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20] … ])  # 3 elements for a 2×2 nesting, exit 0
+```
+
+Two faces, both pre-existing, one of them ADR 0166's class. In the second, the inner comprehension's folded-list GLOBAL was
+handed to the outer append as a payload — `call void @rt_append_tagged(i32 %h1, i32 @.lst1, i32 0)` — and `llc-20` answered
+*global variable reference must have pointer type*, the same rejection Gap R.67 and Gap R.238 logged for a container arriving
+as one untagged word. In the first, the outer loop filled ONE container and the inner list was built once for `x == 0`, so the
+run prints a single flat list where the reference prints a list of lists.
+
+The third face is the one ADR 0381 surfaced: with the comprehension's target now installed, the applied `lambda` in the inner
+element reads its arguments correctly (`22` and `23` are the right answers for the two items the outer loop reached) and the
+nesting's container bookkeeping still goes wrong underneath — three elements for a two-by-two. That is why the row is about the
+outer road's container, not about captures: the inner frames are right.
+
+The fix is the outer loop's: per outer item, the inner comprehension gets a container of its own and the outer append takes the
+inner HANDLE. Gap R.298 (the `for` road and the comprehension road normalise an iterable in two places) is the row that says why
+these two roads keep drifting.
+
+### Gap R.351 — a subscript on a comprehension the run time builds traps with `IndexError` (OPEN)
+
+```python
+xs = [10, 20]
+print([x + 1 for x in xs][1])    # the reference: 21   here: IndexError: list index out of range, exit 3
+print([x + 1 for x in [10, 20]][1])   # 21 — the folded shape answers
+ys = [x + 1 for x in xs]
+print(ys[1])                     # 21 — the named shape answers
+```
+
+Three positions on one container, two of them right. The subscript door reads the compile-time element table; a comprehension
+the run time filled has no entry there, and the door answered as if the list were empty — a trap the reference does not raise,
+at an exit code the reference never reaches. Printing the same expression is correct, and binding it to a name and subscripting
+that is correct, because the variable path goes to `rt_get_elem`. The door needs to ask what the object IS (the question
+`print` asks) instead of asking what the compiler folded.
+
+### Gap R.352 — a comprehension's second `for` clause does not parse (OPEN)
+
+```python
+print([y for x in [[1, 2]] for y in x])            # the reference: [1, 2]
+print([[x, y] for x in [1, 2] for y in [3, 4]])    # the reference: [[1, 3], [1, 4], [2, 3], [2, 4]]
+```
+
+Both are refused by the parser — `parse error at 1:28: expected "]"` — because the grammar carries ONE `for` clause. The
+flattening idiom is not unsupported-at-run-time, it does not parse, and the diagnostic points at a bracket. What the row needs
+is the clause list in the grammar (`for`/`if` repeated left to right, each clause able to see the targets before it) and the
+nesting lowered as nested loops, with ADR 0381's target installation once per clause; the semantic walk (`scanCompScope`) and
+the free-name scan already treat a comprehension's targets as its own, so the scoping half is in place.
+
+### Gap R.353 — a set or dict comprehension whose element or value is a call refuses (OPEN)
+
+```python
+print({(lambda z: z + x)(1) for x in [10, 20]})          # the reference: {11, 21}      here: comprehension element must be constant
+print({x: (lambda z: z + x)(1) for x in [10, 20]})       # the reference: {10: 11, …}  here: comprehension value must be constant
+print([(lambda z: z + x)(1) for x in [10, 20]])          # [11, 21] — the list twin answers since Gap R.348
+```
+
+The list road has had two paths since ADR 0192 — a compile-time fold for the shapes it can evaluate and a runtime loop for
+everything else — and the set and dict roads have only the fold. A call in the element is not a constant, so the door refuses
+while the neighbouring door, over the same loop and the same body, answers. `runtimeCompLoop` already allocates the right
+container kind and writes through the tagged add/put helpers (it is the road that dedups a mixed set and keys a dict by
+(payload, tag) pairs), so what is missing is the call to it from the two doors, plus the kind bookkeeping the fold does today
+kept as the fast path it is.

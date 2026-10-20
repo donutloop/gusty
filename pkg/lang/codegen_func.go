@@ -185,8 +185,17 @@ func (f lambdaFrameState) leave(g *irGen) {
 // A name the module binds is NOT a capture: a generated `define` reaches module storage the way any
 // other function does, and taking those names as parameters would change what a program that
 // compiles today passes across the boundary (Gap R.35 is the row that owns module state).
+//
+// What the module does NOT bind, and no further frame owns either, is the name the frame hosting the
+// `lambda` binds for ITSELF — today a comprehension's target. That name has no module storage to read
+// and no `define` but its own to hold it, so at the top level it reaches the body the same way a
+// `for` variable reaches a nested `def`: as a capture the application fills from the host's slot
+// (roadmap L11.7 · **Gap R.348**; `frame_targets.go` is the table, and the comprehension road is what
+// writes it). `x = 5` then `print([(lambda z: z + x)(1) for x in [10, 20]])` is the case the ordering
+// decides: the nearer binding is the one the read sees, so the target outranks the module spelling
+// rather than being answered by it.
 func (g *irGen) lambdaFrameCaptures(lam *Lambda) []string {
-	if !g.inFunc || lam == nil || lam.Body == nil {
+	if lam == nil || lam.Body == nil {
 		return nil
 	}
 	free := map[string]bool{}
@@ -196,7 +205,14 @@ func (g *irGen) lambdaFrameCaptures(lam *Lambda) []string {
 		if isPredeclaredName(c) {
 			continue
 		}
-		if g.moduleNames[c] {
+		if g.frameOwnsTarget(c) {
+			out = append(out, c)
+			continue
+		}
+		// Nothing the frame owns, and nothing a frame below the module owns either: at the top level
+		// there is no such name, because the module's own bindings are the only storage a body
+		// emitted there could read.
+		if !g.inFunc || g.moduleNames[c] {
 			continue
 		}
 		out = append(out, c)

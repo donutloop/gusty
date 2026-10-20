@@ -1,5 +1,57 @@
 {
  "entries": {
+"print([(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n": {
+    "stdout": "[4, 6, 8]\n",
+    "hasStdout": true
+   },
+"def f(base):\n    return [(lambda z: z + base + x)(1) for x in [10, 20]]\n\nprint(f(100))\n": {
+    "stdout": "[111, 121]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda z: z)(1) for x in [1, 2]])\n\ndef f():\n    return [(lambda z: z + x)(1) for x in [10, 20]]\n\nprint(f())\n": {
+    "stdout": "[1, 1]\n[11, 21]\n",
+    "hasStdout": true
+   },
+"def f(xs):\n    return [(lambda z: z + x)(1) for x in xs]\n\nprint(f([10, 20]))\n": {
+    "stdout": "[11, 21]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda y: (lambda z: z + x + y)(1))(2) for x in [10, 20]])\n": {
+    "stdout": "[13, 23]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda y: y + x)(2) for x in [10, 20]])\n": {
+    "stdout": "[12, 22]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda z: z + x)(1) for x in [10, 20] if x \u003e 15])\n": {
+    "stdout": "[21]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda z: z + x)(1) for x in [10, 20]])\n": {
+    "stdout": "[11, 21]\n",
+    "hasStdout": true
+   },
+
+"print([(lambda z: z + x)(1) for x in range(3)])\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"x = 5\nprint([(lambda z: z + x)(1) for x in [10, 20]])\n": {
+    "stdout": "[11, 21]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint([(lambda z: z * x)(2) for x in xs])\n": {
+    "stdout": "[2, 4, 6]\n",
+    "hasStdout": true
+   },
 "def add(a):\n    def inner(b):\n        return (lambda c: (lambda d: c + d + a + b)(1))(2)\n    return inner(10)\n\nprint(add(100))\n": {
     "stdout": "113\n",
     "hasStdout": true

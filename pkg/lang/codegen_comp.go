@@ -220,6 +220,12 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		g.gcReg(b, lv)
 		g.allocd[lv] = true
 	}
+	// The target is a binding of THIS frame, and now says so. The slot above is what the reads load,
+	// and the table beside it is what every road that asks a frame what it owns listens to — the
+	// capture road among them, which until now heard nothing and refused the read of a name the loop
+	// had just written (roadmap L11.7 · Gap R.348; `frame_targets.go` is the rule).
+	g.noteFrameTarget(lv)
+	defer g.forgetFrameTarget(lv)
 	g.heapUsed = true // the comprehension is often the only heap allocation in the program
 	// The loop variable of a string container holds an index into @str_tab, and saying so is
 	// what makes `n == "a"` in the filter compare texts instead of comparing an index with a
@@ -505,6 +511,11 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		g.gcReg(b, lv)
 		g.allocd[lv] = true
 	}
+	// The unrolled road binds the target per item and no further than the item: the name is the
+	// comprehension's own, recorded for the element and the filter and released when they are lowered,
+	// so the module never learns a spelling its source never wrote (roadmap L11.7 · Gap R.348).
+	g.noteFrameTarget(lv)
+	defer g.forgetFrameTarget(lv)
 	g.heapUsed = true // the comprehension is often the only heap allocation in the program
 	// Same rule for the unrolled path: iterate ["a", "b"] and the loop variable holds indices.
 	if ll, ok := c.Iter.(*ListLit); ok && len(ll.Elems) > 0 {
