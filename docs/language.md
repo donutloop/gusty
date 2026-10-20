@@ -45,8 +45,8 @@ str`. The `any` annotation accepts any inferred type. Runtime enforcement
 
 List, dict, and set comprehensions are supported on the compiled backend. Dict/set comprehensions use
 `for` inside the braces, Python-style: `{x: x*2 for x in [1,2,3]}` builds a
-dict, `{x for x in [1,2]}` a set. The `if` filter is the comprehension's on every kind —
-`{x for x in xs if x > 1}` parses (ADR 0234). See ADR 0095.
+dict, `{x for x in [1,2]}` a set. The `if` filter belongs to its clause. Constant integer operands may fold
+into a module-global container; anything else is built at run time through tagged slots (ADR 0384). See ADR 0095.
 
 **A comprehension carries a clause list** (ADR 0383, closing Gap R.352). A `for` clause may be repeated —
 `for NAME in ITER [if COND]` each time, read left to right, each clause running inside the ones before it and able to see the
@@ -77,7 +77,7 @@ What the compiled backend does not yet walk refuses by naming itself (exit 1, on
 the same name answers, because that loop is a real loop and the nest is unrolled (roadmap **Gap R.356**); an **element that is
 itself a container storing a clause's non-number binding** — `[[x, y] for x in [1] for y in [[3]]]`, whose static table keeps one
 word per slot and the tag that gives the word meaning is not in it (**Gap R.355**); a **set or dict nest whose element is not a
-constant** (Gap R.353's door); and a **clause over a text or a float**, which is refused one clause in too (`L11.1`).
+constant** now uses ADR 0384's tagged builder; and a **clause over a text or a float**, which is refused one clause in too (`L11.1`).
 
 **A `{…}` display ends at its brace.** A `for` after the closing brace finishes a display only when
 the display is the whole expression — the call-argument form `len({x * x} for x in xs)`. Inside a list
@@ -106,6 +106,36 @@ xs = [x + 1 for x in [1, 2]]
 print(xs[0], xs[0] + 1)          # 2 3        — an integer element still does integer things
 ```
 
+**A set or dict comprehension asks the fold first, then builds what the fold cannot name** (ADR 0384,
+closing Gap R.353). `{x * 2 for x in [1, 2, 2]}` and `{x: x * 2 for x in [1, 2]}` still fold into static containers.
+A call, lambda, method result, float, `None`, verdict, text, or container cannot be named by that fold, so it
+enters the same runtime loop as a list comprehension. Each member, key, and value is written as a payload plus
+its tag; only the member/key is hash-checked, while a dict value may itself be a container:
+
+```gy
+print({(lambda z: z + x)(1) for x in [10, 20]})       # {11, 21}
+print({x: (lambda z: z + x)(1) for x in [10, 20]})    # {10: 11, 20: 21}
+print({None for x in [1]})                           # {None}
+print({1: None for x in [1]})                         # {1: None}
+print({True for x in [1]})                            # {True}
+xs = []
+xs.append(6)
+print({v: v / 2 for v in xs})                         # {6: 3.0}
+xs = ["a", "b"]
+print({x: x.upper() for x in xs})                     # {'a': 'A', 'b': 'B'}
+print({x: [x] for x in [1, 2]})                       # {1: [1], 2: [2]}
+print({[1] for x in [1]})                             # TypeError: unhashable type: 'list'
+```
+
+The textual repr of a set is not an ordered fact: CPython randomizes string hashing. The backend pins the
+members and tags rather than whether `{'A', 'B'}` or `{'B', 'A'}` comes out. A dict's insertion order remains
+visible and pinned.
+
+**A `{…}` display ends at its brace.** A `for` after a closing brace belongs to the display whose brace is
+still open (ADR 0384). Thus `{{1} for x in [1]}` is a set comprehension over an inner set literal, not a
+literal set containing a set literal; its member asks the hashable question and CPython's `TypeError` reaches
+the program's handler. The parenthesized spelling `len({x * x} for x in xs)` remains a generator expression.
+
 **What the loop variable knows** (ADR 0244, ADR 0245, Gap R.46, Gap R.76). An element that *is* the loop variable
 carries its kind — and, over a container whose slots mix kinds, its **tag** — into the list it builds,
 asked of the container being iterated, because the loop variable's own facts are gone once the loop
@@ -118,12 +148,9 @@ table. Iterating a dict walks its keys at the
 stride its two-word entries need (ADR 0188), and a dict comprehension writes each entry as two
 `(payload, tag)` pairs, so `{k: 1 for k in d}` produces an entry `out["a"]` can find. A slot of that
 list answers an equality the way the printer already answers `print`: `out[1] == "a"` asks the slot's
-own tag (ADR 0247, closing Gap R.79). What still refuses
-by naming itself: a comprehension over a name the compiler kept as a compile-time list, and — since
-ADR 0259 took bool out of the fold — a **set or dict comprehension whose element, key or value is a
-verdict** (`{True for x in [1]}`, `{1: True for x in [1]}`), which folds to a compile-time global with
-nowhere to write the tag; the record holds all three answers and the compiled path owes them (roadmap
-Gap R.116).
+own tag (ADR 0247, closing Gap R.79). What still refuses by naming itself is a comprehension over a name the
+compiler kept as a compile-time list. The set and dict verdict shapes (`{True for x in [1]}`,
+`{1: True for x in [1]}`) are answered by ADR 0384's tagged runtime builders, not refused.
 
 ## A comprehension has a scope, and its target belongs to it
 

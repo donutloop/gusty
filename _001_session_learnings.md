@@ -1,5 +1,60 @@
 # Session Learnings
 
+## Round 10 - A set or dict comprehension builds what its fold cannot name (roadmap Gaps R.353 and R.357 closed; ADR 0384; Gap R.358 filed)
+
+**Change (parser, codegen, runtime use)**: the list comprehension road has had a fold and a runtime loop since ADR 0192.
+The set and dict roads had the fold only. The visible symptom was refusals at the exact point where the list twin answered:
+`{(lambda z: z + x)(1) for x in [10, 20]}` was `element must be constant`, and the same call as a dict value was `value must be
+constant`. The less visible symptom was worse: if the untagged folder did accept a shape, it could lower `None` to `0`, a verdict
+to `1`, an interned text to its `@str_tab` index, or a float dict value to its integer payload. These were not merely ugly answers;
+they were wrong values at the exit code of success.
+
+`pkg/lang/codegen_comp_setdict.go` puts the missing arm beside the fold. `setCompFolds` / `dictCompFolds` ask one operand proof,
+`compOperandsFold`, and the fold retains only the cases it can genuinely name. The rest enters `runtimeCompSetDict`, which allocates
+one self-describing container and uses the existing tagged runtime doors: `rt_set_add_tagged` and `rt_dict_put_tagged`. A dict entry
+uses `elemPayloadAndTag` independently for key and value. This is the same payload-plus-tag rule ADR 0187 established for `append`,
+item assignment, and dict mutation; the comprehension had simply developed a separate road that did not ask it.
+
+**The fold and its question are one contract.** The earlier road had a fold executor whose definition of "integer" was looser than
+the language's notion of an integer value. `None`, a bool, a text literal, a float literal, and containers now all prevent the fold.
+The proof uses both syntactic literals and existing meaning predicates (`printsAsBool`, `isNoneExpr`, `isFloat`, container literals),
+not just Go's type switch. If the operands cannot all be proven numeric, the runtime builder carries the tag. In other words, the
+question must not let the executor answer a different question than "is this an integer value?"
+
+**A dict value is not a list element.** Fixing only the tag lookup initially left `{6: 3.0}` printing `{6: 3}`. The bug was not the
+printer or the divide: a dict entry's value had gone through `g.value`, which returned a payload without the tag that made it a float.
+A pair is a pair on both sides. `entryPair` and `putEntry` fetch `(payload, tag)` for key and value separately, after which the float
+and interned-text dict rows answered together. The same discovery exposed a heap-argument defect outside the comprehension: a literal
+element whose expression is `x.upper()` was not recognized by `heapElemKind`, so a string method's interned index was stored as though
+the number were the value. The fix asks `printsAsInternedStr` there, too — one text-kind question, not one table per road.
+
+**`{{1} for x in [1]}` turned a semantic error into an invalid module.** CPython raises `TypeError: unhashable type: 'set'`; the parser
+had let the inner `{1}` consume the outer `for`, yielding a literal whose payload was a container global in an `i32` slot and `llc` exit
+2. A brace display now tracks whether it is inside another brace display, so an outer `for` belongs to the display whose brace remains
+open. Only then can codegen ask the language's correct question: a set member needs hashability, and `guardHashableTag` raises CPython's
+sentence. A dict key is checked for the same reason; a dict value is not, because `{1: [1]}` is legal.
+
+**Text-set repr order is not a witness.** The first full test run failed not because compiled and CPython disagreed about members, but
+because CPython randomized string hashes and changed `{'A', 'B'}` to `{'B', 'A'}` across processes. A test must assert the set's members,
+tags, deduplication, and length; dict order is semantically observable and remains pinned. This cycle's CLI and package tests use an
+order-normalized assertion for text set membership.
+
+**Machine path.** The builder emits `rt_set_add_tagged`, `rt_dict_put_tagged`, and `guardHashableTag`; tests assert those calls exist for
+computed shapes and do not exist for constant folds. The two paid probes were promoted from divergence probes to oracle parity rows. Four
+compiled-vs-record ledger rows were removed after their answers matched, and the generated capability table now reports 43 codes. Twenty
+comprehension programs were asked through `tools/recmerge`; sixteen had not been recorded, moving the record leg from 8049 to **8065**, while
+four existing records were confirmed unchanged rather than rewritten.
+
+**What remains deliberately owed.** The new row `Gap R.358` records that comprehensions over literal non-number iterables, such as
+`{k: 1 for k in ["a", "b"]}`, still fail earlier — the *iterable* asks for integer items — which is distinct from member/value tagging.
+A non-integer nested clause still belongs to ADR 0383's filed rows, and `str(x)` in a comprehension belongs to the broader print/fold
+family (`Gap R.171`). None is silently folded into this cycle's answer.
+
+**Witness**: `pkg/lang/comprehension_tagged_test.go` and `integration/comprehension_tagged_test.go` cover calls, lambdas, defs, runtime
+lists, None, verdicts, floats, texts, containers, unhashable raises, catchability, static folds, and IR door selection. The CLI suite
+compares against CPython and checks exit codes explicitly. Matrix is `189/219`; package/integration drift ledgers are `319/19`; oracle
+verdicts are `175/22/22`.
+
 ## Round 9 - A comprehension reads a clause list, and its door answers or says so (roadmap Gap R.352 closed; ADR 0383; Gaps R.355 and R.356 filed)
 
 **Change (parser, AST, codegen)**: the grammar had one `for` clause, so `[y for x in rows for y in x]` — the flattening

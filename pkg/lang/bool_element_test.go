@@ -208,27 +208,23 @@ func TestNumericUseOfABoolSlotUnderARuntimeIndexStillAnswers(t *testing.T) {
 	}
 }
 
-// A set or dict comprehension of verdicts folds to a compile-time global, and a global has no tag
-// table: the fold now declines, and the refusal names the half it is missing (roadmap Gap R.116,
-// ADR 0259). the record answers all three lines, which is what makes the compiled refusal the
-// honest answer rather than the same wrong one in different clothes.
-func TestAComprehensionOfVerdictsRefusesInWords(t *testing.T) {
+// A verdict no longer has to hide inside a folded compile-time global: the set and dict roads ask
+// the same tag the literal builder asks and write payload and tag together. The three answers below
+// are CPython's, the record's, and — since ADR 0384 — the compiled backend's (roadmap Gaps R.112 and
+// R.116, ADR 0259). The rows used to pin refusals; they now keep the paid shape from drifting back.
+func TestAComprehensionOfVerdictsAnswersWithTheTag(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ src, wantText, wantOut string }{
-		{"print({True for x in [1]})\n", "tagged set builder", "{True}\n"},
-		{"print({1: True for x in [1]})\n", "tagged dict builder", "{1: True}\n"},
-		{"print({True: 1 for x in [1]})\n", "tagged dict builder", "{True: 1}\n"},
+	for _, tc := range []struct{ src, wantOut string }{
+		{"print({True for x in [1]})\n", "{True}\n"},
+		{"print({1: True for x in [1]})\n", "{1: True}\n"},
+		{"print({True: 1 for x in [1]})\n", "{True: 1}\n"},
 	} {
-		_, err := Compile(tc.src)
-		if err == nil {
-			t.Errorf("%q compiled; a folded container global has no tag to write", tc.src)
+		if _, err := Compile(tc.src); err != nil {
+			t.Errorf("%q refused with %q; the tagged builder owes it an answer", tc.src, err.Error())
 			continue
 		}
-		if !strings.Contains(err.Error(), tc.wantText) {
-			t.Errorf("%q refused with %q, want it to name the %q it is missing", tc.src, err.Error(), tc.wantText)
-		}
 		if got := captureStdout(t, tc.src); got != tc.wantOut {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.wantOut)
+			t.Errorf("compiled %q = %q, want %q", tc.src, got, tc.wantOut)
 		}
 	}
 }

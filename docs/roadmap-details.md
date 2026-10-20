@@ -6009,7 +6009,7 @@ reached for it while asking what `print(0 == None)` should look like inside a `t
 defect that is measured and not written down is the same as one that does not exist. No test yet: the closure
 owes the program above running on three engines, and the test that pins today's parse failure comes with it.
 
-### Gap R.116 — a set or dict comprehension over verdicts refuses (OPEN, measured closing Gap R.112)
+### Gap R.116 — a set or dict comprehension over verdicts refuses (DONE — ADR 0384, 2026-10-20)
 
 ```gusty
 print([x for x in [True, 1, 1]])   # [True, 1, 1] on three engines — paid by ADR 0259
@@ -6197,7 +6197,7 @@ name, so `k` binds the whole pair and `v` is never bound at all, which is why th
 of the same missing feature, and behind it `TupleLit` has no lowering at all (L11.3), so the iterable cannot
 be built either. Owner L11.3 for that; the comprehension-target binding is the small fix that follows.
 
-### Gap R.123 — a dict comprehension with a text key refuses in the compiled backend (OPEN, measured landing ADR 0260)
+### Gap R.123 — a dict comprehension with a text key refuses in the compiled backend (DONE — ADR 0384, 2026-10-20)
 
 ```gusty
 d = {"k": v for v in [1, 2, 3]}
@@ -6284,7 +6284,7 @@ body, and an IR row that reads the module's own terminators to check the `phi`'s
 instructions ("this row is the pin") and was deleted on the day it stopped failing.
 
 <a id="gap-r-105"></a>
-### Gap R.105 — the dict comprehension's value loses the double's tag (OPEN, measured closing Gap R.100)
+### Gap R.105 — the dict comprehension's value loses the double's tag (DONE — ADR 0384, 2026-10-20)
 
 ```gusty
 xs = []
@@ -10697,7 +10697,7 @@ build with the static-array sentence and now prints `0`, which is **Gap R.67**'s
 `ret i32 @.lst1`; `la = [1, 2]; return la` prints `0`) arrived at from a new direction.
 
 <a id="gap-r-225"></a>
-### Gap R.225 — a literal element that is an *operation over* a read still answers the payload (OPEN, found by ADR 0332)
+### Gap R.225 — a literal element that is an *operation over* a read still answers the payload (DONE — ADR 0384, 2026-10-20)
 
 ```python
 print([str({"a": "x"}["a"]), 1])   # exit 0, prints [1, 1]; the reference prints ['x', 1]
@@ -10723,7 +10723,7 @@ The shapes are pinned with both answers written into
 instead of a wrong answer shipping quietly.
 
 <a id="gap-r-226"></a>
-### Gap R.226 — the loop that unrolls a literal binds the payload, not the value (OPEN, found by ADR 0332)
+### Gap R.226 — the loop that unrolls a literal binds the payload, not the value (DONE — ADR 0384, 2026-10-20)
 
 ```python
 for v in [{"a": "x"}["a"], 2]:   # prints 1 then 2; the reference prints x then 2
@@ -15552,7 +15552,7 @@ CPython. Nineteen sources went to `tools/recmerge` (the record to 8049). What th
 `Gap R.355` (an element that is a container storing a clause's non-number binding), `Gap R.356` (a clause over a container the run
 time built), and a clause over a text or a float, which refuses one clause in too and belongs to `L11.1`.
 
-### Gap R.353 — a set or dict comprehension whose element or value is a call refuses (OPEN)
+### Gap R.353 — a set or dict comprehension whose element or value is a call refuses (DONE — ADR 0384, 2026-10-20)
 
 ```python
 print({(lambda z: z + x)(1) for x in [10, 20]})          # the reference: {11, 21}      here: comprehension element must be constant
@@ -15564,8 +15564,22 @@ The list road has had two paths since ADR 0192 — a compile-time fold for the s
 everything else — and the set and dict roads have only the fold. A call in the element is not a constant, so the door refuses
 while the neighbouring door, over the same loop and the same body, answers. `runtimeCompLoop` already allocates the right
 container kind and writes through the tagged add/put helpers (it is the road that dedups a mixed set and keys a dict by
-(payload, tag) pairs), so what is missing is the call to it from the two doors, plus the kind bookkeeping the fold does today
+(payload, tag) pairs), so what is missing was the call to it from the two doors, plus the kind bookkeeping the fold does today
 kept as the fast path it is.
+
+**What ADR 0384 changed.** The set and dict roads now ask one question before either path: can the fold answer *every* operand,
+for *every* item, with a payload that needs no tag? A None, verdict, text, float, container or call says no, and the answer is
+built one member/entry at a time through `rt_set_add_tagged` and `rt_dict_put_tagged`. The fold still owns the shapes it owned
+before; the new arm only fills the hole beside it. That also retired three nearby bad answers without special-casing them:
+`{None for x in [1]}` no longer says `{0}`, `{1: None for x in [1]}` no longer says `{1: 0}`, and a dict value whose expression
+computes a double arrives as its float box with the float tag (`{6: 3.0}`, not `{6: 3}`). The fold's question and the fold itself
+are one pair: asking only the fold had let the void fold to the integer its truthiness already was.
+
+**Evidence.** `pkg/lang/comprehension_tagged_test.go` and `integration/comprehension_tagged_test.go` cover call elements and
+values, None/bool/text/float/container members and entries, unhashable set members and dict keys, mixed tags, filters, and folded
+controls. The two old oracle probes for verdicts and a text key are now matrix parity rows. Twenty comprehension
+sources went through `tools/recmerge` across this row and the adjacent raise rows; sixteen were new, bringing the
+record to **8065**, and the four already recorded agreed and were not rewritten.
 
 ### Gap R.354 — one half of an unorderable pair is a fact the front end never wrote down, so the ordering door stays out (OPEN, measured while landing ADR 0382, owner `codegen`)
 
@@ -15657,3 +15671,45 @@ is the plan the ADR names as the tempting one. Both are gated on the same discip
 its existence is proved (a call's answer asks `callAnswersContainer` first, Gap R.67), because `rt_list_len` measures a `0` exactly as
 happily as it measures a list — which is how `[x for x in h(3)]` once printed `[]` at exit 0.
 
+
+### Gap R.357 — `{{1} for x in [1]}` let the inner brace steal the outer comprehension (DONE — ADR 0384, 2026-10-20)
+
+```python
+print({{1} for x in [1]})     # the reference: TypeError: unhashable type: 'set'
+print({{1: 2} for x in [1]})  # the reference: TypeError: unhashable type: 'dict'
+```
+
+The parser had one distinction between a display that *is* a comprehension and a display that merely sits
+in another expression: `inListLit`. A nested `{` had no such counter. The inner `{1}` finished its literal,
+saw the `for` that belonged to the outer comprehension, and adopted it. The outer expression became a set
+literal with a set-valued element; its untagged heap builder put the module's `@.set1` global into an `i32`
+slot, and `llc` rejected the module. That is exit 2 on a program whose only fault is asking for a set of
+sets.
+
+**The fix.** A brace display now records how deeply it is nested while its elements are parsed. A `for` seen
+before its own `}` belongs to that display; a `for` seen after its `}` belongs to it only when no enclosing
+brace display is open. The outer `{... for x in [1]}` therefore keeps its clause, the member is built by
+the runtime set road, and `rt_set_add_tagged` is guarded by the member's own tag. The reference's sentence is
+raised at exit 3, not manufactured by the assembler.
+
+**Evidence.** `pkg/lang/comprehension_tagged_test.go#TestASetComprehensionOpeningWithAContainerLiteralIsNotStolenByItsInnerBrace`
+and `integration/comprehension_tagged_test.go` cover the set, dict and nested list spellings through the CLI.
+
+### Gap R.358 — a comprehension over a literal iterable of non-numbers asks for integer items (OPEN, measured while landing ADR 0384, owner `codegen`)
+
+```python
+print([x for x in ["a", "b"]])
+print({k: 1 for k in ["a", "b"]})
+xs = [1, "a", 2.5, None, True]
+print([x for x in xs])
+```
+
+CPython answers all three, and the `for` statement has always walked the same literal. The comprehension
+road, however, asks `compItems` for a compile-time list of `int64` items as soon as it sees a literal; when
+one element is not an integer, the literal road stops with `comprehension iterable must be constant integers`
+rather than falling to `runtimeCompLoop`. Gap R.353 fixed the *member*'s kind; this row is the *iterable*'s.
+
+**What would close it.** Keep the integer-item fold as the fast path, but let a non-integer literal display
+fall through to the runtime loop that already understands payloads, tags, dict keys and text characters. The
+fold's answers must not move, and mixed-item rows should be recorded only after the compiled leg agrees with
+the reference leg (`tools/recmerge` refuses a disagreement).

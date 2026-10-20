@@ -1,16 +1,15 @@
-# A comprehension that builds verdicts. The list works on both backends now (roadmap Gap R.112,
-# ADR 0259); the set and the dict do not, because their compile-time fold writes a static global and a
-# static global has no tag table to write True into — the fold now declines rather than store the
-# number and let the printer follow it (roadmap Gap R.116).
+# What CPython prints for all four lines here (python3, 3.12):
 #
-# What each engine answers today:
-#   --interp  [True, 1, 1]  {True}  {1: True}  {True: 1}
-#   --aot     refuses, in words, exit 1: "a comprehension of verdicts needs the tagged set builder,
-#             which a set comprehension does not have yet" — no line is printed at all
-#   python3   [True, 1, 1]  {True}  {1: True}  {True: 1}
+#   [True, 1, 1]
+#   {True}
+#   {1: True}
+#   {True: 1}
 #
-# The list row is here so the family stays one row: it is the shape that IS built tagged, and the
-# refusal above is only believable next to it.
+# The list row was the shape built tagged first (roadmap Gap R.112, ADR 0259). The set and dict rows
+# used to fold their verdicts into a compile-time global that had no tag table, and they refused
+# rather than print the number underneath (roadmap Gap R.116). ADR 0384 grew the missing builder:
+# each payload is written with the tag that says it is a verdict, so the compiled backend now prints
+# the same four lines as CPython.
 print([x for x in [True, 1, 1]])
 print({True for x in [1]})
 print({1: True for x in [1]})

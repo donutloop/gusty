@@ -2,22 +2,22 @@
 //
 // Flags (stable, agent-friendly):
 //
-//	--eval <src>     evaluate a source string and print the result
-//	--file <path>    read and evaluate a source file
-//	--verify <src>   parse + analyze, report diagnostics, exit by code
-//	--emit-llvm <src>   print LLVM IR
-//	--emit-ast <src>    print the AST as JSON
-//	--target <triple>   target triple for codegen (informational)
-//	--opt-level <n>     optimization level (informational)
-//	--lang              list supported language features (self-describing)
-//	--oracle <src>      run the compiled backend and CPython and compare (exit 6 divergence, 7 no verdict)
-//	--variance          print the generic variance table as JSON (L6.6)
-//	--callables <src>   print what the defunctionalization pass did to a source string as JSON (L11.7; the
-//                    uncallable-call refusal quotes the `refused` sentence this prints — ADR 0379)
-//	--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
-//	--version           print version
-//	--repl              start an interactive REPL (default when stdin is a TTY)
-//	--help              show usage
+//		--eval <src>     evaluate a source string and print the result
+//		--file <path>    read and evaluate a source file
+//		--verify <src>   parse + analyze, report diagnostics, exit by code
+//		--emit-llvm <src>   print LLVM IR
+//		--emit-ast <src>    print the AST as JSON
+//		--target <triple>   target triple for codegen (informational)
+//		--opt-level <n>     optimization level (informational)
+//		--lang              list supported language features (self-describing)
+//		--oracle <src>      run the compiled backend and CPython and compare (exit 6 divergence, 7 no verdict)
+//		--variance          print the generic variance table as JSON (L6.6)
+//		--callables <src>   print what the defunctionalization pass did to a source string as JSON (L11.7; the
+//	                   uncallable-call refusal quotes the `refused` sentence this prints — ADR 0379)
+//		--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
+//		--version           print version
+//		--repl              start an interactive REPL (default when stdin is a TTY)
+//		--help              show usage
 //
 // Exit codes (docs/operations.md § Exit codes): 0 = ok, 1 = compile error
 // (parse/analysis/codegen/link), 2 = LLVM rejected the module we emitted (a

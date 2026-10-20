@@ -50,6 +50,13 @@ type parser struct {
 	// `[{1, 2} for x in xs]` a list of one set comprehension instead of a list comprehension over
 	// set literals (roadmap Gap R.74, ADR 0244).
 	inListLit int
+	// inBraceLit counts the `{` displays whose element list this expression is being parsed inside.
+	// It is the same distinction `inListLit` draws for `[`, one brace deeper: in
+	// `{{1} for x in xs}`, the `for` follows the inner `}` but belongs to the OUTER display. Letting the
+	// finished `{1}` finish itself into a comprehension made the outer expression a set literal holding
+	// one set, and its untagged heap builder put the inner object's global in an i32 slot — the module
+	// `llc` rejects (roadmap Gap R.357).
+	inBraceLit int
 	// typeAliases records compile-time structural type aliases (`type X = T`)
 	// so later annotations resolve them structurally (L5.7).
 	typeAliases map[string]*Type
@@ -2049,6 +2056,9 @@ func (p *parser) parseListOrComp() (Expr, error) {
 
 func (p *parser) parseDictOrSet() (Expr, error) {
 	t := p.next() // '{'
+	braceDepth := p.inBraceLit
+	p.inBraceLit++
+	defer func() { p.inBraceLit = braceDepth }()
 	var keys, vals []Expr
 	var elems []Expr
 	isDict := false
@@ -2101,7 +2111,9 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 		}
 	}
 	// Support `{... for x in iter [if c] for y in x}`: the comprehension's clause list inside the braces.
+	// A `for` seen while this display is still open belongs to it, however deeply it is nested.
 	if p.peek().IsKeyword("for") {
+		p.inBraceLit = braceDepth
 		clauses, err := p.parseCompClauses()
 		if err != nil {
 			return nil, err
@@ -2121,11 +2133,15 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	if err := p.expectOp("}"); err != nil {
 		return nil, err
 	}
+	p.inBraceLit = braceDepth
 	// A `for` after the closing brace finishes a display that is the *whole* expression — the
 	// call-argument genexp `len({x*x} for x in xs)`. Inside a list display it is the enclosing
 	// comprehension's, so the display stops here and `parseListOrComp` builds the comprehension over
 	// this literal (roadmap Gap R.74, ADR 0244: `[{1, 2} for x in xs]` is a list of sets, not a set).
-	if p.inListLit == 0 && p.peek().IsKeyword("for") {
+	// Inside another `{` display it is likewise the OUTER display's: `{{1} for x in xs}` is a set
+	// comprehension over the set literal `{1}`, not a set literal holding one set comprehension
+	// (roadmap Gap R.357).
+	if p.inListLit == 0 && p.inBraceLit == 0 && p.peek().IsKeyword("for") {
 		clauses, err := p.parseCompClauses()
 		if err != nil {
 			return nil, err

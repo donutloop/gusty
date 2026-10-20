@@ -41,7 +41,7 @@ func (g *irGen) nestedComp(b *strings.Builder, c *Comp) (string, error) {
 		return g.emitFoldedNestedComp(c, vals, keys)
 	}
 	if c.Kind != CompList {
-		return "", fmt.Errorf("codegen: %s has no compiled lowering: a comprehension with more than one `for` clause is built today by folding its element, and this element needs the run-time builder — which exists for a list comprehension and not yet for a %s (roadmap Gap R.352)", compSurfaceOf(c), nestedCompKindWord(c.Kind))
+		return "", fmt.Errorf("codegen: %s has no compiled lowering: a nested %s folds only constant elements, and the second clause's runtime builder exists only for a list comprehension — keep every clause's iterable and element constant, or build the rows with a loop (roadmap Gap R.352)", compSurfaceOf(c), nestedCompKindWord(c.Kind))
 	}
 	return g.nestedCompRuntimeList(b, c)
 }

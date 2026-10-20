@@ -161,10 +161,10 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	},
 	{
 		Code:       "lower.unsupported.comprehension-clause-needs-the-builder",
-		Shape:      "a set or dict comprehension with more than one `for` clause whose element is not a compile-time constant — the nested fold answers a constant element, and the run-time builder that would take the rest exists for a list comprehension and not yet for a set or a dict",
-		Suggestion: "write the nest as a list comprehension and pass it to `set(...)`/`dict(...)`? not yet either — build it with a loop and `add`/`=` for now, or keep the element constant",
+		Shape:      "a nested set or dict comprehension whose iterable or element is beyond the runtime clause builder — a single-clause set/dict now builds through tagged slots, while a second clause still unrolls only shapes it can prove",
+		Suggestion: "keep the second clause's iterable literal/numeric, or build the nest with a loop and `add`/assignment; the nested set/dict runtime loop remains owed",
 		Rows:       []string{"Gap R.352", "Gap R.353", "L11.1"},
-		Markers:    []string{"is built today by folding its element"},
+		Markers:    []string{"second clause's runtime builder"},
 		Sample:     "print({[x, y] for x in [1] for y in [2]})",
 	},
 	{
@@ -178,22 +178,6 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		// refusal is the same read from inside a function body, whose names the analysis does not count as
 		// reads at all (roadmap Gap R.290, beside Gap R.35's refusal of module reads from a body).
 		Sample: "xs = [1, 2]\ndef f():\n    return [v for v in xs]\nprint(f())",
-	},
-	{
-		Code:       "lower.unsupported.comprehension-key-not-constant",
-		Shape:      "a dict comprehension whose key is not a compile-time constant",
-		Suggestion: "build the dict with a loop and an assignment, or key it by an integer literal — the integer-key spelling of the same comprehension compiles",
-		Rows:       []string{"Gap R.123", "L11.1"},
-		Markers:    []string{"comprehension key must be constant"},
-		Sample:     "d = {\"k\": v for v in [1, 2]}\nprint(d)",
-	},
-	{
-		Code:       "lower.unsupported.set-comprehension-of-verdicts",
-		Shape:      "a set comprehension of verdicts needs the tagged set builder",
-		Suggestion: "collect the verdicts into a list instead, or bind each verdict to a name first — a set slot has nowhere to put a bool's kind today",
-		Rows:       []string{"L11.1", "Gap R.117"},
-		Markers:    []string{"needs the tagged set builder"},
-		Sample:     "print({v > 1 for v in [1, 2]})",
 	},
 	{
 		Code: "lower.unsupported.printf-style-format",

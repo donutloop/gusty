@@ -259,6 +259,12 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		allocKind = HeapKindSet
 	}
 	g.emitRtAllocKind(b, h, allocKind, c.Span())
+	// Every slot the loop writes goes through a tagged helper, so the object must let each slot say
+	// what it holds. The compiler cannot always name the kind before the iteration reaches it — the
+	// iterable may hold more than one kind, and an operand may be a call — and assuming one kind is
+	// how `{x: x.upper() for x in xs}` printed the interned index as a number (roadmap Gap R.353,
+	// ADR 0232, ADR 0244).
+	b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 	nlen := g.newTmp()
 	dictLenFn := "rt_list_len"
 	if iterIsDict {
@@ -351,16 +357,15 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 						return p, strconv.FormatInt(int64(TagStr), 10), true, false, nil
 					}
 				}
-				p, verr := g.value(b, e)
-				if verr != nil {
-					return "", "", false, false, verr
+				// The general entry is the same door the list element uses: payload and tag are chosen
+				// together. Lowering only the payload truncates a float-valued expression to the integer the
+				// value word happens to hold, which is how `{v: v / 2 for v in xs}` printed the number instead
+				// of the box the printer was about to render (roadmap Gap R.105, ADR 0233, ADR 0244).
+				p, t, intern, perr := g.elemPayloadAndTag(b, e)
+				if perr != nil {
+					return "", "", false, false, perr
 				}
-				t, ok := g.elemKindTag(e)
-				if !ok {
-					return "", "", false, false, fmt.Errorf("codegen: a dict entry whose key or value is not a kind the compiler can name needs a tagged value word (roadmap L11.1)")
-				}
-				_, intern, _ := g.heapElemKind(b, e)
-				return p, strconv.FormatInt(int64(t), 10), intern, false, nil
+				return p, t, intern, false, nil
 			}
 			kv, kt, kIntern, kDyn, kerr := dictPair(c.Keys[0])
 			if kerr != nil {
@@ -477,14 +482,21 @@ func (g *irGen) comprehensionFolds(c *Comp, items []int64, itemExprs []Expr) boo
 // A verdict is the same trap (roadmap Gap R.112, ADR 0259): `[x for x in [True, 1, 1]]` used to fold
 // to [1, 1, 1], and a folded comprehension is a compile-time global with no tag table to write, so
 // the printing question had no answer to be given. It belongs to the runtime builder beside the rest.
+// A container is the same trap wearing a different hat: `foldConstInt` can see the global that
+// represents `{1}` or `[1]`, but the answer is a handle or a table index, not an `i32` the compile-time
+// element array can carry without saying what it is. Such operands go to the builder, which writes
+// payload and tag together (roadmap Gap R.75, ADR 0187, ADR 0244).
 func (g *irGen) foldsToAnInteger(e Expr) bool {
 	switch e.(type) {
 	case *IntLit:
 		return true
-	case *BoolLit, *NoneLit, *StrLit, *FloatLit:
+	case *BoolLit, *NoneLit, *StrLit, *FloatLit, *ListLit, *SetLit, *DictLit, *Tuple:
 		return false
 	}
-	if g != nil && g.printsAsBool(e) {
+	if g == nil {
+		return true
+	}
+	if g.printsAsBool(e) || g.isNoneExpr(e) || g.isFloat(e) {
 		return false
 	}
 	return true
@@ -789,11 +801,20 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 		if len(c.Elems) != 1 {
 			return nil, false
 		}
+		// The fold and the fold-QUESTION are one question (roadmap Gap R.353, ADR 0384): asking the
+		// folder alone let `{1: None for x in [1]}` fold the void to the integer 0 and bind a dict
+		// whose value prints `0`, while `comp()` — which asks both — built the member the tag names.
+		if !g.setCompFolds(c, items, itemExprs) {
+			return nil, false
+		}
 		if lit, _, ferr := g.foldSetComp(c, items, itemExprs); ferr == nil {
 			return lit, true
 		}
 	case CompDict:
 		if len(c.Keys) != 1 || len(c.Vals) != 1 {
+			return nil, false
+		}
+		if !g.dictCompFolds(c, items, itemExprs) {
 			return nil, false
 		}
 		if lit, _, _, ferr := g.foldDictComp(c, items, itemExprs); ferr == nil {
@@ -889,6 +910,22 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	// backend already does for `for` loops (roadmap L11.7, ADR 0192).
 	if c.Kind == CompList && !g.comprehensionFolds(c, items, itemExprs) {
 		return g.runtimeCompList(b, c, itemExprs)
+	}
+	// The set and the dict took the fold and nothing else until ADR 0384: an element, key, value or
+	// filter the folder cannot see was a refusal (`comprehension element must be constant`) beside the
+	// list-shaped twin of the same program answering, and the two shapes that did NOT refuse —
+	// `{None for x in [1]}` printing `{0}` and `{1: None for x in [1]}` printing `{1: 0}` — were the
+	// fold answering the void with the integer its truthiness is. The builder beside is the arm the
+	// list road has had since ADR 0192, wearing the set's or the dict's clothes: the fold keeps
+	// priority — ADR 0234's rule that a comprehension which folds IS the literal it folds to is what
+	// makes `len`, `in` and `d[k]` answer a folded container — and what it cannot see is built one
+	// member or entry at a time through the tagged doors `s.add(v)` and `d[k] = v` use
+	// (roadmap Gap R.353, ADR 0244, ADR 0259, ADR 0310).
+	if c.Kind == CompSet && !g.setCompFolds(c, items, itemExprs) {
+		return g.runtimeCompSetDict(b, c, itemExprs)
+	}
+	if c.Kind == CompDict && !g.dictCompFolds(c, items, itemExprs) {
+		return g.runtimeCompSetDict(b, c, itemExprs)
 	}
 	// Unroll the comprehension, binding the loop variable to each item.
 	if g.constBindings == nil {

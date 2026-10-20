@@ -294,6 +294,51 @@ func TestATrapInsideALiteralElementIsRaisedNotRefused(t *testing.T) {
 	}
 }
 
+// The rows below used to sit in the filed table beside Gap R.225 and Gap R.226. A container slot now asks
+// the same “does this answer an @str_tab index?” question as the print road, so an operation over a pair
+// read (`str(read)`, `read + "!"`, `read.upper()`, the loop binding) keeps the text’s tag instead of the
+// index underneath it (roadmap Gaps R.225, R.226 and R.353; ADR 0229, ADR 0232, ADR 0244).
+func TestThePairElementDoorNowAnswersAnOperationOverATextRead(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"str() of a slot read, as an element",
+			`print([str({"a": "x"}["a"]), 1])`,
+			"['x', 1]\n",
+		},
+		{
+			"str() of a slot read of a mixed list variable, as an element",
+			"xs = [1, \"a\"]\nprint([str(xs[1]), 1])",
+			"['a', 1]\n",
+		},
+		{
+			"a text concatenation over a slot read, as an element",
+			`print([{"a": "x"}["a"] + "!", 1])`,
+			"['x!', 1]\n",
+		},
+		{
+			"a method call on a slot read, as an element",
+			"d = {\"a\": \"x\"}\nprint([d[\"a\"].upper(), 1])",
+			"['X', 1]\n",
+		},
+		{
+			"the literal loop unrolled over an element that is a read",
+			"for v in [{\"a\": \"x\"}[\"a\"], 2]:\n    print(v)",
+			"x\n2\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if out := compiledOut(t, tc.src); out != tc.want {
+				t.Fatalf("compiled %q = %q, want %q", tc.src, out, tc.want)
+			}
+			if want, _, err := PythonRun(tc.src); err != nil || want != tc.want {
+				t.Fatalf("reference %q = %q (%v), want %q", tc.src, want, err, tc.want)
+			}
+		})
+	}
+}
+
 // The residue, pinned with each leg's answer written into the row rather than fixed in this commit: an
 // element that is an *operation over* a read still hands the builder one word, the loop that unrolls a
 // literal binds the payload, and a container that crosses a `return` keeps Gap R.67's road. Each row fails
@@ -307,31 +352,6 @@ func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		oracle   string // what CPython answers
 		gap      string
 	}{
-		{
-			"str() of a slot read, as an element",
-			"print([str({\"a\": \"x\"}[\"a\"]), 1])",
-			"[1, 1]", "['x', 1]", "roadmap Gap R.225",
-		},
-		{
-			"str() of a slot read of a mixed list variable, as an element",
-			"xs = [1, \"a\"]\nprint([str(xs[1]), 1])",
-			"[0, 1]", "['a', 1]", "roadmap Gap R.225",
-		},
-		{
-			"a text concatenation over a slot read, as an element",
-			"print([{\"a\": \"x\"}[\"a\"] + \"!\", 1])",
-			"[3, 1]", "['x!', 1]", "roadmap Gap R.225",
-		},
-		{
-			"a method call on a slot read, as an element",
-			"d = {\"a\": \"x\"}\nprint([d[\"a\"].upper(), 1])",
-			"[2, 1]", "['X', 1]", "roadmap Gap R.225",
-		},
-		{
-			"the literal loop unrolled over an element that is a read",
-			"for v in [{\"a\": \"x\"}[\"a\"], 2]:\n    print(v)",
-			"1\n2", "x\n2", "roadmap Gap R.226",
-		},
 		{
 			"a read of a read of a literal, as an element",
 			"print([[1, 2][0][0], 1])",

@@ -816,6 +816,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// to be a `parse error: expected "]"`, so none of this existed; every line here is what CPython
 		// prints for the same file (roadmap Gap R.352, ADR 0383).
 		"comprehension_clauses",
+		// A set or dict comprehension no longer folds a verdict into a global that has nowhere to say
+		// what it holds: the tagged builder pairs the payload with the kind, so `True` prints as a verdict
+		// and not as the number its truthiness folds to (roadmap Gap R.116, paid by ADR 0384).
+		"probe_bool_in_a_comprehension",
+		// A dict comprehension can key its entries by text: the builder writes the @str_tab index and
+		// the tag that says the payload is a text, so printing and lookup agree (roadmap Gap R.123, paid
+		// by ADR 0384).
+		"probe_dict_comp_text_key",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -951,16 +959,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		// container arm: it puts `@.lstN` in an operand position and the assembler rejects the
 		// module (roadmap Gap R.128, owned by L11.1's tagged value word).
 		"probe_ternary_container_arms",
-		// A list comprehension tags the slot it copies; a set or dict comprehension still folds to a
-		// compile-time global with no tag table, so those lines refuse rather than print the number
-		// (roadmap Gap R.116, measured closing Gap R.112).
-		"probe_bool_in_a_comprehension",
-		// A dict comprehension whose key is written as text and whose entries the compiler has to build
-		// at run time: the interpreter and CPython agree, the compiled backend declines with
-		// `comprehension key must be constant`, which describes the shape its builder walks (an integer
-		// key) rather than the shape the program wrote (roadmap Gap R.123, measured with ADR 0260).
-		// The same comprehension with an integer key is parity surface.
-		"probe_dict_comp_text_key",
+		// A list comprehension tags the slot it copies, and since ADR 0384 the set and dict roads pair
+		// every payload with its tag too. The verdict and text-key programs are paid and live in
+		// `conformanceStandalone`, beside the dict-comprehension rows that always answered.
+
 		// A dict comprehension that writes the same key twice is a paid debt: it puts the entry, so
 		// `len` counts one — the program lives in conformanceStandalone now (Gap R.118, ADR 0260).
 		// An ordering a program cannot ask for — a container slot against a text — inside a ternary:
@@ -1256,18 +1258,18 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
 		ref:    "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0\n1\n0.0\n"}}},
-	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
-		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
-		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension of verdicts needs the tagged set builder"}}},
+	// A comprehension of verdicts is paid: the set and dict roads ask the same tag as the list road,
+	// so each slot says whether its payload is a verdict, a text, None, a float or a container
+	// (roadmap Gap R.116, paid by ADR 0384).
+	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleMatch},
+	// A text key is paid for the same reason: the entry is written as an @str_tab index labelled as
+	// text, so print, lookup and `len` all see the key the program wrote (roadmap Gap R.123, paid by
+	// ADR 0384).
+	"programs/probe_dict_comp_text_key": {oracle: lang.OracleMatch},
 	// A repeated key is paid: the record's dict builders put an entry through the dict's own key
 	// lookup instead of appending it, so the comprehension, the literal and item assignment build the
 	// same one-entry container CPython does (roadmap Gap R.118, ADR 0260 — the program left the debt
 	// ledger, which is ADR 0186's promotion rule).
-	"programs/probe_dict_comp_text_key": {oracle: lang.OracleDebt,
-		reason: "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
-		ref:    "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension key must be constant"}}},
 	"programs/probe_dict_comprehension_duplicate_key": {oracle: lang.OracleMatch},
 	"programs/dict_key_rule":                          {oracle: lang.OracleMatch},
 	"programs/probe_slot_order_in_a_ternary": {oracle: lang.OracleNA,

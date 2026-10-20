@@ -1080,7 +1080,7 @@ of a name the module also spells answers the module at exit 0 (Gap R.349), a com
 comprehension answers one flat list and in another face hands `llc` a global as a payload at **exit 2** (Gap
 R.350), a subscript on a runtime-built comprehension traps with `IndexError` (Gap R.351), a comprehension's
 second `for` clause does not parse (Gap R.352), and a set or dict comprehension whose element is a call
-refuses while the list twin answers (Gap R.353).
+refused while the list twin answered (Gap R.353, paid by ADR 0384).
 
 **A comprehension's clause list is the nested loop its clauses spell** (ADR 0383, closing Gap R.352). The grammar carried
 ONE `for` clause, so the idiom Python programmers write without thinking was not a half-supported feature but a syntax error pointing at a
@@ -1104,6 +1104,34 @@ refusal), and a dict fold that kept the first value a key was written with (`{1:
 so, with a capability code and the row that owns it — a clause over a container the run time built is **Gap R.356** (`rows = [[1,2],[3,4]]` /
 `[y for x in rows for y in x]`), and a clause over a text or a float is refused one clause in too (`L11.1`). The formatter writes every clause it
 read: a `gustyc --fmt` that printed the first one only would delete half of a program on save.
+
+**A set or dict comprehension builds what its fold cannot name** (ADR 0384, closing Gap R.353 and Gap R.357).
+The list road had a fold and a runtime loop; the set and dict roads had only the fold. The same expression that
+list slots carried as payload-plus-tag was refused, or — worse — became an integer pretending to be `None`, a
+verdict, text, or a float:
+
+```py
+print({(lambda z: z + x)(1) for x in [10, 20]})      # CPython {11, 21} · before: element must be constant
+print({x: (lambda z: z + x)(1) for x in [10, 20]})   # CPython {10: 11, 20: 21} · before: value must be constant
+print({None for x in [1]})                           # CPython {None} · before: {0}
+print({1: None for x in [1]})                        # CPython {1: None} · before: {1: 0}
+xs = []
+xs.append(6)
+print({v: v / 2 for v in xs})                        # CPython {6: 3.0} · before: {6: 3}
+print({{1} for x in [1]})                            # TypeError: unhashable type: 'set' · before: llc exit 2
+```
+
+`runtimeCompSetDict` now mirrors the list loop. If `setCompFolds` / `dictCompFolds` can prove every operand, the
+static container is still emitted; otherwise each iteration writes through `rt_set_add_tagged` or
+`rt_dict_put_tagged`. A dict key and value are independently `(payload, tag)` pairs. The hashable guard is applied
+only at member/key positions — a dict may hold a list — and it raises CPython's exact unhashable sentence. The
+fold question and executor were brought into one contract: `None`, verdicts, floats, texts, and containers no
+longer count as integers merely because their lowered payloads happen to be ints.
+
+The parser now tracks brace-display depth, so `{{1} for x in [1]}` is parsed as a set comprehension over a set
+member rather than a display whose element stole the outer `for`. That distinction is what turns `llc` exit 2 into
+the program's own catchable `TypeError`. Text set repr order is not pinned: CPython's string-hash randomization
+makes it arbitrary; members and tags are the facts under test.
 
 **An ordering between two kinds that do not order raises what the reference raises** (ADR 0382, closing Gap R.85 and
 Gap R.202). A comparison never sees the kinds: by the time the ordering road runs, `None` has lowered to the word `0`

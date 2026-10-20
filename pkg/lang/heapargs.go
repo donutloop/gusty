@@ -647,6 +647,16 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		v, ferr := g.value(b, e)
 		return v, true, ferr
 	}
+	if g.printsAsInternedStr(e) {
+		// A string method on a text receiver (`x.upper()`), a method registered as text-returning, and
+		// `min`/`max` of texts all answer an @str_tab index already. Re-interning the index would ask
+		// the table for the meaning of a number; treating it as a plain integer instead labels the slot
+		// with the wrong tag and the printer renders the index. One predicate — the same one the print
+		// road uses — decides both questions (roadmap Gap R.353, ADR 0229, ADR 0232).
+		g.heapUsed = true
+		v, serr := g.value(b, e)
+		return v, true, serr
+	}
 	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
 		return "", false, err
 	}

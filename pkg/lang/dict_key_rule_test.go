@@ -90,24 +90,20 @@ func TestADictComprehensionPutsItsEntries(t *testing.T) {
 	}
 }
 
-// The compiled path's dict-comprehension builder walks integer keys, so the text spelling of the same
-// comprehension is a refusal it makes in words while the reference answers — filed as roadmap Gap
-// R.123 rather than skipped, and pinned per leg in the conformance ledger. The int spelling two rows up
-// is parity surface; the difference between the two is what the compiled builder can spell into a
-// compile-time global, not what a dict means.
-func TestADictComprehensionWithATextKeyIsRefusedByCodegenOnly(t *testing.T) {
+// A dict comprehension whose key is text used to reach the integer-only compile-time folder and
+// refuse while the reference answered — filed as roadmap Gap R.123. The tagged runtime entry pairs
+// payload and tag, so the key arrives as an @str_tab index labelled as text and lookup finds it
+// (roadmap Gap R.353, ADR 0232, ADR 0245). This row now keeps the paid shape from drifting back.
+func TestADictComprehensionWithATextKeyAnswersThroughTheTaggedBuilder(t *testing.T) {
 	t.Parallel()
 	const src = "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n"
 	const want = "{'k': 3}\n3 1\n"
 	if got := captureStdout(t, src); got != want {
-		t.Errorf("the record leg = %q, want %q (ADR 0260 put the entry; the record owes CPython's line)", got, want)
+		t.Errorf("compiled leg = %q, want %q (the record and CPython both print the entry, not its index)", got, want)
 	}
-	_, err := Compile(src)
-	if err == nil {
-		t.Fatalf("the text-key comprehension compiled; the ledger row for Gap R.123 pins a refusal, so a new answer has to move that row first")
-	}
-	if !strings.Contains(err.Error(), "comprehension key must be constant") {
-		t.Errorf("refused with %q, want it to name the constant key its builder needs", err.Error())
+	mod := compileSrc(t, src)
+	if !strings.Contains(mod, "call void @rt_dict_put_tagged(") {
+		t.Errorf("the text-key comprehension grew its dict without the tagged entry door\n%s", strings.Join(irLinesContaining(mod, "rt_dict_put"), "\n"))
 	}
 }
 

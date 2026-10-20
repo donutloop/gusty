@@ -105,7 +105,10 @@ func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 		name string
 		want int
 	}{
-		{"probe_bool_in_a_comprehension", 6},       // Gap R.116
+		// `probe_bool_in_a_comprehension` left this table with ADR 0384: the set and dict comprehension
+		// roads ask the same tag as the list road, so the program is parity surface
+		// (`conformanceStandalone`). A contract row here expecting exit 6 for a paid debt would pass
+		// forever without asserting anything.
 		{"probe_minmax_candidate_unreadable", 6},   // Gap R.124 (the compiled leg's leg)
 		{"probe_ternary_the_test_chose", 6},        // Gap R.125 (the compiled path, against CPython)
 		{"probe_ternary_container_arms", 6},        // Gap R.128 (the compiled leg rejects the module)

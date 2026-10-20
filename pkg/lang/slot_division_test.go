@@ -2,8 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -358,69 +356,26 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 	}
 }
 
-// TestTrueDivisionInsideAComprehensionIsFiledNotFixed pins the three shapes the door still loses when
-// the division is the *element* of a comprehension over a container the program built. They are not
-// expectations to keep: each row records what every engine answers *today*, and the row fails the day
-// the compiler catches up.
-//
-// Both rows come from the comprehension appending its element through a path that did not ask the
-// numeric door. The truncation half — `[xs[0] / 2]` printing `[2]` — was roadmap Gap R.99 and is paid:
-// the container now marks itself when an element is a float-valued *expression* rather than a float
-// literal (`floatSlotExpr`, ADR 0262), so the slot carries the tag the printer asks. What remains here
-// is the row whose guard's blocks land between the loop header and the increment the induction `phi`
-// names as its back edge, which `llc` rejects (roadmap Gap R.100 — ADR 0224's lesson, one door over).
-func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
+// TestTrueDivisionInsideADictComprehensionIsAPaidRow keeps the shape that was roadmap Gap R.105.
+// A dict entry is two pairs, not one payload and a hoped-for tag: the value computed as a double must
+// arrive as the float box whose tag tells the printer to render `3.0`, not as the integer word that
+// happens to sit underneath it (roadmap Gaps R.105 and R.353, ADR 0233, ADR 0244, ADR 0262).
+func TestTrueDivisionInsideADictComprehensionIsAPaidRow(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name, src, aotWant, oracle string
-		gap                        string
-		aotExit                    int
-	}{
-		{
-			"the dict comprehension's value, computed as a double from the loop variable",
-			"xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n",
-			// the key travels with its tag, the value does not: the entry is printed as an int
-			"{6: 3}\n", "{6: 3.0}\n", "roadmap Gap R.105", 0,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			res, err := Compile(tc.src)
-			if tc.aotExit == 2 {
-				if err != nil {
-					t.Fatalf("refused: %v (%s owes this shape an answer, not a refusal)", err, tc.gap)
-				}
-				// The module is the failure here, so the module is what gets checked: `llvm-as` is the
-				// verifier the CLI's exit-2 class is produced by, and the row's needle is its complaint.
-				tmp, ferr := os.CreateTemp("", "gapr100-*.ll")
-				if ferr != nil {
-					t.Fatal(ferr)
-				}
-				defer os.Remove(tmp.Name())
-				tmp.WriteString(res.IR)
-				tmp.Close()
-				defer os.Remove(tmp.Name() + ".bc")
-				out, verr := exec.Command("llvm-as-20", tmp.Name(), "-o", tmp.Name()+".bc").CombinedOutput()
-				if verr == nil {
-					t.Fatalf("the module verified; %s owes it a fix, and this row is the pin", tc.gap)
-				}
-				if !strings.Contains(string(out), tc.aotWant) {
-					t.Errorf("%s: the verifier said %q, want the recorded %q (%s)", tc.name, string(out), tc.aotWant, tc.gap)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("refused: %v (%s owes this shape an answer, not a refusal)", err, tc.gap)
-			}
-			out := runIR(t, res.IR)
-			if out != tc.aotWant {
-				t.Errorf("%s: the compiled leg prints %q, the row recorded %q — if it now prints the oracle's "+
-					"answer (%s), delete this row and close %s", tc.name, out, tc.aotWant, tc.oracle, tc.gap)
-			}
-			if got := captureStdout(t, tc.src); got != tc.oracle {
-				t.Errorf("%s: the record leg prints %q, want the oracle's %q", tc.name, got, tc.oracle)
-			}
-		})
+	const src = "xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if out := runIR(t, res.IR); out != "{6: 3.0}\n" {
+		t.Errorf("the compiled leg printed %q, want CPython's \"{6: 3.0}\\n\"", out)
+	}
+	if out := captureStdout(t, src); out != "{6: 3.0}\n" {
+		t.Errorf("the record leg printed %q, want CPython's \"{6: 3.0}\\n\"", out)
+	}
+	if !strings.Contains(res.IR, "call void @rt_dict_put_tagged(") {
+		t.Errorf("the dict comprehension's entry did not go through the tagged door:\n%s",
+			strings.Join(irLinesContaining(res.IR, "rt_dict_put"), "\n"))
 	}
 }
 

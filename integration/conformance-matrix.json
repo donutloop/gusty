@@ -3999,6 +3999,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_bool_in_a_comprehension",
+        "name": "probe_bool_in_a_comprehension.gy",
+        "source": "# What CPython prints for all four lines here (python3, 3.12):\n#\n#   [True, 1, 1]\n#   {True}\n#   {1: True}\n#   {True: 1}\n#\n# The list row was the shape built tagged first (roadmap Gap R.112, ADR 0259). The set and dict rows\n# used to fold their verdicts into a compile-time global that had no tag table, and they refused\n# rather than print the number underneath (roadmap Gap R.116). ADR 0384 grew the missing builder:\n# each payload is written with the tag that says it is a verdict, so the compiled backend now prints\n# the same four lines as CPython.\nprint([x for x in [True, 1, 1]])\nprint({True for x in [1]})\nprint({1: True for x in [1]})\nprint({True: 1 for x in [1]})\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n",
+      "python_ok": true,
+      "python_stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_dict_comp_text_key",
+        "name": "probe_dict_comp_text_key.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   {'k': 3}\n#   3 1\n#\n# A dict comprehension whose key is written as text and whose value the loop computes used to reach\n# the integer-key folder and die with `codegen: comprehension key must be constant` (roadmap Gap\n# R.123). ADR 0384 added the tagged runtime entry door: the key is stored as its @str_tab index with\n# the text tag beside it, so `print(d)`, `d[\"k\"]`, and `len(d)` all answer the dict the program wrote.\nd = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "{'k': 3}\n3 1\n",
+      "python_ok": true,
+      "python_stdout": "{'k': 3}\n3 1\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4680,7 +4722,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/195/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/197/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4694,79 +4736,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/195/prog.ll:36:19: error: global variable reference must have pointer type"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_bool_in_a_comprehension",
-        "name": "probe_bool_in_a_comprehension.gy",
-        "source": "# A comprehension that builds verdicts. The list works on both backends now (roadmap Gap R.112,\n# ADR 0259); the set and the dict do not, because their compile-time fold writes a static global and a\n# static global has no tag table to write True into — the fold now declines rather than store the\n# number and let the printer follow it (roadmap Gap R.116).\n#\n# What each engine answers today:\n#   --interp  [True, 1, 1]  {True}  {1: True}  {True: 1}\n#   --aot     refuses, in words, exit 1: \"a comprehension of verdicts needs the tagged set builder,\n#             which a set comprehension does not have yet\" — no line is printed at all\n#   python3   [True, 1, 1]  {True}  {1: True}  {True: 1}\n#\n# The list row is here so the family stays one row: it is the shape that IS built tagged, and the\n# refusal above is only believable next to it.\nprint([x for x in [True, 1, 1]])\nprint({True for x in [1]})\nprint({1: True for x in [1]})\nprint({True: 1 for x in [1]})\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
-        "ref": "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "comprehension of verdicts needs the tagged set builder",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)",
-      "python_ok": true,
-      "python_stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
-      "oracle_ref": "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_dict_comp_text_key",
-        "name": "probe_dict_comp_text_key.gy",
-        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   {'k': 3}\n#   3 1\n#\n# A dict comprehension whose key is written text and whose value is computed by the loop: the\n# interpreter and CPython agree on every line, and the compiled backend dies with\n# `codegen: comprehension key must be constant` at exit 1.\n#\n# The key *is* constant — `{\"k\": …}` — so the message describes the shape the runtime dict builder\n# can walk (an integer key, as `{1: v for v in [1, 2, 3]}` compiles and prints `{1: 3}` on both\n# engines) rather than the shape the program wrote. Nothing here is wrong: it is a capability the\n# compiled path declines, recorded so it stays a gap and not a rumour (roadmap Gap R.123, measured\n# while writing ADR 0260's dict rows, which is the same family's other half — putting the entry).\nd = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
-        "ref": "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "comprehension key must be constant",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: comprehension key must be constant",
-      "python_ok": true,
-      "python_stdout": "{'k': 3}\n3 1\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
-      "oracle_ref": "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: comprehension key must be constant"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/197/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5273,11 +5243,11 @@
     }
   ],
   "rows": 219,
-  "skipped": 32,
-  "pass": 187,
+  "skipped": 30,
+  "pass": 189,
   "fail": 0,
-  "oracle_match": 173,
-  "oracle_debt": 24,
+  "oracle_match": 175,
+  "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

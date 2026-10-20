@@ -225,7 +225,7 @@
     "actual": "True"
   },
   {
-    "source": "1.5 \u003e 1\n1.5 \u003c 1",
+    "source": "1.5 > 1\n1.5 < 1",
     "reason": "the echoed value differs from the record",
     "expected": "0",
     "actual": "False"
@@ -281,8 +281,8 @@
   {
     "source": "a = lambda x: x + 1\nb = lambda x, y: x - y\nprint(a(1, 2))\nprint(b(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
+    "expected": "trap eval error: too many arguments for <lambda>: it accepts 1 argument, got 2",
+    "actual": "jit: codegen: too many arguments for <lambda>"
   },
   {
     "source": "a = {1, 2,}\nlen(a)",
@@ -333,34 +333,28 @@
     "expected": "5"
   },
   {
-    "source": "c = 0\nprint([\"y\" if c else \"n\"])\n",
-    "reason": "stdout differs from the record",
-    "expected": "['n']\n",
-    "actual": "[1]\n"
-  },
-  {
-    "source": "c = 1\nprint(\"a\" if c \u003e 0 else 1.5)\n",
+    "source": "c = 1\nprint(\"a\" if c > 0 else 1.5)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `\"a\" if c \u003e 0 else 1.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `\"a\" if c > 0 else 1.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "c = 1\nprint((1 if c \u003e 0 else 2.5) * 2)\n",
+    "source": "c = 1\nprint((1 if c > 0 else 2.5) * 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `1 if c \u003e 0 else 2.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `1 if c > 0 else 2.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "c = 1\nprint(1 if c \u003e 0 else 2.5)\n",
+    "source": "c = 1\nprint(1 if c > 0 else 2.5)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `1 if c \u003e 0 else 2.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `1 if c > 0 else 2.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "c = 1\nprint(True if c \u003e 0 else 1.5)\n",
+    "source": "c = 1\nprint(True if c > 0 else 1.5)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `True if c \u003e 0 else 1.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `True if c > 0 else 1.5` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
     "source": "c = [x * 2 for x in [1, 2, 3]]\nlen(c)",
@@ -409,7 +403,7 @@
     "actual": "jit: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
   },
   {
-    "source": "class C:\n    def m(self, x):\n        x = x + 1.5\n        return x if x \u003e 2 else 0.0\n\nc = C()\nprint(c.m(1.0))\n",
+    "source": "class C:\n    def m(self, x):\n        x = x + 1.5\n        return x if x > 2 else 0.0\n\nc = C()\nprint(c.m(1.0))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
@@ -420,7 +414,7 @@
     "expected": "7"
   },
   {
-    "source": "class P:\n    def f(self) -\u003e int:\n        return 5\n\np = P()\nbig = 2 ** 40\ns = big + p.f()\nprint(s)\nprint(big - 5)\n",
+    "source": "class P:\n    def f(self) -> int:\n        return 5\n\np = P()\nbig = 2 ** 40\ns = big + p.f()\nprint(s)\nprint(big - 5)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: `2 ** 40` overflows the language's bounded integer: 2 is 40, which does not fit a 64-bit word. The reference has arbitrary-precision integers and answers 1099511627776; this backend declines rather than print a wrapped number (roadmap Gap R.176, ADR 0166)"
@@ -438,13 +432,13 @@
     "actual": "jit: codegen: unsupported attr expression"
   },
   {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def norm(self) -\u003e int:\n        return self.x * self.x + self.y * self.y\n\ns = 0\nfor i in range(2000):\n    p = Point(i, i % 7)\n    s = s + p.norm()\nprint(s)\n",
+    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def norm(self) -> int:\n        return self.x * self.x + self.y * self.y\n\ns = 0\nfor i in range(2000):\n    p = Point(i, i % 7)\n    s = s + p.norm()\nprint(s)\n",
     "reason": "stdout differs from the record",
     "expected": "2664692965\n",
     "actual": "-1630274331\n"
   },
   {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def norm(self) -\u003e int:\n        return self.x * self.x + self.y * self.y\n\ns = 0\nfor i in range(50000):\n    p = Point(i, i % 7)\n    s = s + p.norm()\nprint(s)\n",
+    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def norm(self) -> int:\n        return self.x * self.x + self.y * self.y\n\ns = 0\nfor i in range(50000):\n    p = Point(i, i % 7)\n    s = s + p.norm()\nprint(s)\n",
     "reason": "stdout differs from the record",
     "expected": "41665417324977\n",
     "actual": "-60413519\n"
@@ -479,7 +473,7 @@
     "source": "d = {\"a\": 1, \"b\": 2, \"a\": 3}\nc = dict(d)\nprint(c)\nprint(len(c))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: dict(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; CPython answers them — build the container with dict() and add elements"
+    "actual": "jit: codegen: dict(<container>) copies are not supported in the AOT backend yet; CPython answers them — build the container with dict() and add elements"
   },
   {
     "source": "d = {\"a\": 1}\nd.update({\"b\": 2})\nprint(d)",
@@ -510,12 +504,6 @@
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: keys() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
-  },
-  {
-    "source": "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: comprehension key must be constant"
   },
   {
     "source": "d = {1: \"a\", 2: \"b\", 3: \"c\"}\nprint(d.pop(2))\nprint(d)\nprint(d[1])\nprint(d[3])",
@@ -608,22 +596,22 @@
     "expected": "114"
   },
   {
-    "source": "def f(x):\n    return 1 if x \u003e 2 else 0.0\n\nprint(f(1))\n",
+    "source": "def f(x):\n    return 1 if x > 2 else 0.0\n\nprint(f(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `1 if x \u003e 2 else 0.0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `1 if x > 2 else 0.0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "def f(x):\n    return 1.5 if x \u003e 2 else 0\n\nprint(f(1))\n",
+    "source": "def f(x):\n    return 1.5 if x > 2 else 0\n\nprint(f(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `1.5 if x \u003e 2 else 0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `1.5 if x > 2 else 0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
-    "source": "def f(x):\n    return 2.0 if x \u003e 2 else 2\n\nprint(f(1))\n",
+    "source": "def f(x):\n    return 2.0 if x > 2 else 2\n\nprint(f(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the two arms of `2.0 if x \u003e 2 else 2` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: the two arms of `2.0 if x > 2 else 2` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
     "source": "def f(x):\n    return x * 2\n\nh = f\nprint(h())\n",
@@ -650,10 +638,10 @@
     "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
-    "source": "def f(x):\n    x = x + 1.5\n    return x if x \u003e 2 else 0\n\nprint(f(1))\n",
+    "source": "def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0\n\nprint(f(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: \"f\" returns `x if x \u003e 2 else 0`: the two arms of `x if x \u003e 2 else 0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -\u003e `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
+    "actual": "jit: codegen: \"f\" returns `x if x > 2 else 0`: the two arms of `x if x > 2 else 0` do not agree on a word — one is the double the other is an i32 — and which arm runs is not known until it runs, so the answer has no word to travel in: an i32 select would truncate the double arm to its integer, which ADR 0166 counts as this compiler's bug rather than the program's (write both arms in the same shape, `else 0` -> `else 0.0`, or take the branch with `if`/`else` and bind the value there; roadmap L11.1's tagged value word is what makes the run-time choice answerable)"
   },
   {
     "source": "def f(x, s):\n    x = x + 0.5\n    print(s)\n    return x\n\nprint(f(1.0, \"z\"))\n",
@@ -714,9 +702,9 @@
     "actual": "jit: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
-    "source": "def pick(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = []\nxs.append(3)\nprint(1 if xs[0] \u003e pick(1) else 0)\n",
+    "source": "def pick(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = []\nxs.append(3)\nprint(1 if xs[0] > pick(1) else 0)\n",
     "reason": "the program answered where the record says it traps",
-    "expected": "trap eval error: '\u003e' not supported between instances of 'int' and 'str'",
+    "expected": "trap eval error: '>' not supported between instances of 'int' and 'str'",
     "actual": "answered (no answer)"
   },
   {
@@ -748,7 +736,7 @@
     "actual": "jit: codegen: \"enumerate\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
-    "source": "extern fn abs(x: int) -\u003e int\nabs(-5)",
+    "source": "extern fn abs(x: int) -> int\nabs(-5)",
     "reason": "the echoed value differs from the record",
     "expected": "5"
   },
@@ -783,38 +771,38 @@
   {
     "source": "g = lambda x, y: x\nprint(g(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: missing argument \"y\" for \u003clambda\u003e",
+    "expected": "trap eval error: missing argument \"y\" for <lambda>",
     "actual": "jit: codegen: missing argument \"y\" for g$lambda$1796c224_0"
   },
   {
     "source": "g = lambda x, y: x - y\nprint(g(3))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: missing argument \"y\" for \u003clambda\u003e",
+    "expected": "trap eval error: missing argument \"y\" for <lambda>",
     "actual": "jit: codegen: missing argument \"y\" for g$lambda$1796c224_0"
   },
   {
     "source": "g = lambda x: x\nprint(g(1, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
+    "expected": "trap eval error: too many arguments for <lambda>: it accepts 1 argument, got 2",
+    "actual": "jit: codegen: too many arguments for <lambda>"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: missing argument \"x\" for \u003clambda\u003e",
+    "expected": "trap eval error: missing argument \"x\" for <lambda>",
     "actual": "jit: codegen: missing argument \"x\" for g$lambda$1796c224_0"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g(1, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
+    "expected": "trap eval error: too many arguments for <lambda>: it accepts 1 argument, got 2",
+    "actual": "jit: codegen: too many arguments for <lambda>"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g(1, 2, 3, 4))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 4",
-    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
+    "expected": "trap eval error: too many arguments for <lambda>: it accepts 1 argument, got 4",
+    "actual": "jit: codegen: too many arguments for <lambda>"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g)\n",
@@ -829,25 +817,25 @@
     "actual": "1\n"
   },
   {
-    "source": "i = 0\ns = 0\nwhile i \u003c 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns",
+    "source": "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns",
     "reason": "the echoed value differs from the record",
     "expected": "13"
   },
   {
-    "source": "i = 0\ns = 0\nwhile i \u003c 3:\n    s = s + i\n    i = i + 1\ns",
+    "source": "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\ns",
     "reason": "the echoed value differs from the record",
     "expected": "3"
   },
   {
-    "source": "i = 0\nwhile i \u003c 100:\n    i = i + 1\n    if i == 3:\n        break\ni",
+    "source": "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni",
     "reason": "the echoed value differs from the record",
     "expected": "3"
   },
   {
-    "source": "if [1, 2] \u003c [2]:\n    print(\"yes\")",
+    "source": "if [1, 2] < [2]:\n    print(\"yes\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: `[1, 2] \u003c [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+    "actual": "jit: codegen: `[1, 2] < [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
   },
   {
     "source": "import cfg\ncfg.d[1]",
@@ -898,7 +886,7 @@
     "actual": "answered (no answer)"
   },
   {
-    "source": "import consts\nif consts.PI \u003e 3.0:\n    print(\"big\")\n",
+    "source": "import consts\nif consts.PI > 3.0:\n    print(\"big\")\n",
     "reason": "the program answered where the record says it traps",
     "expected": "trap eval error: cannot import module consts",
     "actual": "answered (no answer)"
@@ -952,7 +940,7 @@
     "actual": "answered (no answer)"
   },
   {
-    "source": "import consts\nprint(consts.PI \u003e consts.E)\n",
+    "source": "import consts\nprint(consts.PI > consts.E)\n",
     "reason": "the program answered where the record says it traps",
     "expected": "trap eval error: cannot import module consts",
     "actual": "answered (no answer)"
@@ -994,7 +982,7 @@
     "actual": "answered (no answer)"
   },
   {
-    "source": "import consts\nx = consts.PI\nprint(x \u003e 3.14)\n",
+    "source": "import consts\nx = consts.PI\nprint(x > 3.14)\n",
     "reason": "the program answered where the record says it traps",
     "expected": "trap eval error: cannot import module consts",
     "actual": "answered (no answer)"
@@ -1096,10 +1084,10 @@
     "expected": "1"
   },
   {
-    "source": "n = 7\nprint(f\"val={n:\u003e3}\")",
+    "source": "n = 7\nprint(f\"val={n:>3}\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: the format spec \"\u003e3\" needs a value this backend can read at compile time (AOT backend)"
+    "actual": "jit: codegen: the format spec \">3\" needs a value this backend can read at compile time (AOT backend)"
   },
   {
     "source": "ord(chr(65))",
@@ -1149,7 +1137,7 @@
     "actual": "TypeError: bad operand type for unary -: 'tuple'"
   },
   {
-    "source": "print(1 * len([0, 1, 5, 6, 9]), 5, [4, 7, 7, 8, 5])\ndef f53380():\n  print(1)\n  return 1\nif 2 \u003e= 3:\n  print(-9)\n  print(abs(len([1, 4, 6, 0, 1])))\n  print(4)\n  print(-8)\nelse:\n  print(5)\n  print(6)\nv0 = len([4, 7, 3, 4, 5]) * len([9, 4, 5, 9, 1])\nv1 = len([9, 3, 5, 2, 2])\nif 2 \u003e 3:\n  print(len([0, 5, 6, 4, 4]))\n  print(1)\nelse:\n  print(9)\n  print(4)\n  print(1 * 1)\nv2 = len([9, 8, 0, 4, 1])\nfor i973 in range(5):\n  print(i973)\n  break\n  break\n  print(3 + 7)\n  print(6)\n  break\ndef f88730():\n  print(4)\n  return 5 * 2\nv3 = 4\nv4 = [5, 8, 4, 0, 6]\nv5 = -1\nv6 = max([1, 5, 7, 3, 7])\nv7 = 5",
+    "source": "print(1 * len([0, 1, 5, 6, 9]), 5, [4, 7, 7, 8, 5])\ndef f53380():\n  print(1)\n  return 1\nif 2 >= 3:\n  print(-9)\n  print(abs(len([1, 4, 6, 0, 1])))\n  print(4)\n  print(-8)\nelse:\n  print(5)\n  print(6)\nv0 = len([4, 7, 3, 4, 5]) * len([9, 4, 5, 9, 1])\nv1 = len([9, 3, 5, 2, 2])\nif 2 > 3:\n  print(len([0, 5, 6, 4, 4]))\n  print(1)\nelse:\n  print(9)\n  print(4)\n  print(1 * 1)\nv2 = len([9, 8, 0, 4, 1])\nfor i973 in range(5):\n  print(i973)\n  break\n  break\n  print(3 + 7)\n  print(6)\n  break\ndef f88730():\n  print(4)\n  return 5 * 2\nv3 = 4\nv4 = [5, 8, 4, 0, 6]\nv5 = -1\nv6 = max([1, 5, 7, 3, 7])\nv7 = 5",
     "reason": "the echoed value differs from the record",
     "expected": "5"
   },
@@ -1238,10 +1226,10 @@
     "actual": "jit: codegen: [1, 2].index is refused: this backend builds the list methods it can lower against the container's own word (append, extend, insert, remove, pop, clear, sort, reverse, index-of-a-literal, count, and membership), and index needs a run-time search the compiled doors do not have — the reference answers it (with ValueError: … is not in list when the value is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)"
   },
   {
-    "source": "print([1] \u003c [\"a\"])",
+    "source": "print([1] < [\"a\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+    "expected": "trap eval error: '<' not supported between instances of 'int' and 'str'",
+    "actual": "jit: codegen: `[1] < [\"a\"]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
   },
   {
     "source": "print([c + c for c in \"ab\"])",
@@ -1484,12 +1472,6 @@
     "actual": "jit: codegen: {1: 2}.popitem is refused: this backend builds the dict methods it can lower against the container's own word (get, keys, values, items, clear, and a literal read), and popitem needs a run-time search the compiled doors do not have — the reference answers it (with its documented answer when the key is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)"
   },
   {
-    "source": "print({True for x in [1]})\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
-  },
-  {
     "source": "reversed([1, 2, 3])",
     "reason": "the echoed value differs from the record",
     "expected": "[3, 2, 1]"
@@ -1616,7 +1598,7 @@
     "actual": "jit: codegen: \"x\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
-    "source": "v0 = len([2, 4, 3, 2, 7])\nprint(3, len([9, 8, 7, 2, 0]) - len([8, 1, 1, 7, 8]), len([5, 0, 0, 5, 9]))\nv1 = len([1, 4, 7, 7, 6]) - 6\nv2 = -2\nif 6 \u003e= 1:\n  print(1)\n  print(len([2, 2, 3, 2, 6]))\n  print(8)\n  print(-1)\nprint(v1 + 6)\nif 3 \u003e 4:\n  print(len([1, 5, 4, 3, 2]))\n  print(2)\n  print(0)\n  print(7)\nelse:\n  print(1 * 1)\n  print(len([0, 5, 6, 5, 4]))\nv3 = v1\ndef f39000(p0):\n  print(-3)\n  return 7 + len([9, 8, 8, 3, 4])\nv4 = 8\ndef f45665(p0, p1):\n  print(p0 * 4)\n  return p0\nv5 = -9\nprint([4, 1, 1, 9, 8], 8 * 9)\nv6 = len([4, 1, 2, 1, 4])",
+    "source": "v0 = len([2, 4, 3, 2, 7])\nprint(3, len([9, 8, 7, 2, 0]) - len([8, 1, 1, 7, 8]), len([5, 0, 0, 5, 9]))\nv1 = len([1, 4, 7, 7, 6]) - 6\nv2 = -2\nif 6 >= 1:\n  print(1)\n  print(len([2, 2, 3, 2, 6]))\n  print(8)\n  print(-1)\nprint(v1 + 6)\nif 3 > 4:\n  print(len([1, 5, 4, 3, 2]))\n  print(2)\n  print(0)\n  print(7)\nelse:\n  print(1 * 1)\n  print(len([0, 5, 6, 5, 4]))\nv3 = v1\ndef f39000(p0):\n  print(-3)\n  return 7 + len([9, 8, 8, 3, 4])\nv4 = 8\ndef f45665(p0, p1):\n  print(p0 * 4)\n  return p0\nv5 = -9\nprint([4, 1, 1, 9, 8], 8 * 9)\nv6 = len([4, 1, 2, 1, 4])",
     "reason": "the echoed value differs from the record",
     "expected": "5"
   },
@@ -1676,7 +1658,7 @@
     "actual": "jit: codegen: min requires an inline list/set/dict literal"
   },
   {
-    "source": "xs = [1, 2, 3]\n\ndef n() -\u003e int:\n    return len(xs)\n\nprint(n())\n",
+    "source": "xs = [1, 2, 3]\n\ndef n() -> int:\n    return len(xs)\n\nprint(n())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"
@@ -1688,7 +1670,7 @@
     "actual": "IndexError: list index out of range"
   },
   {
-    "source": "xs = [1]\n\ndef add() -\u003e int:\n    xs.append(2)\n    return len(xs)\n\nprint(add(), xs)\n",
+    "source": "xs = [1]\n\ndef add() -> int:\n    xs.append(2)\n    return len(xs)\n\nprint(add(), xs)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"
@@ -1724,13 +1706,13 @@
     "actual": "jit: codegen: str(i) is refused: this backend renders a text through the one str/repr table, which reaches an integer, a text, None, bool and the container literals, and has no word for this argument's kind — the reference answers str() of any value, and doing the same needs the value word that carries its own kind (roadmap L11.1/L11.2, Gap R.171)"
   },
   {
-    "source": "xs = []\nxs.append(\"a\")\nys = []\nys.append(1)\nprint(1 if xs[0] \u003e ys[0] else 0)\n",
+    "source": "xs = []\nxs.append(\"a\")\nys = []\nys.append(1)\nprint(1 if xs[0] > ys[0] else 0)\n",
     "reason": "the program answered where the record says it traps",
-    "expected": "trap eval error: '\u003e' not supported between instances of 'str' and 'int'",
+    "expected": "trap eval error: '>' not supported between instances of 'str' and 'int'",
     "actual": "answered (no answer)"
   },
   {
-    "source": "xs = []\nxs.append(5)\nfor v in xs:\n    print(v \u003e 3)\n",
+    "source": "xs = []\nxs.append(5)\nfor v in xs:\n    print(v > 3)\n",
     "reason": "the echoed value differs from the record",
     "expected": "0"
   },
@@ -1739,12 +1721,6 @@
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
-  },
-  {
-    "source": "xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n",
-    "reason": "stdout differs from the record",
-    "expected": "{6: 3.0}\n",
-    "actual": "{6: 3}\n"
   },
   {
     "source": "xs = []\nxs.append(6)\nys = []\nys.append(4)\nprint(xs[0] / ys[0])\n",
@@ -1768,7 +1744,7 @@
     "expected": "0"
   },
   {
-    "source": "xs = []\nxs.append([1, 2])\nprint(1 if xs[0][9] \u003e 1 else 0)\n",
+    "source": "xs = []\nxs.append([1, 2])\nprint(1 if xs[0][9] > 1 else 0)\n",
     "reason": "the trap's class or message differs from the record",
     "expected": "IndexError: index out of range",
     "actual": "IndexError: list index out of range"
