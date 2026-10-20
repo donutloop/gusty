@@ -1,5 +1,351 @@
 {
  "entries": {
+"d = {\"k\": 5}\nprint(d[\"k\"] \u003e 1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\n\nprint(1 \u003c f())\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"def f():\n    return 1.5\n\nprint(\"a\" \u003c f())\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'float'"
+   },
+
+"def f():\n    return 4\n\nprint(f() \u003e 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\n\nprint(1 \u003c f())\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"def g(v):\n    return v \u003c 10\n\nprint(g(3))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"i = 0\nwhile i \u003c 3:\n    print(i)\n    i = i + 1\n": {
+    "stdout": "0\n1\n2\n",
+    "hasStdout": true
+   },
+
+"if 1 \u003c 2:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"n = 1.5\nprint(n \u003c \"a\")\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'float' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'float' and 'str'"
+   },
+
+"print(\"a\" \u003c \"b\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" \u003c 1)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'int'"
+   },
+
+"print(\"a\" \u003c 1.5)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'float'"
+   },
+
+"print(\"a\" \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'NoneType'"
+   },
+
+"print(\"a\" \u003c [1])\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'list'"
+   },
+
+"print(\"b\" \u003c \"a\")\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(\"yes\" if 2 \u003e 1 else \"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"print(\"yes\" if None \u003c 1 else \"no\")\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'NoneType' and 'int'"
+   },
+
+"print((2 + 2) * 2 \u003c= 9)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((3 + 4) \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(-1 \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(-7 \u003c -1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 \u003c \"a\")\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'str'"
+   },
+
+"print(1 \u003c 2 \u003c 1)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(1 \u003c 2 and 3 \u003e 2)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 \u003c 2 and None \u003c 3)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'NoneType' and 'int'"
+   },
+
+"print(1 \u003c 2)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(1 \u003c= None)\n": {
+    "err": "TypeError: '\u003c=' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c=' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(1 == None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(1 \u003e= None)\n": {
+    "err": "TypeError: '\u003e=' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e=' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(1.5 \u003c \"a\" \u003c 2)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'float' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'float' and 'str'"
+   },
+
+"print(1.5 \u003c \"a\")\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'float' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'float' and 'str'"
+   },
+
+"print(1.5 \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'float' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'float' and 'NoneType'"
+   },
+
+"print(1.5 \u003e 1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1.5 \u003e {\"a\": 1})\n": {
+    "err": "TypeError: '\u003e' not supported between instances of 'float' and 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'float' and 'dict'"
+   },
+
+"print(7 / 2 \u003e 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(None != 1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(None \u003c 1)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'NoneType' and 'int'"
+   },
+
+"print(None \u003c [1])\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'NoneType' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'NoneType' and 'list'"
+   },
+
+"print(None \u003c= None)\n": {
+    "err": "TypeError: '\u003c=' not supported between instances of 'NoneType' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c=' not supported between instances of 'NoneType' and 'NoneType'"
+   },
+
+"print(None \u003c= True)\n": {
+    "err": "TypeError: '\u003c=' not supported between instances of 'NoneType' and 'bool'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c=' not supported between instances of 'NoneType' and 'bool'"
+   },
+
+"print(None \u003c= {1})\n": {
+    "err": "TypeError: '\u003c=' not supported between instances of 'NoneType' and 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c=' not supported between instances of 'NoneType' and 'set'"
+   },
+
+"print(None \u003e 1)\n": {
+    "err": "TypeError: '\u003e' not supported between instances of 'NoneType' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'NoneType' and 'int'"
+   },
+
+"print(None \u003e= 1.5)\n": {
+    "err": "TypeError: '\u003e=' not supported between instances of 'NoneType' and 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e=' not supported between instances of 'NoneType' and 'float'"
+   },
+
+"print(None is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(True \u003c 2)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(True \u003c [1])\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'bool' and 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'bool' and 'list'"
+   },
+
+"print(True \u003e None)\n": {
+    "err": "TypeError: '\u003e' not supported between instances of 'bool' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'bool' and 'NoneType'"
+   },
+
+"print(True \u003e= \"a\")\n": {
+    "err": "TypeError: '\u003e=' not supported between instances of 'bool' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e=' not supported between instances of 'bool' and 'str'"
+   },
+
+"print(len(\"abc\") \u003c 4)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abc\") \u003c None)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"print(not (None \u003c 1))\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'NoneType' and 'int'"
+   },
+
+"print(str(1) \u003c 2)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'int'"
+   },
+
+"s = \"a\"\ni = 0\nwhile s \u003c 1.5:\n    print(i)\n    i = i + 1\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'float'"
+   },
+
+"s = \"a\"\nprint(s \u003c 1.5)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'str' and 'float'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'str' and 'float'"
+   },
+
+"s = \"b\"\nprint(\"a\" \u003c s)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = None\nif 1 \u003c x:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"x = None\nprint(1 \u003c x)\n": {
+    "err": "TypeError: '\u003c' not supported between instances of 'int' and 'NoneType'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003c' not supported between instances of 'int' and 'NoneType'"
+   },
+
+"xs = [3, 4]\ni = 1\nprint(xs[i] \u003e 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 4]\nprint(xs[1] \u003e 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(\"b\")\nprint(xs[0] \u003e \"a\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(3)\nprint(xs[0] \u003e 2)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "print([(lambda fn: fn(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n": {
     "stdout": "[4, 6, 8]\n",
     "hasStdout": true

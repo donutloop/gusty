@@ -166,6 +166,16 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	// one side still unlifted; it goes through the lift rather than the tag-dispatch door below
 	// because this tag cannot say anything but int or float (roadmap Gap R.143).
 	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" {
+		// The same door the value road asks, asked here because an `if`/`while`/ternary condition is lowered
+		// on this road and not through `valueBinOp`: an ordering between two kinds that do not order against
+		// each other raises the reference's `TypeError` rather than testing the two words the lowering would
+		// have handed the `icmp` — `None`'s word is 0 and a text's is an intern index (roadmap Gap R.85, ADR 0382).
+		if g.crossKindOrderGate(b, n) {
+			return constI1(false), nil
+		}
+		// An ordering whose pair-bound side is a name the arithmetic door bound is the same question with
+		// one side still unlifted; it goes through the lift rather than the tag-dispatch door below
+		// because this tag cannot say anything but int or float (roadmap Gap R.143).
 		if i1, okPair, perr := g.pairOrder(b, n); perr != nil {
 			return "", perr
 		} else if okPair {

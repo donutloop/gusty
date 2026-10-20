@@ -2126,6 +2126,40 @@ message in the module. What the door still declines, and why, is filed rather th
   `return` that is a slice — ADR 0333's decision one construct further out. `ys = n()` prints the list correctly,
   which is what makes it a missing record rather than a missing object.
 
+### An ordering between kinds that do not order
+
+`<`, `<=`, `>` and `>=` are defined between two numbers, between two texts, and between two containers of the same
+kind. Everywhere else the reference refuses, and so does the compiled leg, with its own sentence:
+
+```
+print(1 < None)        # TypeError: '<' not supported between instances of 'int' and 'NoneType'
+print(1.5 < "a")       # TypeError: '<' not supported between instances of 'float' and 'str'
+print(None <= None)    # TypeError: '<=' not supported between instances of 'NoneType' and 'NoneType'
+print(True >= "a")     # TypeError: '>=' not supported between instances of 'bool' and 'str'
+print(True < [1])      # TypeError: '<' not supported between instances of 'bool' and 'list'
+```
+
+The void orders against **nothing**, including itself — `None <= None` is a raise, not a verdict. The raise is a real
+trap: `except TypeError:` catches it, `if 1 < None:` takes the same raise as `print(1 < None)` does, and printing the
+exception prints what `python3` prints. The two type names are named in source order, the way CPython names the operand
+whose `__lt__` was tried first, and a verdict, the void and a text are named for what they are — `'bool'`, `'NoneType'`,
+`'str'` — not as the number their representation happens to be (`roadmap Gap R.85` and `Gap R.202`, closed by
+**ADR 0382**).
+
+The question is asked of the **operands**, before the lowering turns the void into the word `0` and a text into an index
+into `@str_tab`, because afterwards there is nothing left to ask. It is asked on both roads a comparison travels down:
+the value road, and the road an `if`/`while`/ternary condition takes.
+
+Two things the door deliberately does not claim:
+
+- Two **containers** — `[1] < [2]`, `{1} < {2}`, `(1,) < (2,)` — are the container-order door's beside it, which
+  answers the pair it can build and files the rest (`roadmap Gaps R.201`, `R.86`). A mixed pair like `[1] < {1}` is a
+  raise either way, and says so.
+- A side whose kind is a **run-time fact** — a parameter, a slot the module tagged, a call whose branches answer two
+  kinds — leaves the door silent rather than guessed at. `x = None` / `y = 1` / `print(x < y)` therefore still answers
+  `True`, because an int is what a name holds when nothing was recorded about it and the door raises only where the
+  program states the pair (`roadmap Gap R.354`).
+
 ### A container in a numeric operand
 
 A list, dict, set or tuple has no number to do arithmetic **with**, so it never reaches an LLVM arithmetic
@@ -3121,10 +3155,12 @@ Four rules, all of them the reference's rather than this backend's:
 
 The walk is one runtime helper, `@rt_pair_order`, asked by the fold — which is also where the honest limit of
 this row is: the **relational operators did not change**. `a < b` over the two built lists above still raises
-(`TypeError: '<' not supported between instances of 'list' and 'str'` where the reference answers `True`), and
-`True < [1]`, `None < [1]` and `"a" < [1]` still name `'int'` for an operand that is not a number. Those are
-roadmap Gaps R.201 and R.202, measured at the same time and left open on purpose: the operators order through a
-chain of their own, and rewiring it is the pair table Gap R.97 owns. A container that contains itself is filed
+(`TypeError: '<' not supported between instances of 'list' and 'str'` where the reference answers `True`) — that is
+roadmap Gap R.201, measured at the same time and left open on purpose: the operators order through a
+chain of their own, and rewiring it is the pair table Gap R.97 owns. The other half of what that row filed is since
+been paid: `True < [1]`, `None < [1]` and `"a" < [1]` name `'bool'`, `'NoneType'` and `'str'` for the operand that is
+not a number, because the ordering question is now asked of the operands before the lowering (Gap R.202, closed by
+ADR 0382 — see “An ordering between kinds that do not order” above). A container that contains itself is filed
 the same way (Gap R.203): the fold chooses the right winner and the printer cannot render it, so
 `print(min(xs, xs))` after `xs.append(xs)` leaves the contract's exit 2 where the reference prints `[[...]]`.
 

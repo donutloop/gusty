@@ -1,5 +1,60 @@
 # Session Learnings
 
+## Round 8 - An ordering asks its pair before the lowering (roadmap Gap R.85 and Gap R.202 closed; ADR 0382; Gap R.354 filed)
+
+**Change (codegen)**: one door, in a new file. `<`, `<=`, `>`, `>=` had no rule for a pair of kinds that do not order,
+and the reason is a fact about the lowering rather than about the operator: by the time the comparison road runs, the
+void has become the word `0`, a text an index into `@str_tab`, a verdict a `0`/`1`. `1 < None` reaches `llc` as
+`icmp slt i32 1, 0`, which answers `False` at exit 0 for a program the reference stops with a `TypeError`. A text
+against a float went the other way: the float road lifts both sides to doubles and the text side arrived as
+`ptrtoint ptr @".str0" to i64` cast to a double, so `print("a" < 1.5)` answered `True`. And when the road did raise,
+it named `'int'` for whatever the operand was, because the message was built from a table that reads every operand as a
+number - `True < [1]`, `None < [1]`, `"a" < [1]` each said `'int' and 'list'`.
+
+`pkg/lang/order_kind.go` is the counterpart to ADR 0293's arithmetic door, which has stopped `1 + "a"` before the
+addition runs for a long time: `orderKindOf` names a side from the AST, `orderFamilyOf` puts it in a family (number,
+text, the void, a container, unknown), `orderPairHasNoOrdering` answers the language question, and
+`unsupportedOrderMessage` spells CPython's sentence with the names in source order. `crossKindOrderGate` raises it
+through `raiseTo`, opens a continuation block, and returns a word the caller never reads - the `badIndexGate` shape.
+
+**The two-road lesson.** The gate went into the value road, every probe looked fixed, and the truth road was still
+answering `if 1 < x:` from the two words. A comparison is lowered on TWO roads - `codegen_binop.go`'s value road and
+`codegen_truth.go`'s condition road, which is what an `if`/`while`/ternary takes - and a rule asked on one of them is a
+rule the language has half. The condition road is not a wrapper around the value road here; it has its own float arm,
+its own pair lift and its own tag-dispatch door above both.
+
+**Measured, not remembered.** The row's own `Paths` cell named `pkg/lang/ordering.go`, which does not exist, and the
+comparison code I first read at "`codegen_binop.go`:6270" did not exist either - that file is 869 lines and the real
+roads are in `heapargs.go`, `codegen_arith.go` and `codegen_float.go`. A session summary carried `unimplementedAtType
+Table` and `compareByKindTable` as existing helpers; neither is in the tree. Every "already exists, so I can reuse it"
+that this round did not verify with grep turned out to be a wall, and one of them nearly went into a comment. The
+lesson is the one ADR 0317 is built on, pointed at the prompt instead of the build cache: re-read the source before you
+write a claim about it, including a claim you were handed.
+
+**A claim, not a guess - and the hole that buys.** `x = None` / `y = 1` / `print(x < y)` still answers `True`. The
+front end records a name whose latest binding was the void, a verdict, a float, a text or a container (ADR 0172's
+tables, the ones the printers read) and records NOTHING for an int, because an int is what a slot holds when nothing
+was recorded - absence is the encoding. Naming an unrecorded `int` `int` would pay that row and would invent a trap for
+every program whose name holds something else by the time the comparison runs, which is what ADR 0273 forbids. So the
+row is filed as Gap R.354 with its compiled answer and the reference's raise pinned side by side, and the door raises
+only where the AST states the pair.
+
+**Process notes.**
+- `tools/recmerge` answered "checked 37, added 0" - all thirty-seven sources were already on the record as traps. The
+  record had the right answer for every one of them the whole time; the compiled leg was the half that was wrong, and
+  a compiled ANSWER against a recorded TRAP is not the shape the drift ledger held, which is how twenty-two of them
+  went unnoticed. Two rows did go paid off the ledgers (325 -> 323 in `pkg/lang`, 20 -> 19 for the CLI suite), and both
+  counts are guarded against the file's own length by `docs_artifact_counts_test.go`.
+- A filed row whose defect is paid is PRUNED, not re-asserted with the new value. Three rows in
+  `integration/pair_container_order_test.go` asserted the compiled leg's WRONG sentence (`'int' and 'list'`) as pinned
+  behaviour; they left the table and the sources are asserted raising the reference's sentence instead. The table
+  describes what is owed, and a paid row in it hides the payment.
+- The IR leg is what makes a raise real rather than decorative: a raising module must carry the sentence AND must not
+  carry the `icmp`/`fcmp` over the two words the lowering would have produced. A door that raises after computing the
+  comparison it refused has replaced nothing.
+- `TestAToolThatNeverReturnsIsKilledAtItsBudget` failed once with `fork/exec .../stub-never-answers: text file busy`
+  under a loaded machine - a stub binary written and exec'd a moment apart. Re-ran clean. A flake to keep an eye on.
+
 ## Round 7 - A body's stack slots belong to the frame that emits the body (roadmap Gap R.342 closed; ADR 0378; Gap R.345, Gap R.346 filed)
 
 **Change (codegen)**: one rule, in a new file. `g.allocd` answers 「does this name already have a stack slot in

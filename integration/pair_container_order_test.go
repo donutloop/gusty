@@ -228,9 +228,12 @@ func TestTheContainerOrderProbeIsOnRecord(t *testing.T) {
 //     own sentence compiled — and the sentence names kinds neither operand is (`'list' and 'str'` for two
 //     lists). A raise where the reference answered a value, in a diagnostic that misdescribes the program:
 //     roadmap Gap R.201, the half Gap R.97 owns for `<`.
-//   - `True < [1]` and `None < [1]` name 'int' for an operand that is a verdict and for one that is None, and
-//     `"a" < [1]` names 'int' for a text — the cross-kind sentence is built from a table that reads a
-//     container's operand as a number. A wrong sentence is a wrong answer (ADR 0271): roadmap Gap R.202.
+//
+// The third class this row used to file — `True < [1]`, `None < [1]` and `"a" < [1]` naming 'int' for an
+// operand that is a verdict, the void or a text, because the cross-kind sentence was built from a table
+// that reads a container's operand as a number — is PAID (roadmap Gap R.202, ADR 0382): the ordering door
+// in `pkg/lang/order_kind.go` asks the pair before the lowering and names both kinds as the reference
+// names them. Those three sources are asserted there, raising the reference's own sentence.
 //
 // Both classes are asserted as the reference answers them, so the row cannot drift, and as the compiled leg
 // answers them today, so the defect cannot silently "pass" by moving somewhere else.
@@ -252,21 +255,6 @@ func TestCLIAgentTheRelationalOrderingOfContainersIsFiledNotFixed(t *testing.T) 
 			"two built sets ordered by <",
 			"xs = []\nxs.append({1})\nxs.append({1, 2})\na = xs[0]\nb = xs[1]\nprint(a < b)\n", "True\n",
 			"TypeError: '<' not supported between instances of 'set' and 'str'",
-		},
-		{
-			"a verdict against a list names 'bool'",
-			"print(True < [1])\n",
-			"TypeError: '<' not supported between instances of 'bool' and 'list'", "TypeError: '<' not supported between instances of 'int' and 'list'",
-		},
-		{
-			"a None against a list names 'NoneType'",
-			"print(None < [1])\n",
-			"TypeError: '<' not supported between instances of 'NoneType' and 'list'", "TypeError: '<' not supported between instances of 'int' and 'list'",
-		},
-		{
-			"a text against a list names 'str'",
-			"print(\"a\" < [1])\n",
-			"TypeError: '<' not supported between instances of 'str' and 'list'", "TypeError: '<' not supported between instances of 'int' and 'list'",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

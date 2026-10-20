@@ -5049,7 +5049,18 @@ call to learn something the representation guarantees, and the pin in `text_orde
 (`TestTextEqualityIsStillAnIndexComparison`) is what keeps that asymmetry from being tidied away by a
 later cycle that "unifies" the two.
 
-### Gap R.85 — an ordering between kinds that do not order against each other gets a verdict (measured 2026-10-02, left open)
+### Gap R.85 — an ordering between kinds that do not order against each other gets a verdict (PAID by ADR 0382, measured 2026-10-02)
+
+**Paid 2026-10-20 by ADR 0382.** The rule that was missing is now one door, `pkg/lang/order_kind.go`, asked of the two
+operand expressions BEFORE either is lowered and on BOTH roads a comparison is lowered on — the value road
+(`codegen_binop.go`) and the condition road (`codegen_truth.go`, which is what `if`/`while`/the ternary take). The door
+names each side's kind from the AST, asks the pair against the family table (numbers / text / the void / containers /
+unknown), and where the pair has no ordering raises `TypeError` with CPython's own sentence through `raiseTo`. The two
+shapes the row measured — `print(1 < "a")` answering `0` and `print(None < "a")` answering `0` — are now the reference's
+raise, and thirty-five more with them; every one of the thirty-seven is a trap the record already carried, so the record
+leg and the compiled leg now agree on all of them and the two drift-ledger rows these sources held went paid.
+The door raises only where the AST states the pair: a parameter, a tagged slot or a call the scan cannot describe keeps
+the door silent, which is what leaves Gap R.354 open beside it rather than papered over with a guess.
 
     print(1 if "a" < 1 else 0)        # CPython TypeError · --interp TypeError · --aot 1
     print(1 if 1 < "a" else 0)        # CPython TypeError · --interp TypeError · --aot 0
@@ -9733,7 +9744,14 @@ Each row pins the reference’s answer (so the row cannot drift), the compiled s
 somewhere quieter), and the exit class (so a refusal cannot quietly become the answer — a refusal there would be the
 compiler’s opinion, not the reference’s raise).
 
-### Gap R.202 — the cross-kind ordering sentence names ‘int’ for an operand that is not a number (OPEN, measured while landing ADR 0318, owner `codegen`)
+### Gap R.202 — the cross-kind ordering sentence names ‘int’ for an operand that is not a number (PAID by ADR 0382, measured while landing ADR 0318, owner `codegen`)
+
+**Paid 2026-10-20 by ADR 0382.** The three rows below raise the reference's sentence now, because the sentence is no
+longer built from the number-table default that reads every operand as an int: the ordering door names both kinds
+itself, from the same AST question that decides whether the pair orders at all. `True < [1]` names `'bool'`,
+`None < [1]` names `'NoneType'`, `"a" < [1]` names `'str'`. The three rows moved out of the filed table in
+`integration/pair_container_order_test.go` (a filed row whose defect is paid is pruned, not re-asserted with the new
+value) and are asserted in `pkg/lang/order_kind_test.go` comparing class AND message word for word against the record.
 
 The same operator road, the operand that is not a container this time:
 
@@ -15523,3 +15541,32 @@ while the neighbouring door, over the same loop and the same body, answers. `run
 container kind and writes through the tagged add/put helpers (it is the road that dedups a mixed set and keys a dict by
 (payload, tag) pairs), so what is missing is the call to it from the two doors, plus the kind bookkeeping the fold does today
 kept as the fast path it is.
+
+### Gap R.354 — one half of an unorderable pair is a fact the front end never wrote down, so the ordering door stays out (OPEN, measured while landing ADR 0382, owner `codegen`)
+
+ADR 0382's door raises where the AST states the pair. These are the programs where it does not, because one side's kind
+is a fact the compiler never recorded:
+
+| program | reference | compiled |
+|---|---|---|
+| `x = None` / `y = 1` / `print(x < y)` | `TypeError: '<' not supported between instances of 'NoneType' and 'int'` | `True` at exit 0 |
+| `x = 1` / `y = None` / `print(x < y)` | `TypeError: '<' not supported between instances of 'int' and 'NoneType'` | `False` at exit 0 |
+| `i = 0` / `while None < i:` … | `TypeError: '<' not supported between instances of 'NoneType' and 'int'` | the loop body never runs, exit 0 |
+| `def g(v): return v < None` / `print(g(3))` | `TypeError: … 'int' and 'NoneType'` | `False` |
+| `def pick(c): …return "z" / return 7` / `print(1.5 < pick(1))` | `TypeError: … 'float' and 'str'` | `False` |
+
+**Why.** The front end keeps a per-name record of what a variable's latest binding was for the void, a verdict, a
+float, a text and each container kind — the ADR 0172 tables the printers read (`noneVars`, `boolVars`, `floatVars`,
+`strVals`, `listVars`, `runtimeDicts`, `runtimeSets`, `tupleVars`). An int has no record, because an int is what a slot
+holds when nothing was recorded: absence is the int's encoding, so there is nothing for a door to read. A parameter is
+the same problem from the other side — its shape arrives with the call — and so is a call whose two branches answer two
+different kinds, which the answer-direction scan declines for the same reason it declines to print one.
+
+**What would close it.** A naming table the front end owns, recording the int arms it currently leaves implicit, and
+which a door can ask the way it asks `noneVars`. The guess at the use site — "no record means int" — would pay the five
+rows above and would invent a trap for every program whose name holds something else by the time the comparison runs,
+which is the trade ADR 0273 forbids. Until then the five rows are pinned in
+`pkg/lang/order_kind_test.go#TestWhatTheOrderingDoorStillCannotNameIsFiledNotFixed`, each asserting the exact stdout,
+that the answer is not a refusal, and that no module reaches the compiler-bug exit code; they are not on the record,
+because `tools/recmerge` asks the reference and cross-checks the compiled leg, and a source whose two legs disagree has
+no answer to write.

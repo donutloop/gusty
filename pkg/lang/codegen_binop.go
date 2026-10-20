@@ -87,6 +87,15 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	if res, ok, err := g.seqOperationRoad(b, n); err != nil || ok {
 		return res, err
 	}
+	// An ordering between two kinds that do not order against each other is one question, asked before
+	// any operand is lowered: what kind is each side, and do those two kinds order? `None` lowers to the
+	// word 0 and a text lowers to an `@str_tab` index, so by the time the comparison road sees the two
+	// registers there is nothing left to ask — and it answered `print(1 < None)` False at exit 0 and
+	// `print("a" < 1.5)` True at exit 0 where the reference raises `TypeError` naming both kinds
+	// (roadmap Gap R.85, Gap R.202, ADR 0382).
+	if g.crossKindOrderGate(b, n) {
+		return "0", nil
+	}
 	if g.isFloat(n.L) || g.isFloat(n.R) || g.taggedNumberUseApplies(n) {
 		// Which question is this? Two operands of different runtime kinds are not equal
 		// (ADR 0215's rule; ADR 0221 makes the numeric cross-kind pair the exception), and

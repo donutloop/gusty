@@ -1143,12 +1143,6 @@
     "actual": "jit: codegen: operator \"//\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
-    "source": "print(\"a\" \u003c 1)",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: '\u003c' not supported between instances of 'str' and 'int'",
-    "actual": "jit: codegen: operator \"\u003c\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-  },
-  {
     "source": "print(-(\"a\", 1))\n",
     "reason": "the trap's class or message differs from the record",
     "expected": "TypeError: bad operand type for unary -: 'list'",
@@ -1182,12 +1176,6 @@
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for //: 'int' and 'str'",
     "actual": "jit: codegen: operator \"//\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
-  },
-  {
-    "source": "print(1 \u003c \"a\")",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: operator \"\u003c\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(1 in [1, 2] == 1)\n",

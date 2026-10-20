@@ -1082,6 +1082,33 @@ R.350), a subscript on a runtime-built comprehension traps with `IndexError` (Ga
 second `for` clause does not parse (Gap R.352), and a set or dict comprehension whose element is a call
 refuses while the list twin answers (Gap R.353).
 
+**An ordering between two kinds that do not order raises what the reference raises** (ADR 0382, closing Gap R.85 and
+Gap R.202). A comparison never sees the kinds: by the time the ordering road runs, `None` has lowered to the word `0`
+and a text to an index into `@str_tab`, so `1 < None` is an `icmp slt i32 1, 0` — a true thing to say about two
+integers and a meaningless thing to say about the program that produced them.
+
+```py
+print(1 < None)       # CPython TypeError: '<' not supported between instances of 'int' and 'NoneType'
+                      # this toolchain before ADR 0382: False, at exit 0
+print("a" < 1.5)      # CPython TypeError … 'str' and 'float' · before: True, at exit 0
+print(True < [1])     # CPython TypeError … 'bool' and 'list' · before: the same raise naming 'int'
+```
+
+There was already a door of this exact shape in the codebase — ADR 0293's arithmetic door, which stops `1 + "a"` before
+the addition runs — and comparisons simply had no counterpart. `pkg/lang/order_kind.go` is that counterpart: it names
+each side's kind from the AST, puts it in a family (number, text, the void, a container, unknown), and where the two
+families have no ordering it raises `TypeError` with CPython's own sentence, naming the operand whose `__lt__` was
+tried first. The void orders against nothing, `None <= None` included. The question is asked **before either operand is
+lowered**, and on both roads a comparison travels — the value road and the condition road an `if`/`while`/ternary takes,
+so `if 1 < x:` raises what `print(1 < x)` raises. The two raises the road used to invent (`TypeError: unorderable types:`
+and a 256-character truncated `unable to compare …`) are deleted rather than improved: a raise the reference does not
+have is a wrong answer too. Thirty-seven sources moved, every one of them a trap the record already carried, so the
+record leg and the compiled leg now agree on all of them. What the door does not claim it does not raise over: two
+containers stay the container door's question (Gaps R.201, R.86), and a side whose kind is a run-time fact — a
+parameter, a tagged slot, a call whose branches answer two kinds — keeps the door silent, which is why `x = None` /
+`y = 1` / `print(x < y)` still answers `True` (**Gap R.354**): the front end records a name whose latest binding was the
+void, a verdict, a float, a text or a container, and an int is what a slot holds when nothing was recorded.
+
 **A body's return word is chosen by folding its writes, not by asking only its newest one** (ADR 0377,
 closing Gap R.341). ADR 0373 settled that a read answers a name's LAST write, and the scan that picks a
 `define`'s return word was built on exactly that — which is right when the newest write states a kind and
