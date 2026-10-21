@@ -102,9 +102,9 @@ func TestTheTruthOfTheEntryChoosesTheOperandAtTheCLI(t *testing.T) {
 	}
 }
 
-// The boundary, witnessed at the CLI as it is today: the entry read handed to a call keeps the one-word
-// answer (Gap R.220) and the entry read bound to a name keeps its refusal (Gap R.146). A commit that pays
-// the condition must not be readable as paying these, so they are asserted rather than left to inference.
+// The boundary, witnessed at the CLI as it is today: the entry read handed to a call carries its pair and
+// answers with its kind (roadmap Gap R.220, paid), and the entry read bound to a name keeps its refusal
+// (Gap R.146). A commit that pays one must not be readable as paying the other, so both are asserted.
 func TestTheTruthOfTheEntryCLIBoundaryKeepsItsOwnRows(t *testing.T) {
 	t.Parallel()
 	callArg := "def f(v):\n    return v\n\nd = {None: 3.5}\nprint(f(d[None]))\n"
@@ -113,8 +113,8 @@ func TestTheTruthOfTheEntryCLIBoundaryKeepsItsOwnRows(t *testing.T) {
 	if code == 2 {
 		t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
 	}
-	if stdout != "3\n" {
-		t.Errorf("the one-word call argument printed %q (exit %d), want today's `3` — Gap R.220's row, not this one; stderr %q", stdout, code, stderr)
+	if code != 0 || stdout != "3.5\n" {
+		t.Errorf("the pair call argument printed %q (exit %d), want the reference's `3.5` — Gap R.220's paid row; stderr %q", stdout, code, stderr)
 	}
 	bound := "d = {None: []}\nx = d[None]\nprint(bool(x))\n"
 	bpath := writeSrc(t, t.TempDir(), "dict_entry_truth_bound.gy", bound)

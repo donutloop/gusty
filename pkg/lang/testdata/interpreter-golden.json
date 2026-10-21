@@ -54357,6 +54357,174 @@
   "# probe_pair_bound_name_takes_a_value.gy — what is LEFT of the one-word positions, and the one that\n# closed (roadmap Gap R.146; ADR 0267 bound the pair, ADR 0269 paid `and`, ADR 0306 the list element,\n# ADR 0316 the fold).\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload, and the positions that ask\n# for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What this program used to\n# pin was the positions that take a whole *value*: a builtin's argument kept one word for its operand, the\n# second word had nowhere to be stored, and the compiled leg declined rather than print the payload alone.\n#\n# All three lines answer now, and the program is parity surface:\n#\n#   - `abs(n)` — the signless call, which is the arithmetic door's own op (Gap R.140, ADR 0271);\n#   - `min(n, 3)` — a fold hands back one of the values it was given, so the door writes the winner's\n#     payload beside the winner's tag (Gap R.146's fold clause, ADR 0316);\n#   - `n and 3` — an operator that chooses an operand asks the pair directly (Gap R.147, ADR 0269).\n#\n# A container element is a pair position too since ADR 0306 (`[n]` prints [14], in\n# programs/probe_pair_bound_name_enters_a_container.gy). The positions still refusing are pinned where they\n# live: `min(n, 3) + 1` and `abs(min(n, 3))` in pair_binding_test.go's refusal table, a fold over a set\n# literal and a container literal operand in pair_dict_set_test.go's (Gap R.198).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint(n and 3)\n": {
    "hasStdout": true,
    "stdout": "14\n3\n3\n"
+  },
+"d = {\"a\": \"\"}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "\n"
+  },
+"d = {\"a\": \"x\"}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "x\n"
+  },
+"d = {\"a\": -0.0}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "-0.0\n"
+  },
+"d = {\"a\": 0}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "0\n"
+  },
+"d = {\"a\": 3.5}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"d = {\"a\": 7}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+"d = {\"a\": False}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+"d = {\"a\": None}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+"d = {\"a\": True}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+"d = {\"a\": [1, 2]}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+"d = {\"a\": []}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "[]\n"
+  },
+"d = {\"a\": {\"k\": 1}}\ndef id(v):\n    return v\n\nprint(id(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 1}\n"
+  },
+"d = {0: 2.5}\ndef id(v):\n    return v\n\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+"d = {None: 3.5}\ndef id(v):\n    return v\n\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"d = {True: [3]}\ndef id(v):\n    return v\n\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "[3]\n"
+  },
+"def f(v):\n    return v + 1\n\nd = {\"a\": 3.5}\nprint(f(d[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "4.5\n"
+  },
+"def id(v):\n    return v\n\nd = {\"a\": \"x\", \"f\": 2.5, \"n\": None, \"l\": [1, 2], \"i\": 7, \"e\": []}\nprint(id(d[\"a\"]), id(d[\"f\"]), id(d[\"n\"]), id(d[\"l\"]), id(d[\"i\"]), id(d[\"e\"]))\n": {
+   "hasStdout": true,
+   "stdout": "x 2.5 None [1, 2] 7 []\n"
+  },
+"def id(v):\n    return v\n\nd = {\"a\": \"x\"}\nprint(id(d[\"a\"]), id(4), id(True), id(2.5), id(None))\n": {
+   "hasStdout": true,
+   "stdout": "x 4 True 2.5 None\n"
+  },
+"def id(v):\n    return v\n\nd = {\"k\": \"word\"}\nprint(id(d[\"k\"]))\n": {
+   "hasStdout": true,
+   "stdout": "word\n"
+  },
+"def id(v):\n    return v\n\nd = {\"k\": 3.5}\nprint(id(d[\"k\"]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"def id(v):\n    return v\n\nd = {\"k\": None}\nprint(id(d[\"k\"]))\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+"def id(v):\n    return v\n\nd = {\"k\": True}\nprint(id(d[\"k\"]))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+"def id(v):\n    return v\n\nd = {\"k\": [1, 2]}\nprint(id(d[\"k\"]))\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+"def id(v):\n    return v\n\nd = {0: \"word\"}\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "word\n"
+  },
+"def id(v):\n    return v\n\nd = {0: 1, 1: 2.5}\nprint(id(d[0]), id(d[1]))\n": {
+   "hasStdout": true,
+   "stdout": "1 2.5\n"
+  },
+"def id(v):\n    return v\n\nd = {0: 3.5}\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"def id(v):\n    return v\n\nd = {0: None}\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+"def id(v):\n    return v\n\nd = {0: True}\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+"def id(v):\n    return v\n\nd = {0: [1, 2]}\nprint(id(d[0]))\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+"def id(v):\n    return v\n\nd = {None: \"word\"}\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "word\n"
+  },
+"def id(v):\n    return v\n\nd = {None: 3.5}\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"def id(v):\n    return v\n\nd = {None: None}\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+"def id(v):\n    return v\n\nd = {None: True}\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+"def id(v):\n    return v\n\nd = {None: [1, 2]}\nprint(id(d[None]))\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+"def id(v):\n    return v\n\nd = {True: \"word\"}\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "word\n"
+  },
+"def id(v):\n    return v\n\nd = {True: 3.5}\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "3.5\n"
+  },
+"def id(v):\n    return v\n\nd = {True: None}\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+"def id(v):\n    return v\n\nd = {True: True}\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+"def id(v):\n    return v\n\nd = {True: [1, 2]}\nprint(id(d[True]))\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+"def id(v):\n    return v\n\nprint(id({\"a\": \"x\"}[\"a\"]))\n": {
+   "hasStdout": true,
+   "stdout": "x\n"
+  },
+"def id(v):\n    return v\n\nxs = [1, \"a\", None]\nprint(id(xs[1]), id(xs[0]))\n": {
+   "hasStdout": true,
+   "stdout": "a 1\n"
+  },
+"# A dict entry handed to a CALL is the same read the printer, the condition and the fold already ask of\n# the object: the entry carries its kind beside its payload, so the argument crosses as a (payload, tag)\n# pair and the callee answers the value rather than the slot word it was read out of. Before ADR 0389 this\n# program printed `1` for the text entry — its `@str_tab` index — `3` for a float box's handle, `0` for\n# `None`, and a heap handle for a container, every one of them at the exit code of success (roadmap\n# Gap R.220). The entry decides which words travel, never the key: `None`, `True`, `0` and `\"a\"` below all\n# read the entry the object says they do (ADR 0353's rule, applied at the call boundary). An entry the\n# literal already describes as an integer keeps the one word it always had (ADR 0387's boundary).\n#\n# What this program deliberately does NOT contain: a callee that tests its own parameter (`if v:`). The\n# pair crosses for that shape too, and the callee's condition still asks the payload — roadmap Gap R.361\n# owns it, and a conformance program is only on the matrix while every line it prints is the reference's.\ndef id(v):\n    return v\n\nd = {\"a\": \"x\", \"n\": None, \"z\": 0.0, \"l\": [1, 2], \"i\": 7, \"e\": []}\nprint(id(d[\"a\"]), id(d[\"i\"]))\nprint(id(d[\"n\"]), id(d[\"z\"]), id(d[\"l\"]), id(d[\"e\"]))\nprint(id({\"a\": \"x\"}[\"a\"]))\n\ndef twice(v):\n    return v * 2\n\nprint(twice(d[\"i\"]))\n\ndef forwarded(v):\n    return id(v)\n\nprint(forwarded(d[\"a\"]), forwarded(d[\"l\"]))\n\nn = {\"a\": 2.5, \"b\": 1.5}\n\ndef total(x, y):\n    return x + y\n\nprint(total(n[\"a\"], n[\"b\"]))\n\nw = {None: 3.5, True: \"t\", 0: [4]}\nprint(id(w[None]), id(w[True]), id(w[0]))\n\ndef measure(v):\n    return v + 1\n\nprint(measure(w[None]), id(w[0]))\n\nxs = [1, \"a\", None]\nprint(id(xs[1]), id(xs[0]))\n": {
+   "hasStdout": true,
+   "stdout": "x 7\nNone 0.0 [1, 2] []\nx\n14\nx [1, 2]\n4.0\n3.5 t [4]\n4.5 [4]\na 1\n"
   }
  },
  "meta": {

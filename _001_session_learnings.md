@@ -1,5 +1,59 @@
 # Session Learnings
 
+## Round 15 - A call argument that is a self-describing entry crosses as a pair (roadmap Gap R.220 closed; ADR 0389; Gaps R.361, R.362 filed)
+
+**Change (the argument's gate)**: `d = {"a": "x"}` / `def id(v): return v` / `print(id(d["a"]))` printed **`1`** —
+the text's `@str_tab` index — at exit 0, and the same program family printed a float box's handle, `0` for
+`None`, and a heap slot for a container. `subscriptPairOf` (ADR 0327/0331) had answered that read correctly for
+two releases and `print(d["a"])` had printed `x` the whole time; what was missing was that `pairCallScan` decides
+which parameters arrive as two `i32`s from two questions (`anyNeedsWord`, `anyCarriesDouble`) and a read out of a
+literal container answered neither. Third cycle in a row where **the door was complete and the gate was old**.
+
+- **The asymmetry between two spellings of one read is the cheapest bug-finder in this family.** The same value
+  written in place — `id({"a": "x"}["a"])` — *refused*, naming the pair and the one word. Whenever one spelling
+  answers and another refuses, one of them is wrong, and the one that runs silently is the one to fix. The
+  guard that had been holding this open (`TestTheLiteralRoadIsNeverWorseThanTheVariableRoad`) had been failing
+  its own prediction for eight releases without anyone reading it, which is what an unopened guard is worth.
+- **A scan may open a door; it must not decide what walks through it.** The first version of this row had the
+  scan answer for the read as well as for the parameter, and it regressed a dozen programs, because the scan is
+  AST-only and cannot see the emitter's float notebooks. The landed form has the scan ask only "does this
+  parameter need two words" and the emission ask `subscriptPairOf` — the same door print, `bool`, `abs`, the
+  folds and the container builders ask. Where it answers, both words travel; where it declines, the ordinary
+  road keeps its refusal **word for word**. Every prior row in this family that let a gate answer for a door
+  shipped either a payload wearing another kind's bits or a refusal nobody measured (ADR 0249).
+- **"Never trade an answer for a crash" is a measurable constraint, not a mood.** Handing the pair to a body
+  ADR 0274 promotes to `define double` produces a module `llc-20` rejects — exit 2, the contract's compiler-bug
+  code — for programs that answer today through the ordinary road. `pairBodyIsFloatReturnRoad` is a syntactic
+  copy of the promotion's question whose only job is to keep **Gap R.344**'s exit-2 list from growing. The
+  probe that proves it is two lines: `def f(v): return v + 1.0` / `print(f(2.0))` is exit 2 before this row and
+  exit 2 after it, which is exactly the claim the row is allowed to make.
+- **A test file written by a cycle that did not finish is a liability, not a head start.** Four untracked test
+  files from an abandoned attempt at this row asserted an ideal the compiler had never reached: a callee
+  testing its own parameter, a recursive callee, a ternary arm, a self-call reading a module dict, and two
+  float-return shapes that die in `llc`. Two of them cannot be asserted at all (exit 2 is not assertable), and
+  three assert answers the parent build never gave. The fix was not to delete them: it was to split each table
+  into what *this* row pays (asserted against CPython, both CLI engines, the record) and what another row owns
+  (filed in `integration/testdata/cpython-debt.json` with CPython's answer beside the compiled one and its
+  owner named, exercised by a table that fails if the program stops being measured). **A wrong answer cannot be
+  a `want`** — the reference check runs first and fails on its own expectation — so filing is the only honest
+  form available, and two fresh rows (**R.361**, **R.362**) carry the ones that had no owner.
+- **A capability sample is a claim, and a paid row invalidates it.** `lower.unsupported.mixed-element-pair`'
+sample was `print(id(xs[1]))` — a program this row pays. The registry's own guard fails a sample that compiles
+"clean, so its code is a claim about nothing", in both packages, and it caught this without being told. The
+sample is now `print(xs[1] + 1)`, an operand that really does keep one word.
+- **Freeze tests are the roadmap's immune system, and they are meant to hurt.** Fourteen failures were this row
+  landing: `TestTheOneWordPositionsRefuseTheLiteralDictRead`, its list twin, their CLI mirrors, the ADR 0388 and
+  ADR 0387 boundary rows that pinned the call argument at its payload-only answer. Each had a comment saying who
+  should flip it and when, and each was flipped to assert the *answer* plus the row that owns it, not deleted —
+  the same shape R.147's test used. The count guards then demanded `8223 → 8265`, matrix `220 → 221`, programs
+  `233 → 234`, debt rows `6 → 10` from the artifacts rather than from memory (Gap R.204), which is the third
+cycle running where the docs are wrong in a way only a test could notice.
+- **The record is not runnable, so a missing record is a hole you can fall into twice.** 41 of the new answers
+  had no record at all, and the golden leg fails on a *missing* entry — which is also why deleting a record
+  cannot delete coverage. They were written from `python3`, cross-checked against the compiled leg, and merged
+  into the artifact with a byte-exact splice: `json.dump` reindenting the file costs 20k lines of diff and
+  buries the six lines that matter, and this file is read by humans as well as by `golden.go`.
+
 ## Round 14 - A condition asks a self-describing read its own kind (roadmap Gaps R.284, R.359 closed; ADR 0388; Gap R.360 filed)
 
 **Change (the condition's gate)**: `d = {None: "hi"}` / `if d[None]:` took the `else` arm and

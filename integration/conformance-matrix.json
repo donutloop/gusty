@@ -3516,6 +3516,27 @@
     },
     {
       "case": {
+        "id": "programs/dict_entry_call_argument",
+        "name": "dict_entry_call_argument.gy",
+        "source": "# A dict entry handed to a CALL is the same read the printer, the condition and the fold already ask of\n# the object: the entry carries its kind beside its payload, so the argument crosses as a (payload, tag)\n# pair and the callee answers the value rather than the slot word it was read out of. Before ADR 0389 this\n# program printed `1` for the text entry — its `@str_tab` index — `3` for a float box's handle, `0` for\n# `None`, and a heap handle for a container, every one of them at the exit code of success (roadmap\n# Gap R.220). The entry decides which words travel, never the key: `None`, `True`, `0` and `\"a\"` below all\n# read the entry the object says they do (ADR 0353's rule, applied at the call boundary). An entry the\n# literal already describes as an integer keeps the one word it always had (ADR 0387's boundary).\n#\n# What this program deliberately does NOT contain: a callee that tests its own parameter (`if v:`). The\n# pair crosses for that shape too, and the callee's condition still asks the payload — roadmap Gap R.361\n# owns it, and a conformance program is only on the matrix while every line it prints is the reference's.\ndef id(v):\n    return v\n\nd = {\"a\": \"x\", \"n\": None, \"z\": 0.0, \"l\": [1, 2], \"i\": 7, \"e\": []}\nprint(id(d[\"a\"]), id(d[\"i\"]))\nprint(id(d[\"n\"]), id(d[\"z\"]), id(d[\"l\"]), id(d[\"e\"]))\nprint(id({\"a\": \"x\"}[\"a\"]))\n\ndef twice(v):\n    return v * 2\n\nprint(twice(d[\"i\"]))\n\ndef forwarded(v):\n    return id(v)\n\nprint(forwarded(d[\"a\"]), forwarded(d[\"l\"]))\n\nn = {\"a\": 2.5, \"b\": 1.5}\n\ndef total(x, y):\n    return x + y\n\nprint(total(n[\"a\"], n[\"b\"]))\n\nw = {None: 3.5, True: \"t\", 0: [4]}\nprint(id(w[None]), id(w[True]), id(w[0]))\n\ndef measure(v):\n    return v + 1\n\nprint(measure(w[None]), id(w[0]))\n\nxs = [1, \"a\", None]\nprint(id(xs[1]), id(xs[0]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "x 7\nNone 0.0 [1, 2] []\nx\n14\nx [1, 2]\n4.0\n3.5 t [4]\n4.5 [4]\na 1\n",
+      "python_ok": true,
+      "python_stdout": "x 7\nNone 0.0 [1, 2] []\nx\n14\nx [1, 2]\n4.0\n3.5 t [4]\n4.5 [4]\na 1\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/container_returns",
         "name": "container_returns.gy",
         "source": "def make_list():\n    return [1, 2]\n\ndef make_set():\n    return {1, 2}\n\ndef make_dict():\n    return {\"a\": 1, \"b\": 2}\n\ndef build():\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n\ndef filled():\n    d = {}\n    d[\"a\"] = \"x\"\n    return d\n\ndef tags():\n    return [1, \"a\", None, True, [7]]\n\ndef empty_list():\n    return []\n\ndef empty_dict():\n    return {}\n\ndef empty_set():\n    return set()\n\ndef forward():\n    return make_list()\n\ndef computed(n):\n    return [n, n + 1]\n\ndef loop_filled():\n    ys = []\n    for i in range(3):\n        ys.append(i)\n    return ys\n\ndef comp():\n    return [x * 2 for x in [1, 2, 3]]\n\nprint(make_list())\nprint(make_set())\nprint(make_dict())\nprint(build())\nprint(filled())\nprint(tags())\nprint(empty_list(), empty_dict(), empty_set())\nprint(forward(), computed(4))\nprint(loop_filled(), comp())\nprint(str(make_list()), repr(make_dict()))\nprint(len(make_list()), 2 in make_list(), 7 in make_list(), 7 not in make_list())\nprint(len(make_dict()), \"a\" in make_dict(), \"z\" in make_dict())\nprint(len(make_set()), 1 in make_set())\nfor v in make_list():\n    print(v)\nfor k in make_dict():\n    print(k)\nif make_list():\n    print(\"non-empty\")\nif empty_list():\n    print(\"wrong\")\nelse:\n    print(\"empty is false\")\nprint(not make_list(), not empty_dict())\nys = make_list()\nprint(ys, len(ys), ys[0], ys[-1])\nys.append(3)\nprint(ys)\nzs = make_list()\nprint(ys is zs, ys == make_list())\nd = filled()\nprint(d, len(d), \"a\" in d)\nprint(make_list() == [1, 2], make_list() == [1, 3])\nprint(make_dict() == {\"b\": 2, \"a\": 1})\nprint(make_set() == {2, 1})\n",
@@ -4743,7 +4764,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/198/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/199/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4757,7 +4778,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/198/prog.ll:36:19: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/199/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5263,11 +5284,11 @@
       ]
     }
   ],
-  "rows": 220,
+  "rows": 221,
   "skipped": 30,
-  "pass": 190,
+  "pass": 191,
   "fail": 0,
-  "oracle_match": 176,
+  "oracle_match": 177,
   "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

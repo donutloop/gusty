@@ -10855,23 +10855,66 @@ reasoning in the comment above it). Those doors still read a bare payload; they 
 rather than smoothed over, and they are why this row's definition of done is not simply "everything agrees".
 
 <a id="gap-r-220"></a>
-### Gap R.220 — a dict read handed to a call answers the payload, not the value (OPEN, found by ADR 0327)
+### Gap R.220 — a dict read handed to a call answers the payload, not the value (CLOSED by ADR 0389, found by ADR 0327)
 
 ```
 d = {"a": "x"}
 def id(v):
     return v
 
-print(id(d["a"]))     # exit 0, prints 1 — the text's @str_tab index; the reference prints x
-print(id({"a": "x"}["a"]))  # exit 1: refuses, naming the pair, the one word and Gap R.146
+print(id(d["a"]))     # was: exit 0, prints 1 — the text's @str_tab index; the reference prints x
+print(id({"a": "x"}["a"]))  # was: exit 1, refusing and naming the pair, the one word and Gap R.146
 ```
 
 Gap R.146's one-word position measured from the dict side: the read produces a `(payload, tag)` pair and the
 parameter keeps one word, so the tag is dropped on the way in and the printer has nothing to read. The literal
 road refuses the same program, which is the asymmetry `pkg/lang/dict_literal_key_test.go::
 TestTheLiteralRoadIsNeverWorseThanTheVariableRoad` holds open: the literal road may not refuse a program the
-variable road answers the reference's way, and today the variable road does not answer it that way. The day the
-argument road carries the pair, that case fails until both roads print `x`.
+variable road answers the reference's way.
+
+**Closed 2026-10-21 by [ADR 0389](adr/0389-a-call-argument-that-is-a-self-describing-entry-crosses-as-a-pair.md)**.
+The read was never the fault — `subscriptPairOf` had answered `d["a"]` correctly since ADR 0327 and printed `x`
+the whole time. What was missing was the second word at the parameter: `pairCallScan` decided which parameters
+arrive as two `i32`s from two questions (`anyNeedsWord`, `anyCarriesDouble`), and a read out of a container the
+program spelled answered neither, so the parameter stayed one word and `pairArgWords` lowered the argument
+through `g.value`.
+
+The fix is one more question on the scan and one arm on the emission, and the two halves are kept honest in
+different ways:
+
+- The scan's `readOfLiteralSlots` is a **copy of the door's own questions**, not a new rule:
+  `literalSideIsUnwrittenLiteral` mirrors `runtimeContainerSide`, `dictSlotsCarryKinds`/`listSlotsCarryKinds`
+  ask whether some *value* is a kind whose payload means nothing alone, `pairSlotIsPlainInt` is the negative
+  control made explicit, and `keyIsSpelling` mirrors the arm list the door can build a key pair from.
+- The emission **asks the door rather than trusting the scan**: an `*Index` argument goes to
+  `g.subscriptPairOf`, the same function print, `bool`, `abs`, the folds, an f-string field and the container
+  builders ask. Where it answers, both words travel; where it declines, the road below keeps its own refusal
+  word for word. A gate that decides an answer and an emitter that trusts it is how this family ships a
+  payload wearing another kind's bits (ADR 0249).
+- The door stands aside for a body ADR 0274's promotion owns (`pairBodyIsFloatReturnRoad`), because such a
+  body is emitted `define double` and has no word beside it for a tag: that shape is **Gap R.344**'s exit-2
+  list and this row neither widens it nor claims to fix it.
+
+Measured against a build of the parent commit with a 40-shape probe: **24 programs change answer, none
+regresses**. The entry kinds that were wrong all answer CPython now — text, empty text, float, `-0.0`, `None`,
+`True`, a list, an empty list, a nested dict, and the same read bound to a name, written in place, forwarded
+through a second frame, or taken out of a container the program wrote again. Keys stay spellings: `{None: 3.5,
+True: "t", 0: [4]}` reads each entry the object says (ADR 0353 restated one boundary out). An integer entry
+keeps the one word it always had, and an IR row fails if it starts asking a pair it does not need.
+
+Four shapes still answer wrongly **below** the call, byte-for-byte as the parent build produced them, and are
+filed rather than smoothed over: a callee that tests its own parameter (**Gap R.361**, filed here), a recursive
+callee that hands the parameter back (Gap R.146), a ternary whose chosen arm is the parameter (Gap R.147), and
+a self-call that reads a module-level dict from inside the body (**Gap R.362**, filed here). All four are rows
+of `integration/testdata/cpython-debt.json` with CPython's answer beside the compiled one, exercised by
+`integration/dict_entry_call_test.go::TestWhatTheCallArgumentStillOwesTheOtherRowsOwn`.
+
+The witness is threefold: 41 sources recorded from CPython plus the conformance program
+(`pkg/lang/testdata/interpreter-golden.json` **8223 → 8265**, `tools/recmerge`'s rule — never from this
+backend), the matrix row `programs/dict_entry_call_argument` asserted `match` (221 rows, 0 failures), and the
+CLI legs of `integration/dict_entry_call_test.go` with exit 2 forbidden on every answered row. The refusals
+this row leaves standing are pinned too, by class and by sentence: a bound entry handed to a call (Gap R.146)
+and a mixed-kind list element asked to concatenate below the call (Gap R.82).
 
 
 ### Gap R.221 — a dict variable whose key is `None` or a bool reads the wrong entry (CLOSED by ADR 0353, found by ADR 0328)
@@ -15822,3 +15865,73 @@ the record and the compiled legs; and requires every answer source on the record
 requires the record, and checks the raise's exit class. `programs/comprehension_literal_iterable.gy` is the
 220th conformance row, asserted `match`. The record moved **8069 → 8084** through `tools/recmerge`, which asked
 CPython first and cross-checked every compiled answer.
+
+### Gap R.361 — a callee that tests its own pair-carrying parameter asks the payload
+
+```gusty
+def f(v):
+    if v:
+        return 1
+    return 0
+
+d = {"e": [], "t": "", "l": [1], "n": None}
+print(f(d["e"]), f(d["t"]), f(d["l"]), f(d["n"]))   # reference: 0 0 1 0 — compiled: 1 1 1 0, exit 0
+```
+
+Filed 2026-10-21 by [ADR 0389](adr/0389-a-call-argument-that-is-a-self-describing-entry-crosses-as-a-pair.md),
+which is the row that carried the `(payload, tag)` pair across the argument — and the reason this row is not
+the same row is visible in the measurement: the four-entry program answers `1 1 1 0` identically on the parent
+build, where the argument crossed as one word.
+
+ADR 0388's condition door asks the tag of a read the *source* spells — `d[None]`, `[0][0]`, a comprehension
+item — through `truthAsksTheEntry`/`truthAsksTheLoopItem`. A **parameter** is not a read: the pair arrived in
+two registers, `bindTaggedVar` wrote its value and its tag, and `emitCond` still takes the plain local slot and
+tests it against zero. An empty list's payload is a heap handle and an empty text's is an interned index, both
+non-zero, so both are true at the exit code of success.
+
+The fix is the pair road's own bookkeeping, which already knows the answer: `pairCallSpecs` and the callee's
+`pairSlotsForBody` say which parameter carries a tag and under which bodies that is true, and
+`@rt_pair_truth` is the door `and`/`or` and ADR 0388's condition already decide with. The condition's head and
+`bool()` need the same arm for a parameter that the entry read already has.
+
+Until then the row is not hidden: the program is a row of `integration/testdata/cpython-debt.json` with
+CPython's `0 0 1 0` beside the compiled `1 1 1 0`, and
+`integration/dict_entry_call_test.go::TestWhatTheCallArgumentStillOwesTheOtherRowsOwn` fails if it stops being
+measured, if either side's answer changes under the row, or if the row loses its roadmap reference. The
+conformance program `programs/dict_entry_call_argument.gy` deliberately contains no callee that tests its own
+parameter for exactly this reason — a matrix row is only on the matrix while every line it prints is the
+reference's.
+
+### Gap R.362 — a dict read inside a body refuses with the unexplained `index must be a constant`
+
+```gusty
+def f(v, n):
+    if n <= 0:
+        return 0
+    return f(d["a"], n - 1)
+
+d = {"a": 3.5}
+print(f(d["a"], 2))     # reference: 0 — compiled: exit 1, "index must be a constant"
+```
+
+Filed 2026-10-21 by [ADR 0389](adr/0389-a-call-argument-that-is-a-self-describing-entry-crosses-as-a-pair.md),
+which measured it while asking the same question of the argument position. Identical on the parent build, so it
+is not that row's defect; it is on this list because ADR 0389's conformance table cannot assert it and a
+refusal nobody can act on is how a gap stops being tracked.
+
+The read itself is unremarkable — `d["a"]` with a literal text key, the shape ADR 0353 and ADR 0387 answer
+everywhere else. What changes is where it is written: **inside a function body**, over a dict the program bound
+at module level. That combination reaches the constant-fold door, the door answers nothing, and what comes back
+is the fold's own rejection of a non-constant index rather than a sentence about the program. The same read at
+module level answers; a body reading a module-level *container* is supposed to reach the module-state sentence
+that Gap R.35's row owns, and this shape never gets there.
+
+Two things are owed, in this order: decide which door owns a body's read of a module-level dict, and have that
+door either answer the entry or refuse naming the missing half and its row. `gustyc` must not print `index must
+be a constant` for a literal key — the sentence names neither what is missing nor who owes it, which is the
+test `pkg/lang/capability.go`'s registry and `integration/compiled_or_refuses_test.go::refusesHonestly` exist
+to fail.
+
+The row is measured today: it is a row of `integration/testdata/cpython-debt.json` (reference `stdout "0"`
+against `exit 1 "gustyc: jit: codegen: index must be a constant"`), exercised by
+`integration/dict_entry_call_test.go::TestWhatTheCallArgumentStillOwesTheOtherRowsOwn`.

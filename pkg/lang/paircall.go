@@ -480,6 +480,21 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 			// business (roadmap L11.6, Gap P.1: `twice(2.5)` printed 4 at exit 0).
 			if s.anyNeedsWord(args) || s.anyCarriesDouble(args) {
 				needs[i] = true
+				continue
+			}
+			// The row this file grew for roadmap Gap R.220: an argument that is a read out of a container
+			// the program spelled out and never wrote again has its kind in the object, and the argument
+			// road that hands over one word hands over a `@str_tab` index, a `@float_box` handle or a heap
+			// slot and calls it a number. The read is the pair door's own (`subscriptPairOf`), so the mark
+			// is asked of the same two questions the door asks.
+			//
+			// It is declined for a body ADR 0274's promotion owns: `def f(v): return v + 0.5` is emitted
+			// `define double`, a word a pair's tag has nowhere beside it, and the program that answers today
+			// through the ordinary road would die in `llc` instead (roadmap Gap R.344, whose exit-2 rows this
+			// row must not widen — the ladder is that a paid door trades a refusal for an answer, never an
+			// answer for a crash).
+			if !pairBodyIsFloatReturnRoad(fd) && s.anyReadOfLiteralSlots(args) {
+				needs[i] = true
 			}
 		}
 		// A body emitted under a convention that already owns its return word owns its parameter words
@@ -584,6 +599,12 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 					continue // the caller hands a name it bound as a pair itself: read it back as one
 				}
 				if !s.exprNumberish(a, map[string]bool{}) {
+					if s.readOfLiteralSlots(a) && !pairBodyIsFloatReturnRoad(fd) {
+						// The pair door answers this read from the object, so both words travel (roadmap
+						// Gap R.220). The ordinary road's answer for such an argument is a payload with its
+						// kind left behind, which is why closing the position is not the safe choice here.
+						continue
+					}
 					if closed == nil {
 						closed = map[string]map[int]bool{}
 					}
@@ -1317,7 +1338,10 @@ func (s *pairScan) exprNeedsWord(e Expr) bool {
 		return s.paired[n.Value]
 	case *Index:
 		nm, depth := chainDepth(e)
-		return depth > 0 && nm != nil && s.built[nm.Value]
+		if depth > 0 && nm != nil && s.built[nm.Value] {
+			return true
+		}
+		return false
 	case *BinOp:
 		switch n.Op {
 		case "+", "-", "*":
@@ -1326,6 +1350,219 @@ func (s *pairScan) exprNeedsWord(e Expr) bool {
 	case *UnOp:
 		if n.Op == "-" {
 			return s.exprNeedsWord(n.X)
+		}
+	}
+	return false
+}
+
+// --- the arm that hands a read of a literal's slots across the call (roadmap Gap R.220, ADR 0389) ----
+
+// anyReadOfLiteralSlots is the needs half's second question: does any argument written to this position
+// reach into a container the program spelled out and never wrote again?
+func (s *pairScan) anyReadOfLiteralSlots(es []Expr) bool {
+	for _, e := range es {
+		if s.readOfLiteralSlots(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalSideIsUnwrittenLiteral answers the scan's version of the door's `runtimeContainerSide`: is the
+// side this read reaches into a container the program spelled out and never wrote again?
+func (s *pairScan) literalSideIsUnwrittenLiteral(side Expr) bool {
+	switch n := side.(type) {
+	case *DictLit:
+		return len(n.Keys) > 0 && s.dictSlotsCarryKinds(n)
+	case *ListLit:
+		return len(n.Elems) > 0 && s.listSlotsCarryKinds(n)
+	case *Name:
+		if s.built[n.Value] {
+			return false // the built arm above owns a container the program filled
+		}
+		vals := s.bound[n.Value]
+		if len(vals) == 0 {
+			return false
+		}
+		for _, v := range vals {
+			if !s.literalSideIsUnwrittenLiteral(v) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// dictSlotsCarryKinds asks the scan's copy of the door's question: is some VALUE of this literal a
+// payload that means something only beside its kind — a text's `@str_tab` index, a float box's handle,
+// a container's handle, None, a verdict? A key's kind is the door's own business (`dictKeyCarriesPair`,)
+// ADR 0353) and never opens a parameter: `{"a": 7}` has a payload that IS its number, and the row's
+// negative control is that such an entry keeps the one word it has always crossed in.
+func (s *pairScan) dictSlotsCarryKinds(dl *DictLit) bool {
+	for i := range dl.Keys {
+		if !pairSlotIsSpelling(dl.Keys[i]) || !pairSlotIsSpelling(dl.Vals[i]) {
+			return false
+		}
+		if !pairSlotIsPlainInt(dl.Vals[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *pairScan) listSlotsCarryKinds(ll *ListLit) bool {
+	needsKind := false
+	for _, el := range ll.Elems {
+		if !pairSlotIsSpelling(el) {
+			return false
+		}
+		if !pairSlotIsPlainInt(el) {
+			needsKind = true
+		}
+	}
+	return needsKind
+}
+
+func (s *pairScan) readOfLiteralSlots(e Expr) bool {
+	ix, isIx := e.(*Index)
+	if !isIx {
+		return false
+	}
+	if _, isCall := ix.Obj.(*Call); isCall {
+		return false
+	}
+	if _, isSlice := ix.Obj.(*Slice); isSlice {
+		return false
+	}
+	if !s.keyIsSpelling(ix.Idx) {
+		return false
+	}
+	return s.literalSideIsUnwrittenLiteral(ix.Obj)
+}
+
+// keyIsSpelling asks whether the door can build the read's key as a (payload, tag) pair: the same list of
+// spellings `dictKeyCarriesPair` admits an entry to be asked with, plus a name the scan can see the
+// bindings of — evidence, not a guess, because a key whose kind nothing recorded reaches the door as one
+// word (roadmap Gap R.286 owns what that answer is today).
+func (s *pairScan) keyIsSpelling(e Expr) bool {
+	if nm, isName := e.(*Name); isName {
+		vals := s.bound[nm.Value]
+		if len(vals) == 0 {
+			return false
+		}
+		for _, v := range vals {
+			if !pairSlotIsSpelling(v) {
+				return false
+			}
+		}
+		return true
+	}
+	return pairSlotIsSpelling(e)
+}
+
+// pairSlotIsSpelling is the scan's copy of "the builder can write this slot from its spelling alone": a
+// literal of a kind the tag table names, or a container literal made of those.
+func pairSlotIsSpelling(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit:
+		return true
+	case *ListLit:
+		for _, el := range n.Elems {
+			if !pairSlotIsSpelling(el) {
+				return false
+			}
+		}
+		return true
+	case *SetLit:
+		for _, el := range n.Elems {
+			if !pairSlotIsSpelling(el) {
+				return false
+			}
+		}
+		return true
+	case *DictLit:
+		for i := range n.Keys {
+			if !pairSlotIsSpelling(n.Keys[i]) || !pairSlotIsSpelling(n.Vals[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// pairSlotIsPlainInt is the one slot whose payload IS its value: the fold answers a read of it, the
+// number printer needs no kind beside it, and the ordinary call road has always handed it over correctly.
+func pairSlotIsPlainInt(e Expr) bool {
+	_, isInt := e.(*IntLit)
+	return isInt
+}
+
+// pairBodyIsFloatReturnRoad is the scan's syntactic copy of the question ADR 0274's promotion asks of a
+// body at emission: does some `return` answer a double the module already knows about — a float literal,
+// or arithmetic that reaches one? Such a body is emitted `define double`, and the pair road has no word
+// beside a `double` to store a kind in, so the arm that opens a parameter for a literal-slot read stands
+// aside (roadmap Gap R.344 owns the answer word that shape still owes, and this row may not widen its
+// exit-2 list). A name the body bound to a double is the promotion's other shape and is NOT claimed here:
+// the scan cannot see the emitter's float notebook, and the pair road serves those bodies today.
+func pairBodyIsFloatReturnRoad(fd *FuncDef) bool {
+	if fd == nil {
+		return false
+	}
+	found := false
+	var walk func(ss []Stmt)
+	walk = func(ss []Stmt) {
+		for _, st := range ss {
+			if found {
+				return
+			}
+			switch n := st.(type) {
+			case nil:
+			case *ReturnStmt:
+				if pairExprIsFloatBySpelling(n.Expr) {
+					found = true
+					return
+				}
+			case *IfStmt:
+				walk(n.Then)
+				for _, e := range n.Elifs {
+					walk([]Stmt{e})
+				}
+				walk(n.Else)
+			case *WhileStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *ForStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *TryStmt:
+				walk(n.Body)
+				for _, e := range n.Excepts {
+					walk(e.Body)
+				}
+				walk(n.Finally)
+			}
+		}
+	}
+	walk(fd.Body)
+	return found
+}
+
+// pairExprIsFloatBySpelling asks the spelling alone, which is all the promotion's `/`, float-literal and
+// float-operand shapes can be asked before any IR exists.
+func pairExprIsFloatBySpelling(e Expr) bool {
+	switch n := e.(type) {
+	case *FloatLit:
+		return true
+	case *UnOp:
+		return (n.Op == "-" || n.Op == "+") && pairExprIsFloatBySpelling(n.X)
+	case *BinOp:
+		switch n.Op {
+		case "/":
+			return true // true division answers a double whatever arrives (ADR 0253)
+		case "+", "-", "*", "//", "%":
+			return pairExprIsFloatBySpelling(n.L) || pairExprIsFloatBySpelling(n.R)
 		}
 	}
 	return false
@@ -1958,6 +2195,19 @@ func (g *irGen) pairArgWords(b *strings.Builder, fnName string, idx int, a Expr)
 	}
 	if g.isFloat(a) {
 		return "", "", true, fmt.Errorf("codegen: %s is a float the pair road cannot box, and parameter %d of %s arrives as a (payload, tag) pair whose payload is an i32: the ordinary road would truncate the double to that word, which is a wrong number rather than a refusal (roadmap L11.6, Gap P.1, ADR 0273)", exprSurface(a), idx, fnName)
+	}
+	// A read out of a container the program spelled out is answered by the ONE subscript door the print
+	// road, the truth road and the signless builtins ask (Gap R.221, Gap R.283, Gap R.284, Gap R.287) —
+	// the entry's kind is the object's fact, and the argument needs both of its words. Asking the door
+	// here, rather than trusting the scan that opened the parameter, is what keeps a gate and a door from
+	// ever shipping a payload tagged as a number: where the door answers, both words travel; where it
+	// declines, the road below keeps its own refusal, word for word.
+	if ix, isIx := a.(*Index); isIx {
+		if p, t, okPair, xerr := g.subscriptPairOf(b, ix); xerr != nil {
+			return "", "", true, xerr
+		} else if okPair {
+			return p, t, true, nil
+		}
 	}
 	if isStringExpr(a) || g.isNoneExpr(a) || g.isContainerExpr(a) {
 		return "", "", true, fmt.Errorf("codegen: %s is not a number, and parameter %d of %s carries the (payload, tag) pair the arithmetic door answers: this pass will not hand over a payload wearing another kind's bits (roadmap L11.1, ADR 0273)", exprSurface(a), idx, fnName)

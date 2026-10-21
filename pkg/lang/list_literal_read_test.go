@@ -80,11 +80,13 @@ func TestTheListFoldStillAnswersWhatItCanRead(t *testing.T) {
 // The residue, kept honest. A position that keeps one word for a whole value cannot carry the tag the
 // element's kind lives in, and the dict road refused the same shape when ADR 0327 landed — so the list road
 // refuses it too, naming the missing half, instead of printing a handle at exit 0.
+//
+// The argument position left this list with roadmap Gap R.220: `id(["a","b"][0])` is asserted as an answer
+// by `TestACallArgumentCarriesAListLiteralElementItsOwnKind` below.
 func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
 	t.Parallel()
 	for _, src := range []string{
 		"def f():\n    return [\"a\",\"b\"][0]\nprint(f())",
-		"def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))",
 		`print([1.5, 2][0] + 1)`,
 		`print(["a"] [0] + "b")`,
 		// (`print(f"{[None, 1.5][1]}")` sat here, on the belief that an f-string field keeps one word for a
@@ -100,6 +102,31 @@ func TestTheOneWordPositionsRefuseTheListLiteralRead(t *testing.T) {
 			}
 			if !strings.Contains(out, "Gap R.218") || !strings.Contains(out, "kind") {
 				t.Fatalf("%q refused without naming the missing half and its row: %s", src, out)
+			}
+		})
+	}
+}
+
+// TestACallArgumentCarriesAListLiteralElementItsOwnKind is the paid half of the row above: an element read
+// out of a list the program spelled out, handed to a call, arrives with its kind beside it. The answer is
+// the same sentence the record and the reference print for the shape, and the int element keeps taking the
+// one-word road it always took — the argument's pair is asked of the entry, never of the key.
+func TestACallArgumentCarriesAListLiteralElementItsOwnKind(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{name: "text", src: "def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))\n", want: "a\n"},
+		{name: "float", src: "def id(v):\n    return v\nprint(id([1,2.5][1]))\n", want: "2.5\n"},
+		{name: "int_keeps_one_word", src: "def twice(v):\n    return v + v\nprint(twice([3,4][0]))\n", want: "6\n"},
+		{name: "none", src: "def id(v):\n    return v\nprint(id([None,1][0]))\n", want: "None\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, refused := compiledOutOrRefusal(t, tc.src)
+			if refused {
+				t.Fatalf("the paid row refused: %s", out)
+			}
+			if out != tc.want {
+				t.Fatalf("answered %q, want %q", out, tc.want)
 			}
 		})
 	}

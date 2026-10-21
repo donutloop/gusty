@@ -310,7 +310,11 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Suggestion: "print(xs[i]) directly, bind it (`v = xs[i]`), or keep one kind per list — the element is a (payload, tag) pair and this position stores a single i32 with no tag beside it",
 		Rows:       []string{"L11.1", "Gap R.82", "Gap R.146"},
 		Markers:    []string{"so one element is a (value, tag) pair"},
-		Sample:     "xs = [1, \"a\"]\ndef id(v):\n    return v\n\nprint(id(xs[1]))",
+		// The sample used to be `print(id(xs[1]))`. It no longer refuses: an entry handed to a call carries
+		// its two words since roadmap Gap R.220 paid for the pair at the argument position, and a registry
+		// whose sample compiles clean is a claim about nothing (the guard fails it either way). An
+		// arithmetic operand is the position that still keeps one word.
+		Sample: "xs = [1, \"a\"]\nprint(xs[1] + 1)",
 	},
 	{
 		Code:       "lower.unsupported.float-return-word",

@@ -200,16 +200,15 @@ func TestTheTruthOfAProvableIntegerEntryKeepsTheOneWordRoad(t *testing.T) {
 	}
 }
 
-// The boundary ADR 0388 drew. `and`/`or` are not the truth road: they hand back the operand they chose, so
-// the answer itself has to carry the kind, which is Gap R.147's tagged value word and still refuses —
 // The boundary ADR 0388 drew. `and`/`or` choose an operand by its truth and now reach the pair for a dict
 // entry, so they are answered in TestTheEntryChoosesItsOperandInTheSamePairTable. What this row pins is the
-// positions the door does NOT own: a binding and a call argument, which keep one word for a whole value.
-// They are pinned as the answers and refusals they are today so this file cannot be read as claiming them.
+// positions the truth door does NOT own: a binding, which keeps one word for a whole value, and the call
+// argument, whose two words belong to roadmap Gap R.220 rather than to this door. They are pinned as the
+// answers and refusals they are today so this file cannot be read as claiming them.
 func TestTheTruthOfTheEntryBoundaryStaysWhereADR0388DrewIt(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name, src, wantSub, row string
+		name, src, wantSub, row, want string
 	}{
 		{
 			// The binding is a one-word position: the name keeps the payload and loses the tag, so `bool` of
@@ -228,10 +227,14 @@ func TestTheTruthOfTheEntryBoundaryStaysWhereADR0388DrewIt(t *testing.T) {
 			row:     "Gap R.147",
 		},
 		{
-			name:    "the_entry_read_handed_to_a_call_is_the_one_word_call_argument",
-			src:     "def f(v):\n    return v\n\nd = {None: 3.5}\nprint(f(d[None]))\n",
-			wantSub: "", // pinned as today's answer, not a refusal: see the note below
-			row:     "Gap R.220",
+			// The call argument left this row with roadmap Gap R.220: an entry handed to a call carries its
+			// (payload, tag) pair, so the answer comes back with its kind — the reference's `3.5`, not the
+			// payload-only `3` this row used to pin. It is checked here so this file cannot be read as
+			// claiming it while still saying which row owns it.
+			name: "the_entry_read_handed_to_a_call_is_the_pair_call_argument",
+			src:  "def f(v):\n    return v\n\nd = {None: 3.5}\nprint(f(d[None]))\n",
+			want: "3.5\n",
+			row:  "Gap R.220",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,10 +249,15 @@ func TestTheTruthOfTheEntryBoundaryStaysWhereADR0388DrewIt(t *testing.T) {
 				}
 				return
 			}
-			// The call argument keeps the payload-only answer: the one-word call boundary is Gap R.220's, and
-			// this file pins it rather than pretending the truth road reaches it.
+			if tc.want != "" {
+				if got := compiledOut(t, tc.src); got != tc.want {
+					t.Errorf("%s printed %q, want the %s answer %q", tc.src, got, tc.row, tc.want)
+				}
+				return
+			}
+			// The binding keeps the payload-only answer: a one-word position is not this row's.
 			if got := compiledOut(t, tc.src); got != "3\n" {
-				t.Errorf("%s printed %q, want today's `3` — Gap R.220's one-word call argument, not this row's", tc.src, got)
+				t.Errorf("%s printed %q, want today's `3` — a one-word position, not this row's", tc.src, got)
 			}
 		})
 	}

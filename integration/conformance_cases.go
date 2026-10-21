@@ -656,6 +656,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// set member ride the same door, and the two raises inside an element are the reference's own,
 		// caught here by their own class.
 		"pair_element_read",
+		// A dict entry handed to a CALL is the same self-describing read the printer, the condition and the
+		// fold already ask of the object; what it lacked was the argument's second word. `print(id(d["a"]))`
+		// for `{"a": "x"}` printed `1` — the entry's `@str_tab` index — and a float entry printed its
+		// `@float_box` handle, `None` printed `0` and a container printed its heap slot, all at the exit code
+		// of success. The entry, not the key, decides which words cross; an entry the literal already
+		// describes as an integer keeps the one word it always had (roadmap Gap R.220, ADR 0389).
+		"dict_entry_call_argument",
 		// The answer a call hands back when it hands back a container is a value. `def build(): return
 		// [1, 2]` / `print(build())` spent the contract's compiler-bug code on a program the reference runs
 		// (`ret i32 @.lst1` — a global in a value position, which `llc` rejects), the run-time-built spelling

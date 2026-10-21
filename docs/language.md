@@ -1430,7 +1430,15 @@ Rules that the compiled backend implement:
   print asks and decides it in `@rt_pair_truth`: an empty text, an empty container, `0.0`, `-0.0`, `False` and
   `None` are false, and a text's interned index or a float box's handle is not evidence either way. The item of
   an unrolled comprehension asks the same table (**R.359**): `[bool(x) for x in [0.0, [0]]]` is `[False, False]`.
-  A one-word call argument of that entry still belongs to **Gap R.146**/**R.220**.
+  **A call argument that is such an entry carries the pair too** (**R.220**, **ADR 0389**): `def id(v): return v`
+  with `print(id(d["a"]))` prints `x`, not the text's `@str_tab` index, and a float, `None`, a verdict, a list or a
+  dict entry likewise arrives with its kind beside its payload — the emission asks the one subscript door print
+  asks, so the two spellings of a read cannot disagree. An entry the literal already describes as an integer keeps
+  the one word it always had. What the row does not reach is pinned with today's answer beside the reference's: a
+  callee that TESTS its own parameter — `if v:` over the pair — still asks the payload (**R.361**), a recursive
+  callee that hands the parameter back and a ternary whose chosen arm is the parameter keep one word for the
+  answer (**R.146**, **R.147**), and an entry bound to a name first (`x = d["a"]` then `id(x)`) is still the
+  one-word position of **Gap R.146**.
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same

@@ -46,12 +46,12 @@ func TestAListLiteralElementAnswersThroughTheCLI(t *testing.T) {
 }
 
 // The residue, at the same altitude: a one-word position cannot carry the element's kind, and the road says
-// so by name instead of printing a payload at exit 0.
+// so by name instead of printing a payload at exit 0. The call argument left this table with roadmap
+// Gap R.220 — it is asserted as an answer in `TestACallArgumentOfAListLiteralReadAnswersAtTheCLI`.
 func TestAOneWordPositionRefusesTheListLiteralReadThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, src := range []string{
 		"def f():\n    return [\"a\",\"b\"][0]\nprint(f())",
-		"def id(v):\n    return v\nprint(id([\"a\",\"b\"][0]))",
 		`print([1.5, 2][0] + 1)`,
 	} {
 		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
@@ -62,6 +62,29 @@ func TestAOneWordPositionRefusesTheListLiteralReadThroughTheCLI(t *testing.T) {
 			}
 			if !strings.Contains(stderr, "Gap R.218") {
 				t.Fatalf("the refusal did not name its row: %s", stderr)
+			}
+		})
+	}
+}
+
+// The paid half beside it: the same element handed to a call arrives with its tag, prints as the element, and
+// leaves the all-integer literal on the one-word road it always took.
+func TestACallArgumentOfAListLiteralReadAnswersAtTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"a text element", "def id(v):\n    print(v)\n\nid([\"a\",\"b\"][0])\n", "a\n"},
+		{"a float element", "def id(v):\n    print(v)\n\nid([1,2.5][1])\n", "2.5\n"},
+		{"an int element keeps one word", "def twice(v):\n    print(v)\n\ntwice([3,4][0])\n", "3\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, code := cliStreams(t, "--eval", tc.src)
+			if code != 0 {
+				t.Fatalf("exit %d, want the answer\nstdout %q\nstderr %q", code, stdout, stderr)
+			}
+			if stdout != tc.want {
+				t.Fatalf("printed %q, the reference prints %q", stdout, tc.want)
 			}
 		})
 	}

@@ -232,10 +232,9 @@ func TestTheOneWordPositionsOfALiteralDictReadRefuseAtTheCLI(t *testing.T) {
 			name: "an_entry_handed_back_by_a_return",
 			src:  "def f():\n    return {\"a\": \"x\"}[\"a\"]\nprint(f())\n",
 		},
-		{
-			name: "an_entry_handed_to_a_call",
-			src:  "def g(v):\n    print(v)\ng({\"a\": \"x\"}[\"a\"])\n",
-		},
+		// (`an_entry_handed_to_a_call` used to be on this table. It is answered now — an entry handed to a
+		// call carries its (payload, tag) pair since roadmap Gap R.220 paid the argument position — and is
+		// asserted as the answer it is in `TestACallArgumentOfALiteralDictReadAnswersAtTheCLI`.)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -253,6 +252,33 @@ func TestTheOneWordPositionsOfALiteralDictReadRefuseAtTheCLI(t *testing.T) {
 						t.Errorf("%s's refusal does not name %s:\n%s", engine, want, combined)
 					}
 				}
+			}
+		})
+	}
+}
+
+// TestACallArgumentOfALiteralDictReadAnswersAtTheCLI is the half of the table above that roadmap Gap R.220
+// paid for: an entry read out of a dict the program spelled out, handed to a call, crosses the boundary with
+// its kind beside it, so the callee prints the entry and not the allocator's slot. Every CLI execution path,
+// against the same sentence CPython prints.
+func TestACallArgumentOfALiteralDictReadAnswersAtTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"a text entry", "def id(v):\n    print(v)\n\nid({\"a\": \"x\"}[\"a\"])\n", "x\n"},
+		{"a list entry", "def id(v):\n    print(v)\n\nid({\"a\": [1, 2]}[\"a\"])\n", "[1, 2]\n"},
+		{"a float entry", "def id(v):\n    print(v)\n\nid({\"a\": 2.5}[\"a\"])\n", "2.5\n"},
+		{"an int entry keeps one word", "def twice(v):\n    print(v)\n\ntwice({\"a\": 3}[\"a\"])\n", "3\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "dict_literal_answer.gy", tc.src)
+			stdout, stderr, code := cliStreams(t, "--file", path)
+			if code != 0 {
+				t.Fatalf("exit %d, want the answer\nstdout %q\nstderr %q", code, stdout, stderr)
+			}
+			if stdout != tc.want {
+				t.Fatalf("printed %q, the reference prints %q", stdout, tc.want)
 			}
 		})
 	}

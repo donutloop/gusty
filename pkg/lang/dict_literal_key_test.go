@@ -278,6 +278,11 @@ func mainRegion(t *testing.T, src string) string {
 // A one-word position cannot carry a tag, so it refuses rather than answering with the payload alone —
 // which is what printed `1` for `{"a": "x"}["a"]`. The refusal says which road, which half is missing,
 // and which row owns the rest.
+//
+// The argument position is no longer one of these rows: an entry handed to a call carries its two words
+// since the row roadmap Gap R.220 paid for, and the two `pass_*` shapes that used to be here now answer —
+// they live in `TestAPlainIntEntryStillTakesTheOneWordRoads`' companion, `TestACallArgumentCarriesThe…`.
+// What remains here is the position that still keeps one word: a function's own answer.
 func TestTheOneWordPositionsRefuseTheLiteralDictRead(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -289,16 +294,8 @@ func TestTheOneWordPositionsRefuseTheLiteralDictRead(t *testing.T) {
 			src:  "def f():\n    return {\"a\": \"x\"}[\"a\"]\n\nprint(f())\n",
 		},
 		{
-			name: "pass_a_text_entry",
-			src:  "def id(v):\n    return v\n\nprint(id({\"a\": \"x\"}[\"a\"]))\n",
-		},
-		{
 			name: "return_a_none_entry",
 			src:  "def f():\n    return {\"a\": None}[\"a\"]\n\nprint(f())\n",
-		},
-		{
-			name: "pass_a_list_entry",
-			src:  "def id(v):\n    return v\n\nprint(id({\"a\": [1, 2]}[\"a\"]))\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -331,6 +328,11 @@ func TestAPlainIntEntryStillTakesTheOneWordRoads(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{name: "return_an_int_entry", src: "def f():\n    return {\"a\": 7}[\"a\"]\n\nprint(f())\n", want: "7\n"},
 		{name: "pass_an_int_entry", src: "def twice(v):\n    return v + v\n\nprint(twice({\"a\": 3}[\"a\"]))\n", want: "6\n"},
+		// The two rows `TestTheOneWordPositionsRefuseTheLiteralDictRead` used to hold for the argument
+		// position, paid by roadmap Gap R.220: an entry handed to a call travels as a (payload, tag) pair,
+		// so the text arrives as text and a container arrives as a container instead of as its slot.
+		{name: "pass_a_text_entry", src: "def id(v):\n    return v\n\nprint(id({\"a\": \"x\"}[\"a\"]))\n", want: "x\n"},
+		{name: "pass_a_list_entry", src: "def id(v):\n    return v\n\nprint(id({\"a\": [1, 2]}[\"a\"]))\n", want: "[1, 2]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

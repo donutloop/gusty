@@ -2174,10 +2174,17 @@ falls back to dynamic dispatch.
   an unrolled comprehension asks the same table, so `[bool(x) for x in [0.0, [0]]]` is `[False, False]`
   (**R.284**, **R.359**, **ADR 0388**); the set entry that table is never asked about is **R.360**. The signless
   and fold calls that used to sit in that list have since been paid, and are told below
-  (**R.287**, **ADR 0387**): `abs`, `min`, `max` and `sum` now ask the entry's tag beside its payload, while a
-  one-word call boundary remains **R.146**/**R.220**. The f-string field that was in that list has since been
-  paid, and is told below (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static* key door was built,
-  measured, and
+  (**R.287**, **ADR 0387**): `abs`, `min`, `max` and `sum` now ask the entry's tag beside its payload. So does a
+  **call argument**: `def id(v): return v` with `print(id(d["a"]))` prints `x` where it printed the text's
+  `@str_tab` index, and a float entry, `None`, a verdict or a container entry arrives with its kind beside its
+  payload too — the emission asks the one subscript door print, `bool` and the folds already ask, so the read
+  written in place and the read bound to a container variable cannot answer differently, and an entry the
+  literal already describes as an integer keeps the one word it always had (**R.220**, **ADR 0389**). What that
+  boundary still does not reach is filed rather than smoothed over: a callee that tests its own parameter
+  (**R.361**), a recursive callee and a ternary arm that is the parameter (**R.146**, **R.147**), and an entry
+  bound to a name first, which is still the one-word position **R.146** owns. The f-string field that was in that
+  list has since been paid, and is told below (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static*
+  key door was built, measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
 - **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls

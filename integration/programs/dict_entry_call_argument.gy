@@ -1,0 +1,47 @@
+# A dict entry handed to a CALL is the same read the printer, the condition and the fold already ask of
+# the object: the entry carries its kind beside its payload, so the argument crosses as a (payload, tag)
+# pair and the callee answers the value rather than the slot word it was read out of. Before ADR 0389 this
+# program printed `1` for the text entry — its `@str_tab` index — `3` for a float box's handle, `0` for
+# `None`, and a heap handle for a container, every one of them at the exit code of success (roadmap
+# Gap R.220). The entry decides which words travel, never the key: `None`, `True`, `0` and `"a"` below all
+# read the entry the object says they do (ADR 0353's rule, applied at the call boundary). An entry the
+# literal already describes as an integer keeps the one word it always had (ADR 0387's boundary).
+#
+# What this program deliberately does NOT contain: a callee that tests its own parameter (`if v:`). The
+# pair crosses for that shape too, and the callee's condition still asks the payload — roadmap Gap R.361
+# owns it, and a conformance program is only on the matrix while every line it prints is the reference's.
+def id(v):
+    return v
+
+d = {"a": "x", "n": None, "z": 0.0, "l": [1, 2], "i": 7, "e": []}
+print(id(d["a"]), id(d["i"]))
+print(id(d["n"]), id(d["z"]), id(d["l"]), id(d["e"]))
+print(id({"a": "x"}["a"]))
+
+def twice(v):
+    return v * 2
+
+print(twice(d["i"]))
+
+def forwarded(v):
+    return id(v)
+
+print(forwarded(d["a"]), forwarded(d["l"]))
+
+n = {"a": 2.5, "b": 1.5}
+
+def total(x, y):
+    return x + y
+
+print(total(n["a"], n["b"]))
+
+w = {None: 3.5, True: "t", 0: [4]}
+print(id(w[None]), id(w[True]), id(w[0]))
+
+def measure(v):
+    return v + 1
+
+print(measure(w[None]), id(w[0]))
+
+xs = [1, "a", None]
+print(id(xs[1]), id(xs[0]))

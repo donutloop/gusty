@@ -140,7 +140,9 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// whose kind the object carries goes to the float arms with its tag, and text against a number
 		// raises CPython's TypeError at run time — which is what CPython does, so the row now lives in
 		// the trap table of tagged_numeric_test.go (roadmap L11.1, Gap R.88).
-		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
+		// `def head(v): print(v)` handed `xs[1]` used to be on this table. It is answered now: an element
+		// handed to a call carries its (payload, tag) pair since roadmap Gap R.220 paid the argument
+		// position, and the callee prints the element — asserted in TestACallArgumentOfAMixedListElementAnswers.
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		// The loop variable ordered against a number used to be on this table beside the `+ 1` row
 		// above it. It is not a refusal any more: an ordering over a pair-bound loop variable walks the
@@ -173,6 +175,42 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
 		}
+	}
+}
+
+// TestACallArgumentOfAMixedListElementAnswers is the row `TestMixedListElementUsesStillRefuse` gave up: the
+// element a call is handed keeps its tag, so the callee's `print` renders the element instead of whichever
+// payload the argument happened to arrive in (roadmap L11.1, Gap R.220).
+func TestACallArgumentOfAMixedListElementAnswers(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			name: "text element handed to a callee that prints it",
+			src:  "def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n",
+			want: "a\n",
+		},
+		{
+			name: "void element handed to a callee that prints it",
+			src:  "def head(v):\n    print(v)\n\nxs = [1, \"a\", None]\nhead(xs[2])\n",
+			want: "None\n",
+		},
+		{
+			name: "int element keeps the one-word road",
+			src:  "def twice(v):\n    return v + v\n\nxs = [3, \"a\"]\nprint(twice(xs[0]))\n",
+			want: "6\n",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, refused := compiledOutOrRefusal(t, tc.src)
+			if refused {
+				t.Fatalf("%s refused: %s", tc.name, out)
+			}
+			if out != tc.want {
+				t.Fatalf("%s printed %q, want %q", tc.name, out, tc.want)
+			}
+		})
 	}
 }
 

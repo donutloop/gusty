@@ -221,10 +221,13 @@ func TestTheSelfDescribingDictEntrySignlessBoundaryStaysWhereADR0387DrewIt(t *te
 			row:     "Gap R.146 (the call's one-word argument)",
 		},
 		{
+			// The call boundary stopped being a one-word position when roadmap Gap R.220 paid for the pair: the
+			// entry's sign now travels with it, so the answer is the reference's `-3.5` and not the payload's `3`.
+			// (The fold's answer handed to a call, below, is still the one-word position Gap R.146 owns.)
 			name:    "entry_handed_to_a_function",
 			src:     "def f(v):\n    return v\nd = {None: -3.5}\nprint(f(d[None]))\n",
-			wantOut: "3\n",
-			row:     "Gap R.220 (the dict read at the call boundary)",
+			wantOut: "-3.5\n",
+			row:     "Gap R.220 (the dict read at the call boundary, paid)",
 		},
 		{
 			name:    "entry_used_as_an_arithmetic_operand",
