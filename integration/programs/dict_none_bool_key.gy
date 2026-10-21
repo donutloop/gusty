@@ -48,3 +48,15 @@ try:
     print(t[None])
 except KeyError:
     print("no entry under None")
+
+# The same self-describing entry is also asked by the signless call and the folds. ADR 0387 pays the read
+# half of ADR 0309's and ADR 0316's doors: the entry's kind travels beside its payload instead of the
+# payload alone being subtracted from zero (roadmap Gap R.287).
+s = {None: -3.5}
+print(abs(s[None]))
+print(min(s[None], 2), max(s[None], 2))
+print(min(abs(s[None]), 2))
+print(sum([s[None], 0]))
+q = {1: -2.5}
+print(abs(q[1]))
+print(min(q[1], 1), max(q[1], 1))

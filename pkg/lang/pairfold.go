@@ -123,14 +123,34 @@ func (g *irGen) foldCallShape(c *Call) (door int, args []Expr, ok bool) {
 // swallowed it would answer a program the language refuses.
 func (g *irGen) foldMayNeedPair(args []Expr) bool {
 	for _, a := range args {
-		if g.operandMayNeedPair(a) {
-			return true
-		}
-		if g.foldArgCarriesAContainer(a) {
+		if g.foldOperandMayNeedPair(a) || g.foldArgCarriesAContainer(a) {
 			return true
 		}
 	}
 	return false
+}
+
+// foldOperandMayNeedPair asks the fold's operand the same two questions the arithmetic door asks, plus the
+// third the fold learned from ADR 0353's self-describing entry: an ordinary road may still believe it has a
+// static integer payload while the object that stored the slot wrote a float tag beside it. The widening is
+// deliberately local to the fold; `arithWouldRefuse` keeps its old answer so arithmetic positions such as
+// `max(d[None], 2) + 1` cannot silently consume the payload alone (roadmap L11.1, Gap R.287).
+func (g *irGen) foldOperandMayNeedPair(e Expr) bool {
+	return g.operandMayNeedPair(e) || g.entryReadNeedsTheTag(e)
+}
+
+// entryReadNeedsTheTag asks whether a subscript's value kind is one that cannot be carried in the payload
+// alone. A static integer entry is allowed to keep its ordinary numeric road: its payload already IS the
+// value, and widening it would send every `abs(d[1])` through the object for no decision. A float, bool,
+// void, text or container entry is the object's fact even when the container literal still has a name, so
+// the gate takes it. An absent or computed key is unknown and conservatively needs the tag.
+func (g *irGen) entryReadNeedsTheTag(e Expr) bool {
+	if ix, isIndex := e.(*Index); isIndex {
+		if tg, known := g.staticSlotTag(ix.Obj, ix.Idx); known {
+			return tg != int32(TagInt)
+		}
+	}
+	return g.isPairElem(e)
 }
 
 // foldArgCarriesAContainer is the container half of that gate: a name the container analysis still

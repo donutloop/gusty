@@ -2169,10 +2169,12 @@ falls back to dynamic dispatch.
   nothing else did. What the probe session found beside the fix stayed as rows, each pinned with today's answer
   in a filed table: the truth of the entry is asked of the payload (**R.284**), the operator roads that label it
   disagree with the pair road in both directions
-  (**R.285**), a name whose last binding was `None` is a key that arrives untagged (**R.286**), and `abs` of it
-  truncates (**R.287**) — the first two of those answer the same wrong thing off an **int** key, which is why
-  they are rows and not clauses. The f-string field that was in that list has since been paid, and is told below
-  (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static* key door was built, measured, and
+  (**R.285**), and a name whose last binding was `None` is a key that arrives untagged (**R.286**). The signless
+  and fold calls that used to sit in that list have since been paid, and are told below
+  (**R.287**, **ADR 0387**): `abs`, `min`, `max` and `sum` now ask the entry's tag beside its payload, while a
+  one-word call boundary remains **R.146**/**R.220**. The f-string field that was in that list has since been
+  paid, and is told below (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static* key door was built,
+  measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
 - **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls

@@ -1,5 +1,35 @@
 # Session Learnings
 
+## Round 13 - A self-describing dict entry gives its kind to `abs` and the folds (roadmap Gap R.287 closed; ADR 0387)
+
+**Change (tagged call and fold gates)**: ADR 0353 taught the dict read to bring its tag to `print`, but the
+signless call and fold doors still asked their own narrower question. `arithWouldRefuse` meant “would the ordinary
+numeric road have had to ask the object?”, and a named dict literal was statically described enough that it answered
+no — even though the value was a float whose payload is merely a heap handle. `print(abs(d[None]))` therefore
+printed `3`, `max(d[None], 2)` printed `3`, and `sum([d[None], 0])` printed `3`, all at exit 0. The runtime doors
+were already complete; only the gates were old.
+
+The important design choice was to widen the **call families** rather than `arithWouldRefuse`. `entryReadNeedsTheTag`
+asks whether the payload can carry the meaning: a statically integer entry remains its own payload, float, bool,
+void, text and container entries require the object's tag, and an unresolvable entry conservatively does too.
+Because the change sits in `absOperandMayNeedPair` and `foldOperandMayNeedPair`, `max(d[None], 2) + 1` and a
+one-word call argument cannot consume the new pair without a place for the tag. That keeps ADR 0273's boundary
+intact: this row paid the position that can carry two words and left the existing one-word defect in its owner's
+filed row rather than hiding it behind a partial pair road.
+
+The key is not the story. The int, bool, text and None spellings all printed the same float handle, so the tests
+are key-independent from the start. The negative control matters as much as the fix: `d = {1: 2}` / `abs(d[1])`
+must stay an integer road, proving the gate is a decision and not a blanket “send every dict subscript to the
+object”. IR rows assert the program body goes through `@rt_dict_get_tagged`/`@rt_dict_value_tag` before
+`@rt_num_arith` or `@rt_pair_fold`, and no float row ever regrows the old `sub i32 0`.
+
+**Witness**: 27 unit answers and 9 exact CPython trap messages, plus CLI answers and traps, in
+`pkg/lang/dict_entry_pair_sign_test.go` and `integration/dict_entry_pair_sign_test.go`. The existing
+`dict_none_bool_key.gy` matrix program gained six signless/fold lines and its reference expectation was regenerated
+from CPython. `tools/recmerge` checked 39 sources and added 39, moving the record **8084 → 8123**; call-argument
+rows that still answer the payload were not recorded from this backend, because a wrong compiled answer is not a
+leg that can vouch for itself.
+
 ## Round 12 - A literal comprehension iterable asks its items what they are (roadmap Gap R.358 closed; ADR 0386)
 
 **Change (comprehension codegen)**: the fold and the runtime comprehension had split the question in the wrong

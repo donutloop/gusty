@@ -13105,24 +13105,34 @@ Two sentences ride along, both owned elsewhere: the trap the program above dies 
 and the same program with an int key is what `TestABooleanOrNoneKeyThatNamesNoEntryRaisesWhatTheReferenceRaises`
 keeps honest, since the missing-key raise is asserted by class *and* sentence on the rows this cycle did fix.
 
-### Gap R.287 — `abs` of a self-describing dict entry answers the payload
+### Gap R.287 — `abs` of a self-describing dict entry answers the payload — **paid by ADR 0387**
 
 ```gusty
 d = {None: 3.5}
-print(abs(d[None]))     # 3.5 in the reference; 3 at exit 0 here
-d = {1: 3.5}
-print(abs(d[1]))        # 3 here too — key-independent, so the read is the road, not the key
+print(abs(d[None]))     # 3.5 in the reference; was 3 at exit 0
+print(max(d[None], 2))  # 3.5 in the reference; was 3 — the fold chose a handle, not a winner
 ```
 
 ADR 0309 paid this door for a **pair-bound name** (`n = 3.5` / `abs(n)` answers `3.5`) and for a **list
-element** (`abs(xs[0])` answers), by handing `abs` the (payload, tag) pair instead of the payload word. The
+element** (`abs(xs[0])` answers), by handing `abs` the `(payload, tag)` pair instead of the payload word. The
 dict entry read is the third thing that produces a pair and is not given one: `mixedDictPair` is right there,
-`dictKeyCarriesPair` now says the key can travel, and the signless-builtin road still reads the payload as an
-`int`. `min`/`max` asked of the same read belong to the same row — ADR 0316's fold argument is the shape that
-already got the pair, so this is the read half of a door whose argument half is paid.
+`dictKeyCarriesPair` says the key can travel, and the signless/fold gates still asked only whether the ordinary
+numeric road would refuse. A named dict literal is statically described enough that the answer was no — even
+when every value it described was a float whose payload is a heap handle.
 
-Pinned with today's answer (`the_sign_of_a_float_entry`), key-independence included, so the fix cannot be
-"make the `None` key work" and stop with the int key still truncating.
+The door already existed. What the cycle changed is the question in front of it. `absOperandMayNeedPair` and
+`foldOperandMayNeedPair` ask `entryReadNeedsTheTag`: if the static walk can see that the selected entry is an
+integer, the entry keeps its old payload-is-value road; if it can see float, bool, void, text or container, the
+object's tag is required; if the key or entry is not statically resolvable, the gate conservatively asks for the
+pair. That boundary is deliberate. `arithWouldRefuse` remains unchanged, so `max(d[None], 2) + 1`, a call
+argument and `str(abs(d[None]))` cannot quietly consume one half of the answer. The wrong half stays the subject
+of Gap R.146/R.220 and is pinned as today's answer rather than hidden.
+
+The old `the_sign_of_a_float_entry` filed-not-fixed row is gone. `dict_entry_pair_sign_test.go` answers 14
+signless rows and 13 fold rows, asserts float/list/text/None traps by CPython's exact class and sentence, reads
+the emitted module to prove the entry goes through the tagged dict reader before `@rt_num_arith` or
+`@rt_pair_fold`, and asks the static-int negative control. The conformance program gained six lines whose
+expectation is the text CPython printed for them, including the int-key twin and both sides of `min`/`max`.
 
 ### Gap R.288 — a refusal still offers to run the program the way ADR 0302 retired
 

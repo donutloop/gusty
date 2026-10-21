@@ -1409,10 +1409,12 @@ Rules that the compiled backend implement:
   back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
   object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says
   `'list'`, the reference's left-to-right hashability walk). What the same read still cannot reach is
-  five rows, each pinned with today's answer beside the reference's: an
-  f-string field of the entry (**Gap R.283**), the truth of it (**R.284**), `+`/`*` over it (**R.285**), `abs`
-  of it (**R.287**), and a **name** whose last binding was `None`, which arrives as an untagged word and raises
-  `KeyError` where the reference prints the entry (**R.286**).
+  four rows, each pinned with today's answer beside the reference's: an
+  f-string field of the entry (**Gap R.283**), the truth of it (**R.284**), `+`/`*` over it (**R.285**), and a
+  **name** whose last binding was `None`, which arrives as an untagged word and raises
+  `KeyError` where the reference prints the entry (**R.286**). `abs` and the `min`/`max`/`sum` folds of that
+  entry answer the reference's value (**R.287**, **ADR 0387**): the object's tag travels beside the payload
+  into the signless and fold doors, while a one-word call argument still belongs to **Gap R.146**/**R.220**.
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same
@@ -3075,6 +3077,10 @@ print(abs([1, 2]))    # TypeError: bad operand type for abs(): 'list'
 print(abs({"a": 1}))  # TypeError: bad operand type for abs(): 'dict'
 print(abs({1, 2}))    # TypeError: bad operand type for abs(): 'set'
 print(abs(Token()))   # TypeError: bad operand type for abs(): 'Token'  — an instance names its class
+
+# A self-describing dict entry brings its kind to the signless call, not just to print.
+d = {None: -3.5}
+print(abs(d[None]))   # 3.5 — ADR 0387 pays the read half of this door
 ```
 
 Three things the first draft of this door had to get right:
@@ -3116,6 +3122,8 @@ print(abs(flag[0]))      # 1          — a verdict is the number it is
 txt = []
 txt.append("a")
 print(abs(txt[0]))       # TypeError: bad operand type for abs(): 'str'  — the call's own sentence
+d = {None: -3.5}
+print(abs(d[None]))      # 3.5    — the dict entry's tag travels with its handle (ADR 0387)
 ```
 
 What is **not** answered stays a refusal that names the missing half, and the boundary is deliberate: the
@@ -3146,6 +3154,8 @@ print(sum([n, 1]))        # 5      — a fold over a literal list, one element o
 m = min(n, 3)
 print(m)                  # 3      — the answer is itself pair-bound, so it prints right
 print(min(n, "b"))        # TypeError: '<' not supported between instances of 'str' and 'int'
+d = {None: 3.5}
+print(max(d[None], 2))   # 3.5    — the selected dict entry carries the tag the fold returns (ADR 0387)
 ```
 
 Three things make that work, and each is why something nearby still refuses:

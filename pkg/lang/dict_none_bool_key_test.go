@@ -406,13 +406,11 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			reference: "prints 3.5 — the key's tag is lost at the binding, not at the read",
 			row:       "Gap R.286",
 		},
-		{
-			name:      "the_sign_of_a_float_entry",
-			src:       "d = {None: 3.5}\nprint(abs(d[None]))\n",
-			wantOut:   "3\n",
-			reference: "abs(d[None]) is 3.5; the same read off a list slot answers 3.5 (ADR 0309)",
-			row:       "Gap R.287",
-		},
+		// The sign of a float entry used to sit here, printing `3` — the `@float_box` handle — beside
+		// `print(d[None])`'s `3.5`. It is paid: `abs` now asks the subscript the same (payload, tag) pair the
+		// print door asks, and `min`/`max`/`sum` ask the fold door the pair ADR 0316 already knows how to move
+		// (roadmap Gap R.287, ADR 0387). The answers are asserted in `dict_entry_pair_sign_test.go`, with the
+		// int-key twin among them.
 		// The untaggable-key control, asked because this row's gate is a key-kind question: what the backend
 		// says when the key has no tag at all. Both refusals are honest in what they decline and wrong in how
 		// they say it — one offers a way to run that ADR 0302 retired, the other names an AST node.

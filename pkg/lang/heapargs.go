@@ -6279,7 +6279,11 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	default:
 		return "", "", false, nil
 	}
-	if !g.operandMayNeedPair(l) && !g.operandMayNeedPair(r) {
+	if op == 6 {
+		if !g.absOperandMayNeedPair(l) && !g.absOperandMayNeedPair(r) {
+			return "", "", false, nil
+		}
+	} else if !g.operandMayNeedPair(l) && !g.operandMayNeedPair(r) {
 		return "", "", false, nil
 	}
 	// `+` and `*` are the two operators the reference can answer with something that is not a number and
@@ -6403,6 +6407,15 @@ func (g *irGen) raiseRuntimeMsg(b *strings.Builder, class string, msgPtr string,
 // literals, a double variable and an int variable stay on the ordinary road they have always used.
 func (g *irGen) operandMayNeedPair(e Expr) bool { return g.arithWouldRefuse(e) }
 
+// absOperandMayNeedPair widens that gate for the one signless call whose reference answer is always a
+// number or a raise: an ordinary road that currently gives a float slot's payload a static `int` still has
+// no tag, and the object already wrote one. The widening is confined to `abs` because `+`, `*` and `%` can
+// answer values this backend does not build (Gap R.82), so their existing proof remains theirs (roadmap
+// L11.1, Gap R.287).
+func (g *irGen) absOperandMayNeedPair(e Expr) bool {
+	return g.arithWouldRefuse(e) || g.entryReadNeedsTheTag(e)
+}
+
 // arithWouldRefuse is the cheap question the print dispatch asks before trying the tagged arithmetic
 // door: would the ordinary numeric road have refused this expression? It is the same test
 // slotReadRefusal makes when it writes "cannot reach into xs's slots" — the deepest subscript walks back
@@ -6427,8 +6440,10 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 			if nm.Value == "abs" && len(n.Args) == 1 {
 				// abs of a pair is the signless call over a value whose kind the run time decides: the
 				// reference answers a number or raises, so the door takes it whatever the slot holds —
-				// the same rule `-x` follows, with its own sentence (roadmap L11.1, Gap R.146).
-				return g.arithWouldRefuse(n.Args[0])
+				// the same rule `-x` follows, with its own sentence (roadmap L11.1, Gap R.146). A read whose
+				// tag lives in the object is a pair here even when the ordinary numeric road still gives the
+				// payload a static kind (roadmap Gap R.287).
+				return g.arithWouldRefuse(n.Args[0]) || g.isPairElem(n.Args[0])
 			}
 			return g.pairRetDone[nm.Value]
 		}
