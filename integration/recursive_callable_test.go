@@ -102,6 +102,22 @@ var recursiveHigherOrderPrograms = []struct{ name, src string }{
 		"the negative control: a higher-order body with no recursion",
 		"def apply1(fn, v):\n    return fn(v)\n\ndef inc(x):\n    return x + 1\n\nprint(apply1(inc, 41))\n",
 	},
+	{
+		"a recursive callable parameter omitted from the self-call",
+		"def run(n, f=lambda x: x):\n    if n <= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(3))\n",
+	},
+	{
+		"a recursive callable parameter repeated as a separate lambda",
+		"def run(n, f=lambda x: x):\n    if n <= 0:\n        return 0\n\n    return f(n) + run(n - 1, lambda x: x)\n\nprint(run(3))\n",
+	},
+	{
+		"a recursive callable parameter defaulted to a declared function",
+		"def inc(x):\n    return x + 1\n\ndef run(n, f=inc):\n    if n <= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(3))\n",
+	},
+	{
+		"a recursion between two callable parameters and an ordinary default",
+		"def inc(x):\n    return x + 1\n\ndef dbl(x):\n    return x * 2\n\ndef run(n, a=inc, mode=1, b=dbl):\n    if n <= 0:\n        return 0\n\n    return a(n) + b(n) + mode + run(n - 1)\n\nprint(run(2))\n",
+	},
 }
 
 // TestARecursiveHigherOrderBodyAnswersWhatCPythonAnswersAtTheCLI is the reference leg: the module this
@@ -185,6 +201,12 @@ func TestTheRecursiveCallableRefusalsStayRefusalsAtTheCLI(t *testing.T) {
 			"is not a function this backend can build a call to",
 			"hands \"f\" something other than itself",
 		},
+		{
+			"the recursion omits a required callable parameter",
+			"def run(n, f):\n    if n <= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(2, lambda v: v))\n",
+			"expects 2 arguments",
+			"",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -220,11 +242,13 @@ func TestTheRecursiveCallableRefusalsStayRefusalsAtTheCLI(t *testing.T) {
 				t.Fatalf("the pass rewrote a recursion it says it declined:\n%s", doc)
 			}
 			joined := strings.Join(account.Refused, "\n")
-			if !strings.Contains(joined, tc.decline) {
-				t.Fatalf("the pass did not say which recursion it declined (%s):\n%s", tc.decline, joined)
-			}
-			if !strings.Contains(joined, "roadmap L11.7") {
-				t.Fatalf("the decline does not point at its row:\n%s", joined)
+			if tc.decline != "" {
+				if !strings.Contains(joined, tc.decline) {
+					t.Fatalf("the pass did not say which recursion it declined (%s):\n%s", tc.decline, joined)
+				}
+				if !strings.Contains(joined, "roadmap L11.7") {
+					t.Fatalf("the decline does not point at its row:\n%s", joined)
+				}
 			}
 		})
 	}

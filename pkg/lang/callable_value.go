@@ -527,12 +527,15 @@ func callableSelfCallsOf(fn *FuncDef) []*callableSelfCall {
 		if nm, isName := c.Fn.(*Name); isName && enc == fn && nm.Value == fn.Name && !callableHasParamNamed(fn, nm.Value) {
 			sc := &callableSelfCall{rank: rank, line: c.Span().Line, args: append([]Expr(nil), c.Args...)}
 			sc.inLambda = w.inLambda > 0
-			sc.bad = len(c.Args) != len(fn.Params) || callableHasKeywordArgs(c.Args)
+			sc.bad = callableHasKeywordArgs(c.Args) || len(c.Args) > len(fn.Params)
 			if !sc.bad {
 				sc.slots = make([]bool, len(fn.Params))
-				for i, p := range fn.Params {
+				for i := range c.Args {
+					if i >= len(fn.Params) {
+						continue
+					}
 					an, isArgName := c.Args[i].(*Name)
-					sc.slots[i] = isArgName && an.Value == p.Name
+					sc.slots[i] = isArgName && an.Value == fn.Params[i].Name
 				}
 			}
 			out = append(out, sc)
@@ -541,6 +544,27 @@ func callableSelfCallsOf(fn *FuncDef) []*callableSelfCall {
 	}
 	w.stmts(fn.Body, fn)
 	return out
+}
+
+// callableSelfCallOmitsRequired reports whether any recursive call leaves out a required parameter.
+// That is the reference's missing-argument TypeError, not a hole in the clone's entry tuple. Registering
+// the body anyway would let the pass rewrite the call into a placeholder and answer a program CPython
+// never runs (roadmap Gap R.335, ADR 0273's rule that a door may decide only what the AST states).
+func callableSelfCallOmitsRequired(fn *FuncDef, positions []int) bool {
+	if fn == nil {
+		return false
+	}
+	for _, sc := range callableSelfCallsOf(fn) {
+		if sc.inLambda || callableHasKeywordArgs(sc.args) || len(sc.args) > len(fn.Params) {
+			continue
+		}
+		for pos := len(sc.args); pos < len(fn.Params); pos++ {
+			if fn.Params[pos] == nil || fn.Params[pos].Default == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // callableSelfDeclines is the recursion's own audit, asked before any clone exists: a higher-order body
@@ -557,19 +581,26 @@ func callableSelfDeclines(fn *FuncDef, self []*callableSelfCall, positions []int
 			return fmt.Sprintf("%q recurses at line %d from inside a lambda, whose body this pass gives a declaration of its own and therefore no frame to hand the recursion through", fn.Name, sc.line)
 		}
 		if sc.bad {
-			return fmt.Sprintf("%q recurses at line %d without filling every parameter positionally, which a clone cannot answer for the recursion", fn.Name, sc.line)
-		}
-		for _, pos := range positions {
-			if pos < 0 || pos >= len(sc.slots) || !sc.slots[pos] {
-				name := ""
-				if pos >= 0 && pos < len(fn.Params) && fn.Params[pos] != nil {
-					name = fn.Params[pos].Name
-				}
-				return fmt.Sprintf("%q recurses at line %d and hands %q something other than itself; a clone follows a recursion only while each called parameter is handed back to its own position", fn.Name, sc.line, name)
-			}
+			return fmt.Sprintf("%q recurses at line %d with %s; a clone reads the recursion's entry tuple positionally", fn.Name, sc.line, callableSelfCallArityProblem(fn, sc))
 		}
 	}
 	return ""
+}
+
+// callableSelfCallArityProblem names the one structural fact a self call may never have: keyword
+// arguments and too many positional arguments. A missing argument is no longer one — the clone can hand
+// the omitted called slot its own entry (roadmap Gap R.335).
+func callableSelfCallArityProblem(fn *FuncDef, sc *callableSelfCall) string {
+	if sc == nil {
+		return "no call"
+	}
+	if callableHasKeywordArgs(sc.args) {
+		return "a keyword argument"
+	}
+	if fn != nil && len(sc.args) > len(fn.Params) {
+		return "more arguments than the body has parameters"
+	}
+	return "a shape"
 }
 
 // callableHasParamNamed asks whether a name belongs to a function's parameters. A body that writes
@@ -744,6 +775,10 @@ type callableInner struct {
 type callableSelfSite struct {
 	rank int // index among the calls of that body's preorder — the coordinate the clone is written against
 	line int // the source line, for the sentence that declines a recursion this pass cannot follow
+	// args records the arguments the source call wrote. An omitted called slot inherits the enclosing
+	// clone's entry; a written one may name the parameter or repeat the entry's own expression
+	// (roadmap Gap R.335).
+	args []Expr
 }
 
 type callableClone struct {
@@ -780,7 +815,15 @@ type callablePlan struct {
 	// two runs, which is the determinism the golden record and the lit tests both depend on.
 	order   []*callableFn
 	aliases map[string]string // `g = f` retargeted to `f`, when nothing else reads `g`
-	hoisted []*FuncDef        // lambdas given declarations of their own
+	// entryCanonical is the program's own spelling for each entry symbol. It lets a recursive call that
+	// repeats the entry (`run(n - 1, lambda x: x)`) be recognized as the same function as the clone's
+	// entry, even though the two lambdas are different nodes (roadmap Gap R.335).
+	entryCanonical map[string]string
+	// acceptedSelfArgs are entry arguments a recursive call wrote that the clone discards because it
+	// names the clone's own entry. They are still AST nodes in the body, but they no longer name a
+	// callable once the self call is pointed at the clone (roadmap Gap R.335).
+	acceptedSelfArgs map[Expr]bool
+	hoisted          []*FuncDef // lambdas given declarations of their own
 	// hoistedHO holds the declarations this pass minted for lambdas that are APPLIED where they are
 	// written and call one of their own parameters. Unlike `hoisted`, these are never appended to the
 	// program: every application was pointed at one of their clones, and emitting the body the clones
@@ -907,6 +950,12 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		// three shapes below is a recursion whose clone would call something the plan has no entry for;
 		// each declines the whole program, naming the recursion as the reason, rather than letting the
 		// ordinary road answer it one word short (roadmap Gap R.267, ADR 0364).
+		if callableSelfCallOmitsRequired(fn, positions) {
+			// The reference rejects the self call before any entry question can be asked. Leave the body
+			// to the ordinary road, whose arity checker says which argument is missing; a clone does not
+			// own the reference's TypeError (roadmap Gap R.335).
+			continue
+		}
 		if why := callableSelfDeclines(fn, self, positions); why != "" {
 			return nil, callableDeclinef("%s", why)
 		}
@@ -915,7 +964,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 			cf.paramPos[p.Name] = i
 		}
 		for _, sc := range self {
-			cf.self = append(cf.self, &callableSelfSite{rank: sc.rank, line: sc.line})
+			cf.self = append(cf.self, &callableSelfSite{rank: sc.rank, line: sc.line, args: sc.args})
 		}
 		plan.fns[fn.Name] = cf
 		plan.order = append(plan.order, cf)
@@ -1335,16 +1384,6 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		}
 	}
 
-	// The bodies, checked last: a lambda in a higher-order body is allowed only where the call sites
-	// above gave it a declaration of its own, and that is not known until every call site has been
-	// read. Asking the question in the other order is the difference between a pass and a pattern
-	// match -- the check has to see the plan, not merely the tree.
-	for _, cf := range plan.order {
-		if callableBodyBlocked(r, plan, cf.def) {
-			return nil, callableDeclinef("%s's body holds something a clone could not answer", cf.def.Name)
-		}
-	}
-
 	// One clone per distinct tuple of functions the called parameters are asked to be.
 	for _, cf := range plan.order {
 		seen := map[string]string{}
@@ -1369,6 +1408,36 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	}
 	if !callableHoistNamesDistinct(plan) {
 		return nil, &callableDecline{why: "a generated name would be shared"}
+	}
+	for _, cf := range plan.order {
+		for _, sf := range cf.self {
+			for _, cl := range cf.clones {
+				if !callableSelfSiteAgrees(plan, cf, cl, sf) {
+					name := ""
+					if len(cf.calledPos) > 0 && cf.def != nil {
+						for _, pos := range cf.calledPos {
+							if pos >= 0 && pos < len(sf.args) {
+								if an, ok := sf.args[pos].(*Name); ok && pos < len(cf.def.Params) && cf.def.Params[pos] != nil && an.Value == cf.def.Params[pos].Name {
+									continue
+								}
+								if pos < len(cf.def.Params) && cf.def.Params[pos] != nil {
+									name = cf.def.Params[pos].Name
+								}
+								break
+							}
+						}
+					}
+					return nil, callableDeclinef("%q recurses at line %d and hands %q something other than itself — an entry the clone cannot inherit; a self call may omit a called slot, name its own parameter, or repeat the very function this clone was minted for (roadmap Gap R.335)", cf.def.Name, sf.line, name)
+				}
+			}
+		}
+	}
+	// The bodies are checked last: a lambda is allowed only where the call sites gave it a declaration,
+	// or the recursion accepted it as the clone's own entry and will replace it with a placeholder.
+	for _, cf := range plan.order {
+		if callableBodyBlocked(r, plan, cf.def) {
+			return nil, callableDeclinef("%s's body holds something a clone could not answer", cf.def.Name)
+		}
 	}
 	return plan, nil
 }
@@ -1524,8 +1593,10 @@ func callableBodyBlocked(r *callableRead, plan *callablePlan, fn *FuncDef) bool 
 				blocked = true
 			}
 		case *Lambda:
-			// A lambda is allowed only where the plan gave it a declaration of its own.
-			if !plan.hoistsLambda(x) {
+			// A lambda is allowed only where the plan gave it a declaration of its own, or where the
+			// recursion road already accepted it as the entry the clone repeats and replaces it with a
+			// placeholder (roadmap Gap R.335).
+			if !plan.hoistsLambda(x) && !plan.acceptedSelfArg(x) {
 				blocked = true
 			}
 		}
@@ -1550,6 +1621,13 @@ func (p *callablePlan) hoistsLambda(l *Lambda) bool {
 		}
 	}
 	return false
+}
+
+func (p *callablePlan) acceptedSelfArg(l *Lambda) bool {
+	if p == nil || p.acceptedSelfArgs == nil || l == nil {
+		return false
+	}
+	return p.acceptedSelfArgs[l]
 }
 
 // resolve answers "which function is this argument", or declines. A declared function, a module-level
@@ -1606,7 +1684,25 @@ func (p *callablePlan) chaseCallableName(r *callableRead, name string) (string, 
 	return "", false
 }
 
+// resolve resolves one entry expression and records the spelling the program used for the symbol it
+// produced. The recursion road needs that record on both sides of a self call: `run(n, lambda x: x)` and
+// `run(n - 1, lambda x: x)` are the same entry even when they are two different AST nodes, and a clone
+// may follow itself only while every called slot still names the function that clone was minted for
+// (roadmap L11.7 · Gap R.335, ADR 0345).
 func (p *callablePlan) resolve(r *callableRead, e Expr, enc *FuncDef) (string, error) {
+	sym, err := p.resolveEntry(r, e, enc)
+	if err == nil && sym != "" {
+		if p.entryCanonical == nil {
+			p.entryCanonical = map[string]string{}
+		}
+		if _, seen := p.entryCanonical[sym]; !seen {
+			p.entryCanonical[sym] = callableCanonicalExprText(e)
+		}
+	}
+	return sym, err
+}
+
+func (p *callablePlan) resolveEntry(r *callableRead, e Expr, enc *FuncDef) (string, error) {
 	switch x := e.(type) {
 	case *Name:
 		if aliased, isAlias := p.aliases[x.Value]; isAlias {
@@ -1672,6 +1768,73 @@ func (p *callablePlan) resolve(r *callableRead, e Expr, enc *FuncDef) (string, e
 	default:
 		return "", callableDeclinef("an argument that is not a declared function or a closed lambda")
 	}
+}
+
+// callableCanonicalExprText renders the shape a callable entry expression has in the source, without
+// its positions. Two separately parsed `lambda x: x` nodes are the same entry to the recursion road;
+// an `f` in one clone is not interchangeable with `inc` merely because both happen to have a body.
+func callableCanonicalExprText(e Expr) string {
+	if e == nil {
+		return ""
+	}
+	var sb strings.Builder
+	writeExpr(&sb, e, 0)
+	return sb.String()
+}
+
+// callableSelfSiteAgrees asks whether one self call can follow the clone it sits in. A missing called
+// argument inherits that clone's entry; an argument that repeats the entry's spelling is the same entry;
+// anything else would ask the clone to become a different function at run time, which is the one thing
+// this pass does not make (roadmap Gap R.335, ADR 0345).
+func callableSelfSiteAgrees(p *callablePlan, cf *callableFn, cl *callableClone, sf *callableSelfSite) bool {
+	if p == nil || cf == nil || cl == nil || sf == nil || cf.def == nil {
+		return false
+	}
+	if len(sf.args) > cf.srcParams || callableHasKeywordArgs(sf.args) {
+		return false
+	}
+	for _, pos := range cf.calledPos {
+		if pos < 0 || pos >= len(cf.def.Params) {
+			return false
+		}
+		slot := callableCalledSlot(cf, pos)
+		if slot < 0 || slot >= len(cl.key) {
+			return false
+		}
+		if pos >= len(sf.args) {
+			if cf.def.Params[pos].Default == nil {
+				return false // the reference's TypeError is missing a required argument, not an inherited entry
+			}
+			continue // inherited from this clone's own entry tuple
+		}
+		arg := sf.args[pos]
+		if an, ok := arg.(*Name); ok && cf.def.Params[pos] != nil && an.Value == cf.def.Params[pos].Name {
+			continue // `run(n - 1, f)` hands the parameter back to itself, as before
+		}
+		want, known := p.entryCanonical[cl.key[slot]]
+		if !known || want == "" || callableCanonicalExprText(arg) != want {
+			return false
+		}
+		if _, isLambda := arg.(*Lambda); isLambda {
+			if p.acceptedSelfArgs == nil {
+				p.acceptedSelfArgs = map[Expr]bool{}
+			}
+			p.acceptedSelfArgs[arg] = true
+		}
+	}
+	return true
+}
+
+func callableCalledSlot(cf *callableFn, pos int) int {
+	if cf == nil {
+		return -1
+	}
+	for i, p := range cf.calledPos {
+		if p == pos {
+			return i
+		}
+	}
+	return -1
 }
 
 // callableInnerAgrees checks the body's calls of its own parameter against the entries the call
@@ -2422,8 +2585,38 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 					return prog, nil
 				}
 				rec.Fn = &Name{Value: cl.name, Src: rec.Fn.Span()}
+				lastCalled := -1
 				for _, pos := range cf.calledPos {
-					if pos >= len(rec.Args) {
+					if pos > lastCalled {
+						lastCalled = pos
+					}
+				}
+				// A recursive call may leave positions out below the last slot the clone dispatches on.
+				// A called one inherits the enclosing clone's entry, so the argument the clone receives is
+				// the placeholder it never reads; an intervening ordinary slot takes the default the call
+				// road would have evaluated for an omission (roadmap Gap R.335, beside ADR 0371).
+				for pos := len(rec.Args); pos <= lastCalled; pos++ {
+					if pos < 0 || pos >= len(cf.def.Params) {
+						return prog, nil
+					}
+					if callablePositionCalled(cf, pos) {
+						if cf.def.Params[pos].Default == nil {
+							return prog, nil
+						}
+						rec.Args = append(rec.Args, &IntLit{Value: 0, Text: callablePlaceholderText, Src: cf.def.Params[pos].Src})
+						continue
+					}
+					if cf.def.Params[pos] == nil || cf.def.Params[pos].Default == nil {
+						return prog, nil
+					}
+					copied := copyASTExpr(cf.def.Params[pos].Default)
+					if copied == nil {
+						return prog, nil
+					}
+					rec.Args = append(rec.Args, copied)
+				}
+				for _, pos := range cf.calledPos {
+					if pos < 0 || pos >= len(rec.Args) {
 						return prog, nil
 					}
 					rec.Args[pos] = &IntLit{Value: 0, Text: callablePlaceholderText, Src: rec.Args[pos].Span()}

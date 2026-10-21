@@ -1,5 +1,43 @@
 # Session Learnings
 
+## Round 11 - A recursive clone inherits its entry, so the self-call need not name it again (roadmap Gap R.335 closed; ADR 0385)
+
+**Change (callable pass)**: the entry tuple and the recursion had become two answers to one question. An
+outside application may omit a defaulted callable parameter because ADR 0371 reads the body and asks what the
+default names. A self-call still had a separate arity audit and required the call to write every position. That made
+`run(n - 1)` fail even though the clone already had the only entry the recursive call needed. The fix was not to fill
+the missing slot from the default. A recursive omission takes the value the enclosing frame already carries: the
+clone's entry symbol.
+
+`callableSelfDeclines` now only rejects shapes no clone can ever audit — keyword arguments and an argument list longer
+than the body's parameters. A defaulted called slot omitted by a self-call inherits the clone's key. Supplying the
+called parameter's own name continues to mean the same thing. Supplying a separately written expression is accepted when
+`callableCanonicalExprText` says it is the same entry as the clone: two AST nodes for `lambda x: x` are the same closed
+function, while a text, a different name, or `lambda x: x + 1` remains a refusal. The rewrite then places the pass's
+placeholder in the called slot because the clone dispatches on its minted name rather than reading that argument.
+
+**The boundary mattered more than the feature.** The first prototype allowed a recursive call to omit any called slot,
+including a required parameter. That made `def run(n, f): return f(n) + run(n - 1)` compile, which was not a narrower
+implementation of Python — it was a different language. CPython's answer is a missing-argument `TypeError`. A required
+self-omission is now removed from higher-order registration before the pass writes anything, letting the front-end arity
+checker speak. This is ADR 0273's principle at a place where it is easy to forget: a compiler may fill a fact it owns,
+but may not invent a value for an argument the reference explicitly demands.
+
+**Entry identity is program text, not AST node identity.** The row's second example passes an explicitly written
+`lambda x: x` where the clone had been minted for another syntactically identical lambda. Canonical rendering makes
+entry equality answerable without introducing a callable value. It is deliberately shallow enough to remain conservative:
+any different source shape is another entry.
+
+**The account changed from decline to rewrite.** The old `--callables` test expected `rewritten: false`, one refusal about
+the omitted slot. The same document now reports one clone, one recursive site, and one omitted argument. The answer tests
+and record cover four defaults/recursion shapes: omission, explicit repeated lambda, a declared function as default, and
+two callable parameters with an ordinary defaulted slot in the middle. Required omission is covered at the CLI as a front-end
+exit-1 refusal.
+
+**Witness**: `pkg/lang/lambda_applied_test.go` answers the row's two examples and the callables account; `integration/recursive_callable_test.go`
+runs the family through both CLI engines against CPython and requires the record entries. Different-callable and wrong-word recursion
+still decline, with the parameter's name and the line preserved in the pass's own account. Record moved 8065 → **8069**.
+
 ## Round 10 - A set or dict comprehension builds what its fold cannot name (roadmap Gaps R.353 and R.357 closed; ADR 0384; Gap R.358 filed)
 
 **Change (parser, codegen, runtime use)**: the list comprehension road has had a fold and a runtime loop since ADR 0192.

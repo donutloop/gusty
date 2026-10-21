@@ -219,14 +219,6 @@ var recursiveRefused = []struct {
 		owns:    "Gap R.267",
 	},
 	{
-		// a self-call that omits a parameter is a call the plan cannot audit its arity against
-		name:    "a recursion that does not fill the parameters",
-		src:     "def run(n, f):\n    if n <= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(2, lambda v: v))",
-		names:   `is called but is not a function this backend can build a call to`,
-		decline: "without filling every parameter positionally",
-		owns:    "Gap R.267",
-	},
-	{
 		// the recursion is written where no clone's frame reaches. The sentence is ADR 0370's: the closure
 		// road's collector gained the `*Lambda` arm, so the name the body reads from the enclosing frame is
 		// now NAMED as a capture that cannot cross — which is what Gap R.265 said to do with a name error for

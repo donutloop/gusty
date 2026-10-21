@@ -123,6 +123,20 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 			"print([(lambda h: h(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n",
 			"[4, 6, 8]\n",
 		},
+		{
+			// A recursion's omitted callable parameter is not a hole in the clone: the clone already knows
+			// the entry, so the recursive call inherits it (roadmap Gap R.335, ADR 0385).
+			"a higher-order recursion whose callable parameter is omitted",
+			"def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n",
+			"6\n",
+		},
+		{
+			// Naming every position is allowed when it repeats the clone's entry, even as a separately
+			// parsed lambda.
+			"a higher-order recursion whose callable parameter is repeated",
+			"def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1, lambda x: x)\n\nprint(run(3))\n",
+			"6\n",
+		},
 	}
 }
 
@@ -344,16 +358,6 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			// unanswered shape — roadmap Gap R.329).
 			name: "an application whose omitted slot is followed by a required one",
 			src:  "print((lambda f, y: f(y))(lambda x: x))\n",
-			want: "is called but is not a function this backend can build a call to",
-		},
-		{
-			// The recursion road's own audit: an application OUTSIDE the body may leave a defaulted slot
-			// to its default (the row above), but a call of the higher-order function from inside its own
-			// body has to name every position, because the clone follows a recursion by handing each called
-			// parameter back to its own position — a recursion that omits one has no tuple to follow
-			// (roadmap Gap R.335, the half of the omission ADR 0364's road does not read).
-			name: "a higher-order recursion that omits its own defaulted parameter",
-			src:  "def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n",
 			want: "is called but is not a function this backend can build a call to",
 		},
 		{
@@ -790,28 +794,27 @@ func TestWhatTheCallablesAccountSaysWhichParametersTheApplicationsLeftOut(t *tes
 	}
 }
 
-// The recursion road's own audit speaks HERE, in the account, and not in the sentence the user is shown: a
-// call of the higher-order function from inside its own body must name every position, because a clone follows a
-// recursion by handing each called parameter back to its own place (roadmap Gap R.335, ADR 0364's audit — the
-// half of the omission the recursion road does not yet read).
-func TestWhatTheCallablesAccountSaysTheRecursionLeftASlotOut(t *testing.T) {
+// The recursion road's omitted-slot audit speaks HERE, in the account: a call of the higher-order
+// function from inside its own body may leave a called slot out, because the clone hands that slot the
+// entry it was already minted for (roadmap Gap R.335, ADR 0385 — the recursion half of ADR 0371's
+// external-call omission rule).
+func TestTheCallablesAccountSaysTheRecursionInheritsItsOwnSlot(t *testing.T) {
 	doc, err := CallablesJSON("def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1)\n\nprint(run(3))\n")
 	if err != nil {
-		t.Fatalf("a decline is still a document: %v", err)
+		t.Fatalf("a rewrite is still a document: %v", err)
 	}
 	var rep struct {
 		Rewritten        bool     `json:"rewritten"`
+		Clones           int      `json:"clones"`
+		RecursiveSites   int      `json:"recursive_sites"`
 		OmittedArguments int      `json:"omitted_arguments"`
 		Refused          []string `json:"refused"`
 	}
 	if err := json.Unmarshal([]byte(doc), &rep); err != nil {
 		t.Fatalf("the account is not JSON: %v\n%s", err, doc)
 	}
-	if rep.Rewritten || rep.OmittedArguments != 0 {
-		t.Fatalf("a declined recursion reports a rewrite: %s", doc)
-	}
-	if len(rep.Refused) != 1 || !strings.Contains(rep.Refused[0], "recurses at line") {
-		t.Fatalf("the decline does not name the recursion audit: %v", rep.Refused)
+	if !rep.Rewritten || rep.Clones != 1 || rep.RecursiveSites != 1 || rep.OmittedArguments != 1 || len(rep.Refused) != 0 {
+		t.Fatalf("the recursion did not report the inherited slot: %s", doc)
 	}
 }
 

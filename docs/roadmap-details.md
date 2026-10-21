@@ -14824,7 +14824,7 @@ for every row of both new files (ADR 0346's failure mode is an agent's branch th
 demanded, and what the two files answer, is the trio: the citation reaches the terminal, the un-declined program keeps
 its sentence byte for byte, and the account and the terminal agree in ONE run.
 
-### Gap R.335 — a higher-order recursion that omits its own defaulted parameter is not a recursion the clone will follow (OPEN)
+### Gap R.335 — a higher-order recursion that omits its own defaulted parameter is not a recursion the clone will follow (DONE — ADR 0385, 2026-10-20)
 
 ```python
 def run(n, f=lambda x: x):
@@ -14845,6 +14845,27 @@ road's default fill, because for a CALLED slot the right word is the entry the e
 which is a fact about the clone rather than about the call site. The fix is therefore a small one with a real
 distinction in it: read the self-site's tuple from the enclosing clone, and relax the audit to the one
 `callableSiteOmission` already applies outside the body, so the two roads ask the same question of the same body.
+
+**What ADR 0385 changed.** A recursive call no longer has to fill a slot the clone will never read. For every
+position the higher-order body calls:
+
+- an omitted, defaulted argument inherits the enclosing clone's own entry;
+- the called parameter's own name still means the same thing it always did;
+- a separately written expression is accepted when its canonical source spelling is the very entry that clone
+  was minted for (`lambda x: x` and `lambda x: x` are the same entry even when parsing produced two AST nodes);
+- anything else remains the old honest decline, naming the parameter and the recursion's line.
+
+Before the clone's entry is compared, a self-call that omits a **required** parameter is removed from registration
+altogether. That omission is CPython's `TypeError: ... missing 1 required positional argument`, and a clone that
+invented a placeholder would answer a program the reference never runs. Required self-omission now reaches the
+front-end arity door and exits 1; the CLI row pins the reference's non-zero verdict too.
+
+**Evidence.** `pkg/lang/lambda_applied_test.go` promotes the row's two programs to the answer table and rewrites the
+account guard into `TestTheCallablesAccountSaysTheRecursionInheritsItsOwnSlot`: the rewrite carries one clone, one
+recursive site and one omitted argument. `integration/recursive_callable_test.go` runs the same sources through both
+CLI engines against CPython, requires all four new answer sources on the record, and pins required self-omission as a
+front-end arity refusal rather than a pass decline. The two callable-changing recursion rows retain their exit-1 refusal
+with the old, precise `hands "f" something other than itself` audit wording.
 
 ### Gap R.330 — a capture three frames up has no call site to ask (CLOSED by ADR 0380)
 

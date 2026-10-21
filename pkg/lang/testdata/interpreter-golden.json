@@ -1,5 +1,24 @@
 {
  "entries": {
+"def inc(x):\n    return x + 1\n\ndef dbl(x):\n    return x * 2\n\ndef run(n, a=inc, mode=1, b=dbl):\n    if n \u003c= 0:\n        return 0\n\n    return a(n) + b(n) + mode + run(n - 1)\n\nprint(run(2))\n": {
+    "stdout": "13\n",
+    "hasStdout": true
+   },
+
+"def inc(x):\n    return x + 1\n\ndef run(n, f=inc):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(3))\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"def run(n, f=lambda x: x):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + run(n - 1)\n\nprint(run(3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def run(n, f=lambda x: x):\n    if n \u003c= 0:\n        return 0\n\n    return f(n) + run(n - 1, lambda x: x)\n\nprint(run(3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
 "print({x: {x} for x in [1, 2]})\n": {
     "stdout": "{1: {1}, 2: {2}}\n",
     "hasStdout": true

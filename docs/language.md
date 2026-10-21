@@ -3345,7 +3345,11 @@ ADR 0345). A higher-order function is cloned once per tuple of functions its cal
 a `lambda` that needs a name is given a declaration of its own, a name that only ever aliases a function is
 pointed at the calls it makes, and **a higher-order body that calls itself is answered by the clone calling
 itself** (**ADR 0364**, roadmap **Gap R.267**) — the recursion hands the callable back to its own position, which
-is the one mention of a called parameter that is not a use as a value:
+is the one mention of a called parameter that is not a use as a value. **ADR 0385** closes the recursive half of the
+omission rule: a self-call may leave a defaulted callable parameter out, because the enclosing clone already owns that
+entry, and may repeat the entry's own spelling rather than name the parameter (**Gap R.335**). A self-call that supplies
+a *different* function still refuses; so does one that omits a required parameter, which is the reference's arity
+`TypeError`, not a placeholder the compiler may invent.
 
 ```python
 def twice(fn, v):
@@ -3365,6 +3369,15 @@ def fact(n, f):
 
 print(fact(4, lambda x: x))                      # 24 — the clone calls itself
 print(fact(3, d2), fact(3, lambda v: v))         # 24 6 — two clones, each its own recursion
+
+def run(n, f=lambda x: x):
+    if n <= 0:
+        return 0
+
+    return f(n) + run(n - 1)
+
+print(run(3))                                    # 6 — the recursive slot inherits the clone's entry (ADR 0385)
+print(run(3, lambda x: x))                       # 6 — repeating the entry is still the same entry
 
 def run(v, fn):
     return fn(v)

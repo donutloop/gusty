@@ -73,7 +73,11 @@ gusty ships an indentation-based syntax covering:
   roadmap L11.7). The body may call **itself**: `def fact(n, f): … return f(n) * fact(n - 1, f)` with
   `print(fact(4, lambda x: x))` is `24`, because a clone answers the recursion inside its own body by calling
   **itself**, and the callable need not come first — `def run(v, fn): return fn(v)` calls `fn` by name too
-  (**ADR 0364**, roadmap **Gap R.267** and the entry-tuple ordinal **Gap R.313**). A hook key may ask its **element**: `sorted(["bbb", "a", "cc"], key=lambda s: len(s))` is
+  (**ADR 0364**, roadmap **Gap R.267** and the entry-tuple ordinal **Gap R.313**). The recursive call may also omit
+  a defaulted callable parameter: `def run(n, f=lambda x: x): … return f(n) + run(n - 1)` is `6`, because the call
+  inherits the entry of the clone that owns the recursion; repeating the same lambda is accepted too
+  (**ADR 0385**, roadmap **Gap R.335**). Supplying a *different* callable, or omitting a required parameter, remains
+  an honest refusal. A hook key may ask its **element**: `sorted(["bbb", "a", "cc"], key=lambda s: len(s))` is
   `['a', 'cc', 'bbb']`, `key=lambda s: s.lower()` orders by the text, `key=lambda s: s[0]` by a subscript, and
   `xs = sorted(...)` then prints, indexes and walks as the list of texts it is — because the door that calls
   the key registers that call with the scan which decides a parameter's kind (**ADR 0363**, roadmap Gap R.264).
