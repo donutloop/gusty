@@ -1618,6 +1618,15 @@ lst.append(7)
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.
+- **An empty container written as a call is the object its literal spells** (Gap R.360, ADR 0391),
+  wherever it lands: `xs = [set()]` / `print(xs[0])` is `set()`, `d = {None: list()}` /
+  `print(d[None])` is `[]`, `print([set(), list(), dict()])` is `[set(), [], {}]`, and
+  `print([bool(x) for x in [set()]])` is `[False]`. The slot keeps two words — the handle and the
+  kind beside it — so the printer, the truth test, `len` and `==` all ask the object rather than
+  the address. A program that defines `set` itself keeps its own answer (`def set(): return 1`
+  then `print([set()])` is `[1]`). What the spelling still does not reach is filed: `len(set())`,
+  `list() == []` and `abs(list())` (Gap R.364), and a container key written as a call refuses the
+  way a container key written as a literal refuses (Gap R.81).
 - **Not lowered:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a compile-time
   refusal that names the runtime door they need (`rt_list_clone` and its dict/set siblings, which were
   never emitted — the retired engine did the copy in Go), what the reference answers, and the rows that

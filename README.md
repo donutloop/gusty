@@ -2187,6 +2187,22 @@ falls back to dynamic dispatch.
   key door was built, measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
+- **An empty container written as a call carries the kind the object already has (Gap R.360, ADR 0391)** —
+  `xs = [set()]` / `print(xs[0])` printed `1`, `d = {None: set()}` / `print(d[None])` printed `3`,
+  `print([set(), list(), dict()])` printed `[1, 2, 3]`, and `print([bool(x) for x in [set()]])` printed
+  `[True]`: all four at the exit code that means the program was answered, and every one of them a heap
+  handle. The tag table has had a set in it since the first commit, the pair truth table has had a container
+  arm since ADR 0275 and the container printer has read slot tags since ADR 0232 — what was missing was the
+  line that says what a slot holds when the value in it is spelled `set()`, `list()` or `dict()`. Those are
+  `*Call`s, and the predicate that labels a slot reads spellings, so they fell through to "an integer" and
+  everything downstream believed the label: `len` of such a slot named `'int'`, which is the tell that the
+  road was misinformed rather than confused. The gates that DECIDE a value is a container already asked
+  `emptyContainerLiteral`; the roads that LABEL it did not — one question in two places (ADR 0232), exactly
+  how ADR 0259's bool got left behind. One door now answers both, and it is the shape plus `builtinShadowed`,
+  so `def set(): return 1` keeps the program its own answer. No runtime helper was added and no tag invented;
+  the four one-word positions the label does not reach — `len(set())`, `list() == []`, `set() == set()` at
+  exit 0, `abs(list())` at exit 0 — are filed as **R.364** with today's bytes beside the reference's, and
+  `{set(): 1}` refuses with the sentence `{[1]: 1}` refuses with, naming "an empty set" rather than a Go type.
 - **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls
   reported one frame. `def inner(x): return x // 0` / `def outer(x): return inner(x)` / `outer(7)`
   printed the header, `File "prog", line 2, in inner` and the class, and the reader had to guess who

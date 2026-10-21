@@ -599,7 +599,7 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		// collector reaches it because it marks every element word of a marked object (ADR 0188);
 		// what stays refused is the shape no rule covers — nested deeper than every element can be
 		// tagged, or a dict keyed by a container (roadmap L11.1).
-		if dl, ok := e.(*DictLit); ok && dictWantsContainerKey(dl) {
+		if dl, ok := e.(*DictLit); ok && g.dictWantsContainerKey(dl) {
 			return "", false, nestedContainerErr(e)
 		}
 		if !g.taggableNestedElem(e) {
@@ -835,12 +835,12 @@ func tupleEstrBits(ln *ListLit, bits int) int {
 // recording on the object which positions hold interned strings (rt_mark_estr), so
 // {"a": 1} and {1: "v"} build and print like the record renders them (Gap J.6).
 func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (string, error) {
-	if dictWantsContainerKey(dl) {
+	if g.dictWantsContainerKey(dl) {
 		// Built anyway, the key would be the inner object's handle printed as a number: {([1, 2]): 3}
 		// answered {1: 3}, which is a wrong answer about the key rather than a missing one
 		// (roadmap L11.1).
 		for _, k := range dl.Keys {
-			if isContainerLiteral(k) {
+			if isContainerLiteral(k) || g.dictKeyIsContainer(k) {
 				return "", nestedContainerErr(k)
 			}
 		}
@@ -1006,6 +1006,23 @@ func emptyContainerLiteral(e Expr) (Expr, bool) {
 	return nil, false
 }
 
+// emptyContainerCall is `emptyContainerLiteral` with the one thing a purely syntactic door cannot know:
+// whether the PROGRAM defined `set`, `list` or `dict` itself. A gate that only recognises the shape may use
+// the bare door; a road that is about to LABEL the value with a kind — a slot's tag, a dict key's
+// hashability, a nested element's taggability — asks this one, because a user's `def set(): return 1` is an
+// integer wearing the spelling of a set and the tag would then be a fabricated fact about it (roadmap
+// Gap R.360, ADR 0232's rule that a tag is never invented).
+func (g *irGen) emptyContainerCall(e Expr) (Expr, bool) {
+	lit, ok := emptyContainerLiteral(e)
+	if !ok || g == nil {
+		return lit, ok
+	}
+	if g.builtinShadowed(calleeName(e.(*Call))) {
+		return nil, false
+	}
+	return lit, true
+}
+
 // nestedContainerElem reports an element that is itself a container: a literal inside a literal,
 // or a container variable inside another one. Such an element is stored as the inner object's
 // handle and tagged as a container, which the collector reaches because it marks every element word
@@ -1027,26 +1044,41 @@ func nestedContainerErr(e Expr) error {
 	return fmt.Errorf("codegen: a compiled container cannot hold %s yet; a dict keyed by a container has no hashing rule, and an element nested deeper than every inner element can be tagged would be printed by handle and compared by address (roadmap L11.1). Build that inner value separately, or run it interpreted", exprSnippet(e))
 }
 
-func literalNeedsHeap(e Expr) bool {
+func (g *irGen) literalNeedsHeap(e Expr) bool {
 	// The static global layout is an int array: an element that is interned text, a float box, or
 	// a handle into another container has no representation in it, so the heap builder must make
 	// the object instead (roadmap Gap J.6, L11.1).
+	// The empty container spelled as a call is a container: an element that is `set()`, `list()` or
+	// `dict()` is a heap object, and the static int-array layout has no representation for a handle plus
+	// the tag that says what it is. `print([set(), list(), dict()])` printed `[1, 2, 3]` while this gate
+	// asked only the literal (roadmap Gap R.360).
+	slotsContainer := func(x Expr) bool {
+		if isStringExpr(x) || isContainerLiteral(x) {
+			return true
+		}
+		if c, isCall := x.(*Call); isCall {
+			if _, isEmpty := g.emptyContainerCall(c); isEmpty {
+				return true
+			}
+		}
+		return false
+	}
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if isStringExpr(el) || isContainerLiteral(el) {
+			if slotsContainer(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if isStringExpr(el) || isContainerLiteral(el) {
+			if slotsContainer(el) {
 				return true
 			}
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if isStringExpr(k) || isContainerLiteral(k) {
+			if slotsContainer(k) {
 				// A key that is interned text, another container or the immutable spelling has no
 				// representation in the static int array — the key is an object, and an object is a
 				// handle plus the tag that says what it is (roadmap L11.3, ADR 0361).
@@ -1054,7 +1086,7 @@ func literalNeedsHeap(e Expr) bool {
 			}
 		}
 		for _, v := range n.Vals {
-			if isStringExpr(v) || isContainerLiteral(v) {
+			if slotsContainer(v) {
 				return true
 			}
 		}
@@ -1071,16 +1103,23 @@ func literalNeedsHeap(e Expr) bool {
 // literalNeedsHeap: the two were one predicate, and folding them diverted sum([1.5, 2.5]) from
 // the static array it handles to a heap list it does not.
 func (g *irGen) literalNeedsTags(e Expr) bool {
+	// The slot's own kind is the question, and the empty container spelled as a call answers it the same
+	// way a literal does — `print([set(), list()])` printed the two handles while this list of spellings
+	// stopped at `isContainerLiteral` (roadmap Gap R.360, ADR 0232's self-describing slots).
+	slotsItself := func(x Expr) bool {
+		return g.floatSlotExpr(x) || isNoneLitExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
+			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x)
+	}
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) || g.carriedCallIsPairElem(el) {
+			if slotsItself(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) || g.instanceSlotExpr(el) || g.carriedCallIsPairElem(el) {
+			if slotsItself(el) {
 				return true
 			}
 		}
@@ -1091,12 +1130,24 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 			}
 		}
 		for _, v := range n.Vals {
-			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) || g.instanceSlotExpr(v) || g.carriedCallIsPairElem(v) {
+			if slotsItself(v) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// emptyContainerSlotExpr is the member/value arm of the same question: a slot that holds `set()`,
+// `list()` or `dict()` holds a heap object whose kind the object, not the spelling, decides — so the
+// container has to be built self-describing and the tag written beside the handle (roadmap Gap R.360).
+func (g *irGen) emptyContainerSlotExpr(e Expr) bool {
+	c, isCall := e.(*Call)
+	if !isCall {
+		return false
+	}
+	_, isEmpty := g.emptyContainerCall(c)
+	return isEmpty
 }
 
 // instanceSlotExpr is the fourth question literalNeedsTags asks of each slot: is this payload an
@@ -1534,6 +1585,25 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 			return int32(TagList), true
 		}
 	}
+	// The empty container spelled as a CALL is the same object the literal spells, and every gate that
+	// recognises it already asks `emptyContainerLiteral` — the print gate, the fold gate, `taggableNestedElem`.
+	// The tag question was the one that did not, so a slot that stored `set()`, `list()` or `dict()` was
+	// labelled `TagInt` beside a heap handle: `print(d[None])` over `{None: set()}` wrote `3`, `bool` of an
+	// empty entry answered `True`, and `len` of a slot named `'int'`. The kind is the object's own, so the
+	// answer comes from the same door the gates ask, and a program that defines its own `set` keeps its
+	// answer too (roadmap Gap R.360, beside ADR 0232's tag-and-store pair and Gap K.3's empty-set spelling).
+	if c, isCall := e.(*Call); isCall && g != nil {
+		if lit, isEmpty := g.emptyContainerCall(c); isEmpty {
+			switch lit.(type) {
+			case *SetLit:
+				return int32(TagSet), true
+			case *DictLit:
+				return int32(TagDict), true
+			case *ListLit:
+				return int32(TagList), true
+			}
+		}
+	}
 	switch e.(type) {
 	case *FloatLit:
 		// A float goes into the slot as the handle of a @float_box object, which the mixed printer
@@ -1690,17 +1760,36 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 // collides with a list of the same slots — rt_container_eq asks the object's tuple flag. A tuple
 // carrying a container stays refused: the reference refuses to hash that one too, and the door has
 // no raise in it (roadmap L11.3, ADR 0361).
-func dictWantsContainerKey(dl *DictLit) bool {
+func (g *irGen) dictWantsContainerKey(dl *DictLit) bool {
 	for _, k := range dl.Keys {
-		if ln, isList := k.(*ListLit); isList && ln.IsTuple() {
-			if tupleElementsHashable(ln) {
-				continue
-			}
+		if g.dictKeyIsContainer(k) {
 			return true
 		}
-		switch k.(type) {
-		case *ListLit, *DictLit, *SetLit:
-			return true
+	}
+	return false
+}
+
+// dictKeyIsContainer is the hashability question one dict key asks, asked of ONE door: a list, a dict
+// or a set literal has no hash, an unhashable tuple inherits its elements' lack of one, and — since the
+// empty container learned to carry its own kind — neither does `set()`, `list()` or `dict()` spelled as a
+// call. The last arm is not a new refusal: it is the same object the literal spells arriving under a
+// different spelling, and a key road that recognised only the literal would store the handle beside a tag
+// nobody proved and print `{set(): 1}` where the reference raises `unhashable type: 'set'` (roadmap
+// Gap R.360, beside Gap R.81 which owns the general hashability rule and ADR 0310's tag-from-the-pair raise).
+func (g *irGen) dictKeyIsContainer(k Expr) bool {
+	if ln, isList := k.(*ListLit); isList && ln.IsTuple() {
+		return !tupleElementsHashable(ln)
+	}
+	switch k.(type) {
+	case *ListLit, *DictLit, *SetLit:
+		return true
+	}
+	if c, isCall := k.(*Call); isCall && g != nil {
+		if lit, isEmpty := g.emptyContainerCall(c); isEmpty {
+			switch lit.(type) {
+			case *ListLit, *DictLit, *SetLit:
+				return true
+			}
 		}
 	}
 	return false
@@ -1835,7 +1924,7 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 		}
 		return true
 	case *DictLit:
-		if dictWantsContainerKey(n) {
+		if g.dictWantsContainerKey(n) {
 			return false
 		}
 		for _, v := range n.Vals {
@@ -1847,7 +1936,7 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
 	}
-	_, ok := emptyContainerLiteral(e)
+	_, ok := g.emptyContainerCall(e)
 	return ok
 }
 
@@ -2144,6 +2233,22 @@ func exprSnippet(e Expr) string {
 		return "a lambda"
 	case *Name:
 		return n.Value
+	case *Call:
+		// The words the sentence needs are the words the program wrote. `set()`, `list()` and `dict()`
+		// name the same objects their literals spell, and `%T` would answer `*lang.Call` — Go where the
+		// source belongs (Gap R.249's rule, the same one the FString arm above learned from; roadmap
+		// Gap R.360). A program that defines its own `set` keeps the generic sentence, which is honest
+		// about a name this door cannot resolve.
+		if lit, isEmpty := emptyContainerLiteral(n); isEmpty {
+			switch lit.(type) {
+			case *SetLit:
+				return "an empty set"
+			case *DictLit:
+				return "an empty dict"
+			case *ListLit:
+				return "an empty list"
+			}
+		}
 	}
 	return fmt.Sprintf("%T", e)
 }

@@ -952,7 +952,7 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 		// `literalNeedsHeap` alone built the sliced source untagged, and `rt_slice` then faithfully copied
 		// tags nobody had written (roadmap Gap R.230, ADR 0187's pairing rule).
 		var berr error
-		if literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
+		if g.literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
 			built, terr := g.heapListFromTagged(b, lit)
 			if terr != nil {
 				return "", terr

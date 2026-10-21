@@ -148,10 +148,13 @@ func TestStringLiteralsBuildHeapContainers(t *testing.T) {
 // future change to either is caught where the decision is made.
 func TestLiteralNeedsHeapAndMixedKinds(t *testing.T) {
 	t.Parallel()
-	mustHeap := []string{`xs = ["a"]`, `d = {"a": 1}`, `d = {1: "a"}`, `s = {"a"}`}
+	mustHeap := []string{`xs = ["a"]`, `d = {"a": 1}`, `d = {1: "a"}`, `s = {"a"}`,
+		// The empty container spelled as a call is a heap object too: an int-array layout has no word
+		// for a handle, and no second word for the kind beside it (roadmap Gap R.360).
+		`xs = [set()]`, `xs = [1, list()]`, `d = {"k": dict()}`, `s = {set()}`}
 	for _, src := range mustHeap {
 		e := parseExprForTest(t, src)
-		if !literalNeedsHeap(e) {
+		if !(&irGen{}).literalNeedsHeap(e) {
 			t.Errorf("%s should need the heap path", src)
 		}
 		if literalMixedKinds(e) {
@@ -168,7 +171,7 @@ func TestLiteralNeedsHeapAndMixedKinds(t *testing.T) {
 	uniform := []string{`xs = [1, 2]`, `d = {1: 2}`, `s = {1, 2}`}
 	for _, src := range uniform {
 		e := parseExprForTest(t, src)
-		if literalNeedsHeap(e) {
+		if (&irGen{}).literalNeedsHeap(e) {
 			t.Errorf("%s should stay on the static global path", src)
 		}
 	}

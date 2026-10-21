@@ -835,6 +835,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// verdicts and containers bind their loop variable once per item, with the kind that item has.
 		// The all-integer fold is still there as the final line (roadmap Gap R.358, ADR 0386).
 		"comprehension_literal_iterable",
+		// An empty container written as a CALL carries the kind the object already had: the slot it lands
+		// in is tagged list, dict or set rather than integer, so the print door renders the container and
+		// the truth door asks the object instead of the handle. Every line is what CPython prints for the
+		// same file (roadmap Gap R.360, ADR 0391).
+		"empty_container_tag",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

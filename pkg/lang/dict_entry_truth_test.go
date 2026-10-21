@@ -54,6 +54,13 @@ func entryTruthKinds() []struct {
 	out = append(out, arms("verdict", `True`, `False`)...)
 	out = append(out, arms("list", `[1]`, `[]`)...)
 	out = append(out, arms("dict", `{1: 2}`, `{}`)...)
+	// The set is the container the pair table used to be never asked about: the objects carry a set tag,
+	// but the `set()` spelling arrived in a slot labelled integer, so an empty entry tested true and a
+	// printed entry was its heap handle. ADR 0388 opened the door; roadmap Gap R.360, ADR 0391 is the day
+	// the empty container wrote the kind the object already had.
+	out = append(out, arms("set", `{1}`, `set()`)...)
+	out = append(out, arms("empty_list", `[1]`, `list()`)...)
+	out = append(out, arms("empty_dict", `{1: 2}`, `dict()`)...)
 	out = append(out,
 		struct {
 			name, src, want string
@@ -408,6 +415,11 @@ func TestTheTruthOfTheLoopItemReachesThePairTableOnlyWhereTheKindIsTheItems(t *t
 		{"container_item", "print([bool(x) for x in [[], [0]]])\n"},
 		{"void_item", "print([bool(x) for x in [None]])\n"},
 		{"filter_over_items", "print([x for x in [0.0, [0]] if x])\n"},
+		// The empty container spelled as a call reaches the same table now that its slot carries the kind
+		// the object already had (roadmap Gap R.360, ADR 0391).
+		{"empty_set_item", "print([bool(x) for x in [set()]])\n"},
+		{"empty_list_item", "print([bool(x) for x in [list()]])\n"},
+		{"empty_dict_item", "print([bool(x) for x in [dict()]])\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -431,37 +443,54 @@ func TestTheTruthOfTheLoopItemReachesThePairTableOnlyWhereTheKindIsTheItems(t *t
 	}
 }
 
-// The row ADR 0388 leaves open: the SET is the one kind whose truth the pair table never gets to answer, for
-// the tag the objects carry for a set is not written into a dict entry or a literal's slot. Pinned here as
-// today's answer, with the row that owes it, so the door above cannot be read as paying this one.
-func TestTheTruthOfASetEntryIsStillAskedOfTheHandle(t *testing.T) {
+// The three rows ADR 0388 left standing as today's wrong answers are answered, which is what roadmap
+// Gap R.360's Definition of done asked for and what the deletion of this file's earlier pinned table
+// records: the row's own words were "the three pinned rows flip to answers", and a pinned wrong answer
+// that is kept after the fix becomes a second truth about the language (ADR 0166's honesty, ADR 0343's
+// "the filed row is deleted, not updated").
+func TestTheTruthOfAnEmptyContainerEntryIsAskedOfItsOwnKind(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name, src, actual, row string
+		name, src, want string
 	}{
 		{
-			name:   "an_empty_set_entry_is_true",
-			src:    "d = {None: set()}\nprint(bool(d[None]))\n",
-			actual: "True\n", // CPython: False
-			row:    "Gap R.360",
+			name: "an_empty_set_entry_is_false",
+			src:  "d = {None: set()}\nprint(bool(d[None]))\n",
+			want: "False\n",
 		},
 		{
-			name:   "an_empty_set_item_is_true",
-			src:    "print([bool(x) for x in [set()]])\n",
-			actual: "[True]\n", // CPython: [False]
-			row:    "Gap R.360",
+			name: "an_empty_set_item_is_false",
+			src:  "print([bool(x) for x in [set()]])\n",
+			want: "[False]\n",
 		},
 		{
-			name:   "an_empty_set_entry_prints_its_handle",
-			src:    "d = {None: set()}\nprint(d[None])\n",
-			actual: "3\n", // CPython: set()
-			row:    "Gap R.360",
+			name: "an_empty_set_entry_prints_itself",
+			src:  "d = {None: set()}\nprint(d[None])\n",
+			want: "set()\n",
+		},
+		{
+			name: "a_filled_set_entry_prints_its_members",
+			src:  "d = {None: set()}\nprint({1, 2})\n",
+			want: "{1, 2}\n",
+		},
+		{
+			name: "an_empty_list_entry_prints_itself",
+			src:  "d = {None: list()}\nprint(d[None])\n",
+			want: "[]\n",
+		},
+		{
+			name: "an_empty_dict_entry_prints_itself",
+			src:  "d = {None: dict()}\nprint(d[None])\n",
+			want: "{}\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := compiledOut(t, tc.src); got != tc.actual {
-				t.Errorf("%s printed %q, want today's %q — the row that owns it is %s", tc.src, got, tc.actual, tc.row)
+			if got := compiledOut(t, tc.src); got != tc.want {
+				t.Errorf("%s printed %q, want %q", tc.src, got, tc.want)
+			}
+			if want, _, err := PythonRun(tc.src); err != nil || want != tc.want {
+				t.Errorf("%s: the reference printed %q (%v), want %q", tc.src, want, err, tc.want)
 			}
 		})
 	}

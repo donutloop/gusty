@@ -908,7 +908,7 @@ func (g *irGen) recordContainerSlice(name string, base Expr) bool {
 func (g *irGen) containerSlotsCarryTags(base Expr) bool {
 	switch n := base.(type) {
 	case *ListLit:
-		return literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n)
+		return g.literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n)
 	case *Name:
 		return g.mixedLists[n.Value]
 	case *Slice:
@@ -1284,7 +1284,7 @@ func (g *irGen) containerAnswerCarriesTags(ans containerAnswer) bool {
 		// index, a float box, a nested container, a verdict, a pair — carries per-slot tags, and the mixed
 		// printer is the one that reads them. Asking only `literalNeedsTags` printed `[1, "a"]` as
 		// `[1, 0]`, because a text's index fits an i32 and needs a tag anyway (roadmap Gap R.67, ADR 0232).
-		if literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
+		if g.literalNeedsHeap(lit) || g.literalNeedsTags(lit) || g.literalHasPairElement(lit) {
 			return true
 		}
 	}

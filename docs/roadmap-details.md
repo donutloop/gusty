@@ -13107,7 +13107,7 @@ same door.
 leg for each source, and the IR claim that an all-integer item still emits no pair call
 (`pkg/lang/dict_entry_truth_test.go`, `TestTheTruthOfAnUnrolledLoopItemIsAskedOfItsOwnKind`).
 
-### Gap R.360 — a set is the one container the pair table is never asked about
+### Gap R.360 — a set is the one container the pair table is never asked about (DONE — ADR 0391, 2026-10-21)
 
 ```gusty
 d = {None: set()}
@@ -13125,6 +13125,29 @@ not a condition row, and it is filed with the three answers pinned as wrong
 (`TestTheTruthOfASetEntryIsStillAskedOfTheHandle`) so the door that pays it must flip those pins rather than
 claim the ground was always clear. Beside it sits **Gap R.300** (a set the program builds prints its handle),
 which is the same missing tag on the statement road.
+
+**Closed by ADR 0391.** The row was a tagging row, and the tag it needed already existed: `value.go` has had
+`TagSet` since the beginning, `@rt_pair_truth` has had the container arm since ADR 0275, and the container
+printer has read slot tags since ADR 0232. What was missing was the line that says what a slot holds when the
+value in it is spelled `set()`, `list()` or `dict()` — a `*Call`, and every labelling predicate in the store
+roads keys on spellings. `elemKindTag` ends in `return int32(TagInt), true`, so the handle went into the slot
+labelled integer and every reader downstream believed it; `print(len(xs[0]))` over `xs = [set()]` naming
+`'int'` is the smoking gun, because `len` was not confused, it was misinformed.
+
+The gates that decide (`taggableNestedElem`, `foldArgCarriesAContainer`, `isContainerExpr`, the print gate) all
+asked `emptyContainerLiteral`; the roads that label asked the spellings — ADR 0232's one question answered in
+two places, and ADR 0259's bool is the identical precedent ("the tag table grew a bool and only one of the three
+spellings noticed"). One new door, `(*irGen).emptyContainerCall`, is `emptyContainerLiteral` plus
+`builtinShadowed`, and it is now asked by `elemKindTag`, by `literalNeedsHeap` (moved from a package function to
+a method: the shadow question needs the generator) and `literalNeedsTags`, and by the dict key's hashability so
+`{set(): 1}` refuses where it had printed `{set(): 1}` — with `exprSnippet` naming "an empty set" rather than
+`*lang.Call`.
+
+Measured, not remembered: `tools/recmerge` accepted all 41 new sources without a single refusal, which is the
+record leg confirming the compiled answer moved toward the reference rather than merely somewhere new; and the
+three pins this section asked for were DELETED rather than updated, as their own text required. The doors the
+label does not reach — `staticContainerKind`, `containerHandleOf` and the `len` / comparison / `abs` gates that
+consult them — are **Gap R.364** below, with today's answer beside the reference's.
 
 ### Gap R.285 — a `None`/bool key is invisible to the static key door, so the operator roads disagree with the pair door
 
@@ -16002,3 +16025,46 @@ on) and `keyedRefused` (every refusal with the row that owns it), `pkg/lang/call
 **Gap R.363** named, and `integration/call_key_test.go` through both CLI paths against CPython with exit 2
 forbidden on every answered row. `keyedUnchanged` — the unkeyed sorts, the documented repeat-flag reading, the
 `min`/`max` roads — is the control that fails if any of this moved something it should not have.
+
+### Gap R.364 — the empty container spelled as a call decides its kind by its spelling (PLANNED)
+
+ADR 0391 gave the slot its tag. These are the doors that never ask the slot: they decide, before anything is
+stored, whether an expression is a container at all — and they still ask the spelling.
+
+```gusty
+print(len(list()))      # 0 in the reference; here: codegen refuses —
+                        #   "len requires an inline list/dict/set literal"
+print(list() == [])     # True in the reference; here: "comparing a container with an empty list needs a tagged value"
+print(set() == set())   # True in the reference; here: False, at exit 0, with no diagnostic
+print(abs(list()))      # TypeError: bad operand type for abs(): 'list' here: 0, at exit 0
+```
+
+The literal spellings answer every one of these — `abs([1])` raises the reference's sentence verbatim, `[] == []`
+is `True`, and `len(xs)` over `xs = set()` is `0` — which is what makes this a spelling test rather than a value
+problem. Two doors own the answer:
+
+- `staticContainerKind` asks "what would the handle this expression denotes be, if the compiler is willing to
+  say", and its `*Call` arm knows one shape only: a user callee in the container-answer table. The builtin
+  zero-argument spellings are not in that table, so the door declines and `len`, the comparison and `abs` take
+  their refusal (or, in `abs`'s case, their arithmetic fold over a payload that means a handle) with them.
+- `containerHandleOf` is the build-side twin — "decide, then build" is one pair of doors in this backend — and
+  it has no arm for the empty call either, so opening the first without the second turns refusals into
+  half-emitted modules, which is ADR 0166's forbidden class.
+
+The measurement that localises it: the same six shapes written with a name in between answer, because the name
+reaches the `*Name` arms that consult `runtimeSets` / `listVars` / `runtimeDicts`. `xs = [set()]` /
+`print(len(xs[0]))` is `0` since ADR 0391 (the slot's tag is the object's), while `print(len(set()))` still
+refuses — the store road asks the one door and the decide road asks the other.
+
+The fix is the same widening, one door further: give `staticContainerKind`'s `*Call` arm and `containerHandleOf`
+the `(*irGen).emptyContainerCall` arm `elemKindTag` took, and let `len`, the comparison and `abs` fall out of the
+shared answer rather than each adding a third spelling test. `abs` reaches its raise through the road the
+signless call already uses (ADR 0271's per-kind sentence), so `except TypeError:` catches it and the exit class
+is the program's raise, not the compiler's refusal.
+
+Filed rows, with today's answer beside the reference's:
+`pkg/lang/empty_container_tag_test.go`'s `TestWhatTheEmptyContainerCallStillCannotBeIsFiledNotFixed` — six
+refusals pinned to their own sentences and three wrong answers pinned to their own bytes
+(`set() == set()` answering `False`, `abs(list())` answering `0`, and `{set()}` answering `{set()}` where the
+reference raises `unhashable type: 'set'`, which is the sibling of **Gap R.81** rather than of this row). Each
+row names its owner and fails the day its answer changes, which is how a filed row stops being a second truth.

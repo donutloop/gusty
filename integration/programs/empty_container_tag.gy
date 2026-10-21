@@ -1,0 +1,27 @@
+xs = [set()]
+print(xs[0])
+print([set(), list(), dict()])
+print([1, list(), None, "a", {1: 2}])
+d = {None: set()}
+print(d[None])
+print(bool(d[None]))
+if d[None]:
+    print("t")
+else:
+    print("f")
+print([bool(x) for x in [set(), list(), dict()]])
+print([x for x in [set(), list()] if not x])
+print({"k": set()})
+xs2 = []
+xs2.append(list())
+print(xs2)
+print(len(xs[0]))
+print([set()] == [set()])
+print([[set()], [list()]])
+s = set()
+ys = [s]
+print(ys)
+print(str(d[None]))
+print([1, 2])
+print(set())
+print({1, 2})

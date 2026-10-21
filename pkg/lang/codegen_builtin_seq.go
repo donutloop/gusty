@@ -282,7 +282,7 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 	case *DictLit:
 		// A dict literal with strings is a heap object (its keys/values are interned),
 		// so measure it through the runtime like any other dict (Gap J.6).
-		if literalNeedsHeap(lit) || g.taggableMixedDict(lit) || g.literalTakesPairSlots(lit) {
+		if g.literalNeedsHeap(lit) || g.taggableMixedDict(lit) || g.literalTakesPairSlots(lit) {
 			h, err := g.heapDictFrom(b, lit, "")
 			if err != nil {
 				return "", err
@@ -300,7 +300,7 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32], [%d x i32]}, {i32, [%d x i32], [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, n, n, name))
 		return v, nil
 	case *SetLit:
-		if literalNeedsHeap(lit) || g.taggableMixedSet(lit) || g.literalTakesPairSlots(lit) {
+		if g.literalNeedsHeap(lit) || g.taggableMixedSet(lit) || g.literalTakesPairSlots(lit) {
 			h, err := g.heapSetFrom(b, lit, "")
 			if err != nil {
 				return "", err

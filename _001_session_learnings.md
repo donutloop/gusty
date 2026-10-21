@@ -13532,3 +13532,50 @@ printed by the tool for a source printed beside it.
 - **Push status.** Same sandbox limitation as the last cycle: `git push origin HEAD` fails with
   `sign_and_send_pubkey: … agent refused operation` (`gh` unauthenticated), so the commit is the artifact and it is
   pushed-or-not reported rather than claimed.
+
+## ADR 0391 — an empty container written as a call is labelled with the kind the object already has (Gap R.360, 2026-10-21)
+
+- **"The tag table has a set in it" is not the same claim as "a slot can say it holds a set."** I started this
+  cycle expecting to write a set tag. `value.go` has had `TagSet` since the beginning, `@rt_pair_truth` has had
+  its container arm since ADR 0275, and the container printer has read slot tags since ADR 0232 — none of that
+  mattered, because the road that *writes* a slot asks `elemKindTag`, that predicate reads spellings, and `set()`
+  is a `*Call`. It fell through to `return int32(TagInt), true`. The defect was one `return` line away from a
+  helper I did not have to change. Reading the store road to its last line was the whole fix.
+- **Ask which road misinformed the other.** `print(len(xs[0]))` over `xs = [set()]` raised `TypeError: object of
+  type 'int' has no len()`. That message is not confusion — `len` asked the tag and answered it exactly. A trap
+  that names a kind the program never wrote is the cheapest possible proof of a label that lies, cheaper than the
+  wrong print beside it, because a print can be blamed on the printer. Two of the six probe programs were the
+  same defect wearing a raise.
+- **The gate list is the bug list.** Before the change, `taggableNestedElem`, `foldArgCarriesAContainer`,
+  `isContainerExpr` and the print gate all asked `emptyContainerLiteral`, while `elemKindTag`,
+  `literalNeedsHeap` and `literalNeedsTags` asked spellings. That is ADR 0232's "one question, asked once" with
+  the two halves on opposite sides, and ADR 0259's bool is the identical shape ("the tag table grew a bool and
+  only one of the three spellings noticed"). The lesson to keep: when a gate grows an arm, grep for every other
+  road that asks the same question. `literalNeedsHeap` had eight call sites — the print door, the slice door,
+  the `match` door, the value door, the container-return door — and all eight already paired it with a
+  `g.`-method; widening one of them would have left six roads still asking the spelling.
+- **`literalNeedsHeap` becoming a method is the tell, not the refactor.** Eight call sites already paired it
+  with a `g.`-method (`g.literalNeedsTags`, `g.literalHasPairElement`). A gate that cannot ask the generator
+  whether the program defined `set` itself cannot ask the whole question, and the shadow arm is precisely what
+  keeps `def set(): return 1` answering `[1]` instead of `[set()]`. The one test that called the free function
+  directly now calls `(&irGen{}).literalNeedsHeap(e)` — a zero generator answers the shape, and the four new
+  spellings pinned in that table cost nothing and fail the day someone re-splits the door.
+- **Refuse consistently, not locally.** `{set(): 1}` printed `{set(): 1}` after the tag landed — a *nicer* wrong
+  answer than the `{1: 1}` it had printed, and still wrong where CPython raises `unhashable type: 'set'`. The
+  house answer for a container key is the sentence `{[1]: 1}` gives, so the call spelling now gives that
+  sentence too, with `exprSnippet` naming "an empty set" instead of `*lang.Call`. A fix that makes one wrong
+  answer prettier has not finished; the honest version of "we refuse this shape" has to cover the shape, not the
+  spelling it arrived in.
+- **The recorder is the review, again.** 41 sources went to `tools/recmerge` and none was refused — which is the
+  only proof on offer that a wrong answer moved *toward* the reference rather than to a new wrong place. Three
+  pins from ADR 0388 (`TestTheTruthOfASetEntryIsStillAskedOfTheHandle`) were deleted, not updated: their text
+  said "flip these to answers", and a kept pin is a second truth.
+- **Filed rather than absorbed, twice over.** `len(set())`, `list() == []`, `set() == set()` at exit 0 and
+  `abs(list())` at exit 0 are the same missing arm one door further on — `staticContainerKind` and
+  `containerHandleOf`, which the `len`/comparison/`abs` gates consult. Opening them means giving the *build* door
+  the same arm, and a decide door that opens without its build twin is how you turn refusals into exit-2 modules.
+  That is its own row (**Gap R.364**) with all ten shapes pinned at today's bytes, rather than a second feature
+  smuggled into this commit.
+- **Push status.** Same sandbox limitation as the last cycles: `git push origin HEAD` fails with
+  `sign_and_send_pubkey: … agent refused operation` (`gh` unauthenticated), so the commit is the artifact and it
+  is reported as pushed-or-not rather than claimed.

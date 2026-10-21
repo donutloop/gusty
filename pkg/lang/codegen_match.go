@@ -146,7 +146,7 @@ func (g *irGen) classChainCond(b *strings.Builder, cid, class string) string {
 func (g *irGen) matchSubjectOperand(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *ListLit:
-		if !literalNeedsHeap(n) && !g.literalNeedsTags(n) && !g.literalHasPairElement(n) {
+		if !g.literalNeedsHeap(n) && !g.literalNeedsTags(n) && !g.literalHasPairElement(n) {
 			return g.heapListFrom(b, n, "")
 		}
 	case *DictLit:
