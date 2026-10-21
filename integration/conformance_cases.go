@@ -840,6 +840,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the truth door asks the object instead of the handle. Every line is what CPython prints for the
 		// same file (roadmap Gap R.360, ADR 0391).
 		"empty_container_tag",
+		// The doors that DECIDE an empty container's kind ask the same door the roads that STORE it ask:
+		// `len(set())` counts the object, `list() == []` compares two containers by content, and the sort,
+		// the concatenation and the repeat build from the call spelling too. Every line is what CPython
+		// prints for the same file (roadmap Gap R.364, ADR 0392).
+		"empty_container_decide",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

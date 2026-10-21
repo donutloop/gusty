@@ -13579,3 +13579,39 @@ printed by the tool for a source printed beside it.
 - **Push status.** Same sandbox limitation as the last cycles: `git push origin HEAD` fails with
   `sign_and_send_pubkey: … agent refused operation` (`gh` unauthenticated), so the commit is the artifact and it
   is reported as pushed-or-not rather than claimed.
+
+## ADR 0392 — the doors that decide an empty container's kind ask the door the roads that store it ask (Gap R.364, 2026-10-21)
+
+- **A gate and its neighbouring door are the same question in two places, and the fix lands twice or it has not
+  landed.** ADR 0391 fixed the store roads and left `len(set())`, `list() == []`, `abs(list())` and
+  `set() == set()` behind, because this backend asks a container value twice: once through the pair that DECIDES
+  (`staticContainerKind` then `containerHandleOf`, ADR 0333's rule that the two are one pair) and once through
+  the predicate that STORES (`elemKindTag`). Writing the second and not the first is what produced four
+  symptoms from one value.
+- **Read a function's tail before believing its switch.** `isContainerExpr` ends with
+  `_, ok := emptyContainerLiteral(e); return ok` — the shape WAS known there. The `case *Call:` above it returns
+  `false` for any callee the container-answer scan does not name, so the tail was dead code for every call. A
+  unit test on the predicate alone ("is `set()` a container?") would have caught this in one line; the bug survived
+  because every consumer reached it through a switch arm that answered first.
+- **A refusal can be worse than an answer, and the direction of the ladder has to be checked per program.**
+  `list() + [1]` had been raising `TypeError: unsupported operand type(s)` — a raise the reference does not make
+  for `[] + [1]`. The "before" of a shape is not automatically honest; I only found it because I diffed pre/post
+  over a probe corpus rather than trusting my filed table, which had recorded the refusal as if it were the
+  reference's behaviour.
+- **Exit-0 numbers are the class this repo files first.** `set() == set()` printing `False` and `abs(list())`
+  printing `0` were invisible for the whole time the row was open — no stderr, no diagnostic, exit code
+  `success`. Both were pinned with their bytes in the filed table, which is the only reason they were
+  interesting enough to fix in the next cycle rather than invisible forever.
+- **Diff, then count, then trust.** `print(set() < set())` answering `True` against the reference's `False` looked
+  like a regression from this commit and was not: three binaries at three states of the tree all answered `True`.
+  Attribution before action is what kept the row honest — the missing piece is `rt_container_order`, which the
+  *literal* pair `{1} < {1, 2}` also lacks, so it is Gap R.175's helper, not this row's spelling.
+- **Pins are deleted, not annotated.** Four rows in the filed table were removed as their own text required, and
+  the integration refusal table lost its two `len` rows; the table keeps `sum(list())` — pinned beside the
+  identical refusal `sum(xs)` gives a container VARIABLE, which is the sentence that proves the refusal is the
+  fold door's and not this row's.
+- **`tools/recmerge` is the reviewer.** 28 sources went in (22 answers + 6 traps), none refused. A trap source
+  whose compiled class or message disagrees with CPython's is rejected by the recorder, so "the raise is the
+  reference's raise" is a claim the artifact carries, not a claim I make in an ADR.
+- **Push status.** `git push origin HEAD` worked this cycle (`f3e67ed..dc15588` for the first row); the sandbox
+  limitation reported in earlier cycles is reported when it bites, never assumed.

@@ -2796,6 +2796,12 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		// from this call site. Every road below this question that then asks `containerHandleOf` gets the same
 		// answer to both — the comparison, the membership test, the loop, the truthiness test — which is the
 		// reason the two are kept as a pair (roadmap Gap R.67, ADR 0333).
+		// …and so is the empty container the built-in constructors spell: `list() == []` refused while this
+		// arm knew only a callee the scan names, and the tail below — which does know the spelling — was
+		// never reached (roadmap Gap R.364, ADR 0333's decide-and-build pair).
+		if _, isEmpty := g.emptyContainerCall(n); isEmpty {
+			return true
+		}
 		if nm, isName := n.Fn.(*Name); isName {
 			_, ok := g.containerAnswerOf(nm.Value)
 			return ok && g.containerAnswerCallIsCarriable(n)
@@ -2840,6 +2846,20 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 		}
 		return "", false
 	case *Call:
+		// `set()`, `list()` and `dict()` name a container as surely as a literal does, and the door that
+		// DECIDES says what the door that BUILDS builds. ADR 0391 gave the slot its tag through this same
+		// shape; `len(set())` still refused and `abs(list())` still answered `0` because these two doors ask
+		// the spelling and were not told (roadmap Gap R.364).
+		if lit, isEmpty := g.emptyContainerCall(n); isEmpty {
+			switch lit.(type) {
+			case *ListLit:
+				return "list", true
+			case *DictLit:
+				return "dict", true
+			case *SetLit:
+				return "set", true
+			}
+		}
 		// The answer of a function that answers a container is a container, and the table says which —
 		// the same pair of questions the roads beside this one ask of a name or a slot, asked here of a
 		// call: decide from the table, build with `containerHandleOf`, which answers the same shape
@@ -2996,6 +3016,25 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 		// comparison, the membership test, the loop, the element road — read this answer too. The scan, not
 		// the call site, is what proves the answer is a container; a call the scan cannot name declines, and
 		// the caller's own refusal stands.
+		if lit, isEmpty := g.emptyContainerCall(n); isEmpty {
+			// The build half of the answer above: the empty container spelled as a call is the object the
+			// literal spells, built by the same road (roadmap Gap R.364, ADR 0333's decide-then-build pair).
+			kindOf := ""
+			switch lit.(type) {
+			case *ListLit:
+				kindOf = "list"
+			case *DictLit:
+				kindOf = "dict"
+			case *SetLit:
+				kindOf = "set"
+			}
+			g.heapUsed = true
+			h, err := g.containerOperand(b, lit)
+			if err != nil {
+				return "", "", false
+			}
+			return h, kindOf, true
+		}
 		if nm, isName := n.Fn.(*Name); isName {
 			if a, okA := g.containerAnswerOf(nm.Value); okA && g.containerAnswerCallIsCarriable(n) {
 				g.heapUsed = true

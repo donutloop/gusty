@@ -16026,7 +16026,7 @@ on) and `keyedRefused` (every refusal with the row that owns it), `pkg/lang/call
 forbidden on every answered row. `keyedUnchanged` — the unkeyed sorts, the documented repeat-flag reading, the
 `min`/`max` roads — is the control that fails if any of this moved something it should not have.
 
-### Gap R.364 — the empty container spelled as a call decides its kind by its spelling (PLANNED)
+### Gap R.364 — the empty container spelled as a call decides its kind by its spelling (DONE — ADR 0392, 2026-10-21)
 
 ADR 0391 gave the slot its tag. These are the doors that never ask the slot: they decide, before anything is
 stored, whether an expression is a container at all — and they still ask the spelling.
@@ -16068,3 +16068,29 @@ refusals pinned to their own sentences and three wrong answers pinned to their o
 (`set() == set()` answering `False`, `abs(list())` answering `0`, and `{set()}` answering `{set()}` where the
 reference raises `unhashable type: 'set'`, which is the sibling of **Gap R.81** rather than of this row). Each
 row names its owner and fails the day its answer changes, which is how a filed row stops being a second truth.
+
+**Closed by ADR 0392.** The two doors named above — `staticContainerKind` and `containerHandleOf` — took the
+arm `elemKindTag` had taken in ADR 0391, asked of the same predicate (`(*irGen).emptyContainerCall`: the shape
+plus `builtinShadowed`), and a third door turned up beside them: `isContainerExpr`'s `*Call` arm returned false
+for a callee the container-answer scan does not name, which made the tail of that very function — the half that
+*does* ask `emptyContainerLiteral` — unreachable. `negationOperandKind` needed the same arm, which is the door
+`abs` (ADR 0271's per-kind sentence) and the unary minus (ADR 0266's) consult, so the two exit-0 `0`s became the
+reference's raise at exit 3, reachable by the program's own `except TypeError:`.
+
+Twenty-four programs changed answer; every one of them moved to CPython's text. The interesting pair are the two
+concatenations: `list() + [1]` had been *raising* `unsupported operand type(s) for +` — a raise the reference
+does not make for `[] + [1]` — and now prints `[1]`. A refusal that was worse than the answer is exactly what
+ADR 0166's ladder is for, and it is why the ladder is one-way.
+
+What the row does **not** own, and says so: `set() < set()` still answers `True` where the reference answers
+`False`, and the reason is not the spelling — the *literal* pair needs the same missing helper (`rt_container_order`,
+**Gap R.175**), which `{1} < {1, 2}` still refuses with today's sentence. `sum(list())` refuses with the identical
+sentence `sum(xs)` refuses with for a container VARIABLE (the fold door), `{set()}` prints where the reference
+raises (**Gap R.81**), `str()` of a loop variable over them refuses (**Gap R.171**), and a container-answering
+call as an list element refuses (**Gap R.67**, ADR 0333). Each stays pinned at today's bytes in
+`TestWhatTheDecidingDoorsStillOweTheEmptyContainerCall`, and the four rows this section listed as owed are
+DELETED — which is the filed-table rule doing its job: a row that is paid cannot keep a pin that says otherwise.
+
+The standing lesson for whoever grows the next gate: `grep` the *question*, not the road. A search for
+`emptyContainerLiteral(` lists the doors that ask whether a value is an empty container, and the doors that
+appear on more than one such list are where the next row is waiting.

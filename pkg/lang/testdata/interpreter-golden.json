@@ -1,5 +1,148 @@
 {
  "entries": {
+"print([1] == [1])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(len([1, 2]))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(sum([1, 2]))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"xs = set()\nprint(len(xs))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+"print(-dict())\n": {
+    "err": "TypeError: bad operand type for unary -: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for unary -: 'dict'"
+   },
+
+"print(-list())\n": {
+    "err": "TypeError: bad operand type for unary -: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for unary -: 'list'"
+   },
+
+"print(-set())\n": {
+    "err": "TypeError: bad operand type for unary -: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for unary -: 'set'"
+   },
+
+"print(abs(dict()))\n": {
+    "err": "TypeError: bad operand type for abs(): 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for abs(): 'dict'"
+   },
+
+"print(abs(list()))\n": {
+    "err": "TypeError: bad operand type for abs(): 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for abs(): 'list'"
+   },
+
+"print(abs(set()))\n": {
+    "err": "TypeError: bad operand type for abs(): 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "bad operand type for abs(): 'set'"
+   },
+"print([1] + list())\n": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"print([] == list())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(dict() == {})\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(len(dict()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(list()) + len(set()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(list()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(len(set()))\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"print(list() != [])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(list() * 2)\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(list() + [1])\n": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"print(list() == [1])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(list() == [])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(list() in [[]])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(set() == set())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(set() == {1})\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(sorted(list()))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(set()))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"s = set()\ns.add(1)\nprint(len(s))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
 "def set():\n    return 1\n\nxs = [set()]\nprint(xs)\n": {
     "stdout": "[1]\n",
     "hasStdout": true

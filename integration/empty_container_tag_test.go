@@ -113,8 +113,6 @@ func TestWhatTheEmptyContainerCallRefusesAtTheCLI(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, want string
 	}{
-		{"len of the empty call", "print(len(list()))\n", "len requires an inline list/dict/set literal"},
-		{"len of the empty set call", "print(len(set()))\n", "len requires an inline list/dict/set literal"},
 		{"a container key spelled as a call", "print({set(): 1})\n", "cannot hold an empty set"},
 		{"a list key spelled as a call", "print({list(): 1})\n", "cannot hold an empty list"},
 		{"a dict key spelled as a call", "print({dict(): 1})\n", "cannot hold an empty dict"},

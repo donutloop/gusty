@@ -1623,10 +1623,16 @@ lst.append(7)
   `print(d[None])` is `[]`, `print([set(), list(), dict()])` is `[set(), [], {}]`, and
   `print([bool(x) for x in [set()]])` is `[False]`. The slot keeps two words — the handle and the
   kind beside it — so the printer, the truth test, `len` and `==` all ask the object rather than
-  the address. A program that defines `set` itself keeps its own answer (`def set(): return 1`
-  then `print([set()])` is `[1]`). What the spelling still does not reach is filed: `len(set())`,
-  `list() == []` and `abs(list())` (Gap R.364), and a container key written as a call refuses the
-  way a container key written as a literal refuses (Gap R.81).
+  the address. The deciding doors ask the same question the storing roads do (Gap R.364, ADR 0392),
+  so `print(len(set()))` is `0`, `print(list() == [])` and `print(set() == set())` are `True`,
+  `print(sorted(set()))` is `[]`, `print(list() + [1])` is `[1]`, and `print(abs(list()))` raises
+  CPython's `TypeError: bad operand type for abs(): 'list'` — catchable by `except TypeError:`, which
+  a refusal never is. A program that defines `set` itself keeps its own answer (`def set(): return 1`
+  then `print([set()])` is `[1]`). What the spelling still does not reach is filed and named:
+  `print(set() < set())` answers `True` where the reference answers `False` — the set-ordering helper the
+  literal spellings lack too (Gap R.175) — `sum(list())` refuses with the same sentence a container
+  variable refuses with, `{set()}` prints where the reference raises unhashable (Gap R.81), and a
+  container key written as a call refuses the way a container key written as a literal refuses.
 - **Not lowered:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a compile-time
   refusal that names the runtime door they need (`rt_list_clone` and its dict/set siblings, which were
   never emitted — the retired engine did the copy in Go), what the reference answers, and the rows that

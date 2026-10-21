@@ -156,6 +156,20 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 		// `function` heap object, so both engines quote one word (roadmap Gap R.151, ADR 0283).
 		return "function", true
 	case *Call:
+		// The empty container the built-in constructors spell denotes an object with no sign, exactly as
+		// the literal does: `abs(list())` answered `0` at exit 0 and `-set()` reached the numeric road with
+		// a handle, while `abs([1])` raised the reference's sentence from the arm below. One spelling was
+		// missing from this door, not a kind (roadmap Gap R.364, ADR 0271's per-kind sentence).
+		if lit, isEmpty := g.emptyContainerCall(n); isEmpty {
+			switch lit.(type) {
+			case *ListLit:
+				return "list", true
+			case *DictLit:
+				return "dict", true
+			case *SetLit:
+				return "set", true
+			}
+		}
 		// A call the module knows answers text: `def f(): return "hi"` / `-f()`.
 		if g.callReturnsStr(n) {
 			return kindStr, true

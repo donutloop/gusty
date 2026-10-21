@@ -280,34 +280,6 @@ func TestWhatTheEmptyContainerCallStillCannotBeIsFiledNotFixed(t *testing.T) {
 		refuse                 bool
 	}{
 		{
-			name:   "len of an empty container spelled as a call",
-			src:    "print(len(list()))\n",
-			actual: "len requires an inline list/dict/set literal",
-			refuse: true,
-			row:    "Gap R.364",
-		},
-		{
-			name:   "len of an empty set spelled as a call",
-			src:    "print(len(set()))\n",
-			actual: "len requires an inline list/dict/set literal",
-			refuse: true,
-			row:    "Gap R.364",
-		},
-		{
-			name:   "len of an empty dict spelled as a call",
-			src:    "print(len(dict()))\n",
-			actual: "len requires an inline list/dict/set literal",
-			refuse: true,
-			row:    "Gap R.364",
-		},
-		{
-			name:   "comparing an empty container call with a literal",
-			src:    "print(list() == [])\n",
-			actual: "needs a tagged value",
-			refuse: true,
-			row:    "Gap R.364",
-		},
-		{
 			name:   "a method on a slot that holds an empty container",
 			src:    "xs = [list()]\nxs[0].append(3)\nprint(xs)\n",
 			actual: "receiver that is not a text the compiler can read",
@@ -337,26 +309,15 @@ func TestWhatTheEmptyContainerCallStillCannotBeIsFiledNotFixed(t *testing.T) {
 			}
 		})
 	}
-	// Two answers that are not refusals and not right: exit 0, a value, and no diagnostic. Pinned as
-	// today's answer with the reference beside it, so the day the decide doors learn the spelling these
-	// rows fail — which is how a filed row stops being a permanent second truth (ADR 0343's rule).
+	// An answer that is not a refusal and not right: exit 0, a value, and no diagnostic. Pinned as today's
+	// answer with the reference beside it, so the day the door changes this row fails — which is how a filed
+	// row stops being a permanent second truth (ADR 0343's rule). The two this table used to carry —
+	// `set() == set()` answering `False` and `abs(list())` answering `0` — are DELETED, as their own text
+	// required: ADR 0392 gives the deciding doors the same door the store roads ask, and they answer
+	// (`pkg/lang/empty_container_decide_test.go`).
 	for _, tc := range []struct {
 		name, src, actual, reference, row string
 	}{
-		{
-			name:      "two empty sets compared",
-			src:       "print(set() == set())\n",
-			actual:    "False\n",
-			reference: "True\n",
-			row:       "Gap R.364",
-		},
-		{
-			name:      "abs of an empty list",
-			src:       "print(abs(list()))\n",
-			actual:    "0\n",
-			reference: "raises TypeError: bad operand type for abs(): 'list'\n",
-			row:       "Gap R.364",
-		},
 		{
 			name:      "a set whose member is an empty set",
 			src:       "print({set()})\n",

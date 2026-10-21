@@ -2200,9 +2200,15 @@ falls back to dynamic dispatch.
   `emptyContainerLiteral`; the roads that LABEL it did not — one question in two places (ADR 0232), exactly
   how ADR 0259's bool got left behind. One door now answers both, and it is the shape plus `builtinShadowed`,
   so `def set(): return 1` keeps the program its own answer. No runtime helper was added and no tag invented;
-  the four one-word positions the label does not reach — `len(set())`, `list() == []`, `set() == set()` at
-  exit 0, `abs(list())` at exit 0 — are filed as **R.364** with today's bytes beside the reference's, and
-  `{set(): 1}` refuses with the sentence `{[1]: 1}` refuses with, naming "an empty set" rather than a Go type.
+  the doors the label did not reach were filed as **R.364** and paid by **ADR 0392**, which gave the *deciding*
+  pair — `staticContainerKind` and `containerHandleOf`, plus `isContainerExpr` and the `abs`/unary-minus kind
+  door — the same arm: `len(set())` is `0`, `list() == []` and `set() == set()` are `True`, `sorted(set())` is
+  `[]`, `list() + [1]` is `[1]` (it had been raising a `TypeError` the reference does not make), and
+  `abs(list())` raises CPython's `TypeError: bad operand type for abs(): 'list'` at the program's own exit 3
+  instead of answering `0` at exit 0. What is still filed stays named: `set() < set()` answers `True` where the
+  reference answers `False` — the ordering helper the literal spellings lack too (**R.175**) — `{set()}` prints
+  where CPython raises unhashable (**R.81**), and `{set(): 1}` refuses with the sentence `{[1]: 1}` refuses
+  with, naming "an empty set" rather than a Go type.
 - **A traceback names the calls the program made (Gap K.8, ADR 0354)** — a raise inside two calls
   reported one frame. `def inner(x): return x // 0` / `def outer(x): return inner(x)` / `outer(7)`
   printed the header, `File "prog", line 2, in inner` and the class, and the reader had to guess who
