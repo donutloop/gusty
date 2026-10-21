@@ -5334,11 +5334,22 @@ equal keys, using the same comparator (`@rt_elem_gt`) the unkeyed sorter already
 
 What still refuses is named, not guessed: `sorted(xs, key=...)` over a heap list built by the program needs
 the value word to carry each element to the call (**Gap R.254**; the same call without `key=` is answered by
-`@rt_sort`), a call-expression key or a builtin key this backend cannot call still needs the function-*answer*
-the value word will carry (**Gap R.255**, roadmap L11.7 — a `key=lambda …` hook answers, since **ADR 0345**
-declares the lambda and the ordinary call road answers the call), and
-a key returning a float needs the comparator the tagged value word owns (**Gap R.248**). The ordinary call
-road's existing parameter-kind refusals are not widened by this row.
+`@rt_sort`), a call-expression key still needs the function-*answer* the value word will carry
+(**Gap R.255**, roadmap L11.7 — a `key=lambda …` hook answers, since **ADR 0345** declares the lambda and the
+ordinary call road answers the call), and a key returning a float needs the comparator the tagged value word
+owns (**Gap R.248**). A **builtin** key is called through the ordinary call road too: `key=abs`, `key=len`,
+`key=str`, `key=repr`, `key=int`, `key=ord` answered under **ADR 0340**, and **ADR 0390** added the builtins
+whose one-argument answer the comparator already orders — `key=round` (the whole number the reference's
+one-argument `round` answers: `sorted([3, 1, 2], key=round)` is `[1, 2, 3]`, `max([3, 1, 2], key=round)` is `3`),
+`key=bool` (`sorted([0, 3, 0, 1], key=bool)` is `[0, 0, 3, 1]`, and all-truthy elements keep the stable order the
+reference keeps) and `key=chr` (`sorted([3, 1, 2], key=chr)` is `[1, 2, 3]`). The door asks the road which
+builtins are callable at all, so a key that is not a callable builtin (`key=hash`, `key=bytes`) is refused by the
+road's own sentence rather than by one written here, and the builtins that answer a double or a container
+(`key=float`, `key=sum`, `key=min`, `key=max`, `key=sorted`, `key=reversed`) keep the **Gap R.248** refusal.
+That row also owns the key door's other half, now measured: the door returns the element it picks in **one**
+word, so `sorted([2.5, 1.5], key=f)` over float elements is refused — it had printed `[0.0, 0.0]` at exit 0, and
+`key=abs` over them reached `llc` at exit 2. The ordinary call road's existing parameter-kind refusals are not
+widened by this row.
 
 ### A hook key asks the element, and the door answers for it (L11.7, Gap R.264, ADR 0363)
 

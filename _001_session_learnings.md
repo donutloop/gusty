@@ -1,5 +1,45 @@
 # Session Learnings
 
+## Round 16 - A `key=` is asked what the ordinary call road answers (roadmap Gap R.255's builtin clause closed; ADR 0390; Gap R.363 filed)
+
+**Change (the key door's table)**: `builtinKey` kept a list of which builtins were allowed to be keys, and the
+third group's refusal said the key "answers something this backend has no comparator for — either a float or a
+container". For the **one-argument** call a key makes, that is false of `round`: `round(2.6)` is `3`,
+`round(1.5)` and `round(2.5)` are `2`, `round(2.6) + 1` is `4` — the two-argument form answers a float, and the
+two-argument form is not the call a key ever makes. `bool` answers the verdict the payload already is; `chr`
+answers a text. The door was refusing three callables the ordinary road answers, on a claim about a different call.
+
+- **A table inside a door is a claim, and claims go stale in one direction only: toward refusal.** Every
+  capability list a door keeps of its own is a second opinion about a question the road already answers, and the
+  failure mode is always the same — a program the reference runs, refused at exit 1 for a reason the sentence
+  gives that is no longer true. The table now carries only what no other component can say: **which word** the
+  answer arrives in, because `@rt_elem_gt` orders numbers and interned text and nothing else. Which builtins are
+  callable at all is the road's answer, and `key=hash`/`key=bytes` now fall through to the road's own refusal,
+  which reveals the truth the key-specific sentence hid — those are not callable builtins in this backend at all.
+- **The probe that pays a row is usually the probe that finds a worse one.** Asking the door about `round` sent
+  me to the float-element cases, and there the door had been answering wrongly for as long as it has existed:
+  `sorted([2.5, 1.5], key=f)` printed `[0.0, 0.0]` at **exit 0**, `sorted([3.5,1.5,2.5], key=str)` printed
+  `[0.0, 0.0, 0.0]`, and `sorted([2.5,1.5], key=abs)` reached **`llc` at exit 2** — ADR 0166's reserved
+  compiler-bug code, spent by three lines of ordinary source. The door returns the element it picks in one word,
+  and nobody had ever asked a float element for its tag.
+- **When the fix belongs to another row, refuse loudly rather than answer quietly.** The tagged value word for a
+  sort element is **Gap R.248**'s, not this door's, and building a private float comparator here would have
+  created a second sort to keep correct. The arm I added refuses, names the missing half, names the row that
+  owns it, and documents itself as deletable the day R.248 lands. Two wrong answers and an exit 2 became one
+  exit-1 refusal; that is the ladder working, not a consolation prize.
+- **A refusal that replaces the road's sentence hides a defect in the road.** Once the door asked the road about
+  `round`, `sorted(["bbb", "a"], key=round)` began printing `round: cannot round a string` — the plain
+  `round("a")` sentence — instead of the door's own. That is the right architecture (ADR 0233: one construct,
+  one answer) and simultaneously a raise-vs-refusal defect the reference exposes: CPython raises
+  `TypeError: type str doesn't define __round__ method`, and a program with `except TypeError:` expects to reach
+  its handler. Filed as **Gap R.363** with the per-kind `TypeError` sentence as its definition of done, because
+  the alternative — writing a key-specific message to keep a passing test — buries the road's bug under the
+  door's prose. Two of the CLI/unit refusal rows were re-pointed at the road's sentence with the new gap named.
+- **Negative-control tables are what let me move at all.** `keyedUnchanged` (the unkeyed sorts, the documented
+  positional repeat-flag, the `min`/`max` roads, the program's own `def sorted`) is the table that would have
+  caught a widening that leaked past the door. Widening a door's accept set and shipping a table of"now refused"
+  rows in the same commit is what made the difference between a change I could trust and a change I was hoping for.
+
 ## Round 15 - A call argument that is a self-describing entry crosses as a pair (roadmap Gap R.220 closed; ADR 0389; Gaps R.361, R.362 filed)
 
 **Change (the argument's gate)**: `d = {"a": "x"}` / `def id(v): return v` / `print(id(d["a"]))` printed **`1`** —

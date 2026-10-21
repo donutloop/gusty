@@ -15935,3 +15935,70 @@ to fail.
 The row is measured today: it is a row of `integration/testdata/cpython-debt.json` (reference `stdout "0"`
 against `exit 1 "gustyc: jit: codegen: index must be a constant"`), exercised by
 `integration/dict_entry_call_test.go::TestWhatTheCallArgumentStillOwesTheOtherRowsOwn`.
+
+### Gap R.363 — `round` of a value with no `__round__` refuses instead of raising
+
+```gusty
+print(round("a"))                            # reference: TypeError: type str doesn't define __round__ method
+print(sorted(["bbb", "a"], key=round))       # reference: the same raise, reached from the key door
+```
+
+Both exit 1 here with `gustyc: jit: codegen: round: cannot round a string`. The plain form has always refused;
+the keyed form is how [ADR 0390](adr/0390-a-key-is-asked-what-the-ordinary-call-road-answers-not-what-a-table-says.md)
+found it, because that row moved the key door onto the ordinary call road and the road's answer for a text
+operand surfaced where the door's own sentence used to be.
+
+This is the raise-vs-refusal class ADR 0214 and ADR 0228 settled: the reference does not decline to compile the
+program, it **stops running it** with a typed exception, and a program that wrote `except TypeError:` around the
+call expects to reach its own handler. A refusal takes that from the program and gives it an exit code that
+means "the compiler cannot lower this", which is a different sentence to a reader and a different class of
+failure to a caller.
+
+The road exists. `abs`, the ordering doors and the folds already raise one `TypeError` sentence **per kind**
+from the emitted code — `unsupported operand type(s) for -: 'str'`, `'>' not supported between instances of …` —
+and `round` needs the same treatment: `type 'str' doesn't define __round__ method`, `type 'NoneType' …`,
+`type 'list' …`, each reachable by the program's own `except TypeError:`. The constant folds that settle a
+numeric literal before the road is reached stay exactly as they are.
+
+### Gap R.255 — the builtin-key clause, and the element's half of the same missing word
+
+ADR 0340 made the key door call the callable through the ordinary road; ADR 0345 gave a `key=lambda …` a name so
+that road could be reached; ADR 0390 reconciled the last piece the two left standing — a table of builtin names
+inside the door, deciding which builtins may be keys at all.
+
+The table's refusal claimed `round` answers something with no comparator "either a float or a container". For
+the **one-argument** call a key makes, `round` answers an integer (`round(2.6)` → `3`, `round(1.5)` and
+`round(2.5)` → `2`, `round(2.6) + 1` → `4`); the two-argument form answers a float, and the two-argument form is
+not the call a key ever makes. `bool` answers the verdict the payload already is, `chr` answers a text. The door
+was refusing three callables the ordinary road answers, on the strength of a claim about a different call.
+
+**Paid**: `sorted([3,1,2], key=round)` → `[1, 2, 3]`, `max([3,1,2], key=round)` → `3`, `min(…, key=round)` →
+`1`, `sorted([3,1,2], key=bool)` → `[3, 1, 2]` (all truthy, so the stable order — the reference's too),
+`sorted([0,3,0,1], key=bool)` → `[0, 0, 3, 1]`, `sorted([3,1,2], key=chr)` → `[1, 2, 3]`, and with
+`reverse=True` → `[3, 2, 1]`. What keeps its refusal keeps its own sentence: the double- and
+container-answering builtins name the missing comparator (Gap R.248), `key=print` and `key=f(1)` name L11.7,
+and `key=hash`/`key=bytes` fall through to the road's own refusal because those are not callable builtins here
+at all — a key-specific sentence would have hidden that.
+
+**The measurement found the other half.** The keyed door returns the element it picks in **one word**, and no
+one had asked a float element for its tag:
+
+```gusty
+def f(x):
+    return 1
+print(sorted([2.5, 1.5], key=f))         # was [0.0, 0.0] at exit 0; reference [2.5, 1.5]
+print(sorted([2.5, 1.5], key=abs))       # was llc exit 2 (ADR 0166's own code); reference [1.5, 2.5]
+print(sorted([3.5,1.5,2.5], key=str))    # was [0.0, 0.0, 0.0] at exit 0; reference [1.5, 2.5, 3.5]
+```
+
+`keyedOrderError` now refuses those with a sentence naming the element's tagged value word and **Gap R.248**,
+which already owns it (`@rt_sort`'s float comparator and the tagged copy that carries the elements). The
+refusal is the interim state, and the arm that writes it says so — it is deleted the day R.248 lands, which is
+the only reason a refusal is an acceptable answer for a program the reference runs.
+
+Witness: `pkg/lang/call_key_test.go`'s `keyedAnswered` (the paid keys, both legs the compiled answer is judged
+on) and `keyedRefused` (every refusal with the row that owns it), `pkg/lang/call_key_param_test.go` and
+`integration/call_key_param_test.go` for the element-side refusals and the `round`-of-a-text sentence with
+**Gap R.363** named, and `integration/call_key_test.go` through both CLI paths against CPython with exit 2
+forbidden on every answered row. `keyedUnchanged` — the unkeyed sorts, the documented repeat-flag reading, the
+`min`/`max` roads — is the control that fails if any of this moved something it should not have.

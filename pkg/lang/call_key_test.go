@@ -85,6 +85,17 @@ var keyedAnswered = []struct {
 	{"for v in sorted([\"bbb\", \"a\", \"cc\"], key=len):\n    print(v)", "a\ncc\nbbb"},
 	{"for v in sorted([3, 1, -2], key=abs, reverse=True):\n    print(v)", "3\n-2\n1"},
 	{"for v in sorted([2, 1, 2, 1], key=abs):\n    print(v)", "1\n1\n2\n2"},
+	// The builtins whose ONE-argument answer this backend already emits as a word the comparator orders:
+	// `round` answers the whole number the reference's one-argument `round` answers, `bool` answers the
+	// verdict the payload already is, `chr` answers a text. The door used to refuse all three beside the
+	// builtins that really do answer a double or a container (roadmap Gap R.255).
+	{"print(sorted([3, 1, 2], key=round))", "[1, 2, 3]"},
+	{"print(max([3, 1, 2], key=round))", "3"},
+	{"print(min([3, 1, 2], key=round))", "1"},
+	{"print(sorted([3, 1, 2], key=bool))", "[3, 1, 2]"}, // every element is truthy: the order is the stable one
+	{"print(sorted([0, 3, 0, 1], key=bool))", "[0, 0, 3, 1]"},
+	{"print(sorted([3, 1, 2], key=chr))", "[1, 2, 3]"},
+	{"print(sorted([3, 1, 2], key=chr, reverse=True))", "[3, 2, 1]"},
 	// the raise is catchable, which is the difference between the reference's TypeError and a refusal
 	{"try:\n    print(sorted([3, 1, 2], key=3))\nexcept TypeError:\n    print(\"caught\")", "caught"},
 	{"try:\n    print(min([3, 1], reverse=True))\nexcept TypeError:\n    print(\"caught\")", "caught"},
@@ -158,8 +169,30 @@ var keyedRefused = []struct {
 		names: "key=hash",
 		owns:  "L11.7",
 	},
+	// (`print(max([3, 1, 2], key=round))` sat here. `round(x)` with the one argument a key is called
+	// with answers an integer in this backend — the two-argument form, which answers a float, is not the
+	// call a key makes — so the refusal's premise was stale and the row moved to `keyedAnswered`.)
+	//
+	// The element's half of the same missing word: the keyed door returns the element it picks in ONE
+	// word, so a float element is handed back as its payload. These refused at the door rather than
+	// answering `[0.0, 0.0]` at exit 0 (or, for `key=abs`, reaching `llc` at exit 2 — ADR 0166).
 	{
-		src:   "print(max([3, 1, 2], key=round))",
+		src:   "def f(x):\n    return 1\nprint(sorted([2.5, 1.5], key=f))",
+		names: "key=f",
+		owns:  "Gap R.248",
+	},
+	{
+		src:   "print(sorted([2.5, 1.5], key=abs))",
+		names: "key=abs",
+		owns:  "Gap R.248",
+	},
+	{
+		src:   "print(sorted([2.5, 1.5], key=str))",
+		names: "key=str",
+		owns:  "Gap R.248",
+	},
+	{
+		src:   "print(sorted([3.0, 1.0, 2.0], key=round))",
 		names: "key=round",
 		owns:  "Gap R.248",
 	},

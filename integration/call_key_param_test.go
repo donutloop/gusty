@@ -121,7 +121,12 @@ func TestTheKeyedParamRefusalsStayRefusalsAtTheCLI(t *testing.T) {
 		{
 			"a key the ordinary call road has no answer for",
 			"print(sorted([\"bbb\", \"a\"], key=round))\n",
-			"no comparator",
+			// `round` is a key the door can now ask (roadmap Gap R.255): the one-argument call answers an
+			// integer, so the verdict is the ordinary call road's — and the ordinary road's answer for a
+			// TEXT operand is its own sentence, not one written here. The reference RAISES
+			// `TypeError: type str doesn't define __round__ method` at that call, which is the raise the
+			// plain `round("a")` already owes (Gap R.363).
+			"cannot round a string",
 		},
 		{
 			"one parameter, two representations",

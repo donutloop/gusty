@@ -193,7 +193,12 @@ func (g *irGen) builtinRound(b *strings.Builder, c *Call, fnName string) (string
 	rv, rerr := g.constIntVal(c.Args[0])
 	if rerr != nil {
 		if _, ok := c.Args[0].(*StrLit); ok {
-			return "", fmt.Errorf("round: cannot round a string")
+			// The reference does not decline to compile this — it RAISES
+			// `TypeError: type str doesn't define __round__ method`, catchable by the program's own
+			// `except TypeError:`. This backend refuses, which takes the handler from the program, and
+			// the row that owes the raise is named so the refusal is actionable rather than a shrug
+			// (roadmap Gap R.363; ADR 0214 and ADR 0228 on a raise that must be a raise).
+			return "", fmt.Errorf("round: cannot round a string — the reference raises TypeError: type 'str' doesn't define __round__ method at this call and a program's `except TypeError:` expects to reach its handler; this backend refuses rather than raising, and that is the half owed (roadmap Gap R.363)")
 		}
 		v, verr := g.value(b, c.Args[0])
 		if verr != nil {

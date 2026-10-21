@@ -118,10 +118,21 @@ var keyedParamRefused = []struct {
 		owns:  "",
 	},
 	{
-		// the builtin keys the ordinary call road has no answer for, unchanged from ADR 0340
+		// `round` is a key the door can now ask (roadmap Gap R.255): the one-argument call answers an
+		// integer, so the verdict is the ordinary call road's — and the ordinary road's own sentence for a
+		// TEXT operand is what the program hears. The reference RAISES `TypeError: type str doesn't
+		// define __round__ method` there, which is the raise the plain `round("a")` already owes
+		// (Gap R.363), not a sentence this door invents.
 		src:   "print(sorted([\"bbb\", \"a\"], key=round))",
-		names: "no comparator",
-		owns:  "Gap R.248",
+		names: "cannot round a string",
+		owns:  "Gap R.363",
+	},
+	{
+		// The same sentence from the ordinary road, without the key door in front of it: the reference
+		// RAISES `TypeError: type str doesn't define __round__ method`, and this backend refuses.
+		src:   "print(round(\"a\"))",
+		names: "cannot round a string",
+		owns:  "Gap R.363",
 	},
 	{
 		// the door answers a heap handle, and an INDEX asks it of a NAME the census can read; the bound

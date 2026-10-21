@@ -271,14 +271,24 @@ func (g *irGen) userFunctionKey(name string, fd ...*FuncDef) keyAnswer {
 // is whatever `abs(elem)`/`len(elem)`/`str(elem)` already answers elsewhere in the program — including
 // the raise for a builtin that cannot run on that element (`len(3)` is the reference's `TypeError:
 // object of type 'int' has no len()`, and it comes from the road, not from a sentence written here).
+//
+// The mode is what THIS door adds, and it is a claim about the builtin's answer word, not about the
+// element: the key is called with exactly one argument here, whatever the element is, so the question
+// is what that one-argument call answers. `round(x)` answers an integer for that shape — the two
+// argument form, which answers a float, is not the call a key makes — so it joins the number arms
+// rather than being refused beside the builtins that really do answer a double or a container
+// (roadmap Gap R.255; the float half stays Gap R.248's).
 func (g *irGen) builtinKey(name string) keyAnswer {
 	ans := keyAnswer{pos: keyCallable, spelling: callableSurfaceName(name), name: name}
 	switch name {
-	case "len", "abs", "ord", "int":
+	case "len", "abs", "ord", "int", "bool", "round":
+		// `bool` answers the verdict the payload already is (TagInt, Gap R.112's rendering debt aside),
+		// and `round` answers the whole number the reference's one-argument `round` answers — both are
+		// the word @rt_elem_gt orders as a number.
 		ans.mode, ans.modeKnown = 0, true
-	case "str", "repr":
+	case "str", "repr", "chr":
 		ans.mode, ans.modeKnown = 1, true
-	case "float", "round", "sum", "min", "max", "sorted", "reversed":
+	case "float", "sum", "min", "max", "sorted", "reversed":
 		ans.pos = keyRefused
 		ans.refusal = fmt.Sprintf("`key=%s` is refused: the key answers something this backend has no comparator for from one word — either a float or a container, and both need the tag the value word carries (roadmap L11.1, Gap R.248)", name)
 	default:
@@ -297,6 +307,15 @@ func (g *irGen) keyedOrderError(elems []Expr, ans keyAnswer) error {
 	for _, el := range elems {
 		if _, ok := g.elemKindTag(el); !ok {
 			return fmt.Errorf("codegen: ordering by `key=%s` is refused over %s: the door compares the elements it can name, and this one's kind is only written by the run time — the tagged slot's word is the value word's (roadmap L11.1)", ans.spelling, exprSurface(el))
+		}
+		// The ELEMENT's word, not the key's. The keyed road keeps one word for the thing it returns, so
+		// an element whose kind lives in a tag is handed back as its payload — `sorted([2.5, 1.5],
+		// key=f)` came back `[0.0, 0.0]` at exit 0 and `key=abs` reached `llc` at exit 2. The door
+		// refuses that shape instead of answering it, and the row that owes the element's tagged value
+		// word is the one the unkeyed sort already names (Gap R.248; the key's own half of the same
+		// missing word is Gap R.248 too, and ADR 0166 is why exit 2 may not be the answer either).
+		if ans.pos == keyCallable && g.isFloat(el) {
+			return fmt.Errorf("codegen: ordering by `key=%s` is refused over %s: the door returns the element it picks in one word, and a float element's kind travels in a tag beside its payload — the answer is the payload or a module `llc` rejects, and the tagged value word is what decides it (roadmap L11.1, Gap R.248)", ans.spelling, exprSurface(el))
 		}
 	}
 	return nil
