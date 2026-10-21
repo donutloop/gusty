@@ -209,15 +209,21 @@ func TestMembershipInAFoldedComprehensionUsesAHandle(t *testing.T) {
 func TestContainerComprehensionRefusalsStayHonest(t *testing.T) {
 	t.Parallel()
 	// A refusal is only honest when the same program on the other side of the language refuses the
-	// same way: a set comprehension over a non-integer iterable declines with the message its list
-	// twin has always used, rather than a new one invented for sets.
-	listMsg := compileErr(t, "print([x for x in [\"a\", \"b\"]])\n")
-	setMsg := compileErr(t, "print({x for x in [\"a\", \"b\"]})\n")
+	// same way. ADR 0386 paid the plain copy (`[x for x in ["a", "b"]]`), so the shape left here asks
+	// the loop variable for a single static kind: the print door can dispatch on the loop variable's
+	// per-iteration tag, but arithmetic has no second word to carry it.
+	listMsg := compileErr(t, "print([x + 1 for x in [\"a\", \"b\"]])\n")
+	setMsg := compileErr(t, "print({x + 1 for x in [\"a\", \"b\"]})\n")
 	if listMsg == "" || setMsg == "" {
 		t.Fatalf("both programs must be refused: list=%q set=%q", listMsg, setMsg)
 	}
 	if listMsg != setMsg {
 		t.Errorf("the set twin refuses differently from the list:\n list: %s\n  set: %s", listMsg, setMsg)
+	}
+	for _, msg := range []string{listMsg, setMsg} {
+		if !strings.Contains(msg, "not supported") {
+			t.Errorf("the refusal does not name the missing operation: %s", msg)
+		}
 	}
 }
 

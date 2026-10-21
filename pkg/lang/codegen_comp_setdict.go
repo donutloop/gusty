@@ -119,7 +119,9 @@ func (g *irGen) compOperandTagKind(e Expr, c *Comp, lv string, item Expr) (tag i
 		return 0, true, false
 	}
 	if nm, isName := e.(*Name); isName && c != nil && c.ForVar != nil && nm.Value == c.ForVar.Value {
-		if g.compElemCopiesABool(e, lv, item) {
+		if compElemCopiesTheLoopVariable(e, lv) || g.compElemCopiesABool(e, lv, item) {
+			// The operand is the item, so this iteration's item decides its kind. Asking the NAME first
+			// made the float box and None wear the compiler's default integer label (roadmap Gap R.358).
 			if t, hasTag := g.elemKindTag(item); hasTag {
 				return t, false, true
 			}
@@ -211,21 +213,17 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		g.gcReg(b, lv)
 		g.allocd[lv] = true
 	}
+	if !g.allocd[lv+"_tag"] {
+		b.WriteString(fmt.Sprintf("  %%_%s_tag = alloca i32\n", lv))
+		g.allocd[lv+"_tag"] = true
+	}
 	// The target is a binding of this frame and says so, for the element, the filter and every road that
 	// asks a frame what it owns — the same record `for` and the list road keep (ADR 0381).
 	g.noteFrameTarget(lv)
 	defer g.forgetFrameTarget(lv)
 	g.heapUsed = true
-	// Iterating a container of texts binds the loop variable to an index into @str_tab, and saying so is
-	// what makes a member print as text rather than as the index (the `for` road records the same fact).
-	if ll, ok := c.Iter.(*ListLit); ok && len(ll.Elems) > 0 {
-		if _, isStr := ll.Elems[0].(*StrLit); isStr {
-			if g.internedVars == nil {
-				g.internedVars = map[string]bool{}
-			}
-			g.internedVars[lv] = true
-		}
-	}
+	// Whether an operand is text, a verdict, a container or a number is asked per write through the
+	// loop variable's per-iteration binding (roadmap Gap R.358).
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.emitRtAllocKind(b, h, kind, c.Span())
@@ -239,18 +237,22 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 	// a container slot as the compiler's global — the value position `llc` rejects (ADR 0187, ADR 0244).
 	addMember := func(item Expr) error {
 		// A member that is only a copy of the loop variable is the item's kind, not the slot's: the tag
-		// question belongs to the item the loop variable copied (ADR 0259's rule for the list element).
+		// question belongs to the item the loop variable copied (ADR 0259 generalized to every kind by
+		// roadmap Gap R.358).
 		tagQuery := c.Elems[0]
-		if g.compElemCopiesABool(c.Elems[0], lv, item) {
+		if compElemCopiesTheLoopVariable(c.Elems[0], lv) || g.compElemCopiesABool(c.Elems[0], lv, item) {
 			tagQuery = item
 		}
 		av, kt, intern, err := g.elemPayloadAndTag(b, c.Elems[0])
 		if err != nil {
 			return err
 		}
+		forcedText := false
 		if tagQuery != c.Elems[0] {
 			if t, okTag := g.elemKindTag(tagQuery); okTag {
-				kt, intern = strconv.FormatInt(int64(t), 10), false
+				kt = strconv.FormatInt(int64(t), 10)
+				intern = false
+				forcedText = t == int32(TagStr)
 			}
 		}
 		// A member is also the position that has to be hashable, and only the tag can say whether it
@@ -259,7 +261,7 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		// ADR 0311 — the same door `s.add(v)` stands in front of).
 		g.guardHashableTag(b, kt, c.Span())
 		b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %s)\n", h, av, kt))
-		if intern {
+		if intern || forcedText {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
 		}
 		return nil
@@ -281,8 +283,9 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 				return p, strconv.FormatInt(int64(TagStr), 10), true, false, nil
 			}
 			// The operand only copies the loop variable: its kind is the item's, asked once per write so
-			// a set built from a mixed literal prints each slot by its own kind (ADR 0259).
-			if c.ForVar != nil && nm.Value == c.ForVar.Value && g.compElemCopiesABool(e, lv, item) {
+			// a dict built from a mixed literal keys and values each item by its own kind (ADR 0259, and
+			// roadmap Gap R.358 beyond verdicts to text, float, None and containers).
+			if c.ForVar != nil && nm.Value == c.ForVar.Value && (compElemCopiesTheLoopVariable(e, lv) || g.compElemCopiesABool(e, lv, item)) {
 				t, okTag := g.elemKindTag(item)
 				if !okTag {
 					return "", "", false, false, fmt.Errorf("codegen: a dict entry whose operand copies an item of a kind the compiler cannot name needs a tagged value word (roadmap L11.1)")
@@ -291,7 +294,7 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 				if perr != nil {
 					return "", "", false, false, perr
 				}
-				return p, strconv.FormatInt(int64(t), 10), false, false, nil
+				return p, strconv.FormatInt(int64(t), 10), t == int32(TagStr), false, nil
 			}
 		}
 		// The general case is the door every other container-writing position uses: it materialises a
@@ -333,15 +336,16 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 	}
 
 	for _, item := range itemExprs {
-		iv, err := g.value(b, item)
+		restore, err := g.bindUnrolledCompItem(b, lv, item)
 		if err != nil {
 			return "", err
 		}
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", iv, lv))
 		if c.Cond == nil {
 			if err := write(item); err != nil {
+				restore()
 				return "", err
 			}
+			restore()
 			continue
 		}
 		// The filter runs per item, in source order, with the loop variable bound — so
@@ -353,8 +357,10 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		tv := g.truthOperand(b, c.Cond)
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n%s:\n", tv, itemL, skipL, itemL))
 		if err := write(item); err != nil {
+			restore()
 			return "", err
 		}
+		restore()
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", skipL, skipL))
 	}
 	if g.rtComps == nil {

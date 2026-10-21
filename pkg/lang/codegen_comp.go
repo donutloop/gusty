@@ -502,6 +502,77 @@ func (g *irGen) foldsToAnInteger(e Expr) bool {
 	return true
 }
 
+// bindUnrolledCompItem binds the loop variable for one item of a compile-time-enumerated comprehension,
+// recording exactly the per-item facts an unrolled `for` records: the payload, whether the loop variable
+// currently means an interned text, whether it may be read as a digit, whether it carries a verdict, and
+// the tag of the value this iteration copied. The state is restored afterwards so one iteration's text
+// does not print the next item as `(null)` (roadmap Gap R.358, beside ADR 0233's loop-element tag and
+// ADR 0259's verdict tag).
+func (g *irGen) bindUnrolledCompItem(b *strings.Builder, lv string, item Expr) (func(), error) {
+	prevInterned, hadInterned := g.internedVars[lv]
+	prevTagged, hadTagged := g.taggedVars[lv]
+	prevLoopTag, hadLoopTag := g.loopElemTag[lv]
+	v, isStr, err := g.heapElemKind(b, item)
+	if err != nil {
+		return nil, err
+	}
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, lv))
+	g.storeModuleScalar(b, lv, v)
+	if isStr {
+		if g.internedVars == nil {
+			g.internedVars = map[string]bool{}
+		}
+		g.internedVars[lv] = true
+		g.releaseDigitLoopVar(lv)
+	} else {
+		delete(g.internedVars, lv)
+		if _, isInt := item.(*IntLit); isInt {
+			g.claimDigitLoopVar(lv)
+		} else {
+			g.releaseDigitLoopVar(lv)
+		}
+	}
+	// A loop variable is rebound per item: the name may once have held a verdict, but this iteration
+	// binds it to the item in front of it, and ADR 0172's latest-binding rule decides what it prints.
+	g.forgetVarBool(lv)
+	if g.loopElemTag == nil {
+		g.loopElemTag = map[string]int32{}
+	}
+	itemTag := g.elemTagFor(item, isStr)
+	g.loopElemTag[lv] = itemTag
+	// The unrolled road records this item's tag for the print, filter, and container-door questions that
+	// read the loop variable. It does not turn every item into the dynamic tagged-variable pair: those
+	// positions keep their own doors, and claiming the pair here made ordinary integer comprehension
+	// elements refuse (roadmap Gap R.358, beside ADR 0233's unrolled `for` tag).
+	delete(g.taggedVars, lv)
+	return func() {
+		if hadInterned {
+			g.internedVars[lv] = prevInterned
+		} else {
+			delete(g.internedVars, lv)
+		}
+		if hadTagged {
+			g.taggedVars[lv] = prevTagged
+		} else {
+			delete(g.taggedVars, lv)
+		}
+		if hadLoopTag {
+			g.loopElemTag[lv] = prevLoopTag
+		} else {
+			delete(g.loopElemTag, lv)
+		}
+	}, nil
+}
+
+// compElemCopiesTheLoopVariable asks whether the operand is literally the iteration's name. If it is,
+// the operand is the kind of the item this iteration bound, not a kind the compiler inferred once from
+// some earlier use of the name (roadmap Gap R.358, ADR 0259's rule generalised from verdicts to every
+// item kind).
+func compElemCopiesTheLoopVariable(e Expr, lv string) bool {
+	nm, ok := e.(*Name)
+	return ok && lv != "" && nm.Value == lv
+}
+
 // runtimeCompList builds a list comprehension whose element is not a constant: the element
 // expression is evaluated once per item and appended to a heap list. The loop is unrolled, as
 // everything else in this backend is — `for` over a literal gets one block per element too — so
@@ -523,18 +594,16 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		g.gcReg(b, lv)
 		g.allocd[lv] = true
 	}
+	if !g.allocd[lv+"_tag"] {
+		b.WriteString(fmt.Sprintf("  %%_%s_tag = alloca i32\n", lv))
+		g.allocd[lv+"_tag"] = true
+	}
 	// The unrolled road binds the target per item and no further than the item: the name is the
 	// comprehension's own, recorded for the element and the filter and released when they are lowered,
 	// so the module never learns a spelling its source never wrote (roadmap L11.7 · Gap R.348).
 	g.noteFrameTarget(lv)
 	defer g.forgetFrameTarget(lv)
 	g.heapUsed = true // the comprehension is often the only heap allocation in the program
-	// Same rule for the unrolled path: iterate ["a", "b"] and the loop variable holds indices.
-	if ll, ok := c.Iter.(*ListLit); ok && len(ll.Elems) > 0 {
-		if _, isStr := ll.Elems[0].(*StrLit); isStr {
-			g.internedVars[loopVarName(c.ForVar)] = true
-		}
-	}
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.emitRtAllocKind(b, h, HeapList, c.Span())
@@ -550,20 +619,23 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		// it copies: `[x for x in [True, 1, 1]]` asks `x`, which says nothing by itself, and the list came
 		// out as three integers (roadmap Gap R.112, ADR 0259).
 		tagQuery := c.Elems[0]
-		if g.compElemCopiesABool(c.Elems[0], lv, item) {
+		if compElemCopiesTheLoopVariable(c.Elems[0], lv) || g.compElemCopiesABool(c.Elems[0], lv, item) {
 			tagQuery = item
 		}
 		av, kt, intern, err := g.elemPayloadAndTag(b, c.Elems[0])
 		if err != nil {
 			return err
 		}
+		forcedText := false
 		if tagQuery != c.Elems[0] {
 			if t, okTag := g.elemKindTag(tagQuery); okTag {
-				kt, intern = strconv.FormatInt(int64(t), 10), false
+				kt = strconv.FormatInt(int64(t), 10)
+				intern = false
+				forcedText = t == int32(TagStr)
 			}
 		}
 		b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %s)\n", h, av, kt))
-		if intern {
+		if intern || forcedText {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
 		}
 		// A slot whose payload only means something through its tag — a float box, None, another
@@ -576,15 +648,16 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		return nil
 	}
 	for _, item := range itemExprs {
-		iv, err := g.value(b, item)
+		restore, err := g.bindUnrolledCompItem(b, lv, item)
 		if err != nil {
 			return "", err
 		}
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", iv, lv))
 		if c.Cond == nil {
 			if err := appendElem(item); err != nil {
+				restore()
 				return "", err
 			}
+			restore()
 			continue
 		}
 		// The filter runs per item, in source order, with the loop variable bound — so
@@ -596,8 +669,10 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		tv := g.truthOperand(b, c.Cond)
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n%s:\n", tv, itemL, skipL, itemL))
 		if err := appendElem(item); err != nil {
+			restore()
 			return "", err
 		}
+		restore()
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", skipL, skipL))
 	}
 	if g.rtComps == nil {
@@ -824,6 +899,37 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 	return nil, false
 }
 
+// compLiteralAsksForTheTaggedLoop asks whether an iterable written as a list literal contains anything
+// the integer folder cannot name. Such a literal is not a compile-time array of ints; its elements are
+// values whose kind has to travel with them, exactly as in a `for` over the same literal. The answer is
+// deliberately about the ITERABLE, not the comprehension's element — a list of texts whose element is an
+// arithmetic expression still needs the loop variable's tag before the arithmetic is lowered
+// (roadmap Gap R.358, ADR 0386).
+func compLiteralAsksForTheTaggedLoop(ll *ListLit) bool {
+	if ll == nil {
+		return false
+	}
+	for _, el := range ll.Elems {
+		if _, isInt := constantTextIntLiteral(el); !isInt {
+			return true
+		}
+	}
+	return false
+}
+
+// constantTextIntLiteral recognizes the integer-shaped literals the comprehension fold used to require.
+// A unary minus over a number is still integer-shaped only when the folder can evaluate it; asking the
+// literal node itself lets a negative number keep its fold road while every other kind moves to the loop
+// that carries its tag.
+func constantTextIntLiteral(e Expr) (int64, bool) {
+	switch x := e.(type) {
+	case *IntLit:
+		return x.Value, true
+	default:
+		return 0, false
+	}
+}
+
 // compIterIsStaticRange reports whether a comprehension's iterable is a range() call the compiler can
 // enumerate: the callee has to be the plain name `range` and it has to carry at least one argument, the
 // stop. A zero-argument call is not range() at all, and a call to anything else is a value the program
@@ -871,6 +977,22 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	// answered or comes back refused in the row's own words: never a wrong answer (roadmap Gap R.352).
 	if !compIsSingleClause(c) {
 		return g.nestedComp(b, c)
+	}
+	// A literal whose elements are not all integers is still a container the program wrote, and the
+	// `for` road has long walked it by asking each slot what it holds. Until ADR 0386 the comprehension
+	// asked the integer folder instead, so `[x for x in ["a", "b"]]` refused while the equivalent `for`
+	// loop answered — and, worse, `[x for x in [None, True, False]]` took the fold's integer reading of
+	// `None` and printed `[0, True, False]` at the exit code of success. The runtime loop is the road that
+	// carries the element's tag; the fold keeps priority only for the all-integer literal it can name
+	// outright (roadmap Gap R.358, ADR 0386).
+	if ll, ok := c.Iter.(*ListLit); ok && compLiteralAsksForTheTaggedLoop(ll) {
+		items := append([]Expr(nil), ll.Elems...)
+		switch c.Kind {
+		case CompList:
+			return g.runtimeCompList(b, c, items)
+		case CompSet, CompDict:
+			return g.runtimeCompSetDict(b, c, items)
+		}
 	}
 	// A container variable as the iterable has no compile-time length, so this comprehension runs
 	// as a real loop over the heap list. The check comes before the item derivation because that

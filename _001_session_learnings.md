@@ -1,5 +1,37 @@
 # Session Learnings
 
+## Round 12 - A literal comprehension iterable asks its items what they are (roadmap Gap R.358 closed; ADR 0386)
+
+**Change (comprehension codegen)**: the fold and the runtime comprehension had split the question in the wrong
+place. The element door learned payloads and tags in ADR 0384, while the iterable door still demanded that every
+literal item fold to an integer. The result was both a refusal and a wrong answer: texts, floats and containers
+refused, while `[x for x in [None, True, False]]` printed `[0, True, False]` because `None` had become the integer
+its truthiness folds to. The fix keeps the integer fold exactly where it belongs — a list of integers is a static
+array — and routes every other literal to the unrolled runtime builders.
+
+The important lesson was to copy the `for` road's **binding**, not merely its container walk. The first attempt sent
+non-integer literals to `runtimeCompLoop`, but a literal has no heap container unless it is first materialised, and
+that dynamic path reads its mixed status from tables that literal emission does not populate. The shipped helper,
+`bindUnrolledCompItem`, records what an unrolled `for` records for one item: payload, interned-text status, digit
+claim, verdict status, and above all `loopElemTag`. The per-iteration tag is now read by `elemKindTag`, `elemTagFor`,
+and `heapElemKind`, so containers built from the loop variable (`[[x] for x in [None, 1.5, True]]`) and dict entries
+copying it know the item they copied, not the name's stale static status.
+
+The boundary mattered. Making the unrolled loop variable a full dynamic `taggedVars` pair was rejected after existing
+integer comprehensions began refusing: the pair roads expect their own tag register and origin, and this road has the
+facts one item at a time. Printing, filters, container writes, members and dict entries ask those facts. Arithmetic
+and other one-word positions still refuse. A refusal at exit 1 is better than the previous behavior of turning a
+float box handle or string-table index into an integer and exiting 0 — the defect class ADR 0166 puts above all others.
+
+**Text sets are orderless evidence.** CPython randomizes string hashes. The tests compare members and count, never
+`{'A', 'B'}` against `{'B', 'A'}`. Dict insertion order is pinned because the reference pins it.
+
+**Witness**: 30 answer/refusal/IR/record rows in `pkg/lang/comprehension_literal_iterable_test.go`, CLI parity and
+exit-class rows in `integration/comprehension_literal_iterable_test.go`, and `programs/comprehension_literal_iterable.gy`
+as the 220th matrix row. `tools/recmerge` asked CPython first and cross-checked the compiled leg, moving the record
+**8069 → 8084**. Existing text-iterable refusal rows were promoted to answers, while the one-word arithmetic shape was
+retained as the honest boundary.
+
 ## Round 11 - A recursive clone inherits its entry, so the self-call need not name it again (roadmap Gap R.335 closed; ADR 0385)
 
 **Change (callable pass)**: the entry tuple and the recursion had become two answers to one question. An

@@ -657,6 +657,23 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		v, serr := g.value(b, e)
 		return v, true, serr
 	}
+	if nm, ok := e.(*Name); ok && g.loopElemTag != nil {
+		if t, has := g.loopElemTag[nm.Value]; has && slotTagSelfDescribing(t) {
+			g.heapUsed = true
+			switch t {
+			case int32(TagStr):
+				v, err := g.value(b, e) // already the @str_tab index the iteration stored
+				return v, true, err
+			case int32(TagNone):
+				return "0", false, nil
+			default:
+				// A float box, a container handle, an instance, or a verdict already lives in the loop
+				// variable's word; the tag that travels with it says which printer reads that word.
+				v, err := g.value(b, e)
+				return v, false, err
+			}
+		}
+	}
 	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
 		return "", false, err
 	}
@@ -1495,6 +1512,15 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 // inner object's handle, and the tag is what routes it to the container printer and to
 // rt_container_eq instead of a number and an integer compare (roadmap L11.1).
 func (g *irGen) elemKindTag(e Expr) (int32, bool) {
+	// Same per-iteration fact `elemTagFor` reads: an unrolled loop variable is this item, not the kind
+	// some earlier binding gave the name (roadmap Gap R.358).
+	if g != nil && g.loopElemTag != nil {
+		if nm, isName := e.(*Name); isName {
+			if t, has := g.loopElemTag[nm.Value]; has && slotTagSelfDescribing(t) {
+				return t, true
+			}
+		}
+	}
 	// A variable the compiler built as a container holds a handle, and the slot that copies it
 	// needs the container's tag: appending a list variable to another list stored the handle and
 	// tagged it TagInt, so [1, [2]] printed as [1, 1] (roadmap L11.1).
@@ -1958,6 +1984,16 @@ func (g *irGen) isMixedContainer(name string) bool {
 func (g *irGen) elemTagFor(e Expr, interned bool) int32 {
 	if interned {
 		return int32(TagStr)
+	}
+	// An unrolled loop bound this name to a value whose kind is not spelled by the name. The iteration
+	// recorded that kind once per item; reading it here keeps `[[x] for x in [None, 1.5]]` from boxing
+	// a handle and calling it an integer (roadmap Gap R.358, beside ADR 0233's unrolled loop-element tag).
+	if g != nil && g.loopElemTag != nil {
+		if nm, isName := e.(*Name); isName {
+			if t, has := g.loopElemTag[nm.Value]; has && slotTagSelfDescribing(t) {
+				return t
+			}
+		}
 	}
 	// One question, asked once: what tag does this element's slot carry. The builders used to
 	// answer it locally and drifted from elemKindTag — which is how appending a list variable to

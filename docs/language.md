@@ -131,6 +131,26 @@ The textual repr of a set is not an ordered fact: CPython randomizes string hash
 members and tags rather than whether `{'A', 'B'}` or `{'B', 'A'}` comes out. A dict's insertion order remains
 visible and pinned.
 
+**A literal comprehension iterable is a container, not a demand for integers** (**ADR 0386**, roadmap **Gap R.358**).
+An all-integer literal such as `[1, 2]` still folds to its static list. Any other literal display — texts, floats,
+`None`, verdicts, tuples, containers, or items computed by calls — is walked item by item, and each item binds the
+loop variable with the tag the unrolled `for` road records:
+
+```gy
+print([x for x in ["a", "b"]])                        # ['a', 'b']
+print({k: 1 for k in ["a", "b"]})                     # {'a': 1, 'b': 1}
+print([x for x in [1, "a", 2.5, None, True]])          # [1, 'a', 2.5, None, True]
+print([x for x in [None, True, False]])                # [None, True, False]
+print([[x] for x in [None, 1.5, True]])                 # [[None], [1.5], [True]]
+print({x: x for x in ["a", 1, 2.5]})                   # {'a': 'a', 1: 1, 2.5: 2.5}
+print([x for x in [[1], [2]]])                         # [[1], [2]]
+print([x for x in [1, 2]])                              # [1, 2] — still the integer fold
+```
+
+The boundary is the position that consumes the value, not the iterable. Container writes, dict entries, membership,
+printing, text methods and filters ask the tag. A one-word arithmetic position does not yet carry it, so
+`[x + 1 for x in ["a", "b"]]` is refused rather than turning the text's string-table index into a plausible number.
+
 **A `{…}` display ends at its brace.** A `for` after a closing brace belongs to the display whose brace is
 still open (ADR 0384). Thus `{{1} for x in [1]}` is a set comprehension over an inner set literal, not a
 literal set containing a set literal; its member asks the hashable question and CPython's `TypeError` reaches

@@ -1,0 +1,13 @@
+print([x for x in ["a", "b"]])
+print({k: 1 for k in ["a", "b"]})
+print([x for x in [1, "a", 2.5, None, True]])
+print([x for x in [None, True, False]])
+print([[x] for x in [None, 1.5, True]])
+print({x: x for x in ["a", 1, 2.5]})
+
+def one():
+    return 1
+
+print([x for x in [1, one()]])
+print([x for x in [[1], [2]]])
+print([x for x in [1, 2]])

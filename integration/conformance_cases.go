@@ -824,6 +824,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the tag that says the payload is a text, so printing and lookup agree (roadmap Gap R.123, paid
 		// by ADR 0384).
 		"probe_dict_comp_text_key",
+		// A comprehension's literal iterable need not be a list of integers: texts, floats, voids,
+		// verdicts and containers bind their loop variable once per item, with the kind that item has.
+		// The all-integer fold is still there as the final line (roadmap Gap R.358, ADR 0386).
+		"comprehension_literal_iterable",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

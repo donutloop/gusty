@@ -249,6 +249,14 @@ one write — the rule `xs.append(v)` already followed — so `[[1, 2] for x in 
 than the inner list's address, `[1.5 …]` prints `[1.5]` rather than a box handle, and `[None …]` prints
 `[None]` rather than the `0` that `if None:` folds to (ADR 0244).
 
+**A literal iterable need not be a list of integers** (ADR 0386, closing **Gap R.358**). `[1, 2]` still takes the
+integer fold. Any other literal display — text, float, `None`, verdicts, tuples, containers, or calls — now walks
+item by item and binds the comprehension's loop variable with the same per-item tag an unrolled `for` records. So
+`[x for x in ["a", "b"]]` is `['a', 'b']`, `{k: 1 for k in ["a", "b"]}` is `{'a': 1, 'b': 1}`, heterogeneous
+`[1, "a", 2.5, None, True]` prints every kind, and `[[x] for x in [None, 1.5, True]]` is `[[None], [1.5], [True]]`
+rather than the handles those payloads happen to be. Positions that read one word still refuse to guess a tagged
+loop variable's kind rather than turn a string index or float box handle into an integer.
+
 What the loop variable knows is part of the same rule: an element that *is* the loop variable carries its
 kind — and, over a container whose slots mix kinds, its **tag** — into the list it builds, and it asks the
 **container being iterated**, not the loop variable, whose facts are gone once the loop closes. So

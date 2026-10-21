@@ -15716,7 +15716,7 @@ raised at exit 3, not manufactured by the assembler.
 **Evidence.** `pkg/lang/comprehension_tagged_test.go#TestASetComprehensionOpeningWithAContainerLiteralIsNotStolenByItsInnerBrace`
 and `integration/comprehension_tagged_test.go` cover the set, dict and nested list spellings through the CLI.
 
-### Gap R.358 — a comprehension over a literal iterable of non-numbers asks for integer items (OPEN, measured while landing ADR 0384, owner `codegen`)
+### Gap R.358 — a comprehension over a literal iterable of non-numbers asks for integer items (DONE — ADR 0386, 2026-10-20)
 
 ```python
 print([x for x in ["a", "b"]])
@@ -15734,3 +15734,25 @@ rather than falling to `runtimeCompLoop`. Gap R.353 fixed the *member*'s kind; t
 fall through to the runtime loop that already understands payloads, tags, dict keys and text characters. The
 fold's answers must not move, and mixed-item rows should be recorded only after the compiled leg agrees with
 the reference leg (`tools/recmerge` refuses a disagreement).
+
+**What ADR 0386 changed.** The route is not the dynamic heap loop: a literal has an enumerable shape, so it
+uses the same unrolled builders ADR 0384 made trustworthy for computed set and dict members. Before an element
+or entry is lowered, `bindUnrolledCompItem` binds the loop variable as the unrolled `for` road does —
+`heapElemKind` for the payload, the per-iteration `loopElemTag` for its kind, and the text, digit and verdict
+claims that make those two words mean this iteration's value. `elemKindTag` and `heapElemKind` now consult that
+record, so `[[x] for x in [None, 1.5, True]]` carries `[None]`, `[1.5]`, and `[True]` rather than the handles
+their payloads happen to be. The all-integer literal still emits `@.lst` and never calls the tagged builder.
+
+The first prototype sent every non-integer literal through `runtimeCompLoop`. That was wrong for a different
+reason than the integer refusal: the literal had no heap container to walk unless it was materialised, and the
+dynamic path inferred its mixed status from container tables that literal emission never populates. The shipped
+design keeps the literal's unrolled shape and gives it the `for` road's per-item facts.
+
+**Evidence.** `pkg/lang/comprehension_literal_iterable_test.go` answers texts, mixed scalars, voids, verdicts,
+floats, containers, tuples, a call in the iterable, filters, and dict entries; it pins the all-integer fold in IR;
+normalises text-set membership rather than CPython's random repr order; asks the unhashable raises through both
+the record and the compiled legs; and requires every answer source on the record.
+`integration/comprehension_literal_iterable_test.go` runs the family through both CLI engines against CPython,
+requires the record, and checks the raise's exit class. `programs/comprehension_literal_iterable.gy` is the
+220th conformance row, asserted `match`. The record moved **8069 → 8084** through `tools/recmerge`, which asked
+CPython first and cross-checked every compiled answer.
