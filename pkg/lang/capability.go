@@ -450,10 +450,12 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Rows:       []string{"L11.1", "Gap R.191", "Gap R.323"},
 		Markers:    []string{"cannot reach into", "the name was rebound, mutated"},
 		// The unpacking that used to be this code's sample — `a, b = xs[0][0] + 1, xs[0][1] + 2` — answers
-		// since ADR 0367, and a sample that compiles is a claim about nothing (TestCLICapabilityRefusalText
-		// RoundTrips fails it on purpose). What still asks the subscript for ONE word is a condition's head,
-		// and the truth of a slot of a container the program built is the half owed (Gap R.323).
-		Sample: "xs = []\nxs.append([7, 8])\nif xs[0][0]:\n    print(1)",
+		// since ADR 0367, and its successor `if xs[0][0]:` answers since ADR 0388 paid the condition's read: the
+		// truth of a slot is the tag's fact, and the pair table the printer asks answers it. A sample that
+		// compiles is a claim about nothing (TestCLICapabilityRefusalTextRoundTrips fails it on purpose), so the
+		// sample is the shape that still wants ONE word out of the same slot — an ordering between two of them
+		// (the half Gap R.323 still owes).
+		Sample: "xs = []\nxs.append([1.5, 2])\nprint(xs[0][0] < xs[0][1])",
 	},
 }
 

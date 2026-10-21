@@ -29,6 +29,33 @@ func (g *irGen) builtinBool(b *strings.Builder, c *Call, fnName string) (string,
 	if len(c.Args) != 1 {
 		return "", fmt.Errorf("bool expects one argument")
 	}
+	// A self-describing subscript asks the same question in the same table as an `if`, an f-string and `and`/`or`.
+	// Its payload is meaningless on its own: a text's intern index and a container's heap handle are both nonzero,
+	// while a float box for `0.0` is also nonzero and `None` is zero for reasons that have nothing to do with the
+	// reference's truth (roadmap Gap R.284, ADR 0388).
+	if nm, isName := c.Args[0].(*Name); isName {
+		if t, asks := g.truthAsksTheLoopItem(nm); asks {
+			payload, perr := g.value(b, nm)
+			if perr != nil {
+				return "", perr
+			}
+			return g.asBoolI32(b, g.pairTruth(b, payload, fmt.Sprintf("%d", t))), nil
+		}
+	}
+	if ix, isIdx := c.Args[0].(*Index); isIdx && (g.entryReadNeedsTheTag(ix) || g.isPairElem(ix)) {
+		if payload, tag, okPair, xerr := g.subscriptPairOf(b, ix); xerr != nil {
+			return "", xerr
+		} else if okPair {
+			bit := g.pairTruth(b, payload, tag)
+			return g.asBoolI32(b, bit), nil
+		}
+		if payload, tag, okPair, xerr := g.conditionPairOfRead(b, ix); xerr != nil {
+			return "", xerr
+		} else if okPair {
+			bit := g.pairTruth(b, payload, tag)
+			return g.asBoolI32(b, bit), nil
+		}
+	}
 	// A CONTAINER's truthiness is whether it has any elements, which is a question about its
 	// length and therefore about the object, not about the word the slot holds. Comparing that word
 	// against zero is what my first version did, and it failed twice over: for a list literal the

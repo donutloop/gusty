@@ -378,13 +378,10 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// `d = {None: 3.5}` wrote `3`, the `@float_box` handle, while `print(d[None])` on the line above wrote
 		// `3.5`. It is paid: the field now asks the one subscript dispatch print asks (`subscriptPairOf`),
 		// and the three spellings are asserted as answers in the ladder above (roadmap Gap R.283, ADR 0356).
-		{
-			name:      "the_truth_of_the_entry",
-			src:       "d = {None: \"hi\"}\nprint(bool(d[None]))\n",
-			wantOut:   "False\n",
-			reference: `bool(d[None]) is True`,
-			row:       "Gap R.284",
-		},
+		// The truth of the entry used to sit here, testing an interned text's index against zero. It is paid:
+		// an `if`, `while`, ternary and `bool()` over a self-describing entry ask the same subscript pair print
+		// asks and send it through `@rt_pair_truth` (roadmap Gap R.284, ADR 0388). The answers are asserted in
+		// `dict_entry_truth_test.go`.
 		{
 			name:        "a_text_entry_concatenated",
 			src:         "d = {None: \"a\"}\nprint(d[None] + \"b\")\n",

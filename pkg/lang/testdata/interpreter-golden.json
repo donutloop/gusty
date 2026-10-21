@@ -1,5 +1,499 @@
 {
  "entries": {
+"# A `None`, `True` or `False` key is a key the dict doors can be asked with. The entry comes back as a\n# (payload, tag) pair and the printer, the binder, the loop and the `or` door read the kind the writer\n# left beside it — so no line below prints the allocator's slot number for a float, the interned text's\n# index for a word, or `0` for `None` (roadmap Gap R.221, ADR 0353). Every line is what the reference\n# prints, one for one.\nd = {None: 3.5}\nprint(d[None])\nprint(d[None] + 1)\nprint(str(d[None]), repr(d[None]))\nprint(d[None] == 3.5)\nprint(d[None] or \"fallback\")\nt = {True: \"hi\"}\nprint(t[True])\nprint(len(t), True in t)\nf = {False: [1, 2]}\nprint(f[False])\nprint(len(f[False]))\nfor v in f[False]:\n    print(v)\nprint(1 in f[False])\nmixed = {None: 1.5, True: \"a\", False: [2]}\nprint(mixed[None], mixed[True], mixed[False])\nprint(mixed)\nn = {None: None}\nprint(n[None])\nb = {False: True}\nprint(b[False])\nz = {0: \"zero\"}\nprint(z[False])\no = {1: \"one\"}\nprint(o[True])\nw = {True: 1.5, 1: \"one\"}\nprint(w[True], len(w))\ng = {}\ng[None] = [7, 8]\nprint(g[None])\nprint(g[None][0])\ng[True] = \"built\"\nprint(g[True])\nx = d[None]\nprint(x)\nprint([d[None], t[True], f[False]])\ntry:\n    print(d[True])\nexcept KeyError:\n    print(\"no entry under True\")\ntry:\n    print(t[None])\nexcept KeyError:\n    print(\"no entry under None\")\n\n# The same self-describing entry is also asked by the signless call and the folds. ADR 0387 pays the read\n# half of ADR 0309's and ADR 0316's doors: the entry's kind travels beside its payload instead of the\n# payload alone being subtracted from zero (roadmap Gap R.287).\ns = {None: -3.5}\nprint(abs(s[None]))\nprint(min(s[None], 2), max(s[None], 2))\nprint(min(abs(s[None]), 2))\nprint(sum([s[None], 0]))\nq = {1: -2.5}\nprint(abs(q[1]))\nprint(min(q[1], 1), max(q[1], 1))\nt = {None: \"yes\"}\nif t[None]:\n    print(\"entry is true\")\nelse:\n    print(\"entry is false\")\nprint(bool(t[None]), bool({None: \"\"}[None]), bool({None: 0.0}[None]), bool({None: []}[None]))\nprint(1 if {False: [0]}[False] else 0, 1 if {False: []}[False] else 0)\nu = {None: \"hi\"}\nprint(u[None] and 1, u[None] or 2)\nv = {None: \"\"}\nprint(v[None] and 1, v[None] or 2)\nw = {None: 2}\nwhile w[None]:\n    print(\"entry loop\")\n    w[None] = 0\nprint(bool({None: {}}[None]), bool({None: None}[None]), bool({None: -0.0}[None]))\nprint([bool(x) for x in [0.0, \"\", None, [0], []]])\nprint([x for x in [0.0, \"\", None, [0], [], \"z\"] if x])\n": {
+    "stdout": "3.5\n4.5\n3.5 3.5\nTrue\n3.5\nhi\n1 True\n[1, 2]\n2\n1\n2\nTrue\n1.5 a [2]\n{None: 1.5, True: 'a', False: [2]}\nNone\nTrue\nzero\none\none 1\n[7, 8]\n7\nbuilt\n3.5\n[3.5, 'hi', [1, 2]]\nno entry under True\nno entry under None\n3.5\n-3.5 2\n2\n-3.5\n2.5\n-2.5 1\nentry is true\nTrue False False False\n1 0\n1 hi\n 2\nentry loop\nFalse False False\n[False, False, False, True, False]\n[[0], 'z']\n",
+    "hasStdout": true
+   },
+"for x in [0.0, [0]]:\n    if x:\n        print(\"t\")\n    else:\n        print(\"f\")\n": {
+    "stdout": "f\nt\n",
+    "hasStdout": true
+   },
+
+"print([1 if x else 0 for x in [0, 1]])\n": {
+    "stdout": "[0, 1]\n",
+    "hasStdout": true
+   },
+
+"print([1 if x else 0 for x in [0.0, \"\", None, [0], []]])\n": {
+    "stdout": "[0, 0, 0, 1, 0]\n",
+    "hasStdout": true
+   },
+
+"print([bool(x) for x in [0, 1, 2]])\n": {
+    "stdout": "[False, True, True]\n",
+    "hasStdout": true
+   },
+
+"print([bool(x) for x in [0.0, -0.0, 0, -0]])\n": {
+    "stdout": "[False, False, False, False]\n",
+    "hasStdout": true
+   },
+
+"print([bool(x) for x in [0.0, 1.5, \"\", \"a\", None, True, False, [0], []]])\n": {
+    "stdout": "[False, True, False, True, False, True, False, True, False]\n",
+    "hasStdout": true
+   },
+
+"print([bool(x) for x in [[], [0], \"\", \"a\"]])\n": {
+    "stdout": "[False, True, False, True]\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [0.0, \"\", None, [0], [], \"z\"] if x])\n": {
+    "stdout": "[[0], 'z']\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [0.0, 1.5, \"\", \"a\", None, True, False, [0], []]])\n": {
+    "stdout": "[0.0, 1.5, '', 'a', None, True, False, [0], []]\n",
+    "hasStdout": true
+   },
+
+"ys = []\nfor x in [0.0, \"\", None, [0]]:\n    ys.append(bool(x))\nprint(ys)\n": {
+    "stdout": "[False, False, False, True]\n",
+    "hasStdout": true
+   },
+"# A `None`, `True` or `False` key is a key the dict doors can be asked with. The entry comes back as a\n# (payload, tag) pair and the printer, the binder, the loop and the `or` door read the kind the writer\n# left beside it — so no line below prints the allocator's slot number for a float, the interned text's\n# index for a word, or `0` for `None` (roadmap Gap R.221, ADR 0353). Every line is what the reference\n# prints, one for one.\nd = {None: 3.5}\nprint(d[None])\nprint(d[None] + 1)\nprint(str(d[None]), repr(d[None]))\nprint(d[None] == 3.5)\nprint(d[None] or \"fallback\")\nt = {True: \"hi\"}\nprint(t[True])\nprint(len(t), True in t)\nf = {False: [1, 2]}\nprint(f[False])\nprint(len(f[False]))\nfor v in f[False]:\n    print(v)\nprint(1 in f[False])\nmixed = {None: 1.5, True: \"a\", False: [2]}\nprint(mixed[None], mixed[True], mixed[False])\nprint(mixed)\nn = {None: None}\nprint(n[None])\nb = {False: True}\nprint(b[False])\nz = {0: \"zero\"}\nprint(z[False])\no = {1: \"one\"}\nprint(o[True])\nw = {True: 1.5, 1: \"one\"}\nprint(w[True], len(w))\ng = {}\ng[None] = [7, 8]\nprint(g[None])\nprint(g[None][0])\ng[True] = \"built\"\nprint(g[True])\nx = d[None]\nprint(x)\nprint([d[None], t[True], f[False]])\ntry:\n    print(d[True])\nexcept KeyError:\n    print(\"no entry under True\")\ntry:\n    print(t[None])\nexcept KeyError:\n    print(\"no entry under None\")\n\n# The same self-describing entry is also asked by the signless call and the folds. ADR 0387 pays the read\n# half of ADR 0309's and ADR 0316's doors: the entry's kind travels beside its payload instead of the\n# payload alone being subtracted from zero (roadmap Gap R.287).\ns = {None: -3.5}\nprint(abs(s[None]))\nprint(min(s[None], 2), max(s[None], 2))\nprint(min(abs(s[None]), 2))\nprint(sum([s[None], 0]))\nq = {1: -2.5}\nprint(abs(q[1]))\nprint(min(q[1], 1), max(q[1], 1))\nt = {None: \"yes\"}\nif t[None]:\n    print(\"entry is true\")\nelse:\n    print(\"entry is false\")\nprint(bool(t[None]), bool({None: \"\"}[None]), bool({None: 0.0}[None]), bool({None: []}[None]))\nprint(1 if {False: [0]}[False] else 0, 1 if {False: []}[False] else 0)\nu = {None: \"hi\"}\nprint(u[None] and 1, u[None] or 2)\nv = {None: \"\"}\nprint(v[None] and 1, v[None] or 2)\nw = {None: 2}\nwhile w[None]:\n    print(\"entry loop\")\n    w[None] = 0\nprint(bool({None: {}}[None]), bool({None: None}[None]), bool({None: -0.0}[None]))\n": {
+    "stdout": "3.5\n4.5\n3.5 3.5\nTrue\n3.5\nhi\n1 True\n[1, 2]\n2\n1\n2\nTrue\n1.5 a [2]\n{None: 1.5, True: 'a', False: [2]}\nNone\nTrue\nzero\none\none 1\n[7, 8]\n7\nbuilt\n3.5\n[3.5, 'hi', [1, 2]]\nno entry under True\nno entry under None\n3.5\n-3.5 2\n2\n-3.5\n2.5\n-2.5 1\nentry is true\nTrue False False False\n1 0\n1 hi\n 2\nentry loop\nFalse False False\n",
+    "hasStdout": true
+   },
+"d = {\"k\": \"\"}\nif d[\"k\"]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {1: 0}\nif d[1]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2, 2: 3}\nif d[2]:\n    print(\"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\nif d[1]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\nprint(bool(d[1]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {7: -0.0}\nprint(bool(d[7]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {7: [0]}\nprint(bool(d[7]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nprint(d[None] and 1)\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nprint(d[None] or 2)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(d[None] and 1)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(d[None] or 2)\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"k\"}\nif d[None]:\n    print(\"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"x\"}\nprint(1 if d[None] else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"x\"}\nprint([1 if d[None] else 0][0])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: -0.0}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0, \"k\": 0.0}\nprint(bool(d[None]), bool(d[\"k\"]))\n": {
+    "stdout": "False False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nprint(d[None] or 2)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nprint(sum([1 if d[None] else 0, 1]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nif d[None]:\n    print(\"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nprint(d[None] and 2)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 7}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: 7}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: 7}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: 7}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: False}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: None}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: None}\nprint(d[None] or \"d\")\n": {
+    "stdout": "d\n",
+    "hasStdout": true
+   },
+
+"d = {None: True}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: True}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: True}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nprint(d[None] and 2)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: []}\nif d[None]:\n    print(\"t\")\n": {
+    "hasStdout": true
+   },
+
+"d = {None: []}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: []}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: []}\nprint(d[None] or 2)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: {1: 2}}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"d = {None: {1: 2}}\nif not d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {None: {1: 2}}\nprint(\"y\" if d[None] else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"d = {None: {}}\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {True: 0.0}\nif d[True]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"d = {}\nd[None] = 0.0\nif d[None]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"xs = {None: [1]}\nwhile xs[None]:\n    print(len(xs[None]))\n    xs[None] = []\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"# A `None`, `True` or `False` key is a key the dict doors can be asked with. The entry comes back as a\n# (payload, tag) pair and the printer, the binder, the loop and the `or` door read the kind the writer\n# left beside it — so no line below prints the allocator's slot number for a float, the interned text's\n# index for a word, or `0` for `None` (roadmap Gap R.221, ADR 0353). Every line is what the reference\n# prints, one for one.\nd = {None: 3.5}\nprint(d[None])\nprint(d[None] + 1)\nprint(str(d[None]), repr(d[None]))\nprint(d[None] == 3.5)\nprint(d[None] or \"fallback\")\nt = {True: \"hi\"}\nprint(t[True])\nprint(len(t), True in t)\nf = {False: [1, 2]}\nprint(f[False])\nprint(len(f[False]))\nfor v in f[False]:\n    print(v)\nprint(1 in f[False])\nmixed = {None: 1.5, True: \"a\", False: [2]}\nprint(mixed[None], mixed[True], mixed[False])\nprint(mixed)\nn = {None: None}\nprint(n[None])\nb = {False: True}\nprint(b[False])\nz = {0: \"zero\"}\nprint(z[False])\no = {1: \"one\"}\nprint(o[True])\nw = {True: 1.5, 1: \"one\"}\nprint(w[True], len(w))\ng = {}\ng[None] = [7, 8]\nprint(g[None])\nprint(g[None][0])\ng[True] = \"built\"\nprint(g[True])\nx = d[None]\nprint(x)\nprint([d[None], t[True], f[False]])\ntry:\n    print(d[True])\nexcept KeyError:\n    print(\"no entry under True\")\ntry:\n    print(t[None])\nexcept KeyError:\n    print(\"no entry under None\")\n\n# The same self-describing entry is also asked by the signless call and the folds. ADR 0387 pays the read\n# half of ADR 0309's and ADR 0316's doors: the entry's kind travels beside its payload instead of the\n# payload alone being subtracted from zero (roadmap Gap R.287).\ns = {None: -3.5}\nprint(abs(s[None]))\nprint(min(s[None], 2), max(s[None], 2))\nprint(min(abs(s[None]), 2))\nprint(sum([s[None], 0]))\nq = {1: -2.5}\nprint(abs(q[1]))\nprint(min(q[1], 1), max(q[1], 1))\nt = {None: \"yes\"}\nif t[None]:\n    print(\"entry is true\")\nelse:\n    print(\"entry is false\")\nprint(bool(t[None]), bool({None: \"\"}[None]), bool({None: 0.0}[None]), bool({None: []}[None]))\nprint(1 if {False: [0]}[False] else 0, 1 if {False: []}[False] else 0)\n": {
+    "stdout": "3.5\n4.5\n3.5 3.5\nTrue\n3.5\nhi\n1 True\n[1, 2]\n2\n1\n2\nTrue\n1.5 a [2]\n{None: 1.5, True: 'a', False: [2]}\nNone\nTrue\nzero\none\none 1\n[7, 8]\n7\nbuilt\n3.5\n[3.5, 'hi', [1, 2]]\nno entry under True\nno entry under None\n3.5\n-3.5 2\n2\n-3.5\n2.5\n-2.5 1\nentry is true\nTrue False False False\n1 0\n",
+    "hasStdout": true
+   },
+
+"d = {\"k\": None}\nprint(bool(d[\"k\"]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"\"}\nprint(bool(d[1]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {1: -0.0}\nprint(bool(d[1]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {1: [1]}\nprint(bool(d[1]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: []}\nprint(bool(d[1]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {False: \"x\"}\nprint(bool(d[False]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nif d[None]:\n    print(\"then\")\nelse:\n    print(\"else\")\n": {
+    "stdout": "else\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nprint(1 if d[None] else 0)\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"\"}\nwhile d[None]:\n    print(\"never\")\nprint(\"done\")\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nif d[None]:\n    print(\"then\")\nelse:\n    print(\"else\")\n": {
+    "stdout": "then\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nif d[None]:\n    print(\"truthy\")\n": {
+    "stdout": "truthy\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(1 if d[None] else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"x\"}\nprint(\"yes\" if d[None] else \"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"d = {None: -0.0}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nif d[None]:\n    print(\"a\")\nelse:\n    print(\"b\")\n": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nprint(\"yes\" if d[None] else \"no\")\n": {
+    "stdout": "no\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0.0}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 0}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 2}\nwhile d[None]:\n    print(\"once\")\n    d[None] = 0\n": {
+    "stdout": "once\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: False}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: None}\nif d[None]:\n    print(\"a\")\nelse:\n    print(\"b\")\n": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"d = {None: None}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: True}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: []}\nif d[None]:\n    print(\"a\")\nelse:\n    print(\"b\")\n": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"d = {None: {1: 2}}\nprint(bool(d[None]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: {}}\nif d[None]:\n    print(\"a\")\nelse:\n    print(\"b\")\n": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"d = {None: {}}\nprint(bool(d[None]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {True: 0}\nprint(bool(d[True]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"n = {None: [0]}\nprint(sum([1 if n[None] else 0]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
 "d = {None: 3.5}\nprint(sum([d[None], 0]))\n": {
     "stdout": "3.5\n",
     "hasStdout": true

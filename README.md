@@ -2167,9 +2167,12 @@ falls back to dynamic dispatch.
   (`pkg/lang/dict_key_pair.go`), asked by the four doors that read an entry rather than by each of them, and
   **nothing in the runtime, the builder or the printers moved**. 36 of a 301-shape probe changed answer and
   nothing else did. What the probe session found beside the fix stayed as rows, each pinned with today's answer
-  in a filed table: the truth of the entry is asked of the payload (**R.284**), the operator roads that label it
-  disagree with the pair road in both directions
-  (**R.285**), and a name whose last binding was `None` is a key that arrives untagged (**R.286**). The signless
+  in a filed table: the operator roads that label it disagree with the pair road in both directions
+  (**R.285**), and a name whose last binding was `None` is a key that arrives untagged (**R.286**). The truth of
+  the entry used to sit in that list too, and is paid: `if`/`while`/ternary and `bool()` over a self-describing
+  entry now ask it the same `(payload, tag)` pair print asks and decide it in `@rt_pair_truth`, and the item of
+  an unrolled comprehension asks the same table, so `[bool(x) for x in [0.0, [0]]]` is `[False, False]`
+  (**R.284**, **R.359**, **ADR 0388**); the set entry that table is never asked about is **R.360**. The signless
   and fold calls that used to sit in that list have since been paid, and are told below
   (**R.287**, **ADR 0387**): `abs`, `min`, `max` and `sum` now ask the entry's tag beside its payload, while a
   one-word call boundary remains **R.146**/**R.220**. The f-string field that was in that list has since been

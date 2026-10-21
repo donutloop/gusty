@@ -1080,6 +1080,17 @@ the same rule, and the compiled backend implement it identically:
 | `[]`, `{}`, an empty set | false |
 | anything else (including any other number, string, container or object) | true |
 
+Where the value's kind is the run time's fact and not the compiler's — an entry read out of a dict whose
+values mix kinds, or the item of a comprehension or `for` unrolled over a literal display — the test is asked
+of the **tag** beside the payload, in the module's one truth table (`@rt_pair_truth`: a number in either
+family by its value, a text by its length, a container by its element count). Testing the payload instead is
+what once made `d = {None: ""}` / `if d[None]:` take the `then` arm, because the word there is an interned
+string's *index*, and `bool({None: []}[None])` answer `True`, because an empty list's handle is never zero
+(**Gap R.284**, **Gap R.359**, **ADR 0388**). A provable integer entry or item keeps the plain compare, and
+the entry read handed to a call — a position that keeps one word for the whole value — is still
+**Gap R.146**/**Gap R.220**'s. The one kind the table is never asked about is a **set**: nothing writes its tag
+into a dict entry or a literal's slot, so an empty set entry is truthy and prints its handle (**Gap R.360**).
+
 ### `and` and `or` answer an **operand**, not a verdict, and skip what the test rejected (Gap R.147, ADR 0269; Gap R.149, ADR 0275)
 
 The two operators test one operand and hand back whichever operand the test chose, unconverted — the
@@ -1409,12 +1420,17 @@ Rules that the compiled backend implement:
   back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
   object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says
   `'list'`, the reference's left-to-right hashability walk). What the same read still cannot reach is
-  four rows, each pinned with today's answer beside the reference's: an
-  f-string field of the entry (**Gap R.283**), the truth of it (**R.284**), `+`/`*` over it (**R.285**), and a
-  **name** whose last binding was `None`, which arrives as an untagged word and raises
-  `KeyError` where the reference prints the entry (**R.286**). `abs` and the `min`/`max`/`sum` folds of that
-  entry answer the reference's value (**R.287**, **ADR 0387**): the object's tag travels beside the payload
-  into the signless and fold doors, while a one-word call argument still belongs to **Gap R.146**/**R.220**.
+  three rows, each pinned with today's answer beside the reference's: `+`/`*` over the entry
+  (**Gap R.285**), and a **name** whose last binding was `None`, which arrives as an untagged word and raises
+  `KeyError` where the reference prints the entry (**R.286**), and a **set** entry, whose tag the builders never
+  write, so it prints its handle and is truthy (**R.360**). What it does reach: the f-string field of the entry
+  (**R.283**, **ADR 0356**), `abs` and the `min`/`max`/`sum` folds of it (**R.287**, **ADR 0387**), and its
+  **truth** — `if d[None]:`, `while d[None]:`, `"y" if d[None] else "n"` and `bool(d[None])` all branch the
+  reference's way (**R.284**, **ADR 0388**), because the condition asks the entry the same `(payload, tag)` pair
+  print asks and decides it in `@rt_pair_truth`: an empty text, an empty container, `0.0`, `-0.0`, `False` and
+  `None` are false, and a text's interned index or a float box's handle is not evidence either way. The item of
+  an unrolled comprehension asks the same table (**R.359**): `[bool(x) for x in [0.0, [0]]]` is `[False, False]`.
+  A one-word call argument of that entry still belongs to **Gap R.146**/**R.220**.
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same

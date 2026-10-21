@@ -30,3 +30,12 @@ no entry under None
 -3.5
 2.5
 -2.5 1
+entry is true
+True False False False
+1 0
+1 hi
+ 2
+entry loop
+False False False
+[False, False, False, True, False]
+[[0], 'z']

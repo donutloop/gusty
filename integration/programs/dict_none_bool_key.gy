@@ -60,3 +60,21 @@ print(sum([s[None], 0]))
 q = {1: -2.5}
 print(abs(q[1]))
 print(min(q[1], 1), max(q[1], 1))
+t = {None: "yes"}
+if t[None]:
+    print("entry is true")
+else:
+    print("entry is false")
+print(bool(t[None]), bool({None: ""}[None]), bool({None: 0.0}[None]), bool({None: []}[None]))
+print(1 if {False: [0]}[False] else 0, 1 if {False: []}[False] else 0)
+u = {None: "hi"}
+print(u[None] and 1, u[None] or 2)
+v = {None: ""}
+print(v[None] and 1, v[None] or 2)
+w = {None: 2}
+while w[None]:
+    print("entry loop")
+    w[None] = 0
+print(bool({None: {}}[None]), bool({None: None}[None]), bool({None: -0.0}[None]))
+print([bool(x) for x in [0.0, "", None, [0], []]])
+print([x for x in [0.0, "", None, [0], [], "z"] if x])

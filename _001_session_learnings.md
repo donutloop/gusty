@@ -1,5 +1,60 @@
 # Session Learnings
 
+## Round 14 - A condition asks a self-describing read its own kind (roadmap Gaps R.284, R.359 closed; ADR 0388; Gap R.360 filed)
+
+**Change (the condition's gate)**: `d = {None: "hi"}` / `if d[None]:` took the `else` arm and
+`bool({None: []}[None])` answered `True`, both at exit 0. Three roads decide a branch by testing a word against
+zero — the head of `if`/`elif`/`while`, the head of a ternary, and the builtin `bool()` — and none of them had
+met a dict entry, whose payload is an interned text's *table index*, a float box's *handle*, a container's
+*handle*, or `None`'s `0`. `@rt_pair_truth` (ADR 0275) had been in the module since the `and`/`or` row and had
+the right arms for every one of those; the gate in front of it had simply never been asked for this read. As in
+ADR 0387, the door was complete and the gate was old.
+
+- **The fold's answer is not evidence for a test.** `subscriptPairOf` leaves a read the compile-time fold can
+  spell to the ordinary road, which is right for a value position — the printer is told the kind. A condition has
+  no printer. So the truth road asks a second door, `conditionPairOfRead`, which walks the container back to the
+  literal the name was bound to and takes the pair the fold discarded. That second call is the row's substance:
+  `d = {"k": ""}` / `if d["k"]:` was true and `d = {7: ""}` / `if d[7]:` was false, over the same empty-text
+  value, because the interned index of `""` depends on which text got interned first. **A defect whose answer
+  changes when an unrelated line is added is only findable by adding that line** — the single-entry case had
+  looked fine since ADR 0353 because `""` was usually interned at index 0.
+- **A widening must sweep every reader of the fact it records, not only the readers that failed a probe.** The
+  same payload-vs-zero fault lived in the unrolled comprehension item (`[bool(x) for x in [0.0, [0]]]` printed
+  `[True, True]`), and it was *my own* regression from last cycle: ADR 0386 made non-integer items legal, taught
+  the print, binding and container doors about the per-item `loopElemTag`, and left the condition behind — turning
+  an honest refusal (`comprehension iterable must be constant integers`) into a wrong answer at exit 0. It is
+  filed as Gap R.359 and closed by the same commit, because a row that turns a refusal into a wrong answer is not
+  finished business. The lesson is the general one: when a pass starts accepting a new shape, enumerate the
+  positions that read the new record — value, test, print, compare, store — before calling the shape supported.
+- **A door's arm list is not proof that anything writes the tag.** Probing the truth road found the set: every
+  other kind reaches `@rt_pair_truth`, whose container arm asks `rt_heap_len` for tags 5, 6 and 7 — list, dict
+  *and set* — yet `bool({None: set()}[None])` is `True` and `print({None: set()}[None])` prints `3`, because no
+  builder ever stores a set's tag. Filed as Gap R.360 with those three answers pinned as wrong, so the future fix
+  has to flip a pin rather than inherit a claim.
+- **Paying a shape can invalidate a capability sample.** `lower.unsupported.slot-read-of-rebound-name` sampled
+  `xs.append([7, 8])` / `if xs[0][0]:`; this row answers that program, and the registry guard fails a sample that
+  compiles clean (a code about nothing). The sample moved to `print(xs[0][0] < xs[0][1])` — the same slot, still
+  asking for one word. Registry entries are tests, not prose: when a row is paid, its sample has to be re-aimed in
+  the same commit.
+- **A side-payment and a boundary, told apart by the exit code.** Once the pair was reachable, `d[None] and 1`
+  started answering `1` instead of refusing — the operand choice Gap R.147 names, paid for this spelling because
+  the *test* is what was missing, not the choice. `bool(d[None] and 1)` still refuses (the chosen operand must fit
+  one word), `x = d[None]` / `bool(x)` still refuses (Gap R.146), `f(d[None])` still prints `3` (Gap R.220). Those
+  three are asserted as today's answers with the row that owns them, which is what keeps a green suite from being
+  read as a claim of support.
+- **Half-written work is a stranger's patch.** This cycle began with an uncommitted fragment of the truth road in
+  the tree from an aborted agent. I parked it, then re-derived it against CPython before keeping any of it: the
+  probes decided (all-integer comprehension items, text items and the fold cases were all places the fragment
+  would have been wrong), and the negative controls — a provable int entry must not reach `@rt_pair_truth` — are
+  asserted as IR absences precisely so an adopted gate cannot be quietly wider than it argues.
+
+**Witness**: 90+ answer rows, key-independence rows, two IR-claim sets and a pinned-wrong set in
+`pkg/lang/dict_entry_truth_test.go`; CLI answers against CPython, the boundary rows, the conformance program and
+the record-membership rows in `integration/dict_entry_truth_test.go`. `integration/programs/dict_none_bool_key.gy`
+gained the `and`/`or`, `while` and comprehension-truth rows and its `.expected` is CPython's own bytes. Six
+`tools/recmerge` runs checked 100 sources and added all of them, moving the record **8123 → 8223**; the three set
+rows were *not* recorded, because this backend's answer cannot vouch for itself.
+
 ## Round 13 - A self-describing dict entry gives its kind to `abs` and the folds (roadmap Gap R.287 closed; ADR 0387)
 
 **Change (tagged call and fold gates)**: ADR 0353 taught the dict read to bring its tag to `print`, but the

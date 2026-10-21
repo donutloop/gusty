@@ -108,3 +108,66 @@ func (g *irGen) subscriptPairOf(b *strings.Builder, ix *Index) (val, tag string,
 	}
 	return "", "", false, nil
 }
+
+// conditionPairOfRead is the truth road's wider version of the same dispatch, and the difference is the
+// fold. `subscriptPairOf` leaves a read the compile-time fold can spell to the ordinary road, which is
+// right for a value position: the printer is told the kind and renders the payload. A condition asks a
+// different question — it tests a word against zero — and the word the fold produces for an entry is an
+// interned text's INDEX, a float box's HANDLE, a container's HANDLE. Each of those is non-zero for reasons
+// that have nothing to do with whether the value is true, which is how `d = {"k": ""}` / `if d["k"]:` took
+// the `then` arm at exit 0 (roadmap Gap R.284, ADR 0388).
+//
+// The one entry that keeps the fold is the entry whose payload already IS the value: a provable integer.
+// `d = {1: 2}` / `if d[1]:` has always compared an i32 against zero and still does, asserted as an IR claim
+// in dict_entry_truth_test.go so a door that opens wider than it must is caught here rather than in review.
+func (g *irGen) conditionPairOfRead(b *strings.Builder, ix *Index) (val, tag string, ok bool, err error) {
+	if ix == nil {
+		return "", "", false, nil
+	}
+	lit := g.literalBehind(ix.Obj)
+	if tg, known := g.staticSlotTag(lit, ix.Idx); known && tg == int32(TagInt) {
+		return "", "", false, nil
+	}
+	switch c := lit.(type) {
+	case *DictLit:
+		v, t, derr := g.literalDictPair(b, c, ix.Idx, ix.Span())
+		if derr != nil {
+			return "", "", false, derr
+		}
+		g.heapUsed = true
+		g.floatFmtUsed = true
+		return v, t, true, nil
+	case *ListLit:
+		v, t, okPair := g.listLiteralPair(b, c, ix.Idx, ix.Span())
+		if !okPair {
+			return "", "", false, listLiteralOneWordErr(c, ix.Idx)
+		}
+		g.heapUsed = true
+		g.floatFmtUsed = true
+		return v, t, true, nil
+	}
+	return "", "", false, nil
+}
+
+// literalBehind walks a read's container back to the literal it names: `d = {...}` leaves `d` in
+// containerLits and the pair doors need the literal the fold read, not the name. Two levels is enough for
+// what the pair doors serve; a container that has left the analysis answers nothing here and keeps its own
+// door (`subscriptPairOf`'s runtime-slot arms).
+func (g *irGen) literalBehind(e Expr) Expr {
+	for depth := 0; depth < 2; depth++ {
+		nm, isName := e.(*Name)
+		if !isName {
+			return e
+		}
+		if lit, ok := g.containerLits[nm.Value]; ok {
+			e = lit
+			continue
+		}
+		if lit, ok := g.staticLists[nm.Value]; ok {
+			e = lit
+			continue
+		}
+		return e
+	}
+	return e
+}

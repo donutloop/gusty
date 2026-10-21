@@ -260,6 +260,15 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	// (`[0.0, 1][0]` is false in the reference and a payload tested against zero calls it true). The pair door
 	// that answers print, str/repr and a binding answers the condition as well, through the same table the
 	// printer and the `and`/`or` operands ask (roadmap Gap R.218, ADR 0331).
+	if nm, isName := e.(*Name); isName {
+		if t, asks := g.truthAsksTheLoopItem(nm); asks {
+			payload, perr := g.value(b, e)
+			if perr != nil {
+				return "", perr
+			}
+			return g.pairTruth(b, payload, fmt.Sprintf("%d", t)), nil
+		}
+	}
 	if ix, isIdx := e.(*Index); isIdx {
 		if ll, isLit := ix.Obj.(*ListLit); isLit && !g.listLiteralFoldAnswers(ll, ix.Idx) {
 			payload, tag, okPair := g.listLiteralPair(b, ll, ix.Idx, ix.Span())
@@ -268,12 +277,60 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 			}
 			return g.pairTruth(b, payload, tag), nil
 		}
+		// A dict entry or runtime slot whose kind lives beside the payload asks the same question print, an
+		// f-string field, `str()`/`repr()` and a binding ask. Testing its payload is not a conservative guess:
+		// a text entry is an intern index, a float entry a heap handle, `None` is 0, and an empty container is a
+		// handle whose length has not been asked. The same `@rt_pair_truth` table decides the condition that
+		// `and`/`or` already use for its chosen operand (roadmap Gap R.284, ADR 0388).
+		if g.entryReadNeedsTheTag(ix) || g.isPairElem(ix) {
+			if payload, tag, okPair, xerr := g.subscriptPairOf(b, ix); xerr != nil {
+				return "", xerr
+			} else if okPair {
+				return g.pairTruth(b, payload, tag), nil
+			}
+			// The fold answers this read, so the print door's dispatch declined — and a condition may not
+			// test what the fold produced. Ask the literal for the pair the fold threw away.
+			if payload, tag, okPair, xerr := g.conditionPairOfRead(b, ix); xerr != nil {
+				return "", xerr
+			} else if okPair {
+				return g.pairTruth(b, payload, tag), nil
+			}
+		}
 	}
 	v, err := g.value(b, e)
 	if err != nil {
 		return "", err
 	}
 	return g.asI1(b, v), nil
+}
+
+// truthAsksTheLoopItem answers the condition road's other self-describing read: the loop variable of an
+// unrolled comprehension or `for`, whose kind ADR 0386 records once per item in `loopElemTag`. The name
+// holds THIS item, and this item's payload is a float box, a container handle or a verdict — words whose
+// meeting zero is not the reference's truth. ADR 0386 taught the print, the binding and the container doors
+// to read that record; the condition is the road it left out, which is why
+// `print([bool(x) for x in [0.0, [0]]])` wrote `[True, True]` at exit 0 where the reference writes `[False, True]`.
+//
+// Two kinds are deliberately absent. A container *variable* named by the loop (`for xs in lists`) keeps its
+// own road, which asks the object its own length. And a name the pair road bound (`taggedVars`) travels with
+// its own two registers, which the pair doors below read. A TEXT's item is answered here as well: its
+// payload is the interned index, and `rt_str_len` — the arm `rt_pair_truth` takes for tag 4 — reads that
+// index, which is the only honest way to ask an interned word whether it has any characters. Testing the
+// index against zero is what made `print([x for x in ["", [0]] if x])` print `[”, [0]]` once another text
+// was interned ahead of it.
+func (g *irGen) truthAsksTheLoopItem(nm *Name) (int32, bool) {
+	if g == nil || g.loopElemTag == nil || g.listVars[nm.Value] || g.taggedVars[nm.Value] {
+		return 0, false
+	}
+	t, has := g.loopElemTag[nm.Value]
+	if !has {
+		return 0, false
+	}
+	switch t {
+	case int32(TagFloat), int32(TagBool), int32(TagNone), int32(TagStr), int32(TagList), int32(TagDict), int32(TagSet):
+		return t, true
+	}
+	return 0, false
 }
 
 // constI1 renders a compile-time truth value as an LLVM i1 constant.

@@ -200,13 +200,11 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 			row:       "Gap R.285",
 		},
 		{
-			name:      "the_truth_of_an_entry_answers_the_payload",
-			src:       "d = {None: \"hi\"}\nif d[None]:\n    print(\"y\")\nelse:\n    print(\"n\")\n",
-			wantOut:   "n\n",
-			reference: "y",
-			row:       "Gap R.284",
-		},
-		{
+			// The truth of the entry used to sit here, pinned as the wrong arm it took: `d = {None: "hi"}` /
+			// `if d[None]:` branched the interned text's index against zero. It is paid — the condition's head
+			// asks the same (payload, tag) pair print asks and decides it in `@rt_pair_truth` (roadmap Gap R.284,
+			// ADR 0388). The arms, `bool()`, the ternary and the loop head are asserted at the CLI in
+			// `dict_entry_truth_test.go`.
 			name:      "a_name_holding_none_is_read_as_an_untagged_key",
 			src:       "d = {None: 3.5}\nk = None\nprint(d[k])\n",
 			wantErr:   "KeyError",

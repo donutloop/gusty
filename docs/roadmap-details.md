@@ -10917,7 +10917,9 @@ Two things this cycle measured and did **not** do, each of which is a row and no
 * **The five shapes the probe found beside the fix are pinned, not absorbed**: an f-string field of the entry
   (**R.283**), the truth of the entry (**R.284**), the operator roads that ask it (**R.285**), a name whose last
   binding was `None` (**R.286**) and `abs` of it (**R.287**). R.283 and R.284 answer the same wrong thing with
-  an **int** key, which is why they are rows and not clauses of this one.
+  an **int** key, which is why they are rows and not clauses of this one. Two of the five have since been paid
+  — the field by **ADR 0356**, the truth (with the unrolled item, **R.359**) by **ADR 0388** — and the set that
+  the truth table is never asked about is now its own row, **R.360**.
 
 The original measurement, kept as it was written:
 
@@ -13026,6 +13028,60 @@ condition over such a read should ask it, exactly as ADR 0331 made a literal ele
 Pinned with today's answer in the same filed table (`the_truth_of_the_entry`) and at the CLI; the empty-list
 row is pinned beside it, because a fix that makes the text case true by testing the handle nonzero would
 "fix" one row and leave the other wrong.
+
+**Paid by [ADR 0388](adr/0388-a-condition-asks-a-self-describing-read-its-own.md) on 2026-10-21.** The head of
+`if`/`elif`/`while`, the head of a ternary and the builtin `bool()` now ask the entry the same `(payload, tag)`
+pair the print road asks (`subscriptPairOf`) and decide it in `@rt_pair_truth`; where the print door's dispatch
+declines because the compile-time fold can spell the read, the truth road asks `conditionPairOfRead`, which
+walks the container back to the literal its name was bound to and takes the pair the fold threw away. That
+second call is the row's substance: `d = {"k": ""}` / `if d["k"]:` was true and `d = {7: ""}` / `if d[7]:` was
+false, for the same value, because the interned index of `""` depends on which text was interned first — a
+defect that could only be seen by changing an unrelated line. The provable-integer entry keeps its compare, and
+both directions are asserted as IR claims (`@rt_pair_truth` present, absent). The answers, the key-independence,
+the `and`/`or` operand choice and the record leg live in `pkg/lang/dict_entry_truth_test.go` and
+`integration/dict_entry_truth_test.go`.
+
+### Gap R.359 — the truth of an unrolled loop item is asked of the payload
+
+```gusty
+print([bool(x) for x in [0.0, [0]]])              # [False, False] in the reference; [True, True] here, exit 0
+print([1 if x else 0 for x in [0.0, "", None, [0], []]])   # [0, 0, 0, 1, 0] vs [1, 0, 0, 1, 1]
+print([x for x in ["", [0]] if x])                 # [[0]] here, and the extra '' depends on interning order
+```
+
+ADR 0386 widened the comprehension's iterable from integer items to items of every kind, and taught three
+roads — the printer, the binding, the container builders — to read the per-item record it keeps (`loopElemTag`).
+The condition was the fourth road, and it did not: `bool(x)`, the ternary element and the `if` clause of a
+comprehension tested the loop variable's *payload*, which for a float item is a `@float_box` handle and for an
+empty container a handle of zero length — both nonzero, both true at exit 0. This is the class this tracker
+calls the worst: ADR 0386 turned a refusal (`comprehension iterable must be constant integers`) into a wrong
+answer for these positions, so the row was measured on the same probe that found R.358's shape and paid on the
+same door.
+
+**Paid by [ADR 0388](adr/0388-a-condition-asks-a-self-describing-read-its-own.md) with R.284** — one predicate,
+`truthAsksTheLoopItem`, consulted by the condition's head and by `bool()`, sends `(payload, tag)` to the same
+`@rt_pair_truth` the entry read asks. The three kinds of evidence are the answers against CPython, the record
+leg for each source, and the IR claim that an all-integer item still emits no pair call
+(`pkg/lang/dict_entry_truth_test.go`, `TestTheTruthOfAnUnrolledLoopItemIsAskedOfItsOwnKind`).
+
+### Gap R.360 — a set is the one container the pair table is never asked about
+
+```gusty
+d = {None: set()}
+print(d[None])                            # set() in the reference; 3 here — the heap handle, exit 0
+print(bool(d[None]))                      # False in the reference; True here
+print([bool(x) for x in [set()]])         # [False] in the reference; [True] here
+```
+
+Every other entry and item kind reaches `@rt_pair_truth` since ADR 0388, and the table has a container arm that
+asks `rt_heap_len` for tags 5, 6 and 7 — list, dict **and set**. The set never gets there because nothing writes
+a set's tag: the dict-entry and comprehension builders mark a slot for a float, a text, a verdict and a
+container, and the set's own tag is the one they leave as `TagInt`, after which the table is not asked and a
+nonzero handle is true. `print` shows the same missing word as a number. The row is therefore a *tagging* row,
+not a condition row, and it is filed with the three answers pinned as wrong
+(`TestTheTruthOfASetEntryIsStillAskedOfTheHandle`) so the door that pays it must flip those pins rather than
+claim the ground was always clear. Beside it sits **Gap R.300** (a set the program builds prints its handle),
+which is the same missing tag on the statement road.
 
 ### Gap R.285 — a `None`/bool key is invisible to the static key door, so the operator roads disagree with the pair door
 
