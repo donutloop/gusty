@@ -15114,7 +15114,7 @@ with a missing record failing (`tools/recmerge` wrote 9 entries, the record to 8
 does not reach is filed as **Gap R.379** and pinned in `TestWhatTheRowLeavesStandingIsFiledNotFixed`, so closing the
 assignment, item-store and parser `%T` leaks is an edit to a table rather than a re-discovery.
 
-### Gap R.379 — the same leak at the other doors: an assignment target, an item store, and the front end reach a reader as a Go type name (OPEN)
+### Gap R.379 — the same leak at the other doors: an assignment target, an item store, and the front end reach a reader as a Go type name (closed by ADR 0400)
 
 ```console
 $ gustyc --jit item_assign.gy            # [1, 2][0] = 3
@@ -15137,6 +15137,115 @@ sources with the row that owns them, and fails when a leak stops appearing so th
 tracker rather than a re-discovery. The fix is one door wide — the assignment roads already have `exprSurface` to ask
 how the program wrote the target, and the parser’s and checker’s `(got %T)` are the same question at the front end —
 and each of the three needs its own sentence plus a pin that the leaked form is gone.
+
+**Closed 2026-10-22 by ADR 0400**, with the door the filing predicted and one deliberate omission. `nodeSurface(Expr)`
+joined `stmtSurface` in `refusal_surface.go` — ADR 0398's shape moved from statements to expressions — and each of the
+three sites kept its own advice around it. The item store now says ``the program writes into the list literal
+``[1, 2]`` — bind the container to a name and store through it there`` and cites **Gap R.214**, the read side of the
+same position; the attribute store says ``cannot store an attribute on the attribute `x` of a number … the reference
+raises AttributeError for this program``; the parser says ``augmented assignment (``+=``) needs a name or an attribute
+on the left, and the program puts the number `3` there``. The door is `exprSurface`'s sibling with the one difference
+that makes the row a guard instead of a edit: `exprSurface`'s fallback for a node the canonical formatter cannot write
+is `a %T`, which is right for the messages ADR 0386 built it for and would have put the Go type name straight back in
+the sentence, so `nodeSurface` says “an expression the compiler cannot name” — and that arm has a witness
+(`oddExpr`, a test-local node) for the same reason ADR 0398 gave `stmtSurface`'s default. Kind comes from the node too:
+an attribute is named by what it is attached to (``the attribute `x` of a number``, not the rendering `1.x` nobody
+typed), and a tuple is a `*ListLit` with ADR 0361's flag, so the flag decides “list” or “tuple” and the parentheses are
+re-rendered because the formatter prints the shared `[…]` shape.
+
+The omission is the row's most instructive part. `unsupported attr expression` — the attribute **read** door — is the
+same disease one door along and one line from fixed, and it was left exactly as it is: that string is quoted verbatim
+by four rows of `testdata/interpreter-golden-drift.json`, by `dead_binding_test.go` and by the CLI's exit-code table,
+and ADR 0398's rule is that a drift row whose wording changes under `TestMain` is a divergence that silently
+disappeared. Four at once, in a commit whose subject was three other sentences. It belongs to **Gap R.272**, whose
+definition of done already demands the better wording and which must therefore move those ledger rows in the same
+commit as the change; `TestWhatTheAttrReadDoorStillSpeaksTheLedgersSentence` pins today's string, fails the day it
+moves, and says the ledger duty in its failure text. The control leg turned up a second thing on the way: an augmented
+store through an attribute of a value handed in as a parameter (`def bump(c): c.v += 3`) is the reference's `3` and
+this backend's `unsupported attr expression`. It sits on no record — `tools/recmerge` will not file an entry the
+compiled leg will not agree to — and had no pin anywhere, so it has one now, with the reference's answer beside it.
+
+Measured with a build of `d587d9b` beside a build of this commit, over the shapes the tests themselves declare (the
+probe list is extracted from the Go tables, so a measurement cannot drift from what is asserted): 23 programs — the 16
+door refusals, the 5 working target forms, the 2 declines left standing. **16 carried a Go type name on the parent
+(`*lang.ListLit`, `*lang.DictLit`, `*lang.SetLit`, `*lang.StrLit`, `*ir.InstCall`, `*ir.InstIndex`, `*lang.Attr`) and 0
+do so here; 0 named a roadmap row on the parent and all 16 do here; the 5 controls printed the reference's bytes before
+and after; exit 2 nowhere; and 0 programs where the compiled leg prints what CPython does not.** The three pins this
+section names fired exactly as written (“move this row to DONE and delete the pin”) and moved out of the filed table
+into the answered one.
+
+Writing the family, not reading the roadmap, is what found the rest. The table was written to cover every node kind a
+program can put on the left of `=` and `op=`, and asking CPython each of those programs split the 16 refusals in two:
+eleven where the reference agrees that the program fails (a `TypeError` for `{1, 2}[0] = 9`, an `AttributeError` for
+`xs.pop = 3`, a `SyntaxError` for `3 += x`) — those are refusals that needed a better sentence, which is what this row
+shipped — and five where the reference answers (`xs[0] += 5` → `6`; `f()[0] = 3`, `[1, 2][0] = 3`, `d["x"][0] = 1`,
+`c.a[0] = 3` → `1`, `1`, `1`, `[3]`). Those five are not a wording defect, and rewording a refusal the reference does
+not share is a cycle that buys nothing: they are two new rows, **Gap R.380** and **Gap R.381**, each pinned in both
+legs against the live reference so that closing them is a failing build rather than a re-discovery. One table cell also
+caught a drift the row had no business leaving in: the flagged-`*ListLit` path said ``the tuple `(1, 2)``` while the
+`*Tuple` path said ``the tuple literal `(1, 2)` `` — one door, two wordings for one idea, which is the exact thing the
+row exists to prevent, and both node kinds are pinned now.
+
+`tools/recmerge` wrote **5** entries for this commit — one per control, each recorded from CPython with the compiled leg
+cross-checked — taking the record to its own **8568**, and it filed **none** of the sixteen refusals:
+`TestTheTargetFormsTheReferenceAnswersAreOnTheRecord` asserts their absence, because ADR 0302's recorder will not enter a
+shape the compiled leg will not answer. A wording cycle moves no verdicts and still owes the record an entry for every
+control it newly asks; what it must never do is buy an entry for a refusal.
+
+### Gap R.380 — an augmented assignment to a subscript is refused by a front-end rule in front of an existing lowering
+
+```console
+$ gustyc --jit aug_sub.gy                 # xs = [1] ⏎ xs[0] += 5 ⏎ print(xs[0])
+gustyc: parse error at 2:7: parser: augmented assignment (`+=`) needs a name or an attribute on the left, and the
+program puts the subscript `xs[0]` there (roadmap L11.1, Gap R.380)
+$ python3 aug_sub.py
+6
+```
+
+The refusal is a parser rule about a lowering that exists. `pkg/lang/parser.go`’s `op=` arm admits a `*Name` and an
+`*Attr` and refuses everything else, while `pkg/lang/codegen_assign.go` has had the arm for an `*ir.InstIndex` target
+since **Gap R.98** repaired the numeric door that used to emit a double into an `i32` slot — its own comment is “an
+augmented store through a subscript needs the same container three questions”. So the shape dies at the stage that
+never had to know whether the next stage could do it: ADR 0232’s one-question-one-asking-place, in the shape of a
+question answered by a stage that is not the one holding the door. The neighbour refusals are NOT this row: `3 += x`,
+`f() += 1` and `[1] += x` are `SyntaxError`s in the reference (`’literal’ is an illegal expression for augmented
+assignment`), and a refusal the reference agrees with needed only the sentence this row already shipped.
+
+Definition of done: `print(xs[0])` prints `6`, `tools/recmerge` files it from the reference, the three
+reference-agreeing refusals keep their sentence byte for byte, and the pin
+`TestWhatTheTargetDoorsLeaveStandingIsFiledNotFixed/an_augmented_assignment_to_a_subscript` — plus its `integration`
+twin, which asks CPython inside the case and fails if the reference ever starts agreeing — moves from the debt table to
+the answered one. Widening the parser without writing the lowering is the failure mode to refuse: the pin fails on a
+program that starts *answering*, which is why the same table fails if CPython ever starts refusing.
+
+### Gap R.381 — an item store whose container is not a variable is refused where the reference mutates a temporary
+
+```console
+$ gustyc --jit item_store.gy              # def f(): return [1, 2] ⏎ f()[0] = 3 ⏎ print(1)
+gustyc: jit: codegen: item assignment needs a container variable on the left (`d[k] = v`), and the program writes into
+the call `f(…)` — bind the container to a name and store through it there (CPython accepts more forms; roadmap L11.1,
+Gap R.381)
+$ python3 item_store.py
+1
+```
+
+Four programs, one rule in `assignIndex`: the container must be a `*Name`. The reference performs all four writes —
+into the temporary a call handed back, into a list literal, through a subscript one container deep, and through an
+instance attribute — and in the first three nothing can read the mutated temporary back, which is why the answer is `1`
+and not an error. **Gap R.214** / ADR 0334 solved the mirror-image problem on the read side by materialising the
+container a call hands back (`containerAnswerOperand`, over the rooted name ADR 0333 allocated for it) and copying the
+node with its base set to that name; the write side never got the same treatment, and the door has been admitting it
+ever since — its own sentence ends “CPython accepts more forms”, which is a door saying it is narrower than the
+language. The shapes where CPython itself raises — `{1, 2}[0] = 9`, `(1, 2)[0] = 9`, `"abc"[0] = 9`, all
+`TypeError: … does not support item assignment` — are NOT this row: there the refusal is the reference’s verdict with
+better manners added.
+
+Definition of done: the four programs print the reference’s bytes, all four are on the record written from the
+reference by `tools/recmerge`, the three reference-agreeing refusals keep their sentence, the four debt pins move to the
+answered tables, and `TestTheTargetFormsTheReferenceAnswersAreOnTheRecord` still fails any refused shape that creeps
+onto the record. A store whose base is an instance attribute also needs **Gap R.272**’s instance-tagged base, so this
+row may land partially — `c.a[0] = 3` still refusing while the other three answer is a legitimate intermediate state,
+and the pin’s failure text says so rather than demanding all four at once.
 
 ### Gap R.378 — a hook lambda that CALLS a function the module declares stays the key door’s refusal (closed by ADR 0399)
 

@@ -2248,6 +2248,43 @@ falls back to dynamic dispatch.
   second road that never asks this question (**R.376**). The `sorted(..., key=…)` answer that prints `0` once
   a function RETURNS it is neither — measured identical on the parent, and **R.328**'s.
 
+- **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
+  0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched
+  because none of them goes through `noteUnlowered`: `[1, 2][0] = 3` printed `… got *lang.ListLit; CPython accepts
+  more forms`, `(1).x = 2` printed `unsupported assignment target *lang.Attr`, and `3 += x` printed the parser's
+  `(got *lang.IntLit)`. All three were already the right verdict at the right exit code — the reference agrees these
+  programs fail, with a `SyntaxError` and an `AttributeError` for two of them — so the wording was the entire defect,
+  and a reader has no AST to look a node type up in (`--json` shows the same string to a machine). One door now writes
+  all three, `nodeSurface`, beside `stmtSurface`: it names the node's KIND in the language's words and its TEXT as
+  written — ``the program writes into the list literal `[1, 2]``, ``the attribute `x` of a number``, ``the number
+  `3```. It shares `exprSurface`'s rendering and refuses its fallback: `exprSurface` answers an unformattable node
+  with `a %T`, which is right for the messages ADR 0386 built it for and would have smuggled the type name back, so
+  this door says ``an expression the compiler cannot name`` and the arm gets a witness (`oddExpr`). Kind comes from
+  the node, so an attribute is named by what it is attached to rather than by the rendering `1.x` nobody typed, and a
+  tuple — a `*ListLit` with ADR 0361's flag, decided by the flag, with the parentheses re-rendered because the
+  formatter prints the shared `[…]` shape. The row's most instructive decision is what it did NOT touch:
+  `unsupported attr expression`, one door along and one line away, is quoted verbatim by four rows of the drift
+  ledger plus two tests, and ADR 0398's rule is that a drift row whose wording moves is a divergence silently
+  disappearing — four at once, in a commit about three other sentences. It stays, under **Gap R.272**, whose
+  definition of done already asks for the better wording and which must move those ledger rows with it; a test pins
+  today's string and says so in its failure text. Measured with a build of the parent beside this one, over the shapes the tests themselves declare (the probe list is
+  extracted from the Go tables, so a count cannot drift from what is asserted): 23 programs — **16 door refusals, 16
+  carrying a Go type name on the parent and 0 doing so here, 0 naming a roadmap row before and all 16 doing so now, all
+  16 at exit 1 on both builds, the 5 working target forms printing the reference's bytes on both, exit 2 nowhere, and 0
+  programs where the compiled leg prints what CPython does not.** The family's own table also caught the door disagreeing
+  with itself — one tuple path said ``the tuple `(1, 2)``, the other ``the tuple literal `(1, 2)` `` — which is the drift
+  a shared door exists to turn into a test failure. And the family found something the roadmap had never recorded: of the
+  16 refusals, 11 are ones CPython agrees the program fails, and **5 are programs the reference answers** — `xs[0] += 5`
+  → `6`, and four item stores through a container that is not a variable (`f()[0] = 3`, `[1, 2][0] = 3`, `d["x"][0] = 1`,
+  `c.a[0] = 3`) → `1`, `1`, `1`, `[3]`. Those are not wording bugs, so the row stopped at the sentence and filed them:
+  **Gap R.380** (the parser's `op=` rule refuses a subscript target in front of a lowering `genItemStoreFromExpr` has had
+  since Gap R.98) and **Gap R.381** (`assignIndex`'s `*Name` rule, the mirror image of what ADR 0334 closed for reads) —
+  both cited from inside the new sentences, both pinned against live CPython in both legs so that closing one is a
+  failing build and not a re-discovery. `tools/recmerge` wrote **5** entries — one per control, each
+  recorded from CPython — taking the record to its own 8568, and filed none of the 16 refusals, which the tests assert are
+  **absent**: ADR 0302's recorder will not enter a shape the compiled leg will not answer. One more divergence surfaced on the control leg and had no pin anywhere (`def bump(c): c.v += 3`
+  is the reference's `3`, ours is the attr door); it is pinned now, beside the ledger case.
+
 - **A hook that CALLS a function the module declares gets that call by SYMBOL (Gap R.378, ADR 0399)** — three
   roads hoist a `lambda` in this compiler, and only the hook road had grown a second opinion: after the shared
   capture door (`callableLambdaCaptures`, ADR 0370) had answered what a body reads out of its frame,
@@ -2341,8 +2378,9 @@ falls back to dynamic dispatch.
   edited, so those tests fail if the wrapper returns; `--json` carries the same sentence and the same class
   (`ok:false`/`exit:1`/`phase:"codegen"`, plus a `capability` code whenever the registry knows it), which is the
   point — one fix, both readers. What the same survey found at the *other* doors — `… got *lang.ListLit`,
-  `unsupported assignment target *lang.Attr`, the parser's `(got *lang.IntLit)` — is **Gap R.379**, still open, with
-  all three pinned in a table that fails when somebody closes them.
+  `unsupported assignment target *lang.Attr`, the parser's `(got *lang.IntLit)` — is **Gap R.379**, closed two cycles
+  later by **ADR 0400** (the next-but-one entry), with all three pinned until then in a table that failed when
+  somebody closed them.
 
 - **The word a clone forwards to its entry is MINTED, not spelled (Gap R.375, ADR 0397)** — ADR 0395 landed the
   entry-side capture road and left one shape refused out loud: `def apply1(fn, v):` / `base = 9` / `return fn(v)`,

@@ -1055,9 +1055,12 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, slot, v))
 			return nil
 		}
-		return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+		return fmt.Errorf("codegen: cannot store an attribute on %s — this backend writes an attribute only on an instance the compiler typed, and the reference raises AttributeError for this program (roadmap L11.1, Gap R.272)", nodeSurface(n.Target))
 	} else {
-		return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+		// The defensive arm: the front end admits a name, an attribute, a subscript and a tuple, and the codegen
+		// lowers exactly those four, so nothing reaches this sentence today — which is why it cites the ROAD rather
+		// than a gap (ADR 0166: name the missing half, and do not invent a row for a door nothing walks through).
+		return fmt.Errorf("codegen: cannot assign to %s — an assignment target is a name, an attribute of an instance, a subscript or a tuple (roadmap L11.1)", nodeSurface(n.Target))
 	}
 	return nil
 }

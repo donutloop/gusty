@@ -1209,7 +1209,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 8563 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 8568 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (319 rows — four went paid with **ADR 0384** on 2026-10-20: the verdict set/dict comprehension, the text-key dict comprehension, `{v: v / 2 for v in xs}`, and `c = 0` / `print(["y" if c else "n"])`, each of which the tagged comprehension or element door now answers as the record and CPython do; two went paid with **ADR 0382** on 2026-10-20: `print(1 < "a")` and `print("a" < 1)`, each of which the ordering door now raises the record's own `TypeError: '<' not supported between instances of …` for, so the row went paid rather than edited; seven went paid with **ADR 0365** on 2026-07-29: `print([0] * 3)`, `print(3 * [0])`, `print([1, 2] + [3])`, `print("ab" * 2)`, `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now answers or raises the reference's own `TypeError` for, and the same cycle owed rows back for the ORDER of two containers no name holds (`if [1, 2] < [2]: print("yes")` and its two siblings), which the door refuses in words rather than corrupting into `icmp slt i32 @.lst1, @.lst2` — **Gap R.314**). Before that, the one that left with **ADR 0360** on 2026-10-16 is the printf row `print("a" % 2)`, which the formatting door now raises the record's own `TypeError: not all arguments converted during string formatting` for, so the row went paid rather than edited; three went paid with **ADR 0359** on 2026-10-17 (`f"hello"`, `f"plain"`, `f"a{1}b"` standing where a VALUE goes, each refused with “f-string requires a constant expression (AOT backend)” since the backend had one) and one arrived with it (**Gap R.308**, a format spec over a value the compiler cannot read), which is how paying a row is supposed to look: the paid rows un-skipped `TestEvalFString`, and the rest of that test got asked for the first time; four went paid with **ADR 0356/0357** on 2026-10-16: the comprehension over a list the escape analysis had been deleting, the two `s[0] = …` store-to-immutable traps whose class and sentence the compiled backend now raises, and `show(1 == 1)` / `show(True)` whose print of a parameter the pair road now renders the record's way; seven more changed *shape*, from "cannot build a program the engine ran" to a named divergence, which is the ratchet doing its job rather than rows disappearing) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (19 rows — one went paid with **ADR 0382**: `print("a" < 1)`, which the ordering door now raises the reference's own `TypeError` for; three went paid with **ADR 0365**: `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now raises the reference's own `TypeError` for or builds outright; before that `print("a" % 2)` went paid with **ADR 0360** beside its twin above; two are Gap L.5's, where the record holds the interleaved line and CPython agrees with the compiled leg: there the record is the debt, ADR 0302) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (9 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -2198,6 +2198,45 @@ threshold is a constant, so a given program collects the same number of times ev
 run (parity stays assertable). Known conservative boundary: garbage created inside a
 call that is *nested in an expression* is not reclaimed until the enclosing statement
 completes — see ADR 0181 for why, and roadmap Phase 11 for what removes it.
+
+### What a refusal about an assignment target says (L11.1, ADR 0400)
+
+Three doors refuse a write, and all three answer the same question with the same helper — `nodeSurface(Expr)`, the
+expression sibling of `stmtSurface` (ADR 0398) — so a reader sees the node the program wrote, in the program's words,
+plus the advice that belongs to that door. All three are the `unsupported` class at **exit 1** (ADR 0212), all three
+arrive in the `--json` document's `error` field verbatim, and none of them is in the capability registry today; the row's
+table pins that absence so a code cannot appear without the table being read.
+
+| The door | A program that reaches it | What it says | Owning row |
+|---|---|---|---|
+| the item store (`assignIndex`) | `[1, 2][0] = 3`, `{"a": 1}["a"] = 2`, `def f(): return [1]` / `f()[0] = 3`, `d["x"][0] = 1`, `c.a[0] = 3` | ``item assignment needs a container variable on the left (`d[k] = v`), and the program writes into the list literal `[1, 2]` — bind the container to a name and store through it there (CPython accepts more forms; roadmap L11.1, Gap R.381)`` | **Gap R.381** (the reference performs these writes), Gap R.214 (the read side, closed by ADR 0334) |
+| the attribute store (`genAssignExpr`) | `(1).x = 2`, `"ab".x = 2`, `[1].x = 2`, `xs.pop = 3`, `f().pop = 9` | ``cannot store an attribute on the attribute `x` of a number — this backend writes an attribute only on an instance the compiler typed, and the reference raises AttributeError for this program (roadmap L11.1, Gap R.272)`` | **Gap R.272** (the attribute road) |
+| the parser's `op=` rule | `3 += x`, `f() += 1`, `[1] += x`, `xs[0] += 5` | ``parser: augmented assignment (`+=`) needs a name or an attribute on the left, and the program puts the subscript `xs[0]` there (roadmap L11.1, Gap R.380)`` — `phase: "parse"`, where the other two are `codegen` | **Gap R.380** (a subscript target, which the codegen already lowers) |
+
+`nodeSurface` names a node twice over — its KIND in the language's words and its TEXT as written — and the arms are
+`the name `xs``, `the number `3`` (a float keeps the spelling the author used), `the text `"ab"`` , `None`, `a bool`,
+`the list literal `[1, 2]`, `the tuple literal `(1, 2)``, `the dict literal `{"a": 1}`, `the set literal `{1, 2}`,
+`the call `f(…)` (never the symbol the emitter will write), `the attribute `x` of a number` (the attribute's name and
+the kind of its base, because `1.x` is a rendering no program contains), `the subscript `xs[0]``, `nothing` for a nil
+node, and — the arm that makes the row a guard rather than a rewording — `an expression the compiler cannot name` for a
+node the canonical formatter cannot write. That last arm exists because the door may not inherit `exprSurface`'s
+fallback, which is `a %T`: correct for the messages ADR 0386 built it for, and exactly the leak this row closes.
+
+**What the sentences are, and are not, evidence of.** Eleven of the sixteen refused shapes are ones CPython refuses too
+(a `TypeError` for `{1, 2}[0] = 9`, an `AttributeError` for `xs.pop = 3`, a `SyntaxError` for `3 += x`) — there the
+refusal is the reference's verdict with better manners added. Five are programs CPython *answers*: `xs[0] += 5` → `6`,
+and four item stores through a container that is not a variable → `1`, `1`, `1`, `[3]`. Those five are divergences, not
+wording defects, and they are tracked as **Gap R.380** and **Gap R.381** — cited from inside the sentences above and
+pinned in `pkg/lang/target_surface_test.go` and `integration/target_surface_test.go` against live CPython, where a pin
+fails both if a program starts answering (the row is closed) and if the reference starts refusing (the premise died). A
+refused shape is never on the record (ADR 0302's recorder will not file one), so the 16 refusals are asserted *absent*
+from `testdata/interpreter-golden.json` and the 5 answered target forms are asserted present.
+
+The attribute **read** door — `unsupported attr expression` — still speaks its old four words. It is the same disease one
+door along and is left alone deliberately: four rows of `pkg/lang/testdata/interpreter-golden-drift.json`, `dead_binding_test.go`
+and `cmd/gustyc/ir_invariant_test.go` quote that string verbatim, so rewording it is four recorded divergences
+disappearing at once. It belongs to **Gap R.272**, which must move those ledger rows in the same commit as the sentence;
+`TestWhatTheAttrReadDoorStillSpeaksTheLedgersSentence` pins today's wording and says the ledger duty in its failure text.
 
 ### Collector self-report (`--gc-stats`)
 

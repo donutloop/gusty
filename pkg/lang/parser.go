@@ -1143,7 +1143,13 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 	if op := p.peek(); op.Kind == TokOp && isAugOp(op.Text) {
 		if _, ok := ex.(*Name); !ok {
 			if _, ok := ex.(*Attr); !ok {
-				return nil, fmt.Errorf("parser: augmented assignment requires a name or attribute target (got %T)", ex)
+				// The same rule ADR 0398 learned at the statement door: the sentence is for the person who
+				// wrote the program, so it quotes what they wrote and never the node the parser built
+				// (roadmap L11.8 · **Gap R.379**). It also names the row that owns the half still missing: the
+				// reference refuses this shape too for a NUMBER or a CALL on the left (SyntaxError), but
+				// `xs[0] += 1` is its `6` and this door's refusal — **Gap R.380**, filed with this sentence.
+				return nil, fmt.Errorf("parser: augmented assignment (`%s=`) needs a name or an attribute on the left, and the program puts %s there (roadmap L11.1, Gap R.380)",
+					strings.TrimSuffix(op.Text, "="), nodeSurface(ex))
 			}
 		}
 		p.next()

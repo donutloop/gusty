@@ -1,5 +1,29 @@
 {
  "entries": {
+"a, b = [1, 2]\nprint(a, b)\n": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __init__(self):\n        self.v = 0\n\nc = C()\nc.v = 7\nprint(c.v)\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"x = 1\nx += 2\nprint(x)\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"x = 1\nx = 2\nprint(x)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 9\nprint(xs)\n": {
+    "stdout": "[9, 2]\n",
+    "hasStdout": true
+   },
 "def helper(v):\n    return 0 - v\n\ndef use(fn):\n    return fn(1)\n\nprint(use(lambda v: helper(v)))\n": {
     "stdout": "-1\n",
     "hasStdout": true

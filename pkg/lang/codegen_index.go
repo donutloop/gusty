@@ -12,7 +12,12 @@ import (
 func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	nm, ok := ix.Obj.(*Name)
 	if !ok {
-		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
+		// The program's own words, not the parser's: `*lang.ListLit` is what the AST node is called and a
+		// reader has no such table (ADR 0166, ADR 0249). What the reader needs is the thing they wrote, the
+		// shape the door CAN lower, and the row that owns the rest (roadmap L11.1 · **Gap R.379**; the store
+		// through an expression is what **Gap R.381** files: the reference mutates the temporary, this
+		// backend refuses the write, and the read side of the same position closed as **Gap R.214** / ADR 0334).
+		return fmt.Errorf("codegen: item assignment needs a container variable on the left (`d[k] = v`), and the program writes into %s — bind the container to a name and store through it there (CPython accepts more forms; roadmap L11.1, Gap R.381)", nodeSurface(ix.Obj))
 	}
 	// `t[0] = 1` on the immutable spelling: the reference raises TypeError — 'tuple' object does not
 	// support item assignment — and the shared container layout could carry the write, so the door

@@ -14048,3 +14048,70 @@ printed by the tool for a source printed beside it.
   `cmd/gustyc/main_test.go`). Three probe rounds were spent on a flag that was silently consuming the filename and
   printing an empty `main`. When an interface behaves implausibly, read the CLI's own test for the calling convention
   before guessing twice.
+
+## ADR 0400 — the doors that refuse an assignment target name the node the program wrote (Gap R.379, 2026-10-23)
+
+- **A guard written to fail when a defect is fixed is a better tracker than an issue.** The three `%T` leaks this row
+  closed were pinned by `TestWhatTheRowLeavesStandingIsFiledNotFixed`, which asserts the leaked text is PRESENT and
+  fails when it is absent. When I made the fix the test failed exactly as designed — “Gap R.379 has been closed — the
+  leaked `*lang.ListLit` no longer appears, so move this row to DONE and delete the pin” — and the failure text told me
+  which two tables to edit. A TODO would have rotted; a pin that fails on improvement cannot.
+- **Before rewording anything, grep the artifacts for the string.** The same door family included
+  `unsupported attr expression`, one line from being fixable. `grep` found it quoted verbatim by four rows of
+  `pkg/lang/testdata/interpreter-golden-drift.json`, by `dead_binding_test.go` and by the CLI's exit-code table — so
+  rewording it would have made four recorded divergences silently disappear, which is the failure class ADR 0398 says
+  this suite fears most. The row stopped at the three sites whose sentences nothing quotes, left the fourth to
+  **Gap R.272** (whose definition of done already asks for it), and pinned the current wording with a test that
+  explains the ledger duty in its own failure text. “Check the artifacts” is a five-second habit with a four-row
+  payoff.
+- **A shared door is only shared if its fallback is safe.** `exprSurface` was the obvious thing to reuse, and its
+  fallback is `fmt.Sprintf("a %T", e)` — perfect for the messages ADR 0386 built it for, and a direct route back to the
+  Go type name for a refusal whose entire claim is that it names the program. `nodeSurface` shares the rendering and
+  owns the fallback (“an expression the compiler cannot name”), with a test-local `oddExpr` giving the fallback arm a
+  witness. Reusing a helper is not reusing its failure mode.
+- **Kind before rendering.** Naming an attribute target by its formatter text produced ``the attribute `1.x``` — a
+  string that appears in no source file — because `(1).x` renders through the shared expression printer. The fix was to
+  name the attribute and then say what it hangs off: ``the attribute `x` of a number``. A diagnostic should contain
+  pieces the reader can point at, and “the number `3`” beats `*lang.IntLit` for the same reason “a number” beats `int`
+  in a Python traceback.
+- **One container representation, two spellings, one diagnostic consequence.** A tuple literal is a `*ListLit` with a
+  flag (ADR 0361). A door that prints “the list literal” for `(1, 2)` has just contradicted the language's own
+  semantics in the sentence that tells someone what to fix — so the flag decides the noun, and the parentheses are
+  re-rendered because the canonical formatter prints the shared `[…]` shape. Every door that *reads* a container asks
+  the flag; this row is the reminder that every door that *names* one has to as well.
+- **The control leg finds bugs; that is what it is for.** Six “unchanged behaviour” controls were written to prove the
+  row moved no verdict, and one of them (`def bump(c): c.v += 3`) turned out to be the reference's `3` and our
+  `unsupported attr expression` — a divergence that was on no record (the recorder refuses an entry the compiled leg
+  won't agree to) and pinned nowhere. It is pinned now, with the reference's answer in the table. When a control
+  disagrees, the control is the finding.
+- **Ask CPython what it does with your own refusal table — the column is a gap-finder.** The 16 shapes were written to
+  cover node kinds, and I expected the reference column to be decoration. It split the family in two: 11 refusals CPython
+  agrees with, and 5 programs it answers (`xs[0] += 5` → `6`, and four item stores through a container that is not a
+  variable → `1`/`[3]`). Rewording a refusal the reference does not share buys nothing at all, so the row stopped at the
+  sentence and filed **Gap R.380** and **Gap R.381** instead — both cited from inside the new sentences and pinned against
+  live CPython in both legs. The roadmap gained two rows from a wording cycle, and neither of them was invented.
+- **Extract the probe list from the tests, don't retype it.** My first probe family “measured” zero leaks, because the
+  shapes I had typed from memory never reached the doors — `print(1)(2)` is not an assignment, `[1, 2][0] = 9` reaches the
+  item store only because the parser admits an `Index` target, and a `:=` spelling CPython rejects can never be on the
+  record. The final harness parses the Go tables for `src`/`said`/`cites` and drives those, so the measured population is
+  the asserted population. Print the parent build's message for at least one probe before believing any before-count —
+  `16 leaks, 0 after` is only worth anything if the 16 were leaking.
+- **A wording cycle moves no verdicts and still owes the record its controls.** I wrote “`tools/recmerge` wrote 0
+  entries” into the ADR, the README and the roadmap row, and `git status` then said the golden file was modified: the five
+  controls had never been asked in those exact spellings, so recmerge had added all five (8563 → 8568). The claim that
+  survives is the narrower one — no *refusal* is on the record, and `TestTheTargetFormsTheReferenceAnswersAreOnTheRecord`
+  asserts the sixteen refusals are absent — and the general rule is that an artifact claim gets written after the
+  artifact is diffed, never after the run is remembered.
+- **A blank line inside a markdown table is a data-loss bug.** Inserting two rows above `## Phase tables` put them below
+  the blank line that preceded the heading, and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` failed with “2 owed rows
+  sit below it and render as a table with no header … which is how four filed rows stayed out of the tally once”. The
+  snapshot cell then reported a queue it had not counted. The guard is worth its keep precisely because markdown tables
+  fail silently for humans.
+- **Check `git status` before minting an ADR number.** I wrote a second `0400-*.md` beside the one I had written earlier
+  in the same session, and only `ls docs/adr | tail` showed two files claiming 0400. Sequential ADRs are a numbering
+  contract with the reader; the check is one command, and merging the two drafts turned up a stale measurement table in
+  the first one that would have shipped a false count.
+- **`go build` after every edit that touches a formatting string.** Two self-inflicted wounds this cycle: a `python3`
+  in-place rewrite of a Go literal left an unterminated string (`want: "the tuple `(1, 2)`,"`), and a copy/paste of a
+  struct literal's field name (`Elements` for `Elems`) turned into a compile error. Both were seconds to catch and both
+  were silent until the compiler read them — which is the argument for building between edits rather than at the end.

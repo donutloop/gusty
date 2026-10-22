@@ -641,7 +641,14 @@ x = x + 1
 ```
 
 The target may be a `Name`; the value is any expression. Assignments define or
-rebind a variable in the current scope.
+rebind a variable in the current scope. A subscript target (`xs[0] = 9`, `d["k"] = v`) and an attribute target
+(`c.v = 7`) are supported too, and a tuple target unpacks (`a, b = [1, 2]`). What a **store** needs is a container it
+holds in a variable: `f()[0] = 3`, `[1, 2][0] = 3`, `d["x"][0] = 1` and `c.a[0] = 3` are refused with
+``item assignment needs a container variable on the left (`d[k] = v`), and the program writes into the call `f(…)``` —
+CPython performs those writes into a temporary, so the narrowing is **Gap R.381** (the read side of the same position
+answered years ago, ADR 0334). An attribute store needs an instance the compiler typed: `(1).x = 2`, `"ab".x = 2`,
+`xs.pop = 3` are refused, and the reference raises `AttributeError` for those programs too (**Gap R.272** owns the
+attribute road's remaining half).
 
 ### Augmented assignment
 
@@ -651,9 +658,12 @@ and writes the result back:
 - `x += e`  (add), `x -= e`  (subtract), `x *= e`  (multiply),
   `x /= e`  (integer divide), `x //= e` (integer divide), `x %= e` (modulus).
 
-The target must be a Name or an attribute (`self.x += 1`). Augmented assignment
-is supported in both the tree-walking interpreter and the AOT code generator (int
-and float Name targets, int Attr targets).
+The target must be a Name or an attribute (`self.x += 1`). Anything else is refused where it is parsed, in the
+program's own words — ``augmented assignment (``+=``) needs a name or an attribute on the left, and the program puts the
+subscript `xs[0]` there`` — and the code generator already lowers an `*ir.InstIndex` target, so that one sentence is
+narrower than the compiler behind it: **Gap R.380** owns widening the rule (a number, a call or a list literal on the
+left stays a refusal, because CPython rejects those with a `SyntaxError` too). Augmented assignment is answered by the
+compiled backend (int and float Name targets, int Attr targets).
 
 **`/` is true division (PEP 238), `//` is floor division.** `7 / 2` is `3.5` and
 `84 / 2` is `42.0` — a float, even when both operands are integers. `7 // 2` is

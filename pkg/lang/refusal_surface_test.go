@@ -366,6 +366,12 @@ func TestTheStatementRefusalFamilyIsOnTheRecord(t *testing.T) {
 // TestWhatTheRowLeavesStandingIsFiledNotFixed pins the sibling leaks this row does NOT close, with the row
 // that owns each. They are the same disease at a different door — a Go type name in a sentence a human
 // reads — and the list is here so that closing them is an edit to a table rather than a re-discovery.
+//
+// Three rows used to sit here — the item store's `got *lang.ListLit`, the assignment target's
+// `unsupported assignment target *lang.Attr` and the parser's `(got *lang.IntLit)`. **Gap R.379** closed them
+// with **ADR 0400**, and they now live in `pkg/lang/target_surface_test.go` as answered rows: the guard fired
+// exactly as written ("move this row to DONE and delete the pin"), which is the whole point of pinning a leak
+// rather than listing it.
 func TestWhatTheRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -375,24 +381,13 @@ func TestWhatTheRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 		row  string
 	}{
 		{
-			"an item assignment whose target is a literal",
-			"[1, 2][0] = 3\nprint(1)\n",
-			"*lang.ListLit",
-			"Gap R.379",
-		},
-		{
-			"an attribute assignment to a number",
-			"(1).x = 2\nprint(1)\n",
-			"*lang.Attr",
-			"Gap R.379",
-		},
-		{
-			// The front end's half: the parser's and the checker's `%T`, which reach a reader as a
-			// `parse error` / checker diagnostic rather than a codegen refusal.
-			"an augmented assignment to a literal",
-			"x = 1\n3 += x\nprint(x)\n",
-			"*lang.IntLit",
-			"Gap R.379",
+			// The attr road's own fallback, `unsupported attr expression`, names NEITHER the base nor the
+			// attribute. It is not reworded here because four rows of the drift ledger quote it verbatim —
+			// see TestWhatTheAttrReadDoorStillSpeaksTheLedgersSentence, and Gap R.272's definition of done.
+			"an attribute read off a container element",
+			"class Node:\n    def __init__(self, v):\n        self.v = v\n\nobjs = []\nobjs.append(Node(1))\nprint(objs[0].v)\n",
+			"unsupported attr expression",
+			"Gap R.272",
 		},
 	} {
 		tc := tc
