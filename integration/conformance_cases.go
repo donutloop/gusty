@@ -850,6 +850,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// empty list, an empty text and `None` take the false arm a payload-against-zero could not
 		// (roadmap Gap R.361, ADR 0393). Every line is what CPython prints for the same file.
 		"pair_param_truth",
+		// An ENTRY lambda — the callable the CALLEE calls, not the one the application applies — reads a
+		// local, a parameter, a `for` target and a module name of the frame its application is written in,
+		// and each word arrives beside the entry symbol as a parameter the minted clone forwards to the
+		// entry positionally. Every line is what CPython prints for the same file (roadmap Gap R.336,
+		// ADR 0395).
+		"entry_lambda_capture",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

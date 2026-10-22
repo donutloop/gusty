@@ -178,6 +178,29 @@ var lambdaAppliedCLIPrograms = []struct{ name, src string }{
 		"a capture read by a body that calls its parameter, applied in a comprehension",
 		"print([(lambda h: h(x) * 2)(lambda y: y + 1) for x in [1, 2, 3]])\n",
 	},
+	{
+		// The ENTRY side of the capture road: the lambda the CALLEE calls reads a name of the frame the
+		// application is written in. An entry is still a bare symbol, so the word is minted as a parameter of
+		// the CLONE that dispatches on it, filled at the application from the host frame's own reading, and
+		// handed to the body's call of the entry positionally (roadmap L11.7 · Gap R.336, ADR 0395). These
+		// three are the shapes the row was filed with, at the terminal, on both compiled legs.
+		"an entry lambda that reads the frame its application is written in",
+		"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+	},
+	{
+		"an entry lambda that reads its frame, called twice by a higher-order def",
+		"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+	},
+	{
+		// The body reads the frame's local `shift` (ADR 0372's union) and the entry reads the frame's loop
+		// target `step` (this row's) — one body, both lists.
+		"an entry lambda that reads the loop target of the frame around its application",
+		"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+	},
+	{
+		"two entries of one callee, each reading its own name of the frame, and a closed entry beside them",
+		"def apply1(fn, v):\n    return fn(v)\n\ndef both(f, g, v):\n    return f(v) + g(v)\n\ndef use(seed):\n    base = 2\n    off = 10\n    return both(lambda x: x + base, lambda x: x * off, seed) + apply1(lambda x: x + 1, seed)\n\nprint(use(3))\n",
+	},
 }
 
 // lambdaAppliedRefusalPrograms is the family the door cannot answer: each `want` is the sentence half the
@@ -255,31 +278,6 @@ var lambdaAppliedRefusalPrograms = []struct{ name, src, want string }{
 		"the omission written inside a method body",
 		"class Box:\n    def show(self, f, y=10):\n        return f(y)\n\nprint(Box().show(lambda x: x + 2))\n",
 		"a lambda used as a value",
-	},
-	{
-		// The ENTRY-side twin of the union Gap R.334 paid: the lambda that reads the frame its application is
-		// written in is the ARGUMENT a higher-order `def` calls, and an entry is a bare symbol — the word
-		// `base` holds has nowhere to travel. The pass declines it by name (`--callables` says which name), and
-		// the ordinary road answers with its generic sentence until Gap R.337 lets the decline reach the
-		// refusal. The reference answers `4`.
-		"an entry lambda that reads the frame its application is written in",
-		"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-		"is called but is not a function",
-	},
-	{
-		// The same entry read, with the callee's parameter called TWICE: the clone would have to forward the
-		// entry's capture word through the callee's own clone (roadmap Gap R.336). The reference answers `11`.
-		"an entry lambda that reads its frame, called twice by a higher-order def",
-		"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
-		"is called but is not a function",
-	},
-	{
-		// Both sides of the union at once: the body reads the frame's local `shift` (Gap R.334, answers) and
-		// the entry reads the frame's loop target `step` (Gap R.336, declines), and an all-or-nothing pass
-		// hands the whole program to the ordinary road. The reference answers `72`.
-		"an entry lambda that reads the loop target of the frame around its application",
-		"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
-		"is called but is not a function",
 	},
 }
 

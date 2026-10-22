@@ -27,19 +27,16 @@ import (
 // the reference's answer beside them. `ref` is what the door owes: these are not broken programs.
 var callableDeclineCLIPrograms = []struct{ name, src, cite, ref string }{
 	{
-		"an entry lambda that reads the frame its application is written in",
-		"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+		// The two shapes the entry-side capture road (Gap R.336, paid by ADR 0395) still declines. The three
+		// that opened this table — an entry reading a local of the frame its application is written in, the
+		// same read twice by one callee, and the entry reading the frame's loop target — print CPython's bytes
+		// now and live in `lambdaAppliedCLIPrograms`, the reference leg at the terminal.
+		//
+		// A forwarding word is a PARAMETER of the clone, and a body that already owns that name would have two
+		// slots under one spelling: the pass says which name is in the way instead of writing it.
+		"an entry whose capture word the higher-order body already owns",
+		"def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
 		"Gap R.336", "4\n",
-	},
-	{
-		"an entry lambda that reads its frame, called twice by a higher-order def",
-		"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
-		"Gap R.336", "11\n",
-	},
-	{
-		"an entry lambda that reads the loop target of the frame around its application",
-		"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
-		"Gap R.336", "72\n",
 	},
 	{
 		"an entry that is a builtin the pass has no declaration for",

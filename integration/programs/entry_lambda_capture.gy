@@ -1,0 +1,60 @@
+# integration/programs/entry_lambda_capture.gy — an entry lambda reads the frame
+# its application is written in, and the clone the pass mints carries the words
+# (roadmap L11.7 · Gap R.336 · ADR 0395). CPython is the oracle; the conformance
+# matrix asserts this program byte-for-byte, and the two legs that witness it are
+# the record (pkg/lang/testdata/interpreter-golden.json) and this compiled run.
+
+def apply1(fn, v):
+    return fn(v)
+
+def apply2(fn, v):
+    return fn(v)
+
+def twice(fn, v):
+    return fn(fn(v))
+
+# The entry reads a local of the frame its application is written in: the reference's 4.
+def from_local(seed):
+    base = 1
+    return apply1(lambda x: x + base, seed)
+
+# The entry reads a parameter of that frame: the reference's 8 for use(5).
+def from_param(seed):
+    return apply1(lambda x: x + seed, seed)
+
+# The entry reads the loop target of that frame: the reference's 2 and 3.
+def from_loop(seed):
+    total = 0
+    for i in [1, 2]:
+        total = total + apply1(lambda x: x + i, seed)
+    return total
+
+# Two entries of one callee, each reading its own name of the frame: 13 for 3 + 10.
+def two_entries(seed):
+    left = 10
+    right = 2
+    return apply2(lambda x: x + left, seed) + apply2(lambda x: x + right, seed)
+
+# A capturing entry and a closed entry of the same callee: 4 + 7.
+def mixed(seed):
+    offset = 1
+    return apply1(lambda x: x + offset, seed) + apply1(lambda x: x + 4, 3)
+
+# The entry reads a module-level name, which is no capture at all: 14.
+LIMIT = 10
+
+def from_module(_ignored):
+    return apply1(lambda x: x + LIMIT, 4)
+
+# The callee is called twice by the same body, so the forwarded word crosses twice.
+def called_twice(seed):
+    step = 2
+    return twice(lambda x: x + step, seed) + apply1(lambda x: x + step, seed)
+
+print(from_local(3))
+print(from_param(5))
+print(from_loop(10))
+print(two_entries(3))
+print(mixed(3))
+print(from_module(0))
+print(called_twice(1))

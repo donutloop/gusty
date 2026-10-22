@@ -5589,6 +5589,22 @@ the call and keeps two applications of one body two clones rather than two const
 position an application may name: the arity rules above read the parameters the SOURCE wrote. `--callables` counts the
 union as `capture_parameters`, which is how a reader tells ADR 0370's self-contained clone from this one.
 
+The same words exist on the **entry** side (**ADR 0395**, Gap R.336). The lambda that reads the frame is not always
+the body an application applies — it can be the ARGUMENT a higher-order `def` calls, and an entry is a bare `define`
+symbol called by name, so the read has no word to ride in unless one is minted: `apply1(lambda x: x + base, seed)`
+inside a frame that binds `base`. The entry lambda is now hoisted with a capture parameter per name it reads, the clone
+that dispatches on it grows the union of its entries' words as trailing parameters, the application fills them by name
+from the HOST frame's own reading (the same rule as above, asked of a different callee), and the clone hands each word to
+the entry positionally — `define i32 @gy_apply1$callable$…(i32 %p0, i32 %p1, i32 %p2)` calling
+`@gy_use$lambda$…(i32 %p1, i32 %p2)`, the host writing `@gy_apply1$callable$…(i32 0, i32 %p0, i32 %_base.ld1)`. So
+`def apply1(fn, v): return fn(v)` with `return apply1(lambda x: x + base, seed)` prints **`4`**, a callee that calls its
+parameter twice prints **`11`**, and a body reading a frame local while its entry reads the loop target prints **`72`**.
+`--callables` counts these in the same `capture_parameters` field: `1` for the row program, `2` when the body also reads
+a frame local. A name the MODULE binds is not a capture and mints no word — a hoisted `def` reads a global as well as the
+lambda did. Two shapes still decline, each naming itself: a forwarded word whose NAME the higher-order body has already
+taken for itself (**Gap R.375** — the clone would hold two slots under one spelling), and the `key=` hook, which hoists
+a lambda by a second road that never asks this question (**Gap R.376**).
+
 A `lambda` applied inside a `lambda` that is itself applied reads a frame the program never names, and a capture
 travels **one step per frame** (**ADR 0380**, Gap R.330):
 
@@ -5631,12 +5647,18 @@ def outer(a):
 print(outer(4))
 
 def apply1(fn, v):
+    base = 9                                                 # the body owns the name the entry reads
     return fn(v)
 
 def use(seed):
     base = 1
-    return apply1(lambda x: x + base, seed)                  # the ENTRY reads the caller's frame — Gap R.336
+    return apply1(lambda x: x + base, seed)                  # the word it would forward collides — Gap R.375
 print(use(3))
+
+def sorted_by():
+    base = 1
+    return sorted([3, 1, 2], key=lambda x: 0 - x + base)     # the hook door never asks the capture road — Gap R.376
+print(sorted_by())
 
 def f():
     xs = [1, 2]

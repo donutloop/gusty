@@ -13724,3 +13724,64 @@ printed by the tool for a source printed beside it.
   the whole file; `xs = [v]` inside the callee is Gap R.371; two call sites of one callee with different
   argument shapes is Gap R.374. Every one is a filed row, and each cut is a probe that belongs to that row's
   pin rather than to this program — the program is what the backend answers today, not what it should answer.
+
+## ADR 0395 — an entry lambda is minted with the words it reads; the clone supplies them (Gap R.336, 2026-10-22)
+
+- **A refusal can be true about the value and wrong about the caller.** The pass declined this family with
+  "an entry is a bare symbol with no environment to carry", and that sentence is correct — ADR 0345 §1 makes
+  an entry a `define`. It just does not apply, because an entry is not called from anywhere the program can
+  point at: it is called by the CLONE, from a body the pass writes, and the pass had the host frame in hand
+  the whole time (`entryHost` is the table that already decides whose locals an entry's reads resolve
+  through). When a refusal cites a property of a representation, ask who is standing on the other side of
+  that representation before accepting it as a limit.
+- **The obstacle the filing feared was already discriminated by a key it owned.** The row was written as
+  though the clone's identity would need a second axis: two applications of `apply1` whose entries read
+  different names would need two clones. They already get two — `callableClone.key` IS the tuple of entry
+  symbols, the body is written out of it (`callee.Fn = cl.key[slot]`), and captures are a property of a
+  minted symbol. The rejected alternative is the one that would have re-keyed clones by (symbol, captures):
+  more clones, no new discrimination, and a broken `callableCloneNamesDiffer`. Before adding an axis, print
+  the keys you have.
+- **One question, one door — and this time the second door was deleted, not fed.** `callableLambdaFrameRead`
+  (the decline predicate) and `callableLambdaCaptures` (the list ADR 0370 fills) both walk a lambda body
+  looking for free names; the plan's decline was asking one of them and the hoist now asks the other, and the
+  two had already drifted on nested-lambda bodies and on the module-name rule. The fix keeps the list door and
+  demotes the boolean one to what it is actually for — naming the blocking name in the message. This is the
+  same lesion ADR 0391, 0392 and 0394 found in the container roads, at the third family of roads.
+- **A gate belongs where the facts are, and that is a positional argument.** The clone hands the forwarded
+  word to the entry POSITIONALLY and the hoisted entry carries no `Captures` field. `Captures` is the
+  instruction "the caller reaches for this name by name", and the codegen gate that asks whether a name can
+  cross as one word (`captureCarriesOneWord`, Gap R.332) is asked of whoever holds it. Put the field on the
+  entry and the gate is asked of a minted parameter with no facts of its own — the host's `base` is a local
+  with a type in the tables, `%p2` is nothing. The value reaches the entry through the host's read either
+  way; only one placement asks the honest question.
+- **An all-or-nothing pass needs a narrow loud decline, not a silent rename.** A forwarded word is a
+  PARAMETER of the clone. If the higher-order body already owns that name — `def apply1(fn, v): base = 9`
+  over `apply1(lambda x: x + base, seed)` — the clone has two slots under one spelling and the body's own
+  read answers the forwarded word. Renaming the minted parameter would fix that program and bury the class,
+  so the pass says which name is in the way in which body (**Gap R.375**), and the row records the fix's
+  shape (mint unspeakably, fill positionally) rather than a shortcut that makes the test green.
+- **The account and the terminal can both be honest about different stages.** `gustyc --callables` says
+  `rewritten` for the container-capture program because the pass DID rewrite it; codegen then refuses it with
+  Gap R.332's one-word sentence. The first cut of the test pinned the pass's `refused` and failed on a
+  compile that goes further than the pass. The account reports what the pass did; the refusal reports where
+  the program stopped. Two stages, two claims, and only the second one reaches `--file`.
+- **The pass's arithmetic has to know about the words it supplies itself.** `callableInnerAgrees` counts the
+  arguments the body spells against `plan.arity[entry]`, and `arity` is now the hoisted `define`'s parameter
+  count — lambda parameters plus captures. Every forwarded program failed that audit until the comparison
+  subtracted `len(plan.entryCaptures[entry])`. A pass that mints parameters has to edit every consumer that
+  counts them; the audit that reads `srcParams` (ADR 0372's fix) was the one that already knew.
+- **Two stale pins were bugs, not documentation.** `TestWhatTheTruthOfAPairSuppliedParameterStillOwes`
+  pinned `an empty container written as a call` as a residue with the wrong bytes, in both the package and the
+  CLI table, and the CLI leg was FAILING: ADR 0394 had landed under the same gap and nobody moved the pins.
+  A residue row is a claim about today. They were deleted (both tables) and the shapes moved to the answering
+  tables; the doc comment now says where they went.
+- **Measure a neighbour on the parent before adopting it.** Two probes disagreed at the end of the sweep:
+  `sorted(xs, key=lambda …)` inside a def refuses, and a def that RETURNS a keyed sort prints `0`. A build of
+  `e101ec5` printed the same refusal and the same `0`. The first is filed as **Gap R.376** (the hook hoists
+  by a second road that never asks the door), the second belongs to **Gap R.328** already. Adopting either
+  would have made this commit claim a fix it did not make and hide a road it did not widen.
+- **Determinism is a property of the plan, not of the emitter.** The forwarded word's name reaches the clone
+  through `forwarded`, unioned in tuple order, and the minted names come from a counter whose starting point
+  is the plan's own iteration order — so two compiles of one source agree only because the plan walks the
+  program once, in order. The IR test re-emits and diffs, which is what would catch a map iteration creeping
+  into `entryCaptures`.

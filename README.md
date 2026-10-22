@@ -2217,6 +2217,37 @@ falls back to dynamic dispatch.
   container spelled as a `list()` stored in a dict literal — one row that was filed against the store and
   turned out to live in the scan, told below and paid by **ADR 0394** (**R.369**).
 
+- **An entry lambda is minted with the words it reads; the clone supplies them (Gap R.336, ADR 0395)** —
+  three programs, one question, and the answer was one door away that the pass had already built for the
+  other side of the same construct. `def apply1(fn, v): return fn(v)` with `def use(seed):` / `base = 1` /
+  `return apply1(lambda x: x + base, seed)` is CPython's `4` and this backend's exit 1, while the twin with
+  the read on the other lambda — `apply1(lambda x: x + seed, seed)`, a parameter of the same frame — had
+  answered since **ADR 0370**. The distinction the refusal drew ("an entry is a bare symbol with no
+  environment to carry") was true and beside the point: an entry is not called from far away, it is called
+  by the CLONE the pass writes, in a body the pass writes, and the pass already had the host frame in hand
+  — `entryHost` is the table that decides whose locals an entry's reads resolve through, and ADR 0370 reads
+  that very table to fill an applied lambda's captures. It had simply never asked it the second question.
+  It asks it now: `resolveEntry` consults the same door the applied road consults
+  (`callableLambdaCaptures`), the hoisted `define` gains a capture parameter per name the entry reads, the
+  clone grows the UNION of its entries' words as trailing parameters, the application fills them from the
+  HOST's own reading — `%_base.ld1`, a local read, not an address and not a copy — and the clone hands each
+  word to the entry **positionally**. Positionally and with no `Captures` field on the entry, which is the
+  safety story rather than a detail: `Captures` means "the caller reaches for this name", and the gate that
+  asks whether a name carries one word (`captureCarriesOneWord`, **Gap R.332**) has to be asked where the
+  value lives. ADR 0345's rule holds untouched — the entry is still a named `define`, and the module has no
+  `fnptr`, no indirect `call`, no `ptrtoint`. Over 21 probes of the family, asked of CPython first: **4
+  agreeing before, 14 after, 10 newly, 0 regressed** — the entry reading a local (`4`), a parameter (`12`),
+  the loop target of a `for` whose word changes under one minted symbol (`36`), two entries of one callee
+  reading two names (`35`), a capturing entry beside a closed one (`8`), a callee that calls its parameter
+  twice (`11`), and a module-level name, which mints no word at all (`10`). `programs/entry_lambda_capture.gy`
+  is the matrix row (the 225th, oracle `match`), seven lines that are byte-for-byte what CPython prints, and
+  `--callables` counts the forwarding in the field it already had: `capture_parameters` 1 for the row
+  program, 2 where the body reads a frame local too. Two shapes still decline, and both say which name is
+  in the way: the forwarded word's name is already owned by the higher-order body, which would leave the
+  clone with two slots under one spelling (**R.375**), and the `key=` hook, which hoists its lambda by a
+  second road that never asks this question (**R.376**). The `sorted(..., key=…)` answer that prints `0` once
+  a function RETURNS it is neither — measured identical on the parent, and **R.328**'s.
+
 - **The pair scan asks the same door: the container spelled as a call is a slot it can read (Gap R.369, ADR
   0394)** — three rows in a row were the same program with one word changed, and the filing of the third one
   blamed the wrong road. `d = {"k": []}` / `f(d["k"])` prints `[]` and takes the `else`; `d = {"k": list()}` /

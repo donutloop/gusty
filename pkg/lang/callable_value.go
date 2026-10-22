@@ -785,6 +785,11 @@ type callableClone struct {
 	key  []string
 	name string
 	fn   *callableFn
+	// forwarded names the words this clone supplies to its entries: the union of the capture parameters
+	// the entries in this tuple were minted beside. The clone is the frame that OWNS them — the call site
+	// that picked this clone fills them from the frame the application is written in, and the clone hands
+	// each one to the entry it dispatches on (roadmap L11.7 · Gap R.336).
+	forwarded []string
 }
 
 // callableArgHoist is a lambda the pass gave a declaration to in the argument position of a call it does not
@@ -819,6 +824,17 @@ type callablePlan struct {
 	// repeats the entry (`run(n - 1, lambda x: x)`) be recognized as the same function as the clone's
 	// entry, even though the two lambdas are different nodes (roadmap Gap R.335).
 	entryCanonical map[string]string
+	// entryCaptures records, for an ENTRY lambda that reads the frame its APPLICATION is written in, the
+	// names it reads and the parameter words this pass minted for them beside its own. An entry has always
+	// been a bare symbol, and a symbol carries no word: ADR 0370 minted a capture parameter per name a body
+	// is free in, on the APPLICATION side, and this is the same minting asked on the entry side — the clone
+	// that dispatches on such an entry gains the parameters too and forwards them by name into the call the
+	// body makes (roadmap L11.7 · Gap R.336, beside ADR 0372's union for the body's own captures).
+	entryCaptures map[string][]string
+	// prog is the program the plan was read from. The entry-side capture road asks
+	// `callableLambdaCaptures`, which needs the module's own name set to tell a frame's word from a
+	// global one, and the plan is a function over the AST with no generator to reach (ADR 0343).
+	prog *Program
 	// acceptedSelfArgs are entry arguments a recursive call wrote that the clone discards because it
 	// names the clone's own entry. They are still AST nodes in the body, but they no longer name a
 	// callable once the self call is pointed at the clone (roadmap Gap R.335).
@@ -924,6 +940,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	plan := &callablePlan{
 		fns: map[string]*callableFn{}, aliases: map[string]string{},
 		arity: map[string]int{}, declared: map[string]bool{}, taken: map[string]bool{},
+		prog: prog, entryCaptures: map[string][]string{},
 	}
 	for name := range r.fds {
 		plan.declared[name] = true
@@ -1397,7 +1414,34 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 				return nil, callableDeclinef("no name could be minted for a clone of %q", cf.def.Name)
 			}
 			seen[k] = name
-			cf.clones = append(cf.clones, &callableClone{key: strings.Split(k, "|"), name: name, fn: cf})
+			cl := &callableClone{key: strings.Split(k, "|"), name: name, fn: cf}
+			// The entries of THIS tuple that were minted beside capture words: the clone that dispatches on
+			// them is the frame that supplies those words, so it gains one parameter per name — the union, in
+			// the order the tuple reads them, the same union rule ADR 0372 wrote for a body's own captures
+			// (roadmap L11.7 · Gap R.336).
+			for _, sym := range cl.key {
+				for _, c := range plan.entryCaptures[sym] {
+					known := false
+					for _, have := range cl.forwarded {
+						if have == c {
+							known = true
+							break
+						}
+					}
+					if !known {
+						cl.forwarded = append(cl.forwarded, c)
+					}
+				}
+			}
+			// A forwarded word is a PARAMETER of the clone, and a body that already owns that name would
+			// have two slots under one spelling — the source's read and the forwarded word answering each
+			// other. The pass is all-or-nothing, so this says which name is in the way instead of writing it.
+			for _, c := range cl.forwarded {
+				if callableCloneOwnsName(cf.def, c) {
+					return nil, callableDeclinef("the entry lambda of the call at line %d reads %q, and %q's own body already owns that name: the word the clone would forward is a name the body reads for itself (roadmap L11.7 · Gap R.336)", site.rank, c, cf.def.Name)
+				}
+			}
+			cf.clones = append(cf.clones, cl)
 		}
 		if len(cf.clones) == 0 {
 			return nil, callableDeclinef("%q is never called", cf.def.Name)
@@ -1739,12 +1783,22 @@ func (p *callablePlan) resolveEntry(r *callableRead, e Expr, enc *FuncDef) (stri
 		p.arity[x.Value] = len(fd.Params)
 		return x.Value, nil
 	case *Lambda:
-		// An entry is a SYMBOL: the hoisted `define` below is what the callee's body ends up calling by name.
-		// A lambda that reads the frame its application is written in cannot be lifted out of that frame and
-		// stay right — the word the read holds would have to travel with the entry, and the only road that fills
-		// such a word is the application road's capture parameter, asked for on the ENTRY side. That is Gap
-		// R.336's machine, and the refusal says which name is waiting for it.
-		if nm, readsFrame := callableLambdaFrameRead(r, x, enc); readsFrame {
+		// An entry used to be ONLY a symbol: the hoisted `define` below is what the callee's body ends up
+		// calling by name, and a symbol carries no word beside itself. A lambda that reads the frame its
+		// APPLICATION is written in therefore could not be lifted out of that frame and stay right, and the
+		// refusal named the waiting name (Gap R.336). It is minted now, one word per name, by the same door
+		// the APPLICATION road asks (ADR 0370): the clone that dispatches on this entry gains the parameters
+		// and forwards them into the call its body makes. What the door still cannot supply — a name the
+		// enclosing frame does not own, which is the nested-`def` lift's and not this pass's — keeps the
+		// refusal, with the same name in it (roadmap L11.7 · Gap R.336, beside Gap R.331 and Gap R.332).
+		captures, capturable := callableLambdaCaptures(enc, p.prog, x)
+		if !capturable {
+			nm, _ := callableLambdaFrameRead(r, x, enc)
+			if nm == "" {
+				if free := callableFreeNames(x); len(free) > 0 {
+					nm = free[0]
+				}
+			}
 			return "", callableDeclinef("an entry lambda reads %q from the frame its application is written in, and an entry is a bare symbol: the word that name holds would have to arrive beside it (the capture parameter of the application road, asked on the entry side — Gap R.336)", nm)
 		}
 		body := copyASTExpr(x.Body)
@@ -1761,9 +1815,20 @@ func (p *callablePlan) resolveEntry(r *callableRead, e Expr, enc *FuncDef) (stri
 			Body:   []Stmt{&ReturnStmt{Expr: body, Src: x.Span()}},
 			Src:    x.Span(),
 		}
+		// The words are parameters and nothing else. `Captures` is deliberately NOT set: that field is the
+		// instruction to the CALL road to fill a capture by name from the caller's own reading, and the
+		// caller here is a clone of the higher-order body, whose reading of that name is the parameter this
+		// pass is about to give it — a value handed down a frame, not a value the frame reached for. The
+		// clone carries the `Captures` field, and the words arrive positionally at the inner call.
+		for _, c := range captures {
+			def.Params = append(def.Params, &Param{Name: c, Src: x.Span()})
+		}
+		if len(captures) > 0 {
+			p.entryCaptures[name] = append([]string(nil), captures...)
+		}
 		p.hoisted = append(p.hoisted, def)
 		p.hoistOrigin = append(p.hoistOrigin, x)
-		p.arity[name] = len(x.Params)
+		p.arity[name] = len(def.Params)
 		return name, nil
 	default:
 		return "", callableDeclinef("an argument that is not a declared function or a closed lambda")
@@ -1856,11 +1921,35 @@ func callableInnerAgrees(plan *callablePlan, cf *callableFn) bool {
 		}
 	}
 	for entry := range entries {
-		if plan.arity[entry] != arity {
+		// The entry's own parameter count, minus the words this pass minted beside it for the names it
+		// reads from the frame its application is written in: those are not arguments the body's call of
+		// the parameter spells, they are the ones the clone forwards at that call (Gap R.336, below).
+		want := plan.arity[entry] - len(plan.entryCaptures[entry])
+		if want != arity {
 			return false
 		}
 	}
 	return true
+}
+
+// callableCloneOwnsName asks whether the higher-order body already has a slot under this spelling: one of
+// the parameters the source wrote, or a name its own body binds. A forwarded capture word is a NEW
+// parameter on the clone, and two parameters under one name is a body whose reads answer each other.
+func callableCloneOwnsName(def *FuncDef, name string) bool {
+	if def == nil || name == "" {
+		return false
+	}
+	for _, p := range def.Params {
+		if p != nil && p.Name == name {
+			return true
+		}
+	}
+	for nm := range bodyBoundNames(def.Body) {
+		if nm == name {
+			return true
+		}
+	}
+	return false
 }
 
 func callableHasKeywordArgs(args []Expr) bool {
@@ -2549,6 +2638,20 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 			}
 			clone.Name = cl.name
 			clone.CloneOf = cf.def.Name
+			// The words this clone supplies to its entries (roadmap L11.7 · Gap R.336). They are parameters of
+			// the clone, filled at the application by the CALL road from the frame the application is written
+			// in — the same `Captures` mechanism ADR 0370 built for an applied `lambda`, asked of the clone
+			// that dispatches on a capturing entry — and the body's call of the entry is where they are handed
+			// on. APPENDED, never replaced: a clone of an applied `lambda` already carries the words the
+			// LAMBDA reads from the frame of its own application (ADR 0370), and those two lists are the body's
+			// supply and the entries' — overwriting one with the other loses an argument the callee still has.
+			for _, c := range cl.forwarded {
+				clone.Params = append(clone.Params, &Param{Name: c, Src: cf.def.Src})
+			}
+			clone.Captures = append(clone.Captures, cl.forwarded...)
+			// The count is the clone's own list, read AFTER the append: a clone of an applied `lambda` brings
+			// the body's captures with it (ADR 0370), a clone of a `def` brings only the entries' (this row),
+			// and the account reports the words the pass wrote onto the declarations it minted — both kinds.
 			report.CaptureParameters += len(clone.Captures)
 			if cf.fromLambda != nil {
 				// The reference names an anonymous function `<lambda>` however it reached the call, so a
@@ -2569,6 +2672,13 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 				}
 				callee := cloneCalls[in.rank]
 				callee.Fn = &Name{Value: cl.key[in.slot], Src: callee.Fn.Span()}
+				// The entry's own words, handed over positionally: the clone reads each one out of the
+				// parameter the application filled it with. Positional rather than by name on purpose — the
+				// hoisted entry carries no `Captures` field, because the caller here is a frame the pass itself
+				// built and the word it holds was handed down rather than reached for (Gap R.336).
+				for _, c := range plan.entryCaptures[cl.key[in.slot]] {
+					callee.Args = append(callee.Args, &Name{Value: c, Src: callee.Fn.Span()})
+				}
 			}
 			// The recursion. Every call of the source function written inside this clone's copy of the body
 			// is pointed at the clone itself — the entry tuple the recursion carries is the one this clone

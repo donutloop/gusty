@@ -137,6 +137,62 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 			"def run(n, f=lambda x: x):\n    return 0 if n == 0 else f(n) + run(n - 1, lambda x: x)\n\nprint(run(3))\n",
 			"6\n",
 		},
+		// The ENTRY side of the capture road: the lambda the CALLEE calls reads a name of the frame the
+		// application is written in. An entry is still a bare symbol, so the word is minted as a parameter of
+		// the CLONE that dispatches on it — filled at the application from the host frame's own reading, and
+		// handed to the body's call of the entry positionally (roadmap L11.7 · Gap R.336, ADR 0395).
+		{
+			"an entry lambda that reads the frame its application is written in",
+			"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"4\n",
+		},
+		{
+			// The callee calls its parameter TWICE, so the forwarded word is read by two calls of one entry.
+			"an entry lambda that reads its frame, called twice by a higher-order def",
+			"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+			"11\n",
+		},
+		{
+			// Both sides of the union at once: the body reads a frame local AND the entry reads the frame's
+			// loop target — ADR 0372's union on the body, this row's on the entry, in one body.
+			"an entry lambda that reads the loop target of the frame around its application",
+			"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			"72\n",
+		},
+		{
+			// The capture is one of the host's own PARAMETERS, not a local: the same word, one frame further
+			// in, and the host reads it the way it reads any other name.
+			"an entry lambda that reads a parameter of the frame its application is written in",
+			"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed, base):\n    return apply1(lambda x: x * base, seed)\n\nprint(use(3, 4))\n",
+			"12\n",
+		},
+		{
+			// Two entries of one callee, each reading a different name of the same frame: the clone's parameter
+			// list is the UNION, in the order the tuple reads them.
+			"two entries of one callee, each reading its own name of the frame",
+			"def both(f, g, v):\n    return f(v) + g(v)\n\ndef use(seed):\n    base = 2\n    off = 10\n    return both(lambda x: x + base, lambda x: x * off, seed)\n\nprint(use(3))\n",
+			"35\n",
+		},
+		{
+			// One capturing entry and one closed one, of the same callee: two clones, only one of which
+			// carries a forwarded word.
+			"a capturing entry and a closed entry of the same callee",
+			"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed) + apply1(lambda x: x + 1, seed)\n\nprint(use(3))\n",
+			"8\n",
+		},
+		{
+			// A name the MODULE binds is not a capture: a hoisted `def` reads it as well as the lambda did,
+			// and no parameter is minted (the same rule `callableLambdaFrameRead` states).
+			"an entry lambda that reads a module-level name reads no capture",
+			"base = 7\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"10\n",
+		},
+		{
+			// The entry read in a LOOP, where the host frame's word changes under the same minted symbol.
+			"an entry lambda that reads a loop variable of its host frame",
+			"def apply1(fn, v):\n    return fn(v)\n\ndef use():\n    total = 0\n    for base in [1, 2, 3]:\n        total = total + apply1(lambda x: x + base, 10)\n    return total\n\nprint(use())\n",
+			"36\n",
+		},
 	}
 }
 
@@ -388,15 +444,14 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			want: "holds a container",
 		},
 		{
-			// The ENTRY-side twin of the union Gap R.334 paid. Here the lambda that reads the caller's frame is
-			// not the body the application applies but the ARGUMENT the callee calls — and an entry is a bare
-			// symbol, so `base` has no word to travel in, the pass declines, and the ordinary road answers with
-			// its generic sentence (roadmap Gap R.336). The account says the true thing:
-			// TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame pins the sentence the pass writes, and the
-			// terminal will carry it too once Gap R.337 lets a decline reach the refusal.
-			name: "an entry lambda that reads the frame its application is written in",
-			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-			want: "is called but is not a function",
+			// The ENTRY-side twin of the union Gap R.334 paid was the last shape the entry road could not state,
+			// and it answers now (roadmap Gap R.369's neighbour, Gap R.336, paid by ADR 0395): an entry is still
+			// a bare symbol, but the clone that dispatches on it gained the words — one parameter per name the
+			// entry reads from the frame its APPLICATION is written in — and hands them to the call its body
+			// makes. The three programs this row used to refuse are in the answering table above.
+			name: "an entry lambda that reads a frame the pass does not own",
+			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = [1, 2]\n    return apply1(lambda x: x + len(base), seed)\n\nprint(use(3))\n",
+			want: "holds a container",
 		},
 		{
 			// The verdict a forwarding frame records is the SUPPLYING frame's own answer, so a kind the door
@@ -420,19 +475,13 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 		},
 		{
 			// The same decline with the callee's parameter CALLED TWICE, so the clone would have to forward the
-			// entry's capture word through the callee's own clone — the shape that makes Gap R.336 more than the
-			// one-line fix Gap R.334 was.
-			name: "an entry lambda that reads its frame, called twice by a higher-order def",
-			src:  "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
-			want: "is called but is not a function",
-		},
-		{
-			// The capture is the LOOP TARGET of the frame the application is written in, on both sides at once:
-			// the body reads `shift` and the entry reads `step`. The body side is Gap R.334's and answers; the
-			// entry side is Gap R.336's, and the whole program is handed back to the ordinary road.
-			name: "an entry lambda that reads the loop target of the frame around its application",
-			src:  "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
-			want: "is called but is not a function",
+			// entry's capture word through the callee's own clone — the shape that made Gap R.336 more than the
+			// one-line fix Gap R.334 was. It answers now, and is in the table above; what still cannot be said
+			// is the word whose NAME the body has already taken for itself, which is the one forwarding shape
+			// this pass declines out loud (roadmap L11.7 · Gap R.336's residue).
+			name: "an entry whose capture word the higher-order body already owns",
+			src:  "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			want: "already owns that name",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -818,23 +867,75 @@ func TestTheCallablesAccountSaysTheRecursionInheritsItsOwnSlot(t *testing.T) {
 	}
 }
 
-// The account's witness for the entry-side twin Gap R.336 files: the pass knows WHICH name is the reason it
-// declined — the one the entry lambda reads out of the frame its application is written in — and it says so in
-// `refused`, naming the missing machinery and the row. The terminal cannot see that sentence yet (Gap R.337), so
-// the account is where the honest wording is pinned (ADR 0372).
+// The account's witness for the entry-side capture road Gap R.336, paid by ADR 0395. The pass used to know
+// WHICH name stopped it and say so in `refused`; it now mints the word, so the honest wording moved from
+// "this declined, and here is the name" to "this was rewritten, and here is how many words were written".
+// Both halves are pinned: the four programs count their forwarded words, and the two shapes the pass still
+// declines keep naming the row — one because the word's name is already the body's own, one because the value
+// the entry reads is a kind a capture cannot carry (Gap R.332's rule, asked on the entry side).
 func TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame(t *testing.T) {
-	for _, tc := range []struct{ src, name string }{
+	for _, tc := range []struct {
+		src      string
+		captures int
+	}{
 		{
-			src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-			name: "base",
+			src:      "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			captures: 1,
 		},
 		{
-			src:  "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
-			name: "base",
+			// Two calls of the one entry, one forwarded word: the count is the words the pass WROTE onto the
+			// declarations it minted, not the times a clone reads one.
+			src:      "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
+			captures: 1,
 		},
 		{
-			src:  "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
-			name: "step",
+			// The body's own capture (`shift`, ADR 0372) and the entry's (`step`, this row) in one body: the
+			// union, and both counted.
+			src:      "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			captures: 2,
+		},
+		{
+			// A name the module binds needs no word: the hoisted `def` reads it as well as the lambda did.
+			src:      "base = 7\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			captures: 0,
+		},
+	} {
+		doc, err := CallablesJSON(tc.src)
+		if err != nil {
+			t.Fatalf("a rewrite is still a document: %v", err)
+		}
+		var rep struct {
+			Rewritten         bool     `json:"rewritten"`
+			Clones            int      `json:"clones"`
+			CaptureParameters int      `json:"capture_parameters"`
+			Symbols           []string `json:"symbols"`
+			Refused           []string `json:"refused"`
+		}
+		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
+		}
+		if !rep.Rewritten || len(rep.Refused) != 0 {
+			t.Fatalf("the pass declined a program whose entry it can now supply: %s", doc)
+		}
+		if rep.Clones != 1 {
+			t.Fatalf("clones = %d, want 1:\n%s", rep.Clones, doc)
+		}
+		if rep.CaptureParameters != tc.captures {
+			t.Fatalf("capture_parameters = %d, want %d:\n%s", rep.CaptureParameters, tc.captures, doc)
+		}
+		if tc.captures > 0 && !strings.Contains(doc, callableLambdaInfix) {
+			t.Fatalf("the entry lambda was never given a declaration to carry the word:\n%s", doc)
+		}
+	}
+	for _, tc := range []struct {
+		src   string
+		wants []string
+	}{
+		{
+			// A forwarding word whose NAME the higher-order body has taken for itself: the clone would carry
+			// two slots under one spelling, and the pass says which name is in the way rather than write it.
+			src:   "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			wants: []string{`"base"`, "already owns that name", "Gap R.336"},
 		},
 	} {
 		doc, err := CallablesJSON(tc.src)
@@ -849,9 +950,9 @@ func TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame(t *testing.T) {
 			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
 		}
 		if rep.Rewritten || len(rep.Refused) != 1 {
-			t.Fatalf("the pass rewrote a program whose entry reads a frame: %s", doc)
+			t.Fatalf("the pass rewrote a program it must decline: %s", doc)
 		}
-		for _, want := range []string{`reads "` + tc.name + `"`, "an entry is a bare symbol", "Gap R.336"} {
+		for _, want := range tc.wants {
 			if !strings.Contains(rep.Refused[0], want) {
 				t.Fatalf("the entry refusal omits %q:\n%v", want, rep.Refused)
 			}
@@ -892,6 +993,66 @@ func TestWhatAClonedLambdaCarriesItsEntriesAndItsCaptures(t *testing.T) {
 	for _, junk := range []string{"ptrtoint", "inttoptr"} {
 		if strings.Contains(mod, junk) {
 			t.Fatalf("module contains the junk shape %q:\n%s", junk, headLines(mod, 40))
+		}
+	}
+}
+
+// The same three words on the ENTRY side (roadmap L11.7 · Gap R.336, ADR 0395). The answer tables can be
+// passed by a program whose first heap slot happens to be free; these claims are read off the module. Three
+// questions, one per region: the CLONE carries one parameter more than the source `def` wrote, and the name
+// it carries is the name the program wrote; the clone's call of the ENTRY passes the host's word beside the
+// value it was handed; and the HOST's call fills that parameter from its own reading of the name — `%_base`,
+// the frame's slot — not from a copy of the value and not from an address. No `fnptr` operand and no indirect
+// `call` anywhere: the entry is still a `define` called by its symbol (ADR 0345 §1), and the word arrives as
+// an ordinary argument beside it.
+func TestWhatAClonedDefForwardsItsEntryCaptures(t *testing.T) {
+	mod := compileSrc(t, "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n")
+	clone := ""
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "define ") && strings.Contains(line, callableCloneInfix) {
+			clone = strings.TrimSpace(line)
+			break
+		}
+	}
+	if clone == "" {
+		t.Fatalf("the pass emitted no clone of the higher-order def:\n%s", headLines(mod, 40))
+	}
+	// The source `def apply1(fn, v)` has two parameters: the clone takes a third, the forwarded word.
+	if n := strings.Count(clone, "i32 %p"); n != 3 {
+		t.Fatalf("the clone does not carry the entry placeholder, the value AND the forwarded word: %q", clone)
+	}
+	body := mod
+	if i := strings.Index(mod, clone); i >= 0 {
+		if j := strings.Index(mod[i:], "\n}"); j >= 0 {
+			body = mod[i : i+j]
+		}
+	}
+	// The clone calls the hoisted entry by name, passing the value it was handed AND the word it was handed:
+	// two operands, both `%p…` — the clone manufactures nothing.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*\$lambda\$[0-9a-f_A-Za-z]+_\d+\(i32 %p\d+, i32 %p\d+\)`).MatchString(body) {
+		t.Fatalf("the clone does not forward the entry's own word into its call of the entry:\n%s", body)
+	}
+	// The host fills that parameter from its OWN reading of the name: the frame's `base` slot, loaded.
+	if !regexp.MustCompile(`call i32 @gy_[^(]*` + regexp.QuoteMeta(callableCloneInfix) + `[0-9a-f]*_\d+\(i32 0, i32 %p\d+, i32 %_base[^,)]*\)`).MatchString(mod) {
+		t.Fatalf("the application does not fill the forwarded word from the host frame's own reading:\n%s", headLines(mod, 60))
+	}
+	// And the entry's declaration really has the parameter: the hoisted lambda is `lambda x` plus one word.
+	entry := ""
+	for _, line := range strings.Split(mod, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "define ") && strings.Contains(line, "$lambda$") {
+			entry = strings.TrimSpace(line)
+			break
+		}
+	}
+	if entry == "" {
+		t.Fatalf("the entry lambda has no declaration:\n%s", headLines(mod, 40))
+	}
+	if n := strings.Count(entry, "i32 %p"); n != 2 {
+		t.Fatalf("the entry does not carry its parameter AND its captured word: %q", entry)
+	}
+	for _, junk := range []string{"ptrtoint", "inttoptr", "indirect", "call <2 x i32>", "call {}"} {
+		if strings.Contains(mod, junk) {
+			t.Fatalf("the module reached for %q instead of a named call:\n%s", junk, headLines(mod, 40))
 		}
 	}
 }

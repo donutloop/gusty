@@ -1,5 +1,28 @@
 {
  "entries": {
+"# integration/programs/entry_lambda_capture.gy — an entry lambda reads the frame\n# its application is written in, and the clone the pass mints carries the words\n# (roadmap L11.7 · Gap R.336 · ADR 0395). CPython is the oracle; the conformance\n# matrix asserts this program byte-for-byte, and the two legs that witness it are\n# the record (pkg/lang/testdata/interpreter-golden.json) and this compiled run.\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef apply2(fn, v):\n    return fn(v)\n\ndef twice(fn, v):\n    return fn(fn(v))\n\n# The entry reads a local of the frame its application is written in: the reference's 4.\ndef from_local(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\n# The entry reads a parameter of that frame: the reference's 8 for use(5).\ndef from_param(seed):\n    return apply1(lambda x: x + seed, seed)\n\n# The entry reads the loop target of that frame: the reference's 2 and 3.\ndef from_loop(seed):\n    total = 0\n    for i in [1, 2]:\n        total = total + apply1(lambda x: x + i, seed)\n    return total\n\n# Two entries of one callee, each reading its own name of the frame: 13 for 3 + 10.\ndef two_entries(seed):\n    left = 10\n    right = 2\n    return apply2(lambda x: x + left, seed) + apply2(lambda x: x + right, seed)\n\n# A capturing entry and a closed entry of the same callee: 4 + 7.\ndef mixed(seed):\n    offset = 1\n    return apply1(lambda x: x + offset, seed) + apply1(lambda x: x + 4, 3)\n\n# The entry reads a module-level name, which is no capture at all: 14.\nLIMIT = 10\n\ndef from_module(_ignored):\n    return apply1(lambda x: x + LIMIT, 4)\n\n# The callee is called twice by the same body, so the forwarded word crosses twice.\ndef called_twice(seed):\n    step = 2\n    return twice(lambda x: x + step, seed) + apply1(lambda x: x + step, seed)\n\nprint(from_local(3))\nprint(from_param(5))\nprint(from_loop(10))\nprint(two_entries(3))\nprint(mixed(3))\nprint(from_module(0))\nprint(called_twice(1))\n": {
+    "stdout": "4\n10\n23\n18\n11\n14\n8\n",
+    "hasStdout": true
+   },
+"def apply1(fn, v):\n    return fn(v)\n\ndef both(f, g, v):\n    return f(v) + g(v)\n\ndef use(seed):\n    base = 2\n    off = 10\n    return both(lambda x: x + base, lambda x: x * off, seed) + apply1(lambda x: x + 1, seed)\n\nprint(use(3))\n": {
+    "stdout": "39\n",
+    "hasStdout": true
+   },
+
+"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n": {
+    "stdout": "72\n",
+    "hasStdout": true
+   },
+
+"def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n": {
+    "stdout": "11\n",
+    "hasStdout": true
+   },
 "def show(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"a\": list(), \"b\": set(), \"c\": dict(), \"e\": [], \"i\": 5, \"j\": \"hi\", \"k\": 1.5, \"l\": None}\nprint(d)\nshow(d[\"a\"])\nshow(d[\"b\"])\nshow(d[\"c\"])\nshow(d[\"e\"])\nshow(d[\"i\"])\nshow(d[\"j\"])\nshow(d[\"k\"])\nshow(d[\"l\"])\n\nxs = [list(), 5, set(), \"hi\"]\nprint(xs)\nshow(xs[0])\nshow(xs[2])\n\nnested = {\"k\": [list()], \"m\": {\"n\": set()}}\nprint(nested)\nshow(nested[\"k\"])\nshow(nested[\"m\"])\n\nw = d[\"a\"]\nprint(w)\nprint(str(d[\"a\"]))\nprint(len(d))\n\ndef loops(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nloops(d[\"a\"])\nloops(d[\"e\"])\nloops(d[\"i\"])\n\ndef head(v):\n    print(\"y\" if v else \"n\")\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nhead(d[\"b\"])\nhead(d[\"j\"])\n\ndef two(v, w):\n    print(v, w)\n    if v:\n        print(\"v\")\n    else:\n        print(\"no-v\")\n    if w:\n        print(\"w\")\n    else:\n        print(\"no-w\")\n\ntwo(d[\"a\"], d[\"b\"])\ntwo(d[\"i\"], d[\"l\"])\n\ndef filled(v):\n    print(v, bool(v), not v)\n\nfilled(d[\"c\"])\nfilled(d[\"e\"])\nfilled(d[\"j\"])\n\ndef runs(v):\n    n = 0\n    for k in [0, 1]:\n        if v:\n            n = n + 1\n    return n\n\nd2 = {\"p\": list(), \"q\": [1]}\nprint(runs(d2[\"p\"]), runs(d2[\"q\"]))\n": {
     "stdout": "{'a': [], 'b': set(), 'c': {}, 'e': [], 'i': 5, 'j': 'hi', 'k': 1.5, 'l': None}\n[]\nf\nset()\nf\n{}\nf\n[]\nf\n5\nt\nhi\nt\n1.5\nt\nNone\nf\n[[], 5, set(), 'hi']\n[]\nf\nset()\nf\n{'k': [[]], 'm': {'n': set()}}\n[[]]\nt\n{'n': set()}\nt\n[]\n[]\n8\ndone\ndone\nonce\ndone\nn\nc\ny\na\n[] set()\nno-v\nno-w\n5 None\nv\nno-w\n{} False True\n[] False True\nhi True False\n0 2\n",
     "hasStdout": true

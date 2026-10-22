@@ -43,30 +43,18 @@ func quoteLikeProgram(name string) string { return "\"" + name + "\"" }
 // row the pass names in its own account — the citation is what the reader used to lose.
 var callableDeclinePrograms = []struct{ name, src, cite, says string }{
 	{
-		// Gap R.336's own program: an ENTRY (the lambda the callee calls) reads a local of the frame the
-		// application is written in, and an entry is a bare `define` symbol, so the word has nothing to
-		// ride in. The reference answers `4`.
-		name: "an entry lambda that reads the frame its application is written in",
-		src:  "def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+		// The two shapes the entry-side capture road (Gap R.336, paid by ADR 0395) still declines, each naming
+		// what is missing. The three that used to sit here — an entry lambda reading a local, the same read
+		// twice by one callee, and the entry reading the frame's loop target — answer CPython now and moved to
+		// the answering table of `lambda_applied_test.go`, with the account counting the words the pass minted
+		// for them (`TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame`).
+		//
+		// The forwarding word is a PARAMETER of the clone; a body that already owns that name would have two
+		// slots under one spelling, and the pass declines rather than let the two reads answer each other.
+		name: "an entry whose capture word the higher-order body already owns",
+		src:  "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
 		cite: "Gap R.336",
-		says: `reads "base"`,
-	},
-	{
-		// The same entry read TWICE by the callee, which is the spelling that shows the forwarding problem
-		// is not one line. The reference answers `11`.
-		name: "an entry lambda that reads its frame, called twice by a higher-order def",
-		src:  "def twice(fn, seed):\n    return fn(fn(seed))\n\ndef use_b(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use_b(2))\n",
-		cite: "Gap R.336",
-		says: `reads "base"`,
-	},
-	{
-		// Both sides of the union at once: the body reads a frame local, the entry reads the frame's loop
-		// target, and the all-or-nothing pass hands the whole program to the ordinary road. The reference
-		// answers `72`.
-		name: "an entry lambda that reads the loop target of the frame around its application",
-		src:  "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
-		cite: "Gap R.336",
-		says: `reads "step"`,
+		says: `already owns that name`,
 	},
 	{
 		// An entry the pass cannot substitute because the callable is a predeclared name, which the pass

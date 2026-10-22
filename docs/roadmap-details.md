@@ -14859,7 +14859,7 @@ through its enclosing frame's alloca (Gap R.342, since closed by **ADR 0378**). 
 pre-ADR-0375 build, which is what made each of them a row rather than collateral.
 
 
-### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (OPEN)
+### Gap R.336 — an entry that reads the frame its application is written in has no symbol to travel in (closed by ADR 0395)
 
 ```python
 def apply1(fn, v):
@@ -14898,12 +14898,96 @@ Why it is a row and not a line: ADR 0345 made an ENTRY a symbol. `resolve` hoist
 any more. A lambda that reads `base` cannot be hoisted and stay right — the read has to arrive as an argument — and the
 only machinery that fills such an argument is the application road's capture parameter, which lives on the clone of the
 APPLIED lambda, not on the callee. Threading it means the clone of `apply1`/`twice` carrying capture parameters of its
-own, filled by ITS caller, which makes the clone's identity the pair (entry symbols, each entry's capture list) rather
-than the tuple of entry symbols ADR 0345 and ADR 0364 hash today. Two applications of `twice` whose entries read
-different frames are then two clones, and the recursion road's audit has to agree. The `stepper` spelling is the hard
-case and it is in the table on purpose: the body side (`shift`) is R.334's and answers, the entry side (`step`) is this
-row's, and the pass is all-or-nothing (ADR 0345), so one declined argument hands the WHOLE program to the ordinary road
-— which is why the program's refusal is about `fn` at all.
+own, filled by ITS caller. The `stepper` spelling is the hard case and it is in the table on purpose: the body side
+(`shift`) is R.334's and answers, the entry side (`step`) is this row's, and the pass is all-or-nothing (ADR 0345), so
+one declined argument hands the WHOLE program to the ordinary road — which is why the program's refusal is about `fn` at all.
+
+**Closed 2026-10-22 by ADR 0395**, and the clone's identity turned out not to be the obstacle the paragraph above
+feared. `callableClone.key` is the tuple of entry SYMBOLS and the clone body is written from it
+(`callee.Fn = cl.key[slot]`), so captures — a property of the minted symbol — ride the tuple without joining it. The
+machine that ended up being written is four moves: `resolveEntry` asks the door ADR 0370 already asks
+(`callableLambdaCaptures`) and mints a trailing parameter per captured name; the clone's `forwarded` list is the union
+of the captures of the entries in its own key, appended to the clone's parameters and to `clone.Captures`; because the
+clone carries `Captures`, the existing call road fills those parameters at the application with the host's own reading,
+by name — no second fill road; and where the pass already rewrites the body's call of the called parameter, it appends
+the forwarded words **positionally**, with no `Captures` field on the hoisted entry. That last detail is the whole
+safety story: `Captures` means "the caller reaches for this name", and the gate that asks whether a name carries one
+word (`captureCarriesOneWord`, Gap R.332) must be asked where the value lives — the host — not of a minted parameter of
+the clone, which has no facts of its own.
+
+The module says it plainly:
+
+```llvm
+define i32 @gy_apply1$callable$…(i32 %p0, i32 %p1, i32 %p2)      ; two parameters in the source, three here
+  %… = call i32 @gy_use$lambda$…(i32 %p1, i32 %p2)               ; the entry: the value AND the forwarded word
+; in the host `use`:
+  %… = call i32 @gy_apply1$callable$…(i32 0, i32 %p0, i32 %_base.ld1)
+```
+
+`%p0` is the placeholder the entry slot keeps, `%p1` is `v`, `%p2` is the word the host forwarded. No `ptrtoint`, no
+`inttoptr`, no indirect `call`: the entry is still a named `define`, which is what ADR 0345 §1 insists a callable is.
+
+Measured over 21 probes of the family, each asked of CPython first: **4 agreeing before, 14 after, 10 newly, 0
+regressed**, and `--callables` reports `capture_parameters: 1` for the row program and `2` where the body also reads a
+frame local — both lists in one body, counted. What the road still declines is named rather than smoothed: a forwarded
+word whose name the higher-order body has taken for itself (**Gap R.375**, below) and the hook door that never asks this
+road at all (**Gap R.376**). The `sorted(..., key=lambda …)` result that prints `0` when a function RETURNS it is
+**Gap R.328**'s, measured unchanged on the parent build.
+
+### Gap R.375 — the word a clone forwards can collide with the body's own name (OPEN)
+
+```python
+def apply1(fn, v):
+    base = 9                            # the higher-order body owns this name
+    return fn(v)
+
+def use(seed):
+    base = 1
+    return apply1(lambda x: x + base, seed)
+
+print(use(3))                            # the reference: 4 — here: exit 1
+```
+
+`the entry lambda of the call … reads "base", and "apply1"'s own body already owns that name: the word the clone would
+forward is a name the body reads for itself`. The forwarded word is a PARAMETER of the clone, and the clone already has
+a `base` — as a parameter of the source `def` or as something its body binds. Two slots under one spelling is a body
+whose own reads and the forwarded word answer each other, and ADR 0345's pass is all-or-nothing: it says which name is
+in the way instead of writing it. The parent build refused the whole family with the generic sentence, so this is a
+narrower, louder decline introduced by ADR 0395 and owned by it.
+
+The fix has a shape: mint the forwarded parameter under a name the source cannot write, the way `freshName` mints the
+clone's own symbol, and fill it POSITIONALLY at the application. It is the keyword fill that ties the parameter's name
+to the captured name today — `lambdaCallArgs` finds the parameter by the captured name, which is exactly the name the
+colliding body already owns.
+
+Witness: `an entry whose capture word the higher-order body already owns` in `pkg/lang/callable_decline_test.go` and
+its CLI twin, and the refusal row of the same name in `pkg/lang/lambda_applied_test.go`; the account row in
+`TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame` pins the sentence in `refused[]`.
+
+### Gap R.376 — the `key=` hook never gets the entry-capture road (OPEN)
+
+```python
+def use():
+    base = 1
+    return sorted([3, 1, 2], key=lambda x: 0 - x + base)
+
+print(use())                             # the reference: [3, 2, 1]
+# compiled: exit 1 — `key=lambda ...` is refused: a lambda is a function VALUE, and this backend has none
+```
+
+The same program at module level over a module-level `base` refuses the same way, while **Gap R.255**'s self-contained
+spelling — `print(sorted([3, 1, 2], key=lambda x: 0 - x))` — has printed `[3, 2, 1]` since ADR 0345. So the hook road
+is not missing the callable: it gives the hook lambda a declaration and the door calls it by a NAME (`keyRets`), which
+is precisely the shape an entry has. It is missing the *question*: a hook lambda that reads the frame its hook is
+written in needs the words beside the symbol, and that is the question ADR 0395 just answered for entries — asked of a
+second hoist road that never went to the door.
+
+Measured on the parent build and identical there, so this is a neighbour of ADR 0395 and not a casualty of it. The fix
+is not a second capture machine: it is routing the hook through the reading `resolveEntry` performs, so one door
+answers “what does this callable read out of the frame it was written in” for entries, hooks and applied bodies alike.
+
+Witness: the two probes are recorded in ADR 0395's measurement table; the refusal they reach is pinned in
+`pkg/lang/callable_decline_test.go`. Gap R.255 owns the key door's callable half and stays 🟨 `PARTIAL` beside this row.
 
 ### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (closed by ADR 0379)
 
