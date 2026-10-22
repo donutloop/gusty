@@ -15074,7 +15074,7 @@ Gap R.255 owns the key door’s callable half and stays 🟨 `PARTIAL` beside th
 **Gap R.375** (the entry road’s collision), **Gap R.377** (the refusal wrapper leaking a Go type name) and
 **Gap R.378** (a hook that calls a declared function).
 
-### Gap R.377 — a refusal arrives wrapped in a sentence that leaks the statement’s Go type name (OPEN)
+### Gap R.377 — a refusal arrives wrapped in a sentence that leaks the statement’s Go type name (closed by ADR 0398)
 
 ```console
 $ gustyc --file "$(printf 'def outer():\n    base = 2\n    def use():\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\n    use()\n\nouter()\n')"
@@ -15093,6 +15093,50 @@ every new refusal row that pins its sentence has to carve out this wrapper to as
 in one commit, which is the signal to file it rather than route around it twice more. The fix is in the diagnostic, not
 in the pass: name the statement the way the source does (its line and the construct’s Python-facing name), keep the
 inner error verbatim, and let the leak-guards apply without an exception.
+
+**Closed 2026-10-22 by ADR 0398.** `noteUnlowered` asks one question before it opens its mouth —
+`refusalIsSentence(err)` — and the two answers are the two halves of the row. A payload the backend wrote on purpose
+(it carries the `roadmap`/`Gap`/`ADR` citation ADR 0166 requires of a refusal, or the mark `ClassifyCapabilityRefusal`
+puts on a capability refusal, the same classifier `--capabilities` and `--json` read) is handed over verbatim, with
+only the two facts the wrapper knew appended as a clause — `(in \`use\`, line 4)`, the frame printed by
+`callableDisplayName` so a clone the pass minted never shows its IR symbol (ADR 0345 §3) — and the `codegen: ` prefix
+added exactly once, which the old arm doubled on ADR 0283’s refusal. A payload that is a raw helper error keeps the
+wrapper, and the wrapper’s subject comes from `stmtSurface`: ``the `return` at line 6``, ``the `with` at line 3``,
+``the `print(…)` call at line 7``, the 22 statement kinds the language can write and a fallback that still says a line
+and never a type. `*FuncDef` is excluded in code and in a test, because it implements `Stmt` and Gap R.38’s
+`function "m" cannot be compiled:` is quoted verbatim by the drift ledger — folding it in would have been two ledger
+rows silently disappearing. `codegen_stmt.go`’s last `%T` (`unsupported statement %T`) went through the same door. The
+two ADR 0396 carve-outs are deleted rather than edited, so the tests now fail if the wrapper returns.
+Measured with a build of `b1395ec` beside a build of this commit over 23 probes: the same 18 refusals before and after,
+6 carrying a Go type name and 0 doing so now, 6 newly clean, 0 regressed; the `*FuncDef` sentence byte for byte; the
+five CLI controls re-derived from `python3` inside the case on both roads and the four record controls on the record,
+with a missing record failing (`tools/recmerge` wrote 9 entries, the record to 8534, and refused none). What the row
+does not reach is filed as **Gap R.379** and pinned in `TestWhatTheRowLeavesStandingIsFiledNotFixed`, so closing the
+assignment, item-store and parser `%T` leaks is an edit to a table rather than a re-discovery.
+
+### Gap R.379 — the same leak at the other doors: an assignment target, an item store, and the front end reach a reader as a Go type name (OPEN)
+
+```console
+$ gustyc --jit item_assign.gy            # [1, 2][0] = 3
+gustyc: jit: codegen: item assignment needs a container variable on the left (d[k] = v), got *lang.ListLit; CPython accepts more forms
+$ gustyc --jit attr_assign.gy            # (1).x = 2
+gustyc: jit: codegen: unsupported assignment target *lang.Attr
+$ gustyc --jit aug_assign.gy             # x = 1 ⏎ 3 += x
+gustyc: jit: parse error at 2:3: parser: augmented assignment requires a name or attribute target (got *lang.IntLit)
+```
+
+The same disease ADR 0398 cured at the statement door, at three doors it does not open. Each sentence is already the
+right class at the right exit code — `unsupported`, exit 1 (ADR 0212) — and each names a node type the program never
+mentions, to a reader (and a `--json` consumer, which is shown the identical string) who has no such table. **Gap
+R.38**’s naming discipline, asked per door rather than once: the statement arm now has `stmtSurface`, the expression
+arm has `exprTyName`/`exprSurface`, and these three sites still reach for `%T`.
+
+Filed by the ADR 0398 probe round, measured on that round’s parent (`b1395ec`) and still there, and pinned rather than
+routed around: `pkg/lang/refusal_surface_test.go`’s `TestWhatTheRowLeavesStandingIsFiledNotFixed` holds the three
+sources with the row that owns them, and fails when a leak stops appearing so that closing the row is an edit to a
+tracker rather than a re-discovery. The fix is one door wide — the assignment roads already have `exprSurface` to ask
+how the program wrote the target, and the parser’s and checker’s `(got %T)` are the same question at the front end —
+and each of the three needs its own sentence plus a pin that the leaked form is gone.
 
 ### Gap R.378 — a hook lambda that CALLS a function the module declares stays the key door’s refusal (OPEN)
 

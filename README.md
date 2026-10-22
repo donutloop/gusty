@@ -2279,7 +2279,39 @@ falls back to dynamic dispatch.
   prints the reference's `[3, 1, 2]`). `programs/key_hook_frame.gy` is the matrix row (the 226th, oracle
   `match`); three refusals moved to the sentence of the row that actually owns the missing half — a text or
   container capture to **R.332**, float elements to **R.248**, a module-rebound name to **R.35** — and the
-  rest stay the door's own, each at exit 1 with exit 2 forbidden.
+  rest stay the door's own, each at exit 1 with exit 2 forbidden. Both of this row's test files also carried a
+  carve-out that cut the pre-existing `a *lang.ExprStmt statement cannot be compiled:` wrapper off the front of a
+  refusal before asserting it leaked nothing — a leak the suite had adapted to rather than the compiler owning.
+  That is **Gap R.377**, closed one cycle later by **ADR 0398** (the next entry), and the carve-outs are gone.
+
+- **A statement's refusal is the door's own sentence, at the frame and line the program wrote it (Gap R.377, ADR
+  0398)** — the probe that filed this row was the nested-`def` hook above, and what it printed was two sentences
+  welded: `gustyc: jit: codegen: a *lang.ExprStmt statement cannot be compiled:` in front of “`key=lambda ...` is
+  refused: a lambda is a function VALUE … (roadmap L11.7)”. The half after the colon is what a reader acts on; the
+  half before it is the emitter reading its own Go type table at someone who has never seen it — and it was on the
+  record leg's sibling too, where a `%T` met an unformattable payload and produced
+  `(*lang.ReturnStmt)(return outside function)`. `noteUnlowered` is the helper (the closure road funnels every body
+  statement's error through it, so a body that was not lowered cannot also be executed — ADR 0227, Gap R.35), and
+  Gap R.38 had already fixed its `*FuncDef` arm to say `function "m"` while the `Stmt` arm stayed `a %T statement`.
+  One question now decides the arm: `refusalIsSentence(err)` — the capability registry's own classifier
+  (`ClassifyCapabilityRefusal`, the one `--capabilities` and `--json` read, ADR 0346) or ADR 0166's citation, because
+  a refusal this backend wrote on purpose carries the row that owns the missing half. A sentence is handed over
+  **verbatim** with the only two facts the wrapper knew appended — ``(in `use`, line 4)``, the frame printed by
+  `callableDisplayName` so a clone never shows its IR symbol (ADR 0345 §3) — and `codegen: ` is added exactly once,
+  which the old arm doubled. A raw helper error still gets a wrapper, and the wrapper's subject comes from
+  `stmtSurface`: ``the `return` at line 6``, ``the `with` at line 3``, ``the `print(…)` call at line 7``, the 22
+  statement kinds the language can write, and a fallback that says a line and never a type; `codegen_stmt.go`'s last
+  `%T` (`unsupported statement %T`) went through the same door. `*FuncDef` is excluded **in code and in a test** — it
+  implements `Stmt`, and folding it in would have reworded Gap R.38's sentence, which two drift-ledger rows quote
+  verbatim: a divergence silently disappearing is the failure this suite fears most. Measured with a build of the
+  parent beside this one over 23 probes: **the same 18 refusals before and after, 6 carrying a Go type name and 0
+  doing so now, 6 newly clean, 0 regressed**, the `*FuncDef` sentence byte for byte, and the five answered controls
+  re-derived from `python3` inside the case on `--jit` and `--aot`. The two ADR 0396 carve-outs are deleted, not
+  edited, so those tests fail if the wrapper returns; `--json` carries the same sentence and the same class
+  (`ok:false`/`exit:1`/`phase:"codegen"`, plus a `capability` code whenever the registry knows it), which is the
+  point — one fix, both readers. What the same survey found at the *other* doors — `… got *lang.ListLit`,
+  `unsupported assignment target *lang.Attr`, the parser's `(got *lang.IntLit)` — is **Gap R.379**, still open, with
+  all three pinned in a table that fails when somebody closes them.
 
 - **The word a clone forwards to its entry is MINTED, not spelled (Gap R.375, ADR 0397)** — ADR 0395 landed the
   entry-side capture road and left one shape refused out loud: `def apply1(fn, v):` / `base = 9` / `return fn(v)`,

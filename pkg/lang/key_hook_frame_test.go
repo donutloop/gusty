@@ -315,20 +315,19 @@ func TestWhatTheHookRoadDeclinesIsDeclinedOutLoud(t *testing.T) {
 			if !strings.Contains(msg, tc.owns) && !strings.Contains(msg, "roadmap") {
 				t.Fatalf("refusal %q does not point at a row (%s)", msg, tc.owns)
 			}
-			// No compiler's own machinery leaking into the sentence the door writes (ADR 0166). The
-			// statement wrapper that some of these refusals arrive inside — "a *lang.ExprStmt statement
-			// cannot be compiled" — is the pre-existing leak of a Go type name into a program's diagnostic
-			// (filed as **Gap R.377**: `noteUnlowered`'s `Stmt` arm, byte-identical on the build before this
-			// row, whose sibling `*FuncDef` arm was fixed under Gap R.38); it is stripped here because this
-			// row owns the door's sentence, not that wrapper's.
+			// No compiler's own machinery leaking into the sentence the door writes (ADR 0166). Until
+			// **Gap R.377** / **ADR 0398** this list had to carve out the statement wrapper — the test stripped
+			// `a *lang.ExprStmt statement cannot be compiled:` off the front so that its own leak-forbidden
+			// check could pass, which is a leak becoming the test's problem instead of the compiler's. The
+			// carve-out is gone and the assertion is the other way round: the wrapper may NOT appear.
 			said := msg
-			if m := regexp.MustCompile(`^codegen: a \*lang\.[A-Za-z]+Stmt statement cannot be compiled: `).FindString(said); m != "" {
-				said = said[len(m):]
-			}
 			for _, leak := range []string{"*lang.", "0x", "%!s(", "%c4"} {
 				if strings.Contains(said, leak) {
 					t.Fatalf("the refusal leaks %q: %s", leak, msg)
 				}
+			}
+			if strings.Contains(said, "statement cannot be compiled") {
+				t.Fatalf("the refusal still arrives inside the statement wrapper (Gap R.377): %s", msg)
 			}
 		})
 	}

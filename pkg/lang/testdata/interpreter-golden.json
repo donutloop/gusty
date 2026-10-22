@@ -1,5 +1,47 @@
 {
  "entries": {
+"def outer():\n    def use():\n        total = 0\n        for v in [1, 2, 3]:\n            total = total + len([v, v])\n        print(total)\n    return use()\n\nouter()\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def helper(v):\n    return v * 2\n\ndef outer():\n    def use():\n        print(helper(3))\n    return use()\n\nouter()\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    def use():\n        try:\n            print(len([1, 2, 3]))\n        except:\n            print(0)\n    return use()\n\nouter()\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    def use(v):\n        match v:\n            case 1:\n                print(len([1, 2]))\n            case _:\n                print(0)\n    return use(1)\n\nouter()\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+"def outer():\n    def helper(v):\n        return v + 1\n    def use():\n        return helper(5)\n    return use()\n\nprint(outer())\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    def use():\n        print(sorted([3, 1, 2], key=lambda x: 0 - x))\n    return use()\n\nouter()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    def use(v):\n        match v:\n            case 1:\n                return len([1, 2])\n        return 0\n    return use(1)\n\nprint(outer())\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def outer():\n    x = 2\n    def use():\n        try:\n            return len([1, 2, 3])\n        finally:\n            pass\n    return use()\n\nprint(outer())\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 2\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
 "base = 7\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n": {
     "stdout": "10\n",
     "hasStdout": true

@@ -170,17 +170,18 @@ func TestWhatTheHookRoadDeclinesStaysRefusedAtTheCLI(t *testing.T) {
 				if !strings.Contains(out, tc.owns) && !strings.Contains(out, "roadmap") {
 					t.Fatalf("%s's refusal %q does not point at a row (%s)", road, out, tc.owns)
 				}
-				// The statement wrapper these refusals arrive inside leaks a Go type name, and that
-				// leak is pre-existing and owned by Gap R.377 (`noteUnlowered`'s `Stmt` arm, identical on
-				// the build before this row). Everything else about the sentence is this row's business.
-				said := strings.TrimPrefix(strings.Replace(out, "gustyc: jit: codegen: ", "", 1), "")
-				if i := strings.Index(said, "statement cannot be compiled: "); i >= 0 {
-					said = said[i+len("statement cannot be compiled: "):]
-				}
-				for _, leak := range []string{"0x", "%!s(", "__cans", "%c4"} {
-					if strings.Contains(said, leak) {
+				// The statement wrapper these refusals used to arrive inside leaked a Go type name, and this test
+				// and its package twin had to CUT it off the front before they could call the sentence clean — a
+				// leak becoming the test's problem instead of the compiler's. Closed by **Gap R.377** /
+				// **ADR 0398**, so the cut is gone and the absence is the assertion: the door's sentence arrives as
+				// the message, with the frame and line the program wrote the statement on.
+				for _, leak := range []string{"*lang.", "0x", "%!s(", "__cans", "%c4"} {
+					if strings.Contains(out, leak) {
 						t.Fatalf("%s's refusal leaks %s:\n%s", road, leak, out)
 					}
+				}
+				if strings.Contains(out, "statement cannot be compiled") {
+					t.Fatalf("%s's refusal still arrives inside the statement wrapper (Gap R.377):\n%s", road, out)
 				}
 			}
 		})

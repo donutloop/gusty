@@ -13924,3 +13924,65 @@ printed by the tool for a source printed beside it.
   an error while the file on disk was fine. The countermeasure is the same one the suite applies to itself: never
   trust an empty result as evidence about state — re-check with `git diff --stat` after an edit and `gofmt` +
   `go build` before believing a file is what I think it is.
+
+## ADR 0398 — a statement's refusal is the door's own sentence, at the frame and line the program wrote it (Gap R.377, 2026-10-22)
+
+- **A workaround that has been promoted into the suite is the loudest bug report the suite can produce.** The
+  evidence for this row was not a wrong answer; it was two lines of Go in the rows that shipped a cycle earlier —
+  `if m := regexp.MustCompile("^codegen: a \\*lang\\.[A-Za-z]+Stmt statement cannot be compiled: ")…; said = said[len(m):]`
+  in `pkg/lang/key_hook_frame_test.go` and its `integration` twin. A leak-guards test that removes a leak before
+  looking for a leak is not testing anything, and the moment a suite adapts to a leak, CI goes green on top of it.
+  Deleting those two carve-outs and asserting the wrapper's ABSENCE is what turned the row from cosmetics into a
+  guard. Read your own tests for `TrimPrefix`, allowlists and `(?:^|: )?`-style optional prefixes: each is a defect
+  with the serial numbers filed off.
+- **A diagnostic's two audiences are the same bytes, so fix them together or not at all.** `--json` carries the
+  emitter's `error` string verbatim, so the same `*lang.ExprStmt` was the string an agent might branch on. What
+  changed for the machine was nothing — `phase`, `exit` and `capability.code` are computed from the payload, which is
+  exactly why removing the wrapper was safe — and what changed for the human was the whole message. Pin both channels
+  in the same commit (`TestTheMachinePathStillClassesAStatementRefusal` asserts the CLI sentence and the JSON document
+  in one run) or the two will drift the way the pre-ADR-0346 prose did.
+- **"Is this payload already a sentence?" was a question the toolchain could answer instead of guess.** The tempting
+  implementation was a `refusalError` Go type threaded through ~142 `codegen:` refusal sites — a diff to code that
+  decides programs, and quietly defeatable by forgetting the type at one site. ADR 0346 had already rejected that
+  shape for the same reason, and the classifier it built (`ClassifyCapabilityRefusal`, the one `--capabilities` and
+  `--json` read) plus ADR 0166's "a refusal cites its row" rule answer the question with no new type and no new
+  invariant to rot. Side effect worth naming: a refusal that does NOT cite its row and is unknown to the registry now
+  arrives wrapped in ``the `return` at line 6 cannot be compiled:``, which is a mild pressure toward citing.
+- **A sentence some other file quotes verbatim is load-bearing whether or not it reads well.** The obvious refactor
+  was to fold the `*FuncDef` arm into the new passthrough — `*FuncDef` implements `Stmt`, so `where.(Stmt)` catches
+  it, and the result would have been green on every test I wrote until I remembered the drift ledger.
+  `testdata/interpreter-golden-drift.json` quotes Gap R.38's `function "m" cannot be compiled:` in two rows, and a
+  drift row whose wording changes under `TestMain` is a divergence that *silently disappeared* — the one failure the
+  ratchet is built to make loud. So the exclusion is in code, with a comment, and in a byte-for-byte test
+  (`TestTheFuncDefArmStillNamesTheFunction`). Before deleting any wording anywhere, grep the artifacts for it.
+- **The fallback arm of a helper is the arm that regresses, so it gets a case.** `stmtSurface`'s default answers
+  ``the statement at line 41`` for a `Stmt` implementation the language cannot write, and nothing in the compiler
+  reaches it today — which is precisely why it needed a witness. The test invents one (`oddStmt`, a local type
+  implementing `stmtNode()`/`Span()`) plus the `nil` input. Same reasoning for the wrapper arm: `refusalIsSentence`
+  is tested with its negative control, a raw helper error, because a passthrough that also swallowed raw payloads
+  would pass every family case and lose the subject of the sentence.
+- **Never rewrite a golden artifact by hand.** I ran a Python round-trip over
+  `pkg/lang/testdata/interpreter-golden.json` to deduplicate two entries I had pasted in, and rewrote 55,838 lines —
+  the file is a MAP keyed by source, my script treated `entries` as a list, and `json.dump` reformatted every entry in
+  it. `git checkout` saved the row. The record is written by `tools/recmerge` or not at all, and the check that a
+  record-writing was surgical is `git diff --numstat` on the artifact: nine entries is 42 lines, not 64,000.
+- **A "before" column has to be a build, and the "after" build has to be rebuilt.** Two failures in one measurement
+  round, both silent: the probe script called a `/tmp` CLI built earlier in the session, so the "after" column was
+  the "before" build and reported six leaks still present; and the parent build came from a `git stash` of a dirty
+  tree rather than a `git worktree add --detach /tmp/… HEAD`, so it was one edit away from containing the fix. Now:
+  `go worktree` + `go build -o /tmp/gustyc-base ./cmd/gustyc` for the parent, an explicit rebuild of the worktree
+  binary before every probe run, and a harness that refuses to produce a count until a known-good program prints
+  correctly through it (ADR 0394's lesson, third cycle of being re-derived instead of remembered).
+- **File the leaks you find while measuring, in a table that fails when somebody fixes them.** The same probe round
+  turned up three more `%T` leaks behind other doors (`… got *lang.ListLit`, `unsupported assignment target
+  *lang.Attr`, the parser's `(got *lang.IntLit)`). Fixing them here would have been a second feature in one commit and
+  a roadmap row nobody wrote; ignoring them would have lost them. So: **Gap R.379** as an OPEN row, a section in
+  `docs/roadmap-details.md`, and `TestWhatTheRowLeavesStandingIsFiledNotFixed`, which asserts the leaked text is
+  PRESENT and fails when it is absent, saying "move this row to DONE and delete the pin". A pin that fails on
+  improvement is worth more than a TODO.
+- **Two ADR files cannot share a number, and only a guard will tell you.** `docs/adr/0398-…md` was already there when
+  I wrote mine — the same decision, written before a context break — and the count guard caught it
+  (`the ADRs row says 388 records; the artifact says 390`, with the highest number still `0398`). The fix was to keep
+  the better-developed file, correct its numbers against this round's actual measurement (its before-column cited the
+  grandparent commit, and its record count was three entries behind), and delete the duplicate. `git status docs/adr`
+  before writing an ADR, and believe the artifact-count guards when they contradict your memory.

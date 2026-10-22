@@ -192,7 +192,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("codegen: unsupported statement %T", st)
+		// The one arm in this switch that has no sentence of its own, so the name it prints is the whole
+		// diagnostic — and a Go type name is not a name the reader has. `stmtSurface` answers the keyword the
+		// program wrote and the line it wrote it on (roadmap L11.7 · **Gap R.377**, ADR 0398; ADR 0166).
+		return fmt.Errorf("codegen: %s has no compiled lowering, and this backend refuses to run a statement it cannot build (roadmap L11.7, ADR 0166)", stmtSurface(st))
 	}
 	return nil
 }

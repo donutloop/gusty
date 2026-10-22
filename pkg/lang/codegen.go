@@ -1394,6 +1394,27 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	}
 }
 func (g *irGen) noteUnlowered(where any, err error) {
+	if g.emitErr != nil {
+		return
+	}
+	// A statement whose emission already refused carries its own sentence: the door that declined named
+	// the construct, the missing half and the row that owns it, all in the program's words. Wrapping that
+	// in `a *lang.ExprStmt statement cannot be compiled:` told the reader the emitter's type table and
+	// buried the half they were given to act on — the reason two tests of the sibling row had to strip a
+	// prefix before they could call the sentence clean. The payload is now handed over as written, with
+	// the frame and the line appended, which is the only thing this arm knows that the payload does not
+	// (roadmap L11.7 · **Gap R.377**, ADR 0398; ADR 0166/0249's "never the compiler's own machinery").
+	//
+	// A `*FuncDef` is NOT taken here even though it implements `Stmt`: its arm is Gap R.38's, it names the
+	// function the program wrote (which the payload does not), and the drift ledger quotes that sentence.
+	if _, isFuncDef := where.(*FuncDef); !isFuncDef {
+		if st, ok := where.(Stmt); ok && refusalIsSentence(err) {
+			// The prefix is added exactly once: a road that wrote its sentence with the `codegen: ` mark (the
+			// 142 sites ADR 0346 counts) must not read as doubled when the wrapper step is taken away.
+			g.emitErr = fmt.Errorf("codegen: %s%s", strings.TrimPrefix(err.Error(), "codegen: "), g.atLocation(st))
+			return
+		}
+	}
 	what := "an expression"
 	switch n := where.(type) {
 	case Expr:
@@ -1406,11 +1427,34 @@ func (g *irGen) noteUnlowered(where any, err error) {
 		// function to fix (roadmap Gap R.38's rule — a refusal names the program's own thing).
 		what = fmt.Sprintf("function %q", n.Name)
 	case Stmt:
-		what = fmt.Sprintf("a %T statement", n)
+		// The payload here is a raw Go error rather than a refusal sentence, so the wrapper IS the
+		// sentence — which is exactly why it may not contain a Go type name. It names the construct the
+		// program wrote and the line it wrote it on (roadmap L11.7 · Gap R.377, ADR 0398).
+		what = stmtSurface(n)
 	}
-	if g.emitErr == nil {
-		g.emitErr = fmt.Errorf("codegen: %s cannot be compiled: %v", what, err)
+	g.emitErr = fmt.Errorf("codegen: %s cannot be compiled: %v", what, err)
+}
+
+// atLocation says where in the program a node sits, in the two words a reader acts on: the frame's name
+// (the display name, so a clone the pass minted is never printed — ADR 0345 §3) and the line. An empty
+// answer means there is nothing to add: a statement with no span is no help, and a wrong line is worse
+// than none.
+func (g *irGen) atLocation(st Stmt) string {
+	if st == nil || reflectIsNil(st) {
+		return ""
 	}
+	sp := st.Span()
+	if sp.Line <= 0 {
+		return ""
+	}
+	frame := ""
+	if g != nil && g.curFD != nil {
+		frame = callableDisplayName(g.curFD)
+	}
+	if frame != "" {
+		return fmt.Sprintf(" (in `%s`, line %d)", frame, sp.Line)
+	}
+	return fmt.Sprintf(" (line %d)", sp.Line)
 }
 
 // beginScope starts a fresh variable-binding scope — a function body, or the
