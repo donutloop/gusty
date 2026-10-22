@@ -117,6 +117,31 @@ var pairParamTruthCLIPrograms = []struct {
 		src:  "def f(v):\n    print(bool(v), not v)\n\nd = {\"t\": True, \"f\": False}\nf(d[\"t\"])\nf(d[\"f\"])\n",
 		want: "True False\nFalse True\n",
 	},
+	// The entry spelled as a CALL rather than as a literal. `list()` / `set()` / `dict()` is the container the
+	// program meant; the read of the slot used to cross as the heap handle the literal store had left behind,
+	// because the pair scan kept a third copy of the spelling test and a `Call` was not on its list (roadmap
+	// Gap R.369, ADR 0394). Each row asks the print door and the truth door of the same entry, so a fix that
+	// only opens one of them cannot pass.
+	{
+		name: "an empty container spelled as a list() call prints itself and is false",
+		src:  "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": list()}\nf(d[\"k\"])\n",
+		want: "[]\nf\n",
+	},
+	{
+		name: "an empty container spelled as a set() call prints itself and is false",
+		src:  "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": set()}\nf(d[\"k\"])\n",
+		want: "set()\nf\n",
+	},
+	{
+		name: "an empty container spelled as a dict() call prints itself and is false",
+		src:  "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": dict()}\nf(d[\"k\"])\n",
+		want: "{}\nf\n",
+	},
+	{
+		name: "the list element spelled as a call, and its filled neighbour",
+		src:  "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nxs = [list(), [1]]\nf(xs[0])\nf(xs[1])\n",
+		want: "[]\nf\n[1]\nt\n",
+	},
 	// Controls: the kinds the compiler can prove never needed this door and keep the road they had.
 	{
 		name: "a provable integer parameter still compares",
@@ -242,14 +267,6 @@ func TestWhatTheTruthOfAPairSuppliedParameterStillOwesAtTheCLI(t *testing.T) {
 			src:   "def f(v):\n    return v if v else \"z\"\n\nd = {\"e\": []}\nprint(f(d[\"e\"]))\n",
 			today: "3\n",
 			row:   "Gap R.367",
-		},
-		{
-			// Gap R.369: the empty container spelled as a CALL and stored in a dict literal is written by
-			// ADR 0391's road with an integer tag, so what crosses the argument is a number's truth.
-			name:  "an empty container written as a call crosses as an integer",
-			src:   "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": list()}\nf(d[\"k\"])\n",
-			today: "3\nt\n",
-			row:   "Gap R.369",
 		},
 		{
 			// Gap R.368: a text-answering body is emitted under the convention that owns its parameters.

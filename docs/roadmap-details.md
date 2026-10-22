@@ -16297,17 +16297,167 @@ The literal entry `d = {"k": []}` is answered by ADR 0393's door; `print(list())
 right since ADR 0392. Put the two together and the answer is a handle and a wrong branch. ADR 0391 gave the
 empty container its tag by asking one door (`(*irGen).emptyContainerCall`) — the shape test plus
 `builtinShadowed` — and ADR 0392's lesson was that every road that DECIDES such a value's kind must ask that
-same door rather than re-deriving it. The dict-literal store road is a third road that re-derives it: it
-stores the fold's integer and a tag that names no container, so what crosses the argument carries a number's
-truth, and the callee's condition — answered, correctly, from the tag it was given — takes the `then` arm.
+same door rather than re-deriving it.
 
-The print door's `3` is the tell worth reading: it is the interned-index door being handed a handle-less pair,
-which is what a tag with no payload behind it looks like from the outside.
+**The filing guessed the store, and the filing was wrong.** The dict-literal store *does* ask the door — that
+was ADR 0391's change, and `--emit-llvm` on this very program shows the entry being written by
+`@rt_dict_put_tagged(i32 %…, i32 4, i32 5)`: the tag of a list, beside the handle, exactly as it should be.
+The third road that re-derived the answer was `pkg/lang/paircall.go`. The scan decides, once per program,
+which `(function, parameter)` positions take the pair, and one of its predicates is a hand-written list of
+AST node types — `pairSlotIsSpelling`, "can the builder write this slot from its spelling alone?" — on which
+a `*Call` does not appear. So `readOfLiteralSlots(d["k"])` answered *no* for an entry spelled `list()`, the
+position was recorded closed, and the callee got the ordinary road's single word: the handle, printed as `3`
+and tested against zero as `t`. The `3` is the same tell either way; it is what a tag with no payload behind it
+looks like from the outside, and it does not tell you which road dropped the payload.
 
-Filed by ADR 0393, which excluded the three call spellings from the answer ladder for exactly this reason and
-pinned them beside the residue instead of recording a wrong answer.
+Closed by **ADR 0394**: `pairScan.valueSlotIsSpelling` is the value/member half of that predicate and asks the
+emitter's door, and `pairScan.programDefinesName` carries the one fact (`builtinShadowed`) the scan cannot
+borrow because it has no `irGen` to reach. Keys keep the strict `pairSlotIsSpelling`: a member the tag table
+cannot name is a key that cannot be hashed, and *when* that raises is Gap R.81's decision.
 
-Witness: `an_empty_container_written_as_a_call_crosses_as_an_integer` and
-`the_set_spelling_of_the_same_entry` in `TestWhatTheTruthOfAPairSuppliedParameterStillOwes`, and the CLI twin's
-row of the same name; the three spellings move into the ladder — and into `tools/recmerge`'s hands — the day
-the store asks the door.
+Measured over 46 probes of the family, each asked of CPython first: **7 agreeing before, 34 after, 27 newly
+agreeing, 0 regressed**. Witness: 27 answer rows + `integration/programs/empty_container_argument.gy` in
+`TestTheEmptyContainerWrittenAsACallCrossesTheArgument`, its record twin
+`TestTheEmptyContainerCallArgumentAgreesWithTheRecord`, the IR claims in
+`TestTheEmptyContainerCallArgumentIsWrittenWithItsKind`, the CLI table and both legs in
+`integration/empty_container_argument_test.go`. The two ADR 0393 residue pins this row closes
+(`an_empty_container_written_as_a_call_crosses_as_an_integer`, `the_set_spelling_of_the_same_entry`) are
+deleted from the package table and the CLI table rather than rewritten, and the shapes moved into both ladders.
+
+### Gap R.370 — the truth of an empty container spelled as a call at module level is its heap handle
+
+```gusty
+print(bool(list()), bool(set()), bool(dict()))   # reference: False False False — compiled: False True True
+print(not list(), not list())                    # reference: True True True   — compiled: True False
+```
+
+No call boundary is involved, which is the whole difficulty: ADR 0389's pair has nowhere to ride and ADR
+0393's truth door has no tag to ask, because there is no caller to have supplied one. The road that decides
+the truth of these expressions tests the handle against zero, so the first empty container a program makes is
+false by luck (address `0` is not yet handed out) and every later one is true. `d = {"k": list()}` above makes
+the list at `3`, which is why `bool(list())` there reads `True`.
+
+`if set():` standing alone REFUSES — "a container's truthiness is its length, and this backend cannot ask an
+object how many elements it has from a call to `bool()`" (Gap R.131, ADR 0166). That refusal is the reason
+this stayed invisible: the honest road and the lying road sit next to each other, and the tests were reading
+the honest one. A refusal in one road never licenses a wrong answer in another.
+
+Witness: `the_truth_of_the_second_empty_container_call_is_its_handle` and
+`not_of_the_second_empty_container_call` in `TestWhatTheEmptyContainerCallArgumentStillOwesIsFiledNotFixed`,
+pinned with today's bytes; the two rows were refused a place in the answer table for exactly this reason.
+
+### Gap R.371 — the value of a caller-supplied parameter is still one word where its truth is two
+
+```gusty
+def f(v):
+    print(repr(v))        # reference: []  — compiled: 3
+    print(f"{v}")         # reference: []  — compiled: 3
+    print([v])            # reference: []  — compiled: [3]
+    print(len(v))         # reference: 0   — compiled: refuses ("len of a non-string variable")
+    print(v == [])        # reference: True — compiled: refuses (the tagged-value sentence)
+
+d = {"k": list()}
+f(d["k"])
+```
+
+ADR 0389 carries both words into the callee; ADR 0393 spends the tag on the CONDITION; this ADR lets the read
+of the slot reach the callee at all. What is left is every door that **renders** or **measures** the
+parameter rather than testing it: `repr`, an f-string field, a container slot written from the parameter, and
+`len`/`==` which refuse rather than name a tagged value word. The pair is already in the frame — the callee's
+`%_v_tag` is allocated and stored — so this is a question of spending a word that has already been carried,
+not of carrying it.
+
+Witness: five rows in `TestWhatTheEmptyContainerCallArgumentStillOwesIsFiledNotFixed` —
+`the_repr_of_a_caller_supplied_parameter`, `an_f_string_field_that_is_a_caller_supplied_parameter`,
+`a_container_slot_written_from_a_caller_supplied_parameter`, and the two refusal pins.
+
+### Gap R.372 — an entry read by a `for` variable's key crosses as a number
+
+```gusty
+def f(v):
+    print(v)
+
+d = {"a": [], "b": list(), "c": "hi", "d": 1.5}
+for k in ["a", "b", "c", "d"]:
+    print(d[k])           # right: [] [] hi 1.5 — the print door asks the object
+    f(d[k])               # wrong: 5 6 3 7 — the read of the slot has no kind to be asked with
+```
+
+The same dict, the same loop, the same keys: printed it is right, crossed it is four handles. The difference
+is which road owns the question. The print door asks the object and never consults the scan; the pair road
+asks the scan, and the scan records the *literal* whose slot is being read plus the arguments ever written at
+each parameter position — it does not record a `for` head's bindings, so `k` is a name with no entry and the
+key's kind is unavailable where the read is lowered. Note which side is missing: the VALUE of these entries is
+fine (the store tagged them), it is the KEY that arrived without one.
+
+The same hole in the binding table is what Gap R.161 records for a float forwarded across two frames, and the
+same fix shape applies: record the loop variable's bindings in `pairScan.bound` the way an assignment is
+recorded.
+
+Witness: `an_entry_read_by_a_loop_variable_key_crosses_as_a_number` in
+`TestWhatTheEmptyContainerCallArgumentStillOwesIsFiledNotFixed`. The loop that PRINTS the same entries is in
+the answer table (`entry_read_by_a_loop_variable_key`), so the two rows sit side by side and the difference
+cannot be lost.
+
+### Gap R.373 — a method named `set` takes the built-in's spelling from the pair road
+
+```gusty
+class C:
+    def set(self):
+        return 2
+
+def f(v):
+    print(v)
+
+d = {"k": set()}
+f(d["k"])                 # reference: set() — compiled: 3, exit 0
+```
+
+A method's name is not a module binding: `set()` at module level resolves to the built-in in the reference,
+and the object the store builds is a real set. But the shadowing census — this scan's `programDefinesName` and
+the `(*irGen).builtinShadowed` it copies — registers every `def` the program wrote, class bodies included, so
+the door declines and the entry is stored with no container tag at all. `f(d["k"])` then prints the handle at
+the exit code of success.
+
+This is the mirror image of the control that shaped the census. The census must not be *narrow* (a user's
+`def set(): return 1` really is an integer wearing a set's spelling, and a tag would name nothing) and it
+must not be *wide* (a method is reachable only through an attribute, never as a bare name). The fix is to
+scope the census to the frames whose bindings are actually visible at the use — which is the question
+`builtinShadowed` should already have been asking, and which both copies now share.
+
+Witness: `a_method_named_set_takes_the_builtins_spelling` in
+`TestWhatTheEmptyContainerCallArgumentStillOwesIsFiledNotFixed`.
+
+### Gap R.374 — a second call to the same callee reuses the first call's pair word
+
+```gusty
+def f(a, b):
+    print(a, b)
+
+f(list(), 5)      # reference: [] 5   — compiled: [] 5      (right)
+f(1, 2)           # reference: 1 2    — compiled: [] 2      (the first call's list, again)
+
+f(list(), 1)
+f(set(), 2)       # three calls, three spellings, and every line prints `{}` for the container
+f(dict(), 3)
+```
+
+A callee's pair layout is decided from one call site and reused by the others. A site whose own arguments are
+all spellings emits into the layout the first site chose, so the payload the callee reads is the one the
+previous call left in the slot. `b` stays right and `a` goes stale, which is the signature: the word that is
+missing is the one the site declined to write.
+
+**Not this row's doing, and said so by the parent build.** `def f(a, b)` with `f([1], 2)` then `f(3, 4)` —
+spelled entirely in literals, nothing to do with a call — prints `[] 4` on the build before ADR 0394 as well.
+The layout drift is the pair road's own. What this row changed is how easy it is to stand on: `[]`, `{}` and
+`set()`/`dict()` are spellings now, so the mixed case that a program used to reach only by writing a container
+literal at one site and a read at another is now the ordinary shape of a file. It is filed here for that
+reason rather than smoothed over, and the data a fix needs is already in the scan: `pairScan.calls[fn][i]`
+holds every argument ever written at every position of every function, which is exactly the
+per-callee-over-all-sites question the layout should be decided from.
+
+Witness: `a_second_call_to_the_same_callee_reuses_the_first_calls_pair_word` and
+`three_calls_three_spellings_one_layout` in `TestWhatTheEmptyContainerCallArgumentStillOwesIsFiledNotFixed`.
+The conformance program avoids the shape deliberately — its callees are each called with one consistent
+argument shape — and that omission is this row's admission that the program would not otherwise print CPython's
+bytes.

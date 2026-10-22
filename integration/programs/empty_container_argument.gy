@@ -1,0 +1,85 @@
+def show(v):
+    print(v)
+    if v:
+        print("t")
+    else:
+        print("f")
+
+d = {"a": list(), "b": set(), "c": dict(), "e": [], "i": 5, "j": "hi", "k": 1.5, "l": None}
+print(d)
+show(d["a"])
+show(d["b"])
+show(d["c"])
+show(d["e"])
+show(d["i"])
+show(d["j"])
+show(d["k"])
+show(d["l"])
+
+xs = [list(), 5, set(), "hi"]
+print(xs)
+show(xs[0])
+show(xs[2])
+
+nested = {"k": [list()], "m": {"n": set()}}
+print(nested)
+show(nested["k"])
+show(nested["m"])
+
+w = d["a"]
+print(w)
+print(str(d["a"]))
+print(len(d))
+
+def loops(v):
+    while v:
+        print("once")
+        break
+    print("done")
+
+loops(d["a"])
+loops(d["e"])
+loops(d["i"])
+
+def head(v):
+    print("y" if v else "n")
+    if v:
+        print("a")
+    elif v:
+        print("b")
+    else:
+        print("c")
+
+head(d["b"])
+head(d["j"])
+
+def two(v, w):
+    print(v, w)
+    if v:
+        print("v")
+    else:
+        print("no-v")
+    if w:
+        print("w")
+    else:
+        print("no-w")
+
+two(d["a"], d["b"])
+two(d["i"], d["l"])
+
+def filled(v):
+    print(v, bool(v), not v)
+
+filled(d["c"])
+filled(d["e"])
+filled(d["j"])
+
+def runs(v):
+    n = 0
+    for k in [0, 1]:
+        if v:
+            n = n + 1
+    return n
+
+d2 = {"p": list(), "q": [1]}
+print(runs(d2["p"]), runs(d2["q"]))

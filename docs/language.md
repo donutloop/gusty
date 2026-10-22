@@ -1100,10 +1100,17 @@ chooses, are neither of this door nor the operator road's (**Gap R.367**).
 A provable integer entry or item keeps the plain compare, and the entry read handed to a call — a position
 that keeps one word for the whole value — is still **Gap R.146**/**Gap R.220**'s. A **set** entry now carries
 its tag where the container was spelled as a literal or written by a binding, and where the empty container
-was spelled as a call in a slot that door reaches (**Gap R.360**, **Gap R.364**, **ADR 0391**, **ADR 0392**);
-the empty container written as a `list()` / `dict()` / `set()` call and stored in a dict literal *that is then
-handed to a call* still crosses with an integer tag — the store never asked ADR 0391's door — which is
-**Gap R.369**'s.
+was spelled as a call (**Gap R.360**, **Gap R.364**, **ADR 0391**, **ADR 0392**, **ADR 0394**): the read of a
+slot the program spelled `list()` / `dict()` / `set()` — a dict value, a list or set member, at any depth of
+nesting — crosses a call argument with the kind of the container that spelling names, so
+`d = {"k": list()}` / `f(d["k"])` prints `[]` and takes the `else` arm like the reference and not `3` and the
+`then` arm (**Gap R.369**, closed). The door reaches a **value** and a **member**, not a **key**: a key the tag
+table cannot label is a key that cannot be hashed, and *when* that raises is **Gap R.81**'s decision — so
+`s = {list()}` still adds the member (**Gap R.81**), and the reference raises `TypeError`. The scan asks the
+same shadowing question the emitter asks, so a program that writes `def set(): return 1` keeps its own value at
+that spelling; a **method** named `set` taking the built-in's spelling from this road is **Gap R.373**, and the
+truth of an empty container spelled as a call where there is no call to cross — `print(bool(set()))` at module
+level — is **Gap R.370**.
 
 ### `and` and `or` answer an **operand**, not a verdict, and skip what the test rejected (Gap R.147, ADR 0269; Gap R.149, ADR 0275)
 
@@ -1642,11 +1649,22 @@ lst.append(7)
   `print(sorted(set()))` is `[]`, `print(list() + [1])` is `[1]`, and `print(abs(list()))` raises
   CPython's `TypeError: bad operand type for abs(): 'list'` — catchable by `except TypeError:`, which
   a refusal never is. A program that defines `set` itself keeps its own answer (`def set(): return 1`
-  then `print([set()])` is `[1]`). What the spelling still does not reach is filed and named:
+  then `print([set()])` is `[1]`). The spelling reaches a call argument too, at either side of a container and
+  at any depth: `def f(v):` / `    print(v)` / `    if v:` with `d = {"k": list()}` / `f(d["k"])` prints `[]`
+  and takes the `else` arm, and `xs = [set(), [1]]` / `f(xs[0])` prints `set()` — the read of such a slot
+  crosses as the `(payload, kind)` pair the spelling describes, because the pair scan asks this same door and
+  no longer re-derives the answer from a list of node types (**Gap R.369**, closed by **ADR 0394**). What the spelling still does not reach is filed and named:
   `print(set() < set())` answers `True` where the reference answers `False` — the set-ordering helper the
   literal spellings lack too (Gap R.175) — `sum(list())` refuses with the same sentence a container
   variable refuses with, `{set()}` prints where the reference raises unhashable (Gap R.81), and a
   container key written as a call refuses the way a container key written as a literal refuses.
+  Three faces of the same missing word are filed beside it: the **truth** of an empty container spelled as a
+  call where no call crosses — `print(bool(set()))` at module level answers from the handle, so the first one
+  in a program is false by luck and the next is true (**Gap R.370**); the **value** of a parameter the caller
+  supplied, as opposed to its truth — `repr(v)`, an f-string field, a container slot written from the
+  parameter, `len(v)` and `v == []` all still read the payload or refuse it (**Gap R.371**); and the **key**
+  of the read when a `for` variable holds it — `for k in ["a", "b"]: f(d[k])` crosses four handles where
+  `print(d[k])` in the same loop prints right (**Gap R.372**).
 - **Not lowered:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a compile-time
   refusal that names the runtime door they need (`rt_list_clone` and its dict/set siblings, which were
   never emitted — the retired engine did the copy in Go), what the reference answers, and the rows that

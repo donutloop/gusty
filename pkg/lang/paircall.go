@@ -323,8 +323,13 @@ type pairScan struct {
 	calls   map[string]map[int][]Expr   // per function, per parameter position, every argument written
 	callers map[string]map[int][]string // the function each recorded argument was written inside (aligned)
 	fds     map[string]*FuncDef         // the functions in play
-	paired  map[string]bool             // names the pair road binds (fixed point, below)
-	fwd     []pairForward               // parameter-to-parameter forwarding edges, in walk order
+	// stmts is the whole program, which the shadowing half of `valueSlotIsSpelling` has to be able to ask:
+	// the scan decides a call convention from a spelling, and the spelling `list()` belongs to the built-in
+	// only until the program writes that name itself (roadmap Gap R.369).
+	stmts   []Stmt
+	written map[string]bool // memo for `programDefinesName`
+	paired  map[string]bool // names the pair road binds (fixed point, below)
+	fwd     []pairForward   // parameter-to-parameter forwarding edges, in walk order
 	// readsCallAnswers is the return side's permission to ask "what does this callee hand back?".
 	// ADR 0276's argument gate asks the *same* function a different question — "can the pair road produce
 	// both words for this argument from its spelling alone?" — and a call spelled `make()` cannot, which is
@@ -375,6 +380,7 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 		calls:   map[string]map[int][]Expr{},
 		callers: map[string]map[int][]string{},
 		fds:     fds,
+		stmts:   prog.Stmts,
 	}
 	// The function whose body the walk is inside, so a call site knows whose parameter it is handing
 	// over. A stack, because a `def` nests; a body whose enclosing name is not a top-level function (a
@@ -1396,12 +1402,18 @@ func (s *pairScan) literalSideIsUnwrittenLiteral(side Expr) bool {
 
 // dictSlotsCarryKinds asks the scan's copy of the door's question: is some VALUE of this literal a
 // payload that means something only beside its kind — a text's `@str_tab` index, a float box's handle,
-// a container's handle, None, a verdict? A key's kind is the door's own business (`dictKeyCarriesPair`,)
-// ADR 0353) and never opens a parameter: `{"a": 7}` has a payload that IS its number, and the row's
-// negative control is that such an entry keeps the one word it has always crossed in.
+// a container's handle, None, a verdict? A key's kind is the door's own business (`dictKeyCarriesPair`,
+// ADR 0353) and never opens a parameter: `{"a": 7}` has a payload that IS its number, and the
+// row's negative control is that such an entry keeps the one word it has always crossed in.
+//
+// The two sides are asked two different questions on purpose. A KEY has to be a spelling the scan can
+// label on its own, because a key that is not hashable is not an absent entry — it is `TypeError: unhashable
+// type: 'list'`, a question roadmap Gap R.81 owns; letting the empty container spelled as a `list()` be a
+// key would have this pass open a parameter for a program the reference refuses before the read. A VALUE is
+// asked `valueSlotIsSpelling`, which is the store's own door.
 func (s *pairScan) dictSlotsCarryKinds(dl *DictLit) bool {
 	for i := range dl.Keys {
-		if !pairSlotIsSpelling(dl.Keys[i]) || !pairSlotIsSpelling(dl.Vals[i]) {
+		if !pairSlotIsSpelling(dl.Keys[i]) || !s.valueSlotIsSpelling(dl.Vals[i]) {
 			return false
 		}
 		if !pairSlotIsPlainInt(dl.Vals[i]) {
@@ -1414,7 +1426,7 @@ func (s *pairScan) dictSlotsCarryKinds(dl *DictLit) bool {
 func (s *pairScan) listSlotsCarryKinds(ll *ListLit) bool {
 	needsKind := false
 	for _, el := range ll.Elems {
-		if !pairSlotIsSpelling(el) {
+		if !s.valueSlotIsSpelling(el) {
 			return false
 		}
 		if !pairSlotIsPlainInt(el) {
@@ -1461,8 +1473,163 @@ func (s *pairScan) keyIsSpelling(e Expr) bool {
 	return pairSlotIsSpelling(e)
 }
 
+// valueSlotIsSpelling is the VALUE/member half of `pairSlotIsSpelling`, and it is the one arm the scan was
+// missing: the empty container spelled as a CALL. `d = {"k": list()}` / `f(d["k"])` prints `3` — the heap
+// handle of the empty list — where the reference prints `[]`, because the scan refused to believe a `Call`
+// could be a self-describing slot, closed the parameter, and handed the ordinary road a payload with its
+// kind left behind (roadmap Gap R.369).
+//
+// The three roads that answer "what kind is the object in this slot" now ask ONE door. ADR 0391 put
+// `(*irGen).emptyContainerCall` into `elemKindTag`, so the BUILDER writes the entry with the tag of the
+// container the call spells; ADR 0392 put it into the DECIDING doors (`literalNeedsHeap`, `literalNeedsTags`,
+// `staticContainerKind`), so the object is built self-describing in the first place; this is the third road,
+// the one that decides whether the read of that slot crosses a call at all. Each of the three kept its own
+// spelling test, and each in turn was found not to ask the door — ADR 0232's rule that a question has one
+// asking place, restated for the pair scan.
+//
+// What the door is asked with. The scan is a program-wide function over the AST with no generator to reach,
+// and the door adds exactly one fact to the bare `emptyContainerLiteral` shape: whether the PROGRAM wrote
+// the name `list`, `set` or `dict` itself, because a user's `def set(): return 1` is an integer wearing the
+// spelling of a set and the tag would then be a fact about nothing. `programWritesName` is therefore the
+// scan's copy of `(*irGen).builtinShadowed`, computed over the whole program before the walk and
+// deliberately coarser than the emitter's answer — every frame, every binding form, every unrecognised
+// statement counts as a write — because the two failure directions are not symmetric: declining the door
+// costs this family the answer it does not yet have, while opening it on a name the program took over
+// labels an int payload as a container.
+func (s *pairScan) valueSlotIsSpelling(e Expr) bool {
+	if e == nil {
+		return false
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if !s.valueSlotIsSpelling(el) {
+				return false
+			}
+		}
+		return true
+	case *SetLit:
+		for _, el := range n.Elems {
+			if !s.valueSlotIsSpelling(el) {
+				return false
+			}
+		}
+		return true
+	case *DictLit:
+		for i := range n.Keys {
+			// A nested dict's KEYS stay the strict question: a member the tag table cannot label is a key
+			// that cannot be hashed, and roadmap Gap R.81 owns when that raises.
+			if !pairSlotIsSpelling(n.Keys[i]) || !s.valueSlotIsSpelling(n.Vals[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	if pairSlotIsSpelling(e) {
+		return true
+	}
+	c, isCall := e.(*Call)
+	if !isCall {
+		return false
+	}
+	if s.programDefinesName(calleeName(c)) {
+		return false
+	}
+	_, isEmpty := emptyContainerLiteral(c)
+	return isEmpty
+}
+
+// programDefinesName is the scan's copy of `(*irGen).builtinShadowed` — the one fact the door
+// `(*irGen).emptyContainerCall` adds to the bare `list()` / `set()` / `dict()` shape. It is asked of the
+// program because the scan is a function over the AST with no generator to reach, and it asks the SAME
+// question the emitter asks and nothing more: does this program introduce the name with a `def` or a
+// `class`, in any frame, at any depth? A user's `def set(): return 1` is an integer wearing the spelling of
+// a set, and a tag calling it a set would be a fact about nothing (roadmap Gap R.360, whose door this is).
+//
+// Asking one question rather than a stricter one is the point. This scan decides whether a read of the slot
+// crosses a call as a pair; the builder decides the tag written beside the handle. Where the two disagree
+// about whether the spelling is the built-in's, the pair arrives wearing a kind the object does not carry,
+// so this asks what `builtinShadowed` asks: a name that a `for` variable or an unrelated function's
+// parameter happens to share is not a name the program took over, and a gate stricter than the door it
+// copies would close this family's parameter for a program the emitter goes on labelling a container
+// (measured: `def g(list): return list` above `d = {"k": list()}` / `f(d["k"])` printed `3` while the census
+// counted that parameter a write of `list`).
+func (s *pairScan) programDefinesName(name string) bool {
+	if s == nil || name == "" || s.stmts == nil {
+		return true // no program to read is no evidence that the spelling is the built-in's
+	}
+	if w, seen := s.written[name]; seen {
+		return w
+	}
+	w := stmtsAreNamed(s.stmts, name)
+	if s.written == nil {
+		s.written = map[string]bool{}
+	}
+	s.written[name] = w
+	return w
+}
+
+// stmtsAreNamed walks every statement form that can HOLD a definition — a body, an `if` arm, a `while`/`for`
+// body or `else`, a `try` clause, a `with`, a `match` case — and asks whether a `def` or a `class` in there
+// introduces NAME. The forms it does not descend into (an expression statement, a `return`, an `import`)
+// hold no definition, so there is nothing in them to find; a new statement form that can hold one has to be
+// added here, the way `stmtsRebindName` carries the same obligation for the binding forms.
+func stmtsAreNamed(body []Stmt, name string) bool {
+	for _, st := range body {
+		switch t := st.(type) {
+		case nil:
+		case *FuncDef:
+			if t.Name == name || stmtsAreNamed(t.Body, name) {
+				return true
+			}
+		case *ClassDef:
+			if t.Name == name || stmtsAreNamed(t.Body, name) {
+				return true
+			}
+		case *IfStmt:
+			if stmtsAreNamed(t.Then, name) || stmtsAreNamed(t.Else, name) {
+				return true
+			}
+			for _, arm := range t.Elifs {
+				if arm != nil && stmtsAreNamed([]Stmt{arm}, name) {
+					return true
+				}
+			}
+		case *WhileStmt:
+			if stmtsAreNamed(t.Body, name) || stmtsAreNamed(t.Else, name) {
+				return true
+			}
+		case *ForStmt:
+			if stmtsAreNamed(t.Body, name) || stmtsAreNamed(t.Else, name) {
+				return true
+			}
+		case *TryStmt:
+			if stmtsAreNamed(t.Body, name) || stmtsAreNamed(t.Finally, name) {
+				return true
+			}
+			for _, arm := range t.Excepts {
+				if arm != nil && stmtsAreNamed(arm.Body, name) {
+					return true
+				}
+			}
+		case *WithStmt:
+			if stmtsAreNamed(t.Body, name) {
+				return true
+			}
+		case *MatchStmt:
+			for _, c := range t.Cases {
+				if c != nil && stmtsAreNamed(c.Body, name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // pairSlotIsSpelling is the scan's copy of "the builder can write this slot from its spelling alone": a
-// literal of a kind the tag table names, or a container literal made of those.
+// literal of a kind the tag table names, or a container literal made of those. It is the KEY-side question;
+// a value or a member asks `valueSlotIsSpelling`, which is this plus the container spelled as a call.
 func pairSlotIsSpelling(e Expr) bool {
 	switch n := e.(type) {
 	case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit:

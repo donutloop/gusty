@@ -294,6 +294,13 @@ func TestTheOperandOfNotRunsOnce(t *testing.T) {
 // TestWhatTheTruthOfAPairSuppliedParameterStillOwes pins, with today's bytes, the shapes this row leaves
 // standing. Each is the same door one position further, and each fails — here, where its own text says to
 // delete it — the day that door opens.
+//
+// Two rows this table held are gone rather than rewritten: the empty container spelled as `list()` / `set()` /
+// `dict()` and stored in a container literal, which used to cross a call argument as its heap handle and now
+// crosses with the tag of the container its spelling names (roadmap Gap R.369, ADR 0394). They did not belong
+// in a truth table anyway — the door that was missing is the pair SCAN's copy of the spelling test, and the
+// case is asserted with both of its positions (the print and the truth) in
+// `empty_container_argument_test.go`'s answer table, on the record and against the reference.
 func TestWhatTheTruthOfAPairSuppliedParameterStillOwes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -340,20 +347,6 @@ func TestWhatTheTruthOfAPairSuppliedParameterStillOwes(t *testing.T) {
 			src:   "def f(v):\n    while v:\n        print(\"once\")\n        break\n    return \"done\"\n\nd = {\"e\": [], \"t\": \"\", \"l\": [1], \"n\": None, \"z\": 0, \"o\": 1, \"s\": \"hi\", \"f\": 0.0}\nprint(f(d[\"e\"]), f(d[\"t\"]), f(d[\"l\"]), f(d[\"n\"]), f(d[\"z\"]), f(d[\"o\"]), f(d[\"s\"]), f(d[\"f\"]))\n",
 			today: "once\nonce\nonce\nonce\nonce\nonce\ndone done done done done done done done\n",
 			row:   "Gap R.368",
-		},
-		{
-			// Gap R.366 again, seen from the print door: an empty container written as a CALL and stored
-			// in a dict literal crosses with an integer tag, so the truth it is handed is a number's.
-			name:  "an_empty_container_written_as_a_call_crosses_as_an_integer",
-			src:   "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": list()}\nf(d[\"k\"])\n",
-			today: "3\nt\n",
-			row:   "Gap R.369",
-		},
-		{
-			name:  "the_set_spelling_of_the_same_entry",
-			src:   "def f(v):\n    print(v)\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": set()}\nf(d[\"k\"])\n",
-			today: "3\nt\n",
-			row:   "Gap R.369",
 		},
 		{
 			// Gap R.367, the other half of the chosen operand: the ternary. Its HEAD is served by this

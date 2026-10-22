@@ -2214,8 +2214,43 @@ falls back to dynamic dispatch.
   today's bytes pinned beside the reference's: the stale tag under a rebinding and the loop that never ends
   (**R.366**), the operand `and`/`or` and the ternary choose, which still answers a heap handle for `z`
   (**R.367**), the text-returning convention whose parameters never get a tag to ask (**R.368**), and the empty
-  container spelled as a `list()` stored in a dict literal, whose store never asked ADR 0391's door
-  (**R.369**).
+  container spelled as a `list()` stored in a dict literal — one row that was filed against the store and
+  turned out to live in the scan, told below and paid by **ADR 0394** (**R.369**).
+
+- **The pair scan asks the same door: the container spelled as a call is a slot it can read (Gap R.369, ADR
+  0394)** — three rows in a row were the same program with one word changed, and the filing of the third one
+  blamed the wrong road. `d = {"k": []}` / `f(d["k"])` prints `[]` and takes the `else`; `d = {"k": list()}` /
+  `f(d["k"])` printed `3` and took the `then`, at the exit code of success, for the print and the truth alike.
+  The store was not the hole: `--emit-llvm` shows the entry being written by
+  `@rt_dict_put_tagged(i32 %…, i32 4, i32 5)` — the tag of a list, beside the handle, exactly as ADR 0391 left
+  it. The hole was `pkg/lang/paircall.go`. The scan decides once per program which `(function, parameter)`
+  positions take the pair, and one of its predicates is a hand-written list of AST node types —
+  `pairSlotIsSpelling`, "can the builder write this slot from its spelling alone?" — on which a `*Call` does
+  not appear. So `readOfLiteralSlots(d["k"])` answered *no*, the position was recorded closed, and the callee
+  got the ordinary road's single word. That list is the **third** hand-written copy of one question: ADR 0391
+  put the door in the road that LABELS a slot, ADR 0392 in the roads that DECIDE a kind, and this row in the
+  road that decides whether the read of a slot crosses a call at all (ADR 0232's disease, third patient).
+  `pairScan.valueSlotIsSpelling` is now the value/member half and asks the emitter's own door; the KEY keeps
+  the strict list, because a key the tag table cannot label is a key that cannot be hashed and **R.81** owns
+  when that raises. The door arrives with one fact the scan cannot borrow — `(*irGen).builtinShadowed` is a
+  method on a generator `pairCallScan` has no handle on — so the scan carries `programDefinesName`, a census
+  that asks exactly one question and no more: does this program introduce the name with a `def` or a `class`.
+  A census wider than that was built, measured and narrowed: counting a `for` variable or another function's
+  parameter as taking the name printed `3` for `def g(list):` above `d = {"k": list()}` / `f(d["k"])` while the
+  emitter went on labelling the entry a container, and a gate stricter than the door it copies is not safe, it
+  is a second door that disagrees with the first. Over 46 probes of the family, asked of CPython first: **7
+  agreeing before, 34 after, 27 newly, 0 regressed**. 27 answer rows and `programs/empty_container_argument.gy`
+  are on the record and print CPython's bytes on `--jit` and `--aot`; the store is asserted to write the tag of
+  the container the CALL spells (`i32 5` / `6` / `7`), the callee to carry `define i32 @gy_f(i32 %p0, i32 %q0)`
+  and spend `%_v_tag`, and the caller's `@main` — not the callee — to ask `@rt_dict_get_tagged` /
+  `@rt_dict_value_tag`; `d = {"a": 7}` is asserted NOT to grow a tag word at all. What is left is five rows
+  with today's bytes beside the reference's, and two of them are neighbours rather than casualties: the truth
+  of a call-spelled empty container with no call to cross it (**R.370**), the VALUE of a caller-supplied
+  parameter where its truth is now two — `repr`, an f-string field, a container slot, `len`, `==` (**R.371**),
+  the read whose KEY a `for` variable holds (**R.372**), a method named `set` taking the built-in's spelling
+  from this road (**R.373**), and — measurable on the build before this row, so filed and not absorbed — a
+  callee whose pair layout was decided by a different call site, which hands the second call the first call's
+  payload word (**R.374**).
 
 - **An empty container written as a call carries the kind the object already has (Gap R.360, ADR 0391)** —
   `xs = [set()]` / `print(xs[0])` printed `1`, `d = {None: set()}` / `print(d[None])` printed `3`,

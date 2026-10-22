@@ -13663,3 +13663,64 @@ printed by the tool for a source printed beside it.
   `str(v)` pin, the 20-second hang witness, the decline-not-refuse framing) and three were wrong and corrected (the
   entry count, "the ternary arm refuses", "five positions"). Never revert what you have not measured, and never
   trust what you have not measured either.
+
+## ADR 0394 — the pair scan asks the door the roads that store and decide a slot already ask (Gap R.369, 2026-10-22)
+
+- **A wrong answer does not say which road dropped the word.** `d = {"k": list()}` / `f(d["k"])` printed `3`,
+  and the row filed against it said the dict-literal store never asked ADR 0391's door. `--emit-llvm` says the
+  store asks it fine — `@rt_dict_put_tagged(i32 %…, i32 4, i32 5)`, the tag of a list beside the handle. The
+  word was dropped two roads earlier, in the scan that decides whether the read of a slot crosses a call as a
+  pair at all: `pairSlotIsSpelling` is a hand-written list of AST node types and a `*Call` is not on it. The
+  same `3` is the outside of both stories. Read the IR of the whole crossing before naming a culprit; the row's
+  `Item` cell had to be rewritten to say what was actually found, and the "so the hole is in the STORE" clause
+  is kept in the file with a strike-through in prose ("the filing guessed the store, and the filing was wrong")
+  rather than edited out — the next agent needs to know that a plausible diagnosis sat in the tracker for a day.
+- **Three copies of one question is a count, not a coincidence.** ADR 0391 fixed the road that LABELS a slot,
+  ADR 0392 the roads that DECIDE a kind, this row the road that decides whether the read crosses. Each of the
+  three had re-derived "is this slot self-describing?" from its own AST switch, and each was found by a
+  different program. ADR 0232's "one question, one asking place" is the thing to check for the next feature,
+  not the thing to cite after the fact.
+- **A guard copied from a door must be measured against the door, in both directions.** The scan has no
+  `irGen`, so `builtinShadowed` could not be borrowed and had to be re-implemented as `programDefinesName`. The
+  first census counted every binding form (`for` variables, another function's parameters), and that is
+  *stricter* than the door it copies — which sounds safe and is not: `def g(list): return list` above
+  `d = {"k": list()}` / `f(d["k"])` then printed `3` while the emitter went on labelling the entry a container.
+  A decline the emitter contradicts is worse than no decline, because the two roads now disagree in public. Both
+  directions are pinned in `TestTheEmptyContainerArgumentRoadDeclinesWhatItCannotPromise`: `def set(): return 1`
+  must keep the program's own `1`, and an unrelated parameter named `list` must not take the spelling.
+- **A decline that still emits the pair road is a half-open door, so assert the absence.** The shadowing
+  controls do not only check the printed bytes; they read the callee's body and fail if `%_v_tag` or
+  `@rt_dict_get_tagged` is present. Without that, a "decline" that emits the pair anyway and prints right by
+  luck looks identical to a decline.
+- **Ask the caller's region for the caller's call.** Two IR asserts failed for a reason that was purely about
+  which region was read: `@rt_dict_get_tagged` / `@rt_dict_value_tag` are lowered in the caller's `@main`, while
+  `@rt_pair_truth` and `%_v_tag` live in the callee. Asking the callee for the first pair reported a missing ask
+  that was sitting one region away. Every IR claim now says whose body it reads.
+- **A probe harness reports its own bugs as regressions.** The before/after sweep first printed "9 REGRESSED".
+  The reference leg had been invoked as `python3 --file /tmp/prN.gy` — an argument error on every program — so
+  "agrees with the reference" had degraded to "both failed the same way". Fixed the harness, the 9 regressions
+  became 0 and the honest number appeared: 7 → 34 agreeing over 46 probes, 27 newly. From now on the harness is
+  validated on a program I already know prints correctly before any count it produces is believed.
+- **`grep` the identifier; do not remember it.** Several hours went into reasoning about `pairCallTarget`,
+  `pairCallInfo`, `pairTagIsDynamic` and a per-call-site `allExcluded` escape, none of which exist in this repo.
+  They were plausible shapes imported from how I would have written the pass, and the prose built on them was
+  internally consistent and completely false. `grep -rn pairCallTarget pkg/lang` returns nothing and takes four
+  seconds. Any claim about a mechanism now has the grep that backs it, and every comment in the diff names a
+  function I have seen with my own eyes in the file.
+- **The multi-site hazard was there before I got to it, and got easier to stand on.** A callee's pair layout is
+  chosen from one call site and reused, so `f(list(), 5)` then `f(1, 2)` prints `[] 2`. It is not this row's
+  doing — `f([1], 2)` / `f(3, 4)` prints `[] 4` on the parent build too — but `[]`, `{}` and `set()` are
+  spellings now, so the mixed shape went from exotic to ordinary. Measured on the parent before filing, filed as
+  **Gap R.374** with both reproducers and the scan data structure (`calls[fn][i]`) a fix needs, and the
+  conformance program was written to avoid the shape rather than to hide it: the omission is said out loud in
+  the details file.
+- **Two pins deleted, not rewritten.** `an_empty_container_written_as_a_call_crosses_as_an_integer` and
+  `the_set_spelling_of_the_same_entry` left both residue tables (package and CLI) and went into the answering
+  ladders. A pin that survives its own fix is the thing to distrust; the note about where they went is in the
+  surviving table's doc comment, not welded onto a row that no longer describes them.
+- **A conformance program is a negotiation with the current backend.** Getting `programs/empty_container_argument.gy`
+  to print CPython's 55 lines took four cuts: `len(xs)` over a mixed list hits Gap R.82's refusal; a second
+  `xs =` in a function body collides with the module-level `xs` in the scan's per-name binding table and refuses
+  the whole file; `xs = [v]` inside the callee is Gap R.371; two call sites of one callee with different
+  argument shapes is Gap R.374. Every one is a filed row, and each cut is a probe that belongs to that row's
+  pin rather than to this program — the program is what the backend answers today, not what it should answer.
