@@ -1,5 +1,147 @@
 {
  "entries": {
+"def helper(v):\n    return 0 - v\n\ndef use(fn):\n    return fn(1)\n\nprint(use(lambda v: helper(v)))\n": {
+    "stdout": "-1\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint((lambda x: helper(x) + 5)(3))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=helper))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+"def helper(v):\n    return 0 - v\n\ndef use():\n    thresh = 1\n    thresh = 2\n    print(sorted([3, 1, 2], key=lambda x: helper(x) + thresh))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)) == sorted([9, 8], key=lambda y: helper(y)))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def helper(v, k=1):\n    return 0 - v + k\n\nprint(sorted([3, 1, 2], key=lambda x: helper(v=x)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def twice(v):\n    return helper(v) + helper(v)\n\ndef helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: twice(x)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+"OFF = 1\n\ndef helper(v):\n    return 0 - v + OFF\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"class Box:\n    def __init__(self, v):\n        self.v = v\n\nprint(sorted([3, 1, 2], key=lambda x: Box(x).v))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"def apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    return apply1(lambda x: x + 1, seed)\n\nprint(use(3))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def helper(s):\n    return 0 - len(s)\n\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: helper(s)))\n": {
+    "stdout": "['bbb', 'cc', 'a']\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - len(v)\n\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: helper(s) + len(s)))\n": {
+    "stdout": "['bbb', 'a', 'cc']\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nclass C:\n    def m(self):\n        print(sorted([3, 1, 2], key=lambda x: helper(x)))\n\nC().m()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\ndef use():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: helper(x) + base))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\ndef use():\n    print(sorted([3, 1, 2], key=lambda x: helper(x)))\n    print(sorted([5, 4], key=lambda y: helper(y)))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n[5, 4]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nn = 0\nwhile n \u003c 2:\n    print(sorted([3, 1, 2], key=lambda x: helper(x) + n))\n    n = n + 1\n": {
+    "stdout": "[3, 2, 1]\n[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(max([3, 1, 2], key=lambda x: helper(x)))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(min([3, 1, 2], key=lambda x: helper(x)))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x) + helper(0)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x) + len([q for q in [1, 2]])))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\nprint(sorted([7, 8], key=lambda x: helper(x)))\n": {
+    "stdout": "[3, 2, 1]\n[8, 7]\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return 0 - v\n\nxs = sorted([3, 1, 2], key=lambda x: helper(x))\nprint(xs, len(xs), xs[0], xs[2])\n": {
+    "stdout": "[3, 2, 1] 3 3 1\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return v + 1\n\nprint((lambda x: helper(x) * 2)(3))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"def helper(v):\n    return v + 1\n\nprint(helper(1))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def helper(v, k):\n    return 0 - v + k\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x, 1)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def helper(v, k=1):\n    return 0 - v + k\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def inc(v):\n    return v + 1\n\ndef twice(fn, v):\n    return fn(fn(v))\n\nprint(twice(inc, 1))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def sign(v):\n    if v \u003e 0:\n        return 1\n    return 0 - 1\n\nprint(sorted([3, -1, 2], key=lambda x: sign(x)))\n": {
+    "stdout": "[-1, 3, 2]\n",
+    "hasStdout": true
+   },
 "def outer():\n    def use():\n        total = 0\n        for v in [1, 2, 3]:\n            total = total + len([v, v])\n        print(total)\n    return use()\n\nouter()\n": {
     "stdout": "6\n",
     "hasStdout": true

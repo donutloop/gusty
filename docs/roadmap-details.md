@@ -15138,7 +15138,7 @@ tracker rather than a re-discovery. The fix is one door wide — the assignment 
 how the program wrote the target, and the parser’s and checker’s `(got %T)` are the same question at the front end —
 and each of the three needs its own sentence plus a pin that the leaked form is gone.
 
-### Gap R.378 — a hook lambda that CALLS a function the module declares stays the key door’s refusal (OPEN)
+### Gap R.378 — a hook lambda that CALLS a function the module declares stays the key door’s refusal (closed by ADR 0399)
 
 ```python
 def helper(v):
@@ -15159,6 +15159,50 @@ module-declared symbol, read it by symbol” from “this name is a frame word, 
 only when the name is neither, which needs the shadowing question asked properly (a frame-local of the same spelling
 must still win, which is what makes it a row rather than two lines). Until then the program hears the key door’s
 generic sentence, true about the representation and silent about the call the body wants.
+
+**Closed 2026-10-22 by ADR 0399**, on exactly that separation — and the diagnosis above was the interesting half of
+the row, because the gate it describes was written by ADR 0396 with this reproducer in front of its author. What was
+wrong was not the reasoning but its scope: ADR 0345 §1 says no *word* can carry a function, and
+`callableCapturesAreValueNames` concluded that no hoisted *body* may name one. A hoisted hook is a `define` like every
+other in the module, and every other one reaches `helper` by emitting `call i32 @gy_helper(i32 …)`. The tell was that
+the two roads which had never grown the gate had been answering the shape for cycles — `(lambda x: helper(x) + 5)(3)`
+prints `2`, and ADR 0395’s entry road prints its `4` — so three roads hoisting one `lambda` were asking
+`callableLambdaCaptures` and only one of them overriding it: ADR 0232’s disease at the third road, found the same way
+ADR 0391/0392/0394 found it at the container roads.
+
+The gate is deleted, and the door’s own answers replace it, as three questions about the program rather than about the
+pass’s tables. `callableModuleDeclarations` asks whether the module’s own statement list declares the name — a top-level
+`def` or `class`, so the symbol’s definition dominates the hoisted `define` (a `def` in a module-level `if` is not one,
+and stays a refusal, exactly as an ordinary call to it does). `callableFreeNameSet(l, callableCalleeNameNodes(l))`
+walks the body once with the callee `*Name` **nodes** marked out, and the nodes rather than the spellings are the point:
+`key=lambda x: helper(x) + len(str(helper))` spells `helper` twice, once as a call and once as a value, and the second
+occurrence is the body asking for the function VALUE that **Gap R.297** still owns — so it declines, while the same
+program without `str(helper)` answers. `callableFrameOwns`, extracted from the body of this same door so the question is
+asked once, settles the shadow: a frame that binds `helper` owns the name, the frame’s number answers, and the
+reference’s `TypeError: 'int' object is not callable` is the answer the compiled leg keeps instead of inventing
+`[3, 2, 1]`.
+
+Two rules were kept deliberately conservative, and the conservatism is the row’s safety rather than its timidity. The
+declaration must sit **above** the hook — the same line test the front end already asks of an ordinary call, which a
+lambda body is otherwise never asked. And a module that rebinds the name anywhere keeps the shape a capture: the
+hoisted `define` reaches the symbol and can never see a slot, so a hook hoisted beside `helper = 3` would print
+`[3, 2, 1]` where the reference raises, and the rebind is invisible to the gate whether it sits before the call, after
+it, or inside a module-level `if` or `for` body. `moduleEnvFor`’s binding set covers the first two and
+`collectLocals`/`callableFrameOwns` cover the blocks, which is why the safe answer is also the cheap one.
+
+Measured with a build of `6263dee` (the parent) beside a build of this commit, over 55 programs — 37 probe-harness
+programs (family and controls), 16 written to attack the gate rather than flatter it, and the four table programs not
+already among them: **13 agreeing with the reference before, 36 after, 23 newly agreeing, 0 regressed, and 0 programs
+where the compiled leg prints what CPython does not.** Those last zeros are the claim, and the attacking half is what
+makes them mean anything: 11 of its 16 are refusals on both builds, three of them with the reference answering a value
+(`helper = 3` after the call, `alias = helper`, a hook that hands the function to another function). `tools/recmerge`
+wrote **29** entries (the record to **8563**) and refused none, and `integration/programs/hook_named_call.gy` is the
+family in one file with its `.expected` re-checked against `python3` inside the case, so the matrix cannot certify a
+stale expectation. Three refusals the row exposes rather than causes — a hook reading an attribute of a module-bound
+object, a callee that mutates a module-level container, a hook calling a method of one — are pinned with the reference’s
+answer beside each in `TestWhatTheNamedCallRowLeavesStandingIsFiledNotFixed` and belong to **Gap R.379**, whose family
+of raw emitter sentences they are; the key road’s own sentence, meanwhile, is still absent from the capability registry,
+and the table pins that absence too so a code cannot arrive or leave without the table being read (ADR 0346).
 
 ### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (closed by ADR 0379)
 

@@ -1,0 +1,103 @@
+# A hook lambda that CALLS a function the module declares gets that call BY NAME
+# (roadmap L11.7 · Gap R.378, ADR 0399). Every line below is what CPython prints for
+# this same file.
+#
+# The shape: `def helper(v): …` above `print(sorted([3, 1, 2], key=lambda x: helper(x)))`.
+# The hook is hoisted to a `define` of its own, and the copied body calls the declared
+# function the way every other body in the module does — `call i32 @helper(...)` against
+# the symbol the emitter declares. No word is minted for `helper`, because a function in
+# this backend is a symbol rather than a value (ADR 0345 §1); the gate that used to refuse
+# the whole hoist as soon as a capture merely NAMED a declared function was the right
+# verdict about the wrong thing.
+#
+# What this program does NOT contain, said out loud rather than hidden: a hook that reads
+# a function as a VALUE (`f = helper` then `key=lambda x: f(x)`), a hook that hands one to
+# another function, a hook that calls a name the module rebinds after declaring it, and a
+# hook that calls a name declared FURTHER DOWN the module than the hook itself — the first
+# two are the function-VALUE half this backend has no word for (Gap R.297, L11.1), and the
+# last two keep the ordering rule the front end already enforces of an ordinary call.
+# All four stay refusals, pinned in `pkg/lang/hook_named_call_test.go`.
+
+def neg(v):
+    return 0 - v
+
+
+def shifted(v, k):
+    return 0 - v + k
+
+
+def sized(s):
+    return 0 - len(s)
+
+
+def sign(v):
+    if v > 0:
+        return 1
+    return 0 - 1
+
+
+class Box:
+    def __init__(self, v):
+        self.v = v
+
+
+# the module's own functions, called by the hook, over ints and over texts
+print(sorted([3, 1, 2], key=lambda x: neg(x)))
+print(min([3, 1, 2], key=lambda x: neg(x)), max([3, 1, 2], key=lambda x: neg(x)))
+print(sorted([3, 1, 2], key=lambda x: shifted(x, 1)))
+print(sorted(["bbb", "a", "cc"], key=lambda s: sized(s)))
+print(sorted([3, -1, 2], key=lambda x: sign(x)))
+print(sorted([3, 1, 2], key=lambda x: Box(x).v))
+print(sorted([3, 1, 2], key=lambda x: neg(x) + neg(0)))
+
+OFF = 1
+
+
+def reading_a_module_name_too():
+    print(sorted([3, 1, 2], key=lambda x: neg(x) + OFF))
+
+
+def reading_a_frame_local_too():
+    base = 1
+    print(sorted([3, 1, 2], key=lambda x: neg(x) + base))
+
+
+def two_hooks_one_frame():
+    print(sorted([3, 1, 2], key=lambda x: neg(x)))
+    print(sorted([5, 4], key=lambda y: neg(y)))
+
+
+def answer_bound_and_read():
+    xs = sorted([3, 1, 2], key=lambda x: neg(x))
+    print(xs, len(xs), xs[0], xs[2])
+
+
+def keyed_call_inside_a_while():
+    n = 0
+    while n < 2:
+        print(sorted([3, 1, 2], key=lambda x: neg(x) + n))
+        n = n + 1
+
+
+def comprehension_beside_the_call():
+    print(sorted([3, 1, 2], key=lambda x: neg(x) + len([q for q in [1, 2]])))
+
+
+class Holder:
+    def method(self):
+        print(sorted([3, 1, 2], key=lambda x: neg(x)))
+
+
+# the controls this row must not disturb: the self-contained hook, a builtin key, and a
+# `def` handed to the door as the key itself
+print(sorted([3, 1, 2], key=lambda x: 0 - x))
+print(sorted(["bbb", "a"], key=len))
+print(sorted([3, 1, 2], key=neg))
+
+reading_a_module_name_too()
+reading_a_frame_local_too()
+two_hooks_one_frame()
+answer_bound_and_read()
+keyed_call_inside_a_while()
+comprehension_beside_the_call()
+Holder().method()

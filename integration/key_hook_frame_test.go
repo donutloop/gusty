@@ -129,11 +129,9 @@ func TestWhatTheHookRoadDeclinesStaysRefusedAtTheCLI(t *testing.T) {
 			"bound at module level", "Gap R.35",
 		},
 		{
-			"a hook that calls a function the module declares",
-			"def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\n",
-			"a lambda is a function VALUE", "L11.7",
-		},
-		{
+			// A hook that CALLS a function the module declares is not refused any more — it prints the
+			// reference's `[3, 2, 1]` on both roads (`integration/hook_named_call_test.go`, roadmap L11.7 ·
+			// Gap R.378 / ADR 0399) — so it is absent from this table, and the absence is the assertion.
 			"a hook written inside a lambda body",
 			"def use():\n    base = 1\n    print((lambda xs: sorted(xs, key=lambda x: 0 - x + base))([3, 1, 2]))\n\nuse()\n",
 			"a lambda is a function VALUE", "L11.7",

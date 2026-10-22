@@ -2248,6 +2248,37 @@ falls back to dynamic dispatch.
   second road that never asks this question (**R.376**). The `sorted(..., key=…)` answer that prints `0` once
   a function RETURNS it is neither — measured identical on the parent, and **R.328**'s.
 
+- **A hook that CALLS a function the module declares gets that call by SYMBOL (Gap R.378, ADR 0399)** — three
+  roads hoist a `lambda` in this compiler, and only the hook road had grown a second opinion: after the shared
+  capture door (`callableLambdaCaptures`, ADR 0370) had answered what a body reads out of its frame,
+  `callableCapturesAreValueNames` looked the name up in the pass's own census of `def`s and `class`es and
+  refused the whole hoist. So `def helper(v): return 0 - v` above `print(sorted([3, 1, 2], key=lambda x:
+  helper(x)))` — two lines, the reference's `[3, 2, 1]` — sat at exit 1 behind a sentence about words,
+  while `(lambda x: helper(x) + 5)(3)` had been printing `2` for cycles because the applied and entry roads
+  never asked that second question. ADR 0345 §1 says no WORD can carry a function; the gate had concluded that
+  no hoisted BODY may name one, and a hoisted hook is a `define` like every other, calling `helper` the way the
+  rest of the module does. The gate is deleted. The door now asks three questions about the PROGRAM: does the
+  module's own statement list DECLARE the name (so its definition dominates the hoisted `define`); does the body
+  read it OUTSIDE a call position — `callableFreeNameSet(l, callableCalleeNameNodes(l))` marks out the callee
+  `*Name` NODES, not the spellings, because `key=lambda x: helper(x) + len(str(helper))` spells one name both
+  ways and only the reading wants a value (**Gap R.297**'s half, still refused); and does the frame the call is
+  written in OWN the name (`callableFrameOwns`, lifted out of this door's own body so the question is asked once)
+  — because `def use(): helper = 3` owns `helper`, and the reference's `TypeError: 'int' object is not callable`
+  is the answer that shape has, never a fabricated `[3, 2, 1]`. Two rules stayed conservative for exactly that
+  reason: the `def` must sit above the hook, and a module that rebinds the name anywhere — before the call, after
+  it, inside a module-level `if` or `for` — keeps the shape a capture, because a hoisted `define` reaches a symbol
+  and can never see a slot. Measured with a build of the parent beside this one over **55 programs: 13 agreeing
+  with CPython before, 36 after, 23 newly, 0 regressed, and 0 programs where this backend prints what the
+  reference does not** — 16 of those programs written specifically to make the new gate fabricate an answer, and
+  11 of them still refusals, three with the reference answering a value (`helper = 3` after the call, an alias,
+  a hand-off). `--callables` says the distinction out loud now: `capture_parameters` is `0` for a hook that only
+  calls and `1` for one that calls and reads, both `rewritten: true` where the parent reported a refusal. The IR
+  is read for the claim a table of numbers cannot make: the hoisted hook is a one-parameter `define`, the callee
+  is `call i32 @gy_helper(i32 %p0)`, and no `fnptr`/`ptrtoint`/`inttoptr`/indirect `call` appears anywhere in the
+  family. `programs/hook_named_call.gy` is the matrix row (the 242nd, oracle `match`), 29 record entries came from
+  `tools/recmerge`, and three emitter sentences the row exposes rather than causes are **Gap R.379**'s, pinned
+  with the reference's answer beside each.
+
 - **The ordering door's hook lambda reads the frame its call is written in (Gap R.376, ADR 0396)** — the same
   door, one cycle later, at the third road that hoists a `lambda`. `def use():` / `base = 1` /
   `print(sorted([3, 1, 2], key=lambda x: 0 - x + base))` is CPython's `[3, 2, 1]` and this backend's exit 1

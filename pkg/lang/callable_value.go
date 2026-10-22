@@ -1279,8 +1279,9 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 					continue // not the position the door calls, or a frame the closure road owns
 				}
 				caps, capturable := callableLambdaCaptures(r.encs[rank], prog, l)
-				if !capturable || !callableCapturesAreValueNames(r, caps) {
-					continue // a name past this frame is ADR 0245's lift (Gap R.331, Gap R.332), not this road's
+				if !capturable {
+					continue // a name past this frame is ADR 0245's lift (Gap R.331, Gap R.332), and a function read
+					// as a VALUE is ADR 0345's (Gap R.378) — neither is this road's to answer with a word
 				}
 				captures = caps
 			}
@@ -2495,6 +2496,56 @@ func callableBindingInsideAnyFunc(r *callableRead, at Node) bool {
 	return false
 }
 
+// callableModuleDeclarations is the census of names the module DECLARES at its top level — a `def` or a
+// `class`, which the emitter emits as a symbol every body in the module can call. A name the module later
+// REBINDS is not one (it is in `moduleEnvFor`'s binding set, which the capture door consults beside this), and
+// a `def` nested inside another body is not one either: only the module's own statement list declares a global
+// symbol (roadmap L11.7 · Gap R.378; ADR 0345 §1, a function is a symbol and not a word).
+func callableModuleDeclarations(prog *Program) map[string]Node {
+	out := map[string]Node{}
+	if prog == nil {
+		return out
+	}
+	for _, st := range prog.Stmts {
+		switch x := st.(type) {
+		case *FuncDef:
+			if x != nil && x.Name != "" {
+				out[x.Name] = x
+			}
+		case *ClassDef:
+			if x != nil && x.Name != "" {
+				out[x.Name] = x
+			}
+		}
+	}
+	return out
+}
+
+// callableFrameOwns is the set a frame OWNS: its parameters, everything its body BINDS — an assignment, a
+// `for` target, a `with ... as` — and the targets of the comprehensions it hosts. It is the census
+// `callableLambdaCaptures` uses to tell a name of THIS frame from a name of one further out (ADR 0245's lift,
+// which this pass does not compose with), asked from one place (ADR 0232) because the hook road has to ask the
+// same question to know whether a module-declared name is still the symbol the minted `define` can reach
+// (roadmap L11.7 · Gap R.378): `def use(): helper = 3; … key=lambda x: helper(x)` reads the frame's number,
+// and a door that answered with the module's function would be a plausible handle at the exit code of success.
+func callableFrameOwns(enc *FuncDef) map[string]bool {
+	own := map[string]bool{}
+	if enc == nil {
+		return own
+	}
+	for _, p := range enc.Params {
+		if p != nil {
+			own[p.Name] = true
+		}
+	}
+	for nm := range bodyBoundNames(enc.Body) {
+		own[nm] = true
+	}
+	collectLocals(enc.Body, own)
+	callableCompTargets(enc.Body, own)
+	return own
+}
+
 // callableLambdaCaptures is the capture list the CLOSURE road would hand this `lambda`, asked at the only
 // moment it can be asked — before the clone is copied from the declaration this pass mints. It is the same
 // question `lambdaFrameCaptures` asks at emission time (ADR 0370): every name the body reads without binding
@@ -2576,26 +2627,47 @@ func callableLambdaCaptures(enc *FuncDef, prog *Program, l *Lambda) ([]string, b
 		return nil, true
 	}
 	_, moduleNames := moduleEnvFor(prog)
-	own := map[string]bool{}
-	if enc != nil {
-		for _, p := range enc.Params {
-			if p != nil {
-				own[p.Name] = true
-			}
-		}
-		// What the frame BINDS — an assignment, a `for` target, a `with ... as`, a comprehension's own
-		// target — not what it merely reads. A name it only reads belongs to a frame further out, and the
-		// only machinery that reaches that far is the nested-`def` lift this pass does not compose with.
-		for nm := range bodyBoundNames(enc.Body) {
-			own[nm] = true
-		}
-		collectLocals(enc.Body, own)
-		callableCompTargets(enc.Body, own)
-	}
+	own := callableFrameOwns(enc)
+	declared := callableModuleDeclarations(prog)
+	// The reads that are NOT calls of the name read: one walk with the callee positions marked out, so the
+	// difference between "reads" and "calls" costs one set rather than a second AST. A name whose every
+	// occurrence is a call is the shape the minted `define` can answer BY SYMBOL, which is what a call of a
+	// declared name lowers to in any other body of this program; a read anywhere else — printed, stored,
+	// handed to another call, the base of an attribute — is the body wanting a function VALUE, the half no
+	// word can carry (roadmap L11.7 · Gap R.378, Gap R.297).
+	valueReads := callableFreeNameSet(l, callableCalleeNameNodes(l))
 	seen := map[string]bool{}
 	out := []string{}
 	for _, nm := range callableFreeNames(l) {
 		if isPredeclaredName(nm) || moduleNames[nm] || seen[nm] {
+			continue
+		}
+		// A name the MODULE DECLARES — a top-level `def` or `class` the module never rebinds (a rebound one is
+		// already in `moduleNames`, consulted above) — needs no word: the minted `define` reaches it the way any
+		// other body in the program does, by SYMBOL. `def helper(v): return 0 - v` above
+		// `print(sorted([3, 1, 2], key=lambda x: helper(x)))` is that program — the reference's `[3, 2, 1]`, and
+		// here a refusal, because a capture merely NAMED a declared function. That was the right verdict about the
+		// wrong thing: a function is a symbol rather than a value (ADR 0345 §1), so the thing no word can carry is
+		// a function READ AS A VALUE — printed, stored, passed on, the base of an attribute — which is what the
+		// second answer still declines (roadmap L11.7 · **Gap R.378**; Gap R.297 owns the value half).
+		//
+		// The frame's OWN binding wins the question. `def use(): helper = 3; … key=lambda x: helper(x)` reads the
+		// frame's number, so a name the frame owns is never answered with the module's symbol: that would be a
+		// plausible handle at the exit code of success. It stays a capture, and the one-word gate
+		// (`captureCarriesOneWord`, Gap R.332) decides it, asked of the frame that owns the value — ADR 0395 §4's
+		// rule, at a third road.
+		if decl, isDeclared := declared[nm]; isDeclared && !own[nm] {
+			if valueReads[nm] {
+				return nil, false
+			}
+			// DECLARED BEFORE THE BODY THAT CALLS IT, which is the rule the front end already enforces of an
+			// ordinary call (`undefined name "helper"` for `print(helper(1))` above `def helper(v)`, where
+			// CPython answers NameError) and which a lambda body is not asked. A hoisted body that called a name
+			// declared further down the module would answer where the reference raises, so the shape keeps the
+			// door's own refusal (roadmap L11.7 · Gap R.378, measured as the fourth probe of its family).
+			if decl.Span().Line > l.Span().Line {
+				return nil, false
+			}
 			continue
 		}
 		// At module level (no enclosing `def`) the only names a body can be free in are the ones an
@@ -2610,27 +2682,6 @@ func callableLambdaCaptures(enc *FuncDef, prog *Program, l *Lambda) ([]string, b
 	}
 	sortStrings(out)
 	return out, true
-}
-
-// callableCapturesAreValueNames asks whether every name in a capture list is a thing the CALL road can hand
-// over. A `def` or a `class` name is not: this backend declares functions rather than assigning them, so the
-// word a name holds is not a value at all (ADR 0345 §1), and a capture parameter filled from `%_helper` would
-// be a call reading a symbol. The hoisted declaration can call such a name by symbol exactly as the lambda
-// did — but only when the name is a global it can reach by that symbol, which is the `def`/`class` census this
-// asks (roadmap L11.7 · Gap R.376, measured on `sorted([3, 1, 2], key=lambda x: helper(x))`, which stays the
-// key door's own refusal rather than becoming a plausible handle).
-func callableCapturesAreValueNames(r *callableRead, caps []string) bool {
-	for _, nm := range caps {
-		if _, isDef := r.fds[nm]; isDef {
-			return false
-		}
-		for _, b := range r.bound[nm] {
-			if _, isClass := b.(*ClassDef); isClass {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // callableLambdaIsSelfContained is the stricter question a module-level alias asks: does this lambda read
@@ -2655,10 +2706,31 @@ func callableLambdaIsSelfContained(l *Lambda) bool {
 // comprehension's target, a lambda's parameters — are not names the construct reads, and the set is
 // seeded by the lambda's parameters for the same reason.
 func callableFreeNames(l *Lambda) []string {
+	out := callableFreeNameSet(l, nil)
+	var names []string
+	for nm := range out {
+		names = append(names, nm)
+	}
+	sortStrings(names)
+	return names
+}
+
+// callableFreeNameSet is the walk behind `callableFreeNames`, answering the set directly and letting the
+// caller mark occurrences to ignore. `skip` is keyed by the NODE, not by the spelling: the hook road hands it
+// the `*Name` nodes that stand in a callee position (roadmap L11.7 · Gap R.378), which is how one walk can
+// answer both 「what does this body read?」 and 「what does this body read OTHER than calling?」 — the
+// difference between the two is a name read as a VALUE, and a name spelled twice (called here, read there)
+// appears in both sets, which is what makes the second question answerable at all.
+func callableFreeNameSet(l *Lambda, skip map[*Name]bool) map[string]bool {
 	out := map[string]bool{}
+	if l == nil || l.Body == nil {
+		return out
+	}
 	bound := map[string]bool{}
 	for _, p := range l.Params {
-		bound[p.Name] = true
+		if p != nil {
+			bound[p.Name] = true
+		}
 	}
 	var walkNode func(n Node, b map[string]bool)
 	var walkFields func(v reflect.Value, b map[string]bool)
@@ -2690,6 +2762,9 @@ func callableFreeNames(l *Lambda) []string {
 		}
 		switch x := n.(type) {
 		case *Name:
+			if skip[x] {
+				return
+			}
 			if !b[x.Value] && !isPredeclaredName(x.Value) {
 				out[x.Value] = true
 			}
@@ -2749,14 +2824,32 @@ func callableFreeNames(l *Lambda) []string {
 		walkFields(v.Elem(), b)
 	}
 	walkNode(l.Body, bound)
-	var names []string
-	for nm := range out {
-		names = append(names, nm)
-	}
-	sort.Strings(names)
-	return names
+	return out
 }
 
+// callableCalleeNameNodes collects the `*Name` nodes that stand in a CALL position inside a lambda body —
+// `helper` in `helper(x)`, not `helper` in `print(helper)`, and not the callee of `helper.m()`, whose base is
+// a read of the name itself. The pointers, not the spellings, because a body can spell one name twice in both
+// positions and the two occurrences have different answers (roadmap L11.7 · Gap R.378).
+func callableCalleeNameNodes(l *Lambda) map[*Name]bool {
+	out := map[*Name]bool{}
+	if l == nil || l.Body == nil {
+		return out
+	}
+	w := callableWalker(func(n Node, enc *FuncDef) {
+		if c, ok := n.(*Call); ok && c != nil {
+			if fn, isName := c.Fn.(*Name); isName && fn != nil {
+				out[fn] = true
+			}
+		}
+	})
+	w.expr(l.Body, nil)
+	return out
+}
+
+// callableDisplayNameOf is the name a minted declaration is spelled FROM — the enclosing frame's, or
+// "module" at the top level — which is a different question from the name a READER meets a function under
+// (`callableDisplayName`, the source's own spelling).
 func callableDisplayNameOf(fd *FuncDef) string {
 	if fd == nil {
 		return "module"

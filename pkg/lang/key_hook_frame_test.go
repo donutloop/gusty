@@ -271,14 +271,11 @@ func TestWhatTheHookRoadDeclinesIsDeclinedOutLoud(t *testing.T) {
 			owns:  "Gap R.35",
 		},
 		{
-			// the hook CALLS a declared function: `helper` is a symbol, not a value, and this backend
-			// has no word for a function value (Gap R.377 — the road declines rather than read `%_helper`)
-			name:  "a hook that calls a function the module declares",
-			src:   "def helper(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=lambda x: helper(x)))\n",
-			names: "a lambda is a function VALUE",
-			owns:  "L11.7",
-		},
-		{
+			// A hook that CALLS a function the module declares is GONE from this table: `helper` is a symbol the
+			// minted `define` calls, not a value a word would carry, and the program prints the reference's
+			// `[3, 2, 1]` now (roadmap L11.7 · **Gap R.378**, ADR 0399 — `pkg/lang/hook_named_call_test.go`). What
+			// still declines is a function read as a VALUE, which is the half ADR 0345 has no word for.
+			//
 			// a hook written inside a `lambda` is the closure road's frame, and this pass does not
 			// rewrite through that boundary (ADR 0345)
 			name:  "a hook written inside a lambda body",

@@ -4209,6 +4209,27 @@
     },
     {
       "case": {
+        "id": "programs/hook_named_call",
+        "name": "hook_named_call.gy",
+        "source": "# A hook lambda that CALLS a function the module declares gets that call BY NAME\n# (roadmap L11.7 · Gap R.378, ADR 0399). Every line below is what CPython prints for\n# this same file.\n#\n# The shape: `def helper(v): …` above `print(sorted([3, 1, 2], key=lambda x: helper(x)))`.\n# The hook is hoisted to a `define` of its own, and the copied body calls the declared\n# function the way every other body in the module does — `call i32 @helper(...)` against\n# the symbol the emitter declares. No word is minted for `helper`, because a function in\n# this backend is a symbol rather than a value (ADR 0345 §1); the gate that used to refuse\n# the whole hoist as soon as a capture merely NAMED a declared function was the right\n# verdict about the wrong thing.\n#\n# What this program does NOT contain, said out loud rather than hidden: a hook that reads\n# a function as a VALUE (`f = helper` then `key=lambda x: f(x)`), a hook that hands one to\n# another function, a hook that calls a name the module rebinds after declaring it, and a\n# hook that calls a name declared FURTHER DOWN the module than the hook itself — the first\n# two are the function-VALUE half this backend has no word for (Gap R.297, L11.1), and the\n# last two keep the ordering rule the front end already enforces of an ordinary call.\n# All four stay refusals, pinned in `pkg/lang/hook_named_call_test.go`.\n\ndef neg(v):\n    return 0 - v\n\n\ndef shifted(v, k):\n    return 0 - v + k\n\n\ndef sized(s):\n    return 0 - len(s)\n\n\ndef sign(v):\n    if v \u003e 0:\n        return 1\n    return 0 - 1\n\n\nclass Box:\n    def __init__(self, v):\n        self.v = v\n\n\n# the module's own functions, called by the hook, over ints and over texts\nprint(sorted([3, 1, 2], key=lambda x: neg(x)))\nprint(min([3, 1, 2], key=lambda x: neg(x)), max([3, 1, 2], key=lambda x: neg(x)))\nprint(sorted([3, 1, 2], key=lambda x: shifted(x, 1)))\nprint(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: sized(s)))\nprint(sorted([3, -1, 2], key=lambda x: sign(x)))\nprint(sorted([3, 1, 2], key=lambda x: Box(x).v))\nprint(sorted([3, 1, 2], key=lambda x: neg(x) + neg(0)))\n\nOFF = 1\n\n\ndef reading_a_module_name_too():\n    print(sorted([3, 1, 2], key=lambda x: neg(x) + OFF))\n\n\ndef reading_a_frame_local_too():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: neg(x) + base))\n\n\ndef two_hooks_one_frame():\n    print(sorted([3, 1, 2], key=lambda x: neg(x)))\n    print(sorted([5, 4], key=lambda y: neg(y)))\n\n\ndef answer_bound_and_read():\n    xs = sorted([3, 1, 2], key=lambda x: neg(x))\n    print(xs, len(xs), xs[0], xs[2])\n\n\ndef keyed_call_inside_a_while():\n    n = 0\n    while n \u003c 2:\n        print(sorted([3, 1, 2], key=lambda x: neg(x) + n))\n        n = n + 1\n\n\ndef comprehension_beside_the_call():\n    print(sorted([3, 1, 2], key=lambda x: neg(x) + len([q for q in [1, 2]])))\n\n\nclass Holder:\n    def method(self):\n        print(sorted([3, 1, 2], key=lambda x: neg(x)))\n\n\n# the controls this row must not disturb: the self-contained hook, a builtin key, and a\n# `def` handed to the door as the key itself\nprint(sorted([3, 1, 2], key=lambda x: 0 - x))\nprint(sorted([\"bbb\", \"a\"], key=len))\nprint(sorted([3, 1, 2], key=neg))\n\nreading_a_module_name_too()\nreading_a_frame_local_too()\ntwo_hooks_one_frame()\nanswer_bound_and_read()\nkeyed_call_inside_a_while()\ncomprehension_beside_the_call()\nHolder().method()\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[3, 2, 1]\n3 1\n[3, 2, 1]\n['bbb', 'cc', 'a']\n[-1, 3, 2]\n[1, 2, 3]\n[3, 2, 1]\n[3, 2, 1]\n['a', 'bbb']\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[5, 4]\n[3, 2, 1] 3 3 1\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n",
+      "python_ok": true,
+      "python_stdout": "[3, 2, 1]\n3 1\n[3, 2, 1]\n['bbb', 'cc', 'a']\n[-1, 3, 2]\n[1, 2, 3]\n[3, 2, 1]\n[3, 2, 1]\n['a', 'bbb']\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[5, 4]\n[3, 2, 1] 3 3 1\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4890,7 +4911,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/205/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/206/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4904,7 +4925,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/205/prog.ll:36:19: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/206/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5410,11 +5431,11 @@
       ]
     }
   ],
-  "rows": 227,
+  "rows": 228,
   "skipped": 30,
-  "pass": 197,
+  "pass": 198,
   "fail": 0,
-  "oracle_match": 183,
+  "oracle_match": 184,
   "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

@@ -13986,3 +13986,65 @@ printed by the tool for a source printed beside it.
   the better-developed file, correct its numbers against this round's actual measurement (its before-column cited the
   grandparent commit, and its record count was three entries behind), and delete the duplicate. `git status docs/adr`
   before writing an ADR, and believe the artifact-count guards when they contradict your memory.
+
+## ADR 0399 — a hook that calls a function the module declares gets the call by symbol (Gap R.378, 2026-10-22)
+
+- **A second opinion asked after the shared door is the defect, and the sibling roads are the evidence.** The hook
+  road called `callableLambdaCaptures` and then overrode it with `callableCapturesAreValueNames`. The applied road and
+  the entry road call the same door with no override, and had been answering the shape (`(lambda x: helper(x) + 5)(3)`
+  → `2`) for cycles. When one of three callers of a helper disagrees with the other two, fix the caller that
+  special-cases, not the helper — and go read the other two before writing anything. ADR 0232's lesion keeps
+  reappearing at whatever the newest road is.
+- **Distinguish occurrences by NODE, never by spelling, when one identifier can play two roles.**
+  `key=lambda x: helper(x) + len(str(helper))` mentions `helper` twice with two different answers: a call the hoisted
+  `define` can emit, and a value read that has no word. A `map[string]bool` of names cannot express the difference; a
+  `map[*Name]bool` of callee positions collected by the walker can. `callableFreeNameSet(l, skip)` exists for exactly
+  that, and `callableFreeNames` became a wrapper over it so the census still exists once.
+- **The row's real number is the "wrong answer" column, not the "newly agreeing" column.** 23 programs came over to
+  the reference's side; the number I actually defended is **0 programs where the compiled leg prints what CPython does
+  not**, over 16 probes written to attack the new gate rather than flatter it (`helper = 3` after the call, inside a
+  module-level `if`, inside a module-level `for`, an alias `alias = helper`, a method callee, a callee that mutates a
+  module list, a `def` declared in a conditional block). Write the attacking half FIRST: a gate widened to answer more
+  programs is only safe if the shapes it cannot see keep refusing.
+- **The conservative version of an ordering rule is chosen by the REPRESENTATION, not by taste.** The hooked hook is a
+  `define` that reaches `helper` by symbol, so it can never see a slot — which means the correct answer to "may I
+  hoist this hook, given the module might rebind the name" is "no", whatever the analysis says about whether the
+  rebind runs first. Both conservative rules (declaration above the hook; no rebind anywhere at module level) are one
+  comparison each and can never fabricate. A cleverer dataflow version buys nothing and risks the worst class in this
+  file: a plausible handle at the exit code of success.
+- **Frame ownership has to be one function, because the shadow question and the capture question are the same
+  question.** `callableFrameOwns` came out of `callableLambdaCaptures`'s own body rather than being written beside the
+  new gate. If I had written a second census of "what does this frame bind", the two would have disagreed about
+  `for`/`with`/comprehension targets within a cycle, and the disagreement would have shown up as a program that
+  printed the module's function where the reference raises `TypeError`.
+- **Never hand-type an expectation into an answer table — and make the record leg fail on a MISSING entry so the
+  hand-typed ones cannot survive.** Three of my 28 family rows were written from memory instead of from `python3`; the
+  record test caught all three (`want: "8"` for a program whose answer is `2`, and two answered programs that were not
+  on the record at all). The failing-on-absence rule is what turns the record into a witness at this altitude rather
+  than an ornament.
+- **A stale measurement file can manufacture a bug report.** Between probe rounds I read `measure.json` produced by an
+  earlier run and "found" three wrong answers from the new gate. They were the previous cycle's rows. Now a measurement
+  round regenerates its own JSON, names it after the round, and prints the harness sanity line (`N go-family programs
+  print the reference answer through this harness`) beside the counts; a count with no sanity line beside it is
+  unread. Same lesson about binaries: rebuild the "after" build immediately before the run, and take the "before"
+  build from `git worktree add --detach … HEAD`, never from a stash.
+- **One careless multi-region edit nearly cost a function.** An edit intended to delete dead code
+  (`callableNameIsCalledOnly`) matched through the following function's signature and left a duplicate
+  `callableCalleeNameNodes` with `callableDisplayNameOf`'s body glued to it. `go build` caught it in five seconds, so
+  the rule is not "be careful with `edit`" but "build after every surgical edit that spans function boundaries, and
+  `grep -n` the names you touched". Deleting dead code is only worth it if the deletion is verified.
+- **Adding a conformance program moves five snapshot numbers at once, and only the guards know which.** Registering
+  `programs/hook_named_call.gy` changed `Conformance programs`, `Matrix rows` (both cells), `Oracle verdicts`,
+  `Retired-engine record` and `Rows owed`, plus the ADR count and the record count quoted in `AGENTS.md` and
+  `docs/operations.md`. `TestTheRoadmapSnapshotIsMeasuredNotRemembered` and the two artifact-count tests name every
+  cell and both numbers; the workflow is to let them fail first and edit what they name, rather than hunting for
+  sentences to edit and missing the one nobody reads.
+- **Pin a refusal's absence from the capability registry too.** The key road's `a lambda is a function VALUE` sentence
+  is classified as nothing today. Instead of asserting nothing, the decline table carries a `code` field whose empty
+  string means "the registry answers nothing", so the day someone registers a code for it the table fails and gets
+  read (ADR 0346's contract is that an agent branches on these codes — a code appearing, vanishing or moving is a
+  branch silently stopping firing).
+- **`gustyc --emit-llvm` takes the SOURCE as its value** (`--emit-llvm="<src>"`, with `--opt-level=0` before it, per
+  `cmd/gustyc/main_test.go`). Three probe rounds were spent on a flag that was silently consuming the filename and
+  printing an empty `main`. When an interface behaves implausibly, read the CLI's own test for the calling convention
+  before guessing twice.

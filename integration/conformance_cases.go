@@ -868,6 +868,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// beside ADR 0372's body capture of the same spelling (roadmap Gap R.375, ADR 0397). Every line is
 		// what CPython prints for the same file.
 		"forwarded_word",
+		// A hook lambda that CALLS a function the module declares gets that call BY NAME: the hoisted
+		// `define` emits a direct call to the symbol the emitter declares, and no capture word is minted for
+		// the declared name — a function in this backend is a symbol rather than a value (roadmap Gap R.378,
+		// ADR 0399). The reads that still need a function VALUE (a hook calling a name bound to one, handing
+		// one to another function) stay refusals. Every line is what CPython prints for the same file.
+		"hook_named_call",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
