@@ -4188,6 +4188,27 @@
     },
     {
       "case": {
+        "id": "programs/forwarded_word",
+        "name": "forwarded_word.gy",
+        "source": "# The word a clone forwards to its entry, when the higher-order body has already\n# taken that name for itself (roadmap L11.7 · Gap R.375, ADR 0397).\n#\n# Every line below is what CPython prints for this same file. Each `def` below is\n# higher-order — it calls a parameter — and each entry `lambda` it is handed reads a\n# name out of the frame the APPLICATION is written in. Where that name is one the\n# higher-order body has bound for itself, the clone's parameter is minted under a\n# spelling the source cannot write: the body keeps its own slot, the entry keeps the\n# word the host handed over, and the two reads cannot answer each other.\n#\n# What this program does NOT contain, said out loud rather than hidden: an entry that\n# reads a name of a frame two steps out (refused by ADR 0395's bare-symbol rule over\n# ADR 0245's nested-`def` lift; Gap R.347 owns a capture that reaches past the frame),\n# a capture whose value is a container, a text, a float, the\n# void or a verdict (Gap R.332's one-word capture — refused, and the gate is asserted\n# in integration/forwarded_word_test.go), a hook `lambda` standing where the key door\n# wants a name (Gap R.378), and a program that returns a keyed sort and prints it\n# (Gap R.328 owns the `0` it prints today).\n\ndef apply1(fn, v):\n    base = 9                    # the body owns the name the entry reads\n    return fn(v)\n\n\ndef both(f, g, v):\n    base = 100                  # one owned word, dispatched on by two entries\n    return f(v) + g(v)\n\n\ndef third(f, g, h, v):\n    base = 5                    # two words the body owns, three entries reading them\n    off = 6\n    return f(v) + g(v) + h(v)\n\n\ndef twice(fn, seed):\n    base = 0                    # the callee calls its parameter twice under the collision\n    return fn(fn(seed))\n\n\ndef reads_its_own_base(fn, v):\n    base = 9\n    return fn(v) + base         # the body's own read, beside the word it hands on\n\n\ndef run(n, f):\n    base = 100                  # the recursion hands the forwarded word down, with the entry\n    return 0 if n == 0 else f(n) + run(n - 1, f)\n\n\ndef omit_one(fn, v=3):\n    base = 9                    # an omitted argument still answers its own position\n    return fn(v)\n\n\ndef stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10       # the body's own capture, spelled by the program (ADR 0372),\n        total = total + (lambda fn: fn(2) + shift + step)(lambda n: n * step)\n    return total                # ...beside an entry word of the same spelling (this row)\n\n\ndef bound_name():\n    base = 1\n    return apply1(lambda x: x + base, 10)   # the answer is a value like any other\n\n\ndef measured():\n    base = 2\n    return len([apply1(lambda x: x + base, 1), apply1(lambda x: x + base, 2)])\n\n\ndef loop_of_applications():\n    total = 0\n    for base in [1, 2, 3]:      # the host's word changes under one minted symbol\n        total = total + apply1(lambda x: x + base, 10)\n    return total\n\n\ndef host_parameter(seed):\n    return apply1(lambda x: x + seed, seed)  # the host's word is its parameter\n\n\ndef closed_entry_control():\n    # The control this row must not disturb: an entry that reads nothing outside itself\n    # mints no word at all (ADR 0345's shape).\n    return apply1(lambda x: x + 1, 2)\n\n\nBASE = 7\n\n# A name the module binds is no capture: the hoisted `def` reads the global as well as\n# the lambda did, and no parameter is written for it (ADR 0395's rule, kept by this row).\nprint(apply1(lambda x: x + BASE, 1))\nprint(apply1(lambda x: x + 1, 2))\nprint(bound_name(), measured())\nprint(loop_of_applications())\nprint(host_parameter(4))\nprint(closed_entry_control())\nprint(twice(lambda x: x * 2 + 1, 2))\nprint(stepper())\nprint(reads_its_own_base(lambda x: x + 1, 4))\nprint(omit_one(lambda x: x + 10))\nprint(run(3, lambda x: x + 1))\nprint(both(lambda x: x + 3, lambda x: x * 3, 2))\nprint(third(lambda x: x + 1, lambda x: x * 2, lambda x: x + 4, 3))\nprint(apply1(lambda x: -x, 5))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "8\n3\n11 2\n36\n8\n3\n11\n78\n14\n13\n9\n11\n17\n-5\n",
+      "python_ok": true,
+      "python_stdout": "8\n3\n11 2\n36\n8\n3\n11\n78\n14\n13\n9\n11\n17\n-5\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4869,7 +4890,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/204/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/205/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4883,7 +4904,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/204/prog.ll:36:19: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/205/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5389,11 +5410,11 @@
       ]
     }
   ],
-  "rows": 226,
+  "rows": 227,
   "skipped": 30,
-  "pass": 196,
+  "pass": 197,
   "fail": 0,
-  "oracle_match": 182,
+  "oracle_match": 183,
   "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

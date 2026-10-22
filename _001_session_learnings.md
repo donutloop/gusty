@@ -13857,3 +13857,70 @@ printed by the tool for a source printed beside it.
   comment naming the rows, because a program that quietly omits them reads as coverage. The module-level
   `for`-target probe stayed OUT of the program for the same reason: it refuses with Gap R.35's sentence, and a
   matrix row is a claim about what prints, not about what is interesting.
+
+## ADR 0397 — the word a clone forwards to its entry is minted; the host still reads the name the program wrote (Gap R.375, 2026-10-22)
+
+- **A decline can be a naming bug wearing a semantics costume.** ADR 0395's `already owns that name` decline was
+  true about the representation and wrong about the language: fourteen programs the reference answers were standing
+  behind it, and the thing the body "already owned" was a slot the compiler had invented. The tell was in the
+  ADR's own sentence — *the word the clone would forward is a name the body reads for itself* — which names a
+  parameter nobody in the program can see. When a decline explains itself with a name the source never wrote, ask
+  who chose that name; the answer here was "me, one cycle ago, to make a keyword fill findable".
+- **One string doing three jobs is the defect; separate the jobs before arguing about the fix.** The captured
+  spelling was simultaneously the host's read, the clone's parameter and the entry's parameter — and only the
+  middle one belonged to the pass. Writing the three-column table (who reads it / whose tables know the value) made
+  the design forced: two of the names are program text and cannot move, so mint the third. The same table is why
+  the two gates stayed where they were: each is asked of a *named frame*, and a frame is not a string.
+- **The filing's mechanism was measured and rejected.** Gap R.375's "next concrete action" said fill the minted
+  word **positionally** at the application. It is not safe here, for a reason the row's own neighbour owns: an
+  application may leave parameters out (**Gap R.329**, ADR 0371), the positional list stops at the last dispatched
+  position, and the call road fills the rest from each parameter's `Default` — so an appended word lands in a
+  default's slot. And the fill is where `captureCarriesOneWord` is asked with the supplying frame on the tables and
+  where the verdict is recorded; moving the argument into the tree moves it out of that door, which is the same
+  reasoning ADR 0395 §4 used to deny the hoisted entry a `Captures` field. A roadmap suggestion is a hypothesis
+  written before the code was read; landing it without re-testing it is how a filing becomes a bug report.
+- **Ask "where is the gate asked?", not "does the test go green?".** The tempting one-field change was to let the
+  pass write the argument and delete the emitter's fill. Every answering probe stayed green. What caught it is a
+  probe whose ONLY purpose is to make the two frames disagree: the host holds `base = "hey"` while the higher-order
+  body holds `base = 9`. Asked of the host, the gate refuses (Gap R.332, the honest answer); asked of the clone, the
+  program compiles and prints a number — an exit-0 wrong answer, the class this file keeps saying is expensive.
+  Every gate needs at least one probe where the two candidate frames disagree, or the gate's location is untested.
+- **A new accessor has to answer for every frame that exists, not just the one the row introduced.**
+  `callableCaptureRead(fd, i)` first returned `""` when `fd` was unknown, and the frames that broke were the
+  emitter's own inline lambdas — minted by `emitLambda`, absent from `g.fds`, and never supposed to have a
+  forwarded word at all. `print((lambda x: (lambda y: (lambda z: x + y + z)(100))(10))(1))`, the Gap R.330 control,
+  went from `111` to a refusal in the first sweep. The fix was a fallback to the parameter's own spelling; the lesson
+  is that "the field is empty" and "the field does not apply to this shape" are different answers, and the fallback
+  has to be the second one spelled out. Keeping ADR 0395's and ADR 0372's programs in the probe set is what turned
+  that from a released regression into a five-minute fix.
+- **The recursion is the one call whose caller is not a frame of the program.** For every application the host
+  reaches for its own name; for a clone's self call the caller is a frame that owns nothing, so the pass writes the
+  fill itself and hands the parameter down. That asymmetry — not the minting — is the part of this row with real
+  content, and it is ADR 0385's rule for the entry tuple applied one word taller. The IR claim that proves it is
+  `…(i32 %t15, i32 0, i32 %p2)`: the recursive call's last operand is the clone's own parameter register, and no
+  `%_base` load appears in it while the clone's own `store i32 100, i32* %_base` survives beside it.
+- **Two stages, two claims — the account disagreed with my arithmetic again.** For
+  `(lambda fn: fn(2) + shift + step)(lambda n: n * step)` I wrote `capture_parameters: 2` — one body capture plus
+  the minted word. The pass reported 3: the body reads `shift` AND `step`, so ADR 0372 writes two words and this row
+  writes one. The account reports what the pass wrote onto the declaration; only the later verdict reaches
+  `--file`. Third cycle, same lesson, new counter-example.
+- **A parameter register is positional in the IR, so an AST-level minting is invisible there — and that is the
+  point.** IR claims cannot see `gy$cap$…` (parameters print as `%p0`), and they must not: ADR 0345 §3 keeps the
+  pass's private spellings out of anything a reader or an agent parses. The minting is therefore asserted where
+  the name exists — against the plan itself, in an in-package test — and the IR asserts the consequence instead
+  (the entry call's operands are `%p` registers, never `%_base`). Assert a fact at the layer where it is
+  representable, and add the leak guard in the same commit: the minted spelling forbidden from the module and from
+  every refusal.
+- **Guards over artifacts are the reason the docs stayed true without effort.** `tools/recmerge` wrote 38 entries and
+  the record moved to 8525; the next test run named the four numbers in `roadmap.md` and `docs/operations.md` that
+  had gone stale, plus the matrix and oracle counts, none of which I had thought to count. The conformance program
+  was accepted by CPython on the first try and became a matrix row (`programs/forwarded_word`) with its own
+  `testdata/forwarded_word.expected`, written by the reference and never by this backend.
+- **Two IR-assertion traps, both cheap and both hit.** Matching the word `call` inside a clone region matches the
+  word `callable` in the clone's own `define` line — match `= call ` and skip `define`s. And a probe that reads a
+  name two frames out has to be written in dependency order: my first version put the callee's `def` after its use
+  and got the front end's `undefined name` instead of the pass's sentence, which would have pinned the wrong row.
+- **Tool flakiness is a correctness hazard, not an annoyance.** Reads and edits intermittently returned nothing or
+  an error while the file on disk was fine. The countermeasure is the same one the suite applies to itself: never
+  trust an empty result as evidence about state — re-check with `git diff --stat` after an edit and `gofmt` +
+  `go build` before believing a file is what I think it is.

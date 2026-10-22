@@ -1,0 +1,108 @@
+# The word a clone forwards to its entry, when the higher-order body has already
+# taken that name for itself (roadmap L11.7 · Gap R.375, ADR 0397).
+#
+# Every line below is what CPython prints for this same file. Each `def` below is
+# higher-order — it calls a parameter — and each entry `lambda` it is handed reads a
+# name out of the frame the APPLICATION is written in. Where that name is one the
+# higher-order body has bound for itself, the clone's parameter is minted under a
+# spelling the source cannot write: the body keeps its own slot, the entry keeps the
+# word the host handed over, and the two reads cannot answer each other.
+#
+# What this program does NOT contain, said out loud rather than hidden: an entry that
+# reads a name of a frame two steps out (refused by ADR 0395's bare-symbol rule over
+# ADR 0245's nested-`def` lift; Gap R.347 owns a capture that reaches past the frame),
+# a capture whose value is a container, a text, a float, the
+# void or a verdict (Gap R.332's one-word capture — refused, and the gate is asserted
+# in integration/forwarded_word_test.go), a hook `lambda` standing where the key door
+# wants a name (Gap R.378), and a program that returns a keyed sort and prints it
+# (Gap R.328 owns the `0` it prints today).
+
+def apply1(fn, v):
+    base = 9                    # the body owns the name the entry reads
+    return fn(v)
+
+
+def both(f, g, v):
+    base = 100                  # one owned word, dispatched on by two entries
+    return f(v) + g(v)
+
+
+def third(f, g, h, v):
+    base = 5                    # two words the body owns, three entries reading them
+    off = 6
+    return f(v) + g(v) + h(v)
+
+
+def twice(fn, seed):
+    base = 0                    # the callee calls its parameter twice under the collision
+    return fn(fn(seed))
+
+
+def reads_its_own_base(fn, v):
+    base = 9
+    return fn(v) + base         # the body's own read, beside the word it hands on
+
+
+def run(n, f):
+    base = 100                  # the recursion hands the forwarded word down, with the entry
+    return 0 if n == 0 else f(n) + run(n - 1, f)
+
+
+def omit_one(fn, v=3):
+    base = 9                    # an omitted argument still answers its own position
+    return fn(v)
+
+
+def stepper():
+    total = 0
+    for step in [1, 2, 3]:
+        shift = step * 10       # the body's own capture, spelled by the program (ADR 0372),
+        total = total + (lambda fn: fn(2) + shift + step)(lambda n: n * step)
+    return total                # ...beside an entry word of the same spelling (this row)
+
+
+def bound_name():
+    base = 1
+    return apply1(lambda x: x + base, 10)   # the answer is a value like any other
+
+
+def measured():
+    base = 2
+    return len([apply1(lambda x: x + base, 1), apply1(lambda x: x + base, 2)])
+
+
+def loop_of_applications():
+    total = 0
+    for base in [1, 2, 3]:      # the host's word changes under one minted symbol
+        total = total + apply1(lambda x: x + base, 10)
+    return total
+
+
+def host_parameter(seed):
+    return apply1(lambda x: x + seed, seed)  # the host's word is its parameter
+
+
+def closed_entry_control():
+    # The control this row must not disturb: an entry that reads nothing outside itself
+    # mints no word at all (ADR 0345's shape).
+    return apply1(lambda x: x + 1, 2)
+
+
+BASE = 7
+
+# A name the module binds is no capture: the hoisted `def` reads the global as well as
+# the lambda did, and no parameter is written for it (ADR 0395's rule, kept by this row).
+print(apply1(lambda x: x + BASE, 1))
+print(apply1(lambda x: x + 1, 2))
+print(bound_name(), measured())
+print(loop_of_applications())
+print(host_parameter(4))
+print(closed_entry_control())
+print(twice(lambda x: x * 2 + 1, 2))
+print(stepper())
+print(reads_its_own_base(lambda x: x + 1, 4))
+print(omit_one(lambda x: x + 10))
+print(run(3, lambda x: x + 1))
+print(both(lambda x: x + 3, lambda x: x * 3, 2))
+print(third(lambda x: x + 1, lambda x: x * 2, lambda x: x + 4, 3))
+print(apply1(lambda x: -x, 5))

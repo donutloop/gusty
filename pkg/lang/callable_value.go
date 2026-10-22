@@ -72,6 +72,12 @@ import (
 const (
 	callableCloneInfix  = "$callable$"
 	callableLambdaInfix = "$lambda$"
+	// callableForwardInfix marks the PARAMETER this pass mints for a word a clone forwards to its entry.
+	// The word used to be spelled with the captured name, which is the name the higher-order body was
+	// allowed to have taken for itself; the minted spelling is the difference between a clone with two
+	// slots under one name and a clone whose forwarded word cannot be answered by the body's own read
+	// (roadmap L11.7 · Gap R.375, ADR 0397).
+	callableForwardInfix = "$cap$"
 	// callableAnonymousName is the reference's own word for a function written with `lambda`, in every
 	// sentence a reader is shown — CPython says `<lambda>() takes 1 positional argument but 2 were
 	// given` for a lambda that happens to be bound to a name, so the binding is not the name to print.
@@ -785,11 +791,24 @@ type callableClone struct {
 	key  []string
 	name string
 	fn   *callableFn
-	// forwarded names the words this clone supplies to its entries: the union of the capture parameters
-	// the entries in this tuple were minted beside. The clone is the frame that OWNS them — the call site
-	// that picked this clone fills them from the frame the application is written in, and the clone hands
-	// each one to the entry it dispatches on (roadmap L11.7 · Gap R.336).
-	forwarded []string
+	// forwarded is the words this clone supplies to its entries: the union of the capture parameters the
+	// entries in this tuple were minted beside. The clone is the frame that OWNS them — the call site that
+	// picked this clone fills them from the frame the application is written in, and the clone hands each
+	// one to the entry it dispatches on (roadmap L11.7 · Gap R.336).
+	//
+	// Each word is a PAIR, because the two names do the same job in two different frames (roadmap L11.7 ·
+	// Gap R.375): `from` is the name the HOST reads — the spelling the program wrote, the only spelling the
+	// value tables in the host frame can answer a question about — and `word` is the name of the clone's own
+	// PARAMETER, which this pass mints under `callableForwardInfix` so that a higher-order body that has
+	// already bound that name for itself cannot have its own read answer the word it is being handed.
+	forwarded []callableForward
+}
+
+// callableForward is one word a clone forwards to the entries it dispatches on: the name the supplying
+// frame reads, and the name of the parameter this pass minted to carry it (roadmap L11.7 · Gap R.375).
+type callableForward struct {
+	word string
+	from string
 }
 
 // callableArgHoist is a lambda the pass gave a declaration to in the argument position of a call it does not
@@ -1463,26 +1482,46 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 			// them is the frame that supplies those words, so it gains one parameter per name — the union, in
 			// the order the tuple reads them, the same union rule ADR 0372 wrote for a body's own captures
 			// (roadmap L11.7 · Gap R.336).
+			//
+			// The union is keyed by the name the HOST reads, because that is the name two entries of one tuple
+			// share when they read the same word; the name of the clone's own PARAMETER is minted once per such
+			// group, under a spelling the source cannot write, so a body that owns the captured name for itself
+			// cannot answer the word it is being handed (roadmap L11.7 · Gap R.375, ADR 0397 — the shape ADR 0395
+			// declined out loud while the parameter carried the program's own spelling).
 			for _, sym := range cl.key {
 				for _, c := range plan.entryCaptures[sym] {
 					known := false
 					for _, have := range cl.forwarded {
-						if have == c {
+						if have.from == c {
 							known = true
 							break
 						}
 					}
-					if !known {
-						cl.forwarded = append(cl.forwarded, c)
+					if known {
+						continue
 					}
+					word, ok := plan.freshForwardWord(cf.def, cl, c)
+					if !ok {
+						return nil, callableDeclinef("no name could be minted for the word %q would forward to the entry of the call at line %d: the spelling %q is already taken (roadmap L11.7 · Gap R.375)", cf.def.Name, site.rank, c)
+					}
+					cl.forwarded = append(cl.forwarded, callableForward{word: word, from: c})
 				}
 			}
-			// A forwarded word is a PARAMETER of the clone, and a body that already owns that name would
-			// have two slots under one spelling — the source's read and the forwarded word answering each
-			// other. The pass is all-or-nothing, so this says which name is in the way instead of writing it.
-			for _, c := range cl.forwarded {
-				if callableCloneOwnsName(cf.def, c) {
-					return nil, callableDeclinef("the entry lambda of the call at line %d reads %q, and %q's own body already owns that name: the word the clone would forward is a name the body reads for itself (roadmap L11.7 · Gap R.336)", site.rank, c, cf.def.Name)
+			// The audit the minting is checked against, stated as the invariant it is meant to hold: the word
+			// the clone forwards is a PARAMETER of the clone, so no name the higher-order body already owns —
+			// a spelled parameter, or anything its own body binds — may be the spelling of that parameter.
+			// ADR 0395 could only DECLINE here (the parameter was the captured name, and the body was allowed to
+			// own it); minting under `callableForwardInfix` makes the same question an audit that cannot fire,
+			// and a pass that stops minting unwriteable names fails this row instead of shipping two slots under
+			// one spelling (roadmap L11.7 · Gap R.375).
+			for _, f := range cl.forwarded {
+				if callableCloneOwnsName(cf.def, f.word) || f.word == f.from || !callableLexable(f.word) || !strings.Contains(f.word, callableForwardInfix) {
+					return nil, &callableDecline{why: "the word a clone would forward is a name the body could read for itself"}
+				}
+				for _, other := range cl.forwarded {
+					if other.word == f.word && other.from != f.from {
+						return nil, &callableDecline{why: "two forwarded words would share one parameter"}
+					}
 				}
 			}
 			cf.clones = append(cf.clones, cl)
@@ -1976,6 +2015,59 @@ func callableInnerAgrees(plan *callablePlan, cf *callableFn) bool {
 	return true
 }
 
+// appendForwardedWords writes the words a clone forwards to its entries onto the declaration the pass is
+// building: one PARAMETER per word, spelled with the name this pass minted; one entry of `Captures`, so the
+// frame knows the position is a word it was GIVEN rather than one the source spelled (ADR 0372's verdict
+// memo keys on it); and one entry of `CaptureReads`, the name the caller reads to fill it — the program's own
+// spelling, which is the only spelling the supplying frame's tables can be asked about. The older captures
+// on the node, the ones the body of an applied `lambda` reads out of its own frame, are padded with "": the
+// two lists are read in parallel, so “same spelling” has to be sayable (roadmap L11.7 · Gap R.375).
+func appendForwardedWords(fd *FuncDef, forwarded []callableForward, src Span) {
+	if fd == nil || len(forwarded) == 0 {
+		return
+	}
+	for _, f := range forwarded {
+		fd.Params = append(fd.Params, &Param{Name: f.word, Src: src})
+	}
+	for len(fd.CaptureReads) < len(fd.Captures) {
+		fd.CaptureReads = append(fd.CaptureReads, "")
+	}
+	for _, f := range forwarded {
+		fd.Captures = append(fd.Captures, f.word)
+		fd.CaptureReads = append(fd.CaptureReads, f.from)
+	}
+}
+
+// callableCaptureRead answers which name the CALLER reads to fill capture parameter `i` of this declaration:
+// the entry of `CaptureReads`, or the parameter's own spelling where the pass wrote no other. An unknown
+// declaration answers with the parameter's own spelling too: only the defunctionalisation pass writes
+// `CaptureReads`, so a frame the EMITTER minted — an inline applied `lambda`, which is not in the program's
+// own table of definitions — has no forwarded word to read (roadmap L11.7 · Gap R.375, ADR 0232).
+func callableCaptureRead(fd *FuncDef, i int, name string) string {
+	if fd == nil || i < 0 || i >= len(fd.Captures) {
+		return name
+	}
+	if i < len(fd.CaptureReads) && fd.CaptureReads[i] != "" {
+		return fd.CaptureReads[i]
+	}
+	return name
+}
+
+// callableForwardWordOf answers the name of the clone's own parameter that carries the word read from
+// `from`, or "" when the clone forwards no such word — which is the shape the writer withdraws on rather
+// than emitting a read of a name nothing fills.
+func callableForwardWordOf(cl *callableClone, from string) string {
+	if cl == nil {
+		return ""
+	}
+	for _, f := range cl.forwarded {
+		if f.from == from {
+			return f.word
+		}
+	}
+	return ""
+}
+
 // callableCloneOwnsName asks whether the higher-order body already has a slot under this spelling: one of
 // the parameters the source wrote, or a name its own body binds. A forwarded capture word is a NEW
 // parameter on the clone, and two parameters under one name is a body whose reads answer each other.
@@ -2156,6 +2248,41 @@ func callableSiteFill(c *Call, cf *callableFn) []Expr {
 		}
 	}
 	return out
+}
+
+// freshForwardWord mints the name of the PARAMETER a clone gains for a word it hands to the entries it
+// dispatches on. The spelling is derived from the clone, from the name the host reads, and from a counter,
+// and is asked through the same doors every other name this pass hands out goes through — not a name the
+// program mentions, not a predeclared name, not one another clone took, and readable by the lexer so a
+// traceback could spell it if it ever had to — plus the one question a PARAMETER has to answer that a symbol
+// does not: no name the higher-order body owns may be the spelling of it, because a body that owns the name
+// would then have its own read answer the word it is being handed. That question is why this word is minted
+// at all: ADR 0395 spelled the parameter with the captured name, could only decline the collision, and left
+// the reference's answer on the table (roadmap L11.7 · Gap R.375, ADR 0397).
+func (p *callablePlan) freshForwardWord(def *FuncDef, cl *callableClone, from string) (string, bool) {
+	h := fnv.New32a()
+	fmt.Fprintf(h, "%s|%s", cl.name, from)
+	for i := 0; i < 64; i++ {
+		cand := fmt.Sprintf("gy%s%x_%d", callableForwardInfix, h.Sum32(), i)
+		clash := !callableLexable(cand) || !strings.Contains(cand, callableForwardInfix)
+		if ok, _ := p.nameIsFree(cand); !ok {
+			clash = true
+		}
+		for _, f := range cl.forwarded {
+			if f.word == cand {
+				clash = true
+			}
+		}
+		if callableCloneOwnsName(def, cand) {
+			clash = true
+		}
+		if !clash {
+			p.taken[cand] = true
+			return cand, true
+		}
+		h.Write([]byte{byte(i)})
+	}
+	return "", false
 }
 
 func (p *callablePlan) cloneName(base, key string) (string, bool) {
@@ -2744,10 +2871,12 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 			// on. APPENDED, never replaced: a clone of an applied `lambda` already carries the words the
 			// LAMBDA reads from the frame of its own application (ADR 0370), and those two lists are the body's
 			// supply and the entries' — overwriting one with the other loses an argument the callee still has.
-			for _, c := range cl.forwarded {
-				clone.Params = append(clone.Params, &Param{Name: c, Src: cf.def.Src})
-			}
-			clone.Captures = append(clone.Captures, cl.forwarded...)
+			//
+			// The PARAMETER is spelled with a name this pass owns and the VALUE is read from the name the
+			// program wrote, which is the pair Gap R.375 asked for: the host's tables can only be asked about
+			// the spelling the source used, and the clone's frame can only be given a slot the source cannot
+			// have bound for itself.
+			appendForwardedWords(clone, cl.forwarded, cf.def.Src)
 			// The count is the clone's own list, read AFTER the append: a clone of an applied `lambda` brings
 			// the body's captures with it (ADR 0370), a clone of a `def` brings only the entries' (this row),
 			// and the account reports the words the pass wrote onto the declarations it minted — both kinds.
@@ -2774,9 +2903,15 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 				// The entry's own words, handed over positionally: the clone reads each one out of the
 				// parameter the application filled it with. Positional rather than by name on purpose — the
 				// hoisted entry carries no `Captures` field, because the caller here is a frame the pass itself
-				// built and the word it holds was handed down rather than reached for (Gap R.336).
+				// built and the word it holds was handed down rather than reached for (Gap R.336). The name read
+				// is the clone's own spelling of the word, never the program's: in the collision shape the body
+				// owns that spelling, and reading it here would hand the entry the body's value (Gap R.375).
 				for _, c := range plan.entryCaptures[cl.key[in.slot]] {
-					callee.Args = append(callee.Args, &Name{Value: c, Src: callee.Fn.Span()})
+					word := callableForwardWordOf(cl, c)
+					if word == "" {
+						return prog, nil
+					}
+					callee.Args = append(callee.Args, &Name{Value: word, Src: callee.Fn.Span()})
 				}
 			}
 			// The recursion. Every call of the source function written inside this clone's copy of the body
@@ -2829,6 +2964,21 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 						return prog, nil
 					}
 					rec.Args[pos] = &IntLit{Value: 0, Text: callablePlaceholderText, Src: rec.Args[pos].Span()}
+				}
+				// The forwarded words travel down the recursion beside the entry tuple. The clone is not the
+				// frame that owns them — the host that picked this clone is — so the recursive call hands on the
+				// parameter it was given, spelled with the name this pass minted for it; and because the tree now
+				// says so, the call road leaves that position alone instead of reaching for a name the clone's
+				// own body may own (roadmap L11.7 · Gap R.375, beside ADR 0385's rule for the entry itself).
+				for _, f := range cl.forwarded {
+					if f.word == "" || f.from == "" {
+						return prog, nil
+					}
+					rec.Args = append(rec.Args, &KeywordArg{
+						Name:  f.word,
+						Value: &Name{Value: f.word, Src: rec.Args[0].Span()},
+						Src:   rec.Args[0].Span(),
+					})
 				}
 				report.RecursiveSites++
 			}

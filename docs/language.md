@@ -5647,8 +5647,38 @@ the entry positionally — `define i32 @gy_apply1$callable$…(i32 %p0, i32 %p1,
 parameter twice prints **`11`**, and a body reading a frame local while its entry reads the loop target prints **`72`**.
 `--callables` counts these in the same `capture_parameters` field: `1` for the row program, `2` when the body also reads
 a frame local. A name the MODULE binds is not a capture and mints no word — a hoisted `def` reads a global as well as the
-lambda did. Two shapes still decline, each naming itself: a forwarded word whose NAME the higher-order body has already
-taken for itself (**Gap R.375** — the clone would hold two slots under one spelling). The `key=` hook, which
+lambda did.
+
+The clone's own parameter is **minted**, not spelled with the captured name (**ADR 0397**, **Gap R.375**). Three names
+that one spelling used to do the work of are kept apart: the name the PROGRAM wrote (`base`) is what the host frame reads
+and the only name its value tables can be asked about; the name of the CLONE'S PARAMETER is generated (`gy$cap$…`, under
+the lexer rule `[A-Za-z0-9_]` no source can write) so a higher-order body that has already bound `base` for itself cannot
+have its own read answer the word it is being handed; and the ENTRY's parameter keeps the program's spelling, because the
+entry's body is the lambda that reads that name. So the collision prints the reference's answer rather than a refusal:
+
+```python
+def apply1(fn, v):
+    base = 9                            # the body owns the name the entry reads
+    return fn(v)
+
+def use(seed):
+    base = 1
+    return apply1(lambda x: x + base, seed)
+
+print(use(3))                            # 4
+```
+
+and so does every shape around it: the name owned as one of the callee's own parameters (`4`), as a `for` target (`4`),
+or through a comprehension target (`4`); the entry reading two names while the body owns one of them (`13`); two entries
+reading the ONE word the body owns (`11`, one parameter written for both calls); the callee calling its parameter twice
+(`11`); a higher-order recursion handing the word down with the entry tuple (`9`); an omitted argument beside a forwarded
+word (`4`); and the body reading its OWN `base` while the entry reads the host's (`13`). The clone's recursive call writes
+its forwarded keyword itself — the one call a frame cannot reach for, because the frame the recursion lives in owns nothing
+(**ADR 0385**'s rule, one word taller). Two shapes still decline, each naming itself: a read the host frame does not own
+(two frames up — **ADR 0245**'s nested-`def` lift), and a capture whose VALUE is not one word (a text, a float, a container,
+the void or a verdict — **Gap R.332**), which the minting did not widen: the one-word question is still asked of the frame
+that OWNS the name, so a body holding `base = 9` beside a host holding `base = "hey"` is refused, not answered with the
+number. The `key=` hook, which
 hoists a lambda by a second road that had never asked this question, was the other residue and is paid by
 **ADR 0396** (**Gap R.376**; see § A hook lambda reads the frame its keyed call is written in).
 

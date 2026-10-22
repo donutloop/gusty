@@ -83,7 +83,12 @@ func (g *irGen) lambdaCallArgs(c *Call, fnName string) (*Call, error) {
 		if !isKw {
 			continue
 		}
-		for _, name := range captured {
+		for i, name := range captured {
+			if callableCaptureRead(g.fds[fnName], i, name) != name {
+				// A forwarded word: no source can spell this name, so a keyword carrying it is the pass's own
+				// writing (the clone's recursive call), not the program's (Gap R.375).
+				continue
+			}
 			if kw.Name == name {
 				return nil, fmt.Errorf("codegen: the function called here reads %q from the frame that encloses it, and this call also passes a keyword argument of that name: one name would answer two different values, which the reference refuses as `%s` (roadmap L11.7, Gap R.265)", name, "<lambda>() got an unexpected keyword argument '"+name+"'")
 			}
@@ -95,27 +100,55 @@ func (g *irGen) lambdaCallArgs(c *Call, fnName string) (*Call, error) {
 	// clone of a `def` — and the minted symbol is this compiler's private spelling, which ADR 0345 §3 keeps out
 	// of a traceback and out of a diagnostic for the same reason.
 	subject := fnName
-	if fd := g.fds[fnName]; fd != nil && fd.CloneOf != "" {
+	fd := g.fds[fnName]
+	if fd != nil && fd.CloneOf != "" {
 		subject = callableDisplayName(fd)
 	}
-	for _, name := range captured {
-		kind, carriesOneWord := g.captureCarriesOneWord(name)
+	for i, name := range captured {
+		// What the CALLER reads is not always the parameter's own spelling. A forwarded word — the word a
+		// clone hands to the entry it dispatches on — is a parameter this pass minted under a name the source
+		// cannot write, precisely so that a higher-order body which has already bound the captured name for
+		// itself cannot have its own read answer the word; the VALUE still comes from the host frame's reading
+		// of the name the program wrote, which is the only name its tables can be asked about (roadmap L11.7 ·
+		// Gap R.375, ADR 0397; the gate below is asked of THAT name, where the value lives — Gap R.332,
+		// ADR 0395).
+		if callableCaptureSupplied(args, name) {
+			// The pass filled this position in the tree it wrote: a clone's recursive call hands down the word
+			// it was handed, and the frame the recursion lives in is not the frame that owns the name. What the
+			// tree already carries is not reached for a second time.
+			continue
+		}
+		read := callableCaptureRead(fd, i, name)
+		kind, carriesOneWord := g.captureCarriesOneWord(read)
 		if !carriesOneWord {
-			return nil, captureWordErr(name, kind, subject+"()")
+			return nil, captureWordErr(read, kind, subject+"()")
 		}
 		// The same verdict, kept for the frame that RECEIVES the value: this call fills the capture
 		// parameter, so what the caller's tables say about the name is what arrives in that position, and a
 		// body applied deeper in cannot ask the source call sites about it (Gap R.330).
-		g.recordCaptureVerdict(g.fds[fnName], name, kind, carriesOneWord)
+		g.recordCaptureVerdict(fd, name, kind, carriesOneWord)
 		args = append(args, &KeywordArg{
 			Name:  name,
-			Value: &Name{Value: name, Src: c.Span()},
+			Value: &Name{Value: read, Src: c.Span()},
 			Src:   c.Span(),
 		})
 	}
 	extended := *c
 	extended.Args = args
 	return &extended, nil
+}
+
+// callableCaptureSupplied asks whether a call already carries the argument for one of the callee's capture
+// parameters by name. Only the defunctionalisation pass writes such an argument into the tree — a source
+// cannot spell a minted name — and it does so for the one call a frame cannot reach for: the clone's own
+// recursive call, which hands the word down rather than owning it (roadmap L11.7 · Gap R.375).
+func callableCaptureSupplied(args []Expr, name string) bool {
+	for _, a := range args {
+		if kw, isKw := a.(*KeywordArg); isKw && kw.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // captureCarriesOneWord asks, of the tables the print door and the arithmetic roads already read, whether

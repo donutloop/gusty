@@ -861,6 +861,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// carries the host's own reading beside the element (roadmap Gap R.376, ADR 0396). Every line is
 		// what CPython prints for the same file.
 		"key_hook_frame",
+		// The word a clone forwards to its entry survives the higher-order body taking that name for itself:
+		// the clone's PARAMETER is minted under a spelling the source cannot write, the host still fills it
+		// with its own reading of the name it wrote, and the body's read of its own `base` stays a different
+		// slot — under a recursion, under a doubled call of the parameter, beside an omitted argument and
+		// beside ADR 0372's body capture of the same spelling (roadmap Gap R.375, ADR 0397). Every line is
+		// what CPython prints for the same file.
+		"forwarded_word",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

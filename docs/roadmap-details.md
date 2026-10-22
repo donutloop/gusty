@@ -14934,7 +14934,7 @@ word whose name the higher-order body has taken for itself (**Gap R.375**, below
 road at all (**Gap R.376**). The `sorted(..., key=lambda …)` result that prints `0` when a function RETURNS it is
 **Gap R.328**'s, measured unchanged on the parent build.
 
-### Gap R.375 — the word a clone forwards can collide with the body's own name (OPEN)
+### Gap R.375 — the word a clone forwards can collide with the body's own name (closed by ADR 0397)
 
 ```python
 def apply1(fn, v):
@@ -14945,24 +14945,65 @@ def use(seed):
     base = 1
     return apply1(lambda x: x + base, seed)
 
-print(use(3))                            # the reference: 4 — here: exit 1
+print(use(3))                            # the reference: 4 — before ADR 0397: exit 1
 ```
 
 `the entry lambda of the call … reads "base", and "apply1"'s own body already owns that name: the word the clone would
 forward is a name the body reads for itself`. The forwarded word is a PARAMETER of the clone, and the clone already has
 a `base` — as a parameter of the source `def` or as something its body binds. Two slots under one spelling is a body
 whose own reads and the forwarded word answer each other, and ADR 0345's pass is all-or-nothing: it says which name is
-in the way instead of writing it. The parent build refused the whole family with the generic sentence, so this is a
+in the way instead of writing it. The parent build refused the whole family with the generic sentence, so this was a
 narrower, louder decline introduced by ADR 0395 and owned by it.
 
-The fix has a shape: mint the forwarded parameter under a name the source cannot write, the way `freshName` mints the
-clone's own symbol, and fill it POSITIONALLY at the application. It is the keyword fill that ties the parameter's name
-to the captured name today — `lambdaCallArgs` finds the parameter by the captured name, which is exactly the name the
-colliding body already owns.
+**Closed 2026-10-22 by ADR 0397.** The diagnosis the filing guessed — “mint the forwarded parameter under a name the
+source cannot write, and fill it POSITIONALLY at the application” — was right about the minting and wrong about the
+fill, and the reason is worth keeping. One spelling had been doing three jobs, and only one of them was the parameter's
+name:
 
-Witness: `an entry whose capture word the higher-order body already owns` in `pkg/lang/callable_decline_test.go` and
-its CLI twin, and the refusal row of the same name in `pkg/lang/lambda_applied_test.go`; the account row in
-`TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame` pins the sentence in `refused[]`.
+| the name | who reads it | whose tables answer a question about it |
+|---|---|---|
+| `base` (the program's) | the HOST, at the application | the host's print/arithmetic/type tables — the only place the VALUE's kind is known |
+| the clone's parameter | the CLONE, when it calls the entry | nothing: it is a word handed down, never a word the frame reached for |
+| the entry's parameter | the ENTRY's body (the lambda) | the entry's own frame, where the lambda's read of `base` has to land |
+
+ADR 0395 spelled the second with the first, which is what made the collision a decline. Minting the second under
+`callableForwardInfix` separates them, and the first stays in the program's spelling because the host can only be asked
+about the name it wrote. That is why the fill stayed a keyword argument: the call road already asks the one-word gate
+(`captureCarriesOneWord`, **Gap R.332**) and records the verdict (`recordCaptureVerdict`, **Gap R.330**) while the
+supplying frame is on the tables, and a positional fill written by the pass would move the argument into the tree where
+no door asks those questions — the same reason ADR 0395 §4 refused to give the hoisted entry a `Captures` field. The
+new `FuncDef.CaptureReads`, read through `callableCaptureRead`, is what unties the two: `Name: <minted>` keeps the fill
+findable by the callee, `Value: <the host's reading of base>` keeps the read where the value lives (ADR 0232's one
+question, one asking place).
+
+Positional fill also had a second, smaller problem: the application may leave parameters out (**Gap R.329**, ADR 0371),
+so the call's positional list stops at the last position the clone dispatches on and the call road fills the rest from
+the parameter's own default. Appending a word after that list writes it into a position the defaults own — a wrong
+answer waiting for a callee with a default and a capturing entry, which the probe set now pins as answered (`4`).
+
+The one place the pass DOES write the fill is the recursion. A clone's self call is the single call of a clone whose
+caller is not a frame of the program: the frame the recursion is written in owns nothing, so it hands the word down as
+the parameter it was given (`…(i32 %t15, i32 0, i32 %p2)`), and the call road leaves a position the tree already filled
+alone. This is ADR 0385's rule for the entry tuple, asked one word taller, and it is what makes the recursive probe
+(`def run(n, f):` with `base = 100` in the body, `run(3, lambda x: x + base)` from a frame holding `1`) print the
+reference's `9`.
+
+Measured over 23 probes — the 20 of the family, the two controls that had to stay answering, and one sibling row of
+another gap — each asked of CPython first, the harness validated on a known-good program before any count was believed,
+then run against a build of `HEAD` and a build of this commit side by side: **2 agreeing before (both of them
+controls), 16 after, 14 newly, 0 regressed**. Seven of the twenty-three were measured to say something other than
+“fixed”: five keep **Gap R.332**'s refusal (a host holding a text, a float, a container, the void or a verdict beside a
+body holding a number — the gate asked of the OWNER, which the minting neither widens nor hides), one is the read two
+frames out that keeps **ADR 0245**'s nested-`def` lift at exit 1 on both builds, one is the key-door program that prints
+`0` identically on both builds and belongs to **Gap R.328**; and the two controls that had to stay answering (`4` and
+`72`, ADR 0395 and ADR 0372's own programs) did.
+
+Witness, after: the three pins that held this refused — `an entry whose capture word the higher-order body already owns`
+in `pkg/lang/callable_decline_test.go`, its CLI twin, and the refusal row of the same name in
+`pkg/lang/lambda_applied_test.go` — are DELETED, and the family answers in that file's answering table. The shape claims
+live in `pkg/lang/forwarded_word_test.go` (the minting, the parallel lists, the determinism, the IR per region, the gate
+asked of the host), the runs in `integration/forwarded_word_test.go`, and the corpus row is
+`integration/programs/forwarded_word.gy` with its reference text in `integration/testdata/forwarded_word.expected`.
 
 ### Gap R.376 — the `key=` hook never gets the entry-capture road (closed by ADR 0396)
 

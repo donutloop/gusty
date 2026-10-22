@@ -27,18 +27,15 @@ import (
 // the reference's answer beside them. `ref` is what the door owes: these are not broken programs.
 var callableDeclineCLIPrograms = []struct{ name, src, cite, ref string }{
 	{
-		// The two shapes the entry-side capture road (Gap R.336, paid by ADR 0395) still declines. The three
-		// that opened this table — an entry reading a local of the frame its application is written in, the
-		// same read twice by one callee, and the entry reading the frame's loop target — print CPython's bytes
-		// now and live in `lambdaAppliedCLIPrograms`, the reference leg at the terminal.
+		// The entry-side declines that remain — a read the host frame does not own — are here, and the one
+		// that used to lead this table is not: the word a clone forwards to its entry, spelled with the
+		// captured name, in a body that had already bound that name for itself, prints the reference's `4`
+		// from ADR 0397 on, because the parameter is minted under a spelling the source cannot write
+		// (roadmap L11.7 · Gap R.375). Its twin in `pkg/lang/callable_decline_test.go` is deleted beside it.
 		//
-		// A forwarding word is a PARAMETER of the clone, and a body that already owns that name would have two
-		// slots under one spelling: the pass says which name is in the way instead of writing it.
-		"an entry whose capture word the higher-order body already owns",
-		"def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-		"Gap R.336", "4\n",
-	},
-	{
+		// The three that opened this table — an entry reading a local of the frame its application is written
+		// in, the same read twice by one callee, and the entry reading the frame's loop target — print
+		// CPython's bytes now and live in `lambdaAppliedCLIPrograms`, the reference leg at the terminal.
 		"an entry that is a builtin the pass has no declaration for",
 		"print((lambda f: f(3))(abs))\n",
 		"L11.7", "3\n",

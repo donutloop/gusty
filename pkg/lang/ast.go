@@ -143,9 +143,19 @@ type FuncDef struct {
 	// `define` (ADR 0370), carried on the node because the defunctionalisation pass — not the frame the
 	// lambda is written in — minted this declaration, and the call road fills the parameters by name
 	// (roadmap L11.7 · Gap R.334, ADR 0372). nil for a definition the source wrote.
-	Captures   []string `json:"-"`
-	Decorators []Expr   `json:"decorators,omitempty"`
-	Src        Span     `json:"span,omitempty"`
+	Captures []string `json:"-"`
+	// CaptureReads is the parallel list that says, for each entry of Captures, which name the CALLER reads
+	// to fill that parameter: "" means the parameter and the read share a spelling, which is every capture
+	// the closure road minted (ADR 0370) and every word the pass minted for a body that reads its own frame.
+	// A non-empty entry belongs to a forwarded word — the parameter a CLONE hands to its entry — whose
+	// PARAMETER the pass minted under a spelling the source cannot write, so a higher-order body that owns
+	// the captured name for itself cannot answer the word it is being handed, while the VALUE still arrives
+	// as the host frame's own reading of the name the program wrote
+	// (roadmap L11.7 · Gap R.375; ADR 0395's forwarding, which named the parameter for the captured name and
+	// therefore had to decline when the body had already taken that name).
+	CaptureReads []string `json:"-"`
+	Decorators   []Expr   `json:"decorators,omitempty"`
+	Src          Span     `json:"span,omitempty"`
 }
 
 func (n *FuncDef) Span() Span { return n.Src }

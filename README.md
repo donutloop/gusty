@@ -2281,6 +2281,34 @@ falls back to dynamic dispatch.
   container capture to **R.332**, float elements to **R.248**, a module-rebound name to **R.35** — and the
   rest stay the door's own, each at exit 1 with exit 2 forbidden.
 
+- **The word a clone forwards to its entry is MINTED, not spelled (Gap R.375, ADR 0397)** — ADR 0395 landed the
+  entry-side capture road and left one shape refused out loud: `def apply1(fn, v):` / `base = 9` / `return fn(v)`,
+  applied from a frame that binds `base` itself, is the reference's `4` and this backend's exit 1 with “the word
+  the clone would forward is a name the body reads for itself”. Honest, and the whole family behind it — fourteen
+  programs the reference answers, all refused because of one spelling. The reason was one string doing three
+  jobs in three frames: the name the PROGRAM wrote (what the host reads, and the only name its value tables
+  know), the name of the CLONE'S PARAMETER (a word handed down, which nobody's tables describe), and the name of
+  the ENTRY's parameter (the lambda's own source text reads it). Two of the three had to keep the program's
+  spelling; the middle one was wearing it. So the parameter is minted now — `freshForwardWord`, carrying
+  `callableForwardInfix`, checked through the same doors as a clone's symbol (`nameIsFree`, `callableLexable`) plus
+  the one a parameter has to answer that a symbol does not: no name the higher-order body owns. `FuncDef` gained
+  `CaptureReads`, parallel to `Captures`, so the call road fills the minted parameter with the host's reading of
+  the OTHER name (`call … @gy_apply1$callable$…(i32 0, i32 %p0, i32 %_base.ld1)`), the gate still asks the frame
+  that OWNS the value, and the verdict is recorded against the parameter that receives it. The filing had said
+  “fill it positionally”; that was measured and rejected — an application may leave parameters out (Gap R.329), so
+  an appended word lands in a default's position, and the fill is where the one-word gate and the verdict live.
+  The pass writes a fill in one place only: the recursion, the single call of a clone whose caller is not a frame
+  of the program (`…(i32 %t15, i32 0, i32 %p2)` — ADR 0385's rule, one word taller). **2 agreeing before (both of them the
+  controls), 16 after, 14 newly, 0 regressed** over 23 probes — the 20 of the family, the two controls that had to stay
+  answering, and one sibling row of another gap, the before-column a build of `HEAD` run beside this one: the body binding the name, owning it as its own parameter, as a
+  `for` target, through a comprehension target, two entries reading one owned word, three entries over two words,
+  the parameter called twice, a recursion and two hosts of it, an omitted argument, the body reading its own word
+  beside the entry reading the host's. The three pins that held it refused are deleted, not rewritten; the minted
+  spelling is forbidden from diagnostics and from the module's text; the two declines it does not reach — a name
+  two frames out (**ADR 0245**'s lift) and a value that is not one word (**R.332**) — are asserted at exit 1, the
+  gate asked of the OWNER, which is why a body holding `9` beside a host holding `"hey"` is refused rather than
+  answered with the number. `programs/forwarded_word.gy` is the matrix row (the 227th, oracle `match`).
+
 - **The pair scan asks the same door: the container spelled as a call is a slot it can read (Gap R.369, ADR
   0394)** — three rows in a row were the same program with one word changed, and the filing of the third one
   blamed the wrong road. `d = {"k": []}` / `f(d["k"])` prints `[]` and takes the `else`; `d = {"k": list()}` /

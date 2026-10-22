@@ -43,20 +43,13 @@ func quoteLikeProgram(name string) string { return "\"" + name + "\"" }
 // row the pass names in its own account — the citation is what the reader used to lose.
 var callableDeclinePrograms = []struct{ name, src, cite, says string }{
 	{
-		// The two shapes the entry-side capture road (Gap R.336, paid by ADR 0395) still declines, each naming
-		// what is missing. The three that used to sit here — an entry lambda reading a local, the same read
-		// twice by one callee, and the entry reading the frame's loop target — answer CPython now and moved to
-		// the answering table of `lambda_applied_test.go`, with the account counting the words the pass minted
-		// for them (`TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame`).
+		// The fourth entry-side decline that used to sit here is GONE: the word a clone forwards to its entry
+		// spelled with the captured name, in a body that had already bound that name for itself. The parameter
+		// is minted under a spelling the source cannot write now, the program prints the reference's `4`, and
+		// the row that declined it is deleted rather than rewritten (roadmap L11.7 · Gap R.375, ADR 0397). The
+		// entry-side declines that remain — a read the host frame does not own — are asserted in
+		// `lambda_applied_test.go` and `key_hook_frame_test.go`.
 		//
-		// The forwarding word is a PARAMETER of the clone; a body that already owns that name would have two
-		// slots under one spelling, and the pass declines rather than let the two reads answer each other.
-		name: "an entry whose capture word the higher-order body already owns",
-		src:  "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-		cite: "Gap R.336",
-		says: `already owns that name`,
-	},
-	{
 		// An entry the pass cannot substitute because the callable is a predeclared name, which the pass
 		// does not clone. The reference prints `3`.
 		name: "an entry that is a builtin the pass has no declaration for",

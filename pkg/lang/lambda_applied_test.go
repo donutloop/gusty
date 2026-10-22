@@ -193,6 +193,108 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 			"def apply1(fn, v):\n    return fn(v)\n\ndef use():\n    total = 0\n    for base in [1, 2, 3]:\n        total = total + apply1(lambda x: x + base, 10)\n    return total\n\nprint(use())\n",
 			"36\n",
 		},
+		// The COLLISION family (roadmap L11.7 · Gap R.375, ADR 0397). Every one of these refused with
+		// ADR 0395's sentence — “the word the clone would forward is a name the body reads for itself” —
+		// because the forwarded word was a parameter spelled with the captured name, and the higher-order
+		// body had already taken that spelling for itself. The parameter is minted now, so the body's own
+		// read and the word the clone hands its entry are two slots that cannot answer each other, and the
+		// value still arrives from the host frame's reading of the name the program wrote.
+		{
+			// The row's own program: the callee's body binds `base`, the host's body binds `base`.
+			"an entry whose capture word the higher-order body already owns",
+			"def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"4\n",
+		},
+		{
+			// The body owns the name as a PARAMETER it read for itself: the forwarded word and the body's own
+			// parameter share a spelling and nothing shares a slot.
+			"an entry whose capture word is one of the callee's own parameters",
+			"def apply1(fn, v, base):\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed, 9)\n\nprint(use(3))\n",
+			"4\n",
+		},
+		{
+			// The body owns the name as a `for` target — a binding the source never spelled as an assignment.
+			"an entry whose capture word the body owns as a loop target",
+			"def apply1(fn, v):\n    for base in [7, 8]:\n        pass\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"4\n",
+		},
+		{
+			// The body owns one of the two names the entry reads: one word is minted, the other arrives the
+			// way it always did, and the answer needs both.
+			"an entry that reads two names of the host while the body owns one of them",
+			"def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    off = 10\n    return apply1(lambda x: x * base + off, seed)\n\nprint(use(3))\n",
+			"13\n",
+		},
+		{
+			// Two entries of one tuple reading the SAME owned name: the union is keyed by the name the host
+			// reads, so the two entries share the one minted word.
+			"two entries that read the one word the body owns",
+			"def both(f, g, v):\n    base = 100\n    return f(v) + g(v)\n\ndef use(seed):\n    base = 2\n    return both(lambda x: x + base, lambda x: x * base, seed)\n\nprint(use(3))\n",
+			"11\n",
+		},
+		{
+			// The callee calls its parameter TWICE under the collision: the one forwarded word is read by two
+			// calls of one entry, in a body that has its own `base`.
+			"an entry whose word the body owns, called twice by the callee",
+			"def twice(fn, seed):\n    base = 0\n    return fn(fn(seed))\n\ndef use(seed):\n    base = 1\n    return twice(lambda x: x * 2 + base, seed)\n\nprint(use(2))\n",
+			"11\n",
+		},
+		{
+			// The recursion forwards the word beside the entry tuple: the clone hands down the parameter it
+			// was given rather than reaching for a name its own body owns (ADR 0385's rule, one word taller).
+			"a higher-order recursion forwards the word it owns nothing of",
+			"def run(n, f):\n    base = 100\n    return 0 if n == 0 else f(n) + run(n - 1, f)\n\ndef use():\n    base = 1\n    return run(3, lambda x: x + base)\n\nprint(use())\n",
+			"9\n",
+		},
+		{
+			// Two hosts of the one recursive callee: two clones, two words, two answers in one program.
+			"two hosts of one recursive callee each bring their own word",
+			"def run(n, f):\n    base = 100\n    return 0 if n == 0 else f(n) + run(n - 1, f)\n\ndef use_a():\n    base = 1\n    return run(3, lambda x: x + base)\n\ndef use_b():\n    base = 10\n    return run(2, lambda x: x + base)\n\nprint(run(0, lambda x: x) + use_a() * 100 + use_b())\n",
+			"923\n",
+		},
+		{
+			// The application LEFT AN ARGUMENT OUT beside a forwarded word: the default still answers the
+			// position the source skipped, and the minted word lands behind every spelled parameter.
+			"an omitted argument beside a forwarded word still answers its own position",
+			"def apply1(fn, v=3):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base)\n\nprint(use(4))\n",
+			"4\n",
+		},
+		{
+			// The body reads its OWN `base` (9) and the entry reads the host's (1) — the two reads the decline
+			// existed to keep apart, in one program, where the answer needs both values.
+			"the body reads its own word and the entry reads the host's",
+			"def apply1(fn, v):\n    base = 9\n    return fn(v) + base\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"13\n",
+		},
+		{
+			// A clone of an APPLIED lambda whose body capture and whose entry word share one name: the body's
+			// capture is spelled by the program (ADR 0370) and the entry's word is minted (this row), in one
+			// parameter list.
+			"a body capture and an entry word spelled the same by the program",
+			"def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift + step)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			"78\n",
+		},
+		{
+			// One callee, two applications: the capturing clone carries the minted word, the closed one
+			// carries nothing, and the program reads both.
+			"a capturing clone and a closed clone of one callee",
+			"def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed) + apply1(lambda x: x + 1, seed)\n\nprint(use(3))\n",
+			"8\n",
+		},
+		{
+			// The body owns the name through a comprehension target — a binding that lives inside an
+			// expression, which is what `bodyBoundNames` is read for.
+			"an entry whose capture word the body owns through a comprehension target",
+			"def apply1(fn, v):\n    base = [base for base in [9]]\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			"4\n",
+		},
+		{
+			// Three entries, two of them reading a name the body owns: one minted word shared, one minted
+			// word shared by nothing, counted once each.
+			"three entries over two words the body owns",
+			"def third(f, g, h, v):\n    base = 5\n    off = 6\n    return f(v) + g(v) + h(v)\n\ndef use(seed):\n    base = 2\n    off = 3\n    return third(lambda x: x + base, lambda x: x * base, lambda x: x + off, seed)\n\nprint(use(3))\n",
+			"17\n",
+		},
 	}
 }
 
@@ -474,14 +576,13 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingRefuseInWords(t *testing.T) {
 			want: `holds a float`,
 		},
 		{
-			// The same decline with the callee's parameter CALLED TWICE, so the clone would have to forward the
-			// entry's capture word through the callee's own clone — the shape that made Gap R.336 more than the
-			// one-line fix Gap R.334 was. It answers now, and is in the table above; what still cannot be said
-			// is the word whose NAME the body has already taken for itself, which is the one forwarding shape
-			// this pass declines out loud (roadmap L11.7 · Gap R.336's residue).
-			name: "an entry whose capture word the higher-order body already owns",
-			src:  "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-			want: "already owns that name",
+			// The one word a capture crosses in cannot carry a container — and the collision minting did not
+			// widen that gate: the value's kind is still asked of the frame that OWNS the name, and a body that
+			// happens to bind the same spelling changes nothing about the answer (Gap R.332, asked where
+			// Gap R.375 put the word).
+			name: "a container capture whose name the higher-order body also owns",
+			src:  "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = [1, 2]\n    return apply1(lambda x: x + len(base), seed)\n\nprint(use(3))\n",
+			want: "holds a container",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -899,6 +1000,37 @@ func TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame(t *testing.T) {
 			src:      "base = 7\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef use(seed):\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
 			captures: 0,
 		},
+		{
+			// The collision the pass used to decline (roadmap L11.7 · Gap R.375, ADR 0397): the body owns the
+			// name the entry reads, the word is minted under a spelling the source cannot write, and the account
+			// counts the word it WROTE — one, however many entries dispatch on it.
+			src:      "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
+			captures: 1,
+		},
+		{
+			// Two entries of one tuple reading the one owned name: the union is keyed by the name the host
+			// reads, so ONE word is written for both of them.
+			src:      "def both(f, g, v):\n    base = 100\n    return f(v) + g(v)\n\ndef use(seed):\n    base = 2\n    return both(lambda x: x + base, lambda x: x * base, seed)\n\nprint(use(3))\n",
+			captures: 1,
+		},
+		{
+			// Three entries over two owned names: the union of the tuple, each word counted once.
+			src:      "def third(f, g, h, v):\n    base = 5\n    off = 6\n    return f(v) + g(v) + h(v)\n\ndef use(seed):\n    base = 2\n    off = 3\n    return third(lambda x: x + base, lambda x: x * base, lambda x: x + off, seed)\n\nprint(use(3))\n",
+			captures: 2,
+		},
+		{
+			// The recursion beside a forwarded word: the count is the words the pass wrote onto the clone,
+			// not the number of calls that read them.
+			src:      "def run(n, f):\n    base = 100\n    return 0 if n == 0 else f(n) + run(n - 1, f)\n\ndef use():\n    base = 1\n    return run(3, lambda x: x + base)\n\nprint(use())\n",
+			captures: 1,
+		},
+		{
+			// A body capture the program spelled (ADR 0372's `shift` AND `step`, both read by the body) beside
+			// an entry word the body also owns (`step`, minted by this row): three words on one declaration,
+			// written by two roads — the count is the words the pass WROTE, not the names it wrote them for.
+			src:      "def stepper():\n    total = 0\n    for step in [1, 2, 3]:\n        shift = step * 10\n        total = total + (lambda fn: fn(2) + shift + step)(lambda n: n * step)\n    return total\n\nprint(stepper())\n",
+			captures: 3,
+		},
 	} {
 		doc, err := CallablesJSON(tc.src)
 		if err != nil {
@@ -926,36 +1058,13 @@ func TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame(t *testing.T) {
 		if tc.captures > 0 && !strings.Contains(doc, callableLambdaInfix) {
 			t.Fatalf("the entry lambda was never given a declaration to carry the word:\n%s", doc)
 		}
-	}
-	for _, tc := range []struct {
-		src   string
-		wants []string
-	}{
-		{
-			// A forwarding word whose NAME the higher-order body has taken for itself: the clone would carry
-			// two slots under one spelling, and the pass says which name is in the way rather than write it.
-			src:   "def apply1(fn, v):\n    base = 9\n    return fn(v)\n\ndef use(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\nprint(use(3))\n",
-			wants: []string{`"base"`, "already owns that name", "Gap R.336"},
-		},
-	} {
-		doc, err := CallablesJSON(tc.src)
-		if err != nil {
-			t.Fatalf("a decline is still a document: %v", err)
-		}
-		var rep struct {
-			Rewritten bool     `json:"rewritten"`
-			Refused   []string `json:"refused"`
-		}
-		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
-			t.Fatalf("the account is not JSON: %v\n%s", err, doc)
-		}
-		if rep.Rewritten || len(rep.Refused) != 1 {
-			t.Fatalf("the pass rewrote a program it must decline: %s", doc)
-		}
-		for _, want := range tc.wants {
-			if !strings.Contains(rep.Refused[0], want) {
-				t.Fatalf("the entry refusal omits %q:\n%v", want, rep.Refused)
-			}
+		// The refusal this loop used to hold for the collision program is GONE, and its absence is the
+		// claim: a program whose higher-order body has taken the captured name for itself is rewritten now,
+		// so the account must say `rewritten` and refuse nothing (roadmap L11.7 · Gap R.375, ADR 0397). The
+		// declines the entry road still keeps — a read the host frame does not own — are asserted in
+		// `TestWhatAForwardedWordIsMintedToReadTheHost`, so a decline that quietly widens fails somewhere.
+		if rep.Rewritten == false || len(rep.Refused) != 0 {
+			t.Fatalf("the pass declined a program whose forwarded word it can now mint: %s", doc)
 		}
 	}
 }
