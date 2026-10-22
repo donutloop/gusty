@@ -1,5 +1,114 @@
 {
  "entries": {
+"LIMIT = 10\ndef use():\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + LIMIT))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"LIMIT = 10\nprint(sorted([3, 1, 2], key=lambda x: 0 - x + LIMIT))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"base = 1\nprint(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def method(self):\n        base = 1\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\nC().method()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def k(s, base):\n    return 0 - len(s) + base\n\nprint(k(\"ab\", 1), k(\"abcd\", 1))\n": {
+    "stdout": "-1 -3\n",
+    "hasStdout": true
+   },
+
+"def neg(v):\n    return 0 - v\n\nprint(sorted([3, 1, 2], key=neg))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    n = 0\n    while n \u003c 2:\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + base + n))\n        n = n + 1\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    other = 2\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base + other))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(min([3, 1, 2], key=lambda x: 0 - x + base), max([3, 1, 2], key=lambda x: 0 - x + base))\n\nuse()\n": {
+    "stdout": "3 1\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base))\n\nuse()\n": {
+    "stdout": "['bbb', 'cc', 'a']\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base))\n    base = 5\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base))\n\nuse()\n": {
+    "stdout": "['bbb', 'cc', 'a']\n['bbb', 'cc', 'a']\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base, reverse=True))\n\nuse()\n": {
+    "stdout": "['a', 'cc', 'bbb']\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda base: 0 - base + base))\n\nuse()\n": {
+    "stdout": "[3, 1, 2]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n    print(sorted([5, 4], key=lambda y: 0 - y + base))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n[5, 4]\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base), max([1, 2, 3], key=lambda v: 0 - v + base))\n\nuse()\n": {
+    "stdout": "[3, 2, 1] 1\n",
+    "hasStdout": true
+   },
+
+"def use():\n    base = 1\n    xs = sorted([3, 1, 2], key=lambda x: 0 - x + base)\n    print(xs, len(xs), xs[0], xs[2])\n\nuse()\n": {
+    "stdout": "[3, 2, 1] 3 3 1\n",
+    "hasStdout": true
+   },
+
+"def use():\n    for step in [1, 2]:\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + step))\n\nuse()\n": {
+    "stdout": "[3, 2, 1]\n[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use(seed):\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + seed))\n\nuse(1)\nuse(4)\n": {
+    "stdout": "[3, 2, 1]\n[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"def use(step):\n    for v in sorted([3, 1, 2], key=lambda x: 0 - x + step):\n        print(v)\n\nuse(1)\n": {
+    "stdout": "3\n2\n1\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"bbb\", \"a\"], key=len))\n": {
+    "stdout": "['a', 'bbb']\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2], key=lambda x: 0 - x))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
 "# integration/programs/entry_lambda_capture.gy — an entry lambda reads the frame\n# its application is written in, and the clone the pass mints carries the words\n# (roadmap L11.7 · Gap R.336 · ADR 0395). CPython is the oracle; the conformance\n# matrix asserts this program byte-for-byte, and the two legs that witness it are\n# the record (pkg/lang/testdata/interpreter-golden.json) and this compiled run.\n\ndef apply1(fn, v):\n    return fn(v)\n\ndef apply2(fn, v):\n    return fn(v)\n\ndef twice(fn, v):\n    return fn(fn(v))\n\n# The entry reads a local of the frame its application is written in: the reference's 4.\ndef from_local(seed):\n    base = 1\n    return apply1(lambda x: x + base, seed)\n\n# The entry reads a parameter of that frame: the reference's 8 for use(5).\ndef from_param(seed):\n    return apply1(lambda x: x + seed, seed)\n\n# The entry reads the loop target of that frame: the reference's 2 and 3.\ndef from_loop(seed):\n    total = 0\n    for i in [1, 2]:\n        total = total + apply1(lambda x: x + i, seed)\n    return total\n\n# Two entries of one callee, each reading its own name of the frame: 13 for 3 + 10.\ndef two_entries(seed):\n    left = 10\n    right = 2\n    return apply2(lambda x: x + left, seed) + apply2(lambda x: x + right, seed)\n\n# A capturing entry and a closed entry of the same callee: 4 + 7.\ndef mixed(seed):\n    offset = 1\n    return apply1(lambda x: x + offset, seed) + apply1(lambda x: x + 4, 3)\n\n# The entry reads a module-level name, which is no capture at all: 14.\nLIMIT = 10\n\ndef from_module(_ignored):\n    return apply1(lambda x: x + LIMIT, 4)\n\n# The callee is called twice by the same body, so the forwarded word crosses twice.\ndef called_twice(seed):\n    step = 2\n    return twice(lambda x: x + step, seed) + apply1(lambda x: x + step, seed)\n\nprint(from_local(3))\nprint(from_param(5))\nprint(from_loop(10))\nprint(two_entries(3))\nprint(mixed(3))\nprint(from_module(0))\nprint(called_twice(1))\n": {
     "stdout": "4\n10\n23\n18\n11\n14\n8\n",
     "hasStdout": true

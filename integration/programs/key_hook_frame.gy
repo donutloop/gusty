@@ -1,0 +1,78 @@
+# The ordering door's hook lambda reads the frame the call is written in
+# (roadmap L11.7 · Gap R.376, ADR 0396). Every line below is what CPython prints
+# for this same file: the hook is minted with one capture parameter per name it
+# reads, and the door calls it by name beside the element.
+#
+# What this program does NOT contain, said out loud rather than hidden:
+# a hook that reads a name of a frame two steps out (ADR 0245's nested-`def`
+# lift, Gap R.331), a hook whose capture is a container or a text (Gap R.332's
+# one-word capture), a hook over a container the program built at run time
+# (Gap R.254), and a second call of one callee whose argument shapes differ
+# (Gap R.374) — all filed, all refused or answered elsewhere.
+
+def frame_local():
+    base = 1
+    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))
+
+
+def frame_parameter(step):
+    print(sorted([3, 1, 2], key=lambda x: 0 - x + step))
+
+
+def two_hooks_one_frame():
+    base = 1
+    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))
+    print(sorted(["bbb", "a", "cc"], key=lambda s: 0 - len(s) + base))
+
+
+def answer_bound_and_read():
+    base = 1
+    xs = sorted([3, 1, 2], key=lambda x: 0 - x + base)
+    print(xs, len(xs), xs[0], xs[2])
+
+
+def walking_the_keyed_answer():
+    for v in sorted([3, 1, 2], key=lambda x: 0 - x + 1):
+        print(v)
+
+
+def folds_share_the_hook():
+    base = 1
+    print(min([3, 1, 2], key=lambda x: 0 - x + base), max([3, 1, 2], key=lambda x: 0 - x + base))
+
+
+def reverse_counts_the_other_side():
+    base = 1
+    print(sorted(["bbb", "a", "cc"], key=lambda s: 0 - len(s) + base, reverse=True))
+
+
+class Holder:
+    def method(self):
+        base = 2
+        print(sorted([3, 1, 2], key=lambda x: 0 - x + base))
+
+
+LIMIT = 10
+
+# the module's own name: a hoisted `def` reads a global as well as the lambda did,
+# so this hook mints no word at all (ADR 0395's rule, asked of the hook road now)
+print(sorted([3, 1, 2], key=lambda x: 0 - x + LIMIT))
+# the control the row must not disturb: the self-contained hook of ADR 0345
+print(sorted([3, 1, 2], key=lambda x: 0 - x))
+# and the keys the door already called by name
+def neg(v):
+    return 0 - v
+
+
+print(sorted([3, 1, 2], key=neg))
+print(sorted(["bbb", "a"], key=len))
+
+frame_local()
+frame_parameter(1)
+frame_parameter(4)
+two_hooks_one_frame()
+answer_bound_and_read()
+walking_the_keyed_answer()
+folds_share_the_hook()
+reverse_counts_the_other_side()
+Holder().method()

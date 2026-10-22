@@ -14964,7 +14964,7 @@ Witness: `an entry whose capture word the higher-order body already owns` in `pk
 its CLI twin, and the refusal row of the same name in `pkg/lang/lambda_applied_test.go`; the account row in
 `TestWhatTheCallablesAccountSaysAnEntryReadsItsFrame` pins the sentence in `refused[]`.
 
-### Gap R.376 — the `key=` hook never gets the entry-capture road (OPEN)
+### Gap R.376 — the `key=` hook never gets the entry-capture road (closed by ADR 0396)
 
 ```python
 def use():
@@ -14972,22 +14972,108 @@ def use():
     return sorted([3, 1, 2], key=lambda x: 0 - x + base)
 
 print(use())                             # the reference: [3, 2, 1]
+# compiled, before: exit 1 — `key=lambda ...` is refused: a lambda is a function VALUE, and this backend has none
+```
+
+The same program at module level over a module-level `base` refused the same way, while **Gap R.255**'s self-contained
+spelling — `print(sorted([3, 1, 2], key=lambda x: 0 - x))` — has printed `[3, 2, 1]` since ADR 0345. So the hook road
+was not missing the callable: it gives the hook lambda a declaration and the door calls it by a NAME (`keyRets`), which
+is precisely the shape an entry has. It was missing the *question*. Three roads hoist a `lambda` in this compiler —
+the applied body (ADR 0370/0372), the entry (ADR 0395) and the hook (ADR 0345) — and only the first two asked
+`callableLambdaCaptures` what the body reads out of the frame it was written in; the third asked
+`callableLambdaIsSelfContained`, a spelling test with one answer (“any free name: decline”). The diagnosis the filing
+guessed — “route the hook through the reading `resolveEntry` performs” — was right in shape and wrong in detail: the
+hook is not an entry (nothing clones it; the DOOR calls it, once per element, from the frame the call is written in), so
+what it needed was the door, not the entry road.
+
+**What landed** (ADR 0396). In the argument-hoist loop of `planDefunctionalization`, a `lambda` that is not
+self-contained is hoisted when — and only when — the position is one a builtin CALLS: `keyDoorOptions` names the
+callee (`sorted`/`min`/`max`) and the `key=` option, the same census the door and the parameter scan read (ADR 0363).
+The body’s free names are settled by `callableLambdaCaptures`: a name the frame owns becomes a trailing parameter and
+`FuncDef.Captures`, which `lambdaCallArgs` fills by name from the CALLER’S own reading — the caller of a hook being
+the frame the call is written in, which is the frame that owns the name; a name the module binds mints no word (a
+hoisted `def` reads a global as well as the lambda did, ADR 0395’s rule); a name past the frame is declined, because
+that is ADR 0245’s lift; and a name that is a declared function or class is declined by `callableCapturesAreValueNames`
+rather than read as `%_helper` (**Gap R.378**, filed with that reproducer). This is the opposite of the entry road’s
+choice about `Captures`, on purpose: the entry’s caller is a clone the pass wrote, whose word was handed down, so the
+entry carries no `Captures` and is filled positionally; the hook’s caller is a frame of the program, so reaching for
+the name by name is the honest instruction and `captureCarriesOneWord` is asked where the value lives.
+
+One arity census had to learn the difference between an argument and a word. The minted hook has two parameters and is
+supplied one, so `userFunctionKey`’s arity verdict and `keyDoorCallsOneArgument` both moved to
+`callableSuppliedParams(fd)` — `fd.Params` minus `fd.Captures` — which is one question with one asking place (ADR 0232).
+Counting the minted word gave `<lambda>() missing 1 required positional argument: 'base'` for a program that wrote no
+such argument, and answered “this door never calls that key”, which the pass reads as a function value left in the
+program and refuses the entire program for. A `Default` on the minted parameter — the tempting one-field fix — was
+rejected: it makes “omittable” mean two things and prints a default the source never wrote.
+
+Measured over 26 probes, each asked of CPython first and the harness validated on a known-good program before any
+count was believed (ADR 0394’s lesson): 5 agreeing before, 22 after, **17 newly, 0 regressed**. Newly answered: a
+frame local, the frame’s parameter (twice, two arguments), a module constant from inside a def, `min`/`max` sharing one
+hook, `reverse=True` beside a capture, the answer bound/measured/indexed and walked, two hooks of one frame, a hook in a
+`while` body, a rebinding between two hooks, two names of one frame, a method’s frame, a `for` body inside a def, and
+the hook whose own parameter shadows the frame’s name (which mints no word at all, the reference’s `[3, 1, 2]`).
+
+Three refusals MOVED rather than being fixed, and each moved to the sentence of the row that actually owns the missing
+half: a text or container capture now hears Gap R.332’s one-word capture rule, float elements hear Gap R.248’s, and a
+module-level name the module rebinds (a module `for` target) hears Gap R.35’s — all at exit 1, exit 2 forbidden, on
+`--jit` and `--aot`. The rest stay the key door’s own sentence: a name two frames out, a hook inside a `lambda`, a
+`lambda` in the `reverse=` slot no door calls, and a hook that calls a `def`’d name.
+
+Witness: `pkg/lang/key_hook_frame_test.go` (23 answered programs compiled + JIT-executed + asked of `python3` inside the
+case; the same 23 on the record with a MISSING record failing; 8 refusals; the pass’s own `--callables` counts; the
+arity census asked directly with its negative controls; and the IR read per region for the two-word `define`, the
+host’s `load` in the caller’s call, the store into the callee’s slot, the no-`fnptr`/`ptrtoint`/`inttoptr`/indirect-call
+residue and a byte-identical second emit), `integration/key_hook_frame_test.go` (the same 23 through the CLI on both
+roads against `python3`, the record-presence table, the refusals at exit 1 with exit 2 forbidden, four modules verified by
+`llc -filetype=null`, and the conformance program line for line), `integration/programs/key_hook_frame.gy` (matrix row
+`programs/key_hook_frame`, oracle `match`), and `tools/recmerge` writing **22** entries and refusing none.
+
+Gap R.255 owns the key door’s callable half and stays 🟨 `PARTIAL` beside this row; the residue this row leaves is
+**Gap R.375** (the entry road’s collision), **Gap R.377** (the refusal wrapper leaking a Go type name) and
+**Gap R.378** (a hook that calls a declared function).
+
+### Gap R.377 — a refusal arrives wrapped in a sentence that leaks the statement’s Go type name (OPEN)
+
+```console
+$ gustyc --file "$(printf 'def outer():\n    base = 2\n    def use():\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\n    use()\n\nouter()\n')"
+gustyc: jit: codegen: a *lang.ExprStmt statement cannot be compiled: `key=lambda ...` is refused: a lambda is a
+function VALUE, and this backend has none — `def` bindings are declared, not assigned, … (roadmap L11.7)
+```
+
+The refusal under the wrapper is the door’s own and is honest; the wrapper is not. `noteUnlowered`
+(`pkg/lang/codegen.go`) prefixes `codegen: %s cannot be compiled: %v` for whatever node failed to lower, and its
+`Stmt` arm spells the node by its Go type — `a *lang.ExprStmt statement`, `a *lang.ReturnStmt statement` — in front of a
+sentence a program is meant to act on. **Gap R.38** closed exactly this for the `*FuncDef` arm (“a *lang.FuncDef
+statement cannot be compiled”, replaced by `function "name"`), and the `Stmt` arm is the sibling nobody asked. It is
+not ADR 0396’s doing: measured byte-identical on the build before the row, on both the nested-`def` hook and the
+`return`-position twin. A leak of `*lang.` in a diagnostic is on this house’s forbidden-leak list everywhere else, and
+every new refusal row that pins its sentence has to carve out this wrapper to assert anything about it — three did so
+in one commit, which is the signal to file it rather than route around it twice more. The fix is in the diagnostic, not
+in the pass: name the statement the way the source does (its line and the construct’s Python-facing name), keep the
+inner error verbatim, and let the leak-guards apply without an exception.
+
+### Gap R.378 — a hook lambda that CALLS a function the module declares stays the key door’s refusal (OPEN)
+
+```python
+def helper(v):
+    return 0 - v
+
+print(sorted([3, 1, 2], key=lambda x: helper(x)))     # the reference: [3, 2, 1]
 # compiled: exit 1 — `key=lambda ...` is refused: a lambda is a function VALUE, and this backend has none
 ```
 
-The same program at module level over a module-level `base` refuses the same way, while **Gap R.255**'s self-contained
-spelling — `print(sorted([3, 1, 2], key=lambda x: 0 - x))` — has printed `[3, 2, 1]` since ADR 0345. So the hook road
-is not missing the callable: it gives the hook lambda a declaration and the door calls it by a NAME (`keyRets`), which
-is precisely the shape an entry has. It is missing the *question*: a hook lambda that reads the frame its hook is
-written in needs the words beside the symbol, and that is the question ADR 0395 just answered for entries — asked of a
-second hoist road that never went to the door.
-
-Measured on the parent build and identical there, so this is a neighbour of ADR 0395 and not a casualty of it. The fix
-is not a second capture machine: it is routing the hook through the reading `resolveEntry` performs, so one door
-answers “what does this callable read out of the frame it was written in” for entries, hooks and applied bodies alike.
-
-Witness: the two probes are recorded in ADR 0395's measurement table; the refusal they reach is pinned in
-`pkg/lang/callable_decline_test.go`. Gap R.255 owns the key door's callable half and stays 🟨 `PARTIAL` beside this row.
+Measured on the ADR 0396 build and identical on the parent — the shape this row newly answers is a hook that reads a
+*value* of its frame; a hook that reads a *declared symbol* is declined before the door speaks. The decline is
+deliberate and is `callableCapturesAreValueNames`: a `def`/`class` name is not a value in this backend (ADR 0345 §1
+declares functions rather than assigning them), so a capture parameter for it would be filled from `%_helper`, a slot
+that does not exist — a plausible handle at the exit code of success, which is the failure class this whole file is a
+list of. The hoisted `define` does not need a capture for a global function at all (it can call `helper` by symbol, the
+way the ordinary call road does anywhere in the program), so the fix is to separate the two verdicts — “this name is a
+module-declared symbol, read it by symbol” from “this name is a frame word, mint a parameter for it” — and to decline
+only when the name is neither, which needs the shadowing question asked properly (a frame-local of the same spelling
+must still win, which is what makes it a row rather than two lines). Until then the program hears the key door’s
+generic sentence, true about the representation and silent about the call the body wants.
 
 ### Gap R.337 — a decline the pass has a reason for reaches the reader as the ordinary road's generic sentence (closed by ADR 0379)
 

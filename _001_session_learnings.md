@@ -13785,3 +13785,75 @@ printed by the tool for a source printed beside it.
   is the plan's own iteration order — so two compiles of one source agree only because the plan walks the
   program once, in order. The IR test re-emits and diffs, which is what would catch a map iteration creeping
   into `entryCaptures`.
+
+## ADR 0396 — the ordering door's hook lambda is minted with the words it reads (Gap R.376, 2026-10-22)
+
+- **Three roads that hoist a `lambda` is three answers to one question, and the third one was the bug.** The
+  applied body asks `callableLambdaCaptures` (ADR 0370), the entry asks it too (ADR 0395), and the `key=` hook
+  asked `callableLambdaIsSelfContained` — a spelling test that says "any free name: decline". The refused
+  program printed a sentence about a representation nobody was using ("a lambda is a function VALUE") because
+  the road that decides is not the road that speaks. ADR 0391, 0392 and 0394 each found this lesion in the
+  container family; this is the same patient in the callable family, and the tell was identical: a refusal that
+  is true about the mechanism and silent about the program. When a feature refuses with a sentence about how
+  something is *represented*, grep for who else represents it that way and asks anyway.
+- **The gate that decides "is this position a call" already existed, and reusing it is what kept the row
+  small.** `keyDoorOptions` (the callee must be `sorted`/`min`/`max`, the option must be `key=`, an unknown
+  option means the door raises so there is no call) is read by the door, by the parameter scan (ADR 0363) and
+  now by the hoist. The tempting local version — "is this a `key=` keyword argument" — would have hoisted
+  `sorted(xs, reverse=lambda …)` with capture words no call ever fills, and minted parameters for a lambda in a
+  position the door never calls. One census, three readers.
+- **A `Captures` field is an instruction, so its meaning is the caller, not the field.** The entry road leaves
+  `Captures` empty and is filled positionally because its caller is a clone the pass wrote; the hook road sets
+  it, because its caller is a frame of the program and reaching for the name by name is exactly what the source
+  means. Same minting, opposite choice, decided by who is standing on the other side of the call — the second
+  time ADR 0395's lesson about a refusal citing a property of a representation has come up. If two roads agree
+  on the representation and disagree on the caller, they should disagree in the code.
+- **A minted parameter is invisible to every arity census that counts `def.Params`.** The hook's declaration
+  has two parameters and the door supplies one, so the key door raised `<lambda>() missing 1 required
+  positional argument: 'base'` for a program that wrote no argument, and `keyDoorCallsOneArgument` answered
+  "never called" — which is worse than wrong, because `callableNoFunctionValuesLeft` reads an uncalled key as a
+  function value left in the program and hands the whole program to the ordinary road. Two doors, one number,
+  and the fix is a door (`callableSuppliedParams`) rather than two `if len(fd.Captures) > 0` guards. The
+  `Default`-on-the-minted-parameter trick would have passed every test in the row and made "omittable" mean two
+  things; the decision row that asks the census directly (`TestTheHookDoorCountsOnlyTheArgumentsTheSourceSupplies`,
+  with a two-argument key as its negative control) is what makes the difference falsifiable.
+- **A refusal that MOVES is a finding, not a detail.** Three shapes this row newly hoists then refused with a
+  *better* sentence than the key door's: a text or container capture reaches Gap R.332's one-word rule, float
+  elements reach Gap R.248's, a module `for` target reaches Gap R.35's. Each was measured on the parent (still
+  exit 1, still a refusal) and recorded as a move rather than filed as a fix; a table that only says
+  "refused, unchanged" would have hidden the fact that the row made four diagnostics more honest by making the
+  program reach the door that owns the missing half.
+- **Two stages, two claims, again — and this time the account was the confusing one.** For
+  `sorted(…, key=lambda s: s + label)` the pass reports `capture_parameters: 1` and the emitter refuses,
+  because the frame owns `label` (so one word is needed) and the value behind it is a text (so one i32 cannot
+  carry it). The row first asserted 0 for that program and failed on 1. The account reports what the pass did;
+  only the later verdict reaches `--file` — which is the ADR 0395 lesson, re-collected with a counter-example
+  instead of a restatement.
+- **A pre-existing wrapper is a reason to file, not to route around.** `noteUnlowered`'s `Stmt` arm prefixes
+  `codegen: a *lang.ExprStmt statement cannot be compiled:` to a refusal, and three refusal rows in this one
+  commit needed to strip it to assert anything about the sentence underneath. That is the third copy-of-a-rule
+  tell in reverse: when N guards all carve out the same exception, the exception is a row. Filed as **Gap
+  R.377** with its DoD written as "the three strips are deleted", measured byte-identical on the parent, and
+  the *tempting* two-line fix left out of this commit because the statement's Python-facing name is a
+  diagnostic design decision and this commit is about a call.
+- **A guard rail made a refusal honest before it made it green.** The first cut of the module-level hook let
+  `key=lambda x: helper(x)` hoist with a capture for a module-level `def` name, which is a parameter filled
+  from `%_helper` — a slot that does not exist, because a function is declared rather than assigned (ADR 0345
+  §1). Left in, that program would have printed a plausible number at exit 0. `callableCapturesAreValueNames`
+  declines it and the shape stays the door's refusal, filed as **Gap R.378** with the reproducer and the
+  shadowing question that makes the real fix a row rather than two lines. Declining is cheap; a wrong answer at
+  exit 0 is the expensive bug this file keeps saying so about.
+- **The before/after sweep is only as good as its reference leg — validated first, then trusted.** The sweep
+  runs every probe through `python3` and calls a program AGREED only when the binary exits 0 *and* its stdout
+  equals the reference's byte for byte; the harness refuses to produce a count until a known-good program prints
+  correctly through it (the ADR 0394 lesson, applied without being re-derived). 26 probes: 5 agreeing on
+  `e101ec5`'s successor, 22 on this build, 17 newly, 0 regressed. Two probes were dropped for reasons the
+  harness surfaced rather than hid: one is a front-end parse limitation (`str(len(s) + base)`), and one — a
+  `def` that RETURNS a keyed sort — prints `0` on both builds and belongs to **Gap R.328**, so adopting it would
+  have been this commit claiming a fix it did not make.
+- **A conformance program is a negotiation, and the negotiation is written down.** The row's file avoids the
+  shapes the backend does not answer today (a hook reading a frame two steps out, a container or text capture, a
+  run-time-built container, two call sites of one callee with different argument shapes) and says so in a
+  comment naming the rows, because a program that quietly omits them reads as coverage. The module-level
+  `for`-target probe stayed OUT of the program for the same reason: it refuses with Gap R.35's sentence, and a
+  matrix row is a claim about what prints, not about what is interesting.

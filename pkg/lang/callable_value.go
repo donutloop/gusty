@@ -800,6 +800,11 @@ type callableArgHoist struct {
 	rank int
 	pos  int
 	name string
+	// captures is how many words this pass minted beside the lambda's own parameters for the names the
+	// body reads out of the frame the call is written in. The account reports them (roadmap L11.7 · Gap
+	// R.376), and the count is the hoist's own rather than a re-read of the declaration, so the number a
+	// reader sees is the number the road wrote.
+	captures int
 }
 
 // callableKeyRet is one `key=` argument the pass retargets, by the place its call holds among the
@@ -1206,10 +1211,24 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// A closed lambda in an argument position is given a declaration here, so the door that reads the
 	// argument already knows how to call a named callable meets one it can name: `sorted(xs, key=lambda x:
 	// -x)` and `max(xs, key=lambda v: -v)` ask ADR 0340's key road, which calls a function by the ordinary
-	// call road and refused only because a lambda has no name to call. The lambda must read nothing but its
-	// own parameters — a free name would be a value the pass cannot see where the call runs — and a call of
-	// a function the program declared is left to the clone road above, which owns that shape (roadmap
-	// L11.7, ADR 0345).
+	// call road and refused only because a lambda has no name to call. A call of a function the program
+	// declared is left to the clone road above, which owns that shape (roadmap L11.7, ADR 0345).
+	//
+	// A hook lambda of the ordering door may ALSO read its own frame. That is the shape ADR 0395 paid one
+	// cycle ago for an ENTRY — the callable the CALLEE calls — and left standing for this road, which hoists
+	// a hook by a second route that never asked the door (roadmap L11.7 · Gap R.376):
+	//
+	//	def use():
+	//	    base = 1
+	//	    return sorted([3, 1, 2], key=lambda x: 0 - x + base)   # the reference's [3, 2, 1]
+	//
+	// The two roads were built a cycle apart and never met. The hook's declaration is minted HERE, and the
+	// one question "what does this body read out of the frame it was written in" is asked of the same door the
+	// entry and application roads ask — `callableLambdaCaptures` (ADR 0370) — so a third spelling test is not
+	// added to the two this pass already keeps (ADR 0232). The word is filled by the road that already fills
+	// it: `lambdaCallArgs` reaches a capture by name through the CALLER'S own reading, and the caller of a
+	// hook is the frame the `sorted` call is written in, which is the frame that owns `base`. No second fill
+	// road, and no `fnptr`: the hook stays a named `define` the door calls by symbol (ADR 0345).
 	for rank, c := range r.calls {
 		nm, isCalleeName := c.Fn.(*Name)
 		if !isCalleeName {
@@ -1222,14 +1241,29 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if _, isUser := r.fds[callee]; isUser {
 			continue // a call of the program's own function is the clone road's business, not this one
 		}
+		// The one argument position a builtin CALLS is the ordering door's `key=` (ADR 0340). A lambda in any
+		// other argument slot is an operand nobody calls, and minting capture words for it would mint words no
+		// call ever fills.
+		_, keyExpr, isKeyDoor := keyDoorOptions(callee, c.Args)
 		for pos, a := range c.Args {
 			arg := a
 			if kw, isKw := a.(*KeywordArg); isKw {
 				arg = kw.Value
 			}
 			l, isLambda := arg.(*Lambda)
-			if !isLambda || !callableLambdaIsSelfContained(l) {
+			if !isLambda {
 				continue
+			}
+			captures := []string(nil)
+			if !callableLambdaIsSelfContained(l) {
+				if !isKeyDoor || keyExpr != arg || r.inLambda[rank] {
+					continue // not the position the door calls, or a frame the closure road owns
+				}
+				caps, capturable := callableLambdaCaptures(r.encs[rank], prog, l)
+				if !capturable || !callableCapturesAreValueNames(r, caps) {
+					continue // a name past this frame is ADR 0245's lift (Gap R.331, Gap R.332), not this road's
+				}
+				captures = caps
 			}
 			if plan.hoistsLambda(l) {
 				continue // the argument road above already gave this one a declaration
@@ -1248,10 +1282,20 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 				Body:   []Stmt{&ReturnStmt{Expr: body, Src: l.Span()}},
 				Src:    l.Span(),
 			}
+			// One word per name the hook reads out of the frame the application is written in, appended beside
+			// the parameters the source spelled — the minting `resolveEntry` does for an entry (ADR 0395) and the
+			// application road does for an applied body (ADR 0372). `Captures` IS set here, where the entry road
+			// deliberately leaves it empty: the caller of a hook is a frame of the PROGRAM, so "reach for that
+			// name by name" is the honest instruction, and `captureCarriesOneWord` is asked where the value lives
+			// (Gap R.332).
+			for _, cap := range captures {
+				def.Params = append(def.Params, &Param{Name: cap, Src: l.Span()})
+			}
+			def.Captures = captures
 			def.CloneOf = callableAnonymousName
 			plan.hoisted = append(plan.hoisted, def)
 			plan.hoistOrigin = append(plan.hoistOrigin, l)
-			plan.argHoists = append(plan.argHoists, callableArgHoist{rank: rank, pos: pos, name: name})
+			plan.argHoists = append(plan.argHoists, callableArgHoist{rank: rank, pos: pos, name: name, captures: len(captures)})
 			plan.arity[name] = len(l.Params)
 		}
 	}
@@ -2040,6 +2084,40 @@ func callableParamName(p *Param) string {
 	return p.Name
 }
 
+// callableSuppliedParams is the parameter list as a CALLER sees it: the words the source wrote, without the
+// ones this pass minted beside them for a body that reads the frame its callable was written in. A capture
+// parameter has no argument in the tree — `lambdaCallArgs` fills it from the caller's own reading of the
+// name — so an arity door that counts it would tell the ordering key that `lambda s: 0-len(s)+base` needs two
+// arguments and raise `missing 1 required positional argument: 'base'` for a body the reference calls with one
+// (roadmap L11.7 · Gap R.376). One question — how many arguments must the source supply — one asking place,
+// read by every door that decides whether a callable can be called with what it is given (ADR 0232).
+func callableSuppliedParams(fd *FuncDef) []*Param {
+	if fd == nil {
+		return nil
+	}
+	if len(fd.Captures) == 0 {
+		return fd.Params
+	}
+	out := make([]*Param, 0, len(fd.Params))
+	for _, p := range fd.Params {
+		if p == nil {
+			continue
+		}
+		captured := false
+		for _, c := range fd.Captures {
+			if c == p.Name {
+				captured = true
+				break
+			}
+		}
+		if captured {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 // callableSiteOperand answers which expression names the function a call hands the parameter at `pos`: the
 // argument the call wrote there, or — when the call left the position out — the parameter's own default,
 // which is what the body sees there and therefore what the entry has to be (roadmap Gap R.329, ADR 0371).
@@ -2405,6 +2483,27 @@ func callableLambdaCaptures(enc *FuncDef, prog *Program, l *Lambda) ([]string, b
 	}
 	sortStrings(out)
 	return out, true
+}
+
+// callableCapturesAreValueNames asks whether every name in a capture list is a thing the CALL road can hand
+// over. A `def` or a `class` name is not: this backend declares functions rather than assigning them, so the
+// word a name holds is not a value at all (ADR 0345 §1), and a capture parameter filled from `%_helper` would
+// be a call reading a symbol. The hoisted declaration can call such a name by symbol exactly as the lambda
+// did — but only when the name is a global it can reach by that symbol, which is the `def`/`class` census this
+// asks (roadmap L11.7 · Gap R.376, measured on `sorted([3, 1, 2], key=lambda x: helper(x))`, which stays the
+// key door's own refusal rather than becoming a plausible handle).
+func callableCapturesAreValueNames(r *callableRead, caps []string) bool {
+	for _, nm := range caps {
+		if _, isDef := r.fds[nm]; isDef {
+			return false
+		}
+		for _, b := range r.bound[nm] {
+			if _, isClass := b.(*ClassDef); isClass {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // callableLambdaIsSelfContained is the stricter question a module-level alias asks: does this lambda read
@@ -2798,6 +2897,10 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 		}
 		at := node.Args[h.pos]
 		repl := &Name{Value: h.name, Src: at.Span()}
+		// The words this hook reads out of the frame the call is written in are parameters of the declaration
+		// this pass minted, and the account reports every word it wrote onto a minted declaration — a clone's
+		// and a hook's (roadmap L11.7 · Gap R.376; the field's own wording is in docs/operations.md).
+		report.CaptureParameters += h.captures
 		if kw, isKw := at.(*KeywordArg); isKw {
 			redo := *kw
 			redo.Value = repl

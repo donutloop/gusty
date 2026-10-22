@@ -4167,6 +4167,27 @@
     },
     {
       "case": {
+        "id": "programs/key_hook_frame",
+        "name": "key_hook_frame.gy",
+        "source": "# The ordering door's hook lambda reads the frame the call is written in\n# (roadmap L11.7 · Gap R.376, ADR 0396). Every line below is what CPython prints\n# for this same file: the hook is minted with one capture parameter per name it\n# reads, and the door calls it by name beside the element.\n#\n# What this program does NOT contain, said out loud rather than hidden:\n# a hook that reads a name of a frame two steps out (ADR 0245's nested-`def`\n# lift, Gap R.331), a hook whose capture is a container or a text (Gap R.332's\n# one-word capture), a hook over a container the program built at run time\n# (Gap R.254), and a second call of one callee whose argument shapes differ\n# (Gap R.374) — all filed, all refused or answered elsewhere.\n\ndef frame_local():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\n\ndef frame_parameter(step):\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + step))\n\n\ndef two_hooks_one_frame():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base))\n\n\ndef answer_bound_and_read():\n    base = 1\n    xs = sorted([3, 1, 2], key=lambda x: 0 - x + base)\n    print(xs, len(xs), xs[0], xs[2])\n\n\ndef walking_the_keyed_answer():\n    for v in sorted([3, 1, 2], key=lambda x: 0 - x + 1):\n        print(v)\n\n\ndef folds_share_the_hook():\n    base = 1\n    print(min([3, 1, 2], key=lambda x: 0 - x + base), max([3, 1, 2], key=lambda x: 0 - x + base))\n\n\ndef reverse_counts_the_other_side():\n    base = 1\n    print(sorted([\"bbb\", \"a\", \"cc\"], key=lambda s: 0 - len(s) + base, reverse=True))\n\n\nclass Holder:\n    def method(self):\n        base = 2\n        print(sorted([3, 1, 2], key=lambda x: 0 - x + base))\n\n\nLIMIT = 10\n\n# the module's own name: a hoisted `def` reads a global as well as the lambda did,\n# so this hook mints no word at all (ADR 0395's rule, asked of the hook road now)\nprint(sorted([3, 1, 2], key=lambda x: 0 - x + LIMIT))\n# the control the row must not disturb: the self-contained hook of ADR 0345\nprint(sorted([3, 1, 2], key=lambda x: 0 - x))\n# and the keys the door already called by name\ndef neg(v):\n    return 0 - v\n\n\nprint(sorted([3, 1, 2], key=neg))\nprint(sorted([\"bbb\", \"a\"], key=len))\n\nframe_local()\nframe_parameter(1)\nframe_parameter(4)\ntwo_hooks_one_frame()\nanswer_bound_and_read()\nwalking_the_keyed_answer()\nfolds_share_the_hook()\nreverse_counts_the_other_side()\nHolder().method()\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n['a', 'bbb']\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n['bbb', 'cc', 'a']\n[3, 2, 1] 3 3 1\n3\n2\n1\n3 1\n['a', 'cc', 'bbb']\n[3, 2, 1]\n",
+      "python_ok": true,
+      "python_stdout": "[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n['a', 'bbb']\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n[3, 2, 1]\n['bbb', 'cc', 'a']\n[3, 2, 1] 3 3 1\n3\n2\n1\n3 1\n['a', 'cc', 'bbb']\n[3, 2, 1]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4848,7 +4869,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/203/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/204/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4862,7 +4883,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/203/prog.ll:36:19: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/204/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5368,11 +5389,11 @@
       ]
     }
   ],
-  "rows": 225,
+  "rows": 226,
   "skipped": 30,
-  "pass": 195,
+  "pass": 196,
   "fail": 0,
-  "oracle_match": 181,
+  "oracle_match": 182,
   "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

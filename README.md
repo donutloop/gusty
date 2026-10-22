@@ -2248,6 +2248,39 @@ falls back to dynamic dispatch.
   second road that never asks this question (**R.376**). The `sorted(..., key=…)` answer that prints `0` once
   a function RETURNS it is neither — measured identical on the parent, and **R.328**'s.
 
+- **The ordering door's hook lambda reads the frame its call is written in (Gap R.376, ADR 0396)** — the same
+  door, one cycle later, at the third road that hoists a `lambda`. `def use():` / `base = 1` /
+  `print(sorted([3, 1, 2], key=lambda x: 0 - x + base))` is CPython's `[3, 2, 1]` and this backend's exit 1
+  with the key door's own sentence — “a lambda is a function VALUE, and this backend has none” — true about
+  the representation and beside the point, because the hook is not used as a value anywhere: the DOOR calls
+  it, once per element, by the symbol the pass minted for it. ADR 0345 had hoisted a hook only under the
+  condition “the lambda must read nothing but its own parameters”, while the application road (ADR 0370) and
+  the entry road (ADR 0395) each asked one shared door — `callableLambdaCaptures` — for what a body reads out
+  of the frame it was written in. The hook road had its own spelling test, and that is the pattern this house
+  now hunts on sight: three copies of one question produced three answers, and the fourth patient in the
+  container family (ADR 0391/0392/0394) is the precedent. The hook now asks the shared door, is minted with
+  one capture parameter per name its frame owns, and carries `Captures` — the instruction the existing call
+  road already obeys, filling the word by name from the **caller's** own reading, and the caller of a hook is
+  the frame the call is written in:
+  `call i32 @gy_sorted$lambda$…(i32 3, i32 %_base.ld1)`. That is the opposite of the entry road's choice about
+  `Captures`, on purpose: an entry's caller is a clone the pass wrote, whose word was handed down; a hook's
+  caller is a frame of the program. A name the module binds mints no word (ADR 0395's rule), a name past the
+  frame is declined (ADR 0245's lift), and a declared function name is declined rather than read as
+  `%_helper` (**R.378**). One arity census had to learn the difference between an argument and a word: the
+  minted hook has two parameters and the door supplies one, so the key door's arity verdict and
+  `keyDoorCallsOneArgument` now count `callableSuppliedParams` — counting the minted word raised
+  `<lambda>() missing 1 required positional argument: 'base'` for a program that wrote no such argument, and
+  told the pass a function value was left behind, which refuses the whole program. Over 26 probes, each asked
+  of CPython first and the harness validated before any count was believed: **5 agreeing before, 22 after, 17
+  newly, 0 regressed** — a frame local, the frame's parameter, a module constant from inside a `def`, `min`
+  and `max` sharing one hook, `reverse=True` beside a capture, the answer bound/measured/indexed and walked,
+  two hooks of one frame, a hook in a `while` body, a rebinding between two hooks, two names of one frame, a
+  **method's** frame, and the hook whose own parameter shadows the frame's name (which mints no word and
+  prints the reference's `[3, 1, 2]`). `programs/key_hook_frame.gy` is the matrix row (the 226th, oracle
+  `match`); three refusals moved to the sentence of the row that actually owns the missing half — a text or
+  container capture to **R.332**, float elements to **R.248**, a module-rebound name to **R.35** — and the
+  rest stay the door's own, each at exit 1 with exit 2 forbidden.
+
 - **The pair scan asks the same door: the container spelled as a call is a slot it can read (Gap R.369, ADR
   0394)** — three rows in a row were the same program with one word changed, and the filing of the third one
   blamed the wrong road. `d = {"k": []}` / `f(d["k"])` prints `[]` and takes the `else`; `d = {"k": list()}` /

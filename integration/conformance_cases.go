@@ -856,6 +856,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// entry positionally. Every line is what CPython prints for the same file (roadmap Gap R.336,
 		// ADR 0395).
 		"entry_lambda_capture",
+		// The ordering door's hook lambda reads the frame its `sorted`/`min`/`max` call is written in: the
+		// hoisted hook carries one capture parameter per name the frame owns, and the door's hidden call
+		// carries the host's own reading beside the element (roadmap Gap R.376, ADR 0396). Every line is
+		// what CPython prints for the same file.
+		"key_hook_frame",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

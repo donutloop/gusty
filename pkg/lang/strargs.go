@@ -697,11 +697,20 @@ func keyDoorOptions(fn string, args []Expr) (pos []Expr, key Expr, ok bool) {
 // hook calls its key (roadmap L11.7, Gap R.264, Gap R.281; ADR 0340, ADR 0233's rule against a second
 // answer for one construct).
 func keyDoorCallsOneArgument(fd *FuncDef) bool {
-	if fd == nil || len(fd.Params) == 0 {
+	if fd == nil {
+		return false
+	}
+	// The parameters the SOURCE supplies: a capture parameter the defunctionalisation pass minted for a name
+	// the body reads from its own frame is filled by the call road, not by the caller, so a key written
+	// `lambda s: 0-len(s)+base` is a one-argument callable and not a two-argument one (roadmap L11.7 · Gap
+	// R.376). Counting it would answer "this door never calls that key", and the pass would then refuse the
+	// program for keeping a function value.
+	supplied := callableSuppliedParams(fd)
+	if len(supplied) == 0 {
 		return false
 	}
 	required := 0
-	for _, p := range fd.Params {
+	for _, p := range supplied {
 		if p != nil && p.Default == nil {
 			required++
 		}

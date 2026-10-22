@@ -230,26 +230,31 @@ func (g *irGen) userFunctionKey(name string, fd ...*FuncDef) keyAnswer {
 		ans.refusal = fmt.Sprintf("`key=%s` is refused: this backend has no definition to call for that name (roadmap L11.7)", name)
 		return ans
 	}
-	// A parameter with a default can be omitted, so `def f(x, y=1)` is callable with one argument.
+	// A parameter with a default can be omitted, so `def f(x, y=1)` is callable with one argument — and a
+	// parameter the defunctionalisation pass minted for a name the body reads out of its own frame is never
+	// an argument at all, so it is not counted here either: `sorted(xs, key=lambda s: 0-len(s)+base)` is a key
+	// the reference calls with one element, and counting the minted word would raise `missing 1 required
+	// positional argument: 'base'` over a program that wrote no such argument (roadmap L11.7 · Gap R.376).
 	required := 0
-	for _, p := range def.Params {
+	supplied := callableSuppliedParams(def)
+	for _, p := range supplied {
 		if p.Default == nil {
 			required++
 		}
 	}
 	switch {
-	case len(def.Params) == 0:
+	case len(supplied) == 0:
 		ans.pos = keyRaises
 		ans.raiseType = "TypeError"
 		ans.raiseMsg = fmt.Sprintf("%s() takes 0 positional arguments but 1 was given", ans.spelling)
 		return ans
 	case required > 1:
-		missing := def.Params[required-1]
+		missing := supplied[required-1]
 		ans.pos = keyRaises
 		ans.raiseType = "TypeError"
 		ans.raiseMsg = fmt.Sprintf("%s() missing %d required positional argument%s: '%s'", ans.spelling, required-1, pluralWord(required-1), missing.Name)
 		return ans
-	case len(def.Params) > 1 && required == 1:
+	case len(supplied) > 1 && required == 1:
 		// One required parameter and optional extras: callable with one argument, exactly as the
 		// reference calls a key.
 	}

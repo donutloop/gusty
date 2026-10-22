@@ -3496,7 +3496,9 @@ print(sorted([3, 1, 2], key=neg, reverse=True))   # [1, 2, 3]
 
 The boundary is *called* versus *read*. A function that flows to a position which keeps one word for a value
 still refuses, in words, at exit 1: `print(f)`, `xs = [f]`, `print(g)` after `g = f`, a `lambda` returned from a
-function and then called, a `lambda` that reads a variable of an enclosing function, and a `lambda` that calls
+function and then called, a `lambda` that reads a variable of an enclosing function (outside the `key=` hook the
+ordering door calls, which is a position the compiler calls rather than one it keeps a word for — see
+§ A hook lambda reads the frame its keyed call is written in), and a `lambda` that calls
 its own parameter. A recursion the clone cannot follow is refused by **this** pass, in a sentence that names the
 parameter and the line: the recursion hands the callable to something else (`run(n - 1, other)`), it omits a
 parameter, or it is written inside a `lambda`. What the rewrite did not change is what ADR 0283 promises about
@@ -5485,6 +5487,50 @@ still refuses is the container, not the key: `xs = [3, 1, 2]` with `sorted(xs, k
 carry each element to the call, and it refuses in the same words whatever spelling the key wears — name, `def`
 or inline (**Gap R.254**, roadmap L11.1).
 
+### A hook lambda reads the frame its keyed call is written in (L11.7, Gap R.376, ADR 0396)
+
+The hook may read a name of the frame the `sorted`/`min`/`max` call sits in, not only its own parameter:
+
+```python
+def use():
+    base = 1
+    print(sorted([3, 1, 2], key=lambda x: 0 - x + base))          # [3, 2, 1]
+
+def frame(step):                                                 # the frame's PARAMETER is a word too
+    print(sorted([3, 1, 2], key=lambda x: 0 - x + step))
+
+print(sorted([3, 1, 2], key=lambda x: 0 - x + LIMIT))             # a module name: no word is minted
+for v in sorted([3, 1, 2], key=lambda x: 0 - x + 1):              # the keyed answer is a list like any other
+    print(v)                                                     # 3, 2, 1
+```
+
+ADR 0345 gave a `key=lambda …` a declaration on the condition that the body "read nothing but its own
+parameters"; the condition is what this row lifts. The hook is hoisted with **one capture parameter per name
+the frame owns**, exactly as an entry is under **ADR 0395** and an applied body under **ADR 0370** — all three
+ask the one door (`callableLambdaCaptures`), which is why the three cannot disagree about what a body is free
+in (**ADR 0232**). The words are filled by the road that already fills them: the minted `def` carries
+`Captures`, `lambdaCallArgs` appends each capture as the CALLER'S own reading of that name, and the caller of a
+hook is the frame the call is written in — so `sorted`'s hidden call becomes
+`call i32 @gy_sorted$lambda$…(i32 3, i32 %_base.ld1)`, the host's load beside the element. A name the MODULE
+binds mints nothing: a hoisted `def` reads a global as well as the lambda did. A hook inside a method body is a
+hook inside a frame, and answers.
+
+One arity census had to learn the difference between an argument and a word: the minted hook has two parameters
+and the door supplies one, so both the key door's arity verdict and `keyDoorCallsOneArgument` now count
+`callableSuppliedParams` — the parameters the SOURCE supplies, capture words excluded — rather than every
+parameter the declaration has. Counting the minted word answers `<lambda>() missing 1 required positional
+argument: 'base'` for a program that wrote no such argument, and "that key is never called" to the pass, which
+reads that as a function value left in the program and refuses the whole thing.
+
+What still refuses, each in words and at exit 1: a name of a frame TWO steps out (`def outer(): base = 2` /
+`def use(): sorted(…, key=lambda x: x + base)`) is **ADR 0245**'s nested-`def` lift, which this pass still does
+not compose with; a capture whose value is a container or a text is **Gap R.332**'s missing tagged word; a
+module-level name the module rebinds (a module `for` target) is **Gap R.35**; a hook written inside a `lambda`
+body is the closure road's frame; a `lambda` in the `reverse=` slot is an operand no door calls; float ELEMENTS
+under any key are **Gap R.248**; and a hook that CALLS a `def`'d name (`key=lambda x: helper(x)`) is
+**Gap R.378**, because a function name is a symbol rather than a value and the pass declines to read `%_helper`
+as if it were one.
+
 ### An applied `lambda` is a function this backend can build a call to (L11.7, Gap R.265, Gap R.276, ADR 0370)
 
 A `lambda` that is **applied where it is written** is a function declaration, not a value — and the compiler now
@@ -5602,8 +5648,9 @@ parameter twice prints **`11`**, and a body reading a frame local while its entr
 `--callables` counts these in the same `capture_parameters` field: `1` for the row program, `2` when the body also reads
 a frame local. A name the MODULE binds is not a capture and mints no word — a hoisted `def` reads a global as well as the
 lambda did. Two shapes still decline, each naming itself: a forwarded word whose NAME the higher-order body has already
-taken for itself (**Gap R.375** — the clone would hold two slots under one spelling), and the `key=` hook, which hoists
-a lambda by a second road that never asks this question (**Gap R.376**).
+taken for itself (**Gap R.375** — the clone would hold two slots under one spelling). The `key=` hook, which
+hoists a lambda by a second road that had never asked this question, was the other residue and is paid by
+**ADR 0396** (**Gap R.376**; see § A hook lambda reads the frame its keyed call is written in).
 
 A `lambda` applied inside a `lambda` that is itself applied reads a frame the program never names, and a capture
 travels **one step per frame** (**ADR 0380**, Gap R.330):
