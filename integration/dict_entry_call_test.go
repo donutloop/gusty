@@ -71,9 +71,8 @@ func TestACallArgumentOfASelfDescribingEntryThroughTheCLI(t *testing.T) {
 		},
 		{
 			// The element of a mixed list, and the container inside one: the same read, one position later.
-			// (A callee that TESTS its own parameter is not on this table — `if v:` over a pair-carrying
-			// parameter still asks the payload, which is the row roadmap Gap R.361 owns and
-			// `TestWhatTheCallArgumentStillOwesTheOtherRowsOwn` files.)
+			// (A callee that TESTS its own parameter is answered on its own table — roadmap Gap R.361, paid
+			// by ADR 0393 — in `TestTheTruthOfACallerSuppliedParameterAtTheCLI`.)
 			name: "a_mixed_list_element_and_a_container_inside_one",
 			src:  "def id(v):\n    return v\n\nxs = [[1, 2], \"a\"]\nprint(id(xs[0]), id(xs[1]))\n",
 			want: "[1, 2] a\n",
@@ -185,22 +184,17 @@ func TestTheCallArgumentRefusalsLeaveTheTrapCodesAlone(t *testing.T) {
 	}
 }
 
-// TestWhatTheCallArgumentStillOwesTheOtherRowsOwn is the ledger side of this file. Four programs sit at the
-// same call boundary and are answered by other rows: the callee that TESTS its own parameter, the recursive
-// callee that hands the parameter back, the ternary whose chosen arm is the parameter, and the read a
-// self-call makes of a module-level dict. Each is measured against the reference and compared through the
-// debt ledger, so this row cannot be read as claiming them and they cannot be dropped without a line in
-// `testdata/cpython-debt.json` disappearing.
+// TestWhatTheCallArgumentStillOwesTheOtherRowsOwn is the ledger side of this file. Three programs sit at
+// the same call boundary and are answered by other rows: the recursive callee that hands the parameter
+// back, the ternary whose chosen arm is the parameter, and the read a self-call makes of a module-level
+// dict. Each is measured against the reference and compared through the debt ledger, so this row cannot be
+// read as claiming them and they cannot be dropped without a line in `testdata/cpython-debt.json`
+// disappearing. The fourth — the callee that TESTS its own parameter — is answered since ADR 0393 and lives
+// in `TestTheTruthOfACallerSuppliedParameterAtTheCLI` (roadmap Gap R.361).
 func TestWhatTheCallArgumentStillOwesTheOtherRowsOwn(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, row, why string }{
-		{
-			name: "a callee that tests its own parameter",
-			src:  "def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"e\": [], \"t\": \"\", \"l\": [1], \"n\": None}\nprint(f(d[\"e\"]), f(d[\"t\"]), f(d[\"l\"]), f(d[\"n\"]))\n",
-			row:  "roadmap L11.1, Gap R.361 (a condition asks a parameter its own kind)",
-			why:  "the pair crossed the argument, and the callee's `if v:` still tests the payload against zero",
-		},
 		{
 			name: "a recursive callee that hands the parameter back",
 			src:  "def f(v, n):\n    if n <= 0:\n        return v\n    return f(v, n - 1)\n\nd = {\"a\": 3.5}\nprint(f(d[\"a\"], 2))\n",

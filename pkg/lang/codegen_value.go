@@ -144,28 +144,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 			}
 		}
-		x, err := g.value(b, n.X)
-		if err != nil {
-			return "", err
-		}
-		t := g.newTmp()
-		switch n.Op {
-		case "-":
-			if g.isFloat(n.X) {
-				fx := g.floatValue(b, n.X)
-				b.WriteString(fmt.Sprintf("  %s = fsub double 0.0, %s\n", t, fx))
-				break
-			}
-			b.WriteString(fmt.Sprintf("  %s = sub i32 0, %s\n", t, x))
-		case "not":
-			// `not` yields a boolean *value* (printable, storable), so it returns the
-			// interpreter's i32 0/1 rather than a bare i1.
-			//
-			// Ask the SAME road an `if` test asks. `asI1` compares the lowered word against zero,
-			// which is right for a number and wrong for anything whose value is a HANDLE or an
-			// INTERNED INDEX: `not "x"` tested the intern slot, said "that word is zero", and
-			// answered True where the reference answers False — at exit 0, while `if "x":` beside it
-			// answered correctly (roadmap Gap R.183).
+		// `not` yields a boolean *value* (printable, storable), so it returns the
+		// interpreter's i32 0/1 rather than a bare i1.
+		//
+		// Ask the SAME road an `if` test asks. `asI1` compares the lowered word against zero,
+		// which is right for a number and wrong for anything whose value is a HANDLE or an
+		// INTERNED INDEX: `not "x"` tested the intern slot, said "that word is zero", and
+		// answered True where the reference answers False — at exit 0, while `if "x":` beside it
+		// answered correctly (roadmap Gap R.183).
+		//
+		// It is asked BEFORE the operand is lowered, because `not` never needs the operand's VALUE.
+		// Lowering one first ran the operand twice — print(not boom()) printed "boom" twice at exit 0
+		// (roadmap Gap R.365, ADR 0393) — and for a name the pair road bound it produced the payload word
+		// this road then had to ignore: the same one-word read that leaves a ternary arm printing a heap
+		// handle (roadmap Gap R.367).
+		if n.Op == "not" {
 			tv, terr := g.truthyValue(b, n.X)
 			if terr != nil {
 				return "", terr
@@ -181,6 +174,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = xor i1 %s, true\n", notP, p))
 			g.markI1(notP)
 			return g.asBoolI32(b, notP), nil
+		}
+		x, err := g.value(b, n.X)
+		if err != nil {
+			return "", err
+		}
+		t := g.newTmp()
+		switch n.Op {
+		case "-":
+			if g.isFloat(n.X) {
+				fx := g.floatValue(b, n.X)
+				b.WriteString(fmt.Sprintf("  %s = fsub double 0.0, %s\n", t, fx))
+				break
+			}
+			b.WriteString(fmt.Sprintf("  %s = sub i32 0, %s\n", t, x))
 		default:
 			return "", fmt.Errorf("codegen: unsupported unary %q", n.Op)
 		}

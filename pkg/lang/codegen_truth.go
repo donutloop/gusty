@@ -153,6 +153,16 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
 		return g.markI1(t), nil
 	}
+	// `if v:` where the value arrived in a PARAMETER the caller filled. Its tag is a register the run
+	// time wrote at the call site (ADR 0389) and nothing in the compiler has read it, so the arm below —
+	// the lift ADR 0268 built for a name the ARITHMETIC door bound, whose tag can only ever name int,
+	// float or bool — widens a text's `@str_tab` index and a container's heap handle as if they were the
+	// number and calls `if []:` true. The truth of this pair is the same table `and`/`or` ask about the
+	// operand they test, the entry door ask in an `if`, and the unrolled loop ask about its item
+	// (roadmap Gap R.361, ADR 0393).
+	if bit, asked := g.pairSuppliedNameTruth(b, e); asked {
+		return bit, nil
+	}
 	// A name the arithmetic door bound is a number whose kind the objects decided at the moment the
 	// sum ran. `if n:` does not care which of the two families it is — zero is false, anything else is
 	// true — but the word the answer lives in does, so the pair is lifted to the one word that holds

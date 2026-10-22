@@ -1,5 +1,492 @@
 {
  "entries": {
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"n\": None, \"z\": 0}\nf(d[\"n\"])\nf(d[\"z\"])\n": {
+    "stdout": "f\nf\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {1: 2}\nf(d[1])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": [1, 2]}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v), not v)\n\nd = {\"t\": True, \"f\": False}\nf(d[\"t\"])\nf(d[\"f\"])\n": {
+    "stdout": "True False\nFalse True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v), not v)\n\nf(0)\nf(3)\n": {
+    "stdout": "False True\nTrue False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": \"x\"}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+"def truthy(v):\n    if v:\n        return 1\n    return 0\n\ndef arm(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\ndef negated(v):\n    print(not v)\n\ndef verdict(v):\n    print(bool(v))\n\ndef picked(v):\n    print(\"y\" if v else \"n\")\n\ndef walked(v):\n    while v:\n        print(\"walk\")\n        break\n\nd = {\"a\": [], \"b\": \"\", \"c\": [1], \"e\": None, \"f\": 0, \"g\": 7, \"h\": 0.0, \"i\": 2.5, \"j\": True, \"k\": False, \"l\": {1: 2}}\nprint(truthy(d[\"a\"]), truthy(d[\"b\"]), truthy(d[\"c\"]), truthy(d[\"e\"]), truthy(d[\"f\"]), truthy(d[\"g\"]), truthy(d[\"h\"]), truthy(d[\"i\"]), truthy(d[\"j\"]), truthy(d[\"k\"]), truthy(d[\"l\"]))\narm(d[\"a\"])\nnegated(d[\"a\"])\nverdict(d[\"a\"])\npicked(d[\"a\"])\nwalked(d[\"a\"])\narm(d[\"b\"])\nverdict(d[\"b\"])\npicked(d[\"b\"])\narm(d[\"c\"])\nnegated(d[\"c\"])\nverdict(d[\"c\"])\npicked(d[\"c\"])\nwalked(d[\"c\"])\narm(d[\"e\"])\nverdict(d[\"e\"])\narm(d[\"f\"])\narm(d[\"g\"])\nverdict(d[\"g\"])\narm(d[\"h\"])\npicked(d[\"h\"])\narm(d[\"i\"])\narm(d[\"j\"])\nverdict(d[\"j\"])\narm(d[\"k\"])\npicked(d[\"k\"])\nwalked(d[\"k\"])\narm(d[\"l\"])\nwalked(d[\"l\"])\n": {
+    "stdout": "0 0 1 0 0 1 0 1 1 0 1\nf\nTrue\nFalse\nn\nf\nFalse\nn\nt\nFalse\nTrue\ny\nwalk\nf\nFalse\nf\nt\nTrue\nf\nn\nt\nt\nTrue\nf\nn\nt\nwalk\n",
+    "hasStdout": true
+   },
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"a\")\n    elif v:\n        print(\"b\")\n    else:\n        print(\"c\")\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        print(\"t\")\n    else:\n        print(\"f\")\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"e\": [], \"t\": \"\", \"l\": [1], \"n\": None}\nprint(f(d[\"e\"]), f(d[\"t\"]), f(d[\"l\"]), f(d[\"n\"]))\n": {
+    "stdout": "0 0 1 0\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"y\" if v else \"n\")\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(bool(v))\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(not v)\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": \"\"}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": \"hi\"}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": -0.0}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": 0.0}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": 0}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": 1}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": 2.5}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": False}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": None}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": True}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": [1]}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": []}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": {1: 2}}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": {1}}\nf(d[\"k\"])\n": {
+    "stdout": "once\ndone\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    while v:\n        print(\"once\")\n        break\n    print(\"done\")\n\nd = {\"k\": {}}\nf(d[\"k\"])\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
 "print([1] == [1])\n": {
     "stdout": "True\n",
     "hasStdout": true

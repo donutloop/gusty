@@ -33,9 +33,11 @@ import (
 // answer word).
 //
 // What the row does NOT claim is pinned below rather than left to infer: a binding of the entry keeps
-// Gap R.146's refusal, the truth of a PARAMETER inside a callee keeps Gap R.361's wrong answer, `len` of a
-// container parameter keeps Gap R.229's, and the arithmetic a text or a container operand still cannot do
-// keeps the operator roads' rows.
+// Gap R.146's refusal, `len` of a container parameter keeps Gap R.229's, the arithmetic a text or a
+// container operand still cannot do keeps the operator roads' rows, and a body emitted under the
+// string-return convention still renders its parameter's payload (roadmap Gap R.368). What the callee's own
+// CONDITION asks is no longer on that list: it asks the tag that crossed with the argument, which is
+// roadmap Gap R.361, paid by ADR 0393 in `pkg/lang/pair_param_truth_test.go`.
 
 type entryCallRow struct {
 	name, src, want string
@@ -416,34 +418,15 @@ func TestTheCallArgumentDebtIsPinnedNotCelebrated(t *testing.T) {
 		name, src, today, row string
 	}{
 		{
-			// The callee's OWN condition is the road that never asks the pair: truthExpr has no arm for a
-			// name the pair road bound, while pairGate.cond claims the position is served. Measured the same
-			// before this row for a slot of a container the program built — so it is a row of its own, and
-			// it is the reason the conformance program does not carry this shape.
-			name:  "a_condition_inside_the_callee_tests_the_payload",
-			src:   "def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"a\": []}\nprint(f(d[\"a\"]))\n",
-			today: "1\n",
-			row:   "Gap R.361",
-		},
-		{
-			name:  "an_empty_text_entry_tested_inside_the_callee",
-			src:   "def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"a\": \"\"}\nprint(f(d[\"a\"]))\n",
-			today: "1\n",
-			row:   "Gap R.361",
-		},
-		{
-			name:  "an_empty_dict_entry_tested_inside_the_callee",
-			src:   "def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"a\": {}}\nprint(f(d[\"a\"]))\n",
-			today: "1\n",
-			row:   "Gap R.361",
-		},
-		{
 			// A body the string-return road owns keeps its parameters one-word (ADR 0174, ADR 0360's
 			// escape covers only a body that FORMATS its parameter), so `str(v)` renders the payload.
+			// It sat under Gap R.361 while that row was open; the condition half of that row closed with
+			// ADR 0393 and this shape is not its door — it is the convention the whole body is emitted
+			// under, which is roadmap Gap R.368's.
 			name:  "a_str_returning_body_reads_the_payload",
 			src:   "def s(v):\n    return str(v)\n\nd = {\"a\": \"x\"}\nprint(s(d[\"a\"]))\n",
 			today: "1\n",
-			row:   "Gap R.361",
+			row:   "Gap R.368",
 		},
 		{
 			// A recursive body is a self-call, and a self-call keeps one word for its answer (ADR 0273):

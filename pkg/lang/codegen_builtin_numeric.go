@@ -41,6 +41,12 @@ func (g *irGen) builtinBool(b *strings.Builder, c *Call, fnName string) (string,
 			}
 			return g.asBoolI32(b, g.pairTruth(b, payload, fmt.Sprintf("%d", t))), nil
 		}
+		// A PARAMETER whose kind the caller supplied asks the same table: its payload is a float box, an
+		// interned text's index or a container's handle, and `icmp ne i32 %payload, 0` — the road below —
+		// calls every one of them true (roadmap Gap R.361, ADR 0393).
+		if bit, asked := g.pairSuppliedNameTruth(b, nm); asked {
+			return g.asBoolI32(b, bit), nil
+		}
 	}
 	if ix, isIdx := c.Args[0].(*Index); isIdx && (g.entryReadNeedsTheTag(ix) || g.isPairElem(ix)) {
 		if payload, tag, okPair, xerr := g.subscriptPairOf(b, ix); xerr != nil {

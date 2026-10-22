@@ -1086,10 +1086,24 @@ of the **tag** beside the payload, in the module's one truth table (`@rt_pair_tr
 family by its value, a text by its length, a container by its element count). Testing the payload instead is
 what once made `d = {None: ""}` / `if d[None]:` take the `then` arm, because the word there is an interned
 string's *index*, and `bool({None: []}[None])` answer `True`, because an empty list's handle is never zero
-(**Gap R.284**, **Gap R.359**, **ADR 0388**). A provable integer entry or item keeps the plain compare, and
-the entry read handed to a call — a position that keeps one word for the whole value — is still
-**Gap R.146**/**Gap R.220**'s. The one kind the table is never asked about is a **set**: nothing writes its tag
-into a dict entry or a literal's slot, so an empty set entry is truthy and prints its handle (**Gap R.360**).
+(**Gap R.284**, **Gap R.359**, **ADR 0388**), and the same is true of a **parameter whose kind the caller
+supplied**: an argument that crossed as a pair arrives with a tag word the call site wrote, and the callee's
+own `if v:`, `elif v`, `while v:`, ternary head, `not v` and `bool(v)` ask that tag rather than testing the
+payload (**Gap R.361**, **ADR 0393**) — a text's payload is its interned index and an empty list's is a heap
+handle, so `def f(v):` / `    if v:` over `f(d["e"])` once answered `1` for CPython's `0`. Two shapes are not
+served by that door and are filed, not hidden: a body that **rebinds** the parameter never rewrites the tag
+word, so the ask is declined there and the rebinding family stays wrong (and, for one spelling, runs
+forever — **Gap R.366**), and a body emitted under the text- or double-returning convention never receives
+the tag at all (**Gap R.368**). An `and`/`or` whose operand is such a parameter, and the arm a ternary
+chooses, are neither of this door nor the operator road's (**Gap R.367**).
+
+A provable integer entry or item keeps the plain compare, and the entry read handed to a call — a position
+that keeps one word for the whole value — is still **Gap R.146**/**Gap R.220**'s. A **set** entry now carries
+its tag where the container was spelled as a literal or written by a binding, and where the empty container
+was spelled as a call in a slot that door reaches (**Gap R.360**, **Gap R.364**, **ADR 0391**, **ADR 0392**);
+the empty container written as a `list()` / `dict()` / `set()` call and stored in a dict literal *that is then
+handed to a call* still crosses with an integer tag — the store never asked ADR 0391's door — which is
+**Gap R.369**'s.
 
 ### `and` and `or` answer an **operand**, not a verdict, and skip what the test rejected (Gap R.147, ADR 0269; Gap R.149, ADR 0275)
 

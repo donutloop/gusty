@@ -2179,14 +2179,44 @@ falls back to dynamic dispatch.
   `@str_tab` index, and a float entry, `None`, a verdict or a container entry arrives with its kind beside its
   payload too — the emission asks the one subscript door print, `bool` and the folds already ask, so the read
   written in place and the read bound to a container variable cannot answer differently, and an entry the
-  literal already describes as an integer keeps the one word it always had (**R.220**, **ADR 0389**). What that
-  boundary still does not reach is filed rather than smoothed over: a callee that tests its own parameter
-  (**R.361**), a recursive callee and a ternary arm that is the parameter (**R.146**, **R.147**), and an entry
-  bound to a name first, which is still the one-word position **R.146** owns. The f-string field that was in that
+  literal already describes as an integer keeps the one word it always had (**R.220**, **ADR 0389**). That
+  boundary now reaches the callee's OWN condition too — `def f(v):` / `    if v:` asks the tag the call site
+  wrote, not the payload (**R.361**, **ADR 0393**, told below). What it still does not reach is filed rather
+  than smoothed over: a ternary arm or an `and`/`or` operand that IS the parameter (**R.367**, beside
+  **R.146**, **R.147**), a body that rebinds its own parameter (**R.366**), a body emitted under the
+  text-returning convention (**R.368**), and an entry bound to a name first, which is still the one-word
+  position **R.146** owns. The f-string field that was in that
   list has since been paid, and is told below (**R.283**, ADR 0356). The tempting `NoneLit` arm on the *static*
   key door was built, measured, and
   reverted: it turns one refusal into an answer and four correct answers into wrong ones, and the measurement is
   left in the comment above `constKeysMatch` for whoever writes that arm next.
+- **A condition asks a parameter the kind its caller supplied (Gap R.361, Gap R.365, ADR 0393)** — the
+  argument crossed as a pair and the body went back to guessing. `def f(v):` / `    if v:` / `        return 1`
+  / `    return 0` with `d = {"e": [], "t": "", "l": [1], "n": None}` /
+  `print(f(d["e"]), f(d["t"]), f(d["l"]), f(d["n"]))` printed `1 1 1 0` where CPython prints `0 0 1 0`: the
+  entry's tag had crossed with it, `bindPairParams` had stored both words, and `emitCond` still took the plain
+  local slot and tested it against zero — an empty list's payload is a heap handle and an empty text's is an
+  interned index, both non-zero, so both are true at the exit code of success. The same program written with
+  `elif`, with `while`, with `print(not v)`, with `print(bool(v))` and with `"y" if v else "n"` was wrong the
+  same five ways, and `print(not boom())` printed `boom` **twice** because the operand was lowered for a value
+  `not` throws away and then lowered again by the road that decided (**R.365**). One helper now answers all
+  six positions: it loads the parameter's two words through the same door every pair-bound read uses — the one
+  place ADR 0228's written-flag is tested — and hands them to `@rt_pair_truth`, the table ADR 0275 built. Two
+  gates keep it honest, and both are what make it a measurement rather than a widening: the **origin** (only a
+  name the argument road bound; a name the arithmetic door keeps ADR 0268's lift for, whose tag can only ever
+  name int, float or bool) and the **body** (the tag word has one writer, the entry store, so a body that can
+  rebind its parameter is served the ordinary road instead — three probes went from a wrong answer to a run
+  that never ends before that half was in place, and one spelling still does not terminate, which
+  **R.366** owns). Six positions × fifteen entry kinds is 91 programs on the record and compiled-vs-record, 20
+  of the family through the CLI on both paths with the reference asked inside the case, the callee's own IR
+  asserted to carry `call i32 @rt_pair_truth` beside a load of `%_v_tag` and, in three negative controls,
+  asserted NOT to; `programs/pair_param_truth.gy` is line-for-line CPython. The residue is four rows with
+  today's bytes pinned beside the reference's: the stale tag under a rebinding and the loop that never ends
+  (**R.366**), the operand `and`/`or` and the ternary choose, which still answers a heap handle for `z`
+  (**R.367**), the text-returning convention whose parameters never get a tag to ask (**R.368**), and the empty
+  container spelled as a `list()` stored in a dict literal, whose store never asked ADR 0391's door
+  (**R.369**).
+
 - **An empty container written as a call carries the kind the object already has (Gap R.360, ADR 0391)** —
   `xs = [set()]` / `print(xs[0])` printed `1`, `d = {None: set()}` / `print(d[None])` printed `3`,
   `print([set(), list(), dict()])` printed `[1, 2, 3]`, and `print([bool(x) for x in [set()]])` printed

@@ -2694,7 +2694,26 @@ func (g *pairGate) expr(e Expr) bool {
 	case *IntLit, *FloatLit, *BoolLit:
 		return true
 	case *UnOp:
+		// `-v` is a value the arithmetic door has to carry, so only the sign it already knows how to
+		// take is served. `not v` is the OTHER question: its answer is a verdict, and the question the
+		// road asks of the operand is the truth question — the one `cond` answers, and the one
+		// `@rt_pair_truth` now decides for a parameter whose kind the caller wrote (roadmap Gap R.361,
+		// ADR 0393). A body that only ever asks `not v` used to decline the pair, and the payload of a
+		// text or a container is never zero: `print(not v)` over `d["e"] = []` wrote `False`.
+		if n.Op == "not" {
+			return g.cond(n.X)
+		}
 		return n.Op == "-" && g.expr(n.X)
+	case *CondExpr:
+		// A ternary that TESTS a pair-carrying parameter asks the truth door, which reads the tag; a
+		// ternary whose ANSWER is one has no word for the tag, because a `select` has one type for both
+		// of its operands and the road that would carry the kind beside the value is the tagged value
+		// word Gap R.147 still owns. So the condition is served here and an arm that reads a
+		// pair-carrying parameter keeps the whole body on the ordinary road.
+		if pairMentions(n.If, g.pp) || pairMentions(n.Else, g.pp) {
+			return false
+		}
+		return g.cond(n.Cond)
 	case *BinOp:
 		if textDoorShapeIsText(n) {
 			// A formatting and a repeat each read their OPERAND through the pair doors — the door answers its
@@ -2729,7 +2748,10 @@ func (g *pairGate) expr(e Expr) bool {
 		}
 		pairReturning := g.callees[nm.Value]
 		switch nm.Value {
-		case "print", "printf", "str":
+		case "print", "printf", "str", "bool":
+			// `bool(v)` asks the same question an `if` asks — the truth door, which now reads the tag —
+			// and answers a verdict, which travels in one word. Its road is `builtinBool`, beside `str`'s,
+			// and that road grew the same arm this row put in the condition door (roadmap Gap R.361, ADR 0393).
 		default:
 			if !pairReturning {
 				return false

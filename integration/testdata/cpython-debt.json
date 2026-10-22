@@ -1,12 +1,5 @@
 [
   {
-    "source": "def f(v):\n    if v:\n        return 1\n    return 0\n\nd = {\"e\": [], \"t\": \"\", \"l\": [1], \"n\": None}\nprint(f(d[\"e\"]), f(d[\"t\"]), f(d[\"l\"]), f(d[\"n\"]))\n",
-    "python": "stdout \"0 0 1 0\\n\"",
-    "compiled": "stdout \"1 1 1 0\\n\"",
-    "roadmap": "roadmap L11.1, Gap R.361 (a condition asks a parameter its own kind)",
-    "why": "the pair crossed the argument, and the callee's `if v:` still tests the payload against zero"
-  },
-  {
     "source": "def f(v, n):\n    if n <= 0:\n        return 0\n    return f(d[\"a\"], n - 1)\n\nd = {\"a\": 3.5}\nprint(f(d[\"a\"], 2))\n",
     "python": "stdout \"0\\n\"",
     "compiled": "exit 1 \"gustyc: jit: codegen: index must be a constant\"",

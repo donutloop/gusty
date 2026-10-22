@@ -1,0 +1,55 @@
+def truthy(v):
+    if v:
+        return 1
+    return 0
+
+def arm(v):
+    if v:
+        print("t")
+    else:
+        print("f")
+
+def negated(v):
+    print(not v)
+
+def verdict(v):
+    print(bool(v))
+
+def picked(v):
+    print("y" if v else "n")
+
+def walked(v):
+    while v:
+        print("walk")
+        break
+
+d = {"a": [], "b": "", "c": [1], "e": None, "f": 0, "g": 7, "h": 0.0, "i": 2.5, "j": True, "k": False, "l": {1: 2}}
+print(truthy(d["a"]), truthy(d["b"]), truthy(d["c"]), truthy(d["e"]), truthy(d["f"]), truthy(d["g"]), truthy(d["h"]), truthy(d["i"]), truthy(d["j"]), truthy(d["k"]), truthy(d["l"]))
+arm(d["a"])
+negated(d["a"])
+verdict(d["a"])
+picked(d["a"])
+walked(d["a"])
+arm(d["b"])
+verdict(d["b"])
+picked(d["b"])
+arm(d["c"])
+negated(d["c"])
+verdict(d["c"])
+picked(d["c"])
+walked(d["c"])
+arm(d["e"])
+verdict(d["e"])
+arm(d["f"])
+arm(d["g"])
+verdict(d["g"])
+arm(d["h"])
+picked(d["h"])
+arm(d["i"])
+arm(d["j"])
+verdict(d["j"])
+arm(d["k"])
+picked(d["k"])
+walked(d["k"])
+arm(d["l"])
+walked(d["l"])

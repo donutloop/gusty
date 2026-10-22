@@ -845,6 +845,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the concatenation and the repeat build from the call spelling too. Every line is what CPython
 		// prints for the same file (roadmap Gap R.364, ADR 0392).
 		"empty_container_decide",
+		// The callee that TESTS its own parameter asks the kind the caller supplied: `if v:`, `while v:`,
+		// a ternary head, `not v` and `bool(v)` all read the tag that crossed with the argument, so an
+		// empty list, an empty text and `None` take the false arm a payload-against-zero could not
+		// (roadmap Gap R.361, ADR 0393). Every line is what CPython prints for the same file.
+		"pair_param_truth",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

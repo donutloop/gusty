@@ -15889,7 +15889,7 @@ requires the record, and checks the raise's exit class. `programs/comprehension_
 220th conformance row, asserted `match`. The record moved **8069 → 8084** through `tools/recmerge`, which asked
 CPython first and cross-checked every compiled answer.
 
-### Gap R.361 — a callee that tests its own pair-carrying parameter asks the payload
+### Gap R.361 — a callee that tests its own pair-carrying parameter asks the payload (DONE — ADR 0393, 2026-10-22)
 
 ```gusty
 def f(v):
@@ -15912,18 +15912,61 @@ two registers, `bindTaggedVar` wrote its value and its tag, and `emitCond` still
 tests it against zero. An empty list's payload is a heap handle and an empty text's is an interned index, both
 non-zero, so both are true at the exit code of success.
 
-The fix is the pair road's own bookkeeping, which already knows the answer: `pairCallSpecs` and the callee's
-`pairSlotsForBody` say which parameter carries a tag and under which bodies that is true, and
-`@rt_pair_truth` is the door `and`/`or` and ADR 0388's condition already decide with. The condition's head and
-`bool()` need the same arm for a parameter that the entry read already has.
+The fix was the pair road's own bookkeeping, which already knew the answer. `pairSuppliedNameTruth`
+(`pkg/lang/pair_param_truth.go`) loads the parameter's two words through `taggedLoopVarRead` — the door every
+pair-bound read uses — and hands them to `@rt_pair_truth`, the table `and`/`or`, ADR 0388's entry condition and
+ADR 0386's loop item already decide with; `truthOperandErr` (the road `if`/`elif`/`while`, the ternary head and
+`not` lower through) and `builtinBool` ask it, and `pairGate` had to learn the positions or the pair never
+crossed at all. Two gates decide whether the ask is safe: the name's **origin** (`taggedOriginParam`, so a name
+the arithmetic door bound keeps ADR 0268's lift) and its **body** (`bodyKeepsTheEntryPair`, because the tag word
+has one writer and a rebinding leaves it stale).
 
-Until then the row is not hidden: the program is a row of `integration/testdata/cpython-debt.json` with
-CPython's `0 0 1 0` beside the compiled `1 1 1 0`, and
-`integration/dict_entry_call_test.go::TestWhatTheCallArgumentStillOwesTheOtherRowsOwn` fails if it stops being
-measured, if either side's answer changes under the row, or if the row loses its roadmap reference. The
-conformance program `programs/dict_entry_call_argument.gy` deliberately contains no callee that tests its own
-parameter for exactly this reason — a matrix row is only on the matrix while every line it prints is the
-reference's.
+The row is witnessed on both legs: the ladder is asserted compiled-vs-record in
+`pkg/lang/pair_param_truth_test.go::TestTheTruthOfTheParameterAgreesWithTheRecord` (a MISSING record fails the
+case, so the coverage cannot quietly go away) and against the reference at the terminal in
+`integration/pair_param_truth_test.go`, and `integration/programs/pair_param_truth.gy` is the family in one
+file, `match` on the matrix.
+
+What that door deliberately does NOT answer is filed rather than left implicit: a body that rebinds its
+parameter (**Gap R.366**), the operand `and`/`or` chooses and the arm a ternary chooses (**Gap R.367**), a body
+emitted under the text- or double-returning convention (**Gap R.368**), and an empty container spelled as a
+CALL stored in a dict literal (**Gap R.369**). The `str(v)` pin that had ridden under this ID is the
+convention's, not the condition's, and is relabelled **Gap R.368**; reading a pair-supplied parameter as one
+word — `y = v` inside such a body — is the same story from the other side and still refuses at exit 1 with the
+sentence that names L11.1 and Gap R.146: "v is a parameter the call site handed a double, so it arrives as a
+(payload, tag) pair and its kind lives beside it, not in the value … this position keeps one word for its
+operand, so the tag has nowhere to go".
+
+### Gap R.365 — the operand of `not` ran twice
+
+```gusty
+def boom():
+    print("boom")
+    return 1
+
+print(not boom())      # reference: boom / False — compiled before ADR 0393: boom / boom / False, exit 0
+```
+
+Filed and paid 2026-10-22 by [ADR 0393](adr/0393-a-condition-asks-a-parameter-the-kind-its-caller-supplied.md),
+which found it while reaching the same expression with a pair-bound operand. `pkg/lang/codegen_value.go`'s
+`not` arm lowered the operand for a value, discarded the value, and asked `truthyValue` — which lowered the
+operand AGAIN. For `1 + 1` that is two folds; for `boom()` it is two calls, and the program printed its own
+side effect twice and exited 0.
+
+ADR 0275 wrote the rule for the two operators that choose an operand — "the operand the test *does* reach runs
+exactly once" — and left `not` unasked, because `not` has no second operand and looked trivial. It is not
+trivial for a different reason: the value it computes is thrown away, so the only correct order is to ask the
+TRUTH first and let that road lower the operand once. The order is load-bearing twice over: the operand's value
+is never used, so lowering it first ran it twice, and for a pair-bound name it produced the payload word the
+truth road then had to ignore — the same one-word read that leaves a ternary arm printing `3` (**Gap R.367**),
+and measured on the parent build as `print(not v)` answering `False` for an empty list at the exit code of
+success.
+
+The witness is three rows, not one: `TestTheOperandOfNotRunsOnce` asserts the operand's line appears ONCE for
+a call under `not` over an ordinary argument and over a pair-carrying parameter, and asserts the rule ADR 0275
+wrote for `and`/`or` of `not` — the operand's effects still run when the test cannot choose them — so the fix
+cannot be "stop evaluating the operand".
+
 
 ### Gap R.362 — a dict read inside a body refuses with the unexplained `index must be a constant`
 
@@ -16094,3 +16137,177 @@ DELETED — which is the filed-table rule doing its job: a row that is paid cann
 The standing lesson for whoever grows the next gate: `grep` the *question*, not the road. A search for
 `emptyContainerLiteral(` lists the doors that ask whether a value is an empty container, and the doors that
 appear on more than one such list are where the next row is waiting.
+
+### Gap R.366 — a body that rebinds its own parameter is asked a tag nobody wrote since the call
+
+```gusty
+def f(v):
+    n = 0
+    while v:
+        n = n + 1
+        v = 0
+    return n
+
+d = {"e": [], "t": "", "l": [1], "n": None}
+print(f(d["e"]), f(d["t"]), f(d["l"]), f(d["n"]))   # reference: 0 0 1 0 — compiled: 1 1 1 0, exit 0
+```
+
+and the same body one character different:
+
+```gusty
+def f(v):
+    n = 0
+    while v:
+        n = n + 1
+        v = []            # not 0
+    return n
+
+d = {"l": [1]}
+print(f(d["l"]))                                    # reference: 1 — JIT: 2 — LINKED binary: never ends
+```
+
+ADR 0393's condition door reads a word — the parameter's tag slot — that has exactly one writer in the whole
+module: the entry store `bindPairParams` performs when the pair crosses. A plain `v = <expr>` in the body goes
+through the ordinary binding road, which writes the payload and retires the compile-time record of the name
+(ADR 0172's latest-binding rule, Gap R.142), leaving the tag describing a value nothing holds any more. Asking
+it a second time is worse than not asking: for a stale `list` tag the truth road calls `rt_heap_len` on a word
+that is no longer a heap handle, and the answer is a number that never reaches zero.
+
+Three probes turned a *wrong answer* into a *run that does not end* while this row was being written, which is
+the whole argument for the door's second half (`bodyKeepsTheEntryPair`): it declines where anything in the
+`def` can write the name — assignments, augmented assignments, `for` variables, `match` captures, `with as`,
+imports, nested `def`/`lambda` parameters, comprehension clause targets — and counts an unknown statement form
+as a write. The two directions are not symmetric: declining costs a program an answer it was getting wrong
+anyway, and standing on a writable name costs it a loop nobody can interrupt.
+
+What is owed is not "make the door wider" but "make the tag true": either the rebinding writes the tag beside
+the payload — which needs the assigned expression's (payload, tag) pair at the store, the same door
+`bindPairParams` asks, and ADR 0172's retirement when the value is not a pair — or a name's truth stops being
+a word read at entry and becomes a question asked of the payload at the use site. Gap R.146's tagged value
+word is the missing thing in both sentences.
+
+Witness: two rows in `TestWhatTheTruthOfAPairSuppliedParameterStillOwes` (the `1 1 1 0` ladder and the JIT's
+`2`), their CLI twins, and `TestARebindingParameterLoopStillRunsForever`, which compiles the second program,
+links it with `cc`, runs the binary under a 20-second kill and PASSES only if the run is killed — a pin that
+fails the day the loop finishes, which is the day the row is paid. `TestTheTruthOfTheParameterDoorOpensOnlyWhereItShould`
+is the same program's IR: no `@rt_pair_truth` inside `@gy_f`, because the door declined.
+
+### Gap R.367 — the operand `and`/`or` chooses and the arm a ternary chooses are still one word
+
+```gusty
+def f(v):
+    if v and 1:
+        return "T"
+    return "F"
+
+d = {"e": [], "t": "", "l": [1], "n": None, "z": 0, "o": 1, "s": "hi", "f": 0.0}
+print(f(d["e"]), f(d["t"]), f(d["l"]), f(d["n"]), f(d["z"]), f(d["o"]), f(d["s"]), f(d["f"]))
+# reference: F F T F F T T F — compiled: T T T F F T T T, exit 0
+```
+
+```gusty
+def f(v):
+    return v and 7        # refuses, naming the missing word
+```
+
+```gusty
+def f(v):
+    return v if v else "z"
+
+d = {"e": []}
+print(f(d["e"]))          # reference: z — compiled: 3, exit 0
+```
+
+ADR 0269 gave `and`/`or` an answer that is an operand, and ADR 0275 gave the pair-bound operand a truth table
+(`@rt_pair_truth`) so the TEST is right; both stop at the VALUE, where the chosen operand travels in one
+`select` of one type. For a name the pair road bound, that word is the payload and the tag is left behind —
+which is why the three shapes above disagree three different ways:
+
+* the compound's condition is composed from the operands' truths, and a pair-bound name's truth on the
+  ordinary (non-`pairSlotsForBody`) road is still payload-against-zero, so `[]`, `""` and `0.0` are true;
+* `return v and 7` reaches `logicValue`'s door and REFUSES, in the sentence that names L11.1's tagged value
+  word — the honest half, and the proof that the missing thing is a word rather than a wish;
+* `return v if v else "z"` is lowered by the ternary road through the ordinary identifier read, which returns
+  the payload and never asks whether the name carries a second word — so an empty list's heap handle prints as
+  `3` at the exit code of success.
+
+The ternary's HEAD is answered by ADR 0393 (`print("y" if v else "n")` is right on all fifteen entries); its
+ARM is the answer, and one `select` cannot carry both words. `pairSuppliedNameTruth` already loads payload and
+tag together for the truth question, so the fix is the same read aimed at the merge instead of at the branch —
+which is Gap R.146's tagged value word arriving one position further down the same road, not a new door.
+
+Witness: four rows across `TestWhatTheTruthOfAPairSuppliedParameterStillOwes` and its CLI twin, each asserting
+the reference's bytes beside today's, forbidding exit 2, and failing by AGREEMENT the day the door opens.
+
+### Gap R.368 — a body emitted under the text-returning convention never receives the tag
+
+```gusty
+def s(v):
+    return str(v)
+
+d = {"a": "x"}
+print(s(d["a"]))          # reference: x — compiled: 1 (the interned index), exit 0
+```
+
+```gusty
+def f(v):
+    while v:
+        print("once")
+        break
+    return "done"
+
+d = {"e": [], "t": "", "l": [1], "n": None, "z": 0, "o": 1, "s": "hi", "f": 0.0}
+print(f(d["e"]), f(d["t"]), f(d["l"]), f(d["f"]))   # six `once` lines where the reference prints two
+```
+
+Not the condition door's: the CONVENTION's. A body whose answer is a text is emitted under ADR 0174's
+string-return road, whose `define` takes one word per parameter, so the callee never has the second word to
+ask and `pairSlotsForBody` has nothing to name; the condition road then legitimately falls back to
+payload-against-zero, and `str(v)` legitimately renders the interned index. ADR 0360's escape covers only a
+body that FORMATS its parameter, which is why `print(v)` in the same body is right and `str(v)` is wrong.
+The same wall shows from the other side as a refusal, not a wrong number: binding such a parameter to a name
+(`y = v`) stops at exit 1 with "v is a parameter the call site handed a double, so it arrives as a (payload,
+tag) pair and its kind lives beside it, not in the value … this position keeps one word for its operand, so the
+tag has nowhere to go", naming L11.1 and Gap R.146 — one convention, two halves, and neither has a word for
+what the argument carried.
+
+Filed by ADR 0393, which measured it and shipped the condition half only: widening a convention is a change to
+every call site of every body of that shape, and buying it for a family that is also wrong about the *payload*
+would hide the measurement.
+
+Witness: `pkg/lang/dict_entry_call_test.go::TestTheCallArgumentDebtIsPinnedNotCelebrated`'s
+`a_str_returning_body_reads_the_payload` row (relabelled from Gap R.361, whose condition half is paid), and the
+`a_text_answering_body_keeps_its_parameters_one_word` rows in both suites.
+
+### Gap R.369 — an empty container spelled as a call and stored in a dict literal crosses as an integer
+
+```gusty
+def f(v):
+    print(v)
+    if v:
+        print("t")
+    else:
+        print("f")
+
+d = {"k": list()}
+f(d["k"])                 # reference: [] / f — compiled: 3 / t, exit 0
+```
+
+The literal entry `d = {"k": []}` is answered by ADR 0393's door; `print(list())` standing alone has been
+right since ADR 0392. Put the two together and the answer is a handle and a wrong branch. ADR 0391 gave the
+empty container its tag by asking one door (`(*irGen).emptyContainerCall`) — the shape test plus
+`builtinShadowed` — and ADR 0392's lesson was that every road that DECIDES such a value's kind must ask that
+same door rather than re-deriving it. The dict-literal store road is a third road that re-derives it: it
+stores the fold's integer and a tag that names no container, so what crosses the argument carries a number's
+truth, and the callee's condition — answered, correctly, from the tag it was given — takes the `then` arm.
+
+The print door's `3` is the tell worth reading: it is the interned-index door being handed a handle-less pair,
+which is what a tag with no payload behind it looks like from the outside.
+
+Filed by ADR 0393, which excluded the three call spellings from the answer ladder for exactly this reason and
+pinned them beside the residue instead of recording a wrong answer.
+
+Witness: `an_empty_container_written_as_a_call_crosses_as_an_integer` and
+`the_set_spelling_of_the_same_entry` in `TestWhatTheTruthOfAPairSuppliedParameterStillOwes`, and the CLI twin's
+row of the same name; the three spellings move into the ladder — and into `tools/recmerge`'s hands — the day
+the store asks the door.

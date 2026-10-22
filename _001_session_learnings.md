@@ -13615,3 +13615,51 @@ printed by the tool for a source printed beside it.
   reference's raise" is a claim the artifact carries, not a claim I make in an ADR.
 - **Push status.** `git push origin HEAD` worked this cycle (`f3e67ed..dc15588` for the first row); the sandbox
   limitation reported in earlier cycles is reported when it bites, never assumed.
+
+## ADR 0393 — a condition asks a parameter the kind its caller supplied (Gap R.361 + Gap R.365, 2026-10-22)
+
+- **A gate needs two halves, and the second one is the half that stops a hang.** Pair-bound truth is decided by
+  `taggedOrigin` in the first draft — ask the table for a name the ARGUMENT road bound, and stop. That is right
+  and not safe: the tag word has exactly one writer (`bindPairParams`), so a body that rebinds its own
+  parameter leaves a tag describing a value nothing holds, and the truth road then calls `rt_heap_len` on a word
+  that is no longer a handle. Three probes went from *wrong answer* to *run that never ends* while I was writing
+  this row — `while v:` … `v = []` counts iterations forever, and the linked binary (same module through `cc`)
+  has to be killed. The gate now reads the origin AND the body (`bodyKeepsTheEntryPair`), and an unknown
+  statement form counts as a write. Declining costs a program an answer it was getting wrong; standing on a
+  writable name costs somebody an interrupt they cannot send.
+- **Measure the parent build's answer; do not infer it from the code you deleted.** My own comment said `not v`
+  over a pair-carrying parameter "died naming the missing tagged value word" before the fix, because the old
+  road lowered the operand through the one-word value door. The pre-change binary answered `False` at exit 0 —
+  a wrong number, not a refusal. Same for the two `and` shapes and the ternary arm: identical on the baseline,
+  which is the difference between filing them as new rows and claiming them as this row's residue. Anything I
+  had written from reasoning alone got rewritten after `gustyc_base` was asked beside `gustyc_new`.
+- **A row's `Free text` is prose the guards do not read.** `pkg/lang/golden_artifact_counts_test.go` recomputes
+  the artifact counts and `roadmap_snapshot_test.go` recomputes the Snapshot table, but a number written inside
+  a row's own sentence ("wrote **92** entries") is checked by nobody. The true figure was 98 — my harvest
+  predicted 91, the ladder is 6 positions × 15 kinds + the row program = 91, and the extra 7 are the residue and
+  conformance programs the same two suites assert. Every count I wrote in the ADR, README and roadmap got
+  re-derived from the artifact, and the snapshot guard independently caught four more I had not touched at all
+  (ADRs 383→384, programs 236→237, matrix 223→224, oracle `match` 179→180, owed 166→…).
+- **An orphan check on the record has to regenerate the programs.** A naive scan for record keys among Go string
+  literals reported 78 orphans of 98 — the ladder's programs are built by concatenating a body template with an
+  entry, so they exist nowhere as one literal. Rebuilding the 90 combinations in the checker dropped the count to
+  0. A tool that cannot express how a test constructs its source will "find" missing coverage that is not
+  missing.
+- **File the residue as rows, not as sentences.** Four rows went into the Open queue with today's bytes beside
+  the reference's — the stale tag and its non-terminating loop (**R.366**), the operand `and`/`or` and the
+  ternary choose, which prints an empty list's heap handle where CPython prints `z` (**R.367**), the
+  text-returning convention whose parameters never get a second word (**R.368**, which inherited the `str(v)`
+  pin that had been riding under R.361), and the empty container spelled as a `list()` stored in a dict literal,
+  whose store never asked ADR 0391's door (**R.369**). Each pin fails by AGREEMENT, which is how a paid row is
+  supposed to announce itself; `TestARebindingParameterLoopStillRunsForever` passes only if the run is killed.
+- **The debt ledger fails on the fix, and that is the feature.** `integration/dict_entry_call_test.go` and
+  `pkg/lang/dict_entry_call_test.go` both went red the moment R.361 was answered, because their text says a row
+  that agrees with the reference must be deleted; the row left `cpython-debt.json` (10 → 9) with them. A pin that
+  survives its own fix is the thing to distrust.
+- **Somebody else was editing this working tree.** `AGENTS.md`, `docs/operations.md`, `roadmap.md`, the conformance
+  matrix and both debt files changed at minutes when I was not writing them (a second agent on the same row, same
+  checkout: `node ./pi-loop.mjs … --force-reset` up 1h06m). The rule I applied: verify a foreign edit against the
+  artifact and the tests before touching it — three of their claims were right and kept (the relabelling of the
+  `str(v)` pin, the 20-second hang witness, the decline-not-refuse framing) and three were wrong and corrected (the
+  entry count, "the ternary arm refuses", "five positions"). Never revert what you have not measured, and never
+  trust what you have not measured either.
