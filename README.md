@@ -2385,6 +2385,32 @@ falls back to dynamic dispatch.
   take no prologue (**Gap R.401**), and the doors that ask the module's records rather than the frame's
   (**Gap R.402**).
 
+- **The truth of a text is its length, not its table entry (Gap R.407, ADR 0409)** — `def f():` / `    return "abc"` /
+  `if f():` / `    print("t")` runs its body in the reference and printed **`f`** here at **exit 0**, and one wrong question
+  answered the whole family beside it: `while f(i):` never entered its body, `not f()` said `True`, `"y" if f() else "n"`
+  chose `n`, a class method's `return "abc"` tested false, and `s = f()` / `if s:` took the else arm. The condition road's
+  fallback tests its operand against zero — and a text's value is an **index into the interned string table**, so that test
+  asks **which table entry the intern table handed out**, not whether the text has any characters. The first text a program
+  interns is entry 0, which is why every one of these programs looks like a toy and fails. The fix is the fact the print
+  door, the operation door and the sequence door each had to learn in their own cycle (**ADR 0232**): the condition road now
+  asks the one text question and measures with `@rt_str_len` — the arm `@rt_pair_truth` already takes for the text tag, and
+  the door the unrolled **loop item** has asked for two cycles (**ADR 0386**/**0393**) — so there is **no new runtime entry
+  point**, and what the fold can read still folds (asserted from the emitted module in both directions: the shapes that must
+  emit `@rt_str_len` do, the ones that must not, don't). The roads that own other objects keep their roads — a container
+  still calls its own length helper, a float still `fcmp`s, a mixed-kind body still reads the tag **ADR 0368** gave it, a
+  pair-supplied parameter still reads the caller's word (**ADR 0393**) — pinned beside every answered program because the
+  danger of a truth door learning one more shape is that it starts answering an object that already had a better answer.
+  Measurement over the 28 programs the two suites carry, parent build `b552b8d` beside this one, each asked of the pinned
+  CPython: **16 agreed before, 28 after — 12 newly answering, none regressed**; `tools/recmerge` wrote all **28** from
+  CPython (**8884 → 8912**) and one compiled-vs-record row **arrived** (`print(bool([1]))`, ledger **18 → 19**), which is the
+  ratchet's other face. Two neighbours stay refused with codes attached for the first time — a parameter one call fills with a
+  text and another with a number (**Gap R.409**, beside the pair road's **Gap R.324**) and a container's truth spelled as a
+  *call* (**Gap R.131**) — because the sentences reached agents with no code at all (**Gap R.408**). And the harness stopped
+  writing artifacts nobody asked it to write: the parallelism guard shelled out to a `-run`-filtered `go test ./pkg/lang/`
+  **inheriting** `GUSTY_GOLDEN_UPDATE`, and that subset rewrote the other package's drift ledger with 1 of its 318 rows —
+  twice in one cycle, until **Gap R.410** stripped the artifact-writing variables from every subprocess the guard starts and
+  a case asserted the scrubbing holds.
+
 - **`str.join` builds its seam the way `+` does (Gap R.403, ADR 0408)** — `n = 3` /
   `print("-".join([f"a{n}", "z"]))` is `a3-z` in the reference, and here it was `join() list elements must be
   constant strings` at exit 1: the method was a **fold** over `*StringLit`s, so a list with one interpolation in it

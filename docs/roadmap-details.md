@@ -17756,3 +17756,59 @@ wrong answers are pinned with `(null)` in them, which is ugly on purpose.
 beside this one): **3 agreed before, 31 after — 28 newly answering, 0 regressed.** The three that agreed before are
 the pure-fold controls, which is the whole row in one statistic: everything with a runtime slot in the list was
 refused.
+
+
+### Gap R.407 — the truth of a text is its length, closed by **ADR 0409**
+
+```gusty
+def f():
+    return "abc"
+
+if f():            # CPython runs the body; before ADR 0409 this printed `f`, at exit 0
+    print("t")
+```
+
+**One wrong question, twelve wrong programs.** The condition road has an arm for every shape it has been asked
+about — a literal, a name the binding road recorded against a constant text, a `%`-formatting door, a repeat — and
+its fallback tests the operand against zero. A text's value is an index into `@str_tab`, so that fallback asks
+*which table entry the intern table handed out*. Entry 0 goes to the first text a program interns, which is why
+the twelve programs this row found are all small and ordinary: `if f():`, `while f(i):`, `not f()`, a ternary head,
+`bool(f())`, a method's text answer, `s = f()` / `if s:`, the caught name of `except … as err:`. Nothing refused,
+nothing crashed, nothing verified badly — the exit code that means *the program ran* was printing the else arm.
+
+**The door already existed; the road had not been told to use it.** `rt_str_len` is the arm `@rt_pair_truth` takes
+for the text tag, and the unrolled **loop item** has asked it since **ADR 0386/0393** for exactly this reason —
+"an interned word tested against zero is measuring the wrong thing". The condition road was the last reader of a
+text that had not been told, because there was no road for `if f():` at all until the container-answer door
+(**ADR 0333**) and the answer-kind gate (**ADR 0368**) arrived; each widened what a call's answer can be, and this
+reader kept its old guess. That is **ADR 0232**'s rule wearing a new costume: a fact the compiler asks twice is a
+fact that answers yes once — and the reason the fix is four lines in one door rather than a new representation.
+
+**Why the fold still folds, in ink.** The IR assertion goes both ways: the condition on a call's text emits the
+`@rt_str_len` call, and the condition on a literal, or on a name recorded against a constant, emits none. A suite
+that only checked the first half would pass happily after a rewrite that routed the easy case through the runtime
+— a slower build nobody notices, and the loss of the one property (a compile-time answer for a compile-time
+question) that makes the fold worth having.
+
+**The controls are the point, not the decoration.** A call's number, a call's container, a mixed-kind body, an
+unrolled loop item, a pair-supplied parameter, `and`/`or`, an ordering condition and the literal fold are pinned in
+the same tables as the answered programs. A truth door that learns one more shape is one step away from answering an
+object that already had a better answer — a container asks its own length, a float asks an `fcmp`, a varied body
+reads its own tag — and "it works for texts" is not evidence that those still work.
+
+**Two refusals that reached agents as prose.** Walking this family surfaced the neighbours: `print(bool([1]))` (the
+container's truth spelled as a *call*) and `def w(v): ...` called with `w(0)` and `w("a")` (the mixed-kind
+parameter, **Gap R.409**) both exit 1 with well-written sentences that resolve to **no capability code** — the
+**L11.8**/**ADR 0346** contract, quietly broken for two shapes a program hits in the wild. They now have
+`lower.unsupported.bool-of-a-container` and `lower.unsupported.argument-kind-undecided`, with the reference's bytes
+pinned beside each. A refusal is an interface; an unclassifiable one is a sentence only a human can branch on.
+
+**The ledger that ate itself.** While measuring, the artifact-writing mode was run serially the way the makefile
+prescribes — `GUSTY_GOLDEN_UPDATE=1 go test ./integration/` — and `pkg/lang`'s drift ledger came back with **1**
+row instead of 318. The parallelism guard had shelled out to a `-run`-filtered `go test ./pkg/lang/` with the
+parent's environment, and the ledger adjudication belongs to whichever process finishes. That is the same class of
+bug **ADR 0343** killed for the toolchain: a run-scoped fact travelling as process state. `parifyEnv` now strips the
+artifact-writing variables (**Gap R.410**) and a case asserts the scrubbing holds when the parent has each one set.
+The house rule that "an artifact is written by the one process that asked for it" is worth more than the rule that
+"the artifact-writing mode must be run serially", because the second one has to be remembered and the first one is
+enforced.

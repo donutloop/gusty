@@ -78,11 +78,29 @@ func runParifyCheck(t *testing.T, dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// parifyEnv is the environment the guard builds its checker with: the suite's own build tag, so the tool is
-// compiled the same way everything else here is, with any inherited GOFLAGS dropped so a wrapper flag cannot
-// quietly turn the check into a no-op.
+// parifyEnv is the environment the guard builds its checker and its measurement runs with: the suite's own
+// build tag, so the tool is compiled the same way everything else here is, with any inherited GOFLAGS dropped
+// so a wrapper flag cannot quietly turn the check into a no-op — and the artifact-writing modes dropped too.
+//
+// The second half is not cosmetic. `TestTheParallelCasesActuallyOverlap` shells out to `go test ./pkg/lang/`
+// with a `-run` subset, and `pkg/lang`'s TestMain adjudicates its divergence LEDGER: with
+// `GUSTY_GOLDEN_UPDATE=1` in the environment — which is how a person runs the artifact-writing mode, serially,
+// for one package — that subset rewrote `pkg/lang/testdata/interpreter-golden-drift.json` with the ONE row its
+// four named cases happened to diverge on, deleting 317 rows of the other package's ratchet. Measured twice in
+// one cycle, which is the definition of a trap the harness has to defuse itself (roadmap Gap R.410, ADR 0409).
+var artifactWritingVars = []string{
+	"GUSTY_GOLDEN_UPDATE=",
+	"GUSTY_GOLDEN_MISSING=",
+	"GUSTY_GOLDEN_REPORT=",
+	"GUSTY_DEBT_UPDATE=",
+}
+
 func parifyEnv() []string {
-	env := os.Environ()
+	return append(withoutArtifactWritingVars(stripGoFlags(os.Environ())), "GOFLAGS=-tags=llvm20")
+}
+
+// stripGoFlags drops any inherited GOFLAGS so a wrapper flag cannot quietly turn the check into a no-op.
+func stripGoFlags(env []string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
 		if strings.HasPrefix(kv, "GOFLAGS=") {
@@ -90,7 +108,69 @@ func parifyEnv() []string {
 		}
 		out = append(out, kv)
 	}
-	return append(out, "GOFLAGS=-tags=llvm20")
+	return out
+}
+
+// withoutArtifactWritingVars is the half that keeps an artifact an artifact: a command this guard starts must
+// not be able to rewrite a ledger as a side effect of the environment it was born into.
+func withoutArtifactWritingVars(env []string) []string {
+	out := env[:0:0]
+outer:
+	for _, kv := range env {
+		for _, denied := range artifactWritingVars {
+			if strings.HasPrefix(kv, denied) {
+				continue outer
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// TestTheGuardsSubprocessCarriesNoArtifactWritingMode is the guard on the guard: a subprocess the parallelism
+// measurement starts must not be able to rewrite an artifact, whatever the person running the suite asked for.
+// It asks the scrubber a SYNTHETIC environment rather than setting variables of its own, because a case that
+// edits the process environment cannot run beside the others — and the suite's own parallelism census (ADR 0343)
+// is one of the things this file exists to protect.
+func TestTheGuardsSubprocessCarriesNoArtifactWritingMode(t *testing.T) {
+	t.Parallel()
+	synth := append([]string{
+		"GOFLAGS=-tags=slow",
+		"GUSTY_GOLDEN_UPDATE=1",
+		"GUSTY_GOLDEN_MISSING=/tmp/missing.json",
+		"GUSTY_GOLDEN_REPORT=/tmp/report.json",
+		"GUSTY_DEBT_UPDATE=1",
+		"GUSTY_GOLDEN_UPDATED_LATER=keep-me",
+		"PATH=/usr/bin",
+	}, artifactWritingVars...) // each prefix must be gone from the result
+	got := withoutArtifactWritingVars(synth)
+	joined := strings.Join(got, "\n")
+	for _, denied := range artifactWritingVars {
+		for _, line := range got {
+			if strings.HasPrefix(line, denied) {
+				t.Fatalf("parifyEnv hands %q to a `go test` subprocess — a filtered subprocess run would rewrite a "+
+					"package's drift ledger with only its own subset (roadmap Gap R.410)", line)
+			}
+		}
+	}
+	// The near-miss stays: a variable that merely starts with a similar name is not an artifact mode, and a
+	// scrubber that clears prefixes rather than names would delete the suite's other knobs.
+	if !strings.Contains(joined, "GUSTY_GOLDEN_UPDATED_LATER=keep-me") {
+		t.Fatalf("the scrubber deleted something that is not an artifact-writing mode: %q", joined)
+	}
+	// Whatever the parent's GOFLAGS were, the child gets the suite's tag — the composition the guard actually
+	// builds, asserted rather than each half pretending to do the other's job.
+	for _, line := range stripGoFlags(withoutArtifactWritingVars(synth)) {
+		if strings.HasPrefix(line, "GOFLAGS=") {
+			t.Fatalf("an inherited GOFLAGS survived the composition: %q", line)
+		}
+	}
+	if strings.Contains(strings.Join(withoutArtifactWritingVars([]string{"PATH=/usr/bin"}), "|"), "GUSTY_") {
+		t.Fatal("a clean environment grew an artifact mode")
+	}
+	if env := strings.Join(parifyEnv(), "\n"); !strings.Contains(env, "GOFLAGS=-tags=llvm20") {
+		t.Fatalf("parifyEnv must always carry the suite's build tag:\n%s", env)
+	}
 }
 
 // overlapParents names the families the overlap measurement runs: four cases in pkg/lang whose every subtest

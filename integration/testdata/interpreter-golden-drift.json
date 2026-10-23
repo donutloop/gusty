@@ -1,9 +1,9 @@
 [
   {
-    "source": "# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a\n# list repeated by an int (in either operand order), two lists concatenated, and two\n# values of the same kind ordered by value. Each line agrees with CPython in the\n# interpreter. The compiled backend refuses `str * int` and emits an invalid module for\n# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.\nprint([1] + [2])\nprint([1] + [2] + [3])\nprint([1] * 3)\nprint(3 * [1])\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(\"ab\" * -1)\nprint([1] * 0)\n# Ordered comparison compares values, not handles. The result is tested rather than\n# printed: this language renders a boolean as 1 or 0, which is a separate documented\n# divergence, and what is pinned here is whether the ordering itself is right.\nif \"a\" < \"b\":\n    print(\"str ordered\")\nif [1, 2] < [2]:\n    print(\"list ordered\")\nif [2] < [1, 2]:\n    print(\"wrong\")\nprint(len([1, 2, 3]) * 2)\n",
+    "source": "# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a\n# list repeated by an int (in either operand order), two lists concatenated, and two\n# values of the same kind ordered by value. Each line agrees with CPython in the\n# interpreter. The compiled backend refuses `str * int` and emits an invalid module for\n# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.\nprint([1] + [2])\nprint([1] + [2] + [3])\nprint([1] * 3)\nprint(3 * [1])\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(\"ab\" * -1)\nprint([1] * 0)\n# Ordered comparison compares values, not handles. The result is tested rather than\n# printed: this language renders a boolean as 1 or 0, which is a separate documented\n# divergence, and what is pinned here is whether the ordering itself is right.\nif \"a\" \u003c \"b\":\n    print(\"str ordered\")\nif [1, 2] \u003c [2]:\n    print(\"list ordered\")\nif [2] \u003c [1, 2]:\n    print(\"wrong\")\nprint(len([1, 2, 3]) * 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "stdout \"[1, 2]\\n[1, 2, 3]\\n[1, 1, 1]\\n[1, 1, 1]\\nabab\\nabab\\n\\n\\n[]\\nstr ordered\\nlist ordered\\n6\\n\"",
-    "actual": "jit: codegen: `[1, 2] < [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+    "actual": "jit: codegen: `[1, 2] \u003c [2]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
   },
   {
     "source": "async def f(x):\n    return x + 1\n\n\nasync def g():\n    await f(1)\n    while True:\n        return \"ok\"\n\n\nprint(await g())\n",
@@ -24,10 +24,10 @@
     "actual": "2\n"
   },
   {
-    "source": "def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
+    "source": "def twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
     "reason": "stdout differs from the record",
-    "expected": "got << 21 >>\n42\n",
-    "actual": "<< 21 >>\ngot 42\n"
+    "expected": "got \u003c\u003c 21 \u003e\u003e\n42\n",
+    "actual": "\u003c\u003c 21 \u003e\u003e\ngot 42\n"
   },
   {
     "source": "for w in [2.345]:\n    print(round(w, 2))\n",
@@ -36,10 +36,10 @@
     "actual": "0\n"
   },
   {
-    "source": "n = 41\nprint(\"n =\", n + 1)\nprint(\"a\", 1, \"b\", 2)\nprint()\nprint(\"csv\", 1, 2, 3, sep=\", \")\nprint(\"tick\", end=\"!\")\nprint(\"tock\")\nxs = [1, 2, 3]\nprint(\"xs =\", xs)\nm = {1: 2}\nprint(\"m =\", m, \"len\", len(xs))\ndef twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
+    "source": "n = 41\nprint(\"n =\", n + 1)\nprint(\"a\", 1, \"b\", 2)\nprint()\nprint(\"csv\", 1, 2, 3, sep=\", \")\nprint(\"tick\", end=\"!\")\nprint(\"tock\")\nxs = [1, 2, 3]\nprint(\"xs =\", xs)\nm = {1: 2}\nprint(\"m =\", m, \"len\", len(xs))\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
     "reason": "stdout differs from the record",
-    "expected": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n",
-    "actual": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\n<< 21 >>\ngot 42\n"
+    "expected": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n",
+    "actual": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\n\u003c\u003c 21 \u003e\u003e\ngot 42\n"
   },
   {
     "source": "n = 7\nprint(f\"{n:05d}\")",
@@ -78,10 +78,16 @@
     "actual": "jit: codegen: operator \"%\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
-    "source": "print([1] < [\"a\"])\n",
+    "source": "print([1] \u003c [\"a\"])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "trap eval error: '<' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: `[1] < [\"a\"]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+    "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
+    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the order of two lists the compiler built in place is the tagged order door's question and it reads a name the program bound, not a handle this door assembled — CPython answers this program, and the arm that hands it the built object is owed (roadmap Gap R.314, ADR 0365, beside Gap R.175 and L11.1)"
+  },
+  {
+    "source": "print(bool([1]))\n",
+    "reason": "the compiled backend cannot build a program the engine ran",
+    "expected": "result \"None\"",
+    "actual": "{\"backend\":\"aot\",\"capability\":{\"code\":\"lower.unsupported.bool-of-a-container\",\"rows\":[\"Gap R.131\",\"Gap R.370\",\"L11.1\"],\"shape\":\"bool(\\u003clist/dict/set\\u003e) asked as a call rather than as a condition\",\"suggestion\":\"test the container directly (`if xs:`) or compare `len(xs)` — the truth of a container is its length, which the condition road asks of the object, and the builtin's argument position does not carry the object today\"},\"error\":\"jit: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)\",\"errors\":[],\"exit\":1,\"ok\":false,\"phase\":\"codegen\"}"
   },
   {
     "source": "s = \"abc\"\ntry:\n    s[0] = \"z\"\nexcept TypeError:\n    print(\"caught\")\n",
@@ -102,7 +108,7 @@
     "actual": "IndexError: list index out of range"
   },
   {
-    "source": "xs = [1]\n\ndef add() -> int:\n    xs.append(2)\n    return len(xs)\n\nprint(add(), xs)\n",
+    "source": "xs = [1]\n\ndef add() -\u003e int:\n    xs.append(2)\n    return len(xs)\n\nprint(add(), xs)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"

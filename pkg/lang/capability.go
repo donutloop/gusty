@@ -373,6 +373,28 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Sample:     "k = 1\nprint(min(2.5, k))",
 	},
 	{
+		// Two refusals this cycle's road walked past, both of which reached an agent as prose with no code — the
+		// L11.8 contract is that every designed refusal resolves to one (ADR 0346). Filed as roadmap Gap R.408.
+		Code:       "lower.unsupported.argument-kind-undecided",
+		Shape:      "a parameter one call fills with a text and another fills with a number",
+		Suggestion: "give each kind its own function, or pass one kind to this one — the (payload, tag) pair that crosses a call boundary is written by the call sites, and a position the calls disagree about has no single tag to write; `def w(v): print(v)` called as `w(0)` and `w(\"a\")` is CPython's program, and this backend declines it (roadmap Gap R.409)",
+		Rows:       []string{"Gap R.409", "Gap R.324", "L11.1"},
+		Markers:    []string{"strings are not supported as function arguments in the AOT backend"},
+		Sample:     "def w(v):\n    print(v)\n\nw(0)\nw(\"a\")\n",
+	},
+	{
+		// `bool(<container>)` spelled as a CALL: the container roads answer `if xs:` by asking the object, but the
+		// builtin's argument position has no word for the object today, so the door says so — and until this entry
+		// said it with a code, an agent got the sentence and nothing to branch on (roadmap Gap R.408, beside
+		// Gap R.131 which the sentence already names).
+		Code:       "lower.unsupported.bool-of-a-container",
+		Shape:      "bool(<list/dict/set>) asked as a call rather than as a condition",
+		Suggestion: "test the container directly (`if xs:`) or compare `len(xs)` — the truth of a container is its length, which the condition road asks of the object, and the builtin's argument position does not carry the object today",
+		Rows:       []string{"Gap R.131", "Gap R.370", "L11.1"},
+		Markers:    []string{"container's truthiness is its length"},
+		Sample:     "print(bool([1]))",
+	},
+	{
 		Code:       "lower.unsupported.builtin-needs-inline-container",
 		Shape:      "min/max/sum asked of a container the compiler does not hold as a literal",
 		Suggestion: "write the container out at the call (min([1, 2])), or count with a loop — the reduction folds over a literal it can see and this container's slots belong to the runtime",

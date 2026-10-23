@@ -1,5 +1,144 @@
 {
  "entries": {
+"a = \"filler\"\ndef f():\n    return \"abc\"\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"class T:\n    def m(self):\n        return \"abc\"\n\nif T().m():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def a():\n    return \"a\"\n\ndef b():\n    return \"b\"\n\nif a() + b():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"\"\n\ndef g(v):\n    return v\n\nprint(1 if g(f()) else 0)\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"\"\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"\"\n\nprint(\"y\" if f() else \"n\")\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"\"\n\nprint(not f())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"\"\n\ns = f()\nif s:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"ab\"\n\ntotal = 0\nfor c in f():\n    total = total + 1\nprint(total)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"ab\".upper()\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\ndef g(v):\n    return v\n\nprint(1 if g(f()) else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\nprint(\"y\" if f() else \"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\nprint(bool(f()))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\nprint(f() or \"z\")\nprint(f() and \"y\")\n": {
+    "stdout": "abc\ny\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\nprint(not f())\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"abc\"\n\ns = f()\nif s:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 0\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return []\n\ndef g():\n    return [1]\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\nif g():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\nt\n",
+    "hasStdout": true
+   },
+
+"def f(i):\n    return \"ab\"[:i]\n\ni = 2\nwhile f(i):\n    print(\"loop\")\n    i = i - 1\n": {
+    "stdout": "loop\nloop\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return \"a\"\n    return 0\n\nprint(1 if f(1) else 0)\nprint(1 if f(0) else 0)\n": {
+    "stdout": "1\n0\n",
+    "hasStdout": true
+   },
+
+"if \"abc\":\n    print(\"t\")\nelse:\n    print(\"f\")\nif \"\":\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\nf\n",
+    "hasStdout": true
+   },
+
+"if repr(0):\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"if str(3):\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"n = 0\ns = \"ab\"\nif s[:n]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"print([bool(x) for x in [0.0, [0], \"\", \"a\", 1]])\n": {
+    "stdout": "[False, True, False, True, True]\n",
+    "hasStdout": true
+   },
+
+"s = \"abc\"\nif s[1:]:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"try:\n    1 / 0\nexcept ZeroDivisionError as err:\n    if err:\n        print(\"t\")\n    else:\n        print(\"f\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
 "class T:\n    def row(self, n):\n        return \"-\".join([f\"a{n}\", \"z\"])\n\nprint(T().row(3))\n": {
     "stdout": "a3-z\n",
     "hasStdout": true

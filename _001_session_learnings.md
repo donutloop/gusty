@@ -14527,3 +14527,53 @@ the list dropped the program out of the road. The row is closed, and the interes
    story about code I had not actually re-read). The discipline that fixed it: before editing on the strength of a
    remembered body, `grep` for a distinctive token from it, and if the token is absent, re-read the file. A model's
    confidence is not evidence about a file; the file is.
+
+## ADR 0409 — the truth of a text is its length (Gap R.407 closed; Gaps R.408, R.410 closed, R.409 filed, 2026-10-24)
+
+Found by asking the roadmap's own next action a question: **L11.1** names "the interpolation as a text value" with a
+list of shapes, so I measured all of them against CPython. 54 of 60 agreed; the six that did not pointed at one
+wrong question in a door I had not touched — `if f():` where `f` hands back a text printed the else arm at **exit 0**.
+
+1. **A refusal is a wall, not a boundary — and an exit-0 wrong answer is a wall with a green light on it.** The join
+   row last cycle was a refusal hiding three wrong answers; this row was twelve wrong answers with no refusal in
+   front of them. `def f(): return "abc"` / `if f():` → `f`, `while f(i):` never entered, `not f()` → `True`,
+   `"y" if f() else "n"` → `n`, a method's text answer → false, `s = f()` / `if s:` → else arm, `except … as err:` /
+   `if err:` → else arm. The condition road's fallback tests the operand against zero, and a text's value is an
+   `@str_tab` **index**: the question it asked was *which table entry*, not *how many characters*. Entry 0 is the
+   first text a program interns, so every failing program is a two-liner and every passing one is a program that
+   interned something first — the worst possible distribution of a bug, because the failures look like toys.
+2. **The door existed before the road did.** `rt_str_len` is the arm `@rt_pair_truth` takes for the text tag, and the
+   unrolled loop item has asked it since **ADR 0386/0393** for exactly this reason. The condition road never got the
+   memo because there was no road: `if f():` could not even be *asked* until the container-answer door (**ADR 0333**)
+   and the answer-kind gate (**ADR 0368**) made a call's answer answerable. Each later ADR widened what an answer can
+   be and left one reader with its old guess. **ADR 0232** — one question, asked by every road — is not a style rule;
+   it is the only thing that keeps a widening from becoming a divergence.
+3. **Do not wait for the representation to fix the answer.** The tempting framing was "this is L11.1's tagged word;
+   file it and move on". The tagged word would fix this family, and would first need **Gap R.324**'s four bare-payload
+   doors and **Gap R.406**'s name arm. Meanwhile the exit-0 wrongness is answerable today with a helper that already
+   exists. A representation change is a reason to *simplify later*, never a reason to leave a wrong answer shipping.
+4. **Assert the absence, not just the presence.** The IR guard checks that a call's-text condition emits
+   `@rt_str_len` **and** that a literal condition emits none. Only the second half keeps the fold honest; a suite with
+   just the first passes contentedly after someone routes the easy case through the runtime.
+5. **Controls are how you keep a widened door from eating its neighbours.** The answered family sits beside a control
+   family (a call's number, a call's container, a mixed-kind body, a loop item, a pair parameter, `and`/`or`,
+   an ordering, the fold) run against both builds. It found nothing broken this time — and found that two of the
+   controls' diffs were identical byte-for-byte on the parent build, which is how **Gap R.409** (mixed-kind parameter)
+   and **Gap R.131** (`bool([1])`) got filed against the right owners instead of against this commit.
+6. **A refusal without a code is a sentence only a human can read.** Walking the family surfaced two refusals —
+   `print(bool([1]))` and `w(0)` beside `w("a")` — that resolve to **no capability code**, which is the **L11.8** /
+   **ADR 0346** contract broken in place. The tell: the sentence quoted a roadmap row (`Gap R.131`) and still nobody
+   could branch on it programmatically. Codes are the machine path for refusals; `ClassifyCapabilityRefusal` returning
+   false on a sentence a program can reach is a bug in its own right (**Gap R.408**).
+7. **Environment is state, and subprocesses inherit it.** Running the artifact mode exactly as documented —
+   `GUSTY_GOLDEN_UPDATE=1 go test ./integration/` — came back having rewritten **`pkg/lang`'s** drift ledger down to
+   one row. The parallelism guard shells out to a `-run`-filtered `go test ./pkg/lang/`, and the ledger is adjudicated
+   by whichever process finishes. Same class as **ADR 0343**'s toolchain globals, one level up: a run-scoped fact
+   travelling as inherited process state. Fixed by scrubbing the four `GUSTY_*` artifact variables in `parifyEnv`, with
+   a case that sets each in the parent and asserts the child never sees it (**Gap R.410**). The general rule for this
+   repo: if the correctness of an artifact depends on how a person invokes the suite, the suite has to refuse the
+   invocation that would break it.
+8. **What I did with the roadmap's "next action" cell.** It names ~26 interpolation shapes as the work owed on L11.1.
+   Measuring it was cheaper than trusting it: 54/60 already answered, so the row's next action is stale prose, and the
+   real work was in a door the list never mentioned. A tracker row is a pointer to a measurement, not a substitute for
+   one — and when the measurement says the row is answered, the row changes and the loop moves on.

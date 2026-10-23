@@ -307,11 +307,69 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 			}
 		}
 	}
+	// `if f():` where the answer is a TEXT the compiler holds as an `@str_tab` index and no fold can read: a
+	// call into a text-returning `def` or method, `str(...)`, `repr(...)`, a text method's answer, a slice of a
+	// runtime text. Everything below this arm asks a word that is not this word, and the fallback tests the
+	// operand against zero — which for an interned text asks WHICH TABLE ENTRY the intern table handed out, not
+	// whether the text has any characters in it. `def f(): return "abc"` / `if f():` therefore took the else arm
+	// at exit 0 where the reference runs the body, `while f(i):` never entered its body at all, `not f()` answered
+	// True, and `"y" if f() else "n"` chose `n`. The loop item already asks `rt_str_len` for exactly this reason
+	// (the arm `rt_pair_truth` takes for the text tag); the condition road had simply never been asked about a
+	// text that arrives from a call, because every shape that predated this arm is a literal, a name the binding
+	// road recorded, or a text door with a constant on the left (roadmap Gap R.407, ADR 0409).
+	if g.truthAsksTheInternedText(e) {
+		v, err := g.value(b, e)
+		if err != nil {
+			return "", err
+		}
+		n := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @rt_str_len(i32 %s)\n", n, v)
+		p := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, n)
+		return g.markI1(p), nil
+	}
 	v, err := g.value(b, e)
 	if err != nil {
 		return "", err
 	}
 	return g.asI1(b, v), nil
+}
+
+// truthAsksTheInternedText is this road's turn at the one text question (ADR 0232's rule, the one the print
+// door, the operation door and the sequence door each had to learn): is the operand a text whose value is an
+// `@str_tab` index the compiler cannot read as a constant? The shapes that CAN be read are left to the arms
+// above — a literal, a name the binding road recorded as a constant text, and the text doors with a constant
+// operand all fold to a compile-time truth, which is both cheaper and the answer the fold is obliged to give.
+// A container or a float is declined here because those objects own roads above this one: a container asks its
+// own length, and a float asks its payload against zero.
+func (g *irGen) truthAsksTheInternedText(e Expr) bool {
+	switch e.(type) {
+	case *StrLit:
+		// A literal folds above (`constI1(sv != "")`), and it must: the intern table's index for "" is whatever
+		// position it happens to occupy, and a compile-time answer is the fold's obligation, not a runtime call.
+		return false
+	}
+	if nm, ok := e.(*Name); ok {
+		// A NAME is the binding road's to answer: a name recorded as holding a CONSTANT text folds above, a name
+		// the pair road bound carries its own tag (that arm is above this one), and a loop item asks `rt_str_len`
+		// through the loop-item arm. What is left is the name the call road filled — `s = f()` where `f` hands back
+		// a text — whose word is an index no fold can read, and testing THAT against zero is this row's bug.
+		if _, folded := g.stringVal(e); folded {
+			return false
+		}
+		// `g.caughtVars` is in this test beside `g.internedVars` because ADR 0406's arm binds the name to the
+		// INTERNED message (`except ZeroDivisionError as err:` / `if err:`), and the binding road that fills
+		// `internedVars` never sees an `except` clause's binding — so without this the name fell to the payload test
+		// below and asked which table entry the message got (roadmap Gap R.395's neighbourhood, Gap R.407).
+		return (g.internedVars[nm.Value] || g.caughtVars[nm.Value]) && !g.taggedVars[nm.Value]
+	}
+	if _, ok := g.stringVal(e); ok {
+		return false
+	}
+	if g.isContainerExpr(e) || g.isFloat(e) {
+		return false
+	}
+	return g.exprIsString(e) || g.printsAsInternedStr(e)
 }
 
 // truthAsksTheLoopItem answers the condition road's other self-describing read: the loop variable of an

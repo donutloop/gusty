@@ -1134,6 +1134,20 @@ that spelling; a **method** named `set` taking the built-in's spelling from this
 truth of an empty container spelled as a call where there is no call to cross — `print(bool(set()))` at module
 level — is **Gap R.370**.
 
+A text whose value **arrives from a call** asks the same length question the tag table takes for its kind
+(**Gap R.407**, **ADR 0409**). `def f(): return "abc"` / `if f():`, `s = f()` / `if s:`, `while f(i):`,
+`not f()`, `"y" if f() else "n"`, `bool(f())`, `class T: def m(self): return "abc"` / `if T().m():`, a slice of a
+built text (`if s[1:]:`), a concatenation of two of them, and the name an `except … as err:` clause bound all branch
+the way the reference branches — because the truth of a text is its **length**, asked of `@rt_str_len`, the same door
+`@rt_pair_truth` takes for the text tag and the one an unrolled loop item already asked. What it is *not* is a test of
+the word: a text's value is an index into the interned string table, so testing it against zero asks which table
+entry the intern table handed out — and the first text a program interns is entry 0, which is why every one of these
+programs looked like a toy and failed. Two neighbours stay refused rather than answered: a parameter one call fills
+with a text and another fills with a number (`w(0)` and `w("a")` — **Gap R.409**, and the pair road's **Gap R.324**
+beside it), and a container's truth spelled as a *call* (`print(bool([1]))` — **Gap R.131**, **Gap R.370**), which is
+why `if xs:` is the spelling this backend answers. Both refusals carry codes an agent can branch on
+(`lower.unsupported.argument-kind-undecided`, `lower.unsupported.bool-of-a-container` — **Gap R.408**).
+
 ### `and` and `or` answer an **operand**, not a verdict, and skip what the test rejected (Gap R.147, ADR 0269; Gap R.149, ADR 0275)
 
 The two operators test one operand and hand back whichever operand the test chose, unconverted — the
