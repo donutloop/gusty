@@ -190,6 +190,12 @@ func bodyBoundNames(body []Stmt) map[string]bool {
 				walk(s)
 			}
 			for _, arm := range n.Excepts {
+				// `except T as err:` binds err in the frame the try lives in, the way `with ... as`
+				// binds its name: the arm reads it, and so -- to the reference's eye, which deletes
+				// it again at the arm's end -- does nothing else (roadmap Gap R.113, ADR 0406).
+				if arm.As != "" {
+					out[arm.As] = true
+				}
 				for _, s := range arm.Body {
 					walk(s)
 				}
@@ -477,6 +483,9 @@ func (an *SemanticAnalyzer) collectModuleBindings(list []Stmt) {
 		case *TryStmt:
 			an.collectModuleBindings(n.Body)
 			for _, e := range n.Excepts {
+				if e.As != "" {
+					an.moduleBound[e.As] = true
+				}
 				an.collectModuleBindings(e.Body)
 			}
 			an.collectModuleBindings(n.Finally)
@@ -1035,6 +1044,13 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			// Each handler is a separate path into the code after the try, and it starts
 			// from what was definite *before* the try: the body may have raised anywhere.
 			an.definite = copyDefinite(defBefore)
+			if e.As != "" {
+				// The arm's `as` clause binds the name the arm reads; the name is NOT definite on
+				// the path out, because the arm may never have run -- which is the reference doing
+				// something this backend can follow: `except E as err:` then `print(err)` on the
+				// outside is the NameError the reference raises (roadmap Gap R.113, Gap R.395).
+				an.scope.define(e.As, TDyn())
+			}
 			for _, b := range e.Body {
 				an.analyzeStmt(b)
 			}

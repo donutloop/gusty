@@ -474,6 +474,9 @@ func scanRebinds(list []Stmt, into map[string][]Expr) {
 			case *TryStmt:
 				walk(s.Body)
 				for _, e := range s.Excepts {
+					if e.As != "" {
+						into[e.As] = append(into[e.As], nil)
+					}
 					if e.Exn != nil {
 						// `except E as e` rebinds the name; recording the class name
 						// too costs an unused alloca at worst, and missing a real

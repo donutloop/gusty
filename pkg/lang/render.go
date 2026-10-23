@@ -161,6 +161,21 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 		return sel, true, nil
 	}
 
+	// The name an `except ... as` clause bound is a text to the FORMATTERS and not to the operand
+	// roads: `str(err)` hands back the message the raise carried, which is what the reference's str
+	// of an exception says, while `len(err)` and `err.upper()` stay refused because the reference
+	// raises for both (roadmap Gap R.113, ADR 0406; the object's own repr is Gap R.395's).
+	if nm, isName := e.(*Name); isName && g.caughtVars[nm.Value] {
+		v, err := g.value(b, e)
+		if err != nil {
+			return "", true, err
+		}
+		if quote == 0 {
+			return v, true, nil
+		}
+		return g.rtStrCall(b, "rt_str_of_value", "i32 "+v, "i32 4", "i32 1"), true, nil
+	}
+
 	// A text is the one form the two halves disagree on: str hands the value straight back,
 	// repr runs the same capture with the quoting flag on so the answer is interned text that
 	// nests and case-folds like any other runtime-built string.

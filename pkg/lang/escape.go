@@ -135,6 +135,12 @@ func deadListAssignments(prog []Stmt) map[string]bool {
 				if ec.Exn != nil {
 					nonListAssign[ec.Exn.Value] = true
 				}
+				if ec.As != "" {
+					// The name holds what the raise carried -- a text, never a list -- and an
+					// escape decision taken as if it could be a list allocates a container this
+					// program never builds (roadmap Gap R.113, ADR 0406).
+					nonListAssign[ec.As] = true
+				}
 				for _, st := range ec.Body {
 					walkStmt(st)
 				}

@@ -972,6 +972,18 @@ func (p *parser) parseTry() (Stmt, error) {
 				nt := p.next()
 				ec.Exn = &Name{Value: nt.Text, Src: nt.Span}
 			}
+			// `except <Type> as name:` -- the name the arm answers to. The reference binds the
+			// exception OBJECT to it; this backend binds what that object WRITES, the message the
+			// raise carried, which is the half `print(err)` and `str(err)` show (roadmap Gap R.113).
+			if p.peek().IsKeyword("as") {
+				p.next()
+				at := p.peek()
+				if at.Kind != TokIdent {
+					return nil, p.errorf(at, "expected a name after `as` in an `except` clause")
+				}
+				p.next()
+				ec.As = at.Text
+			}
 			if err := p.expectOp(":"); err != nil {
 				return nil, err
 			}

@@ -175,6 +175,13 @@ func returnsStringExpr(g *irGen, fd *FuncDef, extraTextParams ...map[string]bool
 			strParams[n] = true
 		}
 	}
+	// A body whose `return` hands back the name its `except ... as` clause bound answers a text:
+	// the arm bound the message the raise carried, and the caller that prints the answer has to be
+	// told it is printing a text and not the intern-table position under it (roadmap Gap R.113,
+	// ADR 0406).
+	for nm := range exceptAsNamesIn(fd.Body) {
+		strParams[nm] = true
+	}
 	found := false
 	var walk func([]Stmt)
 	walk = func(sts []Stmt) {

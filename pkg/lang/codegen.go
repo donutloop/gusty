@@ -878,6 +878,13 @@ type irGen struct {
 	setElemInt  map[string]bool
 	dictKeyInt  map[string]bool
 	dictValInt  map[string]bool
+	// caughtVars records the name an `except <Type> as name:` clause bound: the word in its slot
+	// is an @str_tab index, so the PRINT roads take it as a text and show the message the raise
+	// carried. It is deliberately NOT the internedVars record: the operand roads (len, a text
+	// method, a concatenation, a comparison) ask that one, and the reference refuses each of them
+	// for an exception object -- answering "yes" there is the exit-0 wrong answer ADR 0166 refuses
+	// to ship (roadmap Gap R.113, ADR 0406; the doors are Gap R.395's).
+	caughtVars map[string]bool
 	// internedVars records names bound to an interned-string index (element reads and loop
 	// variables over string containers), so print renders the text rather than the index.
 	internedVars map[string]bool

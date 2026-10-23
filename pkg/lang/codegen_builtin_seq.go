@@ -274,6 +274,14 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 		if err := g.moduleStateErr(lit.Value); err != nil {
 			return "", err
 		}
+		if g.caughtVars[lit.Value] {
+			// The name an `except ... as` clause bound prints as the message the raise carried, and it
+			// is NOT a text to measure: the reference asks the exception OBJECT, which has no length,
+			// and answering `16` for `len(err)` at exit 0 is the wrong answer ADR 0166 refuses. The
+			// generic sentence below would have told the reader the name holds no string, which is a
+			// claim about a program they did not write (roadmap Gap R.113, Gap R.395, Gap R.38's rule).
+			return "", fmt.Errorf("len(%s) is refused: %q is the name an `except ... as` clause bound, and what it holds is not a text to measure — the reference asks the exception OBJECT, which has no length (`TypeError: object of type 'ZeroDivisionError' has no len()`), and asking that question needs the value word that carries its own kind (roadmap Gap R.113, Gap R.395, L11.1)", g.exprSummary(c.Args[0]), lit.Value)
+		}
 		return "", fmt.Errorf("len of a non-string variable")
 
 	case *ListLit:

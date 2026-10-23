@@ -409,6 +409,12 @@ func moduleBindingNames(st Stmt, out map[string]bool) {
 			moduleBindingNames(s, out)
 		}
 		for _, arm := range n.Excepts {
+			// `except T as err:` binds the name in the arm's scope, and the arm is where the
+			// reference's `print(err)` reads it: the name has to be in the module's census of
+			// bound names or the arm's own read is refused as unbound (roadmap Gap R.113, ADR 0406).
+			if arm.As != "" {
+				out[arm.As] = true
+			}
 			for _, s := range arm.Body {
 				moduleBindingNames(s, out)
 			}

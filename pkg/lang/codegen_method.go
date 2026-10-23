@@ -608,6 +608,13 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		if nm, ok2 := attr.Obj.(*Name); ok2 && g.nameHoldsContainer(nm.Value) {
 			return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
 		}
+		if nm, ok2 := attr.Obj.(*Name); ok2 && g.caughtVars[nm.Value] {
+			// Same split as the length door: the name an `except ... as` clause bound prints as the
+			// message and is not a text to call a method on — the reference raises AttributeError for
+			// `err.upper()`, and answering it with the message in caps is a wrong answer at exit 0
+			// (roadmap Gap R.113, Gap R.395).
+			return "", fmt.Errorf("%s() on %q is refused: the name an `except ... as` clause bound is not a text to call a method on — the reference asks the exception OBJECT, which carries no such attribute (`AttributeError: 'ZeroDivisionError' object has no attribute %q`), and the object, with its methods, is what the value word would carry (roadmap Gap R.113, Gap R.395, L11.1)", attr.Name.Value, nm.Value, attr.Name.Value)
+		}
 		return "", fmt.Errorf("string-method %s on a receiver that is not a text the compiler can read: %s (roadmap Gap I.2, ADR 0166)", attr.Name.Value, g.exprSummary(attr.Obj))
 	}
 	switch attr.Name.Value {

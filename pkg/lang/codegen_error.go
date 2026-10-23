@@ -23,6 +23,14 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	} else {
 		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
 	}
+	// @exn_arg is the same raise WITHOUT the "Type: " caption: what the reference hands back for
+	// `str(err)`, and so what `except <Type> as err:` binds. It is stored beside the report string
+	// rather than derived from it at read time because the message may itself contain a ": " -- a
+	// raise of `ValueError("a: b")` says `str(err)` is `a: b`, and stripping a prefix by finding
+	// the first colon would take letters out of the program's own words. It is never null: a raise
+	// that carried no message carries the empty text, which is what the reference's `str(err)` is
+	// for `raise ValueError` (roadmap Gap R.113, ADR 0406).
+	b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_arg\n", g.strConst(msg)))
 	// the record prints one frame per stack level; the compiled report used to print the
 	// raise site's own frame alone. That string is still stored — it is what rt_die falls back
 	// to when the shadow stack has nothing to say about a raise whose statement carried no
@@ -284,6 +292,137 @@ func (g *irGen) clearExn(b *strings.Builder) {
 	b.WriteString("  store i32 0, i32* @exn_flag\n")
 }
 
+// valueExnMessage lowers what the exception in flight writes: the message the raise left in
+// @exn_arg, interned into @str_tab so the name an `as` clause bound behaves like every other
+// text -- printed by rt_print_str, compared by index, measured by len. Interning is
+// content-addressed, so `err == "boom"` is an icmp once both sides are interned, exactly as a
+// text literal is (roadmap Gap R.113, ADR 0406, ADR 0224's interning rule).
+func (g *irGen) valueExnMessage(b *strings.Builder) (string, error) {
+	// The block that declares @exn_arg is the raise block, and the flag that pulls it in is the
+	// one every raise sets: an arm that names what it caught can only be reached by a raise.
+	g.raiseUsed = true
+	g.heapUsed = true // @rt_str_intern2 lives in the heap block
+	msg := g.newTmp()
+	b.WriteString("  " + msg + " = load i8*, i8** @exn_arg\n")
+	t := g.newTmp()
+	b.WriteString("  " + t + " = call i32 @rt_str_intern2(i8* " + msg + ", i8* " + msg + ")\n")
+	return t, nil
+}
+
+// caughtOperand reports whether an expression is the name an `except ... as` clause bound -- the
+// shape the operand roads must refuse, and the only form of the question those roads can ask.
+func (g *irGen) caughtOperand(e Expr) bool {
+	nm, ok := e.(*Name)
+	return ok && nm != nil && g.caughtVars[nm.Value]
+}
+
+// exceptAsNamesIn lists every name an `except <Type> as name:` clause binds anywhere in this
+// statement list, descending through the compound statements the way the other binding censuses
+// do. A pre-pass asks it because a body whose `return` hands back such a name returns a TEXT, and
+// the answer has to be in the table before the first call site reads it (roadmap Gap R.113, ADR 0406).
+func exceptAsNamesIn(body []Stmt) map[string]bool {
+	out := map[string]bool{}
+	var walk func(st Stmt)
+	walk = func(st Stmt) {
+		switch n := st.(type) {
+		case nil:
+			return
+		case *TryStmt:
+			for _, arm := range n.Excepts {
+				if arm.As != "" {
+					out[arm.As] = true
+				}
+			}
+			for _, st := range n.Body {
+				walk(st)
+			}
+			for _, arm := range n.Excepts {
+				for _, st := range arm.Body {
+					walk(st)
+				}
+			}
+			for _, st := range n.Finally {
+				walk(st)
+			}
+		case *IfStmt:
+			for _, st := range n.Then {
+				walk(st)
+			}
+			for _, e := range n.Elifs {
+				for _, st := range e.Then {
+					walk(st)
+				}
+			}
+			for _, st := range n.Else {
+				walk(st)
+			}
+		case *WhileStmt:
+			for _, st := range n.Body {
+				walk(st)
+			}
+			for _, st := range n.Else {
+				walk(st)
+			}
+		case *ForStmt:
+			for _, st := range n.Body {
+				walk(st)
+			}
+			for _, st := range n.Else {
+				walk(st)
+			}
+		case *WithStmt:
+			for _, st := range n.Body {
+				walk(st)
+			}
+		case *MatchStmt:
+			for _, c := range n.Cases {
+				for _, st := range c.Body {
+					walk(st)
+				}
+			}
+		}
+	}
+	for _, st := range body {
+		walk(st)
+	}
+	return out
+}
+
+// bindCaughtName gives the arm the name its `as` clause wrote. It is the ordinary binding road --
+// `stmtAssign`, the same door `err = <expr>` walks through -- handed a value the parser never
+// builds, so the slot, the interned-text record and ADR 0172's latest-binding rule are written by
+// the one road that knows how to write them rather than by a second copy here (roadmap Gap R.113,
+// ADR 0406).
+func (g *irGen) bindCaughtName(b *strings.Builder, ec *ExceptClause) error {
+	if g.doubleSlot[ec.As] {
+		// The name already opens a `double` slot somewhere else in this function, and an
+		// @str_tab index does not travel in one. The reference has no such collision to answer:
+		// its exception object and its float are different values in one untyped name. Refused
+		// rather than stored at the wrong width, which is the module llc rejects and exit 2 (ADR
+		// 0166, roadmap Gap R.113).
+		return fmt.Errorf("codegen: `except %s as %s:` cannot bind %q: the name already carries a float in this program, and this backend has no value word wide enough for both (roadmap Gap R.113, ADR 0406)", ec.Exn.Value, ec.As, ec.As)
+	}
+	as := &AssignStmt{
+		Target: &Name{Value: ec.As, Src: ec.Src},
+		Value:  &ExnMessage{Src: ec.Src},
+		Src:    ec.Src,
+	}
+	if err := g.stmtAssign(b, as, as); err != nil {
+		return err
+	}
+	// The records the binding leaves behind. The name is NOT an internedVars name -- see the field
+	// comment in codegen.go -- and it is not a constant the folds may read either, even when an
+	// earlier statement bound a literal to the same name: `err = "stale"` before the `try` used to
+	// win the read and print `stale` for a raise that carried something else (roadmap Gap R.113).
+	delete(g.strVals, ec.As)
+	delete(g.internedVars, ec.As)
+	if g.caughtVars == nil {
+		g.caughtVars = map[string]bool{}
+	}
+	g.caughtVars[ec.As] = true
+	return nil
+}
+
 // checkExn emits a check of @exn_flag after a user-function call.
 func (g *irGen) checkExn(b *strings.Builder) {
 	g.checkExnLabel(b)
@@ -363,6 +502,14 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 		// cleared HERE, before the arm's first statement; the clear on the edge out below stays as the
 		// belt-and-braces case ADR 0218 paid for, for an arm that leaves by a path this one does not see.
 		g.clearExn(b)
+		// `except <Type> as name:` -- the arm names what it took, and the name is bound before
+		// the arm's first statement runs, so the arm's own bytes read the message the raise
+		// carried (roadmap Gap R.113, ADR 0406).
+		if ec.As != "" {
+			if err := g.bindCaughtName(b, ec); err != nil {
+				return err
+			}
+		}
 		armed := false
 		g.handledArms++
 		for _, st := range ec.Body {

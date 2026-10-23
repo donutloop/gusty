@@ -230,6 +230,13 @@ func boundEligible(body []Stmt) (ok, bad map[string]bool) {
 				walk(s)
 			}
 			for _, arm := range n.Excepts {
+				// The arm writes the name its `as` clause named, through the binding road that
+				// also runs markBound, so the flag machinery owns it exactly like an assignment
+				// target: the slot exists, the store flags it, and a read that never saw the arm
+				// flagged takes the reference's NameError (roadmap Gap R.113, ADR 0406).
+				if arm.As != "" {
+					note(&Name{Value: arm.As})
+				}
 				for _, s := range arm.Body {
 					walk(s)
 				}

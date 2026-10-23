@@ -2356,6 +2356,23 @@ falls back to dynamic dispatch.
   pinned the escape are DELETED, not edited, with the handler programs moved into the answered tables of both suites
   and 14 new sources on the record (**8695 → 8709**).
 
+- **An `except … as name:` arm binds what the exception writes (Gap R.113, ADR 0406)** —
+  `try: 1/0` / `except ZeroDivisionError as err:` / `print(err)` is `division by zero` in the reference, and here it
+  was a **parse error** at exit 1 on every path: `parseTry` read the type name and then asked for a colon, so the
+  single most common exception idiom in the language had no grammar, no AST field, no IR and no doc. The clause now
+  parses and the arm binds — to what the reference's exception **writes**, since this backend's value is one word
+  wide and there is no object to hand over: `setExn` stores the bare message in `@exn_arg` beside the
+  `"<Type>: <message>"` report `@exn_msg` already carried (a message containing `": "` keeps its colon), and the arm
+  interns it through `@rt_str_intern2`, the door every literal, `str()` and formatted text already uses. So
+  `print(err)`, `str(err)`, `f"{err}"`, `return err` and the print of that return are one record read five ways. The
+  record it writes is a new one — `caughtVars`, deliberately **not** `internedVars` — because the reference splits
+  the name in two: an exception prints as its message and is not a string to `len`, to `.upper()` or to `==`, and
+  those three doors refuse in words (each registered as its own capability code) instead of answering the message
+  dressed as the object. `repr(err)`, `err.args`, `type(err)`, the name's life after the arm and the KeyError the
+  reference quotes are pinned as **Gap R.395**; asking the arm that question found `type` is a reserved word
+  (**Gap R.396**) and `except (A, B):` does not parse (**Gap R.397**). 38 sources recorded from CPython
+  (**8753 → 8791**), corpus `integration/programs/except_as_name.gy` asserted line for line.
+
 - **A container in a ternary arm is built where the branch enters (Gap R.385, Gap R.128, ADR 0405)** —
   `print([1, 2] if 1 else [9])` is `[1, 2]` in the reference, and here `llc-20` refused the module on
   `%t1 = call i32 (i8*, ...) @printf(i8* getelementptr…, i32 @.lst1)` at **exit 2**, the code that says the compiler

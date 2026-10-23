@@ -23,6 +23,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "0", nil
 	case *NoneLit:
 		return "0", nil
+	case *ExnMessage:
+		// What the exception in flight writes. The arm that named it (`except T as name:`)
+		// binds through here, and so does any later read of that name -- the road below is
+		// the one text an interned name carries (roadmap Gap R.113, ADR 0406).
+		return g.valueExnMessage(b)
 	case *AssignExpr:
 		v, err := g.value(b, n.Value)
 		if err != nil {

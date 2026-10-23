@@ -396,6 +396,11 @@ func buildIndex(prog *Program, src string) *docIndex {
 					if e.Exn != nil {
 						addDef(lspSymbol{Name: e.Exn.Value, Kind: symVar, Span: e.Exn.Src, Type: "exception", Owner: owner, Line: e.Exn.Src.Line})
 					}
+					if e.As != "" {
+						// The arm's own name: the editor asks where a name is born, and `except T as err:`
+						// is where err is (roadmap Gap R.113, ADR 0406).
+						addDef(lspSymbol{Name: e.As, Kind: symVar, Span: e.Src, Type: "text", Owner: owner, Line: e.Src.Line})
+					}
 					walkStmts(e.Body, owner)
 				}
 				walkStmts(s.Finally, owner)

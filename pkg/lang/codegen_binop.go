@@ -437,6 +437,15 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	// same index, so this is content equality without a character loop (roadmap Gap J.5).
 	// The literal side becomes its index; the interned side is already one.
 	if n.Op == "==" || n.Op == "!=" {
+		// The name an `except ... as` clause bound is not an operand. The comparison road below is
+		// content equality between two texts, and the reference does not run it: `err == "division
+		// by zero"` compares an exception OBJECT with a string, both sides return NotImplemented and
+		// the answer is False. Answering that with the index the message interned to is a True the
+		// reference never gives, so the question is refused at the door instead (ADR 0166; roadmap
+		// Gap R.113, and Gap R.395 owns the exception object that would let it be asked).
+		if g.caughtOperand(n.L) || g.caughtOperand(n.R) {
+			return "", fmt.Errorf("codegen: %s == %s is refused: the name an `except ... as` clause bound is not a text to compare against — the reference compares the exception OBJECT, which is never equal to a text (`err == \"division by zero\"` is False there), and asking the question needs the value word that carries its own kind (roadmap Gap R.113, Gap R.395, L11.1)", exprSurface(n.L), exprSurface(n.R))
+		}
 		internSide := func(e Expr) (string, bool) {
 			txt, ok := g.stringVal(e)
 			if !ok {

@@ -1,5 +1,194 @@
 {
  "entries": {
+"# What an `except \u003cType\u003e as name:` clause binds (roadmap Gap R.113, ADR 0406).\n#\n# The arm names what it took, and the name holds what the exception WRITES: the message the raise\n# carried, interned by the one door every other text goes through. Every line below prints the bytes\n# CPython prints for the same line — the reference hands the arm an exception OBJECT and prints that\n# object's message, and this backend, whose value is one word wide, gives the name exactly that half.\n#\n# The half it does not have is roadmap Gap R.395 and is written out in `integration/except_as_name_test.go`\n# with the reference's bytes beside it: `repr(err)`, `err.args`, `type(err)`, what the name does after the\n# arm, and the operand doors (`len`, a text method, `==`), which are refused here rather than answered with\n# the message dressed up as the object (ADR 0166).\n\n# a machine raise names itself\ntry:\n    1 / 0\nexcept ZeroDivisionError as err:\n    print(err)\n\n# the message a `raise` carried\ntry:\n    raise ValueError(\"boom\")\nexcept ValueError as err:\n    print(err)\n\n# the colon inside a message belongs to the message\ntry:\n    raise RuntimeError(\"a: b\")\nexcept RuntimeError as err:\n    print(err)\n\n# a raise that carried nothing carries the empty text\ntry:\n    raise IndexError\nexcept IndexError as err:\n    print(\"[\" + str(err) + \"]\")\n\n# the name inside an interpolation\ntry:\n    int(\"x\")\nexcept ValueError as err:\n    print(f\"caught: {err}\")\n\n# the second arm is the one that matches, and only it binds\ntry:\n    1 / 0\nexcept TypeError as te:\n    print(\"te\", te)\nexcept ZeroDivisionError as ze:\n    print(\"ze\", ze)\n\n# the catch-all arm names it too\ntry:\n    print([1][9])\nexcept Exception as err:\n    print(\"any\", err)\n\n# an arm that calls, then reads the name\ndef note():\n    print(\"arm ran\")\n\nd = {}\ntry:\n    print(d[\"k\"])\nexcept KeyError as err:\n    note()\n    print(\"after\", err)\n\n# an inner arm that re-raises for the outer arm's name\ntry:\n    try:\n        1 / 0\n    except ZeroDivisionError as inner:\n        print(\"inner\", inner)\n        raise ValueError(\"second\")\nexcept ValueError as outer:\n    print(\"outer\", outer)\n\n# the name out of a function that returned it\ndef grab():\n    try:\n        return 1 / 0\n    except ZeroDivisionError as err:\n        return err\n\nprint(grab())\n\n# the name inside a method, and a `finally` that still runs\nclass Box:\n    def check(self):\n        try:\n            return [1][4]\n        except IndexError as err:\n            return err\n        finally:\n            print(\"checked\")\n\nprint(Box().check())\n\n# the program continues after the arm\ntry:\n    1 / 0\nexcept ZeroDivisionError as err:\n    print(err)\nprint(\"tail\")": {
+    "stdout": "division by zero\nboom\na: b\n[]\ncaught: invalid literal for int() with base 10: 'x'\nze division by zero\nany list index out of range\narm ran\nafter 'k'\ninner division by zero\nouter second\ndivision by zero\nchecked\nlist index out of range\ndivision by zero\ntail\n",
+    "hasStdout": true
+   },
+
+"class Box:\n    def check(self):\n        try:\n            return [1][4]\n        except IndexError as err:\n            return err\n        finally:\n            print(\"checked\")\n\nprint(Box().check())": {
+    "stdout": "checked\nlist index out of range\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self):\n        try:\n            1/0\n        except ZeroDivisionError as err:\n            return err\nprint(C().m())": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"d = {}\ntry:\n    print(d[\"k\"])\nexcept KeyError as err:\n    print(err)": {
+    "stdout": "'k'\n",
+    "hasStdout": true
+   },
+
+"def f():\n    try:\n        1/0\n    except ZeroDivisionError as err:\n        return err\nprint(f())": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return 1/0\n\ndef f():\n    try:\n        g()\n    except ZeroDivisionError as err:\n        return \"caught \" + str(err)\n\nprint(f())": {
+    "stdout": "caught division by zero\n",
+    "hasStdout": true
+   },
+
+"def grab():\n    try:\n        return 1/0\n    except ZeroDivisionError as err:\n        return err\n\nprint(grab())": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"def h():\n    print(\"arm\")\ntry:\n    xs = []\n    print(xs[3])\nexcept IndexError as err:\n    h()\n    print(\"after\", err)": {
+    "stdout": "arm\nafter list index out of range\n",
+    "hasStdout": true
+   },
+
+"def note():\n    print(\"arm ran\")\n\ntry:\n    1/0\nexcept ZeroDivisionError as err:\n    note()\n    print(\"after\", err)": {
+    "stdout": "arm ran\nafter division by zero\n",
+    "hasStdout": true
+   },
+
+"err = \"stale\"\ntry:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"i = 0\nwhile i \u003c 2:\n    try:\n        print(7/0)\n    except ZeroDivisionError as err:\n        print(\"loop\", err)\n    i = i + 1": {
+    "stdout": "loop division by zero\nloop division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept Exception as err:\n    print(err)": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept TypeError as te:\n    print(\"te\")\nexcept ZeroDivisionError as ze:\n    print(ze)": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept TypeError as te:\n    print(\"te\", te)\nexcept ZeroDivisionError as ze:\n    print(\"ze\", ze)": {
+    "stdout": "ze division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    msg = err\nprint(msg)": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(\"caught\", err, \"end\")": {
+    "stdout": "caught division by zero end\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)": {
+    "stdout": "division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)\n    print(err)\nprint(\"tail\")": {
+    "stdout": "division by zero\ndivision by zero\ntail\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)\nfinally:\n    print(\"fin\")": {
+    "stdout": "division by zero\nfin\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)\nprint(\"after\")": {
+    "stdout": "division by zero\nafter\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err)\nprint(\"tail\")": {
+    "stdout": "division by zero\ntail\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(err, err)": {
+    "stdout": "division by zero division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(f\"got: {err}\")": {
+    "stdout": "got: division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError as err:\n    print(f\"x{err}y\")": {
+    "stdout": "xdivision by zeroy\n",
+    "hasStdout": true
+   },
+
+"try:\n    1/0\nexcept ZeroDivisionError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    [0][0] / 0\nexcept ZeroDivisionError as err:\n    print(\"a\", err)\nexcept IndexError as err:\n    print(\"b\", err)": {
+    "stdout": "a division by zero\n",
+    "hasStdout": true
+   },
+
+"try:\n    d = {}\n    print(d[\"k\"])\nexcept KeyError as err:\n    print(err)": {
+    "stdout": "'k'\n",
+    "hasStdout": true
+   },
+
+"try:\n    int(\"abc\")\nexcept ValueError as err:\n    print(err)": {
+    "stdout": "invalid literal for int() with base 10: 'abc'\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1)\nexcept ValueError as err:\n    print(\"never\", err)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1)\nexcept ValueError as err:\n    print(\"not taken\")": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"try:\n    raise TypeError(\"bad type\")\nexcept TypeError as err:\n    print(str(err))": {
+    "stdout": "bad type\n",
+    "hasStdout": true
+   },
+
+"try:\n    raise ValueError\nexcept ValueError as err:\n    print(\"[\" + str(err) + \"]\")": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"try:\n    raise ValueError(\"a: b\")\nexcept ValueError as err:\n    print(err)": {
+    "stdout": "a: b\n",
+    "hasStdout": true
+   },
+
+"try:\n    raise ValueError(\"boom\")\nexcept ValueError as err:\n    print(err)": {
+    "stdout": "boom\n",
+    "hasStdout": true
+   },
+
+"try:\n    try:\n        1/0\n    except ZeroDivisionError as inner:\n        print(\"inner\", inner)\n        raise ValueError(\"second\")\nexcept ValueError as outer:\n    print(\"outer\", outer)": {
+    "stdout": "inner division by zero\nouter second\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1]\n    print(xs[9])\nexcept IndexError as err:\n    print(\"caught\", err, \"end\")": {
+    "stdout": "caught list index out of range end\n",
+    "hasStdout": true
+   },
+
+"try:\n    xs = [1]\n    print(xs[9])\nexcept IndexError as err:\n    print(err)": {
+    "stdout": "list index out of range\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\ntry:\n    print(xs[9])\nexcept IndexError as err:\n    print(err)": {
+    "stdout": "list index out of range\n",
+    "hasStdout": true
+   },
 "# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers used to reach the assembler with the containers themselves in\n# the choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position,\n# so the compiled leg exited 2 on a program whose answer the record and the reference both print in\n# two lines. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# It answers now. An arm is a program the test runs, not an operand of the instruction that picks\n# (Gap R.340, ADR 0374), so each arm's container is BUILT inside the block the branch enters by the\n# builder every container road has used since ADR 0189, and the merge phis the two handles: the module\n# carries no global in a value position, and the print door chooses its printer from the kind the arms\n# agree on. The row was read from the print door as roadmap Gap R.385 and closed with this program's own\n# row by **ADR 0405**; the family it still owes — the doors that ASK a container ternary a question\n# (`str(...)`, a loop's iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position) —\n# is roadmap Gap R.393, and the arm pair that agrees on no kind is refused in words under roadmap Gap\n# R.394, both pinned with today's bytes beside the reference's in `pkg/lang/ternary_container_test.go`\n# and `integration/ternary_container_test.go`.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\nprint({\"k\": 1} if c \u003e 0 else {\"z\": 0})": {
     "stdout": "[1, 2]\n{'k': 1}\n",
     "hasStdout": true

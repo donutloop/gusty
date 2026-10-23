@@ -2690,6 +2690,34 @@ for i in range(n):
   The compiled backend used to lower only the first arm and then clear the exception flag, so a
   later arm never ran, a nested `try` never reached its outer arm, and an unmatched exception was
   deleted: no report, exit 0.
+- **An arm can name what it caught**: `except <Type> as name:` parses, the arm binds `name`, and the name holds
+  what the exception **writes** — the message the raise carried (ADR 0406, roadmap Gap R.113). It is interned by the
+  same door every other text goes through, so the four ways of reading it are one fact:
+
+  ```py
+  try:
+      1/0
+  except ZeroDivisionError as err:
+      print(err)              # division by zero
+      print(f"got: {err}")    # got: division by zero
+      print(str(err))         # division by zero
+  ```
+
+  The machine's own raises carry the reference's message too — `xs[9]` binds `list index out of range`, a missing
+  key binds `'k'` with the key's own quotes — and `raise ValueError("a: b")` binds `a: b`, colon and all, because
+  the raise writes the report string (`"ValueError: a: b"`, what an uncaught trace prints) and the bare message
+  into two separate places rather than one being cut out of the other. A raise that carried nothing binds the empty
+  text, exactly as `str(ValueError())` is empty there. An arm that never runs binds nothing, and an arm that names
+  nothing (`except IndexError:`) is unaffected: it binds no slot and interns nothing.
+
+  What the name is NOT is the exception object. `len(err)`, `err.upper()` and `err == "…"` are **refused** — the
+  reference raises `TypeError`/`AttributeError` at those three doors, and answering them with the message wearing
+  the object's clothes is a wrong answer, not an answer. `repr(err)`, `err.args`, `type(err)`, the name read after
+  the arm (which the reference deletes there) and an explicit `raise KeyError("a: b")`, whose message the reference
+  quotes, diverge today and are pinned as owed in `pkg/lang/except_as_name_test.go` under roadmap **Gap R.395**;
+  `print(type(err))` cannot even be written, because `type` is a reserved word here (**Gap R.396**), and
+  `except (ValueError, TypeError):` — the tuple spelling — does not parse either (**Gap R.397**).
+
 - **Once an arm accepts an exception, the exception is over** (ADR 0218). On both backends, the code
   after the `try` runs as if nothing had happened — the pending state does not survive the arm, in
   any direction the arm leaves by: falling through, `return`, `break` or `continue`. The compiled

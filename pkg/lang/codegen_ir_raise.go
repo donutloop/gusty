@@ -30,6 +30,11 @@ declare i64 @strlen(i8*)
 ; rt_die prints a generic line. The block is emitted only for programs that can raise.
 @exn_msg = internal global i8* null
 @exn_frame = internal global i8* null
+; @exn_arg is the raise's message with no "Type: " caption on it -- what str(err) is in the
+; reference, and so what "except Type as err:" binds. Every setExn writes it, including a raise
+; that carried nothing, which writes the empty text; a program that never raises never reads it.
+; (roadmap Gap R.113, ADR 0406)
+@exn_arg = internal global i8* null
 
 @.rt_die.hdr = private unnamed_addr constant [36 x i8] c"Traceback (most recent call last):\0A\00"
 @.rt_die.none = private unnamed_addr constant [26 x i8] c"gusty: uncaught exception\00"

@@ -218,6 +218,9 @@ var readSetRows = []readSetRow{
 	{"FString", func(e Expr) Expr {
 		return &FString{Parts: []FStringPart{{Lit: "v="}, {Expr: e}, {Lit: "!"}}}
 	}},
+	// What the exception in flight writes (roadmap Gap R.113, ADR 0406): the node the arm's `as` binding
+	// carries, read beside a subscript so the walker has to walk it like every other expression.
+	{"ExnMessage", func(e Expr) Expr { return &BinOp{Op: "+", L: e, R: &IntLit{Value: 1}} }},
 	{"BinOp", func(e Expr) Expr { return &BinOp{Op: "+", L: e, R: &IntLit{Value: 1}} }},
 	{"UnOp", func(e Expr) Expr { return &UnOp{Op: "-", X: e} }},
 	{"ChainCompare", func(e Expr) Expr {

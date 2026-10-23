@@ -202,7 +202,12 @@ func (n *MatchStmt) Span() Span { return n.Src }
 func (n *MatchStmt) stmtNode()  {}
 
 type ExceptClause struct {
-	Exn  *Name  `json:"exn,omitempty"`
+	Exn *Name `json:"exn,omitempty"`
+	// As is the name the arm binds the caught exception to (`except ValueError as err:`);
+	// empty when the source wrote no `as`. What the name holds on this backend is what the
+	// exception WRITES -- the message the raise carried -- which is the half `print(err)`,
+	// `str(err)` and an f-string show (roadmap Gap R.113, ADR 0406).
+	As   string `json:"as,omitempty"`
 	Body []Stmt `json:"body"`
 	Src  Span   `json:"span,omitempty"`
 }
@@ -314,6 +319,19 @@ type NoneLit struct {
 
 func (n *NoneLit) Span() Span { return n.Src }
 func (n *NoneLit) exprNode()  {}
+
+// ExnMessage names what the exception in flight WRITES: the message the raise carried, as a
+// text. The parser never builds it. The one program that reaches it is `except <Type> as name:`,
+// whose arm binds the name through this node in the codegen road that lowers the clause, because
+// the reference hands the arm an exception OBJECT and this backend, whose value word is one word
+// wide, gives the name what that object writes -- the half `print(name)` and `str(name)` show
+// (roadmap Gap R.113, ADR 0406; the object's own type name and `args` are roadmap Gap R.395).
+type ExnMessage struct {
+	Src Span `json:"span,omitempty"`
+}
+
+func (n *ExnMessage) Span() Span { return n.Src }
+func (n *ExnMessage) exprNode()  {}
 
 // Tuple is a comma-separated expression list `a, b` or `(a, b)`.
 type Tuple struct {

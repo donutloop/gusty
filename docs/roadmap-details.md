@@ -6004,7 +6004,7 @@ nothing, and the readers of a heap tag — `gc.kinds`, the collector, `rt_print_
 not the readers that need the answer. The distinction is why the row's plan said `elemKindTag` and why the
 print rule went a different way in ADR 0257 rather than waiting for a tag nothing would ask about.
 
-### Gap R.113 — `except <Type> as e:` is not in the grammar (OPEN, measured probing bools through a `try`)
+### Gap R.113 — `except <Type> as e:` is not in the grammar (CLOSED by **ADR 0406**, 2026-10-23; measured probing bools through a `try`)
 
 ```gusty
 try:
@@ -6019,8 +6019,33 @@ catch anything, and the arms are tried in source order (ADR 0213) — but nothin
 was caught, so its message is only reachable by printing a traceback. `docs/language.md` never claimed the
 binding, so this is unimplemented surface rather than a regression; it is filed here because a bool cycle
 reached for it while asking what `print(0 == None)` should look like inside a `try`, found nothing, and a
-defect that is measured and not written down is the same as one that does not exist. No test yet: the closure
-owes the program above running on three engines, and the test that pins today's parse failure comes with it.
+defect that is measured and not written down is the same as one that does not exist.
+
+**What closing it took.** The grammar grew the clause; the rest of the row is the decision ADR 0406 records —
+what the name holds. The reference hands the arm an exception OBJECT, and this backend's value is one word
+wide, so the arm is given what that object WRITES: the message the raise carried. That is why the raise now
+writes two globals — `@exn_msg` keeps the `"<Type>: <message>"` line the uncaught report prints, `@exn_arg`
+keeps the bare message — and why the binding interns through `@rt_str_intern2`, the same door every other text
+goes through: `print(err)`, `str(err)`, `f"{err}"`, `return err` and the print of that return are then one
+fact recorded once, not five roads that can disagree. The record it writes is `caughtVars` and deliberately not
+`internedVars`, because the reference itself splits the name in two: an exception PRINTS as its message and is
+not a string to `len`, to `.upper()`, to `+` or to `==`.
+
+| door | before (parent `5985031`) | today |
+|---|---|---|
+| `except ZZZ as err: print(err)` | exit 1, `parse error at 3:26: expected ":"` | `division by zero` at exit 0 |
+| `print("caught", err, "end")` | exit 1, same parse error | `caught division by zero end` |
+| `f"got: {err}"` | exit 1 | `got: division by zero` |
+| `return err` out of a function | exit 1 | `division by zero` |
+| `err` read by a method body | exit 1 | the message |
+| `len(err)` / `err.upper()` / `err == "…"` | exit 1 (parse) | refused in words, exit 1, naming Gap R.395 — the reference RAISES for all three |
+
+38 sources were recorded from CPython for this family (`tools/recmerge`), the record moving 8753 → 8791; the
+corpus gained `integration/programs/except_as_name.gy`, every line of which is what CPython prints for it.
+What the object still owes — `repr(err)`, `err.args`, `type(err)`, the name's life after the arm, the KeyError
+message the reference reprs, and the two doors the copy of a caught name opens — is **Gap R.395**; the `type`
+keyword that stopped the question being asked at all is **Gap R.396**; the tuple spelling of the clause is
+**Gap R.397**.
 
 ### Gap R.116 — a set or dict comprehension over verdicts refuses (DONE — ADR 0384, 2026-10-20)
 
@@ -17538,3 +17563,68 @@ Pinned as four `refuses` rows in `pkg/lang/ternary_container_test.go::ternaryCon
 `integration/ternary_container_test.go::ternaryContainerPinnedRows`, with the sentence, the exit code and an assertion
 that the program prints nothing on stdout while it is refused; the day a row prints the reference's bytes it fails and
 is DELETED.
+
+### Gap R.395 — the arm binds what the exception WRITES, not the object the reference answers about (filed by **ADR 0406**)
+
+```gusty
+try:
+    1/0
+except ZeroDivisionError as err:
+    print(repr(err))     # CPython ZeroDivisionError('division by zero') · this backend division by zero
+    print([err])         # CPython [ZeroDivisionError('division by zero')] · this backend [division by zero]
+    print(err.args)      # CPython ('division by zero',) · this backend refuses: unsupported attr expression
+    print("a" in err)    # CPython TypeError: argument of type ... is not iterable · this backend False
+print(err)               # CPython deletes the name: NameError · this backend prints the message
+```
+
+ADR 0406 gave the arm the half it could give honestly, and this row is the half it could not. The name holds an
+interned index into `@str_tab`, so every door that takes a text takes it — which is right for the four formatters
+(print, `str`, an interpolation, a return that the caller prints) and wrong for the doors that ask the object a
+question. Those are refused rather than answered, in the words ADR 0166 asks for: `len(err)` says
+`not a text to measure`, `err.upper()` says `not a text to call a method on`, `err == "division by zero"` says
+`not a text to compare against` — each naming the reference's own raise beside the missing word.
+
+Two shapes are NOT refusals and are pinned as the wrong answers they are: the caught name copied to a second name
+(`s = err`) carries the object's identity away with it, so `len(s)` answers `16`; and the name outlives the arm,
+which the reference deletes at the arm's end. The third is older than the binding and was found beside it: an
+explicit `raise KeyError("a: b")` stores the message as written, where the reference reprs a KeyError's argument
+in both `str(err)` and the traceback (`KeyError: 'a: b'`) — the machine's own missing-key raises already say
+`'k'` and agree.
+
+The answer is not another string road. It is the tagged value word of **L11.1** carrying an exception value with
+its class: `repr` through the renderer's exception form, `args` as the container the raise was handed, `type(err)`
+answering `<class 'ZeroDivisionError'>`, and a deletion at the arm's exit that turns a post-arm read into the
+NameError the reference raises.
+
+### Gap R.396 — `type` is a reserved word, so no program can ask a value what it is (filed by **ADR 0406**)
+
+```gusty
+print(type(1))        # CPython <class 'int'> · gustyc: parse error at 1:7: unexpected token, exit 1
+def type(x):          # CPython defines a function · gustyc: parse error at 1:5: expected identifier
+    return 1
+```
+
+`pkg/lang/token.go` lists `type` among the keywords, and the lexer has no soft-keyword notion, so the word cannot
+be an identifier anywhere in a program: the builtin cannot be called and the name cannot be defined. Found while
+asking an `except … as err:` arm the reference's question about what it caught — and answered identically by the
+parent binary, so it has nothing to do with the binding and everything to do with the surface.
+
+CPython reserves `type` for soft use only (`type` is an ordinary identifier; only `match`/`case` are context
+keywords). The fix is the same shape as the pattern grammar's: read `type` as an identifier everywhere except
+where a type is expected (annotations, `except`, class bases), and give the emitter the `type(v)` door — the
+reference's `<class 'X'>` for each kind the module can name, refused where the kind is one it cannot see. For the
+arm's name it wants Gap R.395's class.
+
+### Gap R.397 — a tuple of exception types does not parse either (filed by **ADR 0406**)
+
+```gusty
+try:
+    1/0
+except (ValueError, ZeroDivisionError):    # CPython runs the arm
+    print("caught")
+```
+
+`parse error at 3:8: expected ":"`, exit 1. The clause reads one optional NAME and then asks for the colon, so the
+parenthesised list — and its naming spelling `except (A, B) as e:`, which ADR 0406's clause would take for free —
+has no grammar at all. The lowering is cheap once the shape parses: the arm's `@exn_code` test becomes an `or` over
+the codes of the listed classes, and the accepting edge binds the name the way ADR 0406's single-type arm does.

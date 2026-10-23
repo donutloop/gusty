@@ -1,0 +1,104 @@
+# What an `except <Type> as name:` clause binds (roadmap Gap R.113, ADR 0406).
+#
+# The arm names what it took, and the name holds what the exception WRITES: the message the raise
+# carried, interned by the one door every other text goes through. Every line below prints the bytes
+# CPython prints for the same line — the reference hands the arm an exception OBJECT and prints that
+# object's message, and this backend, whose value is one word wide, gives the name exactly that half.
+#
+# The half it does not have is roadmap Gap R.395 and is written out in `integration/except_as_name_test.go`
+# with the reference's bytes beside it: `repr(err)`, `err.args`, `type(err)`, what the name does after the
+# arm, and the operand doors (`len`, a text method, `==`), which are refused here rather than answered with
+# the message dressed up as the object (ADR 0166).
+
+# a machine raise names itself
+try:
+    1 / 0
+except ZeroDivisionError as err:
+    print(err)
+
+# the message a `raise` carried
+try:
+    raise ValueError("boom")
+except ValueError as err:
+    print(err)
+
+# the colon inside a message belongs to the message
+try:
+    raise RuntimeError("a: b")
+except RuntimeError as err:
+    print(err)
+
+# a raise that carried nothing carries the empty text
+try:
+    raise IndexError
+except IndexError as err:
+    print("[" + str(err) + "]")
+
+# the name inside an interpolation
+try:
+    int("x")
+except ValueError as err:
+    print(f"caught: {err}")
+
+# the second arm is the one that matches, and only it binds
+try:
+    1 / 0
+except TypeError as te:
+    print("te", te)
+except ZeroDivisionError as ze:
+    print("ze", ze)
+
+# the catch-all arm names it too
+try:
+    print([1][9])
+except Exception as err:
+    print("any", err)
+
+# an arm that calls, then reads the name
+def note():
+    print("arm ran")
+
+d = {}
+try:
+    print(d["k"])
+except KeyError as err:
+    note()
+    print("after", err)
+
+# an inner arm that re-raises for the outer arm's name
+try:
+    try:
+        1 / 0
+    except ZeroDivisionError as inner:
+        print("inner", inner)
+        raise ValueError("second")
+except ValueError as outer:
+    print("outer", outer)
+
+# the name out of a function that returned it
+def grab():
+    try:
+        return 1 / 0
+    except ZeroDivisionError as err:
+        return err
+
+print(grab())
+
+# the name inside a method, and a `finally` that still runs
+class Box:
+    def check(self):
+        try:
+            return [1][4]
+        except IndexError as err:
+            return err
+        finally:
+            print("checked")
+
+print(Box().check())
+
+# the program continues after the arm
+try:
+    1 / 0
+except ZeroDivisionError as err:
+    print(err)
+print("tail")

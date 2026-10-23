@@ -439,6 +439,10 @@ const astIRSchemaTemplate = `{
         "exn": {
           "$ref": "#/definitions/expr"
         },
+        "as": {
+          "type": "string",
+          "description": "The name the clause binds the caught exception to, from an 'except T as name:' clause; absent when the source wrote no as. On this backend the name holds what the exception WROTE -- the message the raise carried -- which is what print, str and an interpolation of it show; the object itself (its type name, its args, its repr) is roadmap Gap R.395 (ADR 0406)."
+        },
         "body": {
           "type": "array",
           "items": {

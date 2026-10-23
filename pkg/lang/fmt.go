@@ -274,6 +274,13 @@ func writeTry(sb *strings.Builder, s *TryStmt, depth int) {
 			sb.WriteByte(' ')
 			writeExpr(sb, e.Exn, 0)
 		}
+		if e.As != "" {
+			// The formatter that dropped this would print a clause the program never wrote -- and
+			// print it as a DIFFERENT program, one that catches the exception and names nothing
+			// (roadmap Gap R.113, ADR 0406).
+			sb.WriteString(" as ")
+			sb.WriteString(e.As)
+		}
 		sb.WriteString(":\n")
 		writeBlock(sb, e.Body, depth+1)
 	}

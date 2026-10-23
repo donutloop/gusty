@@ -606,6 +606,11 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// This case looks obvious in hindsight and was missing, which is why the ternary arm below
 		// could ask "are both arms text?" of two StrLits and be told no (Gap R.173, ADR 0290).
 		return true
+	case *ExnMessage:
+		// `except T as err:` binds the name to what the raise carried, interned: the word in the
+		// slot is an @str_tab index, so printing it shows the message and not the position of the
+		// message in the intern table (roadmap Gap R.113, ADR 0406).
+		return true
 	case *FString:
 		// An interpolation answers an @str_tab index — the same word a text literal answers — so a
 		// name bound from one (`s = f"x{n}"`) prints as its text and not as the index underneath it
@@ -613,7 +618,11 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// the binding and the direct print of one interpolation cannot disagree about which is a text.
 		return true
 	case *Name:
-		return g.internedVars[v.Value]
+		// The name an `except ... as` clause bound prints as its text too: the print road shows the
+		// message the raise carried, while the operand roads keep asking `exprIsString` and are told
+		// no, which is the split the reference draws between an exception and the text it says
+		// (roadmap Gap R.113, ADR 0406).
+		return g.internedVars[v.Value] || g.caughtVars[v.Value]
 	case *Attr:
 		// `self.w = "hi"` in the class, `print(C().w)` outside it: the slot holds an
 		// @str_tab index, so printing it must show the text (Gap R.42, ADR 0224).

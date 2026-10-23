@@ -146,9 +146,9 @@ func TestABoundThatIsNotAPositionRaisesThroughTheCLI(t *testing.T) {
 }
 
 // TestABadBoundIsCatchableThroughTheCLI keeps the raise inside the program's world: a bad bound is caught by
-// the handler that catches the reference's TypeError, and by the nameless arm too (ADR 0243). There is no row
-// for `except TypeError as e:` — the `as` clause is not in the grammar at all, which is roadmap Gap R.113's
-// open row, not this raise's business.
+// the handler that catches the reference's TypeError, by the nameless arm too (ADR 0243), and by the arm that
+// NAMES what it took — the last of those is the same raise read from the door roadmap Gap R.113 kept shut until
+// ADR 0406 opened it, so the row here is the raise's and the arm's together.
 func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -159,6 +159,7 @@ func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 		{"named", "xs = [1, 2, 3]\nflt = 1.5\ntry:\n    print(xs[flt:3])\nexcept:\n    print(\"caught\")"},
 		{"in a function", "def at(k):\n    xs = [1, 2, 3]\n    print(xs[0:k])\n\ntry:\n    at(\"a\")\nexcept TypeError:\n    print(\"caught\")"},
 		{"after output", "xs = [1, 2, 3]\ntxt = \"a\"\nprint(\"first\")\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"caught\")\nprint(\"last\")"},
+		{"the arm names what it took", "xs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError as err:\n    print(\"caught\", err)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

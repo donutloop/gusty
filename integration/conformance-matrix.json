@@ -4314,6 +4314,27 @@
     },
     {
       "case": {
+        "id": "programs/except_as_name",
+        "name": "except_as_name.gy",
+        "source": "# What an `except \u003cType\u003e as name:` clause binds (roadmap Gap R.113, ADR 0406).\n#\n# The arm names what it took, and the name holds what the exception WRITES: the message the raise\n# carried, interned by the one door every other text goes through. Every line below prints the bytes\n# CPython prints for the same line — the reference hands the arm an exception OBJECT and prints that\n# object's message, and this backend, whose value is one word wide, gives the name exactly that half.\n#\n# The half it does not have is roadmap Gap R.395 and is written out in `integration/except_as_name_test.go`\n# with the reference's bytes beside it: `repr(err)`, `err.args`, `type(err)`, what the name does after the\n# arm, and the operand doors (`len`, a text method, `==`), which are refused here rather than answered with\n# the message dressed up as the object (ADR 0166).\n\n# a machine raise names itself\ntry:\n    1 / 0\nexcept ZeroDivisionError as err:\n    print(err)\n\n# the message a `raise` carried\ntry:\n    raise ValueError(\"boom\")\nexcept ValueError as err:\n    print(err)\n\n# the colon inside a message belongs to the message\ntry:\n    raise RuntimeError(\"a: b\")\nexcept RuntimeError as err:\n    print(err)\n\n# a raise that carried nothing carries the empty text\ntry:\n    raise IndexError\nexcept IndexError as err:\n    print(\"[\" + str(err) + \"]\")\n\n# the name inside an interpolation\ntry:\n    int(\"x\")\nexcept ValueError as err:\n    print(f\"caught: {err}\")\n\n# the second arm is the one that matches, and only it binds\ntry:\n    1 / 0\nexcept TypeError as te:\n    print(\"te\", te)\nexcept ZeroDivisionError as ze:\n    print(\"ze\", ze)\n\n# the catch-all arm names it too\ntry:\n    print([1][9])\nexcept Exception as err:\n    print(\"any\", err)\n\n# an arm that calls, then reads the name\ndef note():\n    print(\"arm ran\")\n\nd = {}\ntry:\n    print(d[\"k\"])\nexcept KeyError as err:\n    note()\n    print(\"after\", err)\n\n# an inner arm that re-raises for the outer arm's name\ntry:\n    try:\n        1 / 0\n    except ZeroDivisionError as inner:\n        print(\"inner\", inner)\n        raise ValueError(\"second\")\nexcept ValueError as outer:\n    print(\"outer\", outer)\n\n# the name out of a function that returned it\ndef grab():\n    try:\n        return 1 / 0\n    except ZeroDivisionError as err:\n        return err\n\nprint(grab())\n\n# the name inside a method, and a `finally` that still runs\nclass Box:\n    def check(self):\n        try:\n            return [1][4]\n        except IndexError as err:\n            return err\n        finally:\n            print(\"checked\")\n\nprint(Box().check())\n\n# the program continues after the arm\ntry:\n    1 / 0\nexcept ZeroDivisionError as err:\n    print(err)\nprint(\"tail\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "division by zero\nboom\na: b\n[]\ncaught: invalid literal for int() with base 10: 'x'\nze division by zero\nany list index out of range\narm ran\nafter 'k'\ninner division by zero\nouter second\ndivision by zero\nchecked\nlist index out of range\ndivision by zero\ntail\n",
+      "python_ok": true,
+      "python_stdout": "division by zero\nboom\na: b\n[]\ncaught: invalid literal for int() with base 10: 'x'\nze division by zero\nany list index out of range\narm ran\nafter 'k'\ninner division by zero\nouter second\ndivision by zero\nchecked\nlist index out of range\ndivision by zero\ntail\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5479,11 +5500,11 @@
       ]
     }
   ],
-  "rows": 231,
+  "rows": 232,
   "skipped": 29,
-  "pass": 202,
+  "pass": 203,
   "fail": 0,
-  "oracle_match": 188,
+  "oracle_match": 189,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

@@ -897,6 +897,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// parameter, the ordering builtin, a membership test, a comparison, a `while` body, a `for` body, a method
 		// body, an `except` handler and a `match` arm, and the file's every line is what CPython prints for it.
 		"ternary_container",
+		// An `except <Type> as name:` clause binds the name the arm reads, to what the exception WRITES
+		// (**ADR 0406**, roadmap Gap R.113). The family reaches the print door, an interpolation, a second
+		// arm, an arm that calls and then reads, an inner arm that re-raises for an outer one, a function
+		// that returns the name and a method with a `finally`, and the file's every line is what CPython
+		// prints for it.
+		"except_as_name",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -1325,6 +1331,8 @@ var oracleLedger = map[string]oracleDecl{
 	// carries no global in a value position and the program prints the reference's line (roadmap Gap R.128,
 	// paid by **ADR 0405**, which read the same road from the print door as roadmap Gap R.385).
 	"programs/probe_ternary_container_arms": {oracle: lang.OracleMatch},
+	// What the arm names is what the exception writes: every line of the file is the reference's bytes.
+	"programs/except_as_name": {oracle: lang.OracleMatch},
 	"programs/probe_round_digit_count_kind_unseen": {oracle: lang.OracleDebt,
 		reason: "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
 		ref:    "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",

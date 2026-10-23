@@ -14381,3 +14381,48 @@ cycle wrote against the same fault deleted with it. The process half, which is w
   sequencing note). Closing only the queue row would have left three claims that the flip is future
   work — and the `Rows owed` guard then recomputed 180 → 179 of 300, which is the tracker checking my
   own arithmetic.
+
+
+## ADR 0406 — an `except … as name:` arm binds what the exception writes (Gap R.113 closed; Gaps R.395, R.396, R.397 filed, 2026-10-23)
+
+**What was measured, not remembered.** The row was written 2026-10-02 and had never been re-asked; before writing a
+line I ran the idiom through the parent binary (`5985031`) and through `python3` in one temp dir. Parent: exit 1,
+`parse error at 3:26: expected ":"`. CPython: `division by zero`. That is the whole justification for the cycle, and
+it is also the reason the row had stayed open for three weeks — nobody had asked whether the sentence in the ledger
+still described the binary on the machine.
+
+**The decision, in one sentence.** The reference hands an arm an exception OBJECT; this backend's value word is one
+`i32`, so the arm is handed what that object **writes** — the message — interned by the one door every other text
+uses, and the doors that ask the *object* a question are refused instead of answered with the message wearing the
+object's clothes.
+
+**The two-record split was the whole trick.** `print(err)` needs `printsAsInternedStr` to say yes; `len(err)` needs
+`exprIsString` to say no. Both read `internedVars`, so a single record forces one of the two to lie — and the wrong
+way to lie is the exit-0 one (`len(err)` → `16`, `err.upper()` → `DIVISION BY ZERO`, `err == "division by zero"` →
+`True`). A separate `caughtVars`, consulted by the print/formatter roads only, is the split the reference itself
+draws. It is a *deliberate* exception to ADR 0229's "one question, asked once", and the ADR says so out loud rather
+than leaving a reader to find two predicates that disagree.
+
+**Three lessons worth keeping.**
+
+1. **The binding road, not a copy of it.** `bindCaughtName` builds an `AssignStmt` over a node the parser never
+   produces (`ExnMessage`) and hands it to `stmtAssign`. Every record the family depends on — ADR 0172's
+   latest-binding reset, the ADR 0228 written-flag, GC rooting, the float-slot decision — is then written by the road
+   that already knows how. My first attempt emitted the slot and store by hand; it printed the *previous* binding's
+   constant (`err = "stale"` before the `try` won the read) precisely because it skipped the road's records.
+2. **"undefined name" came from four censuses, not one.** After the parser change, the arm's own `print(err)` still
+   failed: `bodyBoundNames`, `collectModuleBindings`, `moduleBindingNames`, the written-flag walk in `boundflags.go`,
+   `params.go`'s rebinding census and escape analysis's `nonListAssign` each had to learn that the arm binds. The
+   `with … as` clause was the precedent at every one of them — when adding a binding form, grep for the existing
+   binding form rather than for the statement you are adding.
+3. **Ask the reference the question the row does not ask.** `print(type(err))` was written into a probe table as an
+   ordinary way to ask what the arm caught, and it came back `parse error at 4:11: unexpected token`: `type` is in the
+   lexer's keyword table, so *no program in this language can call `type()`*. That is Gap R.396, and it would never
+   have been found by reading the roadmap, because the roadmap only lists questions anybody thought to ask. Same for
+   `except (A, B):` (Gap R.397).
+
+**What the pins hold.** `TestWhatTheCaughtNameStillOwesPinsTheDivergence` and its CLI twin carry nine rows of
+"still wrong", each with the reference's bytes beside this backend's, and each written to fail if it ever starts
+agreeing — the only shape of a regression test that cannot decay into a rumour. The corpus program
+`integration/programs/except_as_name.gy` was byte-compared with `python3` before it was registered, and the matrix
+moved 231 → 232 rows with `oracle_match` 188 → 189.
