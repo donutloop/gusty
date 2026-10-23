@@ -14468,3 +14468,62 @@ deleted.
    byte-identical on the parent build, which is the difference between "this door broke it" and "this door found it".
    The A/B harness makes that distinction mechanically, so the sentence in the ADR is a measured claim and not a
    hunch about blame.
+
+## ADR 0408 — the join seam is the concatenation (Gap R.403 closed; Gaps R.404, R.405, R.406 filed, 2026-10-24)
+
+`n = 3` / `print("-".join([f"a{n}", "z"]))` printed `a3-z` in the reference and exited **1** here with
+`join() list elements must be constant strings`. `str.join` was a fold over `*StringLit`s, and one interpolation in
+the list dropped the program out of the road. The row is closed, and the interesting part is not the seam.
+
+1. **A refusal is not the boundary of a feature — it is often a wall in front of three wrong answers.** The first
+   probe family over "what should `join` answer" measured 3 of 33 agreeing on the parent build. After the seam
+   landed, three programs began reaching exit 0 with wrong bytes: `def f(): return "-".join([f"a{n}", "z"])`
+   printed **`6`**, the same body through a frame-local `s` printed `6` and `10`, and a join arm beside a number arm
+   printed `a-b` and `(null)`. `6` is the `@str_tab` **index** of `a3-z` — the number the intern table stores that
+   text under — printed as a number. Every one of them was a **pre-scan** verdict: a caller holds one word and a
+   name, and the scan that decides which printer gets that word had never heard of `join`. Had I stopped at "the
+   refusal is now correct", all three would have shipped.
+2. **"One door per construction" is a measurement, not a taste.** My first draft of the ADR said the row *needed* a
+   runtime join. It did not: `@rt_str_cat` has built texts while the program ran since **ADR 0229**, on the `+` road,
+   interning into the same `@str_tab`; a join is that concatenation with the separator between the neighbours. The
+   guard now asserts the module gains **no `define`** from this row and that the all-constant program still emits **no
+   `@rt_str_cat`** — a claim about absence has to be a test, or the next "helpful" rewrite silently un-folds the easy
+   case and nobody notices for forty ADRs.
+3. **A fact the compiler asks twice is a fact that answers yes once.** `join` was already in the method fold's
+   table of text-answering methods (`textMethodAnswersText`) and in none of the shape predicates the pre-passes ask
+   (`isStringExpr`, `isStrUnder`) — which is exactly how a method answers *as a text* in one position and *as an
+   index* in another. The fix is **ADR 0232**'s rule again: `joinShapeIsText` joins the formatting door (**ADR 0360**)
+   and the repeat door (**ADR 0365**) in the shape predicate, `isStrUnder` answers `join` beside the case family, and
+   the print road, the parameter census, the `return` road and the answer-kind census all start seeing the same
+   thing. The per-node alternative — special-case a join operand at the print door — is what **ADR 0407** measured at
+   49-of-80 against a binding's 111-of-178; interception answers positions it recognises, and the census answers
+   everywhere.
+4. **Walk the body before judging the body.** `scanStringBindings` asked "does this `def` hand back a text?" *before*
+   walking its own statements, so a frame-local `s = <text>` was not yet in `internedVars` when the function's answer
+   was typed. Moving the walk above the judgement changed exactly one class of verdict — the one a body earns from its
+   own bindings — because a `def` written later already saw those names either way. Ordering bugs in a pre-pass are
+   invisible until a program is written that depends on the missing fact; the program here was twelve characters long
+   (`s = ` … `return s`).
+5. **The answer-kind census has an arm shape it cannot see, and the control row is what filed it.** A body with a
+   join arm and a number arm should be *carried* by the **ADR 0368** plan (mixed bodies answer, they are not refused);
+   it was not, because `answerArmOf` classifies a literal, an interpolation, a text door and a call — not a **name**
+   `internedVars` holds — so the body looked one-kind and got one printer. The evidence that this is the census's and
+   not `join`'s: the same body spelled `s = "ab".upper()` prints `AB` / `(null)` on the parent build too, byte for
+   byte. That control is a test row now, beside the join row, both pinned at the wrong bytes with the reference's
+   answer next to them (**Gap R.406**). A wrong answer you can attribute is a row; one you cannot is a rumour.
+6. **A raise belongs to the program, a refusal belongs to the compiler.** An element the compiler can *see* is not a
+   text now traps at exit **3** with the reference's `TypeError: sequence item 1: expected str instance, int found`
+   (`bool` spelled `bool`, `None` spelled `NoneType`), catchable by the program's own `except TypeError:`; an element
+   whose kind it cannot read is refused at exit 1. The fold-era road had this backwards — exit-1 prose for the case the
+   reference answers by raising. `--json` gives the trap its `exception` / `exception_message` / `frames`; a refusal
+   gives a `capability` code. Those two faces must not be conflated, or an agent reads a program's bug as the
+   compiler's limitation.
+7. **The recorder's refusals are the rows.** `tools/recmerge` wrote 33 entries for this family from CPython
+   (`8851 → 8884`) and refused four programs; those four refusals are **Gap R.404**, **Gap R.405** and the two
+   **Gap R.406** pins (**ADR 0309**). A table whose expectations the backend wrote would have called all four green.
+8. **Trust the grep, not the memory.** Twice this cycle I reasoned from a "read" of a file that turned out not to hold
+   what I remembered — `isTextShape`, `tagForTypeName`, `funcReturnType` are not in this package, and acting on them
+   cost failed builds and one wrong diagnosis ("the fold mixes string objects with the string struct", which was a
+   story about code I had not actually re-read). The discipline that fixed it: before editing on the strength of a
+   remembered body, `grep` for a distinctive token from it, and if the token is absent, re-read the file. A model's
+   confidence is not evidence about a file; the file is.

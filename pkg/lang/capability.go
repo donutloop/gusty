@@ -398,14 +398,26 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	},
 	{
 		Code:       "lower.unsupported.join-needs-constant",
-		Shape:      "str.join over a list the compiler cannot see element by element",
-		Suggestion: "write the list out at the call (\",\".join([\"a\", \"b\"])), or build the string with += in a loop — join is folded over a constant list of constant strings",
-		Rows:       []string{"Gap I.2", "L11.1"},
+		Shape:      "str.join over a list the program built rather than wrote at the call",
+		Suggestion: "write the list out at the call (\"\".join([f\"a{n}\", \"z\"]) is answered, runtime slots and all — ADR 0408), or build the string with += in a loop; a list bound to a NAME is the run-time walk of the object that Gap R.404 still owes",
+		Rows:       []string{"Gap R.404", "Gap I.2", "L11.1"},
 		Markers: []string{
 			"join() argument must be a constant list",
-			"join() list elements must be constant strings",
 		},
 		Sample: "xs = [\"a\", \"b\"]\nprint(\",\".join(xs))",
+	},
+	{
+		// The join seam concatenates texts, so a slot the compiler CANNOT read is a slot whose kind it would be
+		// guessing at. Where the compiler can see the slot is not a text it raises the reference's own catchable
+		// `TypeError: sequence item N: expected str instance, X found` (roadmap Gap R.403, ADR 0408) — that is a trap
+		// and gets no code here, because nothing was declined. This entry is the other half: the slot whose kind no
+		// road can name, which is declined at exit 1 rather than interned as somebody's repr.
+		Code:       "lower.unsupported.join-element-kind-unknown",
+		Shape:      "str.join over a slot whose kind no road can name as a text",
+		Suggestion: "give that slot a text the compiler can read — a literal, an interpolation, a text-returning call — since the seam is a chain of concatenations of texts; where the compiler can see the slot is not a text it raises the reference's TypeError instead, and a slot whose kind it cannot see is declined rather than printed as a repr the reference never builds",
+		Rows:       []string{"Gap R.400", "L11.1"},
+		Markers:    []string{"is not a text: the seam is built by concatenating texts"},
+		Sample:     "def g(v):\n    return v\n\nprint(\"-\".join([g(1), \"z\"]))",
 	},
 	{
 		Code:       "lower.unsupported.method-receiver-unreadable",

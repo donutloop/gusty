@@ -17686,3 +17686,73 @@ and use the vocabulary the package already has — `irGen`, `containerAnswer` wi
 house rule ("a row that stops being true FAILS, and the case is DELETED rather than edited") is what made me
 measure the local road instead, which is where the `xs[1]` → `1` discovery came from and why the door has the guard
 it has.
+
+### Gap R.403 — the join seam is the concatenation, closed by **ADR 0408**
+
+```gusty
+n = 3
+print("-".join([f"a{n}", "z"]))     # CPython: a3-z
+                                  # before ADR 0408: exit 1, `join() list elements must be constant strings`
+print("-".join(["a", "b"]))        # answered, always — the fold reads two constants and calls strings.Join
+```
+
+**The refusal described a limitation the backend did not have.** `str.join` was a fold over `*StringLit`s: read
+every slot as a constant, glue them, intern the result. One interpolation in the list and the program fell out of
+the road — not for want of a runtime. `@rt_str_cat` has built a text *while the program ran* since **ADR 0229**;
+it is the door `s + t` walks, it interns into the same `@str_tab`, and a join is nothing but its concatenation
+with the separator between the neighbours. The row's first draft said "the runtime door is what this needs"; the
+measurement said the runtime door was already open, and the honest form of the row became "the fold never asked".
+
+**The fold is kept, and the guard is what keeps it kept.** An all-constant list still folds — `TestTheJoinSeamIs
+BuiltByTheDoorTheConcatenationRoadAlreadyUses` asserts the constant program emits **no** `@rt_str_cat`, and that a
+runtime-slot program emits exactly two per seam and no new `define` anywhere in the module. A rewrite that quietly
+routed the easy case through the runtime would be a slower build and a passing test in most suites; here it is a
+failing assertion, which is the only kind of memory a compiler suite can actually keep.
+
+**A raise is not a refusal.** An element the compiler can see is not a text is the reference's `TypeError`, at
+exit **3**, catchable by the program's own `except TypeError:`, carrying `sequence item N: expected str instance,
+int found` — index and all, with `bool` spelled `bool` and `None` spelled `NoneType`, because those are the words
+the reference uses and an agent greps for them. An element whose kind the compiler *cannot* read is refused at
+exit 1: interning somebody's `repr` where the reference raises is a wrong answer at the exit code of success, and
+**ADR 0166** has opinions about which of those two is survivable. The fold-era road had it backwards — exit 1
+prose for the provable case, and the impossible case never got that far.
+
+**Three wrong answers found behind a refusal, all of them pre-scan verdicts.** The interesting part of this row is
+not the seam. `str.join` sat in the method fold's own table of text-answering methods (`textMethodAnswersText`) and
+nowhere else — so the roads that decide *how a word is printed* never heard of it:
+
+| program | CPython | first attempt at this commit |
+|---|---|---|
+| `def f():` / `    n = 3` / `    return "-".join([f"a{n}", "z"])` / `print(f())` | `a3-z` | `6` |
+| `def f(n):` / `    s = "-".join([f"a{n}", "z"])` / `    return s` / `print(f(3))` / `print(f(4))` | `a3-z`, `a4-z` | `6`, `10` |
+| `def f(k):` / `    if k:` / `        return "-".join(["a", "b"])` / `    return 7` / `print(f(True))` / `print(f(False))` | `a-b`, `7` | `a-b`, `(null)` |
+
+`6` is the `@str_tab` **index** of `a3-z` — the number the table stores that text under, printed as a number, at
+exit 0. It is **Gap R.219**'s signature, and the fix is the one that family has always needed: the fact that a join
+answers a text has to live in the *shape* predicates the pre-passes ask (`isStringExpr`, `isStrUnder`), not in the
+door that emits it, because the caller never sees the body — it holds one word and a name. The second row needed
+one more thing: `scanStringBindings` judged a `def` before walking its own body, so a frame-local `s` was not yet
+in `internedVars` when the function's answer was typed. Walk first, then judge; a `def` written later already saw
+those names either way, so the only verdict that changes is the one the body itself earns.
+
+**Why the third row became a row instead of a fix.** A body with a text arm and a number arm is **ADR 0368**'s
+case: `answerOwns` declines to give it a one-kind table entry, the body stores the tag beside the payload, and each
+reader takes its own answer — the mixed shape *answers*, which is why ADR 0368 refused to refuse it. Here the body
+looked one-kind, because `answerArmOf` classifies a literal, an interpolation, a text door and a call, and cannot
+see a **name** the pre-scan holds as text: `s = "-".join([...])` / `return s` beside `return 7` printed `a-b` and
+`(null)`. The control that keeps this honest is the same body spelled `s = "ab".upper()`, which prints `AB` and
+`(null)` **on the parent build `72d1755` too** — byte for byte. The census owns it, not the seam, so it is
+**Gap R.406**: pinned at the wrong bytes, in both test files, with the reference's answer beside each, and the
+definition of done is the two rows being deleted.
+
+**What the record refused is what the rows are.** `tools/recmerge` wrote 33 entries for this family from CPython
+(record 8851 → 8884) and **refused** four programs — the list the program built (**Gap R.404**), the separator the
+program built (**Gap R.405**), and the two wrong-answer bodies (**Gap R.406**). A recorder that will not write an
+answer its backend cannot produce is how a refusal stays visible instead of becoming a passing test with a
+hand-written expectation (**ADR 0309**). The two refusals are pinned with the sentence they carry today; the two
+wrong answers are pinned with `(null)` in them, which is ugly on purpose.
+
+**Family measurement** (35 unique programs across the two files, each asked of the pinned CPython, parent build
+beside this one): **3 agreed before, 31 after — 28 newly answering, 0 regressed.** The three that agreed before are
+the pure-fold controls, which is the whole row in one statistic: everything with a runtime slot in the list was
+refused.

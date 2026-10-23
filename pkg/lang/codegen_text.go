@@ -89,7 +89,31 @@ func isStringExpr(e Expr) bool {
 		// string (roadmap Gap R.31, L11.1, ADR 0360; the repeat's half is Gap R.33, ADR 0365).
 		return true
 	}
+	if joinShapeIsText(e) {
+		// And so does the JOIN seam: `"-".join([...])` answers the one @str_tab index its `@rt_str_cat` chain
+		// interned, so the same pre-passes — the answer-kind census above all — have to see it as a text, or a
+		// body with one join arm and one number arm registers `strFuncs` on the join's evidence and prints the
+		// number's table position (roadmap Gap R.403, ADR 0408, beside Gap R.219 / ADR 0368).
+		return true
+	}
 	return false
+}
+
+// joinShapeIsText is the join's half of the shape question, asked with no compiler state to consult:
+// a call spelled `<a text>.join(<one argument>)` answers one interned text, because the seam is built by
+// the door the concatenation road already uses and that door's answer is an index (roadmap Gap R.403,
+// ADR 0408). The receiver must be a text the SHAPE can see: a name the program bound is the runtime-receiver
+// road **Gap R.405** still owes, and the door refuses it rather than guess.
+func joinShapeIsText(e Expr) bool {
+	c, ok := e.(*Call)
+	if !ok || len(c.Args) != 1 {
+		return false
+	}
+	at, ok := c.Fn.(*Attr)
+	if !ok || at.Name.Value != "join" {
+		return false
+	}
+	return isStringExpr(at.Obj)
 }
 
 // --- the one question a built text asks ------------------------------------------------

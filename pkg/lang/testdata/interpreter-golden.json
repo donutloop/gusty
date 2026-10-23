@@ -1,5 +1,174 @@
 {
  "entries": {
+"class T:\n    def row(self, n):\n        return \"-\".join([f\"a{n}\", \"z\"])\n\nprint(T().row(3))\n": {
+    "stdout": "a3-z\n",
+    "hasStdout": true
+   },
+
+"def f():\n    n = 3\n    return \"-\".join([f\"a{n}\", \"z\"])\n\nprint(f())\n": {
+    "stdout": "a3-z\n",
+    "hasStdout": true
+   },
+
+"def f(k):\n    if k:\n        return \"-\".join([\"a\", \"b\"])\n    return 7\n\nprint(f(True))\nprint(f(False))\n": {
+    "stdout": "a-b\n7\n",
+    "hasStdout": true
+   },
+
+"def f(n):\n    return \"-\".join([f\"a{n}\", \"z\"])\n\nif f(3) == \"a3-z\":\n    print(\"eq\")\nelse:\n    print(\"ne\")\n": {
+    "stdout": "eq\n",
+    "hasStdout": true
+   },
+
+"def f(n):\n    s = \"-\".join([f\"a{n}\", \"z\"])\n    return s\n\nprint(f(3))\nprint(f(4))\n": {
+    "stdout": "a3-z\na4-z\n",
+    "hasStdout": true
+   },
+
+"def show(s):\n    print(s)\n\nshow(\"-\".join([f\"a{3}\", \"z\"]))\n": {
+    "stdout": "a3-z\n",
+    "hasStdout": true
+   },
+
+"n = 1\nprint(\"Ã©\".join([f\"a{n}\", \"z\"]))\n": {
+    "stdout": "a1Ã©z\n",
+    "hasStdout": true
+   },
+"c = 1\nn = 2\nprint(\"-\".join([f\"a{n}\" if c else \"f\", \"z\"]))\n": {
+    "stdout": "a2-z\n",
+    "hasStdout": true
+   },
+
+"def t():\n    return \"q\"\n\nn = 3\nprint(\"-\".join([f\"a{n}\", t()]))\n": {
+    "stdout": "a3-q\n",
+    "hasStdout": true
+   },
+
+"n = 1\nprint(\", \".join([f\"x{n}\", f\"y{n}\", \"z\"]))\n": {
+    "stdout": "x1, y1, z\n",
+    "hasStdout": true
+   },
+
+"n = 1\nprint(\"é\".join([f\"a{n}\", \"z\"]))\n": {
+    "stdout": "a1éz\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"\".join([f\"a{n}\", \"z\"]))\n": {
+    "stdout": "a3z\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"\".join([f\"a{n}\"]) == \"a3\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join((\"a\", f\"b{n}\")))\n": {
+    "stdout": "a-b3\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([1, \"z\"]))\n": {
+    "err": "TypeError: sequence item 0: expected str instance, int found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 0: expected str instance, int found"
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\" + \"!\", \"z\"]))\n": {
+    "stdout": "a3!-z\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\", \"z\"]) == \"a3-z\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\", \"z\"]))\n": {
+    "stdout": "a3-z\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\", 1]))\n": {
+    "err": "TypeError: sequence item 1: expected str instance, int found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 1: expected str instance, int found"
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\".upper(), \"z\"]))\n": {
+    "stdout": "A3-z\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([f\"a{n}\"]))\n": {
+    "stdout": "a3\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(\"-\".join([{\"a\": 1}, \"z\"]))\n": {
+    "err": "TypeError: sequence item 0: expected str instance, dict found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 0: expected str instance, dict found"
+   },
+
+"n = 3\nprint(\"--\".join([f\"a{n}\", \"z\"]))\n": {
+    "stdout": "a3--z\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint(1)\ntry:\n    print(\"-\".join([1, f\"a{n}\"]))\nexcept TypeError as e:\n    print(\"caught:\", e)\n": {
+    "stdout": "1\ncaught: sequence item 0: expected str instance, int found\n",
+    "hasStdout": true
+   },
+
+"n = 3\nprint([\"-\".join([f\"a{n}\", \"z\"]), 1])\n": {
+    "stdout": "['a3-z', 1]\n",
+    "hasStdout": true
+   },
+
+"n = 3\ns = \"-\".join([f\"a{n}\", \"z\"])\nprint(s.upper(), len(s))\n": {
+    "stdout": "A3-Z 4\n",
+    "hasStdout": true
+   },
+
+"print(\"\".join([\"a\", \"b\"]))\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"print(\"-\".join([\"a\", \"b\"]))\n": {
+    "stdout": "a-b\n",
+    "hasStdout": true
+   },
+
+"print(\"-\".join([\"a\"]))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"print(\"-\".join([1.5, \"z\"]))\n": {
+    "err": "TypeError: sequence item 0: expected str instance, float found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 0: expected str instance, float found"
+   },
+
+"print(\"-\".join([None, \"z\"]))\n": {
+    "err": "TypeError: sequence item 0: expected str instance, NoneType found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 0: expected str instance, NoneType found"
+   },
+
+"print(\"-\".join([True, \"z\"]))\n": {
+    "err": "TypeError: sequence item 0: expected str instance, bool found",
+    "exnType": "TypeError",
+    "exnMsg": "sequence item 0: expected str instance, bool found"
+   },
+
+"print(\"-\".join([]))\n": {
+    "stdout": "\n",
+    "hasStdout": true
+   },
 "xs = [1, 2]\n\ndef show():\n    print(xs[0])\n\nshow()\n": {
     "stdout": "1\n",
     "hasStdout": true

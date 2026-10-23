@@ -123,10 +123,17 @@ func (g *irGen) scanStringBindings(stmts []Stmt) {
 			// view — marking one made a caller read a handle as an index and llc rejected the
 			// module (the async repro, caught by the suite, ADR 0166's rule about blaming the
 			// compiler). Its body is still walked, because a def inside it can be ordinary.
+			//
+			// The body is walked FIRST, and the shape question asked afterwards. A def that assigns the text to
+			// its own local and hands that name back — `s = "-".join([...])` / `return s` — is judged from the
+			// notebook its own body fills, and asking before the walk meant the name was not yet in `internedVars`:
+			// the def registered no `strFuncs` entry and the caller printed the interned INDEX (roadmap Gap R.403,
+			// ADR 0408). A def written later already saw these names either way, so the only verdict that changes
+			// is the one the body itself earns.
+			g.scanStringBindings(n.Body)
 			if !n.Async && !g.answerOwns(n.Name) && (g.methodReturnsStr(n) || returnsStringExpr(g, n)) {
 				g.strFuncs[n.Name] = true
 			}
-			g.scanStringBindings(n.Body)
 		case *IfStmt:
 			g.scanStringBindings(n.Then)
 			for _, el := range n.Elifs {
@@ -249,6 +256,13 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 			// number a text is stored under — instead of the text.
 			case "upper", "lower", "title", "capitalize", "swapcase", "strip", "lstrip", "rstrip":
 				return argcOf(v) <= trimArgBudget(at.Name.Value)
+			case "join":
+				// `return "-".join([...])` hands back ONE interned text whatever the slots are, because the seam
+				// is a chain of `@rt_str_cat` and that door's answer is an index (roadmap Gap R.403, ADR 0408).
+				// A name missing here is this shape's own `print(f("  café "))`: `def f(): return "-".join([...])`
+				// registered no `strFuncs` entry, so the caller read the interned INDEX and printed `6` for `a3-z`
+				// at exit 0 — the byte the table stores the text under, not the text.
+				return argcOf(v) == 1 && isStrUnder(g, at.Obj, params)
 			}
 		}
 		return false

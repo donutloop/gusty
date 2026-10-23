@@ -689,14 +689,67 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			return "", fmt.Errorf("join() argument must be a constant list")
 		}
 		parts := []string{}
+		allConstant := true
 		for _, el := range ll.Elems {
 			sv, ok := g.stringVal(el)
 			if !ok {
-				return "", fmt.Errorf("join() list elements must be constant strings")
+				allConstant = false
+				break
 			}
 			parts = append(parts, sv)
 		}
-		v = strings.Join(parts, v)
+		if allConstant {
+			v = strings.Join(parts, v)
+			break
+		}
+		// A slot the compiler cannot read is not a slot the seam cannot cross. `"-".join([f"a{n}", "z"])`
+		// is the same three texts the `+` road already bolts together while the program runs, and it needs
+		// no new door to do it: one `@rt_str_cat` per seam, the separator interned once, in the order the
+		// source wrote. The elements are asked one at a time through `strReg`, which is the same question
+		// concatenation asks — is this expression a text, and where is its index — so a list that holds a
+		// number, a container or a verdict is declined here rather than interned as somebody's repr
+		// (roadmap Gap R.403, ADR 0408; the reference raises TypeError for that program, which it owns).
+		//
+		// An EMPTY list is answered by the fold above (nothing to concatenate, the empty text back); a
+		// ONE-element list never reaches the seam at all, and returns its element's own index.
+		if len(ll.Elems) == 0 {
+			v = ""
+			break
+		}
+		if cls, named := g.joinItemKind(ll.Elems[0]); named {
+			g.constantTrap(b, "TypeError", joinItemTypeError(0, cls), ll.Span())
+			return "0", nil
+		}
+		acc, accOK, accErr := g.strReg(b, ll.Elems[0])
+		if accErr != nil {
+			return "", accErr
+		}
+		if !accOK {
+			return "", fmt.Errorf("join() element %s is not a text: the seam is built by concatenating texts at run time, and this slot holds something no road can name \u2014 the reference raises TypeError over it, and the tagged value word that would say what it holds is roadmap Gap R.400 / L11.1 (ADR 0408)", g.exprSummary(ll.Elems[0]))
+		}
+		sep, sepOK, sepErr := g.strReg(b, &StrLit{Value: v})
+		if sepErr != nil {
+			return "", sepErr
+		}
+		if !sepOK {
+			return "", fmt.Errorf("join() separator is not a text")
+		}
+		for i, el := range ll.Elems[1:] {
+			acc = g.rtStrCall(b, "rt_str_cat", "i32 "+acc, "i32 "+sep)
+			er, elOK, elErr := g.strReg(b, el)
+			if elErr != nil {
+				return "", elErr
+			}
+			if !elOK {
+				if cls, named := g.joinItemKind(el); named {
+					g.constantTrap(b, "TypeError", joinItemTypeError(i+1, cls), ll.Span())
+					return "0", nil
+				}
+				return "", fmt.Errorf("join() element %s is not a text: the seam is built by concatenating texts at run time, and this slot holds something no road can name \u2014 the reference raises TypeError over it, and the tagged value word that would say what it holds is roadmap Gap R.400 / L11.1 (ADR 0408)", g.exprSummary(el))
+			}
+			acc = g.rtStrCall(b, "rt_str_cat", "i32 "+acc, "i32 "+er)
+		}
+		return acc, nil
 	case "find":
 		// s.find(sub) -> index of first occurrence of sub, or -1 if absent.
 		if len(c.Args) != 1 {
@@ -944,4 +997,46 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 	}
 	// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 	return g.internStr(b, v), nil
+}
+
+// joinItemKind names the type CPython would report for a `str.join` element the fold can read — the class
+// the reference puts in `TypeError: sequence item N: expected str instance, <type> found` — and answers false
+// for everything the ordinary roads own, including a text and a name whose kind is a run-time fact. A bool is
+// its own word to the reference here (it reports `bool`, not `int`), which is why it is spelled out.
+func (g *irGen) joinItemKind(e Expr) (string, bool) {
+	switch n := exprUnwrap(e).(type) {
+	case nil:
+		return "", false
+	case *IntLit:
+		return "int", true
+	case *FloatLit:
+		return "float", true
+	case *BoolLit:
+		return "bool", true
+	case *NoneLit:
+		return "NoneType", true
+	case *ListLit:
+		return "list", true
+	case *Tuple:
+		return "tuple", true
+	case *DictLit:
+		return "dict", true
+	case *SetLit:
+		return "set", true
+	case *Name:
+		if g.isNoneExpr(n) {
+			return "NoneType", true
+		}
+		if g.nameHoldsContainer(n.Value) {
+			return "list", true
+		}
+	}
+	return "", false
+}
+
+// joinItemTypeError is CPython's own sentence for the element that is not a text, with the position the
+// reference counted. Writing it here rather than refusing keeps the raise catchable by the program's own
+// `except TypeError:`, which is what the reference's program does with it (roadmap Gap R.403, ADR 0408).
+func joinItemTypeError(at int, cls string) string {
+	return fmt.Sprintf("sequence item %d: expected str instance, %s found", at, cls)
 }

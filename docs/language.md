@@ -1537,7 +1537,7 @@ Rules that the compiled backend implement:
 
   Three limits belong to the compiled backend and are stated rather than approximated: the text methods
   that take an argument (`count`, `find`, `split`, `replace`, `startswith`, `encode`, `zfill`, `ljust`,
-  `rjust`, `join`) answer on the roads that can read their receiver and refuse on the ones that cannot
+  `rjust`) answer on the roads that can read their receiver and refuse on the ones that cannot
   (Gap I.2); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
   and `%`-formatting of a text is answered by the run-time door described in § *Printf-style `%`*
   (Gap R.31, ADR 0360). Case mapping and trimming are NOT among them: `upper`/`lower`/`title`/
@@ -1545,6 +1545,26 @@ Rules that the compiled backend implement:
   from one generated table (ADR 0362, § *Case and trim* below). A program that creates more distinct strings
   than the table holds (4096) raises `RuntimeError`, which it can catch — the alternative, which used
   to happen, was silently reusing an entry and printing a different string than the program built.
+- **`sep.join([...])` is the concatenation, slots and all** (**ADR 0408**, roadmap **Gap R.403**). A list written
+  at the call is answered whether its slots are literals or not:
+
+  ```gusty
+  n = 3
+  print("-".join(["a", "b"]))          # a-b    — folded at compile time
+  print("-".join([f"a{n}", "z"]))      # a3-z   — one @rt_str_cat per seam, the separator interned once
+  print("-".join(("a", f"b{n}")))      # a-b3   — a tuple reads as a list here, as the reference reads it
+  print("".join([f"a{n}"]))            # a3     — an empty separator, and a one-element list that never meets it
+  ```
+
+  A slot holds a text or the program hears about it: an element the compiler can see is **not** a text raises the
+  reference's own catchable `TypeError: sequence item N: expected str instance, int found` — class, sentence and the
+  position the reference counted, with `bool` spelled `bool` and `None` spelled `NoneType` — at exit **3**, catchable
+  by the program's `except TypeError:` (**ADR 0166**'s trap). Two shapes are refused in words rather than answered:
+  the list the program BUILT and named (`xs = [f"a{n}", "z"]` / `"-".join(xs)`, **Gap R.404** — the road has no slot
+  to ask, the list is a run-time object) and the separator the program BUILT (`s = f"-{n}"` / `s.join(["a", "z"])`,
+  **Gap R.405** — the receiver door above answers `upper`/`strip` on a runtime text and does not yet answer `join`).
+  A join's answer is one interned text like any other, so it prints, compares, concatenates, crosses a parameter
+  and leaves a `return` as text (**ADR 0368**'s answer direction reads its tag the same way).
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
   `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
   and printing all work in the compiled backend. **A string value is an index into a runtime interned

@@ -2385,6 +2385,34 @@ falls back to dynamic dispatch.
   take no prologue (**Gap R.401**), and the doors that ask the module's records rather than the frame's
   (**Gap R.402**).
 
+- **`str.join` builds its seam the way `+` does (Gap R.403, ADR 0408)** — `n = 3` /
+  `print("-".join([f"a{n}", "z"]))` is `a3-z` in the reference, and here it was `join() list elements must be
+  constant strings` at exit 1: the method was a **fold** over `*StringLit`s, so a list with one interpolation in it
+  fell out of the road and the sentence blamed the program for a limitation the backend did not have. `@rt_str_cat`
+  has built a text while the program ran since **ADR 0229** — it is the door `s + t` walks, interning into the same
+  `@str_tab` — and a join is nothing but that concatenation with the separator between the neighbours. So `join` now
+  asks concatenation's own question of each slot (`strReg`) and emits one `@rt_str_cat` per neighbour, left-leaning,
+  the separator interned once, **no new runtime entry point**: `TestTheJoinSeamIsBuiltByTheDoorTheConcatenationRoadAlreadyUses`
+  reads the module to pin that, and pins the other half too — the all-constant list still folds and still emits no
+  concatenation at all. An element the compiler can see is **not** a text is a **raise** and not a refusal: exit **3**
+  with the reference's catchable `TypeError: sequence item 1: expected str instance, int found`, index counted,
+  `bool` spelled `bool` and `None` spelled `NoneType`; an element whose kind it cannot read is refused in words,
+  because interning somebody's `repr` where the reference raises is a wrong answer at the exit code of success.
+  What the refusal hid was three wrong answers behind it, all of them pre-scan verdicts rather than codegen ones:
+  `def f(): return "-".join([...])` printed **`6`** — the `@str_tab` **index** of `a3-z`, at exit 0 — the same body
+  with a frame-local `s` printed `6` and `10`, and a join arm beside a number arm printed `a-b` and `(null)`. Text
+  has to be one question across the compiler, so `join` joined the shape predicates the pre-passes ask
+  (`isStringExpr`, `isStrUnder`) beside the formatting door and the repeat door (**ADR 0360**, **ADR 0365**), and
+  `scanStringBindings` now walks a `def`'s body *before* judging what it hands back — a caller holds one word and a
+  name, and never sees the body (**Gap R.219**'s lesson, **ADR 0368**'s gate). Family measurement over the 36
+  programs these two suites carry, parent build beside this one, each asked of the pinned CPython: **3 agreed
+  before, 31 after — 28 newly answering, none regressed.** `tools/recmerge` wrote **33 sources** from CPython
+  (**8851 → 8884**) and REFUSED five, which is how the three rows beside this one exist: the list the program built
+  (**Gap R.404**), the separator the program built (**Gap R.405**), and the body that hands back a NAME the pre-scan
+  holds as text beside an arm of another kind (**Gap R.406** — pinned at `(null)`, in both suites, because the same
+  body spelled `s = "ab".upper()` prints `AB` / `(null)` on the parent build too, which is what files it against the
+  census and not against `join`).
+
 - **An `except … as name:` arm binds what the exception writes (Gap R.113, ADR 0406)** —
   `try: 1/0` / `except ZeroDivisionError as err:` / `print(err)` is `division by zero` in the reference, and here it
   was a **parse error** at exit 1 on every path: `parseTry` read the type name and then asked for a colon, so the
