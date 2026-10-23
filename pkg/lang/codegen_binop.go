@@ -66,8 +66,10 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	// `if x == "a":` where x came from a loop over a container that mixes kinds: the
 	// comparison is between a (payload, tag) pair and a value whose kind the compiler
 	// knows, and the tag has to take part or `x == 1` answers true for the string whose
-	// interned index happens to be 1.
-	if n.Op == "==" || n.Op == "!=" {
+	// interned index happens to be 1. `is`/`is not` reach the same door for one shape only —
+	// the question asked AGAINST THE VOID, whose answer is a tag and not a source fact
+	// (roadmap Gap R.412, ADR 0411); every other identity question stays where it was.
+	if n.Op == "==" || n.Op == "!=" || n.Op == "is" || n.Op == "is not" {
 		if res, ok, err := g.mixedTaggedCompare(b, n); err != nil {
 			return "", err
 		} else if ok {

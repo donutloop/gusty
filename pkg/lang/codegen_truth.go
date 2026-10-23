@@ -100,8 +100,10 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	}
 	// `if x == "a":` where x carries a runtime tag — a loop variable over a container that
 	// mixes kinds. An `if` condition is lowered here, not through the expression path, so the
-	// tagged comparison gets its hook in both places (ADR 0232).
-	if n, ok := e.(*BinOp); ok && (n.Op == "==" || n.Op == "!=") {
+	// tagged comparison gets its hook in both places (ADR 0232). `is`/`is not` join for the one
+	// shape the door admits — the void, whose identity is a tag and not a source fact
+	// (roadmap Gap R.412, ADR 0411).
+	if n, ok := e.(*BinOp); ok && (n.Op == "==" || n.Op == "!=" || n.Op == "is" || n.Op == "is not") {
 		if res, handled, err := g.mixedTaggedCompare(b, n); err != nil {
 			return "", err
 		} else if handled {

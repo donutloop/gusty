@@ -2852,6 +2852,36 @@ falls back to dynamic dispatch.
   the programs the compiled leg has no answer for, and one compiled-vs-record row **arrived** — a dict's `pop` over
   a name, which the record answers and this backend refuses with a code (ledger **19 → 20**), the ratchet's other face.
 
+- **`is None` asked of a slot asks the TAG, not the word `0` (Gap R.412, ADR 0411)** — `xs = [None, 1]` /
+  `print(xs.pop(0))` wrote `None`, `print(xs.pop(0) == None)` wrote `True`, and `print(xs.pop(0) is None)` wrote
+  **`False`**, at **exit 0**: one value, one question, three readers, two answers. The printer and `==` had been
+  given (payload, tag) pairs by **ADR 0410** and reach `@rt_payload_eq`; `is` was never let through that door and
+  fell to the None-equality fold, whose own comment says it "decides the result statically, from what the source
+  says each side is" — sound for `print(1 is None)`, and a guess for a slot, because the payload a void leaves
+  behind is `0` and `0` is also what an `int` slot carries (**ADR 0172**'s collision in the identity road's
+  clothes). So `is`/`is not` join `==`/`!=` at `mixedTaggedCompare` for ONE shape — one side statically the void,
+  which is a singleton, so identity and equality coincide — and the answer is
+  `@rt_payload_eq(payload, tag, 0, TagNone)`: the object's own tag, with the tag a **register** the removal
+  produced. Only the void is admitted, and the reason is the row's best finding: `@rt_payload_eq` answers
+  containers **by content** (**ADR 0189**), content equality is the wrong answer to `is` for two containers that
+  hold the same elements, and routing containers through it would have traded an impossible-to-miss crash for a
+  plausible lie — `print([1] is [1])` dies in the assembler on `icmp eq i32 …, @.lst1` at **exit 2** instead, and
+  is filed as **Gap R.418** with the assembler's line beside it. The door is hung in **both** roads that ask an
+  identity question — the value road and the condition road, where **ADR 0232** already hangs the tagged equality
+  — because `print(x is None)` and `if x is None:` are one question in two positions. The fold still folds,
+  asserted in both directions from the module: the popped slot's `@main` carries exactly one
+  `call i32 @rt_payload_eq(i32 %popped, i32 %tag, i32 0, i32 3)` and the literal programs carry none. Four shapes
+  measured beside the family and not bought, each byte-identical on the parent build, are filed rather than
+  buried: **Gap R.415** (the same list under a second name — `ys = xs` / `print(ys.pop(0))` prints `0`, the alias
+  carrying no kind claim to the door), **Gap R.416** (a loop item over a *literal* list, `==` half already wrong),
+  **Gap R.417** (a callee's own parameter — `pairCallScan` opens the pair for a popped argument, the tag crosses
+  the frame, and the body throws it away) beside **Gap R.388**'s standing call-answer row. Measurement over the
+  **34** programs the two suites carry, a build of the parent (`af8b847`) beside this one, each asked of the pinned
+  CPython: **17 moved to the reference's answer — 4 of them off a flat REFUSAL — 11 controls held, 6 still differ
+  and each is a row, none moved away from the reference**; `tools/recmerge` wrote **34** entries from the reference
+  (**8991 → 9025**) and refused none, and the two pins **Gap R.412** left in the pop row's owed tables are
+  DELETED rather than edited, which is the only way a paid debt is distinguishable from a rewritten one.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

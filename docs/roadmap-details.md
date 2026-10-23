@@ -17911,3 +17911,177 @@ program belongs to **Gap R.413** instead of to the record (**ADR 0309**). One co
 beside the fix — a dict's `pop` over a name, which the record answers and this backend refuses with a code (the
 `integration` ledger **19 → 20**) — which is the ratchet's other face and the reason the ledger is read as a set and
 not as a length.
+
+<a id="gap-r-412"></a>
+### Gap R.412 — the identity question asked against the void is asked of the tag, closed by **ADR 0411**
+
+```gusty
+xs = [None, 1]
+print(xs.pop(0))          #  None             None      — the printer asks the pair
+print(xs.pop(0) == None)  #  True             True      — `==` asks the pair
+print(xs.pop(0) is None)  #  True           False       ← at exit 0
+```
+
+One value, one question, three readers, two answers — and the two that were right had been made right a day earlier
+by **ADR 0410**, which gave the removal a (payload, tag) answer and handed it to the doors that already existed. The
+third reader was never let through the door: `mixedTaggedCompare` opened with
+`if n.Op != "==" && n.Op != "!=" { return not-handled }`, so the identity question fell past it to the
+**None-equality road**, whose own comment states its method — *decides the result statically, from what the source
+says each side is*.
+
+**Why the fold is a guess here and an answer there.** `print(1 is None)` is `False` and must cost no call: the source
+states both kinds. `x = None` / `print(x is None)` is `True` for the same reason. A popped slot is a different
+animal, because the source states nothing about what the slot holds and the fold has to guess from the shape. It
+guesses by the payload, and the payload a void leaves behind is `0` — the same word an `int`'s slot carries, the
+intern table's first entry and the arena's first slot. Testing that word against zero is not testing for the void;
+it is testing which number happens to be in the box. That is **ADR 0172**'s collision, and **ADR 0232**'s rule about
+what a tagged value's discriminator is, arriving in the identity road's clothes.
+
+**The decision, and the one word in it.** `is` and `is not` join `==` and `!=` at the pair door — **when one side is
+statically the void**. The void is a singleton, so for it identity and equality coincide, and
+`@rt_payload_eq(payload, tag, 0, TagNone)` is precisely the question *does the object's own tag say the void*. The tag
+is a register the removal produced, loaded out of `@heap_tags` through `rt_pop`'s out-parameter; the void's own pair
+is the constant `(0, TagNone)`. Containers are declined, and the reason is the row's most useful finding:
+`@rt_payload_eq` answers containers **by content** (**ADR 0189**), content equality is the wrong answer to `is` for
+two containers that hold the same elements, and widening the door to them would have traded an impossible-to-miss
+failure for a plausible lie at the exit code of success.
+
+**Both roads or half the language.** `print(x is None)` and `if x is None:` are one question spelled in two positions,
+and the condition is lowered by a different road than the value is. **ADR 0232** learned this for the tagged equality
+and hangs it in both places; the identity road had been widened in one. Both hooks are now hung — `valueBinOp` and
+`truthOperandErr` — and the suite pins that the condition spelling emits exactly one `rt_payload_eq`, so a future
+widening cannot answer the test and the value differently.
+
+**The fold still folds, and that is asserted in both directions.** The IR guard is not just "the call appears": the
+four controls the source can settle (`print(1 is None)`, `x = None` / `print(x is None)`, `print(None is None)`,
+`print("a" is None)`) and an untagged single-kind slot read emit **no pair call at all**. A suite that checked only
+the first half would pass contentedly after somebody routed the easy case through the runtime (**ADR 0385**'s rule
+for a fold).
+
+**Measurement** (34 programs across the two new files, a build of the parent `af8b847` beside a build of this commit,
+each asked of the pinned CPython): **17 moved to the reference's answer, 11 controls held, 6 still differ and every
+one of them is a row below, none moved away from the reference.** Four of the 17 were **flat refusals** on the parent
+— a slot read of a mixed list, a tuple's slot, a loop element over a named list, a name the pair road bound — each of
+which wanted one word from a position that now carries two. A wall becoming an answer is the difference this row would
+most easily have gone uncredited for. `tools/recmerge` wrote **34** entries from the reference (the record to
+**9025**) and refused none: on every source this row claims to have paid, the compiled leg agreed with the reference
+first (**ADR 0309**). The two pins this row left in the pop family's owed tables were **deleted, not edited**.
+
+<a id="gap-r-413"></a>
+### Gap R.413 — a popped TEXT in an arithmetic position is answered by the untagged doors (⏳ OPEN, filed by **ADR 0410**)
+
+Three shapes, one door: `xs = ["a", 1]` / `print(xs.pop(0) * 2)` raises `unsupported operand type(s) for *: 'str' and
+'int'` where the reference answers `aa`; `print(xs.pop(0) + 1)` raises the generic unsupported-operand sentence where
+the reference writes `can only concatenate str (not "int") to str` — a sentence `unsupportedNumberOp` already knows
+how to spell, and this arm never reaches it; and `xs = ["a", "b"]` / `print(xs.pop(0) + "?")` is **refused** by the
+front-end arm that reads `x + y` as a concatenation only when it can see BOTH sides are text, where the reference
+answers `a?`. The first two are this row's own residue (**ADR 0410**'s pair arm has no text arms); the third
+reproduces on the parent build and beside it `t = xs[0]` / `t + "?"` is refused too, which is **Gap R.146**'s
+standing for a one-word position rather than a pop defect. Filed with the reference's sentence quoted because
+`tools/recmerge` **refused** to record it: this backend raises the same trap CLASS with different words, so the
+program is this row's and not the record's (**ADR 0309**).
+
+<a id="gap-r-414"></a>
+### Gap R.414 — a body whose answer IS the popped slot hands back one word (⏳ OPEN, filed by **ADR 0410**)
+
+`def m():` / `    xs = [1, "a"]` / `    return xs.pop(1)` / `print(m())` prints `0` at **exit 0** where the reference
+prints `a`. The localising control is the program that differs only in HOW the element was read: `return xs[1]` is
+**refused in words**, so the pop road answers where the slot read declines — which puts the bug in the return road's
+missing popped arm (**ADR 0368**'s `answerArmOf` classifies a `return other(...)` by its callee's kind and has no
+popped arm) and not in the slot. `TestWhatABodyWhoseAnswerIsAPoppedSlotStillAnswersIsFiledNotFixed` pins the pair
+together, because a row that pays `return xs.pop(1)` while `return xs[1]` stays refused has not answered anything
+about this program.
+
+<a id="gap-r-415"></a>
+### Gap R.415 — the same list under a second name: the removal is declined, so the answer is one word again (⏳ OPEN, filed by **ADR 0411**)
+
+```gusty
+xs = [None, 1]            xs = [None, 1]
+print(xs.pop(0))          ys = xs
+#  None                   print(ys.pop(0))   #  None    ← this backend: 0
+                          print(ys.pop(0) is None)  # True ← this backend: False
+```
+
+The two columns differ by nothing but the NAME the removal is written against, and that is the whole row.
+`popAnswerShape` reads the notebooks — `listVars`, `mixedLists`, `listElemStr`, `listElemInt` — for the name it is
+handed, and `ys = xs` binds a name without binding any kind claim to it: the list is the same object, the door is
+stone-blind to it, and the shape is DECLINED (**ADR 0166**'s third answer, and the correct one for a door that cannot
+see). What is wrong is not the decline but what happens after it: the fold picks the answer up and renders the void's
+payload as an integer. The fix is to follow the alias to the container it names — the notebook already knows `xs` is
+a mixed list, and the assignment says which name to ask about — and to let a genuinely declined shape keep its
+refusal rather than fall through to a guess. All four programs are byte-identical on the parent build `af8b847`, which
+is the sentence that makes this the alias's row and not the identity door's.
+
+<a id="gap-r-416"></a>
+### Gap R.416 — the identity and equality questions asked of a loop item over a LITERAL list (⏳ OPEN, filed by **ADR 0411**)
+
+```gusty
+for v in [None, "a"]:     #  the reference: True, False
+    print(v is None)      #  this backend:  False, False
+for v in [None, "a"]:     #  the reference: True, False
+    print(v == None)      #  this backend:  False, False
+xs = [None, "a"]          #  both spellings answer correctly over a NAMED list
+for v in xs: print(v is None)
+```
+
+An unrolled item carries its kind for exactly two readers: the printer and the truth road, which **ADR 0388** taught
+to ask `loopElemTag` (`truthAsksTheLoopItem`). Every other door consults the notebook `isTaggedCompareSide` keeps,
+and the literal loop's item has no entry there, so both the identity question and the equality question fall to the
+fold. The two halves are filed as ONE row because paying one and leaving the other is how `print(v)`, `v == None` and
+`v is None` come to disagree about one element — **ADR 0232**'s one-question rule again, and the reason
+`TestWhatTheVoidQuestionStillOwesIsFiledNotFixed` pins them side by side. The `==` half was already wrong before
+**ADR 0411** touched anything, which is what makes this a standing debt rather than fallout. The fix is
+**ADR 0388**'s own shape one door over: read `loopElemTag` where the comparison asks its question and lower the item
+through `taggedOperand`'s register pair — while an all-integer item keeps emitting no pair call at all.
+
+<a id="gap-r-417"></a>
+### Gap R.417 — a callee's own parameter answers the payload for every question except its truth (⏳ OPEN, filed by **ADR 0411**)
+
+```gusty
+def f(v):                       def f(v):
+    return v is None                print(v)
+print(f(None))   # True / False       return v is None
+                                 xs = [None, 1]
+def f(v):                      print(f(xs.pop(0)))   # None,True / 0,False
+    return v is None
+xs = [None, 1]
+print(f(xs.pop(0)))  # True / False
+```
+
+The interesting cell is the middle program's first line: `print(v)` writes `0` for the void. That is **Gap R.228**'s
+defect — the void printed as its payload — arriving one frame deeper, and it is the evidence that the tag is available
+and unused: `pairCallScan`'s needs half DOES open a parameter's pair for a popped-slot argument (**ADR 0410**), so the
+two words cross the boundary and the body then asks the payload for its identity, its equality and its printer. The
+callee's TRUTH was fixed from exactly these words by **ADR 0393**/**Gap R.361** (`pairSuppliedNameTruth`,
+`taggedLoopVarRead`); the comparison and the print never joined that road. All three shapes are byte-identical on the
+parent build, which locates the residue in the callee and not in the caller — the scan already knows which parameter
+carries a pair, and the fix is to hand `isTaggedCompareSide`/`comparePair` the same two loads, plus the callee's
+printer.
+
+<a id="gap-r-418"></a>
+### Gap R.418 — identity against a container literal hands `llc` a global where a word belongs (⏳ OPEN, filed by **ADR 0411**)
+
+```gusty
+xs = [[1], 2]
+print(xs.pop(0) is [1])   #  the reference: False
+                          #  llc-20: global variable reference must have pointer type
+                          #          %t14 = icmp eq i32 %t13, @.lst1        — exit 2
+print([1] is [1])         #  the reference: False — and it dies the same way, on
+                          #          %t1 = icmp eq i32 @.lst1, @.lst2      — exit 2
+print([1] == [1])         #  True on both legs — the equality road materialises, the identity road does not
+```
+
+**ADR 0166**'s forbidden class: the compiler's mistake reported as the program's, at the exit code that means the
+assembler objected. It is the **Gap R.393**/**Gap R.253** family's asking-door half — a container literal reaching a
+word position as its module-level `@.lst` global instead of as a heap handle — and it reproduces with no pop in the
+program at all, which is what separates it from the row that measured it.
+
+The second line is why this row exists and why **ADR 0411** admits the void and nothing else. The equality spellings
+of these programs answer (`[1] == [1]` prints `True`, on the compiled leg and on the reference), because that road
+materialises its operands and compares them by content through `@rt_payload_eq` (**ADR 0189**). Content equality is
+the RIGHT answer to `==` and the WRONG answer to `is`: the reference answers `False` for two containers that hold the
+same elements and `True` only when they are the same object. So the door that could have been widened in thirty
+seconds was not, and the row that this leaves standing is filed with the assembler's own line quoted. The fix is
+`containerOperand` on both sides — a handle in the word, never a global — and an answer given by handle-and-tag
+identity rather than by the content arm; where the handles cannot be settled, a refusal that names a capability code
+is honest and an `icmp` against a `@.lst` is not.

@@ -1,5 +1,173 @@
 {
  "entries": {
+"n = 1\nm = 1\nprint(n is m)\nprint(n is not m)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"x = 1\ns = \"a\"\nprint(x is None)\nprint(s is None)\nprint([1] == None)\n": {
+    "stdout": "False\nFalse\nFalse\n",
+    "hasStdout": true
+   },
+"class T:\n    def m(self):\n        xs = [None, 1]\n        return xs.pop(0) is None\nprint(T().m())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"n = 1\nprint(n is 1)\nprint(n is not 1)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"print(1 is None)\nprint(\"a\" is None)\nprint([1] == None)\n": {
+    "stdout": "False\nFalse\nFalse\n",
+    "hasStdout": true
+   },
+
+"print(None is None)\nprint(None is not None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"x = None\nprint(x is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", None]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) is not None)\n": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) is not None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [1, None]\nif xs.pop(0) is None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"xs = [1, None]\nprint(xs.pop(-1) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [7, 8, 9]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) == 8)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nfor v in xs:\n    print(v is None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nn = xs[0]\nprint(n is None)\nif n is None:\n    print(\"y\")\n": {
+    "stdout": "True\ny\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1, \"a\"]\nwhile xs:\n    print(xs.pop(0) is None)\n": {
+    "stdout": "True\nFalse\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nd = {\"k\": xs.pop(0) is None}\nprint(d)\n": {
+    "stdout": "{'k': True}\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nif xs.pop(0) is None:\n    print(\"True\")\nelse:\n    print(\"False\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nif xs.pop(0) is None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(str(xs.pop(0) is None))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(str(xs.pop(0)))\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop() is None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) != None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) is None and \"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) is None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) is None, xs.pop(0) is not None)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0) is not None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs[0] is None)\nprint(xs[1] is None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nwhile xs.pop(0) is None:\n    print(\"void\")\n    break\n": {
+    "stdout": "void\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nxs.append(\"a\")\nprint(xs)\n": {
+    "stdout": "[None, 1, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [[1], None]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) is None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [{\"a\": 1}, None]\nprint(xs.pop(0) is None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"ys = (1, None)\nprint(ys[0] is None)\nprint(ys[1] is None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
 "try:\n    xs = []\n    xs.pop()\nexcept IndexError as e:\n    print(\"caught\", e)\n": {
     "stdout": "caught pop from empty list\n",
     "hasStdout": true

@@ -638,7 +638,23 @@ func linkOperand(orig Expr, word, name string, src Span) Expr {
 // can prove; when it cannot, this declines and the ordinary path reports whatever it reports
 // (ADR 0232).
 func (g *irGen) mixedTaggedCompare(b *strings.Builder, n *BinOp) (string, bool, error) {
-	if n.Op != "==" && n.Op != "!=" {
+	switch n.Op {
+	case "==", "!=":
+	case "is", "is not":
+		// `x is None` asked of a value whose kind the OBJECT holds is the tag question, and the tag is a
+		// run-time word: `xs = [None, 1]` / `print(xs.pop(0) is None)` is the reference's `True` and this
+		// backend answered `False` at **exit 0**, because the None-equality road settles its answer from
+		// what the SOURCE says each side is and the source says `xs.pop(0)` is not a written `None`. That
+		// road is sound for every operand whose kind the compiler can state — and for no other, because
+		// the payload a void leaves behind is `0`, the same word an int's slot can carry (roadmap
+		// Gap R.412, ADR 0411). Only the void is admitted here: it is a singleton, so identity and
+		// equality coincide, while `xs.pop(0) is [1]` is a container IDENTITY question that content
+		// equality would answer wrong (the reference says False for two equal containers) — and a
+		// container-against-container side is declined by the gate below anyway.
+		if !g.isNoneExpr(n.L) && !g.isNoneExpr(n.R) {
+			return "", false, nil
+		}
+	default:
 		return "", false, nil
 	}
 	if !g.isTaggedCompareSide(n.L) && !g.isTaggedCompareSide(n.R) {
@@ -671,7 +687,7 @@ func (g *irGen) mixedTaggedCompare(b *strings.Builder, n *BinOp) (string, bool, 
 	res := g.newTmp()
 	fmt.Fprintf(&scratch, "  %s = icmp ne i32 %s, 0\n", res, cmp)
 	g.markI1(res)
-	if n.Op == "!=" {
+	if n.Op == "!=" || n.Op == "is not" {
 		inv := g.newTmp()
 		fmt.Fprintf(&scratch, "  %s = xor i1 %s, true\n", inv, res)
 		g.markI1(inv)

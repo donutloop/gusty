@@ -14632,3 +14632,55 @@ failure kinds.
    best finding in the file: `return xs[1]` is *refused* while `return xs.pop(1)` prints `0`, which localises the bug
    to the pop road rather than to the slot, and is the difference between a row someone can start and a row that reads
    "the pair system is wrong somewhere".
+
+## ADR 0411 — the identity question asked against the void is asked of the TAG (Gap R.412 closed; Gaps R.415, R.416, R.417, R.418 filed, 2026-10-24)
+
+**ADR 0410** left its own honest table with one row that bothered me more than the bug it fixed:
+`xs = [None, 1]` printed `None` for the popped slot, printed `True` for `xs.pop(0) == None`, and printed **`False`**
+for `xs.pop(0) is None`. One value, one question, three readers, two answers — and the two readers that were right
+were right because of a door `is` had never been allowed through.
+
+1. **The fold was not broken; it was being asked a question it cannot answer.** The None-equality road's own comment
+   says it "decides the result statically, from what the source says each side is". That is sound whenever the source
+   states the kinds (`print(1 is None)` must cost no call) and is a **guess** when the kind lives in a container the
+   program built. And it is a guess with a specific failure mode: the payload a void leaves behind is `0`, which is
+   also what an `int` slot carries, what the intern table's first entry is, and what the arena's first slot is. A
+   fold that tests the payload is testing which number is in the box — **ADR 0172**'s collision, wearing the identity
+   road's clothes. The lesson generalises: *a static decision procedure is only sound over operands the source can
+   settle*, and the check "what does this road actually key on?" is cheap to ask of every fold in the file.
+2. **The correct-sounding widening was the one to refuse.** Letting every `is` through the pair door is a three-line
+   diff and answers `[1] is [1]` `True` — because `@rt_payload_eq` compares containers by **content** (**ADR 0189**),
+   and content equality is the wrong answer to an identity question. So the door admits the void (a singleton, where
+   identity and equality genuinely coincide) and declines everything else, and the shape it declines is filed with
+   the assembler's own line beside it: `print([1] is [1])` dies on `icmp eq i32 @.lst1, @.lst2` at **exit 2**
+   (**Gap R.418**). Choosing between a wrong answer at exit 0 and an obvious failure at exit 2 is not a style
+   question; the second one cannot be shipped by accident.
+3. **A door has to be hung in every road that asks its question, or the suite can't tell which one answered.**
+   `print(x is None)` lowers through the value road, `if x is None:` through the condition road — two functions, one
+   `BinOp`. **ADR 0232** learned this for the tagged equality and hangs it twice; my first cut widened only the value
+   side, and the only reason that showed up is that the family contains `if xs.pop(0) is None:` and
+   `while xs.pop(0) is None:`, which disagreed with each other. Both hooks, one door, and an IR case that counts
+   `rt_payload_eq` calls per question.
+4. **Assert the fold is still a fold.** The IR guard runs in both directions: the popped slot's `@main` carries one
+   `call i32 @rt_payload_eq(i32 %popped, i32 %tag, i32 0, i32 3)`, and the four literal controls carry **no pair call
+   at all**. A one-directional version of that test passes happily after someone routes the easy case through the
+   runtime, which is a slower, vaguer version of the same bug (**ADR 0385**).
+5. **Four of the seventeen "fixes" were refusals turning into answers.** A slot read of a mixed list, a tuple's slot,
+   a loop element over a named list, a pair-bound name: each of those positions used to be refused because it wanted
+   one word and the read carries two. Measuring "moved to the reference" without separating refusal→answer from
+   wrong→right hides the part users feel, so both columns are now in the row's evidence cell.
+6. **The residue was localised by controls, not by reading the code.** `ys = xs` / `print(ys.pop(0))` prints `0`
+   (**Gap R.415**) while `xs.pop(0)` prints `None`; `for v in xs` answers while `for v in [None, "a"]` does not
+   (**Gap R.416**); `if v:` inside a callee answers while `return v is None` does not (**Gap R.417**). Each sibling
+   pair says which notebook is missing an entry, and each is byte-identical on the parent build — that last clause is
+   the sentence that separates a filed debt from a regression, and it is why I keep a parent binary alive through the
+   whole cycle.
+7. **A paid row's pin gets deleted, not edited.** Two owed-table rows in the pop family were this row's program
+   wearing a `False`. Editing them to `True` would have left a "owed" table that pins reference answers and hides the
+   fact that the debt is gone; deleting them and moving the programs to the answered table is the only spelling that
+   distinguishes a paid debt from a rewritten one.
+8. **Numbers are recomputed, never remembered.** The record went **8991 → 9025** (`tools/recmerge`, from CPython,
+   refusing nothing because the compiled leg agreed on every source claimed as paid); the snapshot's ADR cell moved
+   to **402 records, highest 0411**, rows owed to **194 of 324**. The Open-queue blank-line guard caught my own
+   formatting on the way (`countQueueRows` counts rows under a stray blank line as `hidden` and fails), and the
+   snapshot test would have failed the run rather than bless a remembered number (**Gap R.204**).

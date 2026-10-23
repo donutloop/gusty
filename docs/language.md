@@ -1286,7 +1286,23 @@ else:
 - Generators are not procedures: `def gen(): yield 1` evaluates to the list of yields.
 - `x == None`, `x != None`, `is`/`is not` against `None` are decided where the source says
   what each side is, and both operands are still evaluated, so a side effect in a comparison
-  is never optimised away.
+  is never optimised away. That is the answer for an operand whose kind the compiler can state;
+  it is not an answer for one whose kind lives in a container the program built, and asking it
+  there is how `xs = [None, 1]` / `print(xs.pop(0) is None)` came to write `False` beside the
+  `None` its own printer wrote (`Gap R.412`). A void is a singleton, so for it identity and
+  equality coincide, and the question against `None` goes to the same pair door `==` asks:
+  `@rt_payload_eq(payload, tag, 0, TagNone)` — the object's own **tag**, never the word `0` the
+  void leaves behind, which is also the word an `int` slot carries (**ADR 0172**). The condition
+  road (`if x is None:`, `while x is None:`, an `and`/`or` operand) asks that one door too, so a
+  value and a test cannot be given different answers about one slot (**ADR 0232**). Folded where
+  the source decides: `print(1 is None)` emits no call at all.
+- **What the identity question still gets wrong**: `is` asked of a *container* literal is not
+  answered by the content door — content equality is the wrong answer for two containers holding
+  the same elements — and the shape dies in the assembler instead (`print([1] is [1])`,
+  `Gap R.418`). The same question asked of a loop item over a **literal** list (`Gap R.416`), of
+  a callee's own parameter (`Gap R.417`), of the same list under a second name (`Gap R.415`) and
+  of a call that answers the void (`Gap R.388`) is still answered by the fold, and prints `False`
+  where the reference prints `True`.
 - `type(x) == "None"` is not how you ask: `type` is a reserved word here (annotations), so
   `type(x)` is not a call in this grammar. Use `x == None`.
 
@@ -6032,11 +6048,19 @@ print((lambda: f"hi{2}")())    # 0 (and llc refuses the module on the verifying 
 def f(v):
     return v
 print(f((lambda: None)()))     # 0 — Gap R.171: the void crosses a call boundary as the bare word, `def` twins too
-print((lambda: None)() is None)# False — Gap R.388: `def f(): return None` / `print(f() is None)` answers False too
+print((lambda: None)() is None)   # still False — Gap R.388: a CALL that answers the void is read as one word
 ```
 
 Each of those five is pinned with today's byte beside the reference's in both `pkg/lang/lambda_answer_test.go` and
 `integration/lambda_answer_kind_test.go`, so the day one of them answers it stops being a footnote and fails a case.
+The same question asked of a slot the program built is answered, and is pinned in
+`pkg/lang/the_void_question_test.go` and `integration/the_void_question_test.go`:
+
+```python
+xs = [None, 1]
+print(xs.pop(0) is None)          # True — Gap R.412, ADR 0411: the TAG says the void, not the word 0 left behind
+print(xs.pop(0) is None)          # False — the slot that is left holds 1, and its own tag says so
+```
 `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness for the answered family.
 
 ### A callable written in a `match` arm, an f-string field or an `except` handler is read where it is written (L11.7, Gap R.383, ADR 0403)

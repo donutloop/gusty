@@ -50,10 +50,12 @@ import (
 // parent commit `0f798e8` run beside a build of this one and each program asked of the pinned CPython:
 // **25 of them moved to the reference's answer, none moved away from it, and 26 of the 31 that agree are now
 // on the record** (written from the reference by `tools/recmerge`, which REFUSED the rest — the record leg
-// declining to testify for a backend that has no answer, ADR 0309). Two of the four that do not agree are
-// refusals this row does not own (**Gap R.35**, a module-level container reached from a body; the
-// container-method fold that owns `insert`/`clear`/`copy` on a name), and two are wrong answers filed below
-// rather than hidden: `xs.pop(0) is None` (**Gap R.412**) and a popped text in an arithmetic position
+// declining to testify for a backend that has no answer, ADR 0309). Of the four that did not agree, one is
+// since paid — `xs.pop(0) is None` (**Gap R.412**, closed by **ADR 0411**, which let the identity question
+// against the void ask the pair door `==` had been asking all along, and whose family is pinned in
+// `the_void_question_test.go` rather than here). Two are refusals this row does not own (**Gap R.35**, a
+// module-level container reached from a body; the container-method fold that owns `insert`/`clear`/`copy` on a
+// name), and one is a wrong answer filed below rather than hidden: a popped text in an arithmetic position
 // (**Gap R.413**). A third shape, a body whose answer IS a popped slot, printed the payload on a build of the
 // parent and prints it here too — **Gap R.414**, pinned beside its own control, in which the read that the pop
 // stands for is refused outright.
@@ -369,15 +371,9 @@ func TestWhatThePopRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 		compiled string
 		why      string
 	}{
-		{
-			name:     "the popped slot compared with None",
-			src:      "xs = [None, 1]\nprint(xs.pop(0) is None)\n",
-			gap:      "Gap R.412",
-			python:   "True\n",
-			compiled: "False\n",
-			why: "the `is` road tests the payload against the void's word and never asks the tag the removal " +
-				"carried out — the same door Gap R.388 pins for a call's answer, reached from this side by a slot",
-		},
+		// `xs.pop(0) is None` stood here as Gap R.412 and is GONE: ADR 0411 let the identity question
+		// against the void reach the pair door `==` already used, and the program now prints the
+		// reference's `True`. It lives in the answered table of theVoidAnswered() beside its `==` twin.
 		{
 			name:     "a popped text repeated",
 			src:      "xs = [\"a\", 1]\nprint(xs.pop(0) * 2)\n",

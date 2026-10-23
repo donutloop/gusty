@@ -34,7 +34,9 @@ import (
 // that still do not agree are pinned below rather than dropped — two refusals this row does not own (a
 // module-level container reached from a body is **Gap R.35**; a container method over a name is the fold that
 // owns `insert`/`clear`/`copy`) and three answers this row files instead of hiding (**Gap R.412**,
-// **Gap R.413**, **Gap R.414**).
+// **Gap R.413**, **Gap R.414**) — of which **Gap R.412** has since been paid by **ADR 0411** and its programs
+// moved to `voidQuestionFamily()` in `the_void_question_test.go`, where its own owed table pins what still
+// differs.
 
 func popCLIFamily() []struct {
 	name string
@@ -330,13 +332,8 @@ func TestThePopRefusalsAreMachineReadable(t *testing.T) {
 func TestWhatThePopRowAnswersWrongAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name:     "the popped slot compared with None",
-			src:      "xs = [None, 1]\nprint(xs.pop(0) is None)\n",
-			gap:      "Gap R.412",
-			python:   "True\n",
-			compiled: "False\n",
-		},
+		// `the popped slot compared with None` stood here as **Gap R.412** and is DELETED, not edited:
+		// **ADR 0411** pays it, and the program now sits in voidQuestionFamily().
 		{
 			name:     "a body whose answer is the popped slot",
 			src:      "def m():\n    xs = [1, \"a\"]\n    return xs.pop(1)\n\nprint(m())\n",
