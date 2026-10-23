@@ -14,6 +14,9 @@
 //		--variance          print the generic variance table as JSON (L6.6)
 //		--callables <src>   print what the defunctionalization pass did to a source string as JSON (L11.7; the
 //	                   uncallable-call refusal quotes the `refused` sentence this prints — ADR 0379)
+//		--lambda-answers <src>  print what the applied-`lambda` answer pass did to a source string as JSON
+//	                   (L11.7 · Gap R.382, ADR 0401: which `(lambda …)(…)` became a declaration of its own,
+//	                   what answer it proved, and which applications the gate left on the emitter's road)
 //		--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
 //		--version           print version
 //		--repl              start an interactive REPL (default when stdin is a TTY)
@@ -153,6 +156,7 @@ func run() int {
 	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
 	capabilitiesCmd := fs.Bool("capabilities", false, "print, as JSON, every shape the compiled backend refuses as a matter of design: its stable lower.unsupported.<shape> code, the suggestion that replaces it, and the roadmap rows that own the missing half (roadmap L11.8, ADR 0346); --json failures carry the same object as `capability`")
 	callables := fs.String("callables", "", "print, as JSON, what the function-value pass did to a source string: whether it rewrote it, the clones and hoisted lambdas it minted, the hook key= arguments it retargeted (key_arguments), the IR names it generated, and the shape it could not prove — the same sentence the uncallable-call refusal quotes (roadmap L11.7, ADR 0345, ADR 0369, ADR 0379)")
+	lambdaAnswers := fs.String("lambda-answers", "", "print, as JSON, what the applied-`lambda` answer pass did to a source string: which `(lambda …: …)(…)` applications became declarations of their own (symbol, the container answer the scan proved, the parameters), which the gate left on the emitter's road and why (captures the frame owns, an answer the table does not register yet), and how many `lambda_N` names it consumed (roadmap L11.7 · Gap R.382, ADR 0401; the document is the schema's definitions.lambdaAnswerReport)")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
 	jit := fs.Bool("jit", false, "accepted for compatibility: the compiled LLVM backend is the only backend (ADR 0302)")
@@ -228,6 +232,15 @@ func run() int {
 		doc, err := lang.CallablesJSON(*callables)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "gustyc: callables: "+err.Error())
+			return exitCompileError
+		}
+		fmt.Println(doc)
+		return exitOK
+	}
+	if *lambdaAnswers != "" {
+		doc, err := lang.LambdaAnswersJSON(*lambdaAnswers)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gustyc: lambda-answers: "+err.Error())
 			return exitCompileError
 		}
 		fmt.Println(doc)
@@ -1082,6 +1095,7 @@ Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style typ
 Effects: gustyc --effects <src> | gustyc effects <file>...  # per-function effect signature: awaits/yields/raises, returns, fall-through (L7.6; --json for the document)
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
 Function values: gustyc --callables <src>  # JSON account of the defunctionalization pass: rewritten?, clones, hoisted lambdas, minted symbols, the shape it declined — the same sentence the uncallable-call refusal quotes (roadmap L11.7, ADR 0379)
+Applied-lambda answers: gustyc --lambda-answers <src>  # JSON account of the pass that gives an applied lambda a declaration of its own: rewritten?, settled?, the declarations minted (symbol, answer kind, params, defaults, line), the applications declined and why (captures_frame / answers_nothing_provable), names_consumed (roadmap L11.7 · Gap R.382, ADR 0401)
 Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier verdict for the emitted module (L8.2)
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
 Debug info: gustyc --debug-info <src> [--json]          # the compiled line table: functions, IR-line to source-line rows (L8.5)

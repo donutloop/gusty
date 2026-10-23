@@ -54,6 +54,14 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// emitter cannot work out for itself (roadmap Gap R.337, ADR 0379; the sentence rides to the emitter as
 	// a value, beside the program it describes, because ADR 0343 forbids the package global this used to be).
 	prog, callableSaid := defunctionalizeCallablesTelling(prog)
+	// An applied `lambda` whose body answers a container becomes a declaration of its own, so that the
+	// answer is registered, materialised at the `ret` and read by the SAME doors a `def`'s answer uses —
+	// there is no second answer road for a `lambda` to fall out of step with. It runs beside the
+	// defunctionalisation pass, and for the same reason: the container-answer scan, the pair road's
+	// arity and the text-return scan are whole-program reads of this tree, and a declaration that
+	// arrived after them would be a second opinion about a program they had already answered (roadmap
+	// L11.7 · Gap R.382, ADR 0333, ADR 0344).
+	prog, lambdaAnswerNames := hoistAppliedLambdaAnswers(prog)
 	imports, err := resolveImports(prog, moduleSearchFor(opts))
 	if err != nil {
 		return "", nil, err
@@ -97,6 +105,10 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// The door that refuses a call with no `define` behind it is the one that reads it, because that is
 	// the call the rewrite would have built (roadmap L11.7 · Gap R.337, ADR 0379).
 	g.callablePassWord = callableSaid
+	// The emitter mints `lambda_%d` for the `lambda`s this pass left on the road it has always taken.
+	// It starts above every spelling the pass took, because two `define`s of one symbol is `llc`'s
+	// duplicate-definition complaint at exit 2 (roadmap L11.7 · Gap R.382).
+	g.lambdaCounter = lambdaAnswerNames
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).

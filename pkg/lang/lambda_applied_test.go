@@ -636,6 +636,14 @@ func TestWhatACaptureRefusalNamesTheRoadThatWouldCarryIt(t *testing.T) {
 //   - The same two programs written INSIDE a `def` are refused by this row's gate with the sentence that names
 //     L11.1 (**Gap R.332**'s shape), which is the control that says the gate is on the capture road and the
 //     module-global road is the one with the hole.
+//
+// Three rows that used to live here are GONE, not edited, because they now answer what the reference prints:
+// the applied `lambda` whose body was a comprehension (printed the handle `0`), the same answered by the
+// outermost of three forwarding lambdas, and the one whose body was a container LITERAL (which did not reach
+// the run time at all — `llc-20` refused `ret i32 @.lst1` at ADR 0166's exit 2). **ADR 0401** gave an applied
+// `lambda` a declaration of its own, so its answer is registered, materialised and read by the same doors a
+// `def`'s answer uses; the three programs now live in the answered tables of `lambda_answer_test.go` (roadmap
+// **Gap R.382**).
 func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -665,42 +673,6 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 			want:  "True\n",
 			today: "1\n",
 			gap:   "Gap R.331",
-		},
-		{
-			// The CONTROL for the two rows below, and the reason neither is this cycle's disease: an applied
-			// `lambda` whose ANSWER is a container already printed the heap handle at the pre-ADR-0380 binary,
-			// with no capture deeper than one frame in sight. The answer door registers what a `def` hands back
-			// (ADR 0333, ADR 0368) and registers nothing for a `lambda`.
-			name:  "an applied lambda that answers a comprehension prints the handle (one frame deep: pre-existing)",
-			src:   "print((lambda x: [x for q in [1, 2]])(9))\n",
-			want:  "[9, 9]\n",
-			today: "0\n",
-			gap:   "Gap R.331",
-		},
-		{
-			// The same door, reached by the deep road this cycle opened: the deepest body answers a number and
-			// the OUTERMOST answers a list, so the forwarded captures all work — `%p1` and `%p0` reach
-			// `@gy_lambda_2` — and the program dies one instruction later, where an answer that is a container
-			// has no word. Pinned as the wrong answer it is (exit 0, no raise) rather than recorded: the record
-			// cannot hold a source whose two legs disagree.
-			name:  "a container answered by the outermost of three forwarding lambdas prints the handle",
-			src:   "print((lambda x: [(lambda y: (lambda z: x + y + z)(100))(10) for q in [1, 2]])(1))\n",
-			want:  "[111, 111]\n",
-			today: "0\n",
-			gap:   "Gap R.331",
-		},
-		{
-			// The same answer door, one rung further down: a `lambda` whose body IS a container LITERAL never
-			// reaches the run time at all. The hoisted `define` ends `ret i32 @.lst1` — a global emitted as an
-			// `i32`, which is not a word LLVM has — so `llc-20` refuses the module on both roads (ADR 0166's
-			// exit-2 class) where the reference prints `[1, 2]`. Pinned by the message it dies with, the way
-			// Gap R.333's row above is: the day the answer door registers a container for a `lambda`, this
-			// program prints and the case must be deleted rather than left to pass on a dead leg.
-			name:    "an applied lambda whose body is a container literal is refused by the assembler",
-			src:     "print((lambda: [1, 2])())\n",
-			want:    "[1, 2]\n",
-			rejects: "global variable reference must have pointer type",
-			gap:     "Gap R.382",
 		},
 		{
 			// the control: the same body inside a `def` is refused in words, not answered wrongly

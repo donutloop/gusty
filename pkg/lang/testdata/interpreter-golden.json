@@ -1,5 +1,271 @@
 {
  "entries": {
+"class C:\n    def m(self):\n        print((lambda: [1, 2])())\n\nC().m()\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return (lambda: [1, 2])()\n\nprint(g())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"for q in [1]:\n    print((lambda: [1, 2])())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"if 1 \u003e 2:\n    print(0)\nelse:\n    print((lambda: [1, 2])())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])()[9] + 1)\n": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"print({\"k\": (lambda: [1, 2])()[0]})\n": {
+    "stdout": "{'k': 1}\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1)\nfinally:\n    print((lambda: [1, 2])())\n": {
+    "stdout": "1\n[1, 2]\n",
+    "hasStdout": true
+   },
+"d = (lambda: {\"k\": [1, 2]})()\nprint(d[\"k\"][1])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    print((lambda: [1, 2])())\n\nf()\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"for v in (lambda: [7, 8])():\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
+
+"if (lambda: [1, 2])():\n    print(\"yes\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"match 1:\n    case 1:\n        print((lambda: [1, 2])())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" in (lambda: {\"a\": 1})())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda v: [v, 1])(9))\n": {
+    "stdout": "[9, 1]\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: [(lambda y: (lambda z: x + y + z)(100))(10) for q in [1, 2]])(1))\n": {
+    "stdout": "[111, 111]\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: [x for q in [1, 2]])(9))\n": {
+    "stdout": "[9, 9]\n",
+    "hasStdout": true
+   },
+
+"print((lambda x=3: [x])())\n": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: (1, 2))())\n": {
+    "stdout": "(1, 2)\n",
+    "hasStdout": true
+   },
+
+"print((lambda: (1,))())\n": {
+    "stdout": "(1,)\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2, 3])()[0:2])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])() == [1, 2])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])() [1])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])())\nprint((lambda x: x * 2)(3))\n": {
+    "stdout": "[1, 2]\n6\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])())\nprint((lambda: [3])())\n": {
+    "stdout": "[1, 2]\n[3]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])()[0:2])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])()[0])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])()[9])\n": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"print((lambda: [[1, 2], [3]])()[1][0])\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [[1,2],[3,4]])()[1])\n": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [])())\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [q for q in [3, 1]])())\n": {
+    "stdout": "[3, 1]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: list())())\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: {\"a\": 1})()[\"b\"])\n": {
+    "err": "KeyError: 'b'",
+    "exnType": "KeyError",
+    "exnMsg": "'b'"
+   },
+
+"print((lambda: {\"a\": [1, 2]})())\n": {
+    "stdout": "{'a': [1, 2]}\n",
+    "hasStdout": true
+   },
+
+"print((lambda: {1, 2})() == {2, 1})\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: {1, 2})())\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"print((lambda: {1: 2})())\n": {
+    "stdout": "{1: 2}\n",
+    "hasStdout": true
+   },
+
+"print(1 in (lambda: [1, 2])())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([v for v in (lambda: [1, 2])()])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(f\"{(lambda: [1, 2])()}\")\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(len((lambda: [1, 2])()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len((lambda: {1, 2, 3})()))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(not (lambda: [])())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(repr((lambda: [1, 2])()))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(sorted((lambda: [3, 1, 2])()))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"print(str((lambda: [1, 2])()))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(str((lambda: {1, 2})()))\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"try:\n    print((lambda: [1, 2])()[9])\nexcept IndexError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    print((lambda: {\"a\": 1})()[\"b\"])\nexcept KeyError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"x = (lambda: [1, 2])()\nprint(len(x))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"x = (lambda: [1, 2])()\nprint(x)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nwhile xs:\n    print((lambda: [1, 2])())\n    xs = []\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
 "a, b = [1, 2]\nprint(a, b)\n": {
     "stdout": "1 2\n",
     "hasStdout": true

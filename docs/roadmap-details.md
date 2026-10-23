@@ -15218,7 +15218,136 @@ twin, which asks CPython inside the case and fails if the reference ever starts 
 the answered one. Widening the parser without writing the lowering is the failure mode to refuse: the pin fails on a
 program that starts *answering*, which is why the same table fails if CPython ever starts refusing.
 
-### Gap R.382 — an applied `lambda` whose body is a container literal is refused by the assembler
+### Gap R.383 — the whole-program reader that decides what a lambda is cannot see three of the AST’s carriers
+
+```python
+def outer():
+    base = 1
+    match 1:
+        case 1:
+            return sorted([3, 1, 2], key=lambda v: v + base)   # the reference: [1, 2, 3]
+# compiled: exit 1 — `key=lambda ...` is refused: a lambda is a function VALUE, and this backend has none
+```
+
+Write the same five lines with the `return` beside the `match` instead of inside its arm and they compile. That
+difference is not a language rule and not a gate anyone chose: it is what a reader can see.
+`callableWalk.fields` (`pkg/lang/callable_value.go`) descends a node’s fields only when the field’s type can hold
+an AST node — `callableIsNodeInterface` asks whether the field type implements `Node`, and a slice is followed
+only when its element type does. Three carriers of expressions in this AST hold them in fields that do not:
+`FStringPart` (an interpolation’s field), `MatchCase` (a `match` arm) and `ExceptClause` (an `except` body). A
+`lambda` written in one of those three places is therefore invisible to `defunctionalizeCallablesTelling`, the
+clone the capture road owes it is never minted, and the door downstream is asked about a callable that has no
+word to travel in — so it refuses with **ADR 0345**’s sentence, which describes a limitation of the backend
+rather than the actual fact, which is that the pass never met the `lambda`.
+
+**ADR 0401** met the same hole from the opposite side while building its own whole-program read: with a walk that
+followed `callableWalk`’s rule, `print(f"{(lambda: [1, 2])()}")` kept the `ret i32 @.lst1` that `llc-20` refuses.
+That row wrote a reflective descent for itself (`appliedLambdaWalk`) rather than adding three special cases here,
+and filed this one instead of quietly fixing the pass it shares the AST with — because a shared hole fixed in one
+of its two readers is a hole with two owners and one test.
+
+Definition of done: `callableWalk` grows the reflective descent — struct fields, slice elements, interface
+values, keeping the `enc`/`inLambda`/`onPath` bookkeeping that makes “every occurrence of this parameter” mean
+what it says — and `lambda_answer.go`’s private walker is deleted rather than left beside it. The two pairs pinned
+in `lambdaAnswerWalkOwed` (a key `lambda` in a `match` arm, a key `lambda` in an `except` body) compile where
+their control compiles, `--emit-ast` and `gusty fmt` are unchanged, and both pinned pairs are deleted, not left
+passing on a leg that no longer exists. The answer the control prints (`0`, from **Gap R.250**/**Gap R.253**’s
+family) is not this row’s and does not have to move with it.
+
+### Gap R.384 — an applied lambda whose body is a literal of a non-number kind answers the slot it lives in
+
+```console
+$ python3 -c 'print((lambda: True)()); print((lambda: None)()); print((lambda: "hi")())'
+True
+None
+hi
+$ gustyc --file kinds.gy
+1
+0
+0
+```
+
+Three bodies the reference answers with one word each, and this toolchain answers with the number the object
+arrived in. The `def` twins all print the reference’s bytes — `def f(): return None` / `print(f())` is `None`,
+`def f(): return "hi"` is `hi` — because `answerKindPlan` (ADR 0368), `strAnswerScan` and the bool arm are asked
+about a `def` and are never asked about a `lambda`. **ADR 0401** closed the container arm of that missing
+registration by giving an applied `lambda` a declaration of its own; it left these three outside the gate
+deliberately, because the gate admits only what `containerAnswerScan` proves and each of the other three scans
+needs its own measurement, its own pins and its own row. A gate that widened by analogy would have been a claim
+that the text road behaves like the container road, which is exactly the claim this file exists to keep honest.
+
+The text arm is two rows deep. On the CLI leg the program prints the interned-text slot `0`; on the leg every
+`pkg/lang` case walks, the module does not reach the run time at all — `llc-20` rejects it with `use of undefined
+value '@rt_str_intern2'`, which is **Gap R.333**’s missing runtime block arriving through a body the program wrote
+rather than through a module-name read. That is why the pin holds the `llc` sentence and not an exit code: an exit
+code is what a program gets, and this program gets a wrong answer on one leg and a rejection on the other.
+
+Definition of done: the three programs print `True`, `None` and `hi` at exit 0 on the compiled and reference legs,
+`tools/recmerge` files all three from the reference (a source whose two legs disagree cannot be recorded, which is
+what keeps them on this row instead of in a file), and the three pins in `lambdaAnswerOwed` are deleted. The text
+arm waits on **Gap R.333**’s per-emission request for the block; landing the bool and `None` arms first is a
+legitimate intermediate state and the pin’s failure text says so.
+
+### Gap R.385 — a container in a ternary arm is emitted where a word belongs, with no lambda in the program
+
+```console
+$ python3 -c 'print([1, 2] if 1 else [9])'
+[1, 2]
+$ gustyc --file ternary.gy
+gustyc: jit: llc: exit status 1
+llc-20: error: …/jit.ll:4182:112: error: global variable reference must have pointer type
+  %t1 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* @.fmt1, i32 0, i32 0), i32 @.lst1)
+```
+
+Exit **2**, ADR 0166’s class, and there is no `lambda` in the program: the arm’s “value” is the module-level
+literal `@.lst1`, and the print door takes the arm’s node at face value, so the global lands in the `i32` slot
+`printf` was promised. `containerAnswerOf` has an `*IfExp` arm that asks its arms the kind question, and
+`containerOperand` hands back the literal’s global rather than an object built when the branch is taken —
+**ADR 0333**’s materialising return road exists for the callee, not for the ternary.
+
+The row surfaced as the CONTROL of **ADR 0401**’s ternary case, which is the value of writing a control at all:
+`print((lambda: [1, 2])() if 1 else [9])` now refuses in words the way the door refuses every one-word position
+(**Gap R.67**), and its sibling with the literal in the taken arm still dies here, exactly as it did before that
+ADR. Same family, different door: **Gap R.253** is `1 in sorted([3, 1, 2])` emitting `rt_contains(i32 @.lst1, …)`
+and **Gap R.67** is the positions that refuse instead of miscompiling.
+
+Definition of done: `print([1, 2] if 1 else [9])` and the `lambda`-arm twin print `[1, 2]` at exit 0 on both legs,
+`llc -filetype=null` accepts the module, both programs are on the record from the reference, and the `rejects` pin
+in `lambdaAnswerOwed` is deleted. An arm the scan cannot prove has to keep refusing in words — printing a handle
+would be **Gap R.261** re-opened at the branch door.
+
+### Gap R.386 — an applied lambda that reads a name and answers a container is refused by a sentence that names nothing
+
+```console
+$ python3 -c 'def f(x):\n    return (lambda: [x])()\nprint(f(2))'   # the reference: [2]
+$ gustyc --file capture_container.gy
+gustyc: jit: codegen: list literal elements must be integers, not
+exit status 1
+```
+
+Two programs, one verdict, and the sentence has nothing in it: no callable, no kind, no row, no ADR — the literal
+builder’s complaint with an empty thing after `not` (**ADR 0166**’s “in words” rule, and **ADR 0345 §3**’s ban on
+a reader’s sentence naming the compiler’s own machinery, which this one achieves by naming nothing at all). The
+`def` twin — `def f(x): return [x]` — prints `[2]`, so the width is not the issue; the issue is which road the
+body travels.
+
+**ADR 0401**’s pass declines these bodies on purpose: a hoisted `lambda` becomes a `def`, and a `def` reads the
+module, not the frame the application was written in. A body that reads `x` therefore stays on the closure road —
+the one that carries captures as extra IR parameters (**ADR 0370**, **ADR 0395**) — and that road registers no
+container answer, so the body’s `[x]` reaches the integer-only literal builder and dies there. The module-name
+spelling (`x = 2` above `print((lambda: [x])())`) arrives the same way through the module-global road. The
+neighbouring shape the row did fix — a `lambda` handed to a `def` that calls it, whose body answers a container —
+prints `[1, 2]`, which localises the defect to the applied road’s gate rather than to the answer door.
+
+Definition of done: the two programs print `[2]` at exit 0 on the compiled and reference legs and are filed from
+the reference, OR they refuse with a sentence that names the callable (`<lambda>`, the name the reference uses
+too), the row that owns the missing road and the ADR that decided it — which is the half that can be paid without
+widening anything, and the order this row intends to pay them in. Either way the two `refuses` pins in
+`lambdaAnswerOwed` are deleted. The widening is the interesting half: a container answer has to cross a clone the
+way `pairCallScan` crosses a (payload, tag) pair, which means the clone’s parameter list gains a kind word and the
+`ret` gains the builder **ADR 0333** already uses.
+
+### Gap R.382 — an applied `lambda` whose body is a container literal is refused by the assembler (closed by ADR 0401)
 
 ```console
 $ gustyc --jit answer_container.gy        # print((lambda: [1, 2])())
@@ -15249,6 +15378,24 @@ Definition of done: `print((lambda: [1, 2])())` prints `[1, 2]` at exit 0 on bot
 is deleted, not left passing on a dead leg (it asserts the `llc` message today, so a fix that only moves the message
 fails it too). Widening the emitter to return a pointer word is NOT the fix — the callable word is `i32` by ADR 0368’s
 layout, and the answer has to be a handle plus a tag, which is what the registration is for.
+
+**Closed 2026-10-23 by [ADR 0401](adr/0401-an-applied-lambda-answers-a-container-as-a-declaration-of-its-own.md)**, and not by an
+answer door for lambdas. `pkg/lang/lambda_answer.go`’s `hoistAppliedLambdaAnswers` runs beside `defunctionalizeCallablesTelling`
+— before imports, the pair scan, the answer-kind plan and the container scan, because all four are whole-program reads of the
+tree and a declaration that arrived after them would be a second opinion about a program they had already answered — and
+turns an application whose body the scan PROVES answers a container into a module-level `FuncDef` whose symbol the call names.
+The answer is then registered by the same scan a `def`’s is registered by, built at the same `ret` (`ret i32 %t1` over an
+object the function allocated for that one call, not `ret i32 @.lst1`), rooted under the same `___cans` name, and read by the
+same eleven doors — the refusals included, in the same sentence, naming `<lambda>`. The gate is `containerAnswerScan`’s own
+question (described or proved-and-undescribed, the latter being what turns a printed handle into a refusal for **Gap R.261**)
+plus `lambdaFreeNames`’ frame question, so a body that reads the enclosing frame keeps the closure road it has always had
+(**Gap R.386** is what that road still owes). Names are minted once, before the fixpoint rounds, above every spelling the
+program declared, and the emitter’s counter starts above them; a program that does not settle hands back untouched, with the
+emitter’s numbering unmoved (**ADR 0273**). All three of the row’s pins are DELETED, and its two **Gap R.331** companions
+(`[9, 9]` and `[111, 111]`, both printed `0` before) print the reference’s bytes; the answered table of
+`pkg/lang/lambda_answer_test.go` is on both witness legs, the record leg included, so none of this coverage can be deleted by
+deleting a record. What the measurement found outside the row is filed as **Gap R.383**, **Gap R.384**, **Gap R.385** and
+**Gap R.386**, each pinned beside the reference’s answer with a failure text that demands deletion once the program lives.
 
 ### Gap R.381 — an item store whose container is not a variable is refused where the reference mutates a temporary
 

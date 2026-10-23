@@ -24,7 +24,9 @@ import (
 // self-describing variance table printed by `gustyc --variance`),
 // `definitions.callablePassReport` (the account the function-value pass prints for
 // `gustyc --callables <src>` — what it specialised, and the shape it declined;
-// roadmap L11.7, ADR 0345), `definitions.capabilityRefusal` and
+// roadmap L11.7, ADR 0345), `definitions.lambdaAnswerReport` (the account the applied-`lambda` answer
+// pass prints for `gustyc --lambda-answers <src>` — which applications became declarations of their own,
+// and which the gate left on the emitter's road; roadmap L11.7 · Gap R.382, ADR 0401), `definitions.capabilityRefusal` and
 // `definitions.capabilityRefusalCode` (the refusal the compiled backend gives a shape it
 // does not lower, and the closed enum of its stable codes — `gustyc --capabilities`;
 // roadmap L11.8, ADR 0346), and `definitions.toolFailure` (the `"ok": false` payload every
@@ -1148,6 +1150,118 @@ const astIRSchemaTemplate = `{
         },
         "code": {
           "type": "string"
+        }
+      }
+    },
+    "lambdaAnswerReport": {
+      "type": "object",
+      "required": [
+        "tool",
+        "pass",
+        "schema",
+        "rewritten",
+        "settled",
+        "declarations",
+        "symbols",
+        "declined",
+        "names_consumed",
+        "refused"
+      ],
+      "description": "The applied-lambda answer pass's own account of one source (gustyc --lambda-answers <src>; lang.LambdaAnswersJSON, roadmap L11.7 and Gap R.382, ADR 0401): which (lambda ...: ...)(...) applications were given a declaration of their own, so the container they answer is registered, materialised at the return and read by the same doors a def's answer uses, and which the gate left on the road the emitter has always taken. The document is written by the code path the rewrite takes, so it cannot describe a hoist the compiler did not perform.",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Always \"callable-values\": the self-describing name of the tool that answers questions about function values."
+        },
+        "pass": {
+          "type": "string",
+          "description": "Always \"hoist-applied-lambda-answers\": the pass that produced the account."
+        },
+        "schema": {
+          "type": "string",
+          "description": "This document's version tag: \"gusty.lambda-answers.v1\"."
+        },
+        "rewritten": {
+          "type": "boolean",
+          "description": "true when the pass produced a new program; false when it handed the caller's untouched tree back, which is also what happens to a program whose every application the gate declined (ADR 0273: a pass that cannot prove its case leaves the road the rows describe)."
+        },
+        "settled": {
+          "type": "boolean",
+          "description": "true when the pass's rounds agreed on one set of declarations. false is the bounded fixpoint giving up — one body whose proof depends on another body a later round withdrew — and the program is compiled exactly as it would have been with no pass at all."
+        },
+        "declarations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/lambdaAnswerDeclaration" },
+          "description": "One entry per application the pass turned into a declaration, in the order the walk met them."
+        },
+        "symbols": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The symbols those declarations answer to — the lambda_%d spellings the pass minted. The emitter's own numbering starts above them, because two defines of one spelling is llc's duplicate-symbol complaint at ADR 0166's exit 2; a program that declares lambda_0 itself is answered around, not on top of."
+        },
+        "declined": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/lambdaAnswerDecline" },
+          "description": "One entry per application the pass left alone, with the shape of the gate that closed and the sentence that says why."
+        },
+        "names_consumed": {
+          "type": "integer",
+          "description": "How many lambda_%d spellings the pass consumed, including any it minted and then withdrew: the emitter has to start above those too. A program this pass did not touch consumes none — otherwise a module's IR text would move for nothing, and the lit-style IR rows that quote a symbol would move with it."
+        },
+        "refused": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What the pass itself said when it could not plan the program at all. A source that is not gusty is the tool's compile-error case, not this field."
+        }
+      }
+    },
+    "lambdaAnswerDeclaration": {
+      "type": "object",
+      "required": ["symbol", "answer", "params", "defaults", "line"],
+      "description": "One application that became a declaration.",
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "description": "The name the call now uses — the minted lambda_%d, which is also the define the module carries."
+        },
+        "answer": {
+          "type": "string",
+          "enum": ["list", "dict", "set", "tuple", "container"],
+          "description": "What the container scan proved the answer is: the one kind every road through the body answers, or \"container\" when the scan proved a container answer without naming one kind — the undescribed half, which is the verdict that turns a heap handle printed as a number into a refusal (roadmap Gap R.261)."
+        },
+        "params": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The lambda's own parameters, in order. A hoisted body may read nothing else, which is the frame half of the gate."
+        },
+        "defaults": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Which of those parameters carry a default an application may leave out."
+        },
+        "line": {
+          "type": "integer",
+          "description": "The line the APPLICATION was written on — the program's own line, not the minted declaration's, which is also where a traceback from inside the body points (ADR 0320)."
+        }
+      }
+    },
+    "lambdaAnswerDecline": {
+      "type": "object",
+      "required": ["shape", "reason", "line"],
+      "description": "One application the pass left on the road the emitter has always taken.",
+      "properties": {
+        "shape": {
+          "type": "string",
+          "enum": ["captures_frame", "answers_nothing_provable"],
+          "description": "The stable name of the gate that closed, and the field a script branches on. \"captures_frame\": the body reads a name the frame of the application owns, and a hoisted lambda becomes a def that reads the module instead (roadmap Gap R.386 owns widening that road). \"answers_nothing_provable\": the scan cannot prove one container kind along every road through the body — a number, a text, a verdict and None answer here today (roadmap Gap R.331, Gap R.384)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "The sentence for a human: it names the program's own name where there is one, and the roadmap row and ADR that own the missing road, and never a Go type, a minted symbol or a pointer value (ADR 0166, ADR 0345 §3)."
+        },
+        "line": {
+          "type": "integer",
+          "description": "The line the application was written on."
         }
       }
     },

@@ -5760,6 +5760,78 @@ whatever they do, so the module that tried would be rejected by `llc` — an **e
 compiler bug. A `lambda` that is neither applied nor called — used as a *value*, returned from a function, stored in a
 container — remains **Gap R.266**'s refusal.
 
+### An applied `lambda` answers a container the way a `def` does (L11.7, Gap R.382, ADR 0401)
+
+```python
+print((lambda: [1, 2])())                         # [1, 2]
+print((lambda: {1: 2})())                         # {1: 2}
+print((lambda: {1, 2})())                         # {1, 2}
+print((lambda: (1, 2))())                         # (1, 2)
+print((lambda: [])())                             # []
+print((lambda: list())())                         # []
+print((lambda: [q for q in [3, 1]])())            # [3, 1]
+print((lambda v: [v, 1])(9))                      # [9, 1] — a slot the parameter filled
+print((lambda x=3: [x])())                        # [3]     — a slot a default filled
+print(str((lambda: [1, 2])()))                    # [1, 2]   — and repr, and len, and `in`, and `for`
+print(len((lambda: [1, 2])()))                    # 2
+print(1 in (lambda: [1, 2])())                    # True
+print(sorted((lambda: [3, 1, 2])()))               # [1, 2, 3]
+print([v for v in (lambda: [1, 2])()])             # [1, 2]
+print(f"{(lambda: [1, 2])()}")                     # [1, 2]   — an interpolation's field
+x = (lambda: [1, 2])()                            # a binding, under ADR 0333's container root
+print(x[0], x[0:2], x == [1, 2])                   # 1 [1, 2] True
+if (lambda: [1, 2])():                             # a condition
+    print("yes")
+for v in (lambda: [7, 8])():                        # a loop's iterable
+    print(v)
+
+def g():
+    return (lambda: [1, 2])()                      # a `def` forwarding the answer
+
+print(g())                                          # [1, 2]
+print((lambda: [1, 2])()[9])                        # IndexError: list index out of range, and catchable
+```
+
+An answer is a value with a kind, and the compiled backend decides the kind by reading a **declaration** — which is
+why this section exists. A `def` that hands back a container is answered by ADR 0333's door: `containerAnswerScan`
+reads its `return`, the `ret` builds the object for that one call and returns its handle, and each of the eleven
+positions above asks the door that knows the kind (**ADR 0344**). A `lambda` applied where it is written had no
+declaration for that scan to read — the emitter minted one in the middle of lowering the statement around it, by
+which time every whole-program table was already filled — so its answer fell through to the road that keeps one
+`i32` per value. `print((lambda: [1, 2])())` ended the hoisted `define` with `ret i32 @.lst1`, a module constant in
+an integer position, and `llc-20` refused the module at **exit 2** (**ADR 0166**'s compiler-bug class); the same body
+as a comprehension reached the run time and printed the allocator's slot `0` at **exit 0** (**Gap R.331**).
+
+`pkg/lang/lambda_answer.go` gives the `lambda` the declaration the scan needs, and nothing else: an application whose
+body the container scan PROVES answers a container becomes a module-level `FuncDef` (minted `lambda_%d`, above every
+name the program declared, carrying the application's own span and ADR 0345's `<lambda>` display name) and the call
+names it. There is no second answer road for a `lambda`, so there is nothing to fall out of step with: the same scan
+registers it, the same `ret` builds it, the same eleven doors read it, and the doors that refuse refuse with the same
+sentence the `def` twin gets. Two rules keep the pass honest. A hoist is kept only if the scan still proves the
+answer after the rewrite — asked of the rewritten tree, so it runs in bounded rounds, and a round only ever removes a
+hoist, so it settles; a program that does not settle is handed back untouched, emitter numbering unmoved (**ADR 0273**).
+And the body may read nothing but its own parameters and the builtins, asked with `lambdaFreeNames` — the same door the
+capture road asks (**ADR 0232**) — because a hoisted `lambda` reads the module, not the frame its application is written
+in. `--emit-ast` and `gusty fmt` still see the `lambda` the program typed: the rewrite happens on a copy (**ADR 0320**).
+
+What this does NOT buy, each with the row that owns it:
+
+```python
+print((lambda: "hi")())        # prints 0 where the reference prints hi — Gap R.384 (same for True -> 1, None -> 0)
+def f(x):
+    return (lambda: [x])()     # refused: the body reads the frame, so it keeps the capture road, which has
+                               # no container answer — Gap R.386 (the `def` twin prints [2])
+print([1, 2] if 1 else [9])    # llc refuses `i32 @.lst1` at exit 2 — no lambda involved: Gap R.385
+```
+
+and the positions that keep one word for a value keep refusing, in words, at exit 1 — a slot of a container literal
+(`print([1, (lambda: [1, 2])()])`), a call argument (`g((lambda: [1, 2])())`), a dict value, `bool(...)`, arithmetic,
+and a ternary arm. Each says `"<lambda>" hands back a container, whose word is a heap object and whose kind only this
+table knows … (roadmap Gap R.67, ADR 0333)`, the sentence its `def` twin gets, because a handle printed as a number is
+**Gap R.261** and a guess about a kind is **ADR 0273**'s wrong answer. A `lambda` in a `match` arm, an `except` body or
+an f-string field is also still invisible to the *clone* road's reader — the applied-answer road reaches those carriers
+and the defunctionalisation pass does not, which is **Gap R.383**'s shared walk.
+
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in the compiled backend: the AOT codegen folds `int` on

@@ -1,0 +1,649 @@
+package lang
+
+// lambda_answer.go — the answer of a `lambda` applied where it is written is a value with a kind.
+//
+// A `def` that hands back a container has a door: ADR 0333's scan reads its `return`, the `ret`
+// materialises the object through the builders a binding already uses, and every position that reads
+// the answer asks the door that knows the kind (`containerAnswerOperandRead`, ADR 0344). A `lambda`
+// applied where it is written had no such door, because it has no declaration for a scan to read: the
+// emitter mints one (`emitLambda`) in the middle of lowering the statement that contains it, and by
+// then every whole-program table has long been filled. The answer fell through to the one-word road,
+// which is not a road a container can travel:
+//
+//	print((lambda: [1, 2])())
+//
+// is the reference's `[1, 2]`, and here the hoisted `define` ended `ret i32 @.lst1` — a module constant
+// used as an integer — and `llc-20` refused the module at **exit 2**, the code ADR 0166 reserves for a
+// compiler bug. With a comprehension in the body instead of a literal the module built and the same
+// answer printed the allocator's slot `0` at **exit 0** (roadmap **Gap R.331**, the row one rung
+// closer to a refusal). Filed as roadmap **Gap R.382**.
+//
+// The fix is not a second answer door for lambdas. A door for every position, minted per call site,
+// would have to be written eleven times — print, `str`, `repr`, an f-string field, a binding, a
+// condition, `len`, a membership test, a loop's iterable, a subscript, a slice — and the divergence
+// between the ones that were written and the ones that were not is exactly the family roadmap Gap
+// R.261 documents. The fix is to give the `lambda` the one thing the scan needs to see: **a
+// declaration**. This pass turns an applied `lambda` whose body provably answers a container into a
+// module-level `FuncDef` and points the application's callee at it, so the answer is registered by
+// the same scan, stored by the same `ret` road, and read by the same eleven doors as a `def`'s answer
+// — including the doors that refuse, which refuse with the same sentence. There is no "lambda answer"
+// road to fall out of step with, because there is only the answer road.
+//
+// # What the pass will hoist
+//
+// Only a shape it can prove, and the proof is the scan's own, not a new one:
+//
+//   - the body's free names are all predeclared builtins. A `lambda` reads the frame its APPLICATION is
+//     written in; a `def` reads the module. A body that reads a name its own parameters do not bind
+//     (`def f(x): print((lambda: [x])())`) would lose that name on the way to the hoisted declaration,
+//     so it stays on the emitter's capture road, which carries it as a parameter the call fills. The
+//     question is asked by `lambdaFreeNames` — the one door that decides what a body is free in — so
+//     the two roads cannot disagree about it (ADR 0232).
+//   - the minted declaration lands in ADR 0333's table, described or undescribed. A body that answers a
+//     number, a text, a float or `None` is not this pass's program: it keeps the one-word road it has
+//     always travelled, and the hoist would buy nothing but risk. A body that answers a name the module
+//     bound, a call this scan cannot follow, or a container of two different kinds is likewise left
+//     where it is — the scan's gate is the row, and this pass borrows the row.
+//
+// The second gate is asked of the program AFTER the rewrite, which is why the pass runs in rounds:
+// `(lambda v: [v, 1])(2.5)` hands its parameter a value that crosses as a (payload, tag) pair, and only
+// the call site — visible as a call site once the callee is a name — says so. A declaration the scan
+// declines is pulled back and the application is left exactly as the source wrote it. The rounds only
+// ever remove a hoist, so they settle; a program that does not settle in four rounds is handed back
+// untouched, with the emitter's road and the defect's row intact.
+//
+// # What the pass does not touch
+//
+// The tree the front end reports. The rewrite happens on `copyProgramAST`'s copy, exactly as
+// defunctionalisation's does, so `--emit-ast`, `gusty fmt` and the checker still see the `lambda` the
+// human typed (ADR 0320). The names it mints come from the same `lambda_%d` shape the emitter uses for
+// the lambdas it leaves alone, and the emitter's counter is started above every name this pass took —
+// two `define`s of one spelling is an exit 2 waiting to be found. A reader meets the declaration as
+// `<lambda>`: `CloneOf` carries ADR 0345's anonymous display name, and `callableSurfaceName` already
+// knows that a `lambda_`-prefixed symbol is not a name to blame a programmer with.
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"sort"
+)
+
+// appliedLambdaSite is one `(lambda …: …)(…)` the pass is considering: the CALL whose callee was the
+// `lambda`, the `lambda` that was the callee, and the declaration minted for it once the hoist is
+// committed. The index is the candidate's position in the walk, which is the same in every round —
+// the rounds decide *which* candidates to hoist, never how many there are.
+type appliedLambdaSite struct {
+	site  *Call
+	lam   *Lambda
+	def   *FuncDef
+	index int
+}
+
+// hoistAppliedLambdaAnswers gives every applied `lambda` whose body provably answers a container a
+// declaration of its own, so that the answer is registered, materialised and read by the doors that
+// already answer for a `def`. It returns the program the emitter is to lower — the caller's own tree
+// when there is nothing to do — and how many `lambda_%d` spellings it consumed, which is where the
+// emitter's own counter has to start to avoid a name this pass already took (roadmap L11.7 · Gap
+// R.382, ADR 0333, ADR 0344).
+func hoistAppliedLambdaAnswers(prog *Program) (*Program, int) {
+	return hoistAppliedLambdaAnswersTelling(prog, nil)
+}
+
+// hoistAppliedLambdaAnswersTelling is the pass with its account filled in: the same rewrite, and the
+// decisions an agent asked for through `gustyc --lambda-answers` (roadmap L11.7 · Gap R.382, ADR 0401).
+// The account is written by the same code path the rewrite takes, so the document cannot describe an
+// optimisation the compiler did not perform — which is the whole reason an account of a pass is trusted
+// (ADR 0379's rule for the defunctionalisation report this one is modelled on).
+func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (*Program, int) {
+	if prog == nil || len(prog.Stmts) == 0 {
+		return prog, 0
+	}
+	// The names the program itself spells. A `def lambda_0(): …` is legal source, and a `define` of the
+	// same spelling is `llc`'s `duplicate symbol` at exit 2, so a collision is avoided rather than
+	// compiled and hoped for.
+	taken := programDefinedNames(prog)
+	// One name per candidate, minted ONCE, before any round. The rounds decide which candidates are
+	// hoisted, never what they are called: a name that drifted with the round count would make the
+	// module's own text — and every IR row that quotes it — depend on how many rounds the fixpoint
+	// needed, which is ADR 0273's "asked of the program, not of the order things were done in" read
+	// back at this pass.
+	candidates := appliedLambdaSites(prog)
+	if len(candidates) == 0 {
+		return prog, 0
+	}
+	names := make([]string, len(candidates))
+	minted := 0
+	for _, s := range candidates {
+		for {
+			names[s.index] = fmt.Sprintf("lambda_%d", minted)
+			minted++
+			if !taken[names[s.index]] {
+				break
+			}
+		}
+	}
+	// The account, filled by the path the rewrite takes and read out at every exit — a document that
+	// described a hoist the compiler did not perform would be worse than no document at all.
+	say := func(keep map[int]bool, kinds map[int]containerAnswerKind, settled bool, minted int) {
+		if rep == nil {
+			return
+		}
+		rep.settled = settled
+		rep.names = minted
+		for _, s := range candidates {
+			if keep[s.index] {
+				line := 0
+				if s.site != nil {
+					line = s.site.Span().Line
+				}
+				rep.declared = append(rep.declared, lambdaAnswerDeclared{
+					symbol: names[s.index], lam: s.lam, kind: kinds[s.index], line: line,
+				})
+				continue
+			}
+			rep.declined = append(rep.declined, lambdaAnswerDeclineFor(s))
+		}
+	}
+	declined := func(minted int) (*Program, int) {
+		say(nil, nil, false, minted)
+		return prog, 0
+	}
+	allow := map[int]bool{}
+	askForAll := true
+	for round := 0; round < 4; round++ {
+		fresh := copyProgramAST(prog)
+		if fresh == nil {
+			return declined(minted)
+		}
+		sites := appliedLambdaSites(fresh)
+		// The copy has to hold the same candidates in the same order, or the pairing between a name and
+		// the call that earned it is a guess. Two walks of one tree differ only if the copy changed the
+		// tree's shape, and a copy that changes the program is not a copy worth trusting.
+		if len(sites) != len(candidates) {
+			return declined(minted)
+		}
+		var defs []*FuncDef
+		hoisted := []*appliedLambdaSite{}
+		for _, s := range sites {
+			if !askForAll && !allow[s.index] {
+				continue
+			}
+			if !appliedLambdaBodyCarriable(s.lam) {
+				// The frame half of the gate: this body reads a name the application's frame owns, and a
+				// hoisted `lambda` reads the module. The capture road carries it; see Gap R.386.
+				continue
+			}
+			name := names[s.index]
+			def := appliedLambdaDeclaration(s.lam, name, s.site.Span())
+			// The application keeps its arguments, its span and its identity; only the callee becomes a
+			// name, which is the whole of what the emitter needs to lower it as an ordinary call.
+			s.site.Fn = &Name{Value: name, Src: s.lam.Span()}
+			s.def = def
+			defs = append(defs, def)
+			hoisted = append(hoisted, s)
+		}
+		if len(hoisted) == 0 {
+			return declined(minted)
+		}
+		fresh.Stmts = append(fresh.Stmts, stmtsOfFuncDefs(defs)...)
+		next, nextKinds := appliedLambdaProved(fresh, hoisted)
+		if askForAll {
+			// The trial round: everything answerable went in, and the scan says which of it is an answer.
+			askForAll = false
+			allow = next
+			if len(allow) == 0 {
+				// Nothing the scan proved. The tree goes back as it came, and so does the emitter's
+				// numbering: a program this pass did not touch must not even see a different `lambda_N`.
+				return declined(0)
+			}
+			continue
+		}
+		if appliedLambdaSameSet(allow, next) {
+			say(allow, nextKinds, true, minted)
+			return fresh, minted
+		}
+		allow = next
+		if len(allow) == 0 {
+			return declined(0)
+		}
+	}
+	// The rounds did not settle. That needs one body whose proof depends on another body that a later
+	// round withdrew, and the honest answer to a pass that cannot make up its mind is the program the
+	// source wrote: the emitter's road still refuses, or still answers wrongly, and the row still owns
+	// it. A rewrite that flickers between runs is worse than one that never happens (ADR 0273's rule
+	// about a verdict that must not depend on the order things were done in).
+	return declined(0)
+}
+
+// appliedLambdaSites collects the applications this pass may take a declaration for, in the order the
+// walk meets them, in one order that every round agrees about.
+//
+// The walk is this pass's own (`appliedLambdaWalk`), not the defunctionalisation pass's `callableWalk`,
+// and the reason is a hole that row walked straight into: `callableWalk` follows a field only when the
+// slice's element type is a `Node`, and three carriers of expressions in this AST are NOT nodes —
+// `FStringPart` (an interpolation's field), `MatchCase` (a `match` arm) and `ExceptClause` (an `except`
+// arm). A `lambda` applied inside an f-string field was therefore invisible to the reader, and the
+// program `print(f"{(lambda: [1, 2])()}")` kept the hoisted `ret i32 @.lst1` that `llc-20` refuses —
+// ADR 0166's exit 2, in the one position ADR 0333's door most needed to answer (roadmap Gap R.382; the
+// same hole in the defunctionalisation pass's own reading is filed as roadmap Gap R.383).
+func appliedLambdaSites(p *Program) []*appliedLambdaSite {
+	out := []*appliedLambdaSite{}
+	if p == nil {
+		return out
+	}
+	w := &appliedLambdaWalk{visit: func(n Node) {
+		c, isCall := n.(*Call)
+		if !isCall || c.Fn == nil {
+			return
+		}
+		lam, isLambda := c.Fn.(*Lambda)
+		if !isLambda || lam == nil || lam.Body == nil {
+			return
+		}
+		// Every application is a CANDIDATE, including the ones the frame gate will refuse: the account this
+		// pass prints has to say why an application was left alone (roadmap Gap R.382, ADR 0401 — a document
+		// that lists only the successes cannot tell an agent which of the two gates closed on the rest).
+		out = append(out, &appliedLambdaSite{site: c, lam: lam, index: len(out)})
+	}}
+	w.stmts(p.Stmts)
+	return out
+}
+
+// appliedLambdaWalk is the whole-program reader this pass needs: every expression, wherever the AST
+// hides it. It descends through struct fields, slice elements and interface values by reflection, and
+// treats a value as a node when the AST says it is one — which is the difference from `callableWalk`
+// in exactly the three places that matter, listed above. The descent is per-path rather than global
+// (the same node reached twice on one path is a cycle and stops) and bounded, so a malformed tree
+// costs a declined hoist rather than a hung compile.
+const appliedLambdaDepthCap = 4000
+
+type appliedLambdaWalk struct {
+	// visit is asked of every node the walk reaches, in the order the tree is read.
+	visit  func(Node)
+	onPath map[uintptr]bool
+	depth  int
+}
+
+func (w *appliedLambdaWalk) stmts(ss []Stmt) {
+	for _, s := range ss {
+		w.value(reflect.ValueOf(s))
+	}
+}
+
+func (w *appliedLambdaWalk) value(v reflect.Value) {
+	if !v.IsValid() {
+		return
+	}
+	switch v.Kind() {
+	case reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		// An interface carries a pointer; the walk asks the pointer below, so the identity check that
+		// stops a shared node being walked twice on one path is the SAME check whichever way the AST
+		// handed the node over.
+		w.value(v.Elem())
+	case reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		p := v.Pointer()
+		if w.onPath == nil {
+			w.onPath = map[uintptr]bool{}
+		}
+		if w.onPath[p] || w.depth >= appliedLambdaDepthCap {
+			return
+		}
+		w.onPath[p] = true
+		w.depth++
+		defer func() { delete(w.onPath, p); w.depth-- }()
+		if n, ok := v.Interface().(Node); ok {
+			w.visit(n)
+		}
+		w.value(v.Elem())
+	case reflect.Struct:
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			if f := v.Field(i); f.CanInterface() {
+				w.value(f)
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			w.value(v.Index(i))
+		}
+	case reflect.Map:
+		// No AST node lives in a map today; the case exists so that one that grows tomorrow is read
+		// rather than silently skipped, which is the mistake this walker was written to stop.
+		for _, k := range v.MapKeys() {
+			w.value(v.MapIndex(k))
+		}
+	}
+}
+
+// appliedLambdaBodyCarriable is the frame half of the gate: a hoisted `lambda` becomes a `def`, and a
+// `def` reads the module, not the frame its closure was written in. So the body may read nothing
+// except the names its own parameters bind, the builtins, and nothing else — a name the enclosing
+// frame owns (`x`, a loop variable, a comprehension target two nodes out) is the closure road's to
+// carry, and a declaration that silently read a different `x` would be ADR 0166's bug wearing this
+// pass's clothes.
+func appliedLambdaBodyCarriable(lam *Lambda) bool {
+	if lam == nil || lam.Body == nil {
+		return false
+	}
+	free := map[string]bool{}
+	lambdaFreeNames(lam, free)
+	for nm := range free {
+		if isPredeclaredName(nm) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// appliedLambdaDeclaration is the `def` an applied `lambda` becomes: the same spelling `lambdaFuncDef`
+// mints for the emitter's road — one `return` of the body, the parameters copied, nothing shared that
+// would let the two roads edit one another's node — plus the span the application was written at, so
+// the line table and the traceback point at the program's own line, and the display name ADR 0345
+// gives an anonymous function.
+func appliedLambdaDeclaration(lam *Lambda, name string, src Span) *FuncDef {
+	fd := lambdaFuncDef(lam)
+	fd.Name = name
+	fd.Src = src
+	fd.CloneOf = callableAnonymousName
+	return fd
+}
+
+// appliedLambdaProved asks the only question that decides whether a hoist stays: does ADR 0333's scan
+// read this declaration as answering a container — described, or proved-and-undescribed? Both answers
+// are keeps, because the second is the one that turns a printed handle into a refusal (Gap R.261).
+// Anything else is a pull-back: the emitter's road, which for these shapes dies in `llc` or prints the
+// allocator's slot, is at least the road the rows describe. The kinds travel beside the keeps so the
+// pass can say, in its account, what answer each declaration proved — asked of the same scan run, so the
+// document and the rewrite cannot hold two versions of one verdict (ADR 0232, ADR 0379).
+func appliedLambdaProved(p *Program, sites []*appliedLambdaSite) (map[int]bool, map[int]containerAnswerKind) {
+	keep := map[int]bool{}
+	kinds := map[int]containerAnswerKind{}
+	if p == nil || len(sites) == 0 {
+		return keep, kinds
+	}
+	described, undescribed := containerAnswerScan(p)
+	for _, s := range sites {
+		if s.def == nil {
+			continue
+		}
+		if ans, ok := described[s.def.Name]; ok {
+			keep[s.index], kinds[s.index] = true, ans.kind
+			continue
+		}
+		if ans, ok := undescribed[s.def.Name]; ok {
+			keep[s.index], kinds[s.index] = true, ans.kind
+		}
+	}
+	return keep, kinds
+}
+
+// programDefinedNames is every spelling the program itself declares: a `def`, a `class`, an `extern`,
+// a type alias, a module-level binding. A minted `define` that lands on one of them is `llc`'s
+// duplicate-symbol complaint at exit 2 — ADR 0166's class, arriving from a pass that had the good
+// fortune to choose a name the program was already using. `def lambda_0(): …` is legal source.
+func programDefinedNames(p *Program) map[string]bool {
+	taken := map[string]bool{}
+	if p == nil {
+		return taken
+	}
+	_, names := moduleEnvFor(p)
+	for n := range names {
+		taken[n] = true
+	}
+	w := &appliedLambdaWalk{visit: func(n Node) {
+		switch x := n.(type) {
+		case *FuncDef:
+			if x.Name != "" {
+				taken[x.Name] = true
+			}
+		case *ClassDef:
+			if x.Name != "" {
+				taken[x.Name] = true
+			}
+		case *ExternDecl:
+			if x.Name != "" {
+				taken[x.Name] = true
+			}
+		case *TypeAliasStmt:
+			if x.Name != "" {
+				taken[x.Name] = true
+			}
+		case *AssignStmt:
+			if x.Target != nil {
+				collectNames(x.Target, taken)
+			}
+		case *ForStmt:
+			// A `for` target is a binding of the frame that runs the loop, and at module level that frame
+			// is the module: `for lambda_0 in [1]: pass` binds the name as much as `lambda_0 = 1` does.
+			collectNames(x.Var, taken)
+		case *WithStmt:
+			if x.As != nil {
+				collectNames(x.As, taken)
+			}
+		case *MatchStmt:
+			for _, c := range x.Cases {
+				if c == nil {
+					continue
+				}
+				collectNames(c.Pattern, taken)
+			}
+		}
+	}}
+	w.stmts(p.Stmts)
+	return taken
+}
+
+// appliedLambdaSameSet is the settles? question: a round that withdraws nothing new is the last round.
+func appliedLambdaSameSet(a, b map[int]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// stmtsOfFuncDefs is the one line a minted declaration needs to join the module's statement list: a
+// FuncDef is both a declaration and a statement, and the two interface types do not convert.
+func stmtsOfFuncDefs(defs []*FuncDef) []Stmt {
+	out := make([]Stmt, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, d)
+	}
+	return out
+}
+
+// ----------------------------------------------------------------------------
+// The account: what the pass decided, as data.
+// ----------------------------------------------------------------------------
+
+// lambdaAnswerAccount is the pass's own record of one program: which applications became declarations
+// (and under which symbol), which it left on the emitter's road (and why, in the program's words), how
+// many `lambda_%d` spellings it consumed, and whether the rounds settled. It is written by the same code
+// path the rewrite takes — never by a second reading of the tree — because a document that described a
+// hoist the compiler did not perform is worse than no document: an agent would branch on it (ADR 0379's
+// rule, asked of this pass by roadmap Gap R.382).
+type lambdaAnswerAccount struct {
+	declared []lambdaAnswerDeclared
+	declined []lambdaAnswerDecline
+	// names is how many `lambda_%d` spellings were consumed, including any the pass minted and then
+	// withdrew: the emitter's counter has to start above those too, or the module gets two `define`s of
+	// one spelling — `llc`'s duplicate-symbol complaint at ADR 0166's exit 2.
+	names int
+	// settled says the rounds agreed; false is the path that hands the program back untouched.
+	settled bool
+}
+
+// lambdaAnswerDeclared is one application that became a declaration: the symbol the call now names, the
+// answer the scan proved, and the `lambda` the program wrote (the front end still reports that node —
+// ADR 0320 — and the account quotes its line, not the minted declaration's).
+type lambdaAnswerDeclared struct {
+	symbol string
+	lam    *Lambda
+	kind   containerAnswerKind
+	line   int
+}
+
+// lambdaAnswerDecline is one application the pass left alone. `shape` is the stable name an agent
+// branches on; `reason` is the sentence a human reads, naming the program's own name and the row that
+// owns the missing road — never a Go type, never a minted symbol (ADR 0166, ADR 0345 §3).
+type lambdaAnswerDecline struct {
+	shape  string
+	reason string
+	line   int
+}
+
+const (
+	// lambdaAnswerShapeCaptures is the frame half of the gate: the body reads a name the application's
+	// frame owns, and a hoisted `lambda` reads the module. Roadmap Gap R.386 owns the widening.
+	lambdaAnswerShapeCaptures = "captures_frame"
+	// lambdaAnswerShapeUnproved is the answer half: the scan cannot prove one container kind along every
+	// road through the body. A number, a text, a verdict and `None` answer here today (Gap R.384).
+	lambdaAnswerShapeUnproved = "answers_nothing_provable"
+)
+
+// lambdaAnswerDeclineFor says, for one application the pass did not hoist, which of the two gates closed
+// and in what words. The name quoted is the program's own — the reason a reader can act on is the name
+// they typed, not a category this compiler invented.
+func lambdaAnswerDeclineFor(s *appliedLambdaSite) lambdaAnswerDecline {
+	line := 0
+	if s != nil && s.site != nil {
+		line = s.site.Span().Line
+	}
+	if appliedLambdaBodyCarriable(s.lam) {
+		return lambdaAnswerDecline{
+			shape:  lambdaAnswerShapeUnproved,
+			reason: "the body does not answer one container kind along every road through it, so its answer keeps the one-word road it has always travelled — a number, a text, a verdict and None are what the answer table does not register for a `lambda` yet (roadmap Gap R.331, Gap R.384, ADR 0333)",
+			line:   line,
+		}
+	}
+	free := map[string]bool{}
+	lambdaFreeNames(s.lam, free)
+	blocked := []string{}
+	for nm := range free {
+		if isPredeclaredName(nm) {
+			continue
+		}
+		blocked = append(blocked, nm)
+	}
+	sort.Strings(blocked)
+	who := "a name the frame it is applied in owns"
+	if len(blocked) > 0 {
+		who = fmt.Sprintf("%q, which the frame it is applied in owns", blocked[0])
+	}
+	return lambdaAnswerDecline{
+		shape:  lambdaAnswerShapeCaptures,
+		reason: fmt.Sprintf("the body reads %s: a hoisted `lambda` becomes a `def`, and a `def` reads the module rather than that frame, so this one stays on the capture road that carries the name as a parameter (roadmap Gap R.386, ADR 0370)", who),
+		line:   line,
+	}
+}
+
+// lambdaAnswerDeclJSON / lambdaAnswerDeclineJSON / lambdaAnswerReport are the machine path. The document
+// is the account above, with the emitter's naming decision (names_consumed) and the pass's own verdict
+// (rewritten, settled) beside it, so a script can ask in one read what the pass did and why (roadmap
+// L11.7 · Gap R.382, ADR 0004's schema discipline, ADR 0379's account-of-a-pass shape).
+type lambdaAnswerDeclJSON struct {
+	Symbol   string   `json:"symbol"`
+	Answer   string   `json:"answer"`
+	Params   []string `json:"params"`
+	Defaults []string `json:"defaults"`
+	Line     int      `json:"line"`
+}
+
+type lambdaAnswerDeclineJSON struct {
+	Shape  string `json:"shape"`
+	Reason string `json:"reason"`
+	Line   int    `json:"line"`
+}
+
+type lambdaAnswerReport struct {
+	Tool          string                    `json:"tool"`
+	Pass          string                    `json:"pass"`
+	Schema        string                    `json:"schema"`
+	Rewritten     bool                      `json:"rewritten"`
+	Settled       bool                      `json:"settled"`
+	Declarations  []lambdaAnswerDeclJSON    `json:"declarations"`
+	Symbols       []string                  `json:"symbols"`
+	Declined      []lambdaAnswerDeclineJSON `json:"declined"`
+	NamesConsumed int                       `json:"names_consumed"`
+	Refused       []string                  `json:"refused"`
+}
+
+// LambdaAnswersJSON asks the pass its own questions and prints the answers: which applied `lambda`s
+// became declarations, under what symbol, with what answer kind, and which were left on the emitter's
+// road with which reason. A source that is not gusty at all is the tool's compile-error case, not the
+// pass's verdict — the same line `--callables` draws between the two (ADR 0006, ADR 0379).
+func LambdaAnswersJSON(src string) (string, error) {
+	doc := lambdaAnswerReport{
+		Tool:   callableToolName,
+		Pass:   "hoist-applied-lambda-answers",
+		Schema: "gusty.lambda-answers.v1",
+	}
+	prog, err := parseProgram(src)
+	if err != nil {
+		return "", err
+	}
+	var acc lambdaAnswerAccount
+	out, consumed := hoistAppliedLambdaAnswersTelling(prog, &acc)
+	doc.Rewritten = out != prog
+	doc.Settled = acc.settled
+	doc.NamesConsumed = consumed
+	for _, d := range acc.declared {
+		entry := lambdaAnswerDeclJSON{Symbol: d.symbol, Answer: d.kind.String(), Line: d.line}
+		if entry.Answer == "" {
+			// The scan proved a container answer without naming one kind — the undescribed half, which
+			// is what turns a printed handle into a refusal (Gap R.261). Say that rather than nothing.
+			entry.Answer = "container"
+		}
+		if d.lam != nil {
+			for _, p := range d.lam.Params {
+				if p == nil {
+					continue
+				}
+				entry.Params = append(entry.Params, p.Name)
+				if p.Default != nil {
+					entry.Defaults = append(entry.Defaults, p.Name)
+				}
+			}
+		}
+		if entry.Params == nil {
+			entry.Params = []string{}
+		}
+		if entry.Defaults == nil {
+			entry.Defaults = []string{}
+		}
+		doc.Declarations = append(doc.Declarations, entry)
+		doc.Symbols = append(doc.Symbols, d.symbol)
+	}
+	for _, d := range acc.declined {
+		doc.Declined = append(doc.Declined, lambdaAnswerDeclineJSON{Shape: d.shape, Reason: d.reason, Line: d.line})
+	}
+	if doc.Declarations == nil {
+		doc.Declarations = []lambdaAnswerDeclJSON{}
+	}
+	if doc.Symbols == nil {
+		doc.Symbols = []string{}
+	}
+	if doc.Declined == nil {
+		doc.Declined = []lambdaAnswerDeclineJSON{}
+	}
+	if doc.Refused == nil {
+		doc.Refused = []string{}
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}

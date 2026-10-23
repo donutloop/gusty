@@ -2248,6 +2248,37 @@ falls back to dynamic dispatch.
   second road that never asks this question (**R.376**). The `sorted(..., key=…)` answer that prints `0` once
   a function RETURNS it is neither — measured identical on the parent, and **R.328**'s.
 
+- **An applied `lambda` answers a container, because it finally has a declaration (Gap R.382, Gap R.331, ADR 0401)** —
+  `print((lambda: [1, 2])())` is the reference's `[1, 2]` and here never reached the run time: the hoisted `define` ended
+  `ret i32 @.lst1`, a module constant in an integer position, and `llc-20` refused the module at **exit 2**, the code
+  **ADR 0166** reserves for a compiler bug. Put a comprehension in the same body and it DID build, and printed the
+  allocator's slot `0` at **exit 0** (**Gap R.331**). One defect, two witnesses: a `def` that hands back a container is
+  answered by **ADR 0333**'s door — a whole-program scan registers the kind, the `ret` builds the object, eleven positions
+  ask the door that knows it — and an applied `lambda` had no declaration for that scan to read, because the emitter minted
+  one mid-statement, after every table had been filled. The fix is not a twelfth door: `pkg/lang/lambda_answer.go`'s
+  `hoistAppliedLambdaAnswers` gives the application a module-level `FuncDef` and points the call at it, so the SAME scan
+  registers the answer, the same `ret` builds it, and the same eleven doors read it — the refusals included, in the same
+  sentence naming `<lambda>`. The gate asks the scans their own question (described or proved-and-undescribed, the latter
+  being what turns a printed handle into a refusal for **Gap R.261**) plus `lambdaFreeNames`' frame question, so a body that
+  reads `x` stays on the capture road; names are minted once and the rounds only ever remove a hoist, so a program that does
+  not settle is handed back with the emitter's numbering unmoved (**ADR 0273**), and `--emit-ast` still sees the `lambda` the
+  human typed (**ADR 0320**). Asked of CPython first, 38 programs, parent build beside this one: **29 newly answering, 2
+  moved from a miscompile to a refusal in words, 7 unchanged** — `print`, `str`, `repr`, `len`, `in`, `for`, a binding, a
+  condition, a slice, a subscript, `==`, `sorted`, a comprehension over the answer, an f-string field, a `match` arm, a
+  `while` body, a `finally` body and a method body all answer the bytes the reference prints, and
+  `print((lambda: [1, 2])()[9])` raises `IndexError: list index out of range` where before it was refused and
+  `print((lambda: {"a": 1})()["b"])` raises `KeyError: 'b'`, both catchable by the program's own `except`. The pass speaks
+  for itself — `gustyc --lambda-answers <src>` prints `rewritten`, `settled`, `declarations[]` (symbol, answer kind,
+  params, defaults, line), `declined[]` over the closed pair `captures_frame` / `answers_nothing_provable`, and
+  `names_consumed`, described by three new `--schema` definitions, with a test that fails if the account ever names a symbol
+  the module does not define. Sixteen answered programs are on the record leg as well as the reference leg, and the record
+  went 8568 → **8621** sources. Four rows came out from under the row and are pinned beside the reference's answer rather than
+  reworded away: **Gap R.383** (the whole-program reader that decides what a `lambda` is cannot see a `match` arm, an `except`
+  body or an f-string field — the clone road's refusal, where the same statement beside the arm compiles), **Gap R.384** (an
+  answer that is a text, a verdict or `None` still prints its slot), **Gap R.385** (`print([1, 2] if 1 else [9])` emits
+  `i32 @.lst1` into a `printf` slot, no `lambda` involved), **Gap R.386** (an applied `lambda` that reads a name and answers a
+  container is refused by `list literal elements must be integers, not ` — a sentence naming nothing).
+
 - **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
   0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched
   because none of them goes through `noteUnlowered`: `[1, 2][0] = 3` printed `… got *lang.ListLit; CPython accepts

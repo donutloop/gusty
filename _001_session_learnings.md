@@ -14115,3 +14115,69 @@ printed by the tool for a source printed beside it.
   in-place rewrite of a Go literal left an unterminated string (`want: "the tuple `(1, 2)`,"`), and a copy/paste of a
   struct literal's field name (`Elements` for `Elems`) turned into a compile error. Both were seconds to catch and both
   were silent until the compiler read them — which is the argument for building between edits rather than at the end.
+
+## ADR 0401 — an applied `lambda` gets a declaration, so its container answer travels the `def` doors (Gap R.382 closed; Gaps R.383, R.384, R.385, R.386 filed, 2026-10-23)
+
+- **The answer to "eleven doors need to know this" is never "build a twelfth door" — it is "make the thing legible to
+  the doors that exist".** The instinct was a container-answer path for lambdas. What I built instead was a
+  declaration: `hoistAppliedLambdaAnswers` turns an application into a module-level `FuncDef` and points the call at it,
+  and every one of ADR 0333's doors then answered with no new arm written. The measurement says it plainly: eight of the
+  thirty-eight family programs had been *refused* by doors that had no arm for "a call that answers a container" —
+  `str(...)`, `repr(...)`, `[0]`, `[0:2]`, `== [...]`, `sorted(...)`, a comprehension over the answer, a loop. They were
+  never missing anything. They were being asked about a callee they could not see, and a twelfth door would have made
+  those eight right and the whole family unauditable.
+- **A whole-program scan and a rewrite are ordered, and getting the order wrong is the defect, not a bug in either.**
+  The scan, the pair-arity read and the text-return scan all read the AST before the emitter mints a name. A hoist that
+  happened anywhere later would have been a second opinion about a program they had already answered — which is exactly
+  how `ret i32 @.lst1` was born: the emitter's `emitLambda` minted the declaration after every table was full. The rule
+  to carry forward: a pass that ADDS a declaration belongs beside `defunctionalizeCallablesTelling`, before the reads,
+  and never between a read and the thing it read.
+- **A walker that filters fields by "can this hold a node?" is a blindfold you cannot see through.**
+  `callableWalk.fields` follows a slice only when its element type implements `Node`, which is invisible-to-the-pass for
+  `FStringPart`, `MatchCase` and `ExceptClause` — three carriers holding perfectly ordinary expressions. My first version
+  reused that rule and `print(f"{(lambda: [1, 2])()}")` kept its illegal `ret`; the reflective walk fixed it. The
+  discipline that follows is the part worth keeping: I found a hole in a pass I do NOT own and filed it (**Gap R.383**)
+  with a definition of done that DELETES a walker rather than adding one. Two walkers that agree is still two walkers.
+- **One program, two legs, two different failures — so ask both before filing.** `print((lambda: "hi")())` prints `0`
+  through the CLI and does not reach the run time at all through the in-process compiled leg (`llc-20` rejects
+  `use of undefined value '@rt_str_intern2'`). I wrote the owed-row pin from the CLI's behaviour and the test failed on
+  the second leg. A row filed from one leg is a row that describes half a toolchain: pin the leg the suite actually
+  walks, and say in the row what the other leg does.
+- **Count the miscompiles you converted to refusals, not just the programs that newly agree.** 29 of 38 programs came
+  over to the reference's bytes; the two I would defend hardest are `print((lambda: [1, 2])() if 1 else [9])` and
+  `print(g((lambda: [1, 2])()))`, which went from `llc` rejecting the module at **exit 2** to the container door's own
+  exit-1 sentence naming `<lambda>` and **Gap R.67**. A refusal you can act on beats a compiler bug, and the invariant
+  that matters is still zero programs where the compiled leg prints what CPython does not — which is why the seven
+  unchanged rows (a number answer keeping its one-word road, the pair-road refusal, the captures refused) are in the
+  table beside the wins rather than omitted as boring.
+- **A fixpoint whose rounds can only REMOVE things is the cheapest determinism there is.** The answer verdict depends on
+  call sites that only exist once the callee is a name, so the pass runs rounds; because a round can only withdraw a
+  hoist, it settles, and because every name is minted before round one, the module's text cannot depend on how many
+  rounds it took. `TestTheHoistLeavesTheTreeTheFrontEndReportsAlone` asks the same source twice and requires the same
+  symbols — a cheap test that catches the class of bug where IR text drifts with compile order (ADR 0273).
+- **A minted-name prefix is a shared resource with the emitter, and the collision is exit 2.** The emitter mints
+  `lambda_%d` from its own counter; a pass minting the same shape has to hand back where its own counter ended (and start
+  above every name the PROGRAM declared, because `def lambda_0(): …` is legal source). Three rows pin it — a `def`, a
+  binding and a `for` target all spelled `lambda_0` — and they are the only thing standing between this pass and
+  `llc`'s duplicate-symbol complaint.
+- **An account of a pass has to include the pass's own declines, which means the gate belongs in the loop, not in the
+  walk.** I moved `appliedLambdaBodyCarriable` out of `appliedLambdaSites` into the hoist round for one reason: with the
+  filter in the walk, `--lambda-answers` could only ever report `answers_nothing_provable` and a capturing body vanished
+  from the document as if it had never existed. `captures_frame` now names the program's own name (`"x"`) and the row that
+  owns the widening — an agent reading the JSON learns something from a decline, which is the whole difference between an
+  account and a log.
+- **A JSON schema written as a Go raw string is a trap with two teeth.** Backticks inside a description terminated
+  `astIRSchemaTemplate`'s raw literal, and `…` inside it is not even legal Go; the same happened to the `usage()`
+  `fmt.Printf` block, where a `%` would have become a verb. Descriptions in these two places speak in plain prose — and
+  `go build` says so in five seconds, which is why building after each schema edit is cheaper than reading the template twice.
+- **Three documents quote the record's size, and only the guards know which ones are load-bearing.** 8568 → 8621 needed
+  `AGENTS.md`, `docs/operations.md`'s artifact table and the roadmap Snapshot row — named one by one by
+  `TestTheArtifactTableCountsAreTheFilesOwn`, `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn` and
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered`. README and `docs/roadmap-details.md` also say 8568 and the guards said
+  nothing: those are last cycle's measurements, written as history, and editing history to match today is how a tracker
+  starts lying about yesterday. Let the guards fail first, then edit exactly what they name.
+- **Measure the neighbour before calling your own gate the language.** `def f(x): return [x]` prints `[2]` while
+  `return (lambda: [x])()` refuses with `list literal elements must be integers, not ` — an empty thing after `not`. The
+  gate that declined that program is mine and correct, and the sentence it falls through to is a different row's
+  embarrassment (**Gap R.386**). Writing the `def` twin beside every declined program is what lets me say which of the two
+  is the missing road.
