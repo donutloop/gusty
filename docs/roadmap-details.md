@@ -15218,6 +15218,38 @@ twin, which asks CPython inside the case and fails if the reference ever starts 
 the answered one. Widening the parser without writing the lowering is the failure mode to refuse: the pin fails on a
 program that starts *answering*, which is why the same table fails if CPython ever starts refusing.
 
+### Gap R.382 — an applied `lambda` whose body is a container literal is refused by the assembler
+
+```console
+$ gustyc --jit answer_container.gy        # print((lambda: [1, 2])())
+gustyc: jit: llc: exit status 1
+llc-20: error: /tmp/gusty-jit-2752859871/jit.ll:11:11: error: global variable reference must have pointer type
+          ret i32 @.lst1
+$ python3 answer_container.py
+[1, 2]
+```
+
+This is ADR 0166’s class: the module the compiler wrote is the thing `llc` refuses, so the run exits **2** on the JIT
+road and on the linked one, for a program the reference answers with two bytes of stdout. The instruction says the whole
+thing: the hoisted `define` for an applied `lambda` ends `ret i32 @.lst1`, and an `@.lst1` is a global container
+descriptor, not an `i32`. The answer door registers the kinds a `def` hands back (ADR 0368’s `answerKindPlan`, with the
+container answer materialised at the `ret` under ADR 0333’s rooted name) and registers **nothing** for a `lambda` — so
+the body’s container never gets the road that would allocate it and hand back a handle with a tag beside it, and the
+literal itself is returned as if it were a number.
+
+**Gap R.331** is the same missing registration one rung closer to a refusal: `print((lambda x: [x for q in [1, 2]])(9))`
+gets as far as the run time and prints the handle `0` at exit **0**. The two rows are one door: a text answers a payload
+word, a bool answers a payload word, a comprehension answers a handle printed as a number, and a container literal does
+not even survive the assembler. That ordering is also why the fix is filed rather than attempted as four patches — the
+fix is the registration, and each of the four shapes is an arm of it.
+
+Definition of done: `print((lambda: [1, 2])())` prints `[1, 2]` at exit 0 on both roads and the module verifies under
+`llc -filetype=null`; the pin
+`TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed/an_applied_lambda_whose_body_is_a_container_literal_is_refused_by_the_assembler`
+is deleted, not left passing on a dead leg (it asserts the `llc` message today, so a fix that only moves the message
+fails it too). Widening the emitter to return a pointer word is NOT the fix — the callable word is `i32` by ADR 0368’s
+layout, and the answer has to be a handle plus a tag, which is what the registration is for.
+
 ### Gap R.381 — an item store whose container is not a variable is refused where the reference mutates a temporary
 
 ```console

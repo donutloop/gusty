@@ -690,6 +690,19 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 			gap:   "Gap R.331",
 		},
 		{
+			// The same answer door, one rung further down: a `lambda` whose body IS a container LITERAL never
+			// reaches the run time at all. The hoisted `define` ends `ret i32 @.lst1` — a global emitted as an
+			// `i32`, which is not a word LLVM has — so `llc-20` refuses the module on both roads (ADR 0166's
+			// exit-2 class) where the reference prints `[1, 2]`. Pinned by the message it dies with, the way
+			// Gap R.333's row above is: the day the answer door registers a container for a `lambda`, this
+			// program prints and the case must be deleted rather than left to pass on a dead leg.
+			name:    "an applied lambda whose body is a container literal is refused by the assembler",
+			src:     "print((lambda: [1, 2])())\n",
+			want:    "[1, 2]\n",
+			rejects: "global variable reference must have pointer type",
+			gap:     "Gap R.382",
+		},
+		{
 			// the control: the same body inside a `def` is refused in words, not answered wrongly
 			name:  "the same read inside a def is a refusal, not a wrong answer",
 			src:   "def f():\n    t = \"hey\"\n    return (lambda: t)()\n\nprint(f())\n",
