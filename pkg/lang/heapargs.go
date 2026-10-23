@@ -1341,7 +1341,7 @@ func (g *irGen) literalHasPairElement(e Expr) bool {
 		// The third such element is the answer of a call that carries its own kind: its payload means a
 		// different thing per arm, so the slot has to be written with the callee's word beside it
 		// (roadmap Gap R.219, ADR 0368).
-		return g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x)
+		return g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x) || g.popAnswerIsPairElem(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -3257,6 +3257,10 @@ func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok boo
 		if nm, isName := c.Fn.(*Name); isName && g.answer.carries(nm.Value) {
 			return "", "", false
 		}
+		// The popped slot's pair, from the door the print, the binding and the ordering already ask.
+		if p, t, okPop, _ := g.popAnswerPair(b, e); okPop {
+			return p, t, true
+		}
 	}
 	if g.isTaggedSlotRead(e) {
 		if _, isRead := e.(*Index).Obj.(*Index); isRead {
@@ -3281,6 +3285,13 @@ func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok boo
 func (g *irGen) isTaggedCompareSide(e Expr) bool {
 	if nm, ok := e.(*Name); ok && g.taggedVars[nm.Value] {
 		return true
+	}
+	if c, isCall := e.(*Call); isCall {
+		// A popped slot carries its kind the way a slot read does — the removal read it out of the object —
+		// so the equality door is its door too (roadmap L11.1, ADR 0410, ADR 0247's one equality).
+		if _, _, serves := g.popAnswerShape(c); serves {
+			return true
+		}
 	}
 	return g.isTaggedSlotRead(e)
 }
@@ -4778,6 +4789,12 @@ func (g *irGen) textOrderSide(e Expr) bool {
 type orderSide struct {
 	e  Expr   // the operand itself
 	ix *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	// popCall is the answer of `NAME.pop([i])` on a list the program built: the one call answer whose kind
+	// sits in the container rather than in a callee's `return`, so the side has to ask the object what it
+	// removed. It walks the same arms a slot read walks, and that is the difference between
+	// `xs = [1, "a"]` / `print(xs.pop(0) > 1)` raising the reference's TypeError and answering `False` at
+	// exit 0 for a text against a number (roadmap L11.1, ADR 0410; Gap R.296's rule for the pair arm).
+	popCall *Call
 	// pairName is a name the pair road bound (`n = xs[0]`, a loop element over a container that mixes
 	// kinds). Its payload means a different thing per kind, so the ordering asks the tag the same way a
 	// slot read does — which is the difference between `n > 7` answering and comparing the interned index
@@ -4801,7 +4818,13 @@ type orderSide struct {
 // off the literal never costs a test at run time (roadmap L11.1, Gap R.82).
 // asksTag reports that this side's kind is a run-time fact the door has to test: either a slot read out of
 // an object, or a name the pair road bound. Both carry a tag register; neither is settled at compile time.
-func (s *orderSide) asksTag() bool { return s.ix != nil || s.pairName != "" }
+func (s *orderSide) asksTag() bool { return s.ix != nil || s.pairName != "" || s.popCall != nil }
+
+// readsObject is the side's answer to "does this operand reach into an object the run time owns?" — a
+// slot read, or the slot a `pop()` removes. The ordering admits a side whose kinds come from the object
+// only against an operand the compiler read itself, so the guard has to count the popped slot beside
+// the read it already counted (roadmap L11.1, ADR 0410).
+func (s *orderSide) readsObject() bool { return s.ix != nil || s.popCall != nil }
 
 func (s *orderSide) textTest() string {
 	if !s.asksTag() {
@@ -4916,6 +4939,16 @@ func (g *irGen) orderShapeOf(e Expr) orderSide {
 			return orderSide{e: e, pairName: nm.Value, fromTag: true, canNum: true, canText: true, ok: true}
 		}
 	}
+	if c, isCall := e.(*Call); isCall {
+		// The slot a `pop()` removes is a slot read by another name: the container owns the kind, so the
+		// side may report any of them and only the tag the removal carried out says which. This is the arm
+		// that makes `print(xs.pop(0) > 1)` raise `TypeError: '>' not supported between instances of 'str'
+		// and 'int'` for the text it removed, instead of beating 1 with an interned index (roadmap L11.1,
+		// ADR 0410 — and the same `False`-for-a-TypeError shape Gap R.93 named for the slot read).
+		if _, _, serves := g.popAnswerShape(c); serves {
+			return orderSide{e: e, popCall: c, fromTag: true, canNum: true, canText: true, ok: true}
+		}
+	}
 	if ix, isIdx := e.(*Index); isIdx {
 		if g.orderSlotIsObject(ix) {
 			// No literal describes this slot, so the compiler has no list of kinds to read: the side may
@@ -5028,7 +5061,7 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 	// compiler would be inventing. So a fromTag side is admitted only against an operand the compiler
 	// read itself — which also leaves container-against-container ordering to the door that compares
 	// contents, instead of turning Gap R.86's wrong answer into a wrong trap (roadmap L11.1).
-	if ls.fromTag && rs.ix != nil || rs.fromTag && ls.ix != nil {
+	if ls.fromTag && rs.readsObject() || rs.fromTag && ls.readsObject() {
 		return false
 	}
 	needTxt := ls.canText && rs.canText
@@ -5045,6 +5078,17 @@ func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
 	if s.pairName != "" {
 		// A pair-bound name already carries both words; the door reads them from the name's own slots.
 		payload, tag := g.numericPairRegs(b, s.pairName, Span{})
+		s.payload, s.tag = payload, tag
+		return true
+	}
+	if s.popCall != nil {
+		// The popped slot's two words, from the one door that reads them: the removal lifts the tag out of
+		// `@heap_tags` beside the payload, so the ordering compares numbers or raises the reference's own
+		// sentence for the kind it found (roadmap L11.1, ADR 0410).
+		payload, tag, ok, perr := g.popAnswerPair(b, s.popCall)
+		if perr != nil || !ok || payload == "" || tag == "" {
+			return false
+		}
 		s.payload, s.tag = payload, tag
 		return true
 	}
@@ -6702,6 +6746,13 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 	case *UnOp:
 		return n.Op == "-" && g.arithWouldRefuse(n.X)
 	case *Call:
+		// A popped slot is an arm whose kind the container chose: the removal reads the tag, and the
+		// ordinary numeric road would use the payload as though the label were not there — which is how
+		// `print(xs.pop(0) + 1)` answered 2 for the 2.5 that `n = xs.pop(0)` / `print(n + 1)` already got
+		// right (roadmap L11.1, ADR 0410; the door is ADR 0265's).
+		if g.popAnswerAsksTheArithmeticDoor(n) {
+			return true
+		}
 		// A call whose answer is a pair is exactly what the ordinary numeric road would read as one word:
 		// the callee stored the kind beside its own return (ADR 0273's answer direction), and the payload
 		// alone is the truncated number Gap R.161 and Gap R.164 were measured on. So an arm that is such a
@@ -6790,6 +6841,12 @@ func (g *irGen) numericExprPair(b *strings.Builder, e Expr) (string, string, boo
 		p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 		return p, t, true, nil
 	}
+	// A popped slot is NOT answered here. The road it needs is the one `arithWouldRefuse` above already
+	// points at — `taggedArithPair`, the arm of ADR 0265's door that lifts the (payload, tag) pair AND
+	// refuses the mixed-kind sums the reference refuses (`Gap R.296`: a text against a number must raise,
+	// never say `False`). An arm that answered the pair directly here kept the ordering's own refuse arm
+	// out of reach, and `xs = [1, "a"]` / `print(xs.pop(0) > 1)` said False at exit 0 where the reference
+	// raises TypeError (roadmap L11.1, ADR 0410).
 	if g.arithWouldRefuse(e) {
 		return g.taggedArithPair(b, e)
 	}
@@ -7141,6 +7198,14 @@ func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 		// this one (roadmap Gap R.164's arm half, ADR 0280). Any other call is the ordinary road's.
 		if nm, isName := c.Fn.(*Name); isName && g.pairRetDone[nm.Value] {
 			return true
+		}
+		// A popped slot IS a slot of that container, one level deep, so it is proven by the same
+		// program-wide walk that proves `xs[0]`'s number-ness (ADR 0265's proof, re-keyed by ADR 0322):
+		// the sum takes the tagged door exactly when no text and no container can reach the list's slots,
+		// and keeps the ordinary road when one can. What it must not do is answer 2 where the element is
+		// 1.5 — the payload's being an i32 is not a proof that the value is an int.
+		if listName, _, serves := g.popAnswerShape(c); serves {
+			return g.numChains != nil && g.numChains.numeric(listName, 1)
 		}
 	}
 	switch n := e.(type) {

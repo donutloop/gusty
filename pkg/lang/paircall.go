@@ -502,6 +502,14 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 			if !pairBodyIsFloatReturnRoad(fd) && s.anyReadOfLiteralSlots(args) {
 				needs[i] = true
 			}
+			// The same argument shape, one door over: an argument that is a popped slot carries the kind the
+			// container gave it, and the one word the ordinary road hands over is a `@str_tab` index or a
+			// float box's handle wearing a number. `def f(v): return v` / `print(f(xs.pop(1)))` printed 0 for
+			// `a` — while `print(xs.pop(1))` beside it printed `a`, which is the asymmetry that names the bug
+			// (roadmap L11.1, ADR 0410; the scan-opens-a-door/door-decides rule is ADR 0389's).
+			if !pairBodyIsFloatReturnRoad(fd) && s.anyPoppedSlot(args) {
+				needs[i] = true
+			}
 		}
 		// A body emitted under a convention that already owns its return word owns its parameter words
 		// with it: ADR 0274's float return hands back a name the body bound to a double, and ADR 0174's
@@ -605,10 +613,13 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 					continue // the caller hands a name it bound as a pair itself: read it back as one
 				}
 				if !s.exprNumberish(a, map[string]bool{}) {
-					if s.readOfLiteralSlots(a) && !pairBodyIsFloatReturnRoad(fd) {
+					if (s.readOfLiteralSlots(a) || s.poppedSlot(a)) && !pairBodyIsFloatReturnRoad(fd) {
 						// The pair door answers this read from the object, so both words travel (roadmap
 						// Gap R.220). The ordinary road's answer for such an argument is a payload with its
 						// kind left behind, which is why closing the position is not the safe choice here.
+						//
+						// A popped slot is the same argument shape one door over — the container holds the
+						// kind, the removal reads it — so it is the same escape (roadmap L11.1, ADR 0410).
 						continue
 					}
 					if closed == nil {
@@ -1368,6 +1379,46 @@ func (s *pairScan) exprNeedsWord(e Expr) bool {
 func (s *pairScan) anyReadOfLiteralSlots(es []Expr) bool {
 	for _, e := range es {
 		if s.readOfLiteralSlots(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyPoppedSlot is the needs half's third question: does any argument written to this position remove an
+// element from a list the program built? The kind of what comes back is the container's fact — the door
+// (popAnswerPair) reads it out of the object — so a parameter filled from such an argument needs the tag
+// word beside its payload. It is a GATE, not a decision: the emission still asks the door, and a `.pop()`
+// the door declines for any reason (a dict, a name the notebooks say nothing about, a tuple) leaves the
+// argument on the road it has always taken (roadmap L11.1, ADR 0410, ADR 0389's scan/door split).
+func (s *pairScan) anyPoppedSlot(es []Expr) bool {
+	for _, e := range es {
+		if s.poppedSlot(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// poppedSlot is the scan's AST-only copy of the door's shape test: `NAME.pop([i])` where NAME is a name
+// the program bound to a list literal somewhere. The scan has no listVars, no mixedLists and no
+// per-function emission state, so it asks the one question it can ask honestly — is this spelled like a
+// list pop — and lets the emitting door, which can see the containers, decide.
+func (s *pairScan) poppedSlot(e Expr) bool {
+	c, isCall := e.(*Call)
+	if !isCall || len(c.Args) > 1 {
+		return false
+	}
+	attr, isAttr := c.Fn.(*Attr)
+	if !isAttr || attr.Name.Value != "pop" {
+		return false
+	}
+	nm, isName := attr.Obj.(*Name)
+	if !isName {
+		return false
+	}
+	for _, v := range s.bound[nm.Value] {
+		if _, isList := v.(*ListLit); isList {
 			return true
 		}
 	}
@@ -2394,6 +2445,14 @@ func (g *irGen) pairCallPair(b *strings.Builder, e Expr) (payload, tag string, o
 	c, isCall := e.(*Call)
 	if !isCall {
 		return "", "", false, nil
+	}
+	// The popped slot's pair, asked here so that every position which already asks this door — print, a
+	// binding, a returned expression — gets the kind the object gave the element the list just lost, from
+	// one door and not from a road written beside it (roadmap L11.1, ADR 0410).
+	if p, t, okPop, perr := g.popAnswerPair(b, e); perr != nil {
+		return "", "", false, perr
+	} else if okPop {
+		return p, t, true, nil
 	}
 	nm, isName := c.Fn.(*Name)
 	if !isName || !g.pairRetDone[nm.Value] {

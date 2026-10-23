@@ -716,7 +716,7 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 				}
 			}
 			if isContainerLiteral(a) {
-				if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || g.literalNeedsTags(a)) && g.taggableMixedList(a.(*ListLit)) {
+				if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || g.literalNeedsTags(a) || g.literalHasPairElement(a.(*ListLit))) && g.taggableMixedList(a.(*ListLit)) {
 					// Heterogeneous list of taggable elements: build it with per-element
 					// tags and print through the tag-aware printer, which is what the
 					// interpreter's Repr does element by element (ADR 0184).

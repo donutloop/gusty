@@ -261,6 +261,17 @@ func (g *irGen) answerCallPair(b *strings.Builder, e Expr) (payload, tag string,
 	if !isCall {
 		return "", "", false, nil
 	}
+	// The popped slot is the one call answer whose kind the OBJECT holds rather than a callee's `return`,
+	// so it is asked ahead of the name-carries-a-kind gate below — which is about a user function's word.
+	// str(), repr(), the truth road and the f-string field ask THIS door, and each of them renders the
+	// value by its tag, which is the whole point of asking (roadmap L11.1, ADR 0410).
+	if p, t, okPop, perr := g.popAnswerPair(b, e); perr != nil {
+		return "", "", false, perr
+	} else if okPop {
+		g.heapUsed = true
+		g.floatFmtUsed = true
+		return p, t, true, nil
+	}
 	nm, isName := c.Fn.(*Name)
 	if !isName || !g.answer.carries(nm.Value) {
 		return "", "", false, nil

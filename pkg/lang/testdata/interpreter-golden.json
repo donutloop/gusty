@@ -1,5 +1,411 @@
 {
  "entries": {
+"try:\n    xs = []\n    xs.pop()\nexcept IndexError as e:\n    print(\"caught\", e)\n": {
+    "stdout": "caught pop from empty list\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(1)\ntry:\n    xs.pop(7)\nexcept IndexError as e:\n    print(\"caught\", e)\nprint(xs)\n": {
+    "stdout": "1\ncaught pop index out of range\n[1, 'a']\n",
+    "hasStdout": true
+   },
+"class T:\n    def m(self):\n        xs = [1, \"a\"]\n        print(xs.pop(1))\nT().m()\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\", 1]\nxs.pop(1)\nprint(xs)\n": {
+    "stdout": "['a', 1]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "a\n['b']\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\ndef f(x):\n    return x\nprint(f(xs.pop(0)))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(\"v:\", xs.pop(0))\n": {
+    "stdout": "v: a\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(1 + xs.pop(0))\n": {
+    "err": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "unsupported operand type(s) for +: 'int' and 'str'"
+   },
+
+"xs = [\"a\", 1]\nprint(xs.pop(0) == \"a\")\nprint(xs.pop(0) == 1)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "a\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nzs = (xs.pop(0), xs.pop(0))\nprint(zs[0])\nprint(zs[1])\n": {
+    "stdout": "a\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\", 2, \"b\"]\nwhile xs:\n    print(xs.pop(0))\n": {
+    "stdout": "1\na\n2\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\", 2.5, True, None]\nprint(xs.pop())\nprint(xs)\n": {
+    "stdout": "None\n[1, 'a', 2.5, True]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\", 2.5]\nprint(xs.pop(9))\n": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [1, \"a\"]\ndef g(p):\n    return p\nprint(g(xs.pop(1)))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nn = xs.pop(1)\nprint(n)\nprint(xs)\n": {
+    "stdout": "a\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(str(xs.pop(0)))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(-3))\n": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(0) + 1)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(0) + xs.pop(0))\n": {
+    "err": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "unsupported operand type(s) for +: 'int' and 'str'"
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(0) \u003e 1)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint({\"k\": xs.pop(0)})\n": {
+    "stdout": "{'k': 1}\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint({xs.pop(0)})\n": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nys = [xs.pop(0), xs.pop(0)]\nprint(ys)\n": {
+    "stdout": "[1, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nys = xs\nprint(ys.pop(0), xs)\n": {
+    "stdout": "1 ['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(-1))\nprint(xs)\n": {
+    "stdout": "a\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(-4))\n": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(0))\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "1\n2\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nxs.append(3)\nprint(xs)\n": {
+    "stdout": "[1, 2, 'a', 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nxs.pop(0)\nprint(len(xs))\nprint(xs[0])\nprint(xs[1])\n": {
+    "stdout": "2\n2\na\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nxs.pop(0)\nprint(xs)\n": {
+    "stdout": "[2, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, 2.5]\nprint(xs.pop(0))\n": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nprint(xs.pop(5))\n": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [2.5, \"a\"]\nif xs.pop(0):\n    print(\"t\")\nelse:\n    print(\"f\")\nprint(xs)\n": {
+    "stdout": "t\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(1 if xs.pop(0) else 0)\nprint(xs)\n": {
+    "stdout": "1\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(str(xs.pop(0)))\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(xs.pop(0) * 2)\n": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(xs.pop(0))\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nv = xs.pop(0)\nprint(v)\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nxs.pop(0)\nprint(xs)\n": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, 1]\nprint(xs.pop(0) + xs.pop(0))\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"xs = [7, 8, 9]\nprint(xs.pop(0) + 1)\nprint(xs)\n": {
+    "stdout": "8\n[8, 9]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0))\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"xs = [True, \"a\"]\nprint(xs.pop(0))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [[1, \"a\"], 2]\nprint(xs.pop(0))\n": {
+    "stdout": "[1, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = []\nprint(xs.pop())\n": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"xs = []\nprint(xs.pop(0))\n": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"xs = [{\"a\": 1}, 2]\nprint(xs.pop(0))\n": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+"xs = [\"a\", \"b\", 1]\nxs.pop(1)\nprint(xs)": {
+    "stdout": "['a', 1]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\ndef f(x):\n    return x\nprint(f(xs.pop(0)))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(\"v:\", xs.pop(0))": {
+    "stdout": "v: a\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(1 + xs.pop(0))": {
+    "err": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "unsupported operand type(s) for +: 'int' and 'str'"
+   },
+
+"xs = [\"a\", 1]\nprint(xs.pop(0) == \"a\")\nprint(xs.pop(0) == 1)": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nprint(xs.pop(0))\nprint(xs)": {
+    "stdout": "a\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nzs = (xs.pop(0), xs.pop(0))\nprint(zs[0])\nprint(zs[1])": {
+    "stdout": "a\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nprint(xs.pop())": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\", 2, \"b\"]\nwhile xs:\n    print(xs.pop(0))": {
+    "stdout": "1\na\n2\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\ndef g(p):\n    return p\nprint(g(xs.pop(1)))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nn = xs.pop(1)\nprint(n)\nprint(xs)": {
+    "stdout": "a\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(str(xs.pop(0)))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(0) + xs.pop(0))\nprint(xs)": {
+    "err": "TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+    "exnType": "TypeError",
+    "exnMsg": "unsupported operand type(s) for +: 'int' and 'str'"
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(0) \u003e 1)\nprint(xs.pop(0) \u003e 1)": {
+    "err": "TypeError: '\u003e' not supported between instances of 'str' and 'int'",
+    "exnType": "TypeError",
+    "exnMsg": "'\u003e' not supported between instances of 'str' and 'int'"
+   },
+
+"xs = [1, \"a\"]\nprint(xs.pop(1))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [1, \"a\"]\nys = [xs.pop(0), xs.pop(0)]\nprint(ys)": {
+    "stdout": "[1, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(-1))\nprint(xs)": {
+    "stdout": "a\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(-4))": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(0) is None)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nprint(xs.pop(0))\nprint(xs.pop(0))\nprint(xs)": {
+    "stdout": "1\n2\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, \"a\"]\nxs.pop(0)\nprint(len(xs))\nprint(xs[0])\nprint(xs[1])": {
+    "stdout": "2\n2\na\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs.pop())\nprint(xs)": {
+    "stdout": "3\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, 2.5]\nprint(xs.pop(0))": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nprint(xs.pop(5))": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [2.5, \"a\"]\nif xs.pop(0):\n    print(\"t\")\nelse:\n    print(\"f\")\nprint(xs)": {
+    "stdout": "t\n['a']\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(xs.pop(0) * 2)": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"xs = [2.5, \"a\"]\nprint(xs.pop(0))": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"xs = [True, \"a\"]\nprint(xs.pop(0))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [[1, \"a\"], 2]\nprint(xs.pop(0))": {
+    "stdout": "[1, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = []\nprint(xs.pop())": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
 "a = \"filler\"\ndef f():\n    return \"abc\"\n\nif f():\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
     "stdout": "t\n",
     "hasStdout": true

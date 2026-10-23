@@ -1689,9 +1689,23 @@ lst.append(7)
 ```
 
 - `xs.pop()` on an empty list raises `IndexError: pop from empty list`; `xs.pop(i)` with a
-  bad index raises `IndexError: pop index out of range`. Both are real exceptions, so
+  bad index raises `IndexError: pop index out of range` — the two sentences the reference has
+  always had, and the empty list has always had its own. Both are real exceptions, so
   `except IndexError:` catches them. The bounds test is emitted
-  around the removal (the new `rt_pop` shifts the tail left and shrinks the length).
+  around the removal, and `rt_pop` shifts the tail left *with its tag*: a list slot is a payload
+  and the tag that says what the payload means, so the removal moves both words and hands the
+  removed slot's tag to the position that asked (`Gap R.411`, **ADR 0410**). The value a `pop`
+  returns is therefore one value to every reader: `print(xs.pop(0))`, `str(xs.pop(0))`,
+  `if xs.pop(0):`, `xs.pop(0) == 1`, `xs.pop(0) > 1`, a popped element of a list literal and a
+  popped value passed to a function all agree, and an ordering that the reference answers with a
+  `TypeError` answers with that `TypeError` here too.
+- **What the removal still gets wrong** (filed, not hidden): comparing a popped slot with `None`
+  answers `False` (`Gap R.412`); a popped TEXT in an arithmetic position is answered by the untagged
+  doors, so `xs.pop(0) * 2` raises where the reference prints `aa` and `xs.pop(0) + "?"` refuses
+  where it prints `a?` (`Gap R.413`); and a function body whose `return` IS the popped slot hands
+  back one word instead of a pair (`Gap R.414`). A `tuple.pop()` is refused — a tuple is immutable
+  (**L11.3**, **ADR 0361**) — and `dict.pop()` over a name is refused with
+  `lower.unsupported.container-method-over-a-name` (`Gap R.174`).
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.

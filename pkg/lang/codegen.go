@@ -978,6 +978,10 @@ type irGen struct {
 	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
 	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
 	pairCallAsked map[string]bool
+	// popPairMemo is the popped slot's door, remembered per call node: a position that asks the pair and
+	// then asks it again must not remove the element twice, so the second ask answers the registers the
+	// first emitted (roadmap L11.1, ADR 0410).
+	popPairMemo map[*Call][2]string
 	// containerRet is the scan's answer to "which functions hand back a container, and which container"
 	// (roadmap Gap R.67, ADR 0333). The answer is one word — a heap handle — and its kind is a fact about
 	// the function's whole body, so it is written down once here rather than guessed per call site: a

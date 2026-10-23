@@ -74,7 +74,28 @@ func (g *irGen) subscriptIsPairElem(x Expr) bool {
 // tagged builder has to ask this question and not a narrower one, because a builder that is never opened
 // leaves the element to the road that stores one word (roadmap L11.1, Gap R.146, Gap R.224).
 func (g *irGen) isPairElem(x Expr) bool {
-	return g.nameIsPairElem(x) || g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x)
+	return g.nameIsPairElem(x) || g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x) ||
+		g.popAnswerIsPairElem(x)
+}
+
+// popAnswerIsPairElem is the fourth shape of pair element: the element a `list.pop()` removes. It is a
+// subscript by another name — the position lives in the container, the kind lives in the container — and the
+// door that answers it (`popAnswerPair`) reads the tag out of `@heap_tags` beside the payload, so a builder
+// handed one word stores an `@str_tab` index and calls it a string:
+//
+//	xs = [1, "a"]
+//	print([xs.pop(0), xs.pop(0)])   # [1, 'a'] in the reference; the program printed [1, 0]
+//
+// — the same answer, in the same program, that `print(xs.pop(0))` gives on its own, which is the shape of
+// the bug. The gate asks the door's own shape question and declines where the door declines, so a `.pop()`
+// the door will not serve never moves a literal onto the heap for nothing (roadmap L11.1, ADR 0410).
+func (g *irGen) popAnswerIsPairElem(x Expr) bool {
+	c, isCall := x.(*Call)
+	if !isCall || g == nil {
+		return false
+	}
+	_, _, serves := g.popAnswerShape(c)
+	return serves
 }
 
 // carriedCallIsPairElem is the third shape of pair element: the answer of a call that carries its own

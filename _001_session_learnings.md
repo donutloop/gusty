@@ -14577,3 +14577,58 @@ wrong question in a door I had not touched — `if f():` where `f` hands back a 
    Measuring it was cheaper than trusting it: 54/60 already answered, so the row's next action is stale prose, and the
    real work was in a door the list never mentioned. A tracker row is a pointer to a measurement, not a substitute for
    one — and when the measurement says the row is answered, the row changes and the loop moves on.
+
+## ADR 0410 — the slot a `pop()` removes leaves the list wearing what it was stored as (Gap R.411 closed; Gaps R.412, R.413, R.414 filed, 2026-10-24)
+
+The tracker's open queue named **L11.1** — the tagged value word — and pointed at "the slot a container method
+removes". Three programs, found by writing the ordinary ones: `xs = [1, 2, "a"]` / `xs.pop(0)` / `print(xs)` wrote
+`[2, 0]` at **exit 0**; `xs = ["a", 1]` / `xs.pop(0)` / `if xs[0]:` died at **exit 139** with nothing on stdout;
+`print(xs.pop(0))` answered `0` for a text, `1` for a double, and an arena slot for a nested list. One defect, three
+failure kinds.
+
+1. **A slot is two words and a door that moves one of them is the bug, not the reader.** `@rt_pop` shifted the
+   payload array, shrank the length, returned the removed payload — and never touched `@heap_tags`. So the tail wore
+   the kind of the slot it landed on, and the popped answer wore whatever kind the removed slot's *last tenant*
+   carried, because the tag array is not cleared on free. That last clause is the one to remember: an answer that
+   depends on the program's **history** instead of its source looks like a heisenbug and is only a missing store.
+2. **The precedent was in the same file.** `rt_reverse` swaps the tag with the payload (**ADR 0187**),
+   `rt_set_discard_tagged` shifts both, the indexed store drops the old tag. `pop` was the third positional door and
+   the one nobody had walked. When a rule already has two implementers in one file, the fix for the third is to read
+   the file, not to invent a representation — and the resulting helper signature change (`@rt_pop` growing an
+   `i32* %outt`) added **no new runtime entry point**, which is what kept this a codegen row rather than a memory-model
+   cycle.
+3. **A pair answer has to travel through doors that already exist, or you have written a second printer.** The
+   temptation was to render the popped value where it is produced. Instead the removal hands `(payload, tag)` to the
+   positions that already ask a door — the printer, `str`, the truth road, `==`, the ordering, the tagged arithmetic
+   door, a literal's element, a function's parameter — each given exactly one popped arm. The version that failed
+   first: I answered the pair inside `numericExprPair`, which stepped around `taggedArithPair`'s refuse arms, and
+   `print(xs.pop(0) > 1)` printed `False` where the reference raises. A gate paid to step around a door's refusal is
+   **Gap R.296**'s bug restated; routing through `arithWouldRefuse` turned that wrong answer into the reference's
+   raise.
+4. **A gate and a door must be asked the same question in the same test.** `popAnswerShape` answers three things —
+   the object's own tag for a self-describing list, the notebook's claim for a single-kind list, **DECLINE** for a
+   kind no notebook describes — and `TestThePopAnswerShapeHasThreeAnswers` puts the gate's answer and the door's IR
+   in one table (**ADR 0249**). Guessing `TagInt` for an undescribed container would have shipped a quieter version
+   of the bug this row exists to remove (**ADR 0166**), so the third answer is a decline and the decline is pinned.
+5. **The record leg refused to testify twice, and both refusals were correct.** `tools/recmerge` wrote **79** entries
+   from CPython (**8912 → 8991**) and declined `xs = ["a", 1]` / `print(xs.pop(0) + 1)` because this backend's
+   sentence (`unsupported operand type(s) for +: 'str' and 'int'`) is not the reference's (`can only concatenate str
+   (not "int") to str`) — same class, wrong words, so the program is **Gap R.413**'s and not the record's. And when I
+   put a program the record *does* answer — a dict's `pop` over a name, which this backend refuses — into a CLI case,
+   the `integration` drift guard failed the run until the row was adjudicated into the ledger (**19 → 20**). Both
+   mechanisms are the same one: the compiled leg never writes an answer, and a compiled refusal is never an answer.
+6. **A test that asks the record a question inherits the record's debts.** The dict case was written as "assert the
+   refusal sentence", which is reasonable until the helper notices the record disagrees and files a divergence on your
+   behalf. The lesson is not to dodge the helper — it is to ask refusals through `Compile`, which witnesses nothing,
+   and to ask answers through the record, which does.
+7. **Two sentences, because the reference has two.** `pop from empty list` for the empty list, `pop index out of
+   range` for the rest. This backend had one, for the empty case. Nobody files a roadmap row for a missing article in
+   an exception message; it only surfaces when the program that asks is written down, which is the argument for
+   measuring a family rather than the defect that started it.
+8. **What stayed wrong, and why that is the commit's shape.** **35 of 63** programs moved to the reference's answer,
+   **17** controls held, **11** still differ — and each of the 11 is a row (**Gap R.412** the popped slot against
+   `None`, **Gap R.413** a popped text in an arithmetic position in three shapes, **Gap R.414** a body whose `return`
+   *is* the popped slot, plus the refusals **Gap R.35**, **Gap R.174**, **L11.3** already own). R.414's control is the
+   best finding in the file: `return xs[1]` is *refused* while `return xs.pop(1)` prints `0`, which localises the bug
+   to the pop road rather than to the slot, and is the difference between a row someone can start and a row that reads
+   "the pair system is wrong somewhere".

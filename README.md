@@ -2817,6 +2817,41 @@ falls back to dynamic dispatch.
   un-specialised entry could not leave that field at a plausible value by accident; and the ban holds — every clone
   reaches its recursion with `call i32 @gy_fact$callable$…(i32 %t9, i32 0)`, a call to a `define`, and no
   `ptrtoint`/`inttoptr` anywhere in the module.
+- **A `list.pop()` moves the payload AND its tag (Gap R.411, ADR 0410)** — `xs = [1, 2, "a"]` / `xs.pop(0)` /
+  `print(xs)` wrote **`[2, 0]`** where the reference writes `[2, 'a']`, at **exit 0**; `xs = ["a", 1]` /
+  `xs.pop(0)` / `if xs[0]:` read `@str_tab[1]` — a pointer the intern table never wrote — and the process died in
+  the printer with nothing on stdout (**exit 139**, **ADR 0166**'s artifact-at-fault class); and the same removal
+  asked of the printer answered `0` for a text (the position of the first text the program interns), `1` for a
+  double (its `@float_box` handle) and the arena slot for a nested list. A slot in this backend is **two words** —
+  a payload, and the tag that says what the payload means (**ADR 0232**) — and `@rt_pop` shifted one of them. The
+  tag array is not cleared on free, so the tail wore the kind of the slot it landed on and the popped answer wore
+  whatever kind the removed slot's *last tenant* carried: the answer depended on the program's history and not on
+  its source. The fix is the one the file already taught: `rt_reverse`'s swap (**ADR 0187**) and
+  `rt_set_discard_tagged`'s shift both move the tag with the payload, and `pop` was the third positional door that
+  had not been told — `@rt_pop(i32 %h, i32 %i, i32* %outt)` moves the tag through the shift and reports the removed
+  one, with **no new runtime entry point**, because `@heap_tags` is the array the printer already reads. One road
+  (`emitPopRoad`) lowers the removal for the position that discards the answer and the position that prints it, and
+  the answer travels as a (payload, tag) pair through the doors those positions ALREADY ask — the print/`str` door,
+  the truth road, `==`, the ordering door, the tagged arithmetic door behind `arithWouldRefuse`, a container
+  literal's element, a function's parameter — so no position got a road beside a door and `print`, `str`, `if` and
+  `==` cannot disagree about one value (**ADR 0258**, **ADR 0232**). Which tag travels is the container's fact: the
+  object's own for a list whose slots describe themselves (**ADR 0184**/**ADR 0232**), the notebook's claim for a
+  list that still claims one kind, and **DECLINE** for a kind no notebook describes — guessing is how a payload gets
+  rendered under a kind the object never gave it, which is the class of bug this row exists to remove
+  (**ADR 0166**), and `TestThePopAnswerShapeHasThreeAnswers` asks the gate and the door the same question so they
+  cannot disagree. The ordering arm is where a wrong answer became the reference's *raise*: `xs = [1, "a"]` /
+  `print(xs.pop(0) > 1)` now emits `TypeError: '>' not supported between instances of 'str' and 'int'` where it had
+  printed `False`, because a pair arm that bypasses `taggedArithPair` beats the door's refuse arms (**Gap R.296**).
+  The bounds raise is the reference's too, and the two sentences are two: `pop from empty list` for the empty list,
+  `pop index out of range` for the rest, both catchable by the program's own `except IndexError:`. Measurement over
+  the **63** programs the two suites carry, a build of the parent (`0f798e8`) beside this one, each asked of the
+  pinned CPython: **35 moved to the reference's answer, 17 controls held, 11 still differ and each is a row** —
+  **Gap R.412** (a popped slot compared with `None`), **Gap R.413** (a popped text in an arithmetic position, three
+  shapes), **Gap R.414** (a body whose answer IS the popped slot) beside the refusals **Gap R.35**, **Gap R.174**
+  and **L11.3** already own. `tools/recmerge` wrote **79** entries from the reference (**8912 → 8991**) and refused
+  the programs the compiled leg has no answer for, and one compiled-vs-record row **arrived** — a dict's `pop` over
+  a name, which the record answers and this backend refuses with a code (ledger **19 → 20**), the ratchet's other face.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

@@ -18,6 +18,12 @@
     "actual": "jit: codegen: unpacking 1 values into 2 names: the reference raises ValueError: not enough values to unpack (expected 2, got 1) (roadmap L11.3, ADR 0361)"
   },
   {
+    "source": "d = {\"a\": 1}\nprint(d.pop(\"a\"))\n",
+    "reason": "the compiled backend cannot build a program the engine ran",
+    "expected": "result \"None\"",
+    "actual": "{\"backend\":\"aot\",\"capability\":{\"code\":\"lower.unsupported.container-method-over-a-name\",\"rows\":[\"Gap I.2\",\"L11.1\"],\"shape\":\"a container method the backend folds only over a literal it can see\",\"suggestion\":\"write the argument out at the call (xs.extend([7])), or loop and append — the method road folds over a literal written at the call and this argument's slots belong to the runtime\"},\"error\":\"jit: codegen: pop() on \\\"d\\\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \\\"d\\\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)\",\"errors\":[],\"exit\":1,\"ok\":false,\"phase\":\"codegen\"}"
+  },
+  {
     "source": "def scale(v):\n    return round(v, 2)\n\nprint(scale(2.345))\n",
     "reason": "stdout differs from the record",
     "expected": "2.35\n",

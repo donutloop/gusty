@@ -347,55 +347,18 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		// (negative counts from the end). The bounds test is emitted around the
 		// removal so an out-of-range index raises IndexError through the same
 		// exception path a `raise` uses (roadmap Gap K.3).
+		//
+		// One road, one emission: the pair door (popAnswerPair, pop_answer.go) asks THIS function for
+		// the removal too, so the position that prints the popped value and the position that discards it
+		// cannot ever disagree about which slot was removed or which bounds raise runs (ADR 0232's one
+		// question, ADR 0410).
 		if len(c.Args) > 1 {
 			return "", fmt.Errorf("codegen: pop() takes at most 1 argument (xs.pop(), xs.pop(i))")
 		}
-		g.heapSeq++
-		hs := g.heapSeq
-		h := fmt.Sprintf("%%h%d", hs)
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", h, "_"+nm.Value))
-		n := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", n, h))
-		idx := g.newTmp()
-		badL, okL := g.newLabel("pop.bad"), g.newLabel("pop.ok")
-		var bad string
-		if len(c.Args) == 1 {
-			iv, err := g.value(b, c.Args[0])
-			if err != nil {
-				return "", err
-			}
-			neg := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", neg, iv))
-			g.markI1(neg)
-			adj := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", adj, iv, n))
-			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", idx, neg, adj, iv))
-			hi := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, idx, n))
-			g.markI1(hi)
-			lo := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, idx))
-			g.markI1(lo)
-			bad = g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
-			g.markI1(bad)
-		} else {
-			// No index: the last element, and an empty list is the error case.
-			b.WriteString(fmt.Sprintf("  %s = sub i32 %s, 1\n", idx, n))
-			bad = g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", bad, n))
-			g.markI1(bad)
+		ret, _, err := g.emitPopRoad(b, nm.Value, c.Args, c.Span(), false)
+		if err != nil {
+			return "", err
 		}
-		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
-		b.WriteString(fmt.Sprintf("%s:\n", badL))
-		if len(c.Args) == 1 {
-			g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop index out of range", c.Span())
-		} else {
-			g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop from empty list", c.Span())
-		}
-		b.WriteString(fmt.Sprintf("%s:\n", okL))
-		ret := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_pop(i32 %s, i32 %s)\n", ret, h, idx))
 		return ret, nil
 	}
 	// xs.sort() and xs.reverse() mutate in place and return None. Neither existed in

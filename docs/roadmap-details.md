@@ -17812,3 +17812,102 @@ artifact-writing variables (**Gap R.410**) and a case asserts the scrubbing hold
 The house rule that "an artifact is written by the one process that asked for it" is worth more than the rule that
 "the artifact-writing mode must be run serially", because the second one has to be remembered and the first one is
 enforced.
+
+<a id="gap-r-411"></a>
+### Gap R.411 — a `list.pop()` moves the payload and leaves the tag, closed by **ADR 0410**
+
+```gusty
+xs = [1, 2, "a"]         xs = ["a", 1]          xs = ["a", 1]
+xs.pop(0)                xs.pop(0)              print(xs.pop(0))
+print(xs)                if xs[0]:              #  the reference: a
+#  reference: [2, 'a']        print("t")         #  this backend, before: 0
+#  this backend: [2, 0]   #  reference: prints t
+                         #  this backend: exit 139, nothing on stdout
+```
+
+Three ordinary programs, three different failure kinds — a wrong answer at the exit code of success, a segfault
+with no bytes on stdout, and the same wrong answer with a printer in front of it. They are one defect. A list slot
+in this backend is **two words**: a payload, and the tag that says what the payload means. A text's payload is its
+index into `@str_tab`, a double's is the handle of a `@float_box` object, a container's is a slot in `@heap`, a
+`None`'s is `0`. Nothing in the container says which of those a number is; the tag beside it does (**ADR 0232**).
+
+`@rt_pop` is the door that takes an element OUT of a list. It shifted the payloads left, shrank the length and
+returned the removed payload. It never touched `@heap_tags`, and it never reported the removed slot's tag. So two
+things went wrong at once, and only one of them was `pop`'s:
+
+* **the tail kept wearing the wrong kind.** Every element after the removed one moved down one slot in the payload
+  array and stayed where it was in the tag array, so it was read under the kind of its new neighbour. `"a"`'s
+  intern index slid into the slot whose tag still said `TagInt` and `print(xs)` answered `[2, 0]` — the `0` being
+  the intern table's first entry, which is to say: nothing.
+* **the answer was a word with no kind.** The removed slot's tag stayed in the array — and the array is not cleared
+  on free, so `print(xs.pop(0))` rendered whatever kind that slot's *last tenant* had carried. A popped text
+  printed `0`, a popped double printed `1` (the float box's heap handle), a popped list printed the arena slot the
+  inner list got. The answer depended on the program's **history** rather than on its source, which is the single
+  sentence this row exists to make untrue.
+
+What turned a lie into a crash was the read *after* the shift: `if xs[0]:` on `xs = ["a", 1]` / `xs.pop(0)` reads
+payload `1` under tag `TagStr`, indexes `@str_tab` at an entry nobody wrote, and hands the printer a pointer that is
+not a string — **ADR 0166**'s artifact-at-fault class, exit 139.
+
+**The file already knew the rule.** `rt_reverse`'s swap moves the tag with the payload (**ADR 0187**),
+`rt_set_discard_tagged`'s shift does the same for the set door, and the indexed store drops the old tag when it
+writes a new one. `pop` was the third positional door in that file and the one nobody had walked. So the fix is not
+a new representation and not a new runtime entry point: `@rt_pop(i32 %h, i32 %i, i32* %outt)` stores
+`@heap_tags[h][src]` into `@heap_tags[h][j]` beside the payload it already moves, and writes the removed slot's tag
+through `%outt`. The tag it reports is the word `rt_tag_elem` writes and `rt_print_list_mixed` reads, so nothing in
+the module can disagree with anything else about what the element was.
+
+**One road, every position.** `emitPopRoad` lowers the handle load, the length read, the negative-index fix-up, the
+bounds raise, the removal and the shift; the method road (the position that discards the answer) and the pair door
+(the position that reads it) both call it, so the two cannot disagree about *which* element left the list. The
+answer then travels as a (payload, tag) pair through the doors those positions ALREADY ask — `answerCallPair` and
+`pairCallPair` for the printer and `str`, the truth road for `if`, `comparePair` for `==`, `orderSide.popCall` for
+the ordering, `arithWouldRefuse` → `taggedArithPair` for the operators, `literalHasPairElement` for a literal's
+element, `pairCallScan`'s needs half for a function's parameter. No position got a road written beside a door. That
+is the shape **ADR 0258** and **ADR 0232** keep asking for, and the reason `print`, `str`, `if` and `==` now cannot
+give one value four answers.
+
+**The pair arm that bypassed a door, caught by the ordering.** The first cut answered the pair inside
+`numericExprPair` directly, and `xs = [1, "a"]` / `print(xs.pop(0) > 1)` printed `False` at exit 0 where the
+reference raises `TypeError: '>' not supported between instances of 'str' and 'int'`. The pair arm had stepped
+around `taggedArithPair`'s refuse arms — **Gap R.296**'s rule, restated: a gate may not be paid to step around a
+door's refusal. The row now points `arithWouldRefuse` at that door and gives `orderSide` a popped arm, and the
+comparison beat an interned index with `1` no more.
+
+**Which tag travels is the container's fact, and the third answer is DECLINE.** `popAnswerShape` answers three
+things and a test asks all three. A list whose slots describe themselves (`mixedLists` — the containers
+**ADR 0184**/**ADR 0232** promoted) hands over the tag the *object* stored, loaded by the removal itself. A list
+that still claims one element kind hands over the *notebook's* claim, the same claim the printer, the loop and the
+comparison roads already act on — so `xs = ["a", "b"]` / `print(xs.pop(0))` prints `a` for the reason its
+`print(xs)` already prints `['a', 'b']`, and the single-kind list keeps the road that was already right (opening a
+working program's road is churn, not a fix). A list whose kind no notebook describes is **declined** and the element
+stays on the road it was on. Guessing `TagInt` there is how a payload gets rendered under a kind the object never
+gave it — the class of bug this row exists to remove, not to add (**ADR 0166**) — and `TestThePopAnswerShapeHasThreeAnswers`
+asks the gate and the door the same six shapes so they cannot drift apart (**ADR 0249**).
+
+**Two bounds sentences, because the reference has always had two.** An empty list raises
+`IndexError: pop from empty list`; a non-empty one raises `IndexError: pop index out of range`. This backend had
+one, and had it for the empty case — the kind of detail that only surfaces when somebody files the program that
+asks. Both are recorded, and both are catchable by the program's own `except IndexError:` — a trap the compiler
+raises and a trap the program raises have to be the same trap or the second one is untestable.
+
+**Measurement** (63 unique programs across the two new files, each asked of the pinned CPython, a build of the
+parent `0f798e8` beside a build of this commit): **35 moved to the reference's answer, 17 already agreed and still
+do, 11 still differ and every one of them is a row.** The 35 are the popped text, double, verdict, void, list and
+dict slot through the printer, `str`, a condition, an argument, a literal element and a comparison; the tail after
+a removal read by the printer, by `len` and by position; the drain in a `while`; the same list under two names. The
+17 are the single-kind controls (`[7, 8, 9]`, `[1.5, 2.5]`, `["a", "b"]`), the append neighbours, the traps and the
+two programs the fold always answered. The 11 are `Gap R.35` (a module-level container reached from a body), the
+container-method fold (`insert` over a name), **Gap R.412**, **Gap R.413** (three shapes: the repeat, the
+concatenation sentence, the text-against-text refusal), **Gap R.414** and its control — `return xs[1]`, which this
+backend *refuses*, which is exactly what localises R.414 to the pop road rather than to the slot — a tuple's `pop`
+(**L11.3**/**ADR 0361**) and a dict's `pop` (**Gap R.174**).
+
+`tools/recmerge` wrote **79** entries from the reference for this family (the record to **8991**) and refused the
+programs the compiled leg has no answer for — among them `xs = ["a", 1]` / `print(xs.pop(0) + 1)`, where this
+backend says `unsupported operand type(s) for +: 'str' and 'int'` and the reference says `can only concatenate str
+(not "int") to str`: the same trap class, a sentence that is not the reference's, so the recorder declined and the
+program belongs to **Gap R.413** instead of to the record (**ADR 0309**). One compiled-vs-record row **arrived**
+beside the fix — a dict's `pop` over a name, which the record answers and this backend refuses with a code (the
+`integration` ledger **19 → 20**) — which is the ratchet's other face and the reason the ledger is read as a set and
+not as a length.

@@ -170,7 +170,20 @@ entry:
 ; rt_pop removes element %i and returns it, shifting the tail left and shrinking the
 ; length. The caller bounds-checks (an out-of-range index raises IndexError), and the
 ; index is already normalised for negatives.
-define internal i32 @rt_pop(i32 %h, i32 %i) {
+;
+; A slot is TWO words — the payload and the tag that says what the payload means — so the shift
+; moves both, and the removed slot's tag leaves through %outt. A shift that moved the payload
+; alone left every tail element wearing the kind of the slot it landed on: the three lines
+; xs = [1, 2, "a"] / xs.pop(0) / print(xs) wrote [2, 0] where the reference writes [2, 'a'], because
+; the text's intern index slid into a slot whose tag still said int, and the three lines
+; xs = ["a", 1] / xs.pop(0) / if xs[0]: read @str_tab[1] — a pointer the intern table never wrote —
+; and the process died in the printer with nothing on stdout (exit 139, ADR 0166's artifact-at-fault
+; class). The tag array
+; is not cleared on free, so the stale tag is whatever the slot's last tenant carried: the answer
+; depended on the program's history, not on its source.
+; rt_reverse's swap (ADR 0187) and rt_set_discard_tagged's shift keep the same rule; this is the
+; third positional door, and the one that had not been told (roadmap L11.1, ADR 0410).
+define internal i32 @rt_pop(i32 %h, i32 %i, i32* %outt) {
 entry:
   %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -178,6 +191,9 @@ entry:
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
   %ip = getelementptr [256 x i32], [256 x i32]* %ep, i32 0, i32 %i
   %v = load i32, i32* %ip
+  %tp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %t = load i32, i32* %tp
+  store i32 %t, i32* %outt
   %last = sub i32 %len, 1
   br label %shift
 shift:
@@ -190,6 +206,10 @@ shiftdo:
   %sv = load i32, i32* %sp
   %dp = getelementptr [256 x i32], [256 x i32]* %ep, i32 0, i32 %j
   store i32 %sv, i32* %dp
+  %st = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %src
+  %stv = load i32, i32* %st
+  %dt = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  store i32 %stv, i32* %dt
   %jnext = add i32 %j, 1
   br label %shift
 done:
