@@ -1,5 +1,186 @@
 {
  "entries": {
+"xs = [1]\nys = xs\ntry:\n    print(ys.pop(0))\n    print(ys.pop(0))\nexcept IndexError as e:\n    print('caught', e)\n": {
+    "stdout": "1\ncaught pop from empty list\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(0))\nprint(ys.pop(0))\nprint(ys.pop(0))\n": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(7))\n": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"xs = [None]\nys = xs\nprint(ys.pop(0))\nprint(xs.pop(0))\n": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"xs = []\nys = xs\ntry:\n    print(ys.pop(0))\nexcept IndexError as e:\n    print('caught', e)\n": {
+    "stdout": "caught pop from empty list\n",
+    "hasStdout": true
+   },
+"a = 1\nb = a\nxs = [None, 1]\nprint(b)\nprint(xs[0])\n": {
+    "stdout": "1\nNone\n",
+    "hasStdout": true
+   },
+
+"class T:\n    def m(self):\n        xs = [None, 1]\n        ys = xs\n        return ys.pop(0) is None\n\nprint(T().m())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nys = xs\nprint(ys.pop(0))\nprint(str(ys.pop(0)))\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nys = xs\nxs.append(1)\nprint(ys.pop(0))\nprint(ys)\n": {
+    "stdout": "a\n['b', 1]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", \"b\"]\nys = xs\nzs = ys\nzs.append(7)\nprint(xs.pop(2))\nprint(xs)\n": {
+    "stdout": "7\n['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\", 1]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n": {
+    "stdout": "a\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = xs\nxs.append(\"a\")\nprint(ys.pop(2))\nprint(ys)\n": {
+    "stdout": "a\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = xs\nys.append(\"a\")\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "1\n[2, 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = xs\nys.append(\"a\")\nprint(xs.pop(2))\nprint(xs)\n": {
+    "stdout": "a\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = xs\nys.append(3)\nprint(xs)\nprint(ys)\nprint(ys.pop(0))\n": {
+    "stdout": "[1, 2, 3]\n[1, 2, 3]\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [1, None]\nys = xs\nprint(ys.pop() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1, None]\nys = xs\nprint(ys.pop(-1) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, 2.5]\nys = xs\nprint(ys.pop(0))\n": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"xs = [7, 8, 9]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n": {
+    "stdout": "7\n[8, 9]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nys = xs\nfor v in ys:\n    print(v is None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nys = xs\nfor v in ys:\n    print(v)\n": {
+    "stdout": "None\na\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nys = xs\nprint(len(ys))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nys = xs\nzs = ys\nprint(zs[0])\nprint(zs.pop(0) is None)\nfor v in zs:\n    print(v)\n": {
+    "stdout": "None\nTrue\na\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "None\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nif ys.pop(0):\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint([ys.pop(0)])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys)\n": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(0) == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(0) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(0) is not None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n": {
+    "stdout": "None\n[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nprint(ys[0])\nprint(ys[1])\n": {
+    "stdout": "None\n1\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1]\nys = xs\nxs = [2, None]\nprint(ys)\nprint(ys[0])\n": {
+    "stdout": "[None, 1]\nNone\n",
+    "hasStdout": true
+   },
+
+"xs = [[1, 2], 3]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n": {
+    "stdout": "[1, 2]\n[3]\n",
+    "hasStdout": true
+   },
+
+"xs = []\nys = xs\nif ys:\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"xs = [{\"a\": 1}, None]\nys = xs\nprint(ys.pop(0))\n": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
 "n = 1\nm = 1\nprint(n is m)\nprint(n is not m)\n": {
     "stdout": "True\nFalse\n",
     "hasStdout": true

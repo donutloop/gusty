@@ -46,11 +46,14 @@ import (
 // reference's answer, 11 controls held, 6 still differ, none moved away from the reference**. Five of the six
 // that differ are identical on the parent build, which is what makes them rows rather than regressions: a call
 // that answers the void and is then compared with it is **Gap R.388**'s standing row; an unrolled loop item over
-// a literal list (**Gap R.416**), a callee's own parameter (**Gap R.417**), and the same list under a second
-// name (**Gap R.415**) are the three doors this one did not reach. The sixth is `is` asked of a popped
-// CONTAINER against a container literal, which hands `llc` a module-level global in a word position and dies at
-// **exit 2** — **Gap R.418**, the asking-door half of the **Gap R.393**/**Gap R.253** family, and the reason
-// this row admits the void and nothing else.
+// a literal list (**Gap R.416**) and a callee's own parameter (**Gap R.417**) are the two doors this one did not
+// reach. The sixth is `is` asked of a popped CONTAINER against a container literal, which hands `llc` a
+// module-level global in a word position and dies at **exit 2** — **Gap R.418**, the asking-door half of the
+// **Gap R.393**/**Gap R.253** family, and the reason this row admits the void and nothing else.
+//
+// A seventh shape stood in this row's owed table — the same list under a second name — and it has since been
+// PAID: **ADR 0412** (roadmap **Gap R.415**) gave the shared-handle binding the record it had never written, and
+// the program prints the reference's `True`. Its family is pinned in `the_alias_shares_the_record_test.go`.
 
 // theVoidAnswered is the family this row pays: the identity question against the void, asked of every position
 // that carries a tag the compiler cannot state, plus the controls that keep the fold honest.
@@ -312,17 +315,10 @@ func theVoidOwed() []struct {
 				"shape arriving one frame deeper, and it is identical on the parent build — a refusal would be a " +
 				"different debt, so it is pinned as the wrong answer it is",
 		},
-		{
-			name:     "the same list under a second name",
-			src:      "xs = [None, 1]\nys = xs\nprint(ys.pop(0) is None)\n",
-			gap:      "Gap R.415",
-			compiled: "False\n",
-			python:   "True\n",
-			why: "`popAnswerShape` reads the notebooks for the NAME the removal is written against, and the alias " +
-				"carries no kind claim of its own, so the door declines and the fold answers — the print half of the " +
-				"same program prints `0` where the reference prints `None`, which is why this is the alias row and not " +
-				"this one",
-		},
+		// `the same list under a second name` stood here as **Gap R.415** and is DELETED, not edited:
+		// ADR 0412 gave the shared-handle binding a record to hand over, and the program now prints the
+		// reference's `True`. It lives in `theAliasAnswered()`, beside the seven spellings of the same
+		// alias that answer now.
 		{
 			name:     "identity of a popped CONTAINER against a literal",
 			src:      "xs = [[1], 2]\nprint(xs.pop(0) is [1])\n",

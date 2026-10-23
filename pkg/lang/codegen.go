@@ -982,6 +982,11 @@ type irGen struct {
 	// then asks it again must not remove the element twice, so the second ask answers the registers the
 	// first emitted (roadmap L11.1, ADR 0410).
 	popPairMemo map[*Call][2]string
+	// containerAlias is the notebook's record of the binding that copies a handle and nothing else:
+	// `ys = xs` gives `ys` the object `xs` names, so the claims a read of `ys` asks — does its slots
+	// describe themselves, what kind do they hold — are answered by `xs`' record (roadmap L11.1,
+	// Gap R.415, ADR 0412). Cleared at the binding that hands either name a different object.
+	containerAlias map[string]string
 	// containerRet is the scan's answer to "which functions hand back a container, and which container"
 	// (roadmap Gap R.67, ADR 0333). The answer is one word — a heap handle — and its kind is a fact about
 	// the function's whole body, so it is written down once here rather than guessed per call site: a

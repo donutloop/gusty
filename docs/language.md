@@ -1300,9 +1300,11 @@ else:
   answered by the content door — content equality is the wrong answer for two containers holding
   the same elements — and the shape dies in the assembler instead (`print([1] is [1])`,
   `Gap R.418`). The same question asked of a loop item over a **literal** list (`Gap R.416`), of
-  a callee's own parameter (`Gap R.417`), of the same list under a second name (`Gap R.415`) and
-  of a call that answers the void (`Gap R.388`) is still answered by the fold, and prints `False`
-  where the reference prints `True`.
+  a callee's own parameter (`Gap R.417`) and of a call that answers the void (`Gap R.388`) is still
+  answered by the fold, and prints `False` where the reference prints `True`. Asked of the same list
+  under a **second name** it no longer is: `ys = xs` / `print(ys.pop(0) is None)` asks the tag, because
+  the record of an object's slots now travels with the handle the two names share (`Gap R.415`,
+  **ADR 0412**).
 - `type(x) == "None"` is not how you ask: `type` is a reserved word here (annotations), so
   `type(x)` is not a call in this grammar. Use `x == None`.
 
@@ -1715,13 +1717,25 @@ lst.append(7)
   `if xs.pop(0):`, `xs.pop(0) == 1`, `xs.pop(0) > 1`, a popped element of a list literal and a
   popped value passed to a function all agree, and an ordering that the reference answers with a
   `TypeError` answers with that `TypeError` here too.
-- **What the removal still gets wrong** (filed, not hidden): comparing a popped slot with `None`
-  answers `False` (`Gap R.412`); a popped TEXT in an arithmetic position is answered by the untagged
+- **What the removal still gets wrong** (filed, not hidden): a popped TEXT in an arithmetic position is answered by the untagged
   doors, so `xs.pop(0) * 2` raises where the reference prints `aa` and `xs.pop(0) + "?"` refuses
-  where it prints `a?` (`Gap R.413`); and a function body whose `return` IS the popped slot hands
-  back one word instead of a pair (`Gap R.414`). A `tuple.pop()` is refused — a tuple is immutable
+  where it prints `a?` (`Gap R.413`); a function body whose `return` IS the popped slot hands
+  back one word instead of a pair (`Gap R.414`); a function handed the popped slot prints the payload,
+  so `def w(v): print(v)` above `w(xs.pop(0))` writes `0` for `None` (`Gap R.417`); and the same program
+  over an aliased list answers no differently — the alias is the notebook's business, not the callee's
+  (`Gap R.415`, **ADR 0412**, pays the alias and leaves that one to its own row). A `tuple.pop()` is refused — a tuple is immutable
   (**L11.3**, **ADR 0361**) — and `dict.pop()` over a name is refused with
   `lower.unsupported.container-method-over-a-name` (`Gap R.174`).
+- **A second name for a list is ONE list, and answers the same at every door** (**Gap R.415**, **ADR 0412**).
+  `ys = xs` shares the object — it is not a copy — and what the object's slots hold is a fact about the OBJECT, not
+  about whichever name the read happens to be written against: `print(ys.pop(0))`, `print(ys[0])`,
+  `for v in ys: print(v)`, `if ys.pop(0):` and `ys.pop(0) is None` all answer what the same line written against `xs`
+  answers, and a mutation is one event on one object wherever it is written — `ys.append("a")` is told to `xs`, and
+  `xs.append("a")` is told to `ys`. A name keeps the facts of the object it HOLDS, so after `xs = [2, None]` the
+  alias `ys` still describes the first list (`print(ys)` is the reference's `[None, 1]`). What this leaves owed is
+  filed rather than smoothed over: an alias of a **dict** or a **set** is the same missing record one container over
+  (`Gap R.419`), and a slot of the alias bound to a name and asked as a condition is refused for the one-word
+  position it is, exactly as the same program with no alias in it is (`Gap R.146`).
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.
@@ -6060,6 +6074,13 @@ The same question asked of a slot the program built is answered, and is pinned i
 xs = [None, 1]
 print(xs.pop(0) is None)          # True — Gap R.412, ADR 0411: the TAG says the void, not the word 0 left behind
 print(xs.pop(0) is None)          # False — the slot that is left holds 1, and its own tag says so
+
+ys = [None, "a"]
+zs = ys                           # Gap R.415, ADR 0412: the handle is shared, and the record of it is shared with it
+print(zs.pop(0))                  # None — before this row: 0, the void's payload printed as an int, at exit 0
+print(zs.pop(0) is None)          # True — the same door, asked through the other name
+for v in ys:
+    print(v is None)              # True, False — one object, two names, one answer at every door
 ```
 `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness for the answered family.
 

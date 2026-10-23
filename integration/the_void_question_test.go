@@ -25,7 +25,8 @@ import (
 // The measurement, with a build of the parent commit `af8b847` beside a build of this one, over the programs
 // these two files carry: **17 of them moved to the reference's answer and none moved away from it**; 11 controls
 // held on both builds; 6 still differ and are rows — **Gap R.388** (a call that answers the void), **Gap R.415**
-// (the same list under a second name), **Gap R.416** (a loop item over a literal), **Gap R.417** (a callee's own
+// (the same list under a second name, SINCE PAID by **ADR 0412** and moved to `theAliasAnswered()`'s family in
+// `the_alias_shares_the_record_test.go`), **Gap R.416** (a loop item over a literal), **Gap R.417** (a callee's own
 // parameter) and **Gap R.418** (identity against a container literal, which reaches the assembler and dies).
 
 func voidQuestionFamily() []struct {
@@ -224,11 +225,6 @@ func TestWhatTheVoidQuestionStillOwesAtTheCLI(t *testing.T) {
 			name: "a callee's own parameter", gap: "Gap R.417",
 			src:    "def f(v):\n    return v is None\nprint(f(None))\nprint(f(1))\n",
 			python: "True\nFalse\n", compiled: "False\nFalse\n",
-		},
-		{
-			name: "the same list under a second name", gap: "Gap R.415",
-			src:    "xs = [None, 1]\nys = xs\nprint(ys.pop(0) is None)\n",
-			python: "True\n", compiled: "False\n",
 		},
 		{
 			name: "identity against a container literal", gap: "Gap R.418",

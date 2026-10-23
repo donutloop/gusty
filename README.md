@@ -2882,6 +2882,43 @@ falls back to dynamic dispatch.
   (**8991 → 9025**) and refused none, and the two pins **Gap R.412** left in the pop row's owed tables are
   DELETED rather than edited, which is the only way a paid debt is distinguishable from a rewritten one.
 
+- **The alias of a list answers what the name that built it answers (Gap R.415, ADR 0412)** —
+  `ys = xs` shares an OBJECT and, until this row, shared nothing else. The handle travels; the notebook
+  does not, and `mixedLists`/`listElemStr`/`listElemInt` are keyed by NAME, so every door that asks the
+  notebook before it asks the object asked a record that had never been written and answered from the
+  payload — the void's `0`, the intern table's index, the float box's handle (**ADR 0172**'s collision,
+  reached by writing the most ordinary statement in the language beside a door that had only ever been
+  asked about one name):
+
+  ```gusty
+  xs = [None, 1]            print(xs.pop(0))       #  None   None      — the name answered
+  ys = xs                   print(ys.pop(0))       #  None   ← this backend, before: 0   — at exit 0
+  print(ys.pop(0) is None)  #  True   ← this backend, before: False
+  ```
+
+  The fix is the notebook's, not the printer's, and its finding is that the record travels with the
+  handle in **three** places and any two of them is a wrong answer at the exit code of success or worse:
+  the claims are **copied** at the binding (without the copy the mutation doors read an empty record for
+  the alias, store an untagged payload into a tagged container, and the read-back is a **SIGSEGV**), the
+  **link is kept** for the read (a claim frozen at the binding is a claim about the moment of the binding,
+  and `xs.append("a")` is an event after it), and the **promotion** is told to every name that holds the
+  object (`markListMixed` over `containerSharers`, cycle-guarded), because one `append` is one event on one
+  object wherever the source writes it. A link resolves at read time and dies with the binding that hands
+  either name another object, which is why `xs = [2, None]` under an alias leaves `print(ys[0])` answering
+  for the FIRST list. The roads gained a lookup, not a road: the pop's gate and its door ask ONE
+  `listElementClaims` table (**ADR 0249**), the slot read and the loop's tagged arm ask the same lookup, and
+  the removal still goes through the one `@rt_pop(i32, i32, i32*)` **ADR 0410** hung — the IR guard counts one
+  call, checks the tag's out-parameter and the alias's own handle, and forbids `@rt_pop_aliased` by name. The
+  third answer survives: an alias of a list no record describes is DECLINED, not guessed (**ADR 0166**).
+  Measurement over the **42** programs the two suites carry as answered, a build of the parent (`8aa3029`)
+  beside this one, each asked of the pinned CPython: **26 moved to the reference's answer, 16 controls held,
+  0 regressions, 0 of the family still differing**; `tools/recmerge` wrote **36** entries from the reference
+  (**9025 → 9061**) and refused none, and the pin **Gap R.415** left in the void row's owed table is DELETED
+  rather than edited. What the row left standing is filed with its bytes beside it: an alias of a DICT or a
+  SET is the same missing record one container over — **Gap R.419**, two wrong answers and two crashes — the
+  callee's printer through the alias stays **Gap R.417**, and the slot bound and asked as a condition stays
+  **Gap R.146**'s one-word position, refused exactly as its non-alias twin is.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

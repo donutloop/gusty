@@ -17993,24 +17993,62 @@ together, because a row that pays `return xs.pop(1)` while `return xs[1]` stays 
 about this program.
 
 <a id="gap-r-415"></a>
-### Gap R.415 — the same list under a second name: the removal is declined, so the answer is one word again (⏳ OPEN, filed by **ADR 0411**)
+### Gap R.415 — the alias of a list answers what the name that built it answers, closed by **ADR 0412**
 
 ```gusty
 xs = [None, 1]            xs = [None, 1]
-print(xs.pop(0))          ys = xs
-#  None                   print(ys.pop(0))   #  None    ← this backend: 0
-                          print(ys.pop(0) is None)  # True ← this backend: False
+print(xs.pop(0))          #  None    None      — the name answers
+                          ys = xs
+                          print(ys.pop(0))     #  None    ← this backend, before: 0   — at exit 0
+                          print(ys.pop(0) is None)  # True ← this backend, before: False
 ```
 
-The two columns differ by nothing but the NAME the removal is written against, and that is the whole row.
-`popAnswerShape` reads the notebooks — `listVars`, `mixedLists`, `listElemStr`, `listElemInt` — for the name it is
-handed, and `ys = xs` binds a name without binding any kind claim to it: the list is the same object, the door is
-stone-blind to it, and the shape is DECLINED (**ADR 0166**'s third answer, and the correct one for a door that cannot
-see). What is wrong is not the decline but what happens after it: the fold picks the answer up and renders the void's
-payload as an integer. The fix is to follow the alias to the container it names — the notebook already knows `xs` is
-a mixed list, and the assignment says which name to ask about — and to let a genuinely declined shape keep its
-refusal rather than fall through to a guess. All four programs are byte-identical on the parent build `af8b847`, which
-is the sentence that makes this the alias's row and not the identity door's.
+The two columns differ by nothing but the NAME the read is written against, and that was the whole row.
+`ys = xs` lowers as what it is: the handle `xs` holds is stored into the slot `ys` holds, and the two names then read
+ONE object — which carries its own truth, every slot written with its tag (**ADR 0189**), bit 8 saying the slots may
+be read as pairs (**ADR 0232**). The NOTEBOOK does not travel with it. `mixedLists`, `listElemStr` and `listElemInt`
+are keyed by NAME, the binding writes none of the three, and every door that asks the notebook before it asks the
+object — `popAnswerShape`, `mixedIndexRead`, the loop's tagged arm — asked a record that had never been written and
+answered from the payload: the void's `0`, the intern table's index, the float box's handle (**ADR 0172**'s collision
+wearing an ordinary program's clothes). A mutation written against the alias was worse than wrong:
+`xs = [1, 2]` / `ys = xs` / `ys.append("a")` / `print(xs.pop(2))` reached the printer with a text slot nobody had
+labelled and died on a **SIGSEGV**, because the door that decides whether an incoming element needs a tag written
+beside it consults its own name's record, found none, and stored an untagged payload into a tagged container.
+
+The row's finding is that the record travels with the handle in **three** places and any two of them is a wrong
+answer at the exit code of success or worse. `recordContainerAlias` (new `pkg/lang/container_alias.go`, the only
+writer, called from the one place that lowers an assignment, beside the door that settles the kind) **copies the
+three claims** onto the new name — without the copy the mutation doors read an empty record and the crash above is
+back — and **keeps a `containerAlias` link** — without the link a copied claim is a claim about the moment of the
+binding, and `xs = []` / `ys = xs` / `xs.append("a")` is an event after it. `markListMixed` then tells the promotion
+to **every name that holds the object** (`containerSharers`, both directions, cycle-guarded), because a promotion is
+one event on one object wherever the source writes it and a notebook that told only `xs` would leave `ys` claiming
+integers about a list whose next slot is a text. `forgetContainerAlias`, called from `settleContainerKind` and
+`bindTaggedVar`, drops a name's link and every link leading through it, which is what keeps
+`xs = [None, 1]` / `ys = xs` / `xs = [2, None]` / `print(ys[0])` answering for the FIRST list.
+
+The roads gained a lookup, not a road: the gate (`popAnswerShape`) and the door (`popAnswerPair`) ask the same
+`listElementClaims` table so they cannot drift (**ADR 0249**), and `mixedIndexRead` and the loop's tagged arm ask
+`mixedListRead` — the same lookup, one place (**ADR 0232**'s one question). The handle is still loaded from the name
+the read is written against: the link is a lookup into the record, not a redirection of the read. No runtime helper
+was invented — the alias's removal goes through the one `@rt_pop(i32 %h, i32 %i, i32* %outt)` **ADR 0410** hung, and
+the IR guard counts one call, checks the out-parameter and the `%_ys` handle, and forbids `@rt_pop_aliased`,
+`@rt_pop_alias`, `@rt_alias_` and `@rt_tag_elem_aliased` by name. The third answer survives too: an alias of a list
+no record describes is DECLINED, not guessed, and the gate test asks that decline from the same table as the two
+answers (**ADR 0166**).
+
+**Measurement** (the 42 programs `the_alias_shares_the_record_test.go` and its `integration` twin carry as ANSWERED,
+a build of the parent `8aa3029` beside a build of this commit, each asked of the pinned CPython): **26 moved to the
+reference's answer, 16 controls held, 0 regressions, 0 of the answered family still differing.** `tools/recmerge`
+wrote **36** entries from the reference (the record **9025 → 9061**) and refused none: on every source this row
+claims to have paid, the compiled leg agreed with the reference first (**ADR 0309**). The pin this row left in
+`TestWhatTheVoidQuestionStillOwesIsFiledNotFixed` and its CLI twin was **deleted, not edited**, and the program moved
+into this file's answered family instead (**ADR 0411**'s precedent for what a paid debt looks like).
+
+What the row measured beside itself and did not buy is filed, not buried: the callee's printer handed the alias's
+popped slot is **Gap R.417** byte-identical to the non-alias twin, a slot of the alias bound and asked as a condition
+is **Gap R.146**'s one-word position refused exactly as its non-alias twin is, and an alias of a DICT or a SET is the
+same missing record one container over — **Gap R.419**, whose three shapes are byte-identical on the parent build.
 
 <a id="gap-r-416"></a>
 ### Gap R.416 — the identity and equality questions asked of a loop item over a LITERAL list (⏳ OPEN, filed by **ADR 0411**)
@@ -18085,3 +18123,37 @@ seconds was not, and the row that this leaves standing is filed with the assembl
 `containerOperand` on both sides — a handle in the word, never a global — and an answer given by handle-and-tag
 identity rather than by the content arm; where the handles cannot be settled, a refusal that names a capability code
 is honest and an `icmp` against a `@.lst` is not.
+
+<a id="gap-r-419"></a>
+### Gap R.419 — an alias of a DICT or a SET is the same missing record one container over (⏳ OPEN, filed by **ADR 0412**)
+
+```gusty
+d = {"a": 1}               e = d
+e["b"] = "x"
+print(d)      #  {'a': 1, 'b': 'x'}   ← this backend: {'a': 1, 'b': 1}    — exit 0
+print(e)      #  {'a': 1, 'b': 'x'}   ← this backend: {'a': 'x', 'b': 'x'}
+
+s = {1, 2}    t = s    t.add("a")    print(s)   #  SIGSEGV
+d = {"a": 1}  e = d    e[7] = 2      print(d)   #  SIGSEGV
+```
+
+**ADR 0412** pays the LIST's binding and returns at its own door: `recordContainerAlias` copies the three claims that
+make a list read ask the object — `mixedLists`, `listElemStr`, `listElemInt` — and never reaches the dict's
+(`mixedDicts`, `dictKeyStr`, `dictValStr`, `dictKeyInt`, `dictValInt`) or the set's (`mixedSets`, `setElemStr`,
+`setElemInt`). The binding shares those just as little, so the same missing notebook is answered here by the same
+class of wrong: the value written through `e` arrives with its tag and nowhere to put it, `d` still claims integer
+values, and the printer renders the text's intern index under a label the object never gave it (**ADR 0166**'s
+wrong answer at exit 0). The two crashes are the mutation door's own ask — it decides whether the incoming element
+needs a tag written with it, asks its OWN name's record, finds none for the alias, and stores untagged — which is
+the artifact at fault (**Gap R.203**'s class), not the program.
+
+All three shapes are byte-identical on the parent build `8aa3029`, which is the sentence that separates this row from
+**Gap R.415**'s commit: the list's door had been opened, the dict's and the set's had not been touched. The fix is
+**ADR 0412**'s three halves copied, not re-derived — the claims copied at the binding, the link kept for the read,
+`markDictMixed`/`markSetMixed` told to every `containerSharers` name, and one resolver per container hung beside the
+list's `listElementClaims` so the mutation door, the printer and the read of one container answer one element the same
+way (**ADR 0249**). The third answer must survive the widening: the alias of a container no record describes keeps
+declining — `e.pop("a")` over an aliased dict already refuses with
+`lower.unsupported.container-method-over-a-name` (**Gap R.174**), and a refusal is a different debt from an answer.
+Pinned today in `TestWhatTheAliasRowStillOwesIsFiledNotFixed` and its CLI twin, each with this backend's bytes beside
+the reference's; paying the row DELETES those pins rather than editing them.

@@ -1,0 +1,329 @@
+package integration
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
+)
+
+// integration/the_alias_shares_the_record_test.go — the REFERENCE leg of **ADR 0412** (roadmap Gap R.415):
+// what the LINKED PROGRAM prints when a list is read through the name the program bound to it.
+//
+// The row's claim is that `ys = xs` is one object with two names, and that the record which says what the
+// object's slots hold belongs to the object: the binding copies the handle, and until this row it copied
+// nothing else, so the alias answered from an empty notebook. The programs below are the same reads asked
+// of both names — the popped slot through the printer, `str`, `==`, `is`, a condition, a literal element, a
+// method's return, the slot read, the loop item, a chain of three names — plus the three mutations, each
+// written against a different name and read back through another, which is where the copy alone or the link
+// alone leaves a wrong answer (or, in the case that reached the printer with a text slot nobody had
+// labelled, a segmentation fault at exit 139).
+//
+// Every expectation is re-derived from a live `python3` inside the case, so a table whose premise drifted
+// fails rather than certifies the drift; the traps are checked as traps (exit **3**, never exit 1 for a
+// refusal and never exit **2**, which ADR 0166 reserves for a module `llc` had to reject).
+
+// aliasRecordFamily is the answered family at the CLI: each program is run by the linked binary and by the
+// reference, and both must answer the same way.
+func aliasRecordFamily() []struct {
+	name string
+	src  string
+	want string
+} {
+	return []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"the row's own program", "xs = [None, 1]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "None\n[1]\n"},
+		{"the name it was built under", "xs = [None, 1]\nprint(xs.pop(0))\nprint(xs)\n", "None\n[1]\n"},
+		{"the alias's popped slot asked whether it is the void", "xs = [None, 1]\nys = xs\nprint(ys.pop(0) is None)\n", "True\n"},
+		{"and whether it is not", "xs = [None, 1]\nys = xs\nprint(ys.pop(0) is not None)\n", "False\n"},
+		{"the alias's popped slot asked with ==", "xs = [None, 1]\nys = xs\nprint(ys.pop(0) == None)\n", "True\n"},
+		{"a text's slot through the alias", "xs = [\"a\", \"b\"]\nys = xs\nprint(ys.pop(0))\nprint(str(ys.pop(0)))\n", "a\nb\n"},
+		{"a double's slot", "xs = [1.5, 2.5]\nys = xs\nprint(ys.pop(0))\n", "1.5\n"},
+		{"a nested list's slot", "xs = [[1, 2], 3]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "[1, 2]\n[3]\n"},
+		{"a dict's slot", "xs = [{\"a\": 1}, None]\nys = xs\nprint(ys.pop(0))\n", "{'a': 1}\n"},
+		{"a text first and a number after", "xs = [\"a\", 1]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "a\n[1]\n"},
+		{"the slot read", "xs = [None, 1]\nys = xs\nprint(ys[0])\nprint(ys[1])\n", "None\n1\n"},
+		{"the loop item", "xs = [None, \"a\"]\nys = xs\nfor v in ys:\n    print(v)\n", "None\na\n"},
+		{"the loop item's identity", "xs = [None, \"a\"]\nys = xs\nfor v in ys:\n    print(v is None)\n", "True\nFalse\n"},
+		{"a chain of three names", "xs = [None, \"a\"]\nys = xs\nzs = ys\nprint(zs[0])\nprint(zs.pop(0) is None)\nfor v in zs:\n    print(v)\n", "None\nTrue\na\n"},
+		{"the popped slot as a condition", "xs = [None, 1]\nys = xs\nif ys.pop(0):\n    print(\"t\")\nelse:\n    print(\"f\")\n", "f\n"},
+		{"the popped slot in a literal", "xs = [None, 1]\nys = xs\nprint([ys.pop(0)])\n", "[None]\n"},
+		{"the popped slot out of a method", "class T:\n    def m(self):\n        xs = [None, 1]\n        ys = xs\n        return ys.pop(0) is None\n\nprint(T().m())\n", "True\n"},
+		{"a negative index", "xs = [1, None]\nys = xs\nprint(ys.pop(-1) is None)\n", "True\n"},
+		{"the default index", "xs = [1, None]\nys = xs\nprint(ys.pop() is None)\n", "True\n"},
+		{"the alias mutated, the name reads back", "xs = [1, 2]\nys = xs\nys.append(\"a\")\nprint(xs.pop(2))\nprint(xs)\n", "a\n[1, 2]\n"},
+		{"the source mutated, the alias reads back", "xs = [1, 2]\nys = xs\nxs.append(\"a\")\nprint(ys.pop(2))\nprint(ys)\n", "a\n[1, 2]\n"},
+		{"the far end of a chain mutated", "xs = [\"a\", \"b\"]\nys = xs\nzs = ys\nzs.append(7)\nprint(xs.pop(2))\nprint(xs)\n", "7\n['a', 'b']\n"},
+		{"append through the alias reaches the object", "xs = [1, 2]\nys = xs\nys.append(3)\nprint(xs)\nprint(ys)\nprint(ys.pop(0))\n", "[1, 2, 3]\n[1, 2, 3]\n1\n"},
+		{"the source rebound under its own alias", "xs = [None, 1]\nys = xs\nxs = [2, None]\nprint(ys)\nprint(ys[0])\n", "[None, 1]\nNone\n"},
+		{"the printer asks the alias", "xs = [None, 1]\nys = xs\nprint(ys)\n", "[None, 1]\n"},
+		{"the length asks the alias", "xs = [None, \"a\"]\nys = xs\nprint(len(ys))\n", "2\n"},
+		{"a single-kind list keeps the road it had", "xs = [7, 8, 9]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "7\n[8, 9]\n"},
+		{"a scalar alias carries no list claim", "a = 1\nb = a\nxs = [None, 1]\nprint(b)\nprint(xs[0])\n", "1\nNone\n"},
+	}
+}
+
+// TestTheAliasFamilyAnswersLikeTheReference is the reference leg: each program runs against a live `python3`
+// whose bytes are re-derived inside the case, and the linked binary must print the same thing at exit 0.
+func TestTheAliasFamilyAnswersLikeTheReference(t *testing.T) {
+	t.Parallel()
+	for _, tc := range aliasRecordFamily() {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_record.gy", tc.src)
+			want, ok := cpythonOut(t, path)
+			if !ok {
+				t.Skip("no live python3 to ask")
+			}
+			if want != tc.want {
+				t.Fatalf("this file's premise drifted: the reference prints %q and the table pins %q\n%s", want, tc.want, tc.src)
+			}
+			for _, engine := range cliEngines {
+				stdout, stderr, code := cliStreams(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s: exit %d where the reference prints %q: %s\n%s", engine, code, want, stderr, tc.src)
+				}
+				if stdout != want {
+					t.Fatalf("%s: printed %q, the reference printed %q\n%s", engine, stdout, want, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestTheAliasFamilyIsOnTheRecord makes the family's coverage auditable: every program this row pays for has
+// the reference's answer on the record, so the answer cannot be deleted by deleting a test and cannot be
+// certified by the backend that produced it (ADR 0302, ADR 0309).
+func TestTheAliasFamilyIsOnTheRecord(t *testing.T) {
+	t.Parallel()
+	var missing []string
+	seen := map[string]bool{}
+	for _, tc := range aliasRecordFamily() {
+		if seen[tc.src] {
+			continue
+		}
+		seen[tc.src] = true
+		if !lang.HasGoldenAnswer(tc.src) {
+			missing = append(missing, tc.src)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("%d of the %d programs this row pays for are not on the record — write them from the reference "+
+			"with tools/recmerge:\n  %s", len(missing), len(seen), strings.Join(missing, "\n  "))
+	}
+}
+
+// TestTheAliasTrapAtTheCLIIsTheReferenceTrap asks the family's traps: a list emptied through one name and
+// popped through the other raises the reference's own IndexError, at exit 3 — never exit 1 (a refusal, which
+// would be the compiler declining a program the reference runs) and never exit 2 (ADR 0166's broken module).
+func TestTheAliasTrapAtTheCLIIsTheReferenceTrap(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src, sentence string
+	}{
+		{"popped past the end through the alias", "xs = [None, 1]\nys = xs\nprint(ys.pop(0))\nprint(ys.pop(0))\nprint(ys.pop(0))\n", "pop from empty list"},
+		{"popped past the end through the name", "xs = [None]\nys = xs\nprint(ys.pop(0))\nprint(xs.pop(0))\n", "pop from empty list"},
+		{"a bad index through the alias", "xs = [None, 1]\nys = xs\nprint(ys.pop(7))\n", "pop index out of range"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_trap.gy", tc.src)
+			for _, engine := range cliEngines {
+				_, stderr, code := cliStreams(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s: exit 2 — the module was the compiler's mistake, not the program's (ADR 0166)\n%s", engine, stderr)
+				}
+				if code == 1 {
+					t.Fatalf("%s: the compiler refused a program the reference runs to a trap: %s\n%s", engine, stderr, tc.src)
+				}
+				if code != 3 {
+					t.Fatalf("%s: exit %d, want 3 for the reference's trap: %s\n%s", engine, code, stderr, tc.src)
+				}
+				if !strings.Contains(stderr, "IndexError: "+tc.sentence) {
+					t.Fatalf("%s: the raise reads %q, which does not carry %q\n%s", engine, stderr, "IndexError: "+tc.sentence, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestTheAliasTrapIsCatchableByTheProgram keeps the trap inside the language: the program's own handler sees
+// it, whichever name the removal was written against — the difference between a trap the runtime raises and a
+// diagnostic the compiler prints.
+func TestTheAliasTrapIsCatchableByTheProgram(t *testing.T) {
+	t.Parallel()
+	for _, src := range []string{
+		"xs = []\nys = xs\ntry:\n    print(ys.pop(0))\nexcept IndexError as e:\n    print(\"caught\", e)\n",
+		"xs = [1]\nys = xs\ntry:\n    print(ys.pop(0))\n    print(ys.pop(0))\nexcept IndexError as e:\n    print(\"caught\", e)\n",
+	} {
+		src := src
+		t.Run("catch", func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_catch.gy", src)
+			want, ok := cpythonOut(t, path)
+			if !ok {
+				t.Skip("no live python3 to ask")
+			}
+			for _, engine := range cliEngines {
+				stdout, stderr, code := cliStreams(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s: exit %d where the reference prints %q: %s\n%s", engine, code, want, stderr, src)
+				}
+				if stdout != want {
+					t.Fatalf("%s: printed %q, the reference printed %q\n%s", engine, stdout, want, src)
+				}
+			}
+		})
+	}
+}
+
+// TestWhatTheAliasRowStillOwesAtTheCLI is the reference leg of the honest half: each row pins the reference's
+// bytes beside this backend's, and names the row that owns the fix. When the program starts printing the
+// reference's bytes the row is DELETED, not edited.
+func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, r := range []struct {
+		name, src, gap, python, compiled string
+		crashes                          bool
+	}{
+		{
+			name: "the callee's printer handed the alias's popped slot", gap: "Gap R.417",
+			src:    "def w(v):\n    print(v)\n\nxs = [None, 1]\nys = xs\nw(ys.pop(0))\n",
+			python: "None\n", compiled: "0\n",
+		},
+		// The two containers this row deliberately left out of the record door. A dict's and a set's alias is
+		// the SAME defect as the list's — the binding shares the handle and not the record — answered with the
+		// element kind missing on the other side, which for a dict's value prints a payload as a number and for
+		// a set's new element hands the printer a word nobody labelled. Both reproduce byte-for-byte on the
+		// parent build `8aa3029`, which is what makes them the container's row and not this row's regression.
+		{
+			name: "a dict's value stored through the alias", gap: "Gap R.419",
+			src:    "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n",
+			python: "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n", compiled: "{'a': 1, 'b': 1}\n{'a': 'x', 'b': 'x'}\n",
+		},
+		{
+			name: "a set element added through the alias", gap: "Gap R.419",
+			src:    "s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n",
+			python: "{1, 2, 'a'}\n{1, 2, 'a'}\n", compiled: "",
+			crashes: true,
+		},
+		{
+			name: "a dict key added through the alias", gap: "Gap R.419",
+			src:    "d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n",
+			python: "{'a': 1, 7: 2}\n", compiled: "",
+			crashes: true,
+		},
+	} {
+		r := r
+		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_owed.gy", r.src)
+			want, ok := cpythonOut(t, path)
+			if !ok {
+				t.Skip("no live python3 to ask")
+			}
+			if want != r.python {
+				t.Fatalf("the reference no longer prints %q for this program (it prints %q) — this row's premise "+
+					"drifted\n%s", r.python, want, r.src)
+			}
+			for _, engine := range cliEngines {
+				stdout, _, code := cliStreams(t, engine, path)
+				if code == 0 && stdout == r.python {
+					t.Fatalf("%s closed at the CLI: the program prints the reference's bytes — delete this row and "+
+						"move the program into aliasRecordFamily()\n%s", r.gap, r.src)
+				}
+				if r.crashes {
+					continue // the artifact is at fault (ADR 0166's class), which is the row's own subject
+				}
+				if code != 0 {
+					t.Fatalf("%s: the shape was REFUSED (exit %d) rather than answered wrongly — an answer and a "+
+						"refusal are different debts; move this row\n%s", engine, code, r.src)
+				}
+				if stdout != r.compiled {
+					t.Fatalf("%s changed shape at the CLI: compiled prints %q, this row pins %q\n%s",
+						r.gap, stdout, r.compiled, r.src)
+				}
+			}
+		})
+	}
+}
+
+// TestTheAliasRefusalsAreMachineReadable is the agentic face: the shape the alias road declines reaches an
+// agent as a capability code, a suggestion and the roadmap rows that own it — never as prose alone
+// (ADR 0006, ADR 0346) — and it does so identically whether the read is written against the name or against
+// the alias, which is the point of a row about names.
+func TestTheAliasRefusalsAreMachineReadable(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, code string }{
+		{
+			name: "a dict's pop over an alias of it",
+			src:  "d = {\"a\": 1}\ne = d\nprint(e.pop(\"a\"))\n",
+			code: "lower.unsupported.container-method-over-a-name",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_json.gy", tc.src)
+			out, code := cliRunCode(t, "--json", path)
+			if code != 1 {
+				t.Fatalf("a refused program exited %d, want 1 (ADR 0006): %s", code, out)
+			}
+			for _, frag := range []string{`"ok":false`, `"exit":1`, `"phase":"codegen"`, `"code":"` + tc.code, `"suggestion":`, `"rows":`} {
+				if !strings.Contains(out, frag) {
+					t.Fatalf("the JSON refusal carries no %s:\n%s", frag, out)
+				}
+			}
+			if strings.Contains(out, "%!s(") || strings.Contains(out, "*lang.") {
+				t.Fatalf("the JSON refusal prints the compiler's own types at the agent:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestWhatTheAliasRowStillRefusesWithoutACode is the second honest half, and it is a row about the INTERFACE
+// rather than the answer: the one-word position's refusal — the same sentence whether the read is written
+// against the name or its alias — reaches an agent as `"capability":null`, which is **Gap R.408**'s defect
+// measured on a refusal nobody had pointed `--json` at since the road grew. The row is pinned WITH today's
+// artifact rather than fixed here, because a row about a door this cycle did not open belongs on the tracker
+// with the bytes beside it (ADR 0006, ADR 0346).
+func TestWhatTheAliasRowStillRefusesWithoutACode(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, sentence string }{
+		{
+			name:     "a slot of the alias bound and asked as a condition",
+			src:      "xs = [None, \"a\"]\nys = xs\nv = ys[0]\nif v:\n    print(\"t\")\nelse:\n    print(\"f\")\n",
+			sentence: "this position keeps one word for its operand",
+		},
+		{
+			name:     "the same program with no alias in it at all",
+			src:      "xs = [None, \"a\"]\nv = xs[0]\nif v:\n    print(\"t\")\nelse:\n    print(\"f\")\n",
+			sentence: "this position keeps one word for its operand",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "the_alias_nocode.gy", tc.src)
+			out, code := cliRunCode(t, "--json", path)
+			if code != 1 {
+				t.Fatalf("the one-word position now answers rather than refusing (exit %d): %s\n%s", code, out, tc.src)
+			}
+			if !strings.Contains(out, tc.sentence) {
+				t.Fatalf("the refusal no longer says %q — the row owns a different sentence now:\n%s", tc.sentence, out)
+			}
+			if !strings.Contains(out, `"capability":null`) {
+				t.Fatalf("this refusal now names a capability code — **Gap R.408**'s defect is paid for it, so delete "+
+					"this row and move the program into TestTheAliasRefusalsAreMachineReadable:\n%s", out)
+			}
+			if !strings.Contains(out, "Gap R.146") {
+				t.Fatalf("the refusal no longer names the row that owns it:\n%s", out)
+			}
+		})
+	}
+}

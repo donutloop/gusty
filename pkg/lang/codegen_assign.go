@@ -456,6 +456,15 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			// (roadmap Gap Q.1).
 			g.settleContainerKind(nm.Value, boundKind)
 		}
+		// `ys = xs` shares an OBJECT and, until now, shared nothing else: the handle travels and the
+		// notebook claims do not, so every read of the alias asked a record that had never been written
+		// (roadmap L11.1, Gap R.415, ADR 0412). One door writes the link, and it is the same door that
+		// settles the kind, because the claim and the kind are the same fact about the same object; every
+		// OTHER binding ends the name's alias, since the object it named is gone.
+		g.forgetContainerAlias(nm.Value)
+		if srcName, sharesHandle := n.Value.(*Name); sharesHandle {
+			g.recordContainerAlias(nm.Value, srcName.Value)
+		}
 		// A container handed back by a call records its own facts, and they are richer than the three
 		// kind bits above: whether its slots describe themselves, and that no static literal describes
 		// them — the two questions every read of a container the program built at run time asks (ADR

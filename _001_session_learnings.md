@@ -14684,3 +14684,62 @@ were right because of a door `is` had never been allowed through.
    to **402 records, highest 0411**, rows owed to **194 of 324**. The Open-queue blank-line guard caught my own
    formatting on the way (`countQueueRows` counts rows under a stray blank line as `hidden` and fails), and the
    snapshot test would have failed the run rather than bless a remembered number (**Gap R.204**).
+
+## ADR 0412 — the alias of a list answers what the name that built it answers (Gap R.415 closed; Gap R.419 filed, 2026-10-24)
+
+**ADR 0411** filed it as residue and I found it the way most of these are found: by writing the ordinary program
+beside the door. `xs = [None, 1]` / `print(xs.pop(0))` prints `None`; add one line — `ys = xs` — ask the same
+question of `ys`, and the same backend prints **`0`** at **exit 0**. Two programs, one object, one name different.
+
+1. **The renderer had the right rule and was handed the wrong words.** `print` asks the `(payload, tag)` pair;
+   under the alias it received a payload and nothing else. The reason is that `ys = xs` shares the *handle* and
+   the notebook — `mixedLists`, `listElemStr`, `listElemInt` — is keyed by **NAME**. Fixing the printer would have
+   bought one road and left `ys[0]`, `for v in ys`, `if ys.pop(0):` and `str(ys.pop(0))` to be repaired one at a
+   time. The localising question is not "which road renders it wrongly" but "which notebook never got written".
+2. **Three halves, and the measurement says all three are load-bearing.** Copy the claims at the binding: without
+   it the mutation doors read an empty record for the alias and store an *untagged* payload into a tagged
+   container, and the read-back is a **SIGSEGV** (`ys.append("a")` / `print(xs.pop(2))`). Keep the link and follow
+   it at read time: without it the copy is a claim about the moment of the binding and `xs = []` / `ys = xs` /
+   `xs.append("a")` is an event after it. Tell the promotion to every sharer: without that, `xs.append("a")` leaves
+   `ys` claiming integers about a list whose next slot is a text. Each of the three is a test table, because each
+   is a *half*-fix that passes the obvious cases.
+3. **A link is a lookup, not a redirection.** The handle is still loaded from the name the read is written against
+   (`%_ys` in the module) — only the *claims* resolve to the name that built the object. That distinction is what
+   makes `xs = [None, 1]` / `ys = xs` / `xs = [2, None]` / `print(ys[0])` answer for the FIRST list: the copied
+   claims describe the object `ys` holds, and `forgetContainerAlias` kills the link when either name is handed
+   another object. Had I redirected the read instead, the alias would have followed a rebinding it must not see.
+4. **One lookup, asked by every door.** The gate (`popAnswerShape`) and the door (`popAnswerPair`) read the SAME
+   `listElementClaims` table, and the slot read and the loop's tagged arm read `mixedListRead` — because **ADR
+   0249**'s rule is not stylistic: my first cut resolved in the door only, and the gate said "not a tagged list"
+   while the door said "served", which is a wrong answer wearing a refusal's clothes. The gate test asks all three
+   answers (object's tag / record's claim / DECLINE) from one table with the door asked beside it.
+5. **The decline is the answer a fix tries to lose.** Following a link into an empty record is not a licence to
+   guess a kind — a guessed kind is how a payload gets printed under a label the object never gave it (**ADR
+   0166**), which is the bug this row exists to remove. The cycle (`a = b` above `b = a`) is pinned behind a
+   watchdog too: an infinite walk would be the compiler's fault, not the program's.
+6. **No new road, and the IR proves it.** The alias's removal goes through the one `@rt_pop(i32, i32, i32*)`
+   **ADR 0410** hung; the guard counts one call per removal, checks the out-parameter and the alias's own handle,
+   and names four helpers that must never appear (`@rt_pop_aliased`, `@rt_pop_alias`, `@rt_alias_`,
+   `@rt_tag_elem_aliased`). A name is not a new kind of container, and the temptation to write `…_aliased` shows
+   up the moment a fix is described in terms of the alias instead of in terms of the object.
+7. **Its sibling containers are a row, not a footnote.** I stopped at the list, because `recordContainerAlias`
+   copies the claims whose doors exist. `e = d` / `e["b"] = "x"` / `print(d)` writes `{'a': 1, 'b': 1}` — the
+   intern index under a label — and `t.add("a")` and `e[7] = 2` segfault. All three byte-identical on the parent
+   `8aa3029`, which is the sentence that makes them **Gap R.419** rather than this commit's damage; `w(ys.pop(0))`
+   printing `0` is **Gap R.417** reached through the alias, byte-identical to the non-alias twin, and a slot bound
+   and asked as a condition is **Gap R.146**'s one-word position refused exactly as its non-alias twin is.
+8. **Measurement discipline paid for itself.** 42 answered programs, parent build beside this one, each asked of
+   the pinned CPython: **26 moved, 16 controls held, 0 regressions, 0 of the family still differing**. My first
+   harness counted 45 and reported 18 controls because it harvested `want` strings and format strings out of the
+   Go tables as "programs" that trivially agreed (both legs printed nothing). Filtering those is not cosmetic: an
+   inflated control count is a lie about coverage, and the number that goes in the row is the number a reader can
+   reproduce.
+9. **Paid pins are deleted, and the harvest is the record's, not mine.** The void family's owed table lost
+   `the same list under a second name` outright — the program moved into this file's answered family — which is
+   **ADR 0411**'s precedent applied a second time. `tools/recmerge` wrote the **36** entries (**9025 → 9061**) and
+   refused nothing, because the compiled leg agreed on every source claimed as paid; and when I could not say *why*
+   the file had grown 36 entries during development, the answer was to restore it from HEAD and re-record it through
+   the sanctioned writer rather than trust a diff I could not attribute (**ADR 0309**'s rule is only worth what
+   you're willing to prove about it). The guards caught the rest, as they always do: the snapshot's record cell, the
+   queue-row total (**194 of 325** — the new **Gap R.419** row) and the ADR cell (**403 records, highest 0412**) are
+   the artifacts', not my memory (**Gap R.204**).

@@ -173,9 +173,11 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 	var iterTag string
 	if name, ok := n.Iter.(*Name); ok {
 		switch {
-		case g.mixedLists[name.Value]:
+		case g.mixedListRead(name.Value):
 			// Iterating a mixed list binds the loop variable to an element *and* its
-			// tag, so print(x) can dispatch per iteration (ADR 0185).
+			// tag, so print(x) can dispatch per iteration (ADR 0185). The claim is asked through the
+			// alias resolver: `ys = xs` shares the object and writes no record, so `for v in ys` printed
+			// the void's payload where `for v in xs` printed `None` (roadmap L11.1, Gap R.415, ADR 0412).
 			iterKind = "list"
 			mixedIter = true
 		case g.listVars[name.Value]:

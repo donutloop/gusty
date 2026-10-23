@@ -131,10 +131,18 @@ func (g *irGen) popAnswerShape(c *Call) (listName string, fromObject, ok bool) {
 	if !isName || !g.listVars[nm.Value] || g.receiverIsTuple(attr.Obj) {
 		return "", false, false
 	}
-	if g.mixedLists[nm.Value] {
+	// The handle is loaded from the name the call is written against; the CLAIMS are asked of the name
+	// whose record describes the object, which is a different name for a list the program shared
+	// (`ys = xs`) — and asking the alias's own empty record is what made `print(ys.pop(0))` write `0`
+	// beside `print(xs.pop(0))`'s `None` (roadmap L11.1, Gap R.415, ADR 0412).
+	mixed, elemStr, elemInt, ok := g.listElementClaims(nm.Value)
+	if !ok {
+		return "", false, false
+	}
+	if mixed {
 		return nm.Value, true, true
 	}
-	if g.listElemStr[nm.Value] || g.listElemInt[nm.Value] {
+	if elemStr || elemInt {
 		return nm.Value, false, true
 	}
 	return "", false, false
@@ -201,9 +209,11 @@ func (g *irGen) popAnswerPair(b *strings.Builder, e Expr) (payload, tag string, 
 		return memo[0], memo[1], true, nil
 	}
 	// The tag the removal read out of the object, and the tag this container's own record claims. One of
-	// the two travels with the payload; neither is invented here.
+	// the two travels with the payload; neither is invented here. The claim is asked through the same
+	// resolver the gate asked — the record of a list the program shared lives on the name that built it
+	// (roadmap L11.1, Gap R.415, ADR 0412) — so the gate's answer and the door's cannot drift.
 	staticTag := int32(TagInt)
-	if !fromObject && g.listElemStr[listName] {
+	if _, elemStr, _, _ := g.listElementClaims(listName); !fromObject && elemStr {
 		staticTag = int32(TagStr)
 	}
 	payload, loaded, perr := g.emitPopRoad(b, listName, c.Args, c.Span(), true)

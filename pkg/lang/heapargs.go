@@ -2387,12 +2387,17 @@ func (g *irGen) mixedElemPair(b *strings.Builder, listName string, idx Expr, sp 
 
 // mixedIndexRead reports whether an `obj[i]` expression reads an element out of a tagged list
 // variable, and returns that variable's name.
+//
+// The question is asked through the alias resolver: `ys = xs` shares the handle and writes no claim, so
+// the record that says "these slots speak" is `xs`'s, while the handle the read loads is still `ys`'s —
+// which is why the lookup returns the name it was handed and consults the other one (roadmap L11.1,
+// Gap R.415, ADR 0412; ADR 0232's rule that the object's slots are the record).
 func (g *irGen) mixedIndexRead(ix *Index) (string, bool) {
 	if ix == nil {
 		return "", false
 	}
 	nm, ok := ix.Obj.(*Name)
-	if !ok || !g.mixedLists[nm.Value] {
+	if !ok || !g.mixedListRead(nm.Value) {
 		return "", false
 	}
 	return nm.Value, true
@@ -2618,9 +2623,7 @@ func (g *irGen) promotePairMixed(b *strings.Builder, handle, name, kind string) 
 	}
 	switch kind {
 	case "list":
-		g.mixedLists[name] = true
-		g.listElemStr[name] = false
-		g.listElemInt[name] = false
+		g.markListMixed(name)
 	case "set":
 		g.mixedSets[name] = true
 		g.setElemStr[name] = false
@@ -2665,9 +2668,7 @@ func (g *irGen) promoteMixed(b *strings.Builder, handle, name, kind string, elem
 	}
 	switch kind {
 	case "list":
-		g.mixedLists[name] = true
-		g.listElemStr[name] = false
-		g.listElemInt[name] = false
+		g.markListMixed(name)
 	case "set":
 		g.mixedSets[name] = true
 		g.setElemStr[name] = false
@@ -3519,6 +3520,10 @@ func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
 		}
 	}
 	g.settleContainerKind(name, containerKindScalar)
+	// The name now holds a pair, not the container it may have been handed by `ys = xs`: its link to that
+	// object dies with the rest of its old facts, or a later read of it would ask a record that describes
+	// something else (roadmap Gap R.415, ADR 0412).
+	g.forgetContainerAlias(name)
 	delete(g.strVals, name)
 	delete(g.internedVars, name)
 	delete(g.noneVars, name)

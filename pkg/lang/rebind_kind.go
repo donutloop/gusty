@@ -139,6 +139,11 @@ func (g *irGen) allElemsPrintAsText(elems []Expr) bool {
 }
 
 func (g *irGen) settleContainerKind(name string, kind string) {
+	// The binding that hands a name a new object ends every container fact it carried, and the shared-
+	// handle link is one of them: after `xs = [2, None]` the alias `ys` still holds the FIRST list, and a
+	// link that now resolves into `xs`' record of the SECOND one would be a claim about the wrong object
+	// (roadmap L11.1, Gap R.415, ADR 0412).
+	g.forgetContainerAlias(name)
 	g.mixedLists[name] = false
 	g.mixedDicts[name] = false
 	g.mixedSets[name] = false
