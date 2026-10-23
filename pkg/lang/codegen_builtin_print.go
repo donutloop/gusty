@@ -561,6 +561,43 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 			b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", printer, h))
 			continue
 		}
+		// print([1, 2] if c else [9]) — a container the TEST chooses. The numeric road lowers the arm through
+		// `value`, which renders a container literal as the ADDRESS of its compile-time global and hands that
+		// to printf as an `i32`: `global variable reference must have pointer type`, at the exit-2 class
+		// ADR 0166 reserves for a compiler bug. The container roads are asked here, before the number road
+		// gets a vote, and the arm's builder runs in the block the branch enters (roadmap Gap R.385; the
+		// arm-does-not-run rule is Gap R.340 / ADR 0374, the global-in-a-word rule is ADR 0188 / ADR 0192).
+		if ce, ok := a.(*CondExpr); ok {
+			if kind, isCont := g.staticContainerKind(ce); isCont {
+				h, cerr := g.containerOperand(b, ce)
+				if cerr != nil {
+					return "", cerr
+				}
+				g.heapUsed = true
+				printer := "rt_print_list"
+				switch kind {
+				case "set":
+					printer = "rt_set_print"
+				case "dict":
+					printer = "rt_dict_print"
+				}
+				// The immutable spelling's brackets belong to the object, not to the road that built it: a
+				// tuple arm wrote the parentheses into the value's attribute word and the caller never saw them,
+				// so the printer is the one that asks (ADR 0361's rule, read at the ternary by roadmap Gap R.385).
+				if g.isTupleExpr(ce.If) && g.isTupleExpr(ce.Else) {
+					printer = "rt_print_container_value"
+					g.tupleUsed = true
+				}
+				b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", printer, h))
+				continue
+			}
+			// One arm is a container and the pair has no kind to name: the number road below would lower that
+			// arm to a handle and print it as a number, or hand the assembler a global. Refuse the program by
+			// name instead (ADR 0166: a refusal at exit 1 over a wrong answer at exit 0 or a rejected module).
+			if g.ternaryHasContainerArm(ce) {
+				return "", ternaryContainerArmErr(ce)
+			}
+		}
 		// print(sorted(xs)) — that lowering hands back a runtime list handle, and only
 		// the runtime printer can render it: the static path would printf the handle,
 		// which is the invalid-IR shape ADR 0188 removed for literals (ADR 0191).

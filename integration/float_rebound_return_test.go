@@ -284,9 +284,11 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 	}
 }
 
-// The container-arm shape is not a row here: it is the toolchain rejection roadmap Gap R.128 records, and
-// programs/probe_ternary_container_arms.gy pins it per leg. A row in a parity table would assert an exit
-// code this repository calls a compiler bug.
+// The container-arm shape is not a row here: an arm's container is built in the block the branch enters, so
+// the program prints CPython's two lines and lives in the parity corpus (roadmap Gap R.128, paid by
+// **ADR 0405**; `programs/probe_ternary_container_arms.gy`, and the wider family in
+// `integration/ternary_container_test.go`). A row in a parity table for the numbers would assert an exit code
+// this repository calls a compiler bug, and a row for the containers would certify a debt that is paid.
 
 // TestATernaryWithDisagreeingArmsRefusesAtTheCLI pins the compiled backend's honest answer for the shape
 // it cannot take: exit 1, the missing word named, and the record answering CPython on the same

@@ -109,9 +109,13 @@ func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 		// roads ask the same tag as the list road, so the program is parity surface
 		// (`conformanceStandalone`). A contract row here expecting exit 6 for a paid debt would pass
 		// forever without asserting anything.
-		{"probe_minmax_candidate_unreadable", 6},   // Gap R.124 (the compiled leg's leg)
-		{"probe_ternary_the_test_chose", 6},        // Gap R.125 (the compiled path, against CPython)
-		{"probe_ternary_container_arms", 6},        // Gap R.128 (the compiled leg rejects the module)
+		{"probe_minmax_candidate_unreadable", 6}, // Gap R.124 (the compiled leg's leg)
+		{"probe_ternary_the_test_chose", 6},      // Gap R.125 (the compiled path, against CPython)
+		// probe_ternary_container_arms left this table with **ADR 0405**: an arm's container is built in the block
+		// the branch enters, so the module carries no global in a value position, the compiled leg prints
+		// CPython's line, and the debt is paid (roadmap Gap R.128). A contract row left here expecting exit 6 for
+		// a paid debt passes forever without asserting anything — the rule this file already wrote for
+		// probe_bool_chosen_by_an_operator and the two paragraphs above.
 		{"probe_round_digit_count_kind_unseen", 6}, // Gap R.129 (the compiled leg's leg)
 		{"probe_float_loop_variable_as_number", 6}, // Gap R.130 (the compiled leg's leg)
 		// probe_negative_zero_constant left this table with ADR 0349: the emitter states a signed constant

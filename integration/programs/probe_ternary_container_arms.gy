@@ -3,15 +3,23 @@
 #   [1, 2]
 #   {'k': 1}
 #
-# A ternary whose arms are containers reaches the assembler with the containers themselves in the
-# choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position, so
-# the compiled leg exits 2 on a program whose answer the interpreter and the reference both print in
-# one line. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the
-# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time —
-# and the answer is the tagged value word's handle, chosen as a value rather than as a global name
+# A ternary whose arms are containers used to reach the assembler with the containers themselves in
+# the choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position,
+# so the compiled leg exited 2 on a program whose answer the record and the reference both print in
+# two lines. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the
+# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time
 # (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).
 #
-# Both legs are pinned: the compiled one because the toolchain rejection is what has to be visible in
-# the ledger, and the interpreter one because the answer it prints is the answer the compiled leg owes.
+# It answers now. An arm is a program the test runs, not an operand of the instruction that picks
+# (Gap R.340, ADR 0374), so each arm's container is BUILT inside the block the branch enters by the
+# builder every container road has used since ADR 0189, and the merge phis the two handles: the module
+# carries no global in a value position, and the print door chooses its printer from the kind the arms
+# agree on. The row was read from the print door as roadmap Gap R.385 and closed with this program's own
+# row by **ADR 0405**; the family it still owes — the doors that ASK a container ternary a question
+# (`str(...)`, a loop's iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position) —
+# is roadmap Gap R.393, and the arm pair that agrees on no kind is refused in words under roadmap Gap
+# R.394, both pinned with today's bytes beside the reference's in `pkg/lang/ternary_container_test.go`
+# and `integration/ternary_container_test.go`.
 c = 1
 print([1, 2] if c > 0 else [3])
+print({"k": 1} if c > 0 else {"z": 0})

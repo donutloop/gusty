@@ -2807,6 +2807,17 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 			return ok && g.containerAnswerCallIsCarriable(n)
 		}
 		return false
+	case *CondExpr:
+		// A ternary IS a container when both of its arms are: the test chooses between two objects, and
+		// whichever one was built is the answer. A test the source wrote is not a run-time question — the arm
+		// that runs is the answer, and the arm it rejected is not in the program (roadmap Gap R.340,
+		// ADR 0374, read by the container roads for Gap R.385). Asking the pair together rather than each arm
+		// separately is what keeps the two doors that ask — this one, which may build, and the print door,
+		// which chooses a printer — answering one question (ADR 0232).
+		if taken, decided := constantTestArm(n); decided {
+			return g.isContainerArm(taken)
+		}
+		return g.isContainerArm(n.If) && g.isContainerArm(n.Else)
 	case *BinOp:
 		// `[1] + [2]`, `[1] * 3` and `(1,) * 2` are containers the same way a literal is: the door builds a
 		// fresh heap object whose slots are the operands' payloads with their tags. The one question is asked
@@ -2901,6 +2912,19 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 		if kind, applies := g.seqBuildsContainer(n); applies {
 			return kind, true
 		}
+	case *CondExpr:
+		// The kind of a ternary is the kind its arms AGREE on, which is the only answer the print door can
+		// choose a printer from. A test the source wrote is not a question: the arm that runs is the answer,
+		// and its kind is the ternary's (roadmap Gap R.385, ADR 0374's rule about the rejected arm).
+		if taken, decided := constantTestArm(n); decided {
+			return g.staticContainerArmKind(taken)
+		}
+		thenKind, okThen := g.staticContainerArmKind(n.If)
+		elseKind, okElse := g.staticContainerArmKind(n.Else)
+		if okThen && okElse && thenKind == elseKind {
+			return thenKind, true
+		}
+		return "", false
 	}
 	return "", false
 }
@@ -4592,6 +4616,33 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 			return g.heapDictFrom(b, lit, "")
 		}
 		return h, nil
+	case *CondExpr:
+		// A ternary whose arms are containers is a container the TEST chooses. Its handle cannot be built
+		// beside the test: an arm is a program the test runs, not an operand of the instruction that picks
+		// (roadmap Gap R.340, ADR 0374), so each arm's builder runs inside the block the branch enters and
+		// the merge phis the two handles. A test the source wrote is not a run-time question, so the arm that
+		// runs is the answer and the other arm is not in the program at all.
+		//
+		// The shape this replaces is the exit-2 class ADR 0166 reserves for a compiler bug: the road that
+		// read the arm asked `value`, which renders a container literal as the ADDRESS of its compile-time
+		// global, and the printer was handed `i32 @.lst1` in an argument slot —
+		// `global variable reference must have pointer type` (roadmap Gap R.385, ADR 0188's rule one
+		// construct later, ADR 0192's rule for a ternary).
+		if kind, ok := g.staticContainerKind(n); ok {
+			if taken, decided := constantTestArm(n); decided {
+				_ = kind
+				return g.containerOperand(b, taken)
+			}
+			h, okBranch, berr := g.ternaryBranch(b, n, "i32", func(bb *strings.Builder, e Expr) (string, error) {
+				return g.containerOperand(bb, e)
+			})
+			if berr != nil {
+				return "", berr
+			}
+			if okBranch {
+				return h, nil
+			}
+		}
 	case *BinOp:
 		// A sequence the door builds — `xs + ys`, `xs * 3`, `(1, 2) * 2` — is a fresh heap object whose slots
 		// are the operands' payloads copied WITH their tags, exactly the object `rt_slice` builds for a copy,
@@ -4605,6 +4656,81 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("codegen: %s is not a container (roadmap L11.1, ADR 0189)", exprSnippet(e))
+}
+
+// ternaryHasContainerArm is the print door's "may this arm not be lowered as a number" question: either
+// arm answers a container (and, for a test the source wrote, only the arm that runs counts). It is asked
+// after `staticContainerKind` declined, so the pair is a container in ONE arm and has no kind to name —
+// the shape that used to reach the assembler as `i32 @.lst1` in an argument slot (roadmap Gap R.385).
+func (g *irGen) ternaryHasContainerArm(n *CondExpr) bool {
+	if n == nil {
+		return false
+	}
+	if taken, decided := constantTestArm(n); decided {
+		return g.isContainerArm(taken)
+	}
+	return g.isContainerArm(n.If) || g.isContainerArm(n.Else)
+}
+
+// isContainerArm is the question an ARM of a ternary answers, and `staticContainerArmKind` the kind it
+// answers. They are the pair-wide version of `isContainerExpr`/`staticContainerKind`, widened by the one
+// spelling an arm commonly takes that the module-level roads settle by another door: a COMPREHENSION. A bare
+// `[v for v in xs]` is built by the comprehension road and printed by the comprehension printer, so the
+// predicate never had to call it a container; an arm has to be, or the door that chooses the printer cannot
+// see which printer to choose and the number road hands the assembler the arm's folded global in a word slot
+// (roadmap Gap R.385). A generator expression `(v for v in xs)` is NOT one: this backend materialises it
+// eagerly as a list, which is a divergence the generator row owns, and an arm of that spelling keeps the
+// road it has rather than being re-decided here.
+//
+// Every arm question — this one, the one `staticContainerKind` asks, and the one the print door asks — is
+// read through these two functions, so the road that may build and the door that prints cannot disagree
+// about which programs are containers (ADR 0232's decide-and-build pair, read at the ternary).
+func (g *irGen) isContainerArm(e Expr) bool {
+	if g.isContainerExpr(e) {
+		return true
+	}
+	comp, ok := e.(*Comp)
+	return ok && compIsContainer(comp)
+}
+
+// staticContainerArmKind answers the arm's kind, or false when the arm is not a container or spells a kind
+// no printer is chosen from.
+func (g *irGen) staticContainerArmKind(e Expr) (string, bool) {
+	if kind, ok := g.staticContainerKind(e); ok {
+		return kind, true
+	}
+	if comp, ok := e.(*Comp); ok && compIsContainer(comp) {
+		switch comp.Kind {
+		case CompList:
+			return "list", true
+		case CompDict:
+			return "dict", true
+		case CompSet:
+			return "set", true
+		}
+	}
+	return "", false
+}
+
+// compIsContainer is the comprehension half of the arm question: the three spelling-bridged kinds, and not
+// the generator, whose answer this backend builds eagerly into a list (see above).
+func compIsContainer(n *Comp) bool {
+	if n == nil {
+		return false
+	}
+	switch n.Kind {
+	case CompList, CompDict, CompSet:
+		return true
+	}
+	return false
+}
+
+// ternaryContainerArmErr names the arms the program wrote and the kind each answers, because the reader
+// has to be able to tell which arm the refusal is about — "not a container" said nothing about a program
+// whose arms ARE containers (roadmap Gap R.38, the sentence that misdescribes the value).
+func ternaryContainerArmErr(n *CondExpr) error {
+	arms := ternaryArmNames(n)
+	return fmt.Errorf("codegen: the arms of `%s if %s else %s` are containers whose kinds this backend cannot choose one printer from — each arm's word is a heap handle and the print door picks its printer from a kind the compiler can see, so write the two arms the same kind, or bind each arm and print the name (roadmap Gap R.385, beside Gap R.67 and ADR 0333)", arms[0], arms[1], arms[2])
 }
 
 // compareOperand lowers one side of a container comparison: a container through the heap path,

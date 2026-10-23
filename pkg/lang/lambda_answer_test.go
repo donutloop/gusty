@@ -215,7 +215,6 @@ func lambdaAnswerRefusals() []struct{ name, src string } {
 		{"a dict value", "print({\"k\": (lambda: [1, 2])()})\n"},
 		{"the truthiness builtin", "print(bool((lambda: [1, 2])()))\n"},
 		{"arithmetic", "print((lambda: [1, 2])() + 1)\n"},
-		{"a ternary arm", "print((lambda: [1, 2])() if 1 else [9])\n"},
 	}
 }
 
@@ -243,16 +242,11 @@ type lambdaAnswerOwedRow struct {
 
 func lambdaAnswerOwed() []lambdaAnswerOwedRow {
 	return []lambdaAnswerOwedRow{
-		// Gap R.385 — the shape behind this row's ternary control, with no `lambda` in it at all: the arm
-		// keeps the module-level literal as its value and the print door puts the GLOBAL in an `i32` slot.
-		{
-			name:  "a container literal in a ternary arm is emitted as a global in a word position",
-			src:   "print([1, 2] if 1 else [9])\n",
-			want:  "[1, 2]\n",
-			mode:  "rejects",
-			today: "global variable reference must have pointer type",
-			gap:   "Gap R.385",
-		},
+		// Gap R.385 — a container literal in a ternary arm used to be emitted as a global in a word position,
+		// and the row's pin said so. It prints now (**ADR 0405**): the pin is DELETED, not edited, and the
+		// program lives in the answered table of `ternary_container_test.go`. What the same family still owes
+		// — `str(...)` of a container ternary, `in`, a loop over one, a `return` of one — is filed as
+		// **Gap R.393**, and the arm pair whose test the compiler cannot decide is **Gap R.394**.
 		// Gap R.387 — measured while widening Gap R.384's gate. The body spells its kind in the source, but it
 		// spells it as a CALL to a `def` (or as an interpolation), and this pass's answer question reads the
 		// body's own literal, not the callee's registration. The `def` twin — `def outer(): return inner()` —

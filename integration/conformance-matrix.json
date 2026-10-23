@@ -4272,6 +4272,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_ternary_container_arms",
+        "name": "probe_ternary_container_arms.gy",
+        "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers used to reach the assembler with the containers themselves in\n# the choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position,\n# so the compiled leg exited 2 on a program whose answer the record and the reference both print in\n# two lines. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# It answers now. An arm is a program the test runs, not an operand of the instruction that picks\n# (Gap R.340, ADR 0374), so each arm's container is BUILT inside the block the branch enters by the\n# builder every container road has used since ADR 0189, and the merge phis the two handles: the module\n# carries no global in a value position, and the print door chooses its printer from the kind the arms\n# agree on. The row was read from the print door as roadmap Gap R.385 and closed with this program's own\n# row by **ADR 0405**; the family it still owes — the doors that ASK a container ternary a question\n# (`str(...)`, a loop's iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position) —\n# is roadmap Gap R.393, and the arm pair that agrees on no kind is refused in words under roadmap Gap\n# R.394, both pinned with today's bytes beside the reference's in `pkg/lang/ternary_container_test.go`\n# and `integration/ternary_container_test.go`.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\nprint({\"k\": 1} if c \u003e 0 else {\"z\": 0})\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n{'k': 1}\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n{'k': 1}\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/ternary_container",
+        "name": "ternary_container.gy",
+        "source": "# The ternary whose arm is a container, and what the compiled backend answers there\n# (roadmap Gap R.385 closed, ADR 0405).\n#\n# An arm of a ternary is a program the test runs, not an operand of the instruction that picks\n# (Gap R.340, ADR 0374). The backend had two roads for a container — the module-level road that builds a\n# literal once, names it with a module global and prints it at the door, and the call-argument road that\n# hands the handle to a function as a word — and neither had the ARM as a shape it could name. The arm\n# therefore fell to the number road, which renders a container literal as the address of its compile-time\n# global and hands that to printf in an `i32` slot:\n#\n#     %t1 = call i32 (i8*, ...) @printf(i8* getelementptr(…@.fmt1…), i32 @.lst1)\n#     llc-20: error: global variable reference must have pointer type\n#\n# which is the exit-2 class ADR 0166 reserves for a compiler bug. Two shapes were worse than the crash\n# because they were silent: the dict pair printed `0`, and the tuple pair printed `0` — the handle of the\n# object, printed as a number (ADR 0188, ADR 0192).\n#\n# Every line below is what CPython prints, and the `integration` suite says so line for line. What the\n# family still owes is written out rather than hidden: `str(...)` of a container ternary, a loop over one,\n# a `def` that returns one, one inside a `%` format or an interpolation, `len` of one and a position in one\n# all still read the arm as a word (roadmap Gap R.393), and an arm pair that agrees on no kind is refused\n# in words instead of printed (roadmap Gap R.394). Both are pinned with today's answer beside the\n# reference's in `pkg/lang/ternary_container_test.go`.\n\n# A test the source wrote is not a run-time question: the arm that runs is the answer, and the arm it\n# rejected is not in the program at all.\nprint([1, 2] if 1 else [9])\nprint([1, 2] if 1 == 1 else [9])\nprint({\"a\": 1} if 1 else {\"b\": 2})\nprint({1, 2} if 1 else {3})\nprint((1, 2) if 1 else (3, 4, 5))\nprint(7 if 1 else [1, 2])\nprint({\"a\": 1} if 1 else 7)\nprint([1] if 1 else [2] if 0 else [3])\n\n# The arm the reference has to evaluate, and the arm that builds the object itself.\nprint([1, 2] if (lambda v: v)(1) else [9])\nprint((lambda: [1, 2])() if 1 else [9])\n\n# The comprehension spellings: the arm is a whole loop, and it is still one object.\nprint([v for v in [1, 2, 3] if v \u003e 1] if 1 else [9])\nprint([v for v in [1, \"a\", True]] if 1 else [9])\nprint([[1] for _ in [1, 2]] if 1 else [9])\nprint({v: 1 for v in [1, 2]} if 1 else {9: 0})\nprint({v for v in [1, 2]} if 1 else {9})\n\n# A bound arm is an ordinary variable, read by position like any other list.\narms = [1, 2] if 1 else [9]\nprint(arms[0], arms[1])\n\n# An arm handed to a function crosses as a handle, and the callee reads it as its own container.\ndef head(xs):\n    return xs[0]\n\ndef headOf(d):\n    return d[\"a\"]\n\nprint(head([1, 2] if 1 else [9]))\nprint(headOf({\"a\": 7} if 1 else {\"a\": 0}))\n\n# The roads that ask a container a question take an arm too.\nprint(sorted([2, 1] if 1 else [9]))\nprint(1 in ([1, 2] if 1 else [9]))\n\n# The two-branch road: the test is a name, so both arms are blocks and the merge carries the handle.\ndef hot():\n    print(\"hot\")\n    return [1, 2]\n\ndef cold():\n    print(\"cold\")\n    return [9]\n\ngo = 1 \u003c 2\nprint(hot() if go else cold())\nback = 1 \u003e 2\nprint(hot() if back else cold())\nprint([v for v in [1, 2, 3] if v \u003e back] if back else [9])\nprint({v: v * 2 for v in [1, 2]} if go else {\"z\": 0})\n\n# The control: a program whose arms answer a word keeps the one-word road, and an arm the test cannot reach\n# is not built at all.\nprint(1 if 1 else [9])\nprint(\"text\" if go else \"other\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n[1, 2]\n{'a': 1}\n{1, 2}\n(1, 2)\n7\n{'a': 1}\n[1]\n[1, 2]\n[1, 2]\n[2, 3]\n[1, 'a', True]\n[[1], [1]]\n{1: 1, 2: 1}\n{1, 2}\n1 2\n1\n7\n[1, 2]\nTrue\nhot\n[1, 2]\ncold\n[9]\n[9]\n{1: 2, 2: 4}\n1\ntext\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n[1, 2]\n{'a': 1}\n{1, 2}\n(1, 2)\n7\n{'a': 1}\n[1]\n[1, 2]\n[1, 2]\n[2, 3]\n[1, 'a', True]\n[[1], [1]]\n{1: 1, 2: 1}\n{1, 2}\n1 2\n1\n7\n[1, 2]\nTrue\nhot\n[1, 2]\ncold\n[9]\n[9]\n{1: 2, 2: 4}\n1\ntext\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4936,42 +4978,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_ternary_container_arms",
-        "name": "probe_ternary_container_arms.gy",
-        "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers reaches the assembler with the containers themselves in the\n# choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position, so\n# the compiled leg exits 2 on a program whose answer the interpreter and the reference both print in\n# one line. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time —\n# and the answer is the tagged value word's handle, chosen as a value rather than as a global name\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# Both legs are pinned: the compiled one because the toolchain rejection is what has to be visible in\n# the ledger, and the interpreter one because the answer it prints is the answer the compiled leg owes.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\n",
-        "asserted": false,
-        "oracle": "debt",
-        "reason": "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
-        "ref": "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
-        "pins": [
-          {
-            "backend": "aot",
-            "error": "global variable reference must have pointer type",
-            "missing": true
-          }
-        ]
-      },
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/208/prog.ll:36:19: error: global variable reference must have pointer type",
-      "python_ok": true,
-      "python_stdout": "[1, 2]\n",
-      "aot_matches_python": false,
-      "conformant": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
-      "oracle_ref": "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
-      "oracle_rules": [
-        "set-order",
-        "instance-identity"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/208/prog.ll:36:19: error: global variable reference must have pointer type"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_slot_order_in_a_ternary",
         "name": "probe_slot_order_in_a_ternary.gy",
         "source": "# A comparison that CPython refuses answers in the compiled backend. `xs[0] \u003e \"a\"` is an ordering\n# between a number and a text — Python raises TypeError naming both kinds, the interpreter raises\n# it through the same gate, and the compiled path folds the container read to the literal element\n# and then folds the *condition* rather than trapping, so the ternary takes the true branch and\n# prints 1. Both spellings are pinned: the int one is the shape that predates this cycle, the bool\n# one is what made it visible (roadmap Gap R.119, measured while closing Gap R.112).\nxs = [1]\nprint(1 if xs[0] \u003e \"a\" else 0)\nys = [True]\nprint(1 if ys[0] \u003e \"a\" else 0)\n",
@@ -5473,12 +5479,12 @@
       ]
     }
   ],
-  "rows": 230,
-  "skipped": 30,
-  "pass": 200,
+  "rows": 231,
+  "skipped": 29,
+  "pass": 202,
   "fail": 0,
-  "oracle_match": 186,
-  "oracle_debt": 22,
+  "oracle_match": 188,
+  "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

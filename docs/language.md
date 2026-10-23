@@ -1065,16 +1065,28 @@ what the reference's own promotion means: `(1 if c else 2.5) * 2` multiplies a `
 holding such an arm says so on the object, so `print([1.5 if c > 0 else 2.5])` is `[2.5]` (ADR 0259's
 `boolSlotExpr` has a float sibling, `floatSlotExpr`, for the same reason).
 
-What the same question cannot answer yet is an arm that is a **container**, and it fails in two pre-existing
-places rather than one. Two container arms meet at a `phi` whose operand is the literal's own global
-(`phi i32 [ @.lst1, … ], [ @.lst2, … ]`), which is the operand `llc` rejects — **exit 2**, this compiler's bug
-and not the program's, on roadmap Gap R.128's pinned row `programs/probe_ternary_container_arms.gy`. And a
-container arm beside an arm the element-typing door cannot follow (`[1] if c else [boom()]`) is refused by
-that door — `list literal elements must be integers, not int` — the same sentence it said before this
-construct was lowered behind a branch. Neither is the branch's to fix: the answer is L11.1's tagged handle.
-A mixed pair — one arm a double, the other an `i32`, the test a run-time fact — is still refused in
-words rather than truncated, and that refusal is roadmap L11.1's tagged value word to earn: a gate that
-puts an arm behind a branch cannot promote an arm into a word it does not have.
+An arm that is a **container** is answered too, on the road every other effectful arm already takes: an arm is a
+program the test runs, so each arm's container is BUILT inside the block the branch enters — with the builders every
+container road has used since **ADR 0189** — and one `phi` carries the two handles to a printer chosen from the kind
+the arms AGREE on (roadmap Gap R.385 and Gap R.128, both closed by **ADR 0405**):
+
+| arms | the answer |
+|---|---|
+| two lists | `print([1, 2] if 1 else [9])` is `[1, 2]`, and `print([1, 2] if (lambda v: v)(1) else [9])` — the arm the reference has to evaluate — is `[1, 2]` |
+| two dicts / two sets | `print({"a": 1} if 1 else {"b": 2})` is `{'a': 1}`; `print({1, 2} if 1 else {3})` is `{1, 2}` |
+| two tuples | `print((1, 2) if 1 else (3, 4, 5))` is `(1, 2)` — the brackets come from the object, not from the road that built it |
+| a comprehension | `print([v for v in [1, 2, 3] if v > 1] if 1 else [9])` is `[2, 3]`, and the dict and set spellings answer theirs |
+| a container arm and an arm that is a word, the test written | the arm that runs answers: `print({"a": 1} if 1 else 7)` is `{'a': 1}`, `print(7 if 1 else [1, 2])` is `7` and emits no list |
+| a container arm and an arm that is a word, the test evaluated | **refused in words**, not printed as a number: the door picks its printer from a kind the compiler can see, and the reference's answer needs the tag printer roadmap Gap R.67 / **ADR 0333** built for the answer of a call (roadmap **Gap R.394**) |
+
+A container handed to a function, asked a membership question, ordered by `sorted`, bound to a name or compared to
+another container takes the same handle, so `head([1, 2] if 1 else [9])`, `1 in ([1, 2] if 1 else [9])` and
+`([1, 2] if 1 else [9]) == [1, 2]` answer `1`, `True` and `True`. What the family still owes is said out loud rather
+than hidden: the doors that ASK a container ternary a question — `str(...)`, a loop's iterable, a `def`'s `return`, a
+`%` format, an interpolation's field, `len`, a position — still read the arm as one word, five of them reaching the
+assembler at all, and that is roadmap **Gap R.393**. A mixed pair — one arm a double, the other an `i32`, the test a
+run-time fact — is still refused in words rather than truncated, and that refusal is roadmap L11.1's tagged value word
+to earn: a gate that puts an arm behind a branch cannot promote an arm into a word it does not have.
 
 ## Truthiness
 
@@ -1849,8 +1861,13 @@ print(True if x else False)          # True
 When the test is a value the source wrote, only the arm that **runs** is evaluated — `print("a" if 1 else
 shout())` does not call `shout`. When the test is a run-time fact, the arms must agree on a kind: a function
 whose returns are `"yes"` and `0` is not a text-returning function, and a pair of arms that disagree on a
-word is refused rather than guessed (ADR 0262). A **container** arm still refuses — a container's compiled
-value is a global, and L11.1's tagged value word owns that half (`Gap R.128`).
+word is refused rather than guessed (ADR 0262). A **container** arm answers on the same
+road: `print([1, 2] if 1 else [9])` is `[1, 2]`, `print({"a": 1} if 1 else {"b": 2})` is `{'a': 1}`,
+`print((1, 2) if 1 else (3, 4, 5))` is `(1, 2)` and a comprehension arm — `print([v for v in [1, 2, 3] if v > 1] if 1
+else [9])` — is `[2, 3]`, each arm built inside the block the branch enters and phis its handle to a printer chosen
+from the kind the arms agree on (**ADR 0405**, closing `Gap R.385` and `Gap R.128`). What still refuses in words is the
+pair whose arms agree on no kind (`[1, 2] if c else {"a": 1}`), whose answer is the tag printer of `Gap R.67` / ADR 0333
+(`Gap R.394`).
 
 ### `None` from a lookup
 

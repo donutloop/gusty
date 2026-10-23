@@ -14317,3 +14317,46 @@ cycle wrote against the same fault deleted with it. The process half, which is w
   the arm's `raise`), not an absence assertion. The old shape would have passed a module that never cleared at all.
 - Go has no adjacent string-literal concatenation: a two-line `t.Fatalf("…" "…")` is a syntax error, and `gofmt` is
   silent about it until `go vet` says `missing ',' before newline in argument list`.
+
+## ADR 0405 — a container in a ternary arm is built inside the block the branch enters (Gaps R.385 and R.128 closed; Gaps R.393, R.394 filed, 2026-10-23)
+
+- **The conformance matrix found the row's real owner.** `print([1, 2] if 1 else [9])` looked like a fresh defect
+  filed eight days ago as **Gap R.385**, and the fix made `TestConformanceMatrixRecordsTheOracleLeg` shout about a
+  *different* program: `programs/probe_ternary_container_arms.gy`, declared debt as **Gap R.128** since ADR 0262,
+  2026-10-03 — eight hundred roadmap lines away. The corpus is the cheapest oracle for "have I just re-fixed something
+  somebody filed long ago", because its drift check compares every declared state with what the legs now do. Paying
+  the debt meant three deletions, not one: the registry row's `reason`/`ref`/`pins`, the exit-6 contract row in
+  `integration/bool_element_test.go`, and the probe's membership of `conformanceProbes()` — a probe cannot fail, which
+  is exactly why a paid one moves to `conformanceStandalone`.
+- **A shared predicate asked at 25 call sites is not widened for one door.** The obvious fix — give `isContainerExpr`
+  and `staticContainerKind` a `*Comp` case, since a comprehension IS a container — is true, and it is a bundle: those
+  two questions are asked by the membership test, the comparison, the loop, the truthiness door, the `%` road, the
+  logic road and the argument roads. One commit per feature won, so the widening lives in exactly one place
+  (`isContainerArm`/`staticContainerArmKind`, which the ternary's arms ask), and the comment says who should eventually
+  fold it into the module-level pair. The rejected alternative is written into the ADR with the number of call sites,
+  because "I did not do the obvious thing" needs a reason a future reader can check.
+- **The failing family is larger than the failing shape.** The row was `[1, 2] if 1 else [9]`; the test-table probes
+  found the comprehension arm (`[v for v in [1, "a", True]] if 1 else [9]`) still printing `0`, and it needed both the
+  arm question widened AND `CompGenerator` kept out (a generator's eager-list answer is another row's divergence). A
+  second probe asked whether the list printer was right for a comprehension arm whose elements carry different tags —
+  the module-level road prints those with `rt_print_list_mixed` — before any expectation was typed into a table.
+- **A silent wrong answer and a crash are different classes, and the report has to keep them apart.** Of the 20
+  answered programs that moved: 12 off **exit 2**, 5 off a **silent `0` at exit 0**, 3 off a **refusal in words** — and
+  separately 4 pairs off exit 2 into an exit-1 refusal. "17 fixed" would have been true, cheaper to write, and useless:
+  the silent five are the ones that could have been shipping, and the four refusals are a *change of exit class* in the
+  direction ADR 0166 asks for, which is not the same claim as "it prints now".
+- **A pinned refusal has to be pinned three ways.** Exit code, message, AND empty stdout: a program that does not run
+  prints nothing, so a refusal that also printed something is a different bug wearing a refusal's exit code. (The
+  house pattern is `integration/module_slot_scope_test.go`, which pins an owed exit-2 with the same triple.)
+- **Parallel CLI cases need per-subtest directories.** I copied `lambda_carrier_test.go`'s shape — one `t.TempDir()`
+  outside the loop, every parallel subtest writing the same filename into it — and then did not copy it: same-name
+  writes from parallel cases let one program's bytes be run under another's name. Fixed before the first run rather
+  than after a flake.
+- **The count guards are the doc editor.** Instead of guessing which numbers moved, I ran
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered` first and it named all seven: programs 244 → 245, matrix rows
+  230 → 231, parity 200 → 202 (two asserted rows arrived: my new program and the promoted probe), divergences
+  30 → 29, `match`/`debt` 186/22 → 188/21, record 8709 → 8753, queue rows 298 → 300 with owed still 180 (two closed,
+  two filed). Every one of those numbers is the artifact's; the docs just have to keep up.
+- **`--json` is the machine path for a refusal too**, not only for an answer: `{"backend":"aot","exit":1,"ok":false,
+  "phase":"codegen","error":"… roadmap Gap R.385 …"}`. A refusal that only exists as prose on stderr is a refusal an
+  agent cannot route on.

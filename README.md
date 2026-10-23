@@ -2356,6 +2356,31 @@ falls back to dynamic dispatch.
   pinned the escape are DELETED, not edited, with the handler programs moved into the answered tables of both suites
   and 14 new sources on the record (**8695 → 8709**).
 
+- **A container in a ternary arm is built where the branch enters (Gap R.385, Gap R.128, ADR 0405)** —
+  `print([1, 2] if 1 else [9])` is `[1, 2]` in the reference, and here `llc-20` refused the module on
+  `%t1 = call i32 (i8*, ...) @printf(i8* getelementptr…, i32 @.lst1)` at **exit 2**, the code that says the compiler
+  is broken rather than that the program is wrong. The backend had two roads for a container — the module-level one
+  that names a literal with a global, and the call-argument one that hands a function a word — and neither had the
+  **arm** as a shape it could name, so the arm fell to the number road, whose `value()` renders a container literal as
+  the address of its global. Two of the family were quieter than the crash and worse for it: the dict pair and the
+  tuple pair printed `0`, the heap handle as the number the value is not, at the code of success. An arm is a program
+  the test runs, not an operand of the instruction that picks (**ADR 0374**), so each arm's container is now built
+  INSIDE the block the branch enters and the merge phis the two handles; `isContainerExpr` and `staticContainerKind`
+  ask the pair through one new pair of functions, so the road that builds and the door that prints cannot disagree about
+  which programs are containers (**ADR 0232**), and the print door chooses `rt_print_list` / `rt_set_print` /
+  `rt_dict_print` / the tuple's `rt_print_container_value` from the kind the arms AGREE on. Comprehension arms came with
+  it — `print([v for v in [1, "a", True]] if 1 else [9])` printed `0` and prints `[1, 'a', True]` — because an arm is
+  allowed to be a whole loop. A pair of arms that agrees on no kind is refused in words at exit 1 rather than emitted
+  (**ADR 0166**), which moved four programs off the assembler's floor. Measured with a build of the parent commit beside
+  this one, over the same 39 files: **25 programs moved to CPython's bytes and none left answering wrongly at exit 0** —
+  12 off exit 2, 5 off a silent `0`, 3 off a refusal in words, plus the 4 refusals — and **Gap R.128**, the same defect
+  read at the other door eight weeks ago, paid with it: `programs/probe_ternary_container_arms.gy` prints its header's
+  two lines, its `Missing` pin left the ledger and the program became an asserted parity row. The sweep's two finds were
+  filed rather than fixed sideways — **Gap R.393** (the doors that ASK a container ternary a question: `str`, a loop's
+  iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position) and **Gap R.394** (the arm pair that
+  needs the tag printer) — each pinned with today's bytes beside the reference's on both legs, and 44 sources went onto
+  the record (**8709 → 8753**).
+
 - **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
   0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched
   because none of them goes through `noteUnlowered`: `[1, 2][0] = 3` printed `… got *lang.ListLit; CPython accepts

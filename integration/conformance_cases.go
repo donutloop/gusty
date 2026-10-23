@@ -888,6 +888,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// with its own traps and prints the reference's bytes through them. Every line is what CPython prints
 		// for the file.
 		"lambda_carrier",
+		// A ternary whose arms are CONTAINERS: the row the corpus has been carrying as a debt since ADR 0262
+		// measured it. An arm is a program the test runs, and the container roads build it INSIDE the block the
+		// branch enters (**ADR 0405**, roadmap Gap R.385, which paid this program's own row roadmap Gap R.128).
+		"probe_ternary_container_arms",
+		// An arm of a ternary is a program the test runs, and the container roads build it INSIDE the block the
+		// branch enters (**ADR 0405**, roadmap Gap R.385). The family reaches the print door, a function's
+		// parameter, the ordering builtin, a membership test, a comparison, a `while` body, a `for` body, a method
+		// body, an `except` handler and a `match` arm, and the file's every line is what CPython prints for it.
+		"ternary_container",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -1019,10 +1028,11 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_float_loop_variable_as_number",
 		// The ternary's *number* half is paid (ADR 0262 emitted the double `select`) and so is its
 		// TEXT half (ADR 0290 emitted the i32 select over interned indices, and taught the print
-		// road and the `strFuncs` pre-scan to ask about a ternary's arms). What stays filed is the
-		// container arm: it puts `@.lstN` in an operand position and the assembler rejects the
-		// module (roadmap Gap R.128, owned by L11.1's tagged value word).
-		"probe_ternary_container_arms",
+		// road and the `strFuncs` pre-scan to ask about a ternary's arms). Its CONTAINER half is paid
+		// too now: an arm's container is built inside the block the branch enters and the merge phis the
+		// two handles, so no global reaches an operand position (roadmap Gap R.128, paid by **ADR 0405**
+		// from the print door as roadmap Gap R.385). `probe_ternary_container_arms` left this list for
+		// `conformanceStandalone`, where an asserted row can fail if the module ever comes back broken.
 		// A list comprehension tags the slot it copies, and since ADR 0384 the set and dict roads pair
 		// every payload with its tag too. The verdict and text-key programs are paid and live in
 		// `conformanceStandalone`, beside the dict-comprehension rows that always answered.
@@ -1310,10 +1320,11 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
 		ref:    "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n1\n1\n"}}},
-	"programs/probe_ternary_container_arms": {oracle: lang.OracleDebt,
-		reason: "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
-		ref:    "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
+	// The container arms are paid: each arm's container is now BUILT inside the block the branch enters — the
+	// builder every container road has used since ADR 0189 — and the merge phis the two handles, so the module
+	// carries no global in a value position and the program prints the reference's line (roadmap Gap R.128,
+	// paid by **ADR 0405**, which read the same road from the print door as roadmap Gap R.385).
+	"programs/probe_ternary_container_arms": {oracle: lang.OracleMatch},
 	"programs/probe_round_digit_count_kind_unseen": {oracle: lang.OracleDebt,
 		reason: "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
 		ref:    "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",

@@ -1,0 +1,84 @@
+# The ternary whose arm is a container, and what the compiled backend answers there
+# (roadmap Gap R.385 closed, ADR 0405).
+#
+# An arm of a ternary is a program the test runs, not an operand of the instruction that picks
+# (Gap R.340, ADR 0374). The backend had two roads for a container — the module-level road that builds a
+# literal once, names it with a module global and prints it at the door, and the call-argument road that
+# hands the handle to a function as a word — and neither had the ARM as a shape it could name. The arm
+# therefore fell to the number road, which renders a container literal as the address of its compile-time
+# global and hands that to printf in an `i32` slot:
+#
+#     %t1 = call i32 (i8*, ...) @printf(i8* getelementptr(…@.fmt1…), i32 @.lst1)
+#     llc-20: error: global variable reference must have pointer type
+#
+# which is the exit-2 class ADR 0166 reserves for a compiler bug. Two shapes were worse than the crash
+# because they were silent: the dict pair printed `0`, and the tuple pair printed `0` — the handle of the
+# object, printed as a number (ADR 0188, ADR 0192).
+#
+# Every line below is what CPython prints, and the `integration` suite says so line for line. What the
+# family still owes is written out rather than hidden: `str(...)` of a container ternary, a loop over one,
+# a `def` that returns one, one inside a `%` format or an interpolation, `len` of one and a position in one
+# all still read the arm as a word (roadmap Gap R.393), and an arm pair that agrees on no kind is refused
+# in words instead of printed (roadmap Gap R.394). Both are pinned with today's answer beside the
+# reference's in `pkg/lang/ternary_container_test.go`.
+
+# A test the source wrote is not a run-time question: the arm that runs is the answer, and the arm it
+# rejected is not in the program at all.
+print([1, 2] if 1 else [9])
+print([1, 2] if 1 == 1 else [9])
+print({"a": 1} if 1 else {"b": 2})
+print({1, 2} if 1 else {3})
+print((1, 2) if 1 else (3, 4, 5))
+print(7 if 1 else [1, 2])
+print({"a": 1} if 1 else 7)
+print([1] if 1 else [2] if 0 else [3])
+
+# The arm the reference has to evaluate, and the arm that builds the object itself.
+print([1, 2] if (lambda v: v)(1) else [9])
+print((lambda: [1, 2])() if 1 else [9])
+
+# The comprehension spellings: the arm is a whole loop, and it is still one object.
+print([v for v in [1, 2, 3] if v > 1] if 1 else [9])
+print([v for v in [1, "a", True]] if 1 else [9])
+print([[1] for _ in [1, 2]] if 1 else [9])
+print({v: 1 for v in [1, 2]} if 1 else {9: 0})
+print({v for v in [1, 2]} if 1 else {9})
+
+# A bound arm is an ordinary variable, read by position like any other list.
+arms = [1, 2] if 1 else [9]
+print(arms[0], arms[1])
+
+# An arm handed to a function crosses as a handle, and the callee reads it as its own container.
+def head(xs):
+    return xs[0]
+
+def headOf(d):
+    return d["a"]
+
+print(head([1, 2] if 1 else [9]))
+print(headOf({"a": 7} if 1 else {"a": 0}))
+
+# The roads that ask a container a question take an arm too.
+print(sorted([2, 1] if 1 else [9]))
+print(1 in ([1, 2] if 1 else [9]))
+
+# The two-branch road: the test is a name, so both arms are blocks and the merge carries the handle.
+def hot():
+    print("hot")
+    return [1, 2]
+
+def cold():
+    print("cold")
+    return [9]
+
+go = 1 < 2
+print(hot() if go else cold())
+back = 1 > 2
+print(hot() if back else cold())
+print([v for v in [1, 2, 3] if v > back] if back else [9])
+print({v: v * 2 for v in [1, 2]} if go else {"z": 0})
+
+# The control: a program whose arms answer a word keeps the one-word road, and an arm the test cannot reach
+# is not built at all.
+print(1 if 1 else [9])
+print("text" if go else "other")

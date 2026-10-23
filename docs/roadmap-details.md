@@ -6353,11 +6353,13 @@ Pinned per leg in `programs/probe_ternary_text_arms.gy`, because both backends a
 interpreter leg is exactly what makes a two-engine matrix green while CPython prints `a`.
 
 <a id="gap-r-128"></a>
-### Gap R.128 — a ternary whose arms are containers is rejected by the assembler (OPEN, measured landing ADR 0262)
+### Gap R.128 — a ternary whose arms are containers is rejected by the assembler (CLOSED by **ADR 0405**, measured landing ADR 0262)
 
 ```gusty
 c = 1
-print([1, 2] if c > 0 else [3])   # CPython [1, 2] · --interp [1, 2] · --aot exit 2
+print([1, 2] if c > 0 else [3])   # CPython [1, 2] · the record [1, 2]
+                                    # compiled at 5985031: exit 2, llc refuses the module
+                                    # compiled by ADR 0405: [1, 2] at exit 0
 ```
 
 The lowering asks `value()` for each arm, and a container literal's `value()` is the name of its global —
@@ -6370,8 +6372,20 @@ handle* since ADR 0189, and the ternary's lowering is the one place still asking
 that — choose the object, not the symbol that names it — and the tagged value word makes the print side correct
 once the handle is chosen at run time.
 
-Recorded in `programs/probe_ternary_container_arms.gy`, with the compiled leg pinned as `Missing` and the
-reference's own line in its header, so the ledger shows a rejection rather than quietly omitting the row.
+**Closed 2026-10-23 by ADR 0405**, from the one root that **Gap R.385** turned out to be the same defect read at a
+different door: the per-arm lowering asked `value()` for the *name* of the literal's global where every container
+builder has returned a *built handle* since **ADR 0189**. An arm is a program the test runs (**ADR 0374**), so each
+arm's container is now built inside the block the branch enters and the merge phis the two handles; the `select` of
+two globals is gone, the module verifies, and the program prints the two lines its header promises.
+
+The ledger paid with the row, which is what a DoD is for: `programs/probe_ternary_container_arms.gy`'s `Missing` pin
+left `integration/conformance_cases.go` when the program's answer became CPython's, the exit-6 contract row in
+`integration/bool_element_test.go::TestOracleStillCallsTheBoolNameLossShapes` was DELETED rather than left certifying
+a paid debt, and the program moved from `conformanceProbes()` to `conformanceStandalone()` — an asserted parity row can
+fail, which a probe with a `Missing` pin never could. The family's coverage is `pkg/lang/ternary_container_test.go` and
+`integration/ternary_container_test.go`; what the print door's fix does not reach is filed as **Gap R.393** (the doors
+that ask a container ternary a question) and **Gap R.394** (the arm pair that agrees on no kind), each pinned with
+today's bytes beside the reference's rather than being filed and forgotten.
 
 
 <a id="gap-r-129"></a>
@@ -15375,7 +15389,7 @@ program wrote the frame’s: a wrong answer at exit 0, wearing this pass’s clo
 **Gap R.387**’s second gate, and it is a reason the walk has to be fixed before the arm opens — not a reason to
 leave the four programs unpinned.
 
-### Gap R.385 — a container in a ternary arm is emitted where a word belongs, with no lambda in the program
+### Gap R.385 — a container in a ternary arm is emitted where a word belongs, with no lambda in the program (CLOSED by **ADR 0405**)
 
 ```console
 $ python3 -c 'print([1, 2] if 1 else [9])'
@@ -15402,6 +15416,36 @@ Definition of done: `print([1, 2] if 1 else [9])` and the `lambda`-arm twin prin
 `llc -filetype=null` accepts the module, both programs are on the record from the reference, and the `rejects` pin
 in `lambdaAnswerOwed` is deleted. An arm the scan cannot prove has to keep refusing in words — printing a handle
 would be **Gap R.261** re-opened at the branch door.
+
+**Closed 2026-10-23 by ADR 0405**, which did all of that and found the row's real shape on the way. The node is
+`*CondExpr`, not the `*IfExp` this section sketched, and one door was not enough: three had to be made to ask one
+question —
+
+| door | before | after **ADR 0405** |
+|---|---|---|
+| `containerOperand` (the road that may build) | no `*CondExpr` case: the arm fell to the number road | builds each arm inside the block the branch enters (`ternaryBranch`) and phis the two handles; a written test emits only the arm that runs |
+| `isContainerExpr` / `staticContainerKind` (the two questions) | `*CondExpr` unknown, and a comprehension was not a container to either | ask the pair through `isContainerArm` / `staticContainerArmKind`, the widened arm pair that also calls a comprehension an arm container (`CompGenerator` deliberately excluded — its eager-list answer is the generator row's divergence) |
+| the print door | took the arm's node at face value → `printf(i32 @.lst1)` | takes the `*CondExpr` case before the number road, chooses `rt_print_list` / `rt_set_print` / `rt_dict_print` / `rt_print_container_value` from the kind the arms AGREE on, and refuses a pair that agrees on none in words at exit 1 (**ADR 0166**) |
+
+The measurement, run against a build of the parent commit `5985031` and a build of this tree over the **same 39
+files**: 25 programs moved and every one of them prints CPython's bytes, with none left answering wrongly at exit 0.
+Twelve came off **exit 2**, five off a **silent `0`** — `print({"a": 1} if 1 else {"b": 2})`,
+`print({"a": 1} if 1 else 7)`, `print((1, 2) if 1 else (3, 4, 5))`, `print([v for v in [1, "a", True]] if 1 else [9])`
+and `print([[1] for _ in [1, 2]] if 1 else [9])`, all five printing the heap handle as a number — three off a
+**refusal in words** (the `lambda`-built arm, the `sorted` arm, the container-answering-`def` arm), and four
+kind-disagreeing pairs came off exit 2 as **exit-1 refusals that name the arms**. Five more answered before this cycle
+and are pinned as controls (**ADR 0273**): the number arm, the bound arm, the two call-argument arms and the arm a
+written test rejected. Forty-four sources went onto the record leg (8709 → 8753), every one written from CPython by
+`tools/recmerge` with the compiled leg cross-checked (**ADR 0309**), and the `rejects` pin in `lambdaAnswerOwed` is
+deleted rather than edited.
+
+Two things this row does **not** claim, both filed with pins rather than hushed: the doors that *ask* a container
+ternary a question (`str`, a loop's iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position)
+still read it as one word — five of the eight exit 2 — which is **Gap R.393**; and an arm pair whose kinds do not agree
+is refused rather than printed, which is **Gap R.394** and whose answer is the tag printer **ADR 0333** built for the
+answer of a call. Widening the module-level predicates themselves to call a comprehension a container — true, and the
+thing a later row should do — was left out deliberately: 25 call sites across the membership test, the comparison, the
+loop, the truthiness door, the `%` road and the argument roads ask those two questions, and that is a different commit.
 
 ### Gap R.386 — an applied lambda that reads a name and answers a container is refused by a sentence that names nothing
 
@@ -17418,3 +17462,66 @@ frame gate itself, filters slice fields with `nodeField` — the same “can thi
 carriers — and so reports no free name inside an interpolation’s field. That is why **ADR 0402**’s gate will not
 hoist an f-string body (**Gap R.387**), and why the fix order matters: one reader, then the doors that read a
 body through it, then the gates that hoist bodies on the strength of what a reader saw.
+
+### Gap R.393 — a door that ASKS a container ternary a question still reads the arm as a word (filed by **ADR 0405**)
+
+Eight programs, one family, two exit classes. Every one of them is answered by the reference, and every one of them
+was run against it and against a build of the parent commit `5985031` on the day this row was filed:
+
+| program | CPython | compiled today |
+|---|---|---|
+| `print(str([1, 2] if 1 else [9]))` | `[1, 2]` | **exit 2** — `global variable reference must have pointer type` |
+| `for v in ([1, 2] if 1 else [9]):` / `    print(v)` | `1`, `2` | **exit 2**, the same message |
+| `def f():` / `    return [1, 2] if 1 else [9]` above `print(f())` | `[1, 2]` | **exit 2**, the same message |
+| `print("%s" % ([1, 2] if 1 else [9]))` | `[1, 2]` | **exit 2**, the same message |
+| `print(f"{[1, 2] if 1 else [9]}")` | `[1, 2]` | **exit 2**, the same message |
+| `print(len([1, 2] if 1 else [9]))` | `2` | exit 1 — `len requires an inline list/dict/set literal` |
+| `print(([1, 2] if 1 else [9])[0])` | `1` | exit 1 — `index requires an inline list/dict/set literal` |
+| `xs = (1, 2) if 1 else (3,)` / `print(xs[0], len(xs))` | `1 2` | exit 1 — `index of a non-literal variable` |
+
+**ADR 0405** fixed the door that PRINTS an arm and stopped there on purpose. The eight above are the doors that ASK
+the arm a question, and each of them lowers the same node through `value()` — the render that produces the *address of
+the compile-time global* for a container literal — and puts the result in a slot the runtime was promised holds a word
+(**ADR 0188**, **ADR 0192**). The three refusals are the same missing road seen from the front: the door can only fold
+a literal it can write down, so a ternary is neither a literal nor a word.
+
+The reason this is one row and not eight is that the fix is one line per door and the decision was already made: ask
+`isContainerArm` / `staticContainerArmKind`, and where the answer is yes lower the arm through the `*CondExpr` case of
+`containerOperand` that **ADR 0405** added, so the object is materialised into a heap word before any one-word slot
+sees it. The reason it is not folded into that row is **ADR 0166**: shipping a door half-fixed converts an honest
+exit-2 module into an exit-0 answer that prints a handle as a number, which is the one trade this repository does not
+make. Pinned in `pkg/lang/ternary_container_test.go::ternaryContainerOwed` (five `rejects`, three `refuses`) and
+`integration/ternary_container_test.go::ternaryContainerPinnedRows` (same eight, at the CLI, with the exit code, the
+empty stdout and the message each fails with), each with the reference's bytes beside today's and a failure that fires
+the day a program starts agreeing with the reference.
+
+### Gap R.394 — an arm pair whose kinds do not agree is refused in words where the reference prints the taken arm (filed by **ADR 0405**)
+
+```console
+$ python3 -c 't = True
+print([1, 2] if t else {"a": 1})'
+[1, 2]
+$ gustyc --file arms.gy
+gustyc: jit: codegen: the arms of `[1, 2] if t else {"a": 1}` are containers whose kinds this backend cannot
+choose one printer from — … (roadmap Gap R.385, beside Gap R.67 and ADR 0333)
+```
+
+Four shapes, all refused at exit 1: `[1, 2] if t else {"a": 1}` (reference `[1, 2]`), `[1, 2] if t else 7`
+(reference `[1, 2]`), `7 if t else [1, 2]` (reference `7`) and `"text" if t else [9]` (reference `text`). The print
+door picks its printer from a kind the compiler can SEE — `rt_print_list`, `rt_set_print`, `rt_dict_print`, the tuple's
+`rt_print_container_value` — and a pair that agrees on no kind has no printer to name, so the door says so.
+
+This is the *paid* half of the row it came from, and it is filed as owed because a refusal is not an answer: on the
+parent commit all four died at **exit 2** with an arm's global in an argument slot, and moving them to a refusal is
+**ADR 0166**'s preferred direction, not the family's destination. The reference evaluates the test and prints whichever
+object it chose, whatever the two arms' kinds are; the compiler cannot see the test's value, so the printer has to be
+chosen by the object rather than by the compiler. That is the tag road **ADR 0333** built for the answer of a call —
+materialise each arm's handle in its block, write the kind into the word the way `answer_kind.go`'s return road stores
+one for a `def`, and let `rt_print_container_value` / `rt_print_mixed_value` ask the object which printer it is. The
+branch road **ADR 0405** added is what makes it affordable: the untaken arm never runs, so the two kinds never have to
+be reconciled statically.
+
+Pinned as four `refuses` rows in `pkg/lang/ternary_container_test.go::ternaryContainerOwed` and four in
+`integration/ternary_container_test.go::ternaryContainerPinnedRows`, with the sentence, the exit code and an assertion
+that the program prints nothing on stdout while it is refused; the day a row prints the reference's bytes it fails and
+is DELETED.

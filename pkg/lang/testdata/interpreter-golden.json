@@ -1,5 +1,220 @@
 {
  "entries": {
+"# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers used to reach the assembler with the containers themselves in\n# the choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position,\n# so the compiled leg exited 2 on a program whose answer the record and the reference both print in\n# two lines. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# It answers now. An arm is a program the test runs, not an operand of the instruction that picks\n# (Gap R.340, ADR 0374), so each arm's container is BUILT inside the block the branch enters by the\n# builder every container road has used since ADR 0189, and the merge phis the two handles: the module\n# carries no global in a value position, and the print door chooses its printer from the kind the arms\n# agree on. The row was read from the print door as roadmap Gap R.385 and closed with this program's own\n# row by **ADR 0405**; the family it still owes — the doors that ASK a container ternary a question\n# (`str(...)`, a loop's iterable, a `def`'s `return`, a `%` format, an interpolation, `len`, a position) —\n# is roadmap Gap R.393, and the arm pair that agrees on no kind is refused in words under roadmap Gap\n# R.394, both pinned with today's bytes beside the reference's in `pkg/lang/ternary_container_test.go`\n# and `integration/ternary_container_test.go`.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\nprint({\"k\": 1} if c \u003e 0 else {\"z\": 0})": {
+    "stdout": "[1, 2]\n{'k': 1}\n",
+    "hasStdout": true
+   },
+"print({\"a\": [1, 2]} if 1 else {\"b\": {1: 2}})": {
+    "stdout": "{'a': [1, 2]}\n",
+    "hasStdout": true
+   },
+"# The ternary whose arm is a container, and what the compiled backend answers there\n# (roadmap Gap R.385 closed, ADR 0405).\n#\n# An arm of a ternary is a program the test runs, not an operand of the instruction that picks\n# (Gap R.340, ADR 0374). The backend had two roads for a container — the module-level road that builds a\n# literal once, names it with a module global and prints it at the door, and the call-argument road that\n# hands the handle to a function as a word — and neither had the ARM as a shape it could name. The arm\n# therefore fell to the number road, which renders a container literal as the address of its compile-time\n# global and hands that to printf in an `i32` slot:\n#\n#     %t1 = call i32 (i8*, ...) @printf(i8* getelementptr(…@.fmt1…), i32 @.lst1)\n#     llc-20: error: global variable reference must have pointer type\n#\n# which is the exit-2 class ADR 0166 reserves for a compiler bug. Two shapes were worse than the crash\n# because they were silent: the dict pair printed `0`, and the tuple pair printed `0` — the handle of the\n# object, printed as a number (ADR 0188, ADR 0192).\n#\n# Every line below is what CPython prints, and the `integration` suite says so line for line. What the\n# family still owes is written out rather than hidden: `str(...)` of a container ternary, a loop over one,\n# a `def` that returns one, one inside a `%` format or an interpolation, `len` of one and a position in one\n# all still read the arm as a word (roadmap Gap R.393), and an arm pair that agrees on no kind is refused\n# in words instead of printed (roadmap Gap R.394). Both are pinned with today's answer beside the\n# reference's in `pkg/lang/ternary_container_test.go`.\n\n# A test the source wrote is not a run-time question: the arm that runs is the answer, and the arm it\n# rejected is not in the program at all.\nprint([1, 2] if 1 else [9])\nprint([1, 2] if 1 == 1 else [9])\nprint({\"a\": 1} if 1 else {\"b\": 2})\nprint({1, 2} if 1 else {3})\nprint((1, 2) if 1 else (3, 4, 5))\nprint(7 if 1 else [1, 2])\nprint({\"a\": 1} if 1 else 7)\nprint([1] if 1 else [2] if 0 else [3])\n\n# The arm the reference has to evaluate, and the arm that builds the object itself.\nprint([1, 2] if (lambda v: v)(1) else [9])\nprint((lambda: [1, 2])() if 1 else [9])\n\n# The comprehension spellings: the arm is a whole loop, and it is still one object.\nprint([v for v in [1, 2, 3] if v \u003e 1] if 1 else [9])\nprint([v for v in [1, \"a\", True]] if 1 else [9])\nprint([[1] for _ in [1, 2]] if 1 else [9])\nprint({v: 1 for v in [1, 2]} if 1 else {9: 0})\nprint({v for v in [1, 2]} if 1 else {9})\n\n# A bound arm is an ordinary variable, read by position like any other list.\narms = [1, 2] if 1 else [9]\nprint(arms[0], arms[1])\n\n# An arm handed to a function crosses as a handle, and the callee reads it as its own container.\ndef head(xs):\n    return xs[0]\n\ndef headOf(d):\n    return d[\"a\"]\n\nprint(head([1, 2] if 1 else [9]))\nprint(headOf({\"a\": 7} if 1 else {\"a\": 0}))\n\n# The roads that ask a container a question take an arm too.\nprint(sorted([2, 1] if 1 else [9]))\nprint(1 in ([1, 2] if 1 else [9]))\n\n# The two-branch road: the test is a name, so both arms are blocks and the merge carries the handle.\ndef hot():\n    print(\"hot\")\n    return [1, 2]\n\ndef cold():\n    print(\"cold\")\n    return [9]\n\ngo = 1 \u003c 2\nprint(hot() if go else cold())\nback = 1 \u003e 2\nprint(hot() if back else cold())\nprint([v for v in [1, 2, 3] if v \u003e back] if back else [9])\nprint({v: v * 2 for v in [1, 2]} if go else {\"z\": 0})\n\n# The control: a program whose arms answer a word keeps the one-word road, and an arm the test cannot reach\n# is not built at all.\nprint(1 if 1 else [9])\nprint(\"text\" if go else \"other\")": {
+    "stdout": "[1, 2]\n[1, 2]\n{'a': 1}\n{1, 2}\n(1, 2)\n7\n{'a': 1}\n[1]\n[1, 2]\n[1, 2]\n[2, 3]\n[1, 'a', True]\n[[1], [1]]\n{1: 1, 2: 1}\n{1, 2}\n1 2\n1\n7\n[1, 2]\nTrue\nhot\n[1, 2]\ncold\n[9]\n[9]\n{1: 2, 2: 4}\n1\ntext\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self):\n        print([1, 2] if 1 else [9])\n\nC().m()": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def headOf(d):\n    return d[\"a\"]\n\nprint(headOf({\"a\": 7} if 1 else {\"a\": 0}))": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def hot():\n    print(\"hot\")\n    return [1, 2]\n\ndef cold():\n    print(\"cold\")\n    return [9]\n\ngo = 1 \u003c 2\nprint(hot() if go else cold())\nback = 1 \u003e 2\nprint(hot() if back else cold())": {
+    "stdout": "hot\n[1, 2]\ncold\n[9]\n",
+    "hasStdout": true
+   },
+
+"def yes():\n    return [1]\n\nprint([1, 2] if yes() else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2]:\n    print([v] if v else [])": {
+    "stdout": "[1]\n[2]\n",
+    "hasStdout": true
+   },
+
+"match 1:\n    case 1:\n        print([1, 2] if 1 else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"n = 2\nwhile n \u003e 0:\n    print([n, n] if n else [9])\n    n = n - 1": {
+    "stdout": "[2, 2]\n[1, 1]\n",
+    "hasStdout": true
+   },
+
+"print(\"t\" if 1 else [9])": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"print((1, 2) == ((1, 2) if 1 else (5,)))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(([1, 2] if 1 else [9]) == [1, 2])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([] if 1 else [9])": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(len({v for v in [1, 2, 3] if v \u003e 1}) if 1 else 0)": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(set() if 1 else {9})": {
+    "stdout": "set()\n",
+    "hasStdout": true
+   },
+
+"print({} if 1 else {9: 1})": {
+    "stdout": "{}\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([1, 2][9])\nexcept IndexError:\n    print([3, 4] if 1 else [9])": {
+    "stdout": "[3, 4]\n",
+    "hasStdout": true
+   },
+
+"xs = {\"k\": [1, 2]} if 1 else {}\nprint(xs[\"k\"][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+"print(7 if 1 else [1, 2])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"print([1, 2] if 1 else 7)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1} if 1 else 7)": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+"arms = [1, 2] if 1 else [9]\nprint(arms[0], arms[1])": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"def head(d):\n    return d[\"a\"]\n\nprint(head({\"a\": 7} if 1 else {\"a\": 0}))": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def head(xs):\n    return xs[0]\n\nprint(head([1, 2] if 1 else [9]))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def hot():\n    print(\"hot\")\n    return [1, 2]\n\ndef cold():\n    print(\"cold\")\n    return [9]\n\nt = 1 \u003c 2\nprint(hot() if t else cold())\nt = 1 \u003e 2\nprint(hot() if t else cold())": {
+    "stdout": "hot\n[1, 2]\ncold\n[9]\n",
+    "hasStdout": true
+   },
+
+"print((1, 2) if 1 else (3, 4, 5))": {
+    "stdout": "(1, 2)\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])() if 1 else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(1 if 1 else [9])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(1 in ([1, 2] if 1 else [9]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([1, 2] if (lambda v: v)(1) else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print([1, 2] if 1 == 1 else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print([1, 2] if 1 else [9])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print([1] if 1 else [2] if 0 else [3])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"print([[1] for _ in [1, 2]] if 1 else [9])": {
+    "stdout": "[[1], [1]]\n",
+    "hasStdout": true
+   },
+
+"print([v for v in [1, \"a\", True]] if 1 else [9])": {
+    "stdout": "[1, 'a', True]\n",
+    "hasStdout": true
+   },
+
+"print([v for v in [1, 2, 3] if v \u003e 1] if 1 else [9])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"print(sorted([2, 1] if 1 else [9]))": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print({\"a\": 1} if 1 else {\"b\": 2})": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"print({1, 2} if 1 else {3})": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"print({v for v in [1, 2]} if 1 else {9})": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"print({v: 1 for v in [1, 2]} if 1 else {9: 0})": {
+    "stdout": "{1: 1, 2: 1}\n",
+    "hasStdout": true
+   },
+
+"t = 1 \u003c 2\nprint([v for v in [1, 2, 3] if v \u003e t] if t else [9])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"t = len(\"ab\") == 2\nprint({v: v * 2 for v in [1, 2]} if t else {\"z\": 0})": {
+    "stdout": "{1: 2, 2: 4}\n",
+    "hasStdout": true
+   },
 "def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\n": {
     "stdout": "7\n",
     "hasStdout": true
