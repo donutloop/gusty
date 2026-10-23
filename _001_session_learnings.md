@@ -14360,3 +14360,24 @@ cycle wrote against the same fault deleted with it. The process half, which is w
 - **`--json` is the machine path for a refusal too**, not only for an answer: `{"backend":"aot","exit":1,"ok":false,
   "phase":"codegen","error":"… roadmap Gap R.385 …"}`. A refusal that only exists as prose on stderr is a refusal an
   agent cannot route on.
+
+## Tracker hygiene — Gap M.2 was owed nothing (queue row closed, 2026-10-23)
+
+- **A retirement has to be propagated to the tracker, not just to the code.** Gap M.2 ("flip `gustyc
+  --file` to the compiled backend", Pri 20, ⏳ PLANNED since 2026-08-03) was waiting for the second
+  backend to stop being the default. **ADR 0302** removed that backend, `evalSrcOrFile` has one
+  execution call (`lang.JITWithOptions`) and no evaluator call survives in the CLI — and the row still
+  sat at the top of the queue claiming work, with a DoD clause (`--interp stays the escape hatch`) that
+  describes a flag the tool now rejects as a usage error. A queue that lists finished work is worse than
+  an empty queue: the loop's rule is "take the top row", so a stale row is a mis-directed cycle.
+- **Measure a row before you accept it as owed.** Three CLI invocations — `--file` printing `5` at exit
+  0, `--json --file` reporting `"backend": "aot"`, `--interp` exiting 4 — plus the artifact's `fail 0 /
+  drift 0 / 202 asserted rows` decided the row in under a minute. The witnesses were already in
+  `cmd/gustyc/main_test.go` (`TestCLIReportsWhichBackendRan`, `TestCLIShowBackendGoesToStderr`,
+  `TestCLIPositionalSourcePathRuns`, the two retired-flag rows); the row had simply never been re-read
+  against them.
+- **Fix the ripple in the same commit.** The row was cited in four places (queue row, ledger row, the
+  details record, and two "still-open gap-shaped items" sentences, one of them in `roadmap.md`'s
+  sequencing note). Closing only the queue row would have left three claims that the flip is future
+  work — and the `Rows owed` guard then recomputed 180 → 179 of 300, which is the tracker checking my
+  own arithmetic.

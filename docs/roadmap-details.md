@@ -1789,7 +1789,7 @@ backend only) is worse than the divergence. Do it as one change, or as a tagged
 string representation alongside Gap L.2.
 
 <a id="gap-m-2"></a>
-## Gap M.2 — `gustyc --file` runs the interpreter (found 2026-08-03)
+## Gap M.2 — `gustyc --file` runs the interpreter (CLOSED 2026-10-23; found 2026-08-03)
 
 `docs/language.md` and `AGENTS.md` describe `--file` as the AOT path, but
 `evalSrcOrFile` runs the **evaluator** unless `--jit` is passed. Consequence:
@@ -1805,10 +1805,23 @@ index) survived behind exactly that. Needed:
   error (exit 4) that names the contradiction rather than silently choosing;
   `--show-backend` prints the human answer on stderr, leaving stdout the program's
   (ADR 0169).
-- ⏳ OPEN: flip the `--file` default to the compiled backend — but only once the
-  conformance matrix is green through it, so "it ran" never again means "the
-  interpreter ran it". Until then, AOT-only bugs need `--aot` or the harness to
-  show themselves, which is how three of them (ADR 0178) survived manual use.
+- ✅ DONE (measured 2026-10-23, closing the row): there is no default left to flip. The
+  road this clause was waiting for — the second one — was retired by **ADR 0302**, and
+  `evalSrcOrFile` (`cmd/gustyc/main.go`) now has exactly one execution call,
+  `lang.JITWithOptions`; no evaluator call survives anywhere in the CLI. Measured:
+  `gustyc --file` on `print(add(2, 3))` writes `5` at exit 0, `gustyc --json --file`
+  reports `"backend": "aot"`, `gustyc --show-backend` says it on stderr leaving stdout the
+  program's, and `gustyc --interp` is a usage error (exit 4) naming the retirement rather
+  than a silent no-op — so the failure this row was filed for ("every manual probe through
+  the CLI has been an interpreter run") cannot recur, and the row's own DoD clause
+  `--interp stays the escape hatch` is impossible by design: the escape hatch left with the
+  engine. The corpus gate the row set for itself is met as a measured claim, not an
+  assumption: 202 asserted rows green through the compiled leg, fail 0, oracle drift 0.
+  The witnesses are `cmd/gustyc/main_test.go::TestCLIReportsWhichBackendRan`,
+  `::TestCLIShowBackendGoesToStderr`, `::TestCLIPositionalSourcePathRuns` (positional and
+  `--file` agree byte for byte and code for code), `::TestCLIRetiredInterpFlagIsAUsageError`
+  and `::TestCLIRetiredFlagDoesNotCostAWorkingProgram`, plus `integration/`'s CLI cases,
+  every one of which runs the linked artifact.
 
 <a id="gap-p"></a>
 ## Gap P — `/` truncated and floats printed as ints (found 2026-08-03)
@@ -4376,12 +4389,12 @@ remaining steps ((1c) floats in containers, (1d) retiring `@estr[h]`, and the ta
 itself), L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
 (code-point strings), L11.6 (numerics), L11.7 (functions as values), then L11.8 (refusals and
 exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
-Gap M.2 — flipping `--file` to the compiled backend,
 Gap L.5 — print atomicity, Gaps N.2, P.1, P.2) are absorbed by Phase 11 where they are
 representation decisions, and stay their own work where they are not (K.8's prerequisite
 landed with L8.5's line tables (ADR 0231) — what is left there is the frame stack, not the
-metadata; M.2 flips only once the corpus is green through the compiled leg — which, since
-L11.9, is a measured claim rather than an assumption).
+metadata; M.2's flip landed with the retirement of the road it was waiting for (**ADR 0302**, closed
+2026-10-23) — the corpus has been green through the compiled leg since
+L11.9 made that a measured claim rather than an assumption).
 
 <a id="gap-r-69"></a>
 
