@@ -1281,6 +1281,7 @@ const astIRSchemaTemplate = `{
         "capture_parameters",
         "higher_order_lambdas",
         "higher_order_functions",
+        "carriers_declined",
         "symbols",
         "refused"
       ],
@@ -1340,6 +1341,40 @@ const astIRSchemaTemplate = `{
             "type": "string"
           },
           "description": "The functions whose bodies call one of their own parameters, in the order the source declares them. An applied lambda that is cloned appears under the symbol its declaration carries, because the source wrote no name for it; a reader meets it as <lambda>, the reference's own word."
+        },
+        "recursive_sites": {
+          "type": "integer",
+          "description": "How many calls written inside a higher-order function's own body now name that function's own clone: the recursion a clone answers by calling itself, one per self-call the pass rewrote. Zero means no higher-order recursion was in the program, or that the pass declined it — in which case Refused says which. Counting the self-call is what makes the recursion auditable: a clone that recursed through the un-specialized entry would have taken the answer with it (roadmap L11.7, Gap R.267, ADR 0364)."
+        },
+        "key_arguments": {
+          "type": "integer",
+          "description": "How many key= arguments the pass pointed at the callable they name. A hook-bearing builtin - sorted, min, max - calls its key once per element, so the position is a call the source never wrote and the AST does not show: 'neg = lambda v: 0 - v' with 'sorted(xs, key=neg)' binds the callable to a name, while the declaration the pass minted for it lives under a generated symbol. The retarget is what lets the door call the function instead of the word, and the count is the witness that it happened (roadmap L11.7, Gap R.281, ADR 0340's key door, ADR 0345's alias road)."
+        },
+        "omitted_arguments": {
+          "type": "integer",
+          "description": "How many parameters the applications LEFT OUT and the pass read off the body's prototype. The entry tuple is the list of functions the body asks for, not the list the application writes, so a call may name fewer arguments than the body has parameters: '(lambda f, y=10: f(y))(lambda x: x + 1)' names the callable and leaves the read slot to its default, and '(lambda f, g=lambda v: v + 4: f(g(2)))((lambda n: n * 10))' leaves the CALLED slot to a default that is itself a function, which is the symbol the clone builds its call to. Every such position is read from the parameter's own Default - the placeholder where the clone names the entry and reads nothing, a copy of the default's expression where the body reads the slot, and nothing at or above the last called position, which the ordinary call road fills by its own rule. Zero means every application named every slot; a non-zero count is the witness that an omission was read off the body rather than declined, and it is the only field that separates two programs whose clones are otherwise identical (roadmap L11.7, Gap R.329, ADR 0322's default fill, ADR 0371)."
+        },
+        "capture_parameters": {
+          "type": "integer",
+          "description": "How many capture parameters the declarations this pass minted carry. A clone of an applied lambda needs a parameter per thing its body asks for, and the two lists are a UNION: the entries its calls name, in the order the body calls them, and one capture parameter per name its body reads from the frame the application is written in - 'def f(x): return (lambda h: h(1) + x)(lambda q: q * 10)' with 'print(f(2))' clones a body of one entry and one capture, and 'def h(a, b): return (lambda f: f(a) + b)(lambda z: z * 2)' of one entry and two. The application fills each capture with the caller's OWN reading of that name, never a copy of the value, and a capture parameter is not a position an application may name: the arity rules read the parameters the source wrote. Zero means every clone this program needed was self-contained, which is the shape ADR 0370 cloned; a non-zero count is the witness that a body called its own parameter AND carried a capture (roadmap L11.7, Gap R.334, ADR 0372). **ADR 0395** counts the words the ENTRY side mints in the same field: a lambda the callee calls - the argument, not the body - that reads a name of the frame its application is written in is hoisted with a capture parameter per such name, and the clone that dispatches on it grows the union of its entries' words as trailing parameters which the application fills from the HOST's reading and the clone hands to the entry positionally. 'def apply1(fn, v): return fn(v)' over 'return apply1(lambda x: x + base, seed)' counts 1, and the same body that also reads a local of its own counts 2 (roadmap L11.7, Gap R.336, ADR 0395)."
+        },
+        "higher_order_lambdas": {
+          "type": "integer",
+          "description": "How many lambdas the pass cloned. A lambda applied where it is written whose body calls one of its own parameters - '(lambda f: f(3))(lambda x: x * 2)' - is a higher-order body with no name in the source: the pass gives it a declaration, clones it once per distinct tuple of functions its called parameters are asked to be, and points the application at the clone, so the callable never has to exist as a value. Zero means the program wrote no such lambda; when the program wrote one and the pass could not prove it, the 'refused' list says which shape stopped the plan (roadmap L11.7, Gap R.265)."
+        },
+        "higher_order_functions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The functions whose bodies call one of their own parameters, in the order the source declares them. An applied lambda that is cloned appears under the symbol its declaration carries, because the source wrote no name for it; a reader meets it as <lambda>, the reference's own word."
+        },
+        "carriers_declined": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "How many call sites the pass SAW and then left exactly where the program wrote them, counted under the name of the AST CARRIER they stand in. The AST stores the expressions of three constructs in values that are not nodes: an except handler (except_handler), an interpolation field (interpolation_field) and a match arm (match_arm), and the whole-program reader now reads all three (roadmap Gap R.383, ADR 0403). A REWRITE is a different question: cloning a call written in a handler moves it out of the frame whose trap catch the handler is registered on, so that position is declined and counted here, with the line and the roadmap row carried in refused (roadmap Gap R.389). An absent key, or an empty object, means the pass crossed no carrier at all."
         },
         "symbols": {
           "type": "array",

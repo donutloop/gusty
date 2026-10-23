@@ -341,27 +341,6 @@ func lambdaAnswerOwed() []lambdaAnswerOwedRow {
 	}
 }
 
-// lambdaAnswerWalkOwed is roadmap Gap R.383's pair: the whole-program reader the defunctionalisation pass
-// uses follows a field only when its element type is a `Node`, and three carriers of expressions in this
-// AST are not nodes — `MatchCase`, `ExceptClause` and `FStringPart`. One statement, written in the arm and
-// out of it: the arm's copy is invisible to that reader, so the pass never clones the capture and the door
-// refuses with the sentence for a callable that has no word to travel in.
-func lambdaAnswerWalkOwed() []struct{ name, arm, control string } {
-	const keyBody = "    base = 1\n"
-	return []struct{ name, arm, control string }{
-		{
-			name:    "a key lambda in a `match` arm",
-			arm:     "def outer():\n" + keyBody + "    match 1:\n        case 1:\n            return sorted([3, 1, 2], key=lambda v: v + base)\n\nprint(outer())\n",
-			control: "def outer():\n" + keyBody + "    return sorted([3, 1, 2], key=lambda v: v + base)\n\nprint(outer())\n",
-		},
-		{
-			name:    "a key lambda in an `except` body",
-			arm:     "def outer():\n" + keyBody + "    try:\n        x = 1 / 0\n    except ZeroDivisionError:\n        return sorted([3, 1, 2], key=lambda v: v + base)\n    return 0\n\nprint(outer())\n",
-			control: "def outer():\n" + keyBody + "    try:\n        x = 1\n    except ZeroDivisionError:\n        pass\n    return sorted([3, 1, 2], key=lambda v: v + base)\n\nprint(outer())\n",
-		},
-	}
-}
-
 // ----------------------------------------------------------------------------
 // The two witness legs over the answered table.
 // ----------------------------------------------------------------------------
@@ -512,32 +491,6 @@ func TestWhatThisRowMeasuredAndDoesNotOwnPinsTheDivergence(t *testing.T) {
 				if got != tc.today {
 					t.Fatalf("%s: today's answer moved from %q to %q (the reference prints %q)\n%s", tc.gap, tc.today, got, tc.want, tc.src)
 				}
-			}
-		})
-	}
-}
-
-// TestWhatTheWholeProgramReaderCannotSeeIsTheWalkHole is Gap R.383's pair, and the claim is the PAIR rather
-// than an answer: the statement written in the arm is refused where the same statement written beside it
-// compiles. The answer the control prints belongs to other rows; what this row owns is that the position
-// decides whether the pass sees the `lambda` at all.
-func TestWhatTheWholeProgramReaderCannotSeeIsTheWalkHole(t *testing.T) {
-	t.Parallel()
-	for _, tc := range lambdaAnswerWalkOwed() {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			msg := compiledRefusalOf(tc.arm)
-			if msg == "" {
-				t.Fatalf("Gap R.383: the arm's copy compiled — the reader sees the `lambda` now, which is the day this " +
-					"row closes and the case is DELETED\n" + tc.arm)
-			}
-			if !strings.Contains(msg, "a lambda is a function VALUE") {
-				t.Fatalf("Gap R.383: the arm is refused by a different sentence than the one the missing walk causes:\n%s", msg)
-			}
-			if controlMsg := compiledRefusalOf(tc.control); controlMsg != "" {
-				t.Fatalf("Gap R.383: the control no longer compiles either (%s) — the pair has collapsed and the row no "+
-					"longer localises anything\n%s", controlMsg, tc.control)
 			}
 		})
 	}

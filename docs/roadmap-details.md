@@ -15248,11 +15248,52 @@ of its two readers is a hole with two owners and one test.
 
 Definition of done: `callableWalk` grows the reflective descent — struct fields, slice elements, interface
 values, keeping the `enc`/`inLambda`/`onPath` bookkeeping that makes “every occurrence of this parameter” mean
-what it says — and `lambda_answer.go`’s private walker is deleted rather than left beside it. The two pairs pinned
-in `lambdaAnswerWalkOwed` (a key `lambda` in a `match` arm, a key `lambda` in an `except` body) compile where
-their control compiles, `--emit-ast` and `gusty fmt` are unchanged, and both pinned pairs are deleted, not left
-passing on a leg that no longer exists. The answer the control prints (`0`, from **Gap R.250**/**Gap R.253**’s
-family) is not this row’s and does not have to move with it.
+what it says — and every call it collects is stamped with the carrier it was read out of, so a reader’s
+completeness and a rewrite’s restraint are two questions that can be asked separately. A program the pass now
+reads answers on the compiled leg, on the record leg and at the CLI against `python3`; a position the rewrite may
+not cross is REFUSED, in words, by the pass’s own account rather than left to a downstream door’s guess. The two
+pinned pairs in `lambdaAnswerWalkOwed` (a key `lambda` in a `match` arm, a key `lambda` in an `except` body) are
+deleted, not left passing on a leg that no longer exists.
+
+**Closed 2026-10-23 by ADR 0403.** `callableWalk.fields` now hands a non-node struct to a new `carrier` method,
+which descends it (struct fields, slice elements, interface values) but never VISITS it — a carrier has no node
+identity to report, and handing one to the visitor would break the switch on node kinds that every door’s
+question depends on. Whether a type may be entered at all is one memoised question with a per-question cycle set
+(`callableCarrierCarriesNodes`), so `*Type` reaches `*Type` and stops rather than wandering into the annotation
+grammar. Each collected call is stamped with its carrier (`match_arm`, `interpolation_field`, `except_handler`,
+named once, by `callableCarrierKindOf`), and the four clone roads ask the stamp before rewriting.
+
+The two questions came apart on measurement, which is why the row is written as a reader plus a veto rather than
+as a fix. `match_arm` and `interpolation_field` are TAKEN: **eleven** programs move from the parent commit’s exit-1
+refusal to CPython’s bytes — eight in an arm (three `use(lambda v: …)` shapes: a first arm, a `case _` arm, a
+guarded arm; two `apply(f, v)` higher-order shapes; and three `sorted(key=lambda …)` shapes, module level, inside
+a `def`, and with no capture at all) and three in an interpolation’s field (two `use(...)` and one `apply(...)`) —
+each verified by building both binaries side by side and running the same `.gy` file through each, and each beside
+an un-carried twin that prints the same bytes. `except_handler` is DECLINED, and the decline is not a hunch: with
+`callableRewriteDeclinedCarriers` emptied, the arm’s own program (`try:` / `    print([1, 2][5])` /
+`except IndexError:` / `    print(apply(lambda x: x * 2, 3))`) stops being refused and dies at **exit 3** with its
+own `IndexError` unhandled, because the clone has moved the call out of the frame whose trap catch the handler is
+registered on. With the gate in place it keeps the refusal it always had, at exit 1, and `carriers_declined`
+says `except_handler` so a pass that left a call out cannot be mistaken for one that never saw it.
+
+The founding program is NOT one of the twelve, and the row does not claim it is: its answer is a container handed
+back by a `def`, which prints the handle `0` — measured on the parent commit’s un-carried twin as the same `0`,
+which is the evidence that the missing road is **Gap R.328**’s return door and not this reader’s. What this cycle
+changed there is that the arm and the statement beside it now meet the same door and get the same byte; the
+program is pinned with today’s `0` beside the reference’s `[1, 2, 3]` in both suites.
+
+Three divergences surfaced on the way and are filed rather than absorbed — **Gap R.389** (a call in a handler
+loses the frame’s trap catch; reproduces on the parent commit with no `lambda` in the program, which is what
+makes it ADR 0259’s table), **Gap R.390** (an interpolation’s field over a folded container answers the handle or
+hands `llc` a global in a `printf` slot) and **Gap R.391** (a `match` on a text subject takes no arm at all). All
+three pre-date this cycle on both binaries; the reader is what made them reachable, and each is pinned with
+today’s byte beside the reference’s in `pkg/lang/callable_carrier_test.go` and
+`integration/lambda_carrier_test.go`.
+
+What this row did NOT do: delete `lambda_answer.go`’s private `appliedLambdaWalk`. The applied-`lambda` pass and
+the defunctionalisation pass now carry two reflective readers of one AST — which is how **ADR 0401** came to fix
+this hole in one reader and leave it standing in the other. The two walkers are one shape, and the debt is
+**Gap R.392**.
 
 ### Gap R.384 — an applied lambda whose body is a literal of a non-number kind answers the slot it lives in
 
@@ -17180,3 +17221,151 @@ and `mixed_answer_kind_test.go` finds nothing. That is the process lesson worth 
 a claim nobody runs is a claim that quietly stops being true. **Gap R.171** owns the same missing word one position
 later (the void crossing a call boundary as the bare `0`, which the `def` twin here also demonstrates through a
 forwarding parameter), and **L11.1** owns the tagged value word that would make the comparison answerable at all.
+
+### Gap R.389 — a call written in an `except` handler loses the frame’s trap catch
+
+```console
+$ python3 -c 'def answer(): return 7
+try:
+    z = 1 / 0
+except ZeroDivisionError:
+    print(answer())'
+7
+$ gustyc --file handler.gy                      # SAME program, no lambda anywhere in it
+Traceback (most recent call last):
+  File "prog", line 5, in <module>
+ZeroDivisionError: division by zero
+exit 3
+```
+
+Two witnesses, both on the parent commit, both with the pass that clones a `lambda` nowhere near them:
+
+| program | compiled | CPython |
+|---|---|---|
+| `def answer(): return 7` called from a handler | **exit 3**, `ZeroDivisionError` unhandled | `7` |
+| `(lambda v: v * 3)(2)` called from a handler | **exit 3**, same | `6` |
+| `print(len([1, 2]))` called from a handler | `2` ✅ | `2` |
+| `print("caught")` in the same handler | `caught` ✅ | `caught` |
+
+So the handler itself catches, and a *builtin* call in it is fine: what breaks is a call that lowers to a
+`define` of the program’s own — the frame’s entry in the trap table **ADR 0259** built is keyed to the calls the
+program wrote, and a call that has been pointed at a clone (or at a hoisted declaration, which the closure road
+has done for years) is no longer the call the table named. The handler is then reached by a frame that has lost
+its own landing pad, and the raise escapes past it.
+
+Why this row exists at all, and why the cycle that found it refused to fix it: **ADR 0403**’s reflective descent
+made a `lambda` in a handler *visible* to `callableReadProgram` for the first time, which is precisely when the
+clone road offered to move it. Before the descent, the same program was refused at exit 1 by the key door — a
+refusal, and therefore the better of the two answers. The gate (`callableRewriteDeclinedCarriers`, one entry:
+`except_handler`) keeps that refusal, prints it in `--callables` as `carriers_declined` with the line the call sits
+on, and lets the `match` arm and the interpolation’s field through, where the same measurement says the answer is
+right. The belt behind it, `carrierCrossesAClone`, hands the whole program back untouched if a declined site is
+left naming a definition the pass removed — ADR 0345’s rule that a half-rewrite is never emitted, in the one
+shape the carrier gate can produce it.
+
+The fix belongs to the trap table, not to the pass: key a clone’s calls by the frame that emits them, or emit the
+clone’s call inside the handler’s own region so the entry survives. When that lands, the gate’s single entry is
+deleted together with its pins, and the four programs in `integration/lambda_carrier_test.go::lambdaCarrierDeclined`
+move from “refused in words” to the answered table.
+
+### Gap R.390 — an interpolation’s field over a folded container answers the handle
+
+```console
+$ python3 -c 'print(f"{sorted([3, 1, 2], key=lambda v: v + 1)}")'
+[1, 2, 3]
+$ gustyc --file field.gy
+0                                       # exit 0 — the digit, not the list
+
+$ python3 -c 'print(f"{sorted([3, 1, 2])}")'
+[1, 2, 3]
+$ gustyc --file field2.gy
+gustyc: jit: llc: exit status 1
+llc-20: error: … %t1 = call i32 (i8*, ...) @printf(i8* getelementptr …, i32 @.lst1)
+                                       # exit 2 — a global in an argument slot
+```
+
+The field is the difference, and only for a *folded* container. The same call printed plainly answers `[1, 2, 3]`,
+and a container bound to a name prints correctly through the same field (`xs = sorted(...)` / `print(f"{xs}")` is
+`[1, 2, 3]` today — the half **Gap R.114** was filed for is paid), so what is missing is the road **Gap R.327**
+names for a `return`: a `sorted`/`reversed` over literals produces a compile-time list GLOBAL, and every position
+that reads one word has to be given a heap handle in a register before it can print anything. The `return` road got
+that materialisation from **ADR 0333** (`containerOperand` → `heapListFrom`); the interpolation’s field did not, and
+so it either prints the `@str_tab`/`@.lst` index as a number or hands `llvm-as` a global where a word belongs.
+
+Two pieces of evidence keep this row honest about whose defect it is:
+
+* the `def`-key twin — `def keyf(v): return v` above `print(f"{sorted([3,1,2], key=keyf)}")` — prints `0` on the
+  **parent** commit too, with no `lambda` in the program;
+* the keyless twin exits 2 on the parent commit as well.
+
+**ADR 0403** converted neither: it made the keyed-`lambda` spelling reach this door instead of being refused before
+it, which is why the row is pinned in both suites rather than filed as a rumour, and why the exit-2 pin is read out
+of the emitted module text (`i32 @.lst1`) instead of from a subprocess exit code — the shape is the claim.
+
+Its siblings are named in the row’s `Blocked on` cell rather than duplicated here: **Gap R.114** (a container
+*variable* in a field, which refuses with `undefined name`), **Gap R.385** (a container in a ternary arm emits a
+global into a `printf` slot, no `lambda` involved), **Gap R.327** (the same global at a `return`). The plan is the
+one those rows already want: an f-string’s `{expr}` is `str(expr)` and nothing else, routed through the pair the
+builtin print uses, with the folded container materialised first.
+
+### Gap R.391 — a `match` whose subject is a text takes no arm at all
+
+```console
+$ python3 -c 'match "hi":
+    case "hi":
+        print("matched")'
+matched
+$ gustyc --file subject.gy
+                        # prints NOTHING, exit 0
+```
+
+| subject | pattern | compiled | CPython |
+|---|---|---|---|
+| `3` | `case 3:` | `matched` ✅ | `matched` |
+| `True` | `case True:` | `matched` ✅ | `matched` |
+| `"hi"` | `case "hi":` | *(silence)*, exit 0 | `matched` |
+| `"hi"` | `case "hi" if True:` | *(silence)*, exit 0 | `guarded` |
+| `"ab"` | `case "a" | "ab":` | *(silence)*, exit 0 | `or-matched` |
+
+An integer subject matches and a text subject never does, with the guard and the or-pattern silent the same way,
+so the defect is in the subject’s kind being asked once before the arms are read — the same missing question
+**Gap R.144** and **Gap R.146** describe for a slot whose tag nobody recorded, on the road **ADR 0382**’s ordering
+door fixed for comparisons. A wrong answer at the success exit with *no output at all* is the class **ADR 0166**
+files rather than accepts, and the row is the `match` road’s, not the callable pass’s: it reproduces with no
+`lambda` in the program.
+
+It was found by writing the carrier witnesses (`def use(f):` / `    return f(2)` above `match "hi":` / `    case
+"hi":` / `        print(use(lambda v: v + 1))`), which is the second time this cycle produced a witness for a row it
+did not own — the first being **Gap R.389**‘s lambda-free handler. Both are pinned in
+`pkg/lang/callable_carrier_test.go::callableCarrierPinned` and `integration/lambda_carrier_test.go::lambdaCarrierPinnedRows`
+with the byte today beside the reference’s, and the answered carrier family in `integration/programs/lambda_carrier.gy`
+deliberately uses a numeric subject so that a green conformance run cannot be read as a claim about this shape.
+
+### Gap R.392 — two whole-program readers walk the one AST by two reflections
+
+`pkg/lang` has two functions whose whole job is “visit every expression in this program, wherever the AST keeps
+it”, and they agree on almost nothing except the answer to that question when the program is simple:
+
+| | `callableWalk` (`callable_value.go`) | `appliedLambdaWalk` (`lambda_answer.go`) |
+|---|---|---|
+| written by | **ADR 0345**, the defunctionalisation pass | **ADR 0401**, the applied-`lambda` answer pass |
+| reaches a non-node carrier (`MatchCase`, `ExceptClause`, `FStringPart`) | since **ADR 0403** | since ADR 0401 wrote it that way |
+| keeps the enclosing `FuncDef` | yes — “which function is this call inside?” is half of every clone question | no |
+| keeps a lambda-depth counter | yes — “is this expression written inside a `lambda`?” decides the frame gate | no |
+| memoised “may this type be entered at all?” | `callableCarrierCarriesNodes`, one cache for the package | re-derives it per walk |
+
+A hole in one of them is therefore a hole in one pass, which is how **Gap R.383** was born: **ADR 0401** needed a
+reader that could see inside an interpolation, built one, and the shared reader that the defunctionalisation pass
+uses stayed blind for another cycle — so the same `lambda` in the same arm was a callable one pass could name and
+not the other, and the door downstream refused with a sentence about the backend’s missing word for a program one
+of its own passes had already read. **ADR 0403** fixed the shared reader, which is the right place, and left this
+row named rather than closing it by analogy: deleting `appliedLambdaWalk` means the applied-`lambda` pass starts
+answering the `enc` and `inLambda` questions through someone else’s bookkeeping, and a pass that newly sees a
+carrier can also newly DECLINE a program it used to answer. That is a measurement of its own, with pins of its
+own, and it is not owed by the row that fixed the reader.
+
+Third party to the same argument: `scanFreeIn`, the free-name reader behind `lambdaFreeNames` and so behind the
+frame gate itself, filters slice fields with `nodeField` — the same “can this hold a node?” test that hid the
+carriers — and so reports no free name inside an interpolation’s field. That is why **ADR 0402**’s gate will not
+hoist an f-string body (**Gap R.387**), and why the fix order matters: one reader, then the doors that read a
+body through it, then the gates that hoist bodies on the strength of what a reader saw.

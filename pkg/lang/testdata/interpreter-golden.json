@@ -1,5 +1,113 @@
 {
  "entries": {
+"def use(f):\n    return f(2)\n\nprint(use(lambda v: v - 1))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nmatch 2:\n    case 1:\n        print(\"never\")\n    case 2:\n        print(use(lambda v: v - 1))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nprint(use(lambda v: v * 3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nprint(f\"{use(lambda v: v * 3)}\")\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"print(sorted([3, 1, 2], key=lambda v: v + 1))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"match 1:\n    case 1:\n        print(sorted([3, 1, 2], key=lambda v: v + 1))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def outer():\n    base = 1\n    print(sorted([3, 1, 2], key=lambda v: v + base))\n\nouter()\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def outer():\n    base = 1\n    match 1:\n        case 1:\n            print(sorted([3, 1, 2], key=lambda v: v + base))\n\nouter()\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nmatch 1:\n    case 1:\n        print(use(lambda v: v + 1))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nmatch 4:\n    case v if v \u003e 0:\n        print(use(lambda w: w * v))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nmatch 2:\n    case 1:\n        print(\"never\")\n    case _:\n        print(use(lambda v: v - 1))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nprint(f\"{use(lambda v: v + 1)}\")\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\nprint(use(lambda v: v + 1))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"base = 1\nprint(sorted([3, 1, 2], key=lambda v: v + base))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\nprint(apply(lambda x: x * 2, 3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"print((lambda w: w * 2)(4))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+"def fact(n):\n    if n \u003c= 1:\n        return 1\n    return n * fact(n - 1)\n\nmatch 4:\n    case 4:\n        print(fact(4))\n": {
+    "stdout": "24\n",
+    "hasStdout": true
+   },
+"base = 1\nmatch 1:\n    case 1:\n        print(sorted([3, 1, 2], key=lambda v: v + base))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\nmatch 1:\n    case 1:\n        print(apply(lambda x: x * x, 5))\n": {
+    "stdout": "25\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\nmatch 1:\n    case 1:\n        print(apply(lambda x: x * 2, 3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\nprint(f\"{apply(lambda x: x * 2, 3)}\")\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"match 4:\n    case v if (lambda w: w \u003e 0)(v):\n        print(f\"got {(lambda w: w * 2)(v)}\")\n": {
+    "stdout": "got 8\n",
+    "hasStdout": true
+   },
+"def helper(v):\n    return v * 2\n\nmatch 1:\n    case 1:\n        print(helper(5))\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+"def helper(v):\n    return v * 2\n\nprint(f\"{helper(5)}\")\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+"match 7:\n    case v:\n        print((lambda w: w * 2)(v))\n": {
+    "stdout": "14\n",
+    "hasStdout": true
+   },
+"print(f\"v={(lambda w: w * 2)(4)}\")\n": {
+    "stdout": "v=8\n",
+    "hasStdout": true
+   },
+"match 4:\n    case v if (lambda w: w \u003e 2)(v):\n        print((lambda w: w * 3)(v))\n": {
+    "stdout": "12\n",
+    "hasStdout": true
+   },
 "class Holder:\n    def show(self):\n        print((lambda: False)())\n\nHolder().show()\n": {
     "stdout": "False\n",
     "hasStdout": true

@@ -879,6 +879,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// thing those doors can read — a declaration (roadmap Gap R.384, ADR 0402). Every line is what CPython
 		// prints for the same file.
 		"lambda_answer_kind",
+		// The three carriers the AST hides expressions in — a `match` arm, an interpolation's field and an
+		// `except` handler — are read by the whole-program reader now, so a callable written in the first two
+		// gets the declaration its call needs and answers what the reference answers (roadmap Gap R.383,
+		// ADR 0403). The handler is declined by the pass's own account rather than rewritten, because a clone
+		// would leave the frame whose trap catch the handler belongs to (roadmap Gap R.389); this program
+		// holds no handler, and says why in its own header. Every line is what CPython prints for the file.
+		"lambda_carrier",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -14226,3 +14226,55 @@ printed by the tool for a source printed beside it.
   `TestTheRoadmapSnapshotIsMeasuredNotRemembered` named `AGENTS.md`, `docs/operations.md`'s artifact table and the
   roadmap Snapshot row — and only those. `docs/language.md`'s new section quotes *history* ("7743 → 7762"), which
   stays as written; changing yesterday's measurement to match today's is how a tracker starts lying.
+
+## ADR 0403 — the whole-program reader reads the AST's carriers (Gap R.383 closed; Gaps R.389–R.392 filed)
+
+The row itself is small — `callableWalk` followed a struct field only when the field's type could hold a node, and
+`MatchCase`, `ExceptClause` and `FStringPart` carry their expressions in values that are not nodes. The cycle is
+worth writing down for what happened around it.
+
+- **Your own probe files are not evidence, and a stale `/tmp` is a factory for confident lies.** The first version
+  of this row's "answered family" was a table of programs I believed I had measured: parent refuses, new answers,
+  twelve of them, `tools/recmerge` already run over the sources. Every number was fabricated — not by anyone, but
+  by a set of `.gy` files an EARLIER cycle had left in `/tmp/r383/progs/`, whose names (`u3.gy`, `w1.gy`, `q5.gy`)
+  I had reused for different programs with heredocs that did not all land, and whose contents I never opened before
+  quoting their output. `tools/recmerge` then recorded those stale programs and the record grew by twelve entries
+  that belonged to no row, and the first draft of the ADR, the roadmap cell and the test tables went out with a
+  "witness" that had never existed. The recovery was: `git checkout` the record, write the family from the test
+  tables themselves, build TWO binaries (parent and new) and run the SAME files through both, and only then write
+  prose. Eleven programs really do come over; the founding program does not, because its answer is a container a
+  `def` hands back (**Gap R.328**'s handle) — a sentence I could not have written from the fabricated set, which is
+  the point of measuring.
+- **A leg that degrades to silence is the leg that lies.** My carrier table's record assertion was
+  `golden, ok := runGoldenStdout(...); if ok && golden != want {…}` — a MISSING record passed the case. The
+  package's own rule is that a missing record fails. Write it as `if err != nil { t.Fatal }`, and require
+  `HasGoldenAnswer` per row at the CLI altitude too: a leg that can silently not-run is not a witness, it is a rumour
+  with a `t.Run` around it.
+- **`recmerge` cross-checks the compiled leg, but it trusts the list you hand it.** It refuses to write an entry
+  whose two legs disagree — that is what eventually exposed the stale batch — yet it happily records whatever
+  sources a `sources.json` names. Generate that file FROM the test tables (the same string literals), never from a
+  directory of leftovers.
+- **Prove a decline by removing it.** "We decline the `except` handler because cloning a call out of it loses the
+  frame's trap catch" is a claim; emptying `callableRewriteDeclinedCarriers`, rebuilding and watching
+  `try: print([1,2][5])` / `except IndexError: print(apply(lambda x: x*2, 3))` die at exit 3 instead of being
+  refused is the proof. A gate nobody can show the cost of is a gate that gets deleted by the next person — now the
+  ADR names the program and its exit code, and the test table has a row whose sibling fails if the gate goes away.
+- **A refusal turning into a wrong answer is a regression even when it is not yours.** Three carrier programs moved
+  from exit-1 refusal to `0` at exit 0 (`f"{sorted(...)}"`, `f"{(lambda xs: xs)([1,2])}"`, a `def` returning a
+  folded container). Each reproduces its byte on the parent commit in an un-carried spelling, which is the evidence
+  that the door below is the owner (**Gap R.390**, **Gap R.328**) — and the honest record is "this row removed a
+  refusal and the program now lands on a pre-existing wrong answer, pinned here", not silence about the change.
+- **Two test files in one package cannot both own a name.** `TestWhatThisRowMeasured…Pinned…` already existed in
+  `lambda_answer_kind_test.go`; a row-local name (`TestWhatTheCarrierRowMeasured…`) is the fix, and the roadmap
+  cells cite the exact name, so rename both places at once.
+- **`cliRunCode` returns stdout only.** A trap pin written as "the output contains `ZeroDivisionError`" fails on the
+  first run because the traceback is on stderr: pin `code == 3` with stdout `""`, and let the reference's byte be the
+  thing the pin contrasts with.
+- **A count is a claim about a build, not about a plan.** I wrote "twelve programs came over" from the fabricated
+  set and had to count the real ones (eleven) after re-measuring, and the roadmap's row needed the split (eight in
+  an arm, three in a field) rather than a total, because the split is what a reader can check.
+- **The row that closes a shared hole owes a row about the second reader.** **ADR 0401** had already given
+  `lambda_answer.go` a reflective walker and left `callableWalk` blind; fixing the shared one now leaves TWO
+  reflective readers of one AST, which is the same defect wearing different clothes. That is **Gap R.392** — filed
+  with the table of how the walkers differ (`enc`, `inLambda`, the memoised carrier question), because "should have
+  been merged" is not a definition of done.

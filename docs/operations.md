@@ -783,7 +783,7 @@ wrote (`twice`, not `twice$callable$1a2b3c4d`) to a traceback and to `--debug-in
 
 **Machine path.** `gustyc --callables <src>` prints the pass's own account as JSON — `rewritten`, `clones`,
 `hoisted_lambdas`, `rewritten_call_sites`, `recursive_sites`, `key_arguments`, `omitted_arguments`,
-`capture_parameters`, `higher_order_lambdas`, `higher_order_functions`,
+`capture_parameters`, `higher_order_lambdas`, `higher_order_functions`, `carriers_declined`,
 `symbols`, `refused` —
 described by the schema's `definitions.callablePassReport` (`gustyc --schema`). The `refused` sentence is not only in
 the document: when the call the withdrawn rewrite would have built is the call the emitter cannot name, the refusal
@@ -835,6 +835,14 @@ spelling appears nowhere a human reads: not in `refused`, not in a traceback fra
 Exit codes: `0` with the document,
 `1` when the source cannot be parsed. `refused` carries why the pass declined, with its roadmap citation, and is
 *not* the sentence the user is shown for the program: a decline leaves the program where it was.
+`carriers_declined` is **ADR 0403**'s: an object counting, by carrier name, the calls the reader SAW and the rewrite
+refused to move — `match_arm`, `interpolation_field`, `except_handler` are the whole key set, and the only key the
+pass declines today is `except_handler`, because cloning a call out of a handler detaches it from the frame whose
+trap catch the handler is registered on (roadmap L11.7 · Gap R.383 closed, Gap R.389 owed). The field is what keeps
+a pass that left a call out from being mistaken for one that never saw it: `{}` means the program crossed no carrier,
+and a non-zero count is always paired with a `refused` sentence naming the position, the line the call was written on
+and the row that owns the missing road. It is required in the schema's `definitions.callablePassReport`, and
+`TestTheCallablesDocumentIsTheOneTheSchemaDeclares` fails if the payload and the document disagree (**ADR 0004**).
 
 **Machine path.** `gustyc --lambda-answers <src>` prints the applied-`lambda` answer pass's own account as JSON —
 `tool`, `pass`, `schema`, `rewritten`, `settled`, `declarations`, `symbols`, `declined`, `names_consumed`, `refused` —
@@ -1231,7 +1239,7 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 8668 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
+| `pkg/lang/testdata/interpreter-golden.json` | 8695 sources with the answer the record holds for them: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source. The body of it is what the retired engine answered at the last commit that had it; a source first asked after ADR 0302 retired that engine is recorded from the reference, with the compiled leg cross-checked — the record's own `meta.added_after_0302` says so, and `tools/recmerge` refuses to write an entry the compiled leg will not agree to. **Every one of the four counts in this table is recomputed by `pkg/lang/golden_artifact_counts_test.go` on each run that is not served from the test cache** (roadmap Gap R.204): a count here is the file's, not a number someone remembered | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record, and a source whose key is spelled twice is one no case can reach |
 | `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (319 rows — four went paid with **ADR 0384** on 2026-10-20: the verdict set/dict comprehension, the text-key dict comprehension, `{v: v / 2 for v in xs}`, and `c = 0` / `print(["y" if c else "n"])`, each of which the tagged comprehension or element door now answers as the record and CPython do; two went paid with **ADR 0382** on 2026-10-20: `print(1 < "a")` and `print("a" < 1)`, each of which the ordering door now raises the record's own `TypeError: '<' not supported between instances of …` for, so the row went paid rather than edited; seven went paid with **ADR 0365** on 2026-07-29: `print([0] * 3)`, `print(3 * [0])`, `print([1, 2] + [3])`, `print("ab" * 2)`, `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now answers or raises the reference's own `TypeError` for, and the same cycle owed rows back for the ORDER of two containers no name holds (`if [1, 2] < [2]: print("yes")` and its two siblings), which the door refuses in words rather than corrupting into `icmp slt i32 @.lst1, @.lst2` — **Gap R.314**). Before that, the one that left with **ADR 0360** on 2026-10-16 is the printf row `print("a" % 2)`, which the formatting door now raises the record's own `TypeError: not all arguments converted during string formatting` for, so the row went paid rather than edited; three went paid with **ADR 0359** on 2026-10-17 (`f"hello"`, `f"plain"`, `f"a{1}b"` standing where a VALUE goes, each refused with “f-string requires a constant expression (AOT backend)” since the backend had one) and one arrived with it (**Gap R.308**, a format spec over a value the compiler cannot read), which is how paying a row is supposed to look: the paid rows un-skipped `TestEvalFString`, and the rest of that test got asked for the first time; four went paid with **ADR 0356/0357** on 2026-10-16: the comprehension over a list the escape analysis had been deleting, the two `s[0] = …` store-to-immutable traps whose class and sentence the compiled backend now raises, and `show(1 == 1)` / `show(True)` whose print of a parameter the pair road now renders the record's way; seven more changed *shape*, from "cannot build a program the engine ran" to a named divergence, which is the ratchet doing its job rather than rows disappearing) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (19 rows — one went paid with **ADR 0382**: `print("a" < 1)`, which the ordering door now raises the reference's own `TypeError` for; three went paid with **ADR 0365**: `print("a" * 1.5)`, `print("a" * "b")` and `print({"a": 1} + {"b": 2})`, each of which the sequence door now raises the reference's own `TypeError` for or builds outright; before that `print("a" % 2)` went paid with **ADR 0360** beside its twin above; two are Gap L.5's, where the record holds the interleaved line and CPython agrees with the compiled leg: there the record is the debt, ADR 0302) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython** (9 rows), with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
@@ -1816,11 +1824,13 @@ not comments, so a future re-recording cannot silently undo them.
 - `--callables <src>` → the function-value pass's own account of the source:
   `{"tool":"callable-values","pass":"defunctionalize-callables","hash":"…","rewritten":true,`
   `"clones":1,"hoisted_lambdas":1,"rewritten_call_sites":2,"recursive_sites":0,"key_arguments":0,"omitted_arguments":0,"capture_parameters":0,"higher_order_lambdas":0,"higher_order_functions":["twice"],`
-  `"symbols":[…],"refused":[]}` — the `callablePassReport` definition in `--schema` (roadmap L11.7, ADR 0345;
+  `"carriers_declined":{},"symbols":[…],"refused":[]}` — the `callablePassReport` definition in `--schema` (roadmap L11.7, ADR 0345;
   `recursive_sites` is ADR 0364's, the self-calls a clone answered by calling itself; `key_arguments` is ADR 0369's,
   the hook `key=` arguments retargeted to the callable they name; `higher_order_lambdas` is ADR 0370's, the clones that
   were applied `lambda`s, which report `<lambda>` rather than a name the program wrote; `capture_parameters` is
-  ADR 0372's, the capture parameters those declarations carry beside their entries).
+  ADR 0372's, the capture parameters those declarations carry beside their entries; `carriers_declined` is
+  **ADR 0403**'s, the calls the reader saw inside a `match` arm, an interpolation's field or an `except` handler that
+  the rewrite refused to move, counted by carrier name).
   `rewritten` is `false` and `refused` carries one sentence when the pass declined: the program is then exactly
   what it was before the pass, and the refusal a user is shown is the one the backend already had.
 - `--lambda-answers <src>` → the applied-`lambda` answer pass's own account of the source:

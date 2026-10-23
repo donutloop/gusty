@@ -1,0 +1,61 @@
+# The three places the AST hides an expression from a whole-program reader, and what the
+# compiled backend answers there (roadmap L11.7 · Gap R.383 closed, ADR 0403).
+#
+# The AST stores expressions in three constructs without calling them nodes — a `match` arm
+# (`MatchCase`), an interpolation's field (`FStringPart`) and an `except` handler
+# (`ExceptClause`) — and the defunctionalisation pass read a field only when its type could
+# hold a node, so it read a program with those three regions cut out. The witness was one
+# statement written twice: `sorted([3, 1, 2], key=lambda v: v + base)` compiled beside the
+# `match` and was refused inside it, at exit 1, with the sentence for a callable that has no
+# word to travel in.
+#
+# The reader now reads all three. What it *rewrites* is a separate, measured decision: the
+# `match` arm and the interpolation's field are taken, and an `except` handler is declined in
+# words by the pass's own account, because cloning a call out of a handler detaches it from
+# the frame whose trap catch the handler is registered on (roadmap Gap R.389). This program
+# therefore holds NO handler: the shapes below are the ones the reader answers, each beside
+# the `def`/un-carried twin that always answered it.
+#
+# What this program does NOT contain, said out loud rather than hidden: a `match` on a TEXT
+# subject, which takes no arm at all and prints nothing where the reference prints (roadmap
+# Gap R.391, pinned in `pkg/lang/callable_carrier_test.go`); an interpolation's field over a
+# `sorted(...)` call, which answers the container's handle or hands the assembler a global
+# (roadmap Gap R.390, beside Gap R.114 and Gap R.327); a call written in an `except` handler,
+# which lets the frame's own trap escape (roadmap Gap R.389); and a `def` whose answer IS a
+# `sorted(...)` call, which prints the handle for the reason Gap R.328 already owns. Every one
+# of those is pinned with today's byte beside the reference's in BOTH suites.
+
+def use(f):
+    return f(2)
+
+
+def outer():
+    base = 1
+    match 1:
+        case 1:
+            print(sorted([3, 1, 2], key=lambda v: v + base))
+
+
+base = 7
+match 1:
+    case 1:
+        print(sorted([3, 1, 2], key=lambda v: v + base))
+
+match 2:
+    case 1:
+        print("never")
+    case 2:
+        print(use(lambda v: v - 1))
+
+outer()
+
+print(use(lambda v: v + 1))
+print(f"{use(lambda v: v * 3)}")
+print(f"{use(lambda v: v - 1)}|{use(lambda v: v + 1)}")
+
+xs = sorted([3, 1, 2], key=lambda v: v + 1)
+print(f"{xs}")
+
+names = sorted(["b", "a", "c"])
+print(names)
+print(f"{names}")

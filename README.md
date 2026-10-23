@@ -2305,6 +2305,36 @@ falls back to dynamic dispatch.
   8668** sources), `gustyc --lambda-answers` reports the new kinds (`text`/`bool`/`none`) through the same
   schema-declared document, and `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness.
 
+- **The whole-program reader reads the three places the AST hides an expression (Gap R.383, ADR 0403)** — one
+  statement, written twice: `print(sorted([3, 1, 2], key=lambda v: v + base))` beside a `match` compiled, and inside
+  its arm was refused at exit 1 with the sentence for a callable that has no word to travel in. No language rule
+  says so, and no gate was chosen: `callableWalk` followed a struct field only when the field's type could hold a
+  node, and three constructs keep their expressions in values that are not nodes — `MatchCase` (an arm's pattern,
+  guard and body), `FStringPart` (an interpolation's field) and `ExceptClause` (a handler) — so every question the
+  function-value pass asks was answered from a program with those three regions cut out. The reader now DESCENDS a
+  non-node carrier (fields, slice elements, interface values) while the enclosing `FuncDef`, the lambda-depth counter
+  and the per-path cycle set keep meaning what they did, and descends it WITHOUT visiting it: a carrier has no node
+  identity to report to a visitor that switches on node kinds. One memoised question (`callableCarrierCarriesNodes`)
+  decides whether a type may be entered at all, so `*Type` reaches `*Type` and stops rather than wandering into the
+  annotation grammar. **A reader and a rewrite are two questions**: `match_arm` and `interpolation_field` are taken
+  and measured answering — eleven programs moved from the parent commit's exit-1 refusal to CPython's bytes (eight in
+  an arm, three in a field), each beside an un-carried twin printing the same bytes — while `except_handler` is
+  DECLINED, on measurement rather than on hunch: with the gate emptied, `try: print([1, 2][5])` /
+  `except IndexError: print(apply(lambda x: x * 2, 3))` stops being refused and dies at **exit 3** with its own
+  `IndexError` unhandled, because the clone moves the call out of the frame whose trap catch the handler is
+  registered on (**ADR 0166** ranks a refusal above that). `gustyc --callables` therefore gains `carriers_declined`,
+  so a pass that left a call out cannot be mistaken for one that never saw it, and its `refused` sentence names the
+  position, the line and the row. The carrier set is closed by reading `ast.go` itself: a fourth carrier becomes
+  readable the day it is added and FAILS `TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes`, because
+  whether a clone may leave it is a decision to take awake. Four rows came out of the measurement and are filed, not
+  reworded: **Gap R.389** (a call in a handler loses the frame's trap catch — reproduces on the parent commit with
+  no `lambda` in the program, which is what makes it **ADR 0259**'s table and not a callable pass's), **Gap R.390**
+  (an interpolation's field over a folded container answers the handle, or hands `llc` a global in a `printf` slot),
+  **Gap R.391** (a `match` whose subject is a text takes no arm at all) and **Gap R.392** (the applied-`lambda` pass
+  still keeps its own second reader of the same AST, which is how this hole came to be fixed in one walker and left
+  standing in the other). The record leg gained 27 sources the reference answered and the compiled leg agreed to
+  (**8668 → 8695**), and `integration/programs/lambda_carrier.gy` is the line-for-line reference witness.
+
 - **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
   0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched
   because none of them goes through `noteUnlowered`: `[1, 2][0] = 3` printed `… got *lang.ListLit; CPython accepts

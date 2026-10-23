@@ -5903,6 +5903,67 @@ Each of those five is pinned with today's byte beside the reference's in both `p
 `integration/lambda_answer_kind_test.go`, so the day one of them answers it stops being a footnote and fails a case.
 `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness for the answered family.
 
+### A callable written in a `match` arm, an f-string field or an `except` handler is read where it is written (L11.7, Gap R.383, ADR 0403)
+
+Three constructs keep their expressions in AST values that are not nodes — they carry code and answer no `Span()`:
+`MatchCase` (an arm: its pattern, its guard, its body), `FStringPart` (an interpolation's field) and `ExceptClause`
+(a handler: the exception it catches and its body). The whole-program reader the function-value pass asks its
+questions of followed a field only when that field's type could hold a node, so for three cycles every question —
+which calls exist, which names a body reads, which hook a `key=` argument names — was answered from a program with
+those three regions cut out. The visible symptom was one statement written twice:
+
+```python
+base = 1
+print(sorted([3, 1, 2], key=lambda v: v + base))    # [1, 2, 3]   — answered
+
+base = 1
+match 1:
+    case 1:
+        print(sorted([3, 1, 2], key=lambda v: v + base))   # refused at exit 1 — before ADR 0403
+```
+
+The language has no rule that says so. The pass had simply never met the arm's `lambda`, and the door below it
+refused with the sentence for a callable that has no word to travel in.
+
+**ADR 0403** descends the carriers. A non-node struct is walked — fields, slice elements, interface values — while
+the enclosing `FuncDef`, the lambda-depth counter and the per-path cycle set keep meaning what they did, and a
+carrier is **descended rather than visited** because it has no node identity to report to a visitor that switches
+on node kinds. Whether a type may be entered at all is one memoised question (`callableCarrierCarriesNodes`), so
+annotations, spans and strings stay outside the walk without a list of exceptions.
+
+```python
+def use(f):
+    return f(2)
+
+match 2:
+    case 1:
+        print("never")
+    case _:
+        print(use(lambda v: v - 1))      # 1   — an arm's call is a call site
+
+match 4:
+    case v if (lambda w: w > 0)(v):      # 8   — a guard is read too
+        print(f"got {use(lambda w: w * v)}")   # got 8 — and so is a field
+```
+
+A reader and a rewrite are two questions, and the third carrier is where they part. An `except` handler is the
+frame's **trap catch**: the handler runs in the frame that registered the entry, and pointing a call written there
+at a declaration the pass minted moves that call out of the frame — the program that catches its own error today
+dies with it unhandled at exit 3. **ADR 0166** ranks a refusal above that, so the position is declined in words:
+`gustyc --callables <src>` counts the sites under `carriers_declined` (`{"except_handler": 2}`) and `refused`
+carries a sentence naming the position, the line the call sits on, and **Gap R.389** — the row that owns the
+missing road — rather than the generic "nothing for me to do here", which would describe a program the pass never
+read. The guard on the AST (`TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes`, reading `ast.go` itself)
+keeps the carrier set closed at exactly these three: a fourth carrier becomes *readable* the day it is added and
+fails the case, because whether a clone may leave it is a decision someone has to take awake.
+
+What this does not claim, pinned in `pkg/lang/callable_carrier_test.go` and `integration/lambda_carrier_test.go`
+with today's byte beside the reference's: an interpolation's field over a *folded* container answers the container's
+handle (**Gap R.390**, beside **Gap R.114** and **Gap R.327**), a `def` that hands a folded container back as its
+answer prints the handle from an arm as it does beside one (**Gap R.328**), a `match` whose subject is a text takes
+no arm at all (**Gap R.391**), and a plain `print(answer())` written in a handler already let the frame's trap
+escape before any of this was written (**Gap R.389**, no `lambda` required).
+
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
