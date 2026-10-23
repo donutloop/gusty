@@ -1281,7 +1281,7 @@ const astIRSchemaTemplate = `{
         "capture_parameters",
         "higher_order_lambdas",
         "higher_order_functions",
-        "carriers_declined",
+        "carriers_read",
         "symbols",
         "refused"
       ],
@@ -1369,12 +1369,12 @@ const astIRSchemaTemplate = `{
           },
           "description": "The functions whose bodies call one of their own parameters, in the order the source declares them. An applied lambda that is cloned appears under the symbol its declaration carries, because the source wrote no name for it; a reader meets it as <lambda>, the reference's own word."
         },
-        "carriers_declined": {
+        "carriers_read": {
           "type": "object",
           "additionalProperties": {
             "type": "integer"
           },
-          "description": "How many call sites the pass SAW and then left exactly where the program wrote them, counted under the name of the AST CARRIER they stand in. The AST stores the expressions of three constructs in values that are not nodes: an except handler (except_handler), an interpolation field (interpolation_field) and a match arm (match_arm), and the whole-program reader now reads all three (roadmap Gap R.383, ADR 0403). A REWRITE is a different question: cloning a call written in a handler moves it out of the frame whose trap catch the handler is registered on, so that position is declined and counted here, with the line and the roadmap row carried in refused (roadmap Gap R.389). An absent key, or an empty object, means the pass crossed no carrier at all."
+          "description": "How many DISTINCT call sites the whole-program reader met inside an AST CARRIER, counted under the carrier's name — the walk meets one call on several routes and the roads ask about it once per candidate, so the account counts the call, not the asking. The AST stores the expressions of three constructs in values that are not nodes: an except handler (except_handler), an interpolation field (interpolation_field) and a match arm (match_arm), and the reader descends all three (roadmap Gap R.383, ADR 0403) — a pass whose account shows none of these keys for a program that plainly wrote one has not read the program. The count is a reading, not a permission: rewriting such a call is a separate decision, and the veto that once held the handler position back was removed once the fault behind it proved to be the frame's exception flag rather than anything about a clone (roadmap Gap R.241, ADR 0404). An empty object means the program crossed no carrier."
         },
         "symbols": {
           "type": "array",

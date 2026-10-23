@@ -124,12 +124,15 @@ type callableReport struct {
 	// a program that wrote one and was declined says so in `refused`.
 	HigherOrderLambdas int      `json:"higher_order_lambdas"`
 	HigherOrderFunc    []string `json:"higher_order_functions"`
-	// CarriersDeclined counts, by carrier name, the call sites the reader SAW and the rewrite left exactly
-	// where the program wrote them. The key set is closed and small — `except_handler` is the only name
-	// today, and `match_arm`/`interpolation_field` are measured answers rather than declines — so a script
-	// branches on the key rather than on prose, and `refused` carries the sentence with the line and the
-	// roadmap row (roadmap Gap R.383 for the read, Gap R.389 for the restraint).
-	CarriersDeclined map[string]int `json:"carriers_declined"`
+	// CarriersRead counts, by carrier name, the call sites the whole-program reader found INSIDE an AST
+	// carrier — a `match` arm, an interpolation's field, an `except` handler. Those three constructs keep
+	// their expressions in values that are not nodes, and a reader that filtered a field by "can this hold
+	// a node?" read a program with them cut out (roadmap Gap R.383, ADR 0403). The count is the account's
+	// witness that such a call was read at all: `{}` means the program crossed no carrier. Whether a call
+	// may be MOVED out of a carrier is a separate question, and the veto that once split the two for the
+	// handler is gone — what held the handler back was the frame's exception flag, not the pass
+	// (roadmap Gap R.241, closed by ADR 0404).
+	CarriersRead map[string]int `json:"carriers_read"`
 	// Symbols are the IR names the pass minted — clones and hoisted lambdas — so a caller that reads
 	// `--emit-llvm` can tell a definition this pass wrote from one the program wrote.
 	Symbols []string `json:"symbols"`
@@ -148,10 +151,10 @@ type callableRead struct {
 	fds   map[string]*FuncDef // the program's declared functions, by name
 	calls []*Call             // every call expression, in program preorder
 	encs  []*FuncDef          // the function each call is written in (nil at module level)
-	// callCarriers is the parallel record of the CARRIER each call was written inside — "", or one of the
-	// three names the AST carries expressions in without calling them nodes. The reader must see a call
-	// wherever it is written (roadmap Gap R.383); the rewrite leaves some of those positions alone
-	// (roadmap Gap R.389), and this is the field that says which without re-reading the tree.
+	// callCarriers is the parallel record of the innermost CARRIER each call was written inside — "", or
+	// one of the three names the AST carries expressions in without calling them nodes. It exists so the
+	// account can say which calls sit in a carrier (`carriers_read`), which is the only way a reader's
+	// completeness is checkable rather than claimed (roadmap Gap R.383, ADR 0403).
 	callCarriers []string
 
 	names    []*Name    // every name occurrence, in program preorder
@@ -213,11 +216,11 @@ type callableWalk struct {
 	onPath map[uintptr]bool
 	depth  int
 	// carrierStack names the AST carriers this path is inside — the three the AST stores expressions in
-	// without calling them nodes: an `except` handler, an interpolation's field, a `match` arm. A READER
-	// wants all of them (roadmap Gap R.383); a REWRITE does not, because moving a call out of a carrier
-	// moves it out of the frame that owns something the carrier was built to do — a handler's trap catch is
-	// the measured case (roadmap Gap R.389). The stack is per-path and save/restored, so a `match` arm
-	// written inside a handler is still standing in the handler.
+	// without calling them nodes: an `except` handler, an interpolation's field, a `match` arm. The reader
+	// wants all of them (roadmap Gap R.383, ADR 0403), and so does the rewrite: the one position once held
+	// back was the handler, and what held it was the frame's exception flag rather than any property of a
+	// clone (roadmap Gap R.241, closed by ADR 0404). The stack is per-path and save/restored, so a `match`
+	// arm written inside a handler is still standing in the handler too.
 	carrierStack []string
 }
 
@@ -230,20 +233,10 @@ const (
 	callableCarrierMatch  = "match_arm"
 )
 
-// callableRewriteDeclinedCarriers is the measured half of the carrier rule: a position the reader now
-// sees and the rewrite must still leave alone. `except_handler` is there because cloning a `sorted` key
-// written in a handler moves the call out of the frame whose trap catch the handler is registered on,
-// and the program that used to print `caught` dies at exit 3 with its own `ZeroDivisionError` unhandled
-// — a refusal (exit 1) beats that, which is ADR 0166's ordering. `match_arm` and `interpolation_field`
-// are deliberately NOT here: both were measured answering CPython's bytes at the CLI once the reader
-// could see them.
-var callableRewriteDeclinedCarriers = map[string]bool{
-	callableCarrierExcept: true,
-}
-
 // callableCarrierKindOf names the carrier a non-node struct value is, or "" for one the pass has no
-// opinion about. This is the ONLY place a carrier is recognised, so the reader's completeness and the
-// rewrite's restraint are decided by one table rather than by two guesses that drift apart.
+// opinion about. This is the ONLY place a carrier is recognised: the reader's completeness is one table,
+// the account's key set is that table, and the test that reads ast.go checks this one (ADR 0232 — one
+// question, one asking place).
 func callableCarrierKindOf(t reflect.Type) string {
 	if t == nil {
 		return ""
@@ -259,23 +252,13 @@ func callableCarrierKindOf(t reflect.Type) string {
 	return ""
 }
 
-// inCarrier reports whether this path stands inside a carrier of the given kind.
-func (w *callableWalk) inCarrier(kind string) bool {
-	for _, k := range w.carrierStack {
-		if k == kind {
-			return true
-		}
-	}
-	return false
-}
-
-// declinedCarrier names the carrier on this path that a REWRITE must not cross, or "" when the path
-// stands in none. It walks the whole stack rather than reading the innermost frame, because a `match`
-// arm written inside an `except` handler is still standing in the handler, and the position that owns
-// the trap catch is the one the rewrite would break.
-func (w *callableWalk) declinedCarrier() string {
-	for _, k := range w.carrierStack {
-		if callableRewriteDeclinedCarriers[k] {
+// innermostCarrier names the carrier this path most deeply stands in, or "" when it stands in none. It
+// answers the account's question — which carrier did this call live in — and a nested pair (a `match` arm
+// inside an interpolation's field) reports its innermost half, which is the one the reader had to descend
+// to reach.
+func (w *callableWalk) innermostCarrier() string {
+	for i := len(w.carrierStack) - 1; i >= 0; i-- {
+		if k := w.carrierStack[i]; k != "" {
 			return k
 		}
 	}
@@ -490,7 +473,7 @@ func callableReadProgram(prog *Program) *callableRead {
 			// The carrier this call was written inside, asked at the same moment and stored beside it, so a
 			// rewrite decision never has to guess the position from a later look at the tree (roadmap
 			// Gap R.383 for the read, Gap R.389 for the restraint).
-			r.callCarriers = append(r.callCarriers, w.declinedCarrier())
+			r.callCarriers = append(r.callCarriers, w.innermostCarrier())
 		case *Name:
 			r.names = append(r.names, x)
 			r.nameEncs = append(r.nameEncs, enc)
@@ -1040,18 +1023,14 @@ type callablePlan struct {
 	// `callableLambdaCaptures`, which needs the module's own name set to tell a frame's word from a
 	// global one, and the plan is a function over the AST with no generator to reach (ADR 0343).
 	prog *Program
-	// carriersDeclined counts, per carrier name, the call sites the reader SAW and the rewrite then left
-	// alone, and carriersDeclineWhy holds the sentence for each kind that fired. The reader being complete
-	// is what makes these positions visible at all (roadmap Gap R.383); the account has to say which of
-	// them this pass declined and why, because a pass that quietly leaves a call out is indistinguishable
-	// from one that never saw it — the exact confusion this row closes (roadmap Gap R.389).
-	carriersDeclined   map[string]int
-	carriersDeclineWhy []string
-	// carriersDeclinedSites are the exact calls the roads left alone, kept so the invariant at the end of
-	// the rewrite can ask whether any of them still names a function this pass took away. A half-rewrite is
-	// never emitted — that is the rule `callableNoFunctionValuesLeft` exists to enforce for the positions a
-	// function name can reach, and a declined site is the same hazard wearing a carrier's clothes.
-	carriersDeclinedSites []*Call
+	// carriersRead counts, per carrier name, the call sites the reader found inside a carrier. The reader
+	// being complete and the rewrite being restrained are two claims, and the account has to tell
+	// "this call was read here and answered" from "the reader never met it" (roadmap Gap R.383, ADR 0403).
+	// The count is over DISTINCT call nodes: the walk meets a call once per route to it and the roads ask
+	// once per candidate, and "how many calls live in an arm" is the only question a script can compare
+	// with the source, so `carriersCounted` is the set the count is taken over.
+	carriersRead    map[string]int
+	carriersCounted map[*Call]bool
 	// acceptedSelfArgs are entry arguments a recursive call wrote that the clone discards because it
 	// names the clone's own entry. They are still AST nodes in the body, but they no longer name a
 	// callable once the self call is pointed at the clone (roadmap Gap R.335).
@@ -1145,131 +1124,62 @@ func callableNoWorkDecline() error {
 	return &callableDecline{noWork: true, why: "no function calls its own parameter, no name aliases one, no lambda argument needs a declaration, and no hook's key names a callable under another symbol"}
 }
 
-// callableNoWorkDeclineFor is the same sentence with the carrier gate appended beside it. The two are
-// one sentence rather than two because the reader's completeness is what makes the second half true:
-// the call at line 4 is a call the pass now READS, and saying only "nothing to do" would describe a
-// program the pass never looked at (roadmap Gap R.383 for the read, Gap R.389 for the restraint).
-func callableNoWorkDeclineFor(plan *callablePlan) error {
-	err := callableNoWorkDecline()
-	if plan == nil || len(plan.carriersDeclineWhy) == 0 {
-		return err
-	}
-	why := "no function calls its own parameter, no name aliases one, no lambda argument needs a declaration, and no hook's key names a callable under another symbol"
-	for _, s := range plan.carriersDeclineWhy {
-		why += "; " + s
-	}
-	return &callableDecline{noWork: true, why: why}
-}
-
-// callableDeclinedCarrierSites reads a program and answers, per carrier name, the lines of the calls the
-// reader SAW inside a carrier a rewrite must not cross. It is the same question `noteDeclinedCarrier`
-// asks while the roads run, asked again of the read alone, so the account of a DECLINED program — where
-// there is no plan to remember it — can still say which positions were visible and refused (roadmap
-// Gap R.389). The lines are in the order the walk met them, which is the order the source wrote them.
-func callableDeclinedCarrierSites(prog *Program) map[string][]int {
-	out := map[string][]int{}
+// callableCarrierSites reads a program and answers, per carrier name, how many calls the whole-program
+// reader met inside that carrier. It is the question `noteCarrierRead` asks while the roads run, asked
+// again of the read alone, so the account of a program the pass DECLINED — where there is no plan left to
+// remember the read — can still say which positions it read (roadmap Gap R.383, ADR 0403).
+func callableCarrierSites(prog *Program) map[string]int {
+	out := map[string]int{}
 	if prog == nil {
 		return out
 	}
 	var w callableWalk
+	seen := map[*Call]bool{}
 	w.visit = func(n Node, enc *FuncDef) {
 		c, isCall := n.(*Call)
-		if !isCall || c == nil {
+		if !isCall || c == nil || seen[c] {
 			return
 		}
-		kind := w.declinedCarrier()
-		if kind == "" {
-			return
+		if kind := w.innermostCarrier(); kind != "" {
+			seen[c] = true
+			out[kind]++
 		}
-		out[kind] = append(out[kind], c.Span().Line)
 	}
 	w.stmts(prog.Stmts, nil)
 	return out
 }
 
-// noteDeclinedCarrier records that the reader SAW this call and the rewrite left it exactly where the
-// program wrote it, because the call stands inside a carrier the clone must not cross — today the one
-// carrier the measurement condemns, an `except` handler. It answers true so each rewrite road says so
-// once, at the top of the loop, beside the two skips the roads already kept for a call inside a lambda
-// and a call the road does not own.
-//
-// The reason is not soundness of the clone, which is the same anywhere in the tree. It is the frame the
-// carrier belongs to: `try:` / `x = 1 / 0` / `except ZeroDivisionError:` / `print(sorted([3,1,2], key=lambda v: v))`
-// caught its error and printed the list on the reference, and printed a `Traceback` at exit 3 once the
-// call was pointed at a module-level clone — the handler's entry in the frame's trap table is keyed to
-// the call the program wrote, and a call that moved stopped being the one the table named. A refusal at
-// exit 1 beats that (ADR 0166), so the position stays refused until the table crossing lands (roadmap
-// Gap R.389, which the reader half of this rule, roadmap Gap R.383, uncovered by making the call visible).
-func (p *callablePlan) noteDeclinedCarrier(r *callableRead, rank int, c *Call) bool {
+// noteCarrierRead records that the whole-program reader met this call inside an AST carrier, so the
+// account can name the carrier a call was read out of. It is a count, not a veto: every rewrite road takes
+// these calls. The veto this function was — a handler position a clone must not cross — went with ADR 0404,
+// once the fault it declined for turned out to be the frame's exception flag rather than anything about a
+// clone (roadmap Gap R.241, read from the callable side as Gap R.389).
+func (p *callablePlan) noteCarrierRead(r *callableRead, rank int) {
 	if p == nil || r == nil || rank < 0 || rank >= len(r.callCarriers) {
-		return false
+		return
 	}
 	kind := r.callCarriers[rank]
 	if kind == "" {
-		return false
+		return
 	}
-	if p.carriersDeclined == nil {
-		p.carriersDeclined = map[string]int{}
+	if rank >= len(r.calls) {
+		return
 	}
-	line := 0
-	if c != nil {
-		line = c.Span().Line
+	c := r.calls[rank]
+	if c == nil {
+		return
 	}
-	if p.carriersDeclined[kind] == 0 {
-		p.carriersDeclineWhy = append(p.carriersDeclineWhy, callableCarrierDeclineSentence(kind, line))
+	if p.carriersCounted == nil {
+		p.carriersCounted = map[*Call]bool{}
 	}
-	if p.carriersDeclinedSites == nil {
-		p.carriersDeclinedSites = []*Call{}
+	if p.carriersCounted[c] {
+		return // the roads ask once per candidate; the account counts the CALL, not the asking
 	}
-	p.carriersDeclinedSites = append(p.carriersDeclinedSites, c)
-	p.carriersDeclined[kind]++
-	return true
-}
-
-// carrierCrossesAClone asks the one soundness question the carrier gate leaves open: did a call the
-// roads declined still end up naming a function this pass cloned away? The call keeps the name the
-// program wrote, because the road that would have pointed it at a clone was the road that declined;
-// and the definition that name names is about to be taken out of the module, because every site the
-// pass DID take was pointed at a clone. Either way the answer is to hand the whole program back
-// untouched — the refusal it had before this pass ran, which is what an un-taken rewrite always is
-// (ADR 0273, ADR 0345's rule that a half-rewrite is never emitted).
-func (p *callablePlan) carrierCrossesAClone() bool {
-	if p == nil || len(p.carriersDeclinedSites) == 0 {
-		return false
+	p.carriersCounted[c] = true
+	if p.carriersRead == nil {
+		p.carriersRead = map[string]int{}
 	}
-	for _, c := range p.carriersDeclinedSites {
-		if c == nil {
-			continue
-		}
-		if nm, ok := c.Fn.(*Name); ok {
-			target := nm.Value
-			if aliased, isAlias := p.aliases[target]; isAlias {
-				target = aliased
-			}
-			for _, cf := range p.order {
-				if cf != nil && cf.def != nil && cf.def.Name == target {
-					return true
-				}
-			}
-		}
-		for _, cf := range p.order {
-			if cf != nil && cf.fromLambda != nil && cf.fromLambda == c.Fn {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// callableCarrierDeclineSentence is what the machine path says about a position the pass declined: the
-// carrier by the name the program would recognise, the line the call was written on, and the row that
-// owns the missing road — and no Go type, minted symbol or pointer value in it (ADR 0166, ADR 0345 §3).
-func callableCarrierDeclineSentence(kind string, line int) string {
-	switch kind {
-	case callableCarrierExcept:
-		return fmt.Sprintf("a call of a callable written inside an `except` handler at line %d keeps the ordinary road's refusal: pointing that call at a declaration this pass minted moves it out of the frame whose trap catch the handler is registered on, and the program that catches its own error today would die unhandled at exit 3 (roadmap Gap R.389)", line)
-	}
-	return ""
+	p.carriersRead[kind]++
 }
 
 // planDefunctionalization reads a program and decides its rewrite, or declines. It mutates nothing.
@@ -1284,7 +1194,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	plan := &callablePlan{
 		fns: map[string]*callableFn{}, aliases: map[string]string{},
 		arity: map[string]int{}, declared: map[string]bool{}, taken: map[string]bool{},
-		prog: prog, entryCaptures: map[string][]string{}, carriersDeclined: map[string]int{},
+		prog: prog, entryCaptures: map[string][]string{}, carriersRead: map[string]int{}, carriersCounted: map[*Call]bool{},
 	}
 	for name := range r.fds {
 		plan.declared[name] = true
@@ -1361,9 +1271,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// ordinary road gives it (roadmap L11.7 · Gap R.265; ADR 0345's construction, ADR 0249's rule that a
 	// shape the pass cannot state is refused rather than answered by coincidence).
 	for rank, c := range r.calls {
-		if plan.noteDeclinedCarrier(r, rank, c) {
-			continue // the reader sees this call (Gap R.383) and the rewrite does not cross into it (Gap R.389)
-		}
+		plan.noteCarrierRead(r, rank) // the reader counts the call where it found it (roadmap Gap R.383)
 		lam, isLambda := c.Fn.(*Lambda)
 		if !isLambda || lam == nil || lam.Body == nil {
 			continue
@@ -1572,9 +1480,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// hook is the frame the `sorted` call is written in, which is the frame that owns `base`. No second fill
 	// road, and no `fnptr`: the hook stays a named `define` the door calls by symbol (ADR 0345).
 	for rank, c := range r.calls {
-		if plan.noteDeclinedCarrier(r, rank, c) {
-			continue // the reader sees this call (Gap R.383) and the rewrite does not cross into it (Gap R.389)
-		}
+		plan.noteCarrierRead(r, rank) // the reader counts the call where it found it (roadmap Gap R.383)
 		nm, isCalleeName := c.Fn.(*Name)
 		if !isCalleeName {
 			continue
@@ -1654,9 +1560,7 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 	// and the program die with the reference's own `TypeError: 'int' object is not callable` at exit 3
 	// (roadmap L11.7, Gap R.281; ADR 0340's door, ADR 0345's alias road).
 	for rank, c := range r.calls {
-		if plan.noteDeclinedCarrier(r, rank, c) {
-			continue // the reader sees this call (Gap R.383) and the rewrite does not cross into it (Gap R.389)
-		}
+		plan.noteCarrierRead(r, rank) // the reader counts the call where it found it (roadmap Gap R.383)
 		pos, nm, ok := callableKeySlotOf(r, c)
 		if !ok {
 			continue
@@ -1687,15 +1591,13 @@ func planDefunctionalization(prog *Program) (*callablePlan, error) {
 		if why := callableMutualHigherOrderDecline(r); why != "" {
 			return nil, callableDeclinef("%s", why)
 		}
-		return nil, callableNoWorkDeclineFor(plan)
+		return nil, callableNoWorkDecline()
 	}
 
 	// The call sites: each is read against the definition it targets, and each called parameter is
 	// resolved to the function the call asks for.
 	for rank, c := range r.calls {
-		if plan.noteDeclinedCarrier(r, rank, c) {
-			continue // the reader sees this call (Gap R.383) and the rewrite does not cross into it (Gap R.389)
-		}
+		plan.noteCarrierRead(r, rank) // the reader counts the call where it found it (roadmap Gap R.383)
 		nm, ok := c.Fn.(*Name)
 		if !ok {
 			continue
@@ -3275,7 +3177,7 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 	if fresh == nil {
 		return prog, nil
 	}
-	report := &callableReport{Tool: callableToolName, Pass: "defunctionalize-callables", CarriersDeclined: map[string]int{}}
+	report := &callableReport{Tool: callableToolName, Pass: "defunctionalize-callables", CarriersRead: map[string]int{}}
 
 	// (1) The clone bodies, each written from the source function's own body so that the only thing
 	// that changes in it is the callee the pass decided on.
@@ -3589,12 +3491,6 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 	if !callableNoFunctionValuesLeft(fresh, plan) {
 		return prog, nil
 	}
-	// The carrier gate's own half of the same statement: a call the roads declined because it stands in an
-	// `except` handler keeps the name the program wrote, and a name whose definition this pass removed is a
-	// call to a `define` that will not be emitted (roadmap Gap R.389, and the invariant ADR 0345 closes).
-	if plan.carrierCrossesAClone() {
-		return prog, nil
-	}
 	for _, cf := range plan.order {
 		// A reader meets a clone by the name the source wrote, and a lambda has no name in the source:
 		// the reference's own word for it is `<lambda>`, and that is what the account, the traceback and
@@ -3616,16 +3512,10 @@ func writeDefunctionalization(prog *Program, plan *callablePlan) (*Program, *cal
 		}
 	}
 	sortStrings(report.Symbols)
-	if len(plan.carriersDeclined) > 0 {
-		report.CarriersDeclined = map[string]int{}
-		for kind, n := range plan.carriersDeclined {
-			report.CarriersDeclined[kind] = n
-		}
-	}
-	for _, why := range plan.carriersDeclineWhy {
-		// The account says which positions the reader saw and the rewrite refused, in the same list a script
-		// already reads for the shapes the pass could not prove (roadmap Gap R.389).
-		report.Refused = append(report.Refused, why)
+	for kind, n := range plan.carriersRead {
+		// The account says which positions the reader reached, so an arm's call, a field's call and a
+		// handler's call are visible to a script as counts rather than as an absence (roadmap Gap R.383).
+		report.CarriersRead[kind] = n
 	}
 	report.Rewritten = true
 	report.Hash = callablePlanHash(report)
@@ -3990,7 +3880,7 @@ const callableToolName = "callable-values"
 // act on (ADR 0166's rule for a refusal, applied to a report). The `symbols` list is the IR names the
 // pass minted, so a caller reading `--emit-llvm` can tell a clone's `define` from the program's own.
 func CallablesJSON(src string) (string, error) {
-	doc := callableReport{Tool: callableToolName, Pass: "defunctionalize-callables", Hash: "none", CarriersDeclined: map[string]int{}}
+	doc := callableReport{Tool: callableToolName, Pass: "defunctionalize-callables", Hash: "none", CarriersRead: map[string]int{}}
 	prog, err := parseProgram(src)
 	if err != nil {
 		// A source that cannot be read is not a program the pass declined: the tool was handed something that is
@@ -4003,11 +3893,10 @@ func CallablesJSON(src string) (string, error) {
 		doc.Refused = append(doc.Refused, perr.Error())
 		// A decline loses the plan, and with it the record of what the reader saw. The account is still
 		// written from the READ, because the reader's verdict is the half a caller needs when there is no
-		// rewrite to describe: "the pass declined, and here is the position it saw and would not cross"
-		// (roadmap Gap R.383 for the read, Gap R.389 for the restraint).
-		for kind, lines := range callableDeclinedCarrierSites(prog) {
-			doc.CarriersDeclined[kind] = len(lines)
-			doc.Refused = append(doc.Refused, callableCarrierDeclineSentence(kind, lines[0]))
+		// rewrite to describe: "the pass declined, and here is how far into the AST it had read"
+		// (roadmap Gap R.383, ADR 0403).
+		for kind, n := range callableCarrierSites(prog) {
+			doc.CarriersRead[kind] = n
 		}
 		return marshalCallableReport(doc)
 	}

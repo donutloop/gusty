@@ -5946,23 +5946,39 @@ match 4:
         print(f"got {use(lambda w: w * v)}")   # got 8 — and so is a field
 ```
 
-A reader and a rewrite are two questions, and the third carrier is where they part. An `except` handler is the
-frame's **trap catch**: the handler runs in the frame that registered the entry, and pointing a call written there
-at a declaration the pass minted moves that call out of the frame — the program that catches its own error today
-dies with it unhandled at exit 3. **ADR 0166** ranks a refusal above that, so the position is declined in words:
-`gustyc --callables <src>` counts the sites under `carriers_declined` (`{"except_handler": 2}`) and `refused`
-carries a sentence naming the position, the line the call sits on, and **Gap R.389** — the row that owns the
-missing road — rather than the generic "nothing for me to do here", which would describe a program the pass never
-read. The guard on the AST (`TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes`, reading `ast.go` itself)
-keeps the carrier set closed at exactly these three: a fourth carrier becomes *readable* the day it is added and
-fails the case, because whether a clone may leave it is a decision someone has to take awake.
+The reader is one question and the rewrite another, and for one cycle the third carrier split them: an `except`
+handler's call was READ by **ADR 0403** and deliberately not MOVED, because cloning it out of the handler left the
+frame's own trap unhandled at exit 3. What stood there was never the pass. The exception the arm had accepted stayed
+flagged until the arm's END, and every call the arm writes ends with a check of that module-wide flag — so the call's
+own check took the run to the handler OUTSIDE this one: the arm ran, printed, and then the program died with the
+exception it had already handled, and the statement after the `try` never ran (roadmap **Gap R.241**, closed by
+**ADR 0404**). An accepting arm clears the flag before its first statement now, which is what the reference's
+semantics say it should have been doing all along, and the handler answers like its un-carried twin:
+
+```python
+def apply(f, v):
+    return f(v)
+
+try:
+    print([1, 2][5])
+except IndexError:
+    print(apply(lambda x: x * 2, 3))   # 6   — a handler's call is a call site too
+print("after")                          # after — the run continues
+```
+
+`gustyc --callables <src>` reports what the reader reached as `carriers_read` (`{"except_handler": 2}` for the program
+above — the two calls the arm writes, `print` and `apply`, counted once each however many routes the walk reaches
+them by), so "this pass never met that call" is a claim a script can falsify rather than one it has to trust. The guard
+on the AST (`TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes`, reading `ast.go` itself) keeps the carrier
+set closed at exactly these three: a fourth carrier becomes *readable* the day it is added and fails that case,
+because whether a construct is worth reading is a decision to take against a witness, not a default a reflection
+inherits.
 
 What this does not claim, pinned in `pkg/lang/callable_carrier_test.go` and `integration/lambda_carrier_test.go`
 with today's byte beside the reference's: an interpolation's field over a *folded* container answers the container's
 handle (**Gap R.390**, beside **Gap R.114** and **Gap R.327**), a `def` that hands a folded container back as its
-answer prints the handle from an arm as it does beside one (**Gap R.328**), a `match` whose subject is a text takes
-no arm at all (**Gap R.391**), and a plain `print(answer())` written in a handler already let the frame's trap
-escape before any of this was written (**Gap R.389**, no `lambda` required).
+answer prints the handle from a handler or an arm as it does beside one (**Gap R.328**), and a `match` whose subject
+is a text takes no arm at all (**Gap R.391**).
 
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 

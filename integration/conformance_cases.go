@@ -880,11 +880,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// prints for the same file.
 		"lambda_answer_kind",
 		// The three carriers the AST hides expressions in — a `match` arm, an interpolation's field and an
-		// `except` handler — are read by the whole-program reader now, so a callable written in the first two
-		// gets the declaration its call needs and answers what the reference answers (roadmap Gap R.383,
-		// ADR 0403). The handler is declined by the pass's own account rather than rewritten, because a clone
-		// would leave the frame whose trap catch the handler belongs to (roadmap Gap R.389); this program
-		// holds no handler, and says why in its own header. Every line is what CPython prints for the file.
+		// `except` handler — are read by the whole-program reader now (**ADR 0403**), and the rewrite takes all
+		// three: a callable written in any of them gets the declaration its call needs and answers what the
+		// reference answers (roadmap Gap R.383). The handler was the one position the pass refused to move, and
+		// the fault behind that refusal was the frame's exception flag rather than anything about a clone
+		// (roadmap Gap R.241 / Gap R.389, both closed by **ADR 0404**), so this program reaches its handlers
+		// with its own traps and prints the reference's bytes through them. Every line is what CPython prints
+		// for the file.
 		"lambda_carrier",
 	}
 

@@ -328,10 +328,10 @@ func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 // a slot, a call's answer and a float-carrying parameter each hold theirs one word too far away (roadmap Gap
 // R.237). The rest are the neighbours this row measured and filed rather than fixed: `len` of a slice of a text
 // (Gap R.240), a stepped slice of a text whose step is
-// a value (Gap R.243 — the fold answers a constant stride and refuses any other), and an `except` arm that calls
-// a function (Gap R.241 — pinned in its own test below, because there the run's exit code is the thing: the arm
-// runs with the exception flag still set, so the call's own post-call check takes it back, the traceback prints,
-// and the statement after the `try` never runs).
+// a value (Gap R.243 — the fold answers a constant stride and refuses any other). The `except` arm that calls
+// a function used to be listed here too (Gap R.241): the arm ran with the exception flag still set, the call's
+// own post-check took it back, and the statement after the `try` never ran. It answers now — an accepting edge
+// clears the flag, see `TestACallInsideAnExceptArmRunsAndTheRunContinues` below.
 //
 // The comprehension whose iterable is a copy (`Gap R.239`) used to sit in this table refusing. It answers now —
 // ADR 0357's iterable route materialises the copy and walks it — and a divergence row whose compiled answer has
@@ -415,54 +415,56 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 	}
 }
 
-// TestACallInsideAnExceptArmStillTakesTheRunDown is Gap R.241 on its own, because it is not the slice road's
-// defect and must be seen whole: the handler runs, and the program still reports the exception it handled.
-// The same program with `print` in the arm exits 0 — the call's post-check on the module-wide exception flag is
-// the difference. Every row here pins the reference's output beside what the toolchain does today.
-func TestACallInsideAnExceptArmStillTakesTheRunDown(t *testing.T) {
+// TestACallInsideAnExceptArmRunsAndTheRunContinues is roadmap Gap R.241, closed on 2026-10-23: the arm used
+// to run with the exception flag still set, because the clearing belonged to the edge OUT of the arm, and
+// every call the arm wrote ends with a post-check on that module-wide flag — so the call's own check took
+// the run to the handler outside this one, the traceback printed, and the statement after the `try` never
+// ran. An accepting edge now clears the flag before the arm's first statement. These are the reference's
+// own bytes, asked of `python3` in the case rather than remembered here; the two rows that used to pin the
+// death are the ones that would fail if the clear ever moves back out of the way.
+func TestACallInsideAnExceptArmRunsAndTheRunContinues(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
-		name       string
-		src        string
-		wantStdout string
-		wantCode   int
+		name string
+		src  string
 	}{
 		{
 			"a user call in the arm",
 			"def h():\n    print(\"caught\")\n\nxs = [1, 2, 3]\ntry:\n    print(xs[9])\nexcept IndexError:\n    h()\nprint(\"after\")",
-			"caught", // the reference prints "caught\nafter" and exits 0
-			3,
 		},
 		{
 			"the same call, arms the raise this row built",
 			"def h():\n    print(\"caught\")\n\nxs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    h()\nprint(\"after\")",
-			"caught", // the reference prints "caught\nafter" and exits 0
-			3,
 		},
 		{
 			"the raise this row built, caught by a nameless arm",
 			"xs = [1, 2, 3]\nflt = 1.5\ntry:\n    print(xs[flt:3])\nexcept:\n    print(\"caught\")\nprint(\"after\")",
-			"caught\nafter",
-			0,
 		},
 		{
-			"a builtin in the arm, which is the road that works",
+			"a builtin in the arm, the road that always worked",
 			"xs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")",
-			"caught\nafter",
-			0,
+		},
+		{
+			"a call whose answer the arm's print consumes",
+			"def answer():\n    return 7\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(answer())\nprint(\"after\")",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			want, ok := cpythonPlainOut(t, t.TempDir(), tt.src)
+			if !ok {
+				t.Skip("no live python3 to ask")
+			}
 			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
 			if code == 2 {
 				t.Fatalf("exit 2 on a legal program (ADR 0166):\n%s", stderr)
 			}
-			if got := strings.TrimRight(stdout, "\n"); got != tt.wantStdout {
-				t.Fatalf("printed %q, the row records %q\nstderr %q", got, tt.wantStdout, stderr)
+			if code != 0 {
+				t.Fatalf("exit %d where the reference exits 0 — the arm's call took the run down with the exception it "+
+					"already handled (roadmap Gap R.241 again)\nstdout %q\nstderr %q", code, stdout, stderr)
 			}
-			if code != tt.wantCode {
-				t.Fatalf("exit %d, want %d (roadmap Gap R.241: an arm that calls hands the handled exception back)\nstderr %q", code, tt.wantCode, stderr)
+			if got := strings.TrimRight(stdout, "\n"); got != strings.TrimRight(want, "\n") {
+				t.Fatalf("printed %q, CPython prints %q\nstderr %q", got, want, stderr)
 			}
 		})
 	}

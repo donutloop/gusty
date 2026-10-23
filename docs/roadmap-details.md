@@ -11548,7 +11548,7 @@ already trusts for a text variable, so a step and a negative bound are counted t
 
 <a id="gap-r-241"></a>
 
-### Gap R.241 — an `except` arm that calls a function takes the run down with the exception it handled (OPEN, found by ADR 0336)
+### Gap R.241 — an `except` arm that calls a function takes the run down with the exception it handled (CLOSED by ADR 0404, found by ADR 0336)
 
 ```python
 def h():
@@ -11578,13 +11578,33 @@ handed to the top: the traceback prints, the statement after the `try` is skippe
 handler's own output sitting on stdout behind it. A builtin in the arm (`print("caught")`) has no such check, which
 is why the shape that works has been working all along and why the suite never saw this.
 
-The fix is the missing half of ADR 0218's own rule: clear the flag when an arm **accepts** the exception, before its
+The fix is the missing half of ADR 0218’s own rule: clear the flag when an arm **accepts** the exception, before its
 first statement — the place where the `except <Type> as e:` binding Gap R.113 owes will put the caught object
-anyway. `blockEndsInTerminator`'s `armed` reading then stops mattering for the flag, because there is none left to
-hand back. Three rows pin today's behaviour in
+anyway. `blockEndsInTerminator`’s `armed` reading then stops mattering for the flag, because there is none left to
+hand back. Three rows pin today’s behaviour in
 `integration/slice_bounds_test.go::TestACallInsideAnExceptArmStillTakesTheRunDown` — the subscript arm and this
-row's bounds arm, both exit 3, and the builtin arm as the control at exit 0; they move into the catchable table when
+row’s bounds arm, both exit 3, and the builtin arm as the control at exit 0; they move into the catchable table when
 the clear moves.
+
+**Closed 2026-10-23 by [ADR 0404](adr/0404-an-accepted-exception-is-cleared-when-the-arm-accepts-it.md)**, eleven days
+after it was filed, by the one store the filing named. `tryStmt` clears `@exn_flag` immediately after the accepting
+arm’s label and before its body is emitted — reaching an arm IS the exception having been taken, so holding the flag
+through the arm was never anything but a lie — and the edge-out clear stays, because it speaks for the arm that
+leaves by a path the entry clear cannot see (**ADR 0218**’s own case). The rows did not need editing: they needed
+deleting and re-writing as answers, which is the only way a pinned death cannot survive its own fix. What the case is
+now (`TestACallInsideAnExceptArmRunsAndTheRunContinues`) asks `python3` for the bytes inside the case rather than
+trusting a number written here, and its five rows are: the subscript arm calling `h()`, the bounds arm calling `h()`,
+a nameless arm, a builtin arm (the control that always worked), and a call whose answer the arm’s own `print`
+consumes.
+
+Measured against a build of the parent commit and against `python3`, both binaries from one tree: **twelve** programs
+came over to the reference’s bytes — **five** of them carrying no `lambda` anywhere, which is the half that says the
+fault was never anybody’s callable pass, and seven carrying one, five of those refused at exit 1 by the gate
+**ADR 0403** had written. Fifteen exception shapes were then run beside the reference to find what this had broken:
+none moved — unmatched propagation still propagates, `finally` still runs after a caught error and (newly) after a
+call in the arm, a `raise` written inside an arm still travels outward because its flag is set *after* the entry
+clear and nothing on that path clears it, a nested `try` still hands off, and an uncaught `print(1/0)` still dies.
+Twelve of those fifteen were byte-identical to the parent build; the three that changed are the three this row owns.
 <a id="gap-r-242"></a>
 
 ### Gap R.242 — `a-b` is not a subtraction: the lexer's `-1` rule eats the operator (PAID by ADR 0338, found by ADR 0337)
@@ -17222,7 +17242,9 @@ a claim nobody runs is a claim that quietly stops being true. **Gap R.171** owns
 later (the void crossing a call boundary as the bare `0`, which the `def` twin here also demonstrates through a
 forwarding parameter), and **L11.1** owns the tagged value word that would make the comparison answerable at all.
 
-### Gap R.389 — a call written in an `except` handler loses the frame’s trap catch
+<a id="gap-r-389--a-call-written-in-an-except-handler-loses-the-frames-trap-catch"></a>
+
+### Gap R.389 — a call written in an `except` handler loses the frame’s trap catch (CLOSED by ADR 0404, found by ADR 0403)
 
 ```console
 $ python3 -c 'def answer(): return 7
@@ -17267,6 +17289,33 @@ The fix belongs to the trap table, not to the pass: key a clone’s calls by the
 clone’s call inside the handler’s own region so the entry survives. When that lands, the gate’s single entry is
 deleted together with its pins, and the four programs in `integration/lambda_carrier_test.go::lambdaCarrierDeclined`
 move from “refused in words” to the answered table.
+
+**Closed 2026-10-23 by [ADR 0404](adr/0404-an-accepted-exception-is-cleared-when-the-arm-accepts-it.md) — one cycle
+after it was filed, and by a fix that is not in this section’s diagnosis.** The paragraph above is the interesting
+part of the record, because it is wrong about the mechanism in the way that a measured symptom never is: the numbers
+in its table are the ones this file has, and the trap table was not the broken half. An accepted exception stayed
+flagged until the arm’s END, and every call the arm writes ends with a check of that module-wide flag, so the call
+handed the handled exception to whatever handler was in scope outside the arm — with the clone’s help or without it,
+which is why the `lambda`-free program in the table above died exactly as loudly as the one with a `lambda` in it.
+Clearing on the accepting edge (**Gap R.241**’s fix) removes the difference, and with it the reason this row was
+refused rather than fixed:
+
+| handler’s call | parent commit (**ADR 0403**: read, declined) | same tree, ADR 0404 |
+|---|---|---|
+| `print(answer())`, no `lambda` in the program | **exit 3**, `ZeroDivisionError` unhandled, nothing printed | `7` ✅ |
+| `h()` that prints, then a statement after the `try` | `caught`, then **exit 3**, `after` never runs | `caught`, `after` ✅ |
+| `sorted([3, 1, 2], key=lambda v: v + base)` | exit 1 — the gate’s sentence | `[1, 2, 3]` ✅ |
+| `apply(lambda x: x * 2, 3)` | exit 1 — the gate’s sentence | `6` ✅ |
+| `use(lambda v: v + 1)` | exit 1 — the gate’s sentence | `3` ✅ |
+| `(lambda x: x * 2)(3)` | **exit 3** | `6` ✅ |
+
+What the gate was, and what is left of it, is in **ADR 0404**’s own text; the short version is that a refusal is
+worth keeping only while the fault behind it stands, that `callableRewriteDeclinedCarriers` is DELETED rather than
+left empty (a gate with no entry is a claim with no witness), and that the account field it drove is now
+`carriers_read` — the reader’s reach, counted over distinct call nodes, with no permission attached to it. The
+handler programs sit in the answered tables of both suites beside their un-carried twins, and the pins that held
+this death are deleted: `pkg/lang/callable_carrier_test.go::TestWhatTheReaderSeesInAHandlerNowAnswers` and
+`integration/lambda_carrier_test.go` are the rows that go red if the veto or the stale flag comes back.
 
 ### Gap R.390 — an interpolation’s field over a folded container answers the handle
 

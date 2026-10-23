@@ -352,6 +352,17 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 			b.WriteString("  br label %" + armBody + "\n")
 		}
 		b.WriteString(armBody + ":\n")
+		// The arm is reached BECAUSE @exn_flag is set, and reaching it means the exception has been
+		// taken. Clearing the flag only at the arm's end — which is what this lowering did — leaves the
+		// whole arm running under a flag that says "an exception is in flight", and every call the arm
+		// writes ends with `checkExn`, which loads that flag and jumps to the handler OUTSIDE this one
+		// (the stack was popped above, so it goes to the function's raise-exit). The arm therefore ran,
+		// printed, and then took the run down with the exception it had already handled — and the shape
+		// where the arm's statement is `print(f())` never printed at all (roadmap Gap R.241; the same
+		// fault read from the callable side as Gap R.389). An accepting edge clears the flag, so it is
+		// cleared HERE, before the arm's first statement; the clear on the edge out below stays as the
+		// belt-and-braces case ADR 0218 paid for, for an arm that leaves by a path this one does not see.
+		g.clearExn(b)
 		armed := false
 		g.handledArms++
 		for _, st := range ec.Body {

@@ -74,6 +74,11 @@ func lambdaAnswerPrograms() []lambdaAnswerRow {
 		// The row was measured at the print door; the f-string field is the same position with a spec engine
 		// in front of it, and the interpolation is where the walk used to stop (Gap R.383's witness).
 		{"an f-string field of the answer", "print(f\"{(lambda: [1, 2])()}\")\n", "[1, 2]\n"},
+		// The same answer read out of an `except` arm. The hoist turns the arm's print argument into a call,
+		// which is the `def` road's shape, and the arm used to run under a flag that still said "an exception
+		// is in flight" — the call's post-check took the run down and nothing printed (roadmap **Gap R.241**,
+		// cured by clearing the flag on the accepting edge). The `def` twin below answers the same bytes.
+		{"the answer printed from an `except` arm", "try:\n    print(1 // 0)\nexcept ZeroDivisionError:\n    print((lambda: [1, 2])())\n", "[1, 2]\n"},
 		// ---------------------------------------------------------------------
 		// Roadmap Gap R.384 (ADR 0402): an answer that is a TEXT, a VERDICT or the VOID, spelled as a literal
 		// in the body. Each of these printed the payload word at exit 0 — `1` for a verdict, `0` for None and
@@ -176,15 +181,6 @@ func lambdaAnswerCatchable() []struct{ name, src, want string } {
 // answer. A row moves out of this table — into the answered one — the day its owner row closes.
 func lambdaAnswerFiledNotFixed() []struct{ name, src, defTwin, gap string } {
 	return []struct{ name, src, defTwin, gap string }{
-		{
-			// Gap R.241: an `except` arm that CALLS takes the run down with the exception it already
-			// handled. The hoist turns the arm's print argument into a call, which is the def road's
-			// shape — and the def twin, printed here beside it, dies the same death.
-			"an except arm that calls dies with the exception it handled (Gap R.241's, not this row's)",
-			"try:\n    print(1 // 0)\nexcept ZeroDivisionError:\n    print((lambda: [1, 2])())\n",
-			"def f():\n    return [1, 2]\n\ntry:\n    print(1 // 0)\nexcept ZeroDivisionError:\n    print(f())\n",
-			"Gap R.241",
-		},
 		{
 			// Gap R.67: a slot of a container literal filled by a call that answers a container is a value
 			// the answer table cannot describe, and the literal road says so. The `def` twin — a `return`

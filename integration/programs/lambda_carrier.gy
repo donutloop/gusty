@@ -9,24 +9,35 @@
 # `match` and was refused inside it, at exit 1, with the sentence for a callable that has no
 # word to travel in.
 #
-# The reader now reads all three. What it *rewrites* is a separate, measured decision: the
-# `match` arm and the interpolation's field are taken, and an `except` handler is declined in
-# words by the pass's own account, because cloning a call out of a handler detaches it from
-# the frame whose trap catch the handler is registered on (roadmap Gap R.389). This program
-# therefore holds NO handler: the shapes below are the ones the reader answers, each beside
-# the `def`/un-carried twin that always answered it.
+# The reader now reads all three, and — since **ADR 0404** — the rewrite takes all three. What it
+# rewrites was once a separate, measured decision: an `except` handler was declined in words by the
+# pass's own account, on the ground that cloning a call out of a handler detached it from the frame
+# whose trap catch the handler is registered on. That ground was the frame's exception flag and not
+# anything about a clone: an accepted exception stayed flagged until the arm's END, and every call
+# ends with a check of that module-wide flag, so the arm's own call took the run to the handler
+# OUTSIDE it (roadmap Gap R.241, read from the callable side as Gap R.389 — both closed). An
+# accepting arm clears the flag before its first statement, which is what the reference's semantics
+# say it should have been doing, and the handler's copy of every statement below answers like its
+# un-carried twin, each beside the `def`/un-carried shape that always answered it.
 #
 # What this program does NOT contain, said out loud rather than hidden: a `match` on a TEXT
 # subject, which takes no arm at all and prints nothing where the reference prints (roadmap
 # Gap R.391, pinned in `pkg/lang/callable_carrier_test.go`); an interpolation's field over a
 # `sorted(...)` call, which answers the container's handle or hands the assembler a global
-# (roadmap Gap R.390, beside Gap R.114 and Gap R.327); a call written in an `except` handler,
-# which lets the frame's own trap escape (roadmap Gap R.389); and a `def` whose answer IS a
+# (roadmap Gap R.390, beside Gap R.114 and Gap R.327); and a `def` whose answer IS a
 # `sorted(...)` call, which prints the handle for the reason Gap R.328 already owns. Every one
 # of those is pinned with today's byte beside the reference's in BOTH suites.
 
 def use(f):
     return f(2)
+
+
+def apply(f, v):
+    return f(v)
+
+
+def answer():
+    return 7
 
 
 def outer():
@@ -59,3 +70,21 @@ print(f"{xs}")
 names = sorted(["b", "a", "c"])
 print(names)
 print(f"{names}")
+
+# The handler, reached by the program's own trap rather than a fixture: a hook's key, a higher-order
+# argument, an applied lambda and a plain user call, all written where the frame used to lose its
+# entry, and the run still continues to the line after the `try` (**ADR 0404**).
+try:
+    print([1, 2][5])
+except IndexError:
+    print(apply(lambda x: x * 2, 3))
+    print(sorted([3, 1, 2], key=lambda v: v + 1))
+    print((lambda w: w * 2)(4))
+    print(answer())
+
+try:
+    print(1 // 0)
+except ZeroDivisionError:
+    print(use(lambda v: v * 3))
+
+print("after both handlers")

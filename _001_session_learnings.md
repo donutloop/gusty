@@ -14278,3 +14278,42 @@ worth writing down for what happened around it.
   reflective readers of one AST, which is the same defect wearing different clothes. That is **Gap R.392** — filed
   with the table of how the walkers differ (`enc`, `inLambda`, the memoised carrier question), because "should have
   been merged" is not a definition of done.
+
+## ADR 0404 — an accepted exception is cleared when the arm accepts it (Gaps R.241 and R.389 closed, 2026-10-23)
+
+One `store i32 0, i32* @exn_flag`, placed by a roadmap row that had been open since ADR 0336, and the veto the last
+cycle wrote against the same fault deleted with it. The process half, which is what this file is for:
+
+- **A probe family that does not parse is not a family.** I generated handler programs with `printf '… except
+  Exception as e: …'` and read their exit 1 as "the gate refused them"; `except <Type> as e:` is not in this
+  grammar (`parser.go` takes one identifier after `except` and then wants `:`), so those probes were parse errors and
+  described no gate at all. The fix is not to write better probes but to generate them FROM the test tables — every
+  measured program in this cycle is a string literal lifted out of `callable_carrier_test.go` /
+  `lambda_carrier_test.go` by a script, so the family and the suite cannot disagree about which programs exist.
+- **`/tmp` is not an evidence store.** The previous round's scratch binaries were still lying around and one of them
+  was three commits stale. This cycle: `git worktree add /tmp/wt HEAD`, build the parent there, build the working
+  tree to a second path, and let the report name both binaries. Two binaries from one tree each, run over the SAME
+  generated files, printed a table; every count in the ADR, the roadmap cells and the README is that table's, and it
+  said **twelve** where the record said fourteen — the two that did not move are the controls, and saying "twelve of
+  fourteen" is a sentence I could not have produced by guessing.
+- **The record's new entries were re-asked, not trusted.** Fourteen entries went in from CPython; before I wrote any
+  prose about them I re-ran all fourteen through `python3` and compared against the JSON bytes — 14/14 match. The
+  compiled leg is what changed this cycle, so it is the leg that must not be the authority for the record.
+- **A count nobody can compare with the source is a claim, not a measurement.** `carriers_read` was counting walk
+  VISITS: `print(sorted(…))` inside one `match` arm reported `match_arm: 8`, a number that appears nowhere in the
+  program. Dedupe over distinct `*Call` nodes and it says `2` — `print` and `sorted`, one each — which is the only
+  version a script or a reader can check against the text. I had also written the assertion as `!= 1` from what the
+  number OUGHT to be; it failed at 2, which is the sound a guess makes.
+- **A regression sweep is a discovery tool.** I ran fifteen exception shapes beside the reference to prove the flag
+  clear had broken nothing, and it found a second symptom of the same flag that no pinned row covered: a `finally`
+  after an arm that calls printed the arm's output and died before `finally`. The sweep is now in the ADR's measured
+  table because it answered a question the two pinned rows could not ask.
+- **Delete the pin, never edit it.** The rows that certified the escape (`TestACallInsideAnExceptArmStillTakesTheRunDown`,
+  the declined-carrier table, the pinned R.389 rows in both suites) are GONE; their programs sit in the answered
+  families with the reference's bytes asked of `python3` inside the case. A "still broken" case that has been edited
+  into an "answered" case loses the only property that makes the pin worth having: it fails when the answer changes.
+- **`TestRaiseInsideAnArmDoesNotGetCleared` was an artefact of one clear in the wrong place.** Its real claim was
+  "an arm's own raise survives", and the honest form of that is an ordering assertion (clear on entry, no clear after
+  the arm's `raise`), not an absence assertion. The old shape would have passed a module that never cleared at all.
+- Go has no adjacent string-literal concatenation: a two-line `t.Fatalf("…" "…")` is a syntax error, and `gofmt` is
+  silent about it until `go vet` says `missing ',' before newline in argument list`.

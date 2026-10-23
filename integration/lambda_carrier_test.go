@@ -7,18 +7,24 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// This file is the REFERENCE leg of ADR 0403 (roadmap Gap R.383): what the whole-program reader sees inside
-// the three AST positions that are not nodes — a `match` arm, an f-string interpolation, an `except` handler
-// — and what the LINKED PROGRAM therefore answers there. The pkg/lang side of the row
-// (callable_carrier_test.go) asks the PASS its account; this side asks the PROGRAM its bytes, against
-// CPython, on the compiled leg the CLI offers. Every answered row was recorded from the reference by
-// tools/recmerge first (TestTheLambdaCarrierFamilyIsOnTheRecord): the compiled leg never writes its own
-// answers (ADR 0309), and the ten programs it could not agree on are the pinned table below, not the record.
+// This file is the REFERENCE leg of **ADR 0403** (roadmap Gap R.383) and **ADR 0404** (roadmap Gap R.241):
+// what the whole-program reader sees inside the three AST positions that are not nodes — a `match` arm, an
+// f-string interpolation, an `except` handler — and what the LINKED PROGRAM therefore answers there. The
+// pkg/lang side of the row (callable_carrier_test.go) asks the PASS its account; this side asks the PROGRAM
+// its bytes, against CPython, on the compiled leg the CLI offers. Every answered row was recorded from the
+// reference by tools/recmerge first (TestTheLambdaCarrierFamilyIsOnTheRecord): the compiled leg never writes
+// its own answers (ADR 0309), and the programs it could not agree on are the pinned table below, not the
+// record.
 //
-// Every answer row below is one half of a pair measured against the parent commit: the same statement
-// written outside the carrier already answered, and the carrier's copy was refused at exit 1 with the
-// sentence for a callable that has no word to travel in. Nine programs came over to CPython's bytes that
-// way; the pairs are kept here so a regression that reopens only the carrier cannot pass.
+// Most answer rows are one half of a pair measured against the parent commit: the same statement written
+// outside the carrier already answered, and the carrier's copy was refused at exit 1 with the sentence for a
+// callable that has no word to travel in. The handler rows are the other half of the story — **ADR 0403**
+// made those calls VISIBLE and still declined to rewrite them, because cloning a call out of a handler left
+// the frame's own trap unhandled at exit 3. What stood there was never the pass: an accepted exception stayed
+// flagged until the arm's END, so the post-call check of any call the arm wrote took the run to the handler
+// OUTSIDE it. An accepting arm clears the flag on entry now, so the handler programs below print CPython's
+// bytes where both parent builds refused them or died — and if the clear ever moves back out of the way, it
+// is these rows, and not a pin, that go red
 
 type lambdaCarrierCase struct {
 	name string
@@ -53,20 +59,14 @@ func lambdaCarrierPrograms() []lambdaCarrierCase {
 		{"helper_in_match", "def helper(v):\n    return v * 2\n\nmatch 1:\n    case 1:\n        print(helper(5))\n", "10\n"},
 		{"helper_in_interp", "def helper(v):\n    return v * 2\n\nprint(f\"{helper(5)}\")\n", "10\n"},
 		{"rec_in_match", "def fact(n):\n    if n <= 1:\n        return 1\n    return n * fact(n - 1)\n\nmatch 4:\n    case 4:\n        print(fact(4))\n", "24\n"},
-	}
-}
-
-// lambdaCarrierDeclined holds the one carrier the rewrite leaves alone. The program is REFUSED at exit 1 —
-// which is what the pass's gate buys: with the gate removed the same program dies at exit 3 with its own
-// IndexError unhandled, because the clone moves the call out of the frame whose trap catch the handler is
-// registered on (roadmap Gap R.389). A refusal above an uncaught trap is ADR 0166's ordering, asked here at
-// the CLI rather than in the pass's account.
-func lambdaCarrierDeclined() []lambdaCarrierCase {
-	return []lambdaCarrierCase{
-		{"ho_in_handler", "def apply(f, v):\n    return f(v)\n\ntry:\n    print(1)\nexcept ZeroDivisionError:\n    print(apply(lambda x: x * 2, 3))\n", ""},
-		{"use_in_handler", "def use(f):\n    return f(2)\n\ntry:\n    print(1)\nexcept IndexError:\n    print(use(lambda v: v + 1))\n", ""},
-		{"key_in_handler", "base = 1\ntry:\n    print(1)\nexcept IndexError:\n    print(sorted([3, 1, 2], key=lambda v: v + base))\n", ""},
-		{"ho_in_reached_handler", "def apply(f, v):\n    return f(v)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(apply(lambda x: x * 2, 3))\n", ""},
+		// The `except` handler: read by ADR 0403, and rewritten since ADR 0404. The first two rows never reach
+		// their handler — they were refused STATICALLY, by a pass that had not read the arm at all — and the
+		// last three reach it, which is where the uncaught trap used to walk out at exit 3.
+		{"ho_in_handler", "def apply(f, v):\n    return f(v)\n\ntry:\n    print(1)\nexcept ZeroDivisionError:\n    print(apply(lambda x: x * 2, 3))\n", "1\n"},
+		{"use_in_handler", "def use(f):\n    return f(2)\n\ntry:\n    print(1)\nexcept IndexError:\n    print(use(lambda v: v + 1))\n", "1\n"},
+		{"ho_in_reached_handler", "def apply(f, v):\n    return f(v)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(apply(lambda x: x * 2, 3))\n", "6\n"},
+		{"key_in_reached_handler", "base = 1\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(sorted([3, 1, 2], key=lambda v: v + base))\n", "[1, 2, 3]\n"},
+		{"call_in_reached_handler", "def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\nprint(\"after\")\n", "7\nafter\n"},
 	}
 }
 
@@ -133,19 +133,6 @@ func lambdaCarrierPinnedRows() []lambdaCarrierPinned {
 			today: "",
 			want:  "3\n",
 		},
-		// A call written in a handler loses the frame's trap catch: the error the handler exists for walks
-		// out at exit 3. No `lambda` is in this program and the parent commit dies the same way, which is
-		// what makes it the trap table's row rather than any callable pass's.
-		{
-			// The traceback goes to stderr, which the CLI leg does not capture, so the pin is what the
-			// program leaves on stdout: nothing, where the reference prints the handler's answer.
-			name:  "a call in an `except` handler lets the frame's own trap escape",
-			gap:   "Gap R.389",
-			src:   "def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\n",
-			code:  3,
-			today: "",
-			want:  "7\n",
-		},
 	}
 }
 
@@ -175,45 +162,6 @@ func TestTheLambdaCarrierFamilyAnswersLikeTheReference(t *testing.T) {
 				}
 				if out != want {
 					t.Fatalf("%s printed %q, CPython printed %q — for %s", engine, out, want, tc.src)
-				}
-			}
-		})
-	}
-}
-
-// TestTheLambdaCarrierDeclinedCarriersRefuseRatherThanDie is the handler position at the CLI: the reference
-// answers every one of these, and this backend REFUSES them at exit 1 rather than run a clone whose call no
-// longer sits inside the frame whose trap catch the handler is registered on (roadmap Gap R.389). Exit 2 is
-// forbidden, and so is exit 3: a program that catches its own error must not die unhandled.
-func TestTheLambdaCarrierDeclinedCarriersRefuseRatherThanDie(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	for _, tc := range lambdaCarrierDeclined() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			path := writeSrc(t, dir, "lambda_carrier_declined.gy", tc.src)
-			want, ok := cpythonOut(t, path)
-			if !ok {
-				t.Skip("no live python3 to ask")
-			}
-			if want == "" {
-				t.Fatalf("this decline row is supposed to describe a program the reference answers; it prints nothing")
-			}
-			for _, engine := range cliEngines {
-				out, code := cliRunCode(t, engine, path)
-				if code == 0 {
-					t.Fatalf("%s ran a call cloned out of an `except` handler (Gap R.389) — the gate is gone and this case is\n"+
-						"the one that has to be DELETED, with the program moved to the answered table\n%s", engine, tc.src)
-				}
-				if code == 2 {
-					t.Fatalf("%s: exit 2 on a program whose only fault is where its call sits — ADR 0166 reserves it for a\n"+
-						"compiler bug, and the row files the fault as Gap R.389 rather than shipping it:\n%s", engine, out)
-				}
-				if code == 3 {
-					t.Fatalf("%s: exit 3 — the handler's own error escaped instead of being caught (Gap R.389):\n%s\n%s", engine, out, tc.src)
-				}
-				if code != 1 {
-					t.Fatalf("%s: exit %d, expected the refusal at 1: %s", engine, code, out)
 				}
 			}
 		})

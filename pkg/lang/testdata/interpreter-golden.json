@@ -1,5 +1,61 @@
 {
  "entries": {
+"def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(use(lambda v: v + 1))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"def use(f):\n    return f(2)\n\ntry:\n    print(1)\nexcept IndexError:\n    print(use(lambda v: v + 1))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"def h():\n    print(\"caught\")\n\nxs = [1, 2, 3]\ntry:\n    print(xs[9])\nexcept IndexError:\n    h()\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+"def h():\n    print(\"caught\")\n\nxs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    h()\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+"xs = [1, 2, 3]\nflt = 1.5\ntry:\n    print(xs[flt:3])\nexcept:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+"def answer():\n    return 7\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(answer())\nprint(\"after\")": {
+    "stdout": "7\nafter\n",
+    "hasStdout": true
+   },
+"xs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"caught\")\nprint(\"after\")": {
+    "stdout": "caught\nafter\n",
+    "hasStdout": true
+   },
+"base = 1\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(sorted([3, 1, 2], key=lambda v: v + base))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(apply(lambda x: x * 2, 3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def apply(f, v):\n    return f(v)\n\ntry:\n    print(1)\nexcept ZeroDivisionError:\n    print(apply(lambda x: x * 2, 3))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\nprint(\"after\")\n": {
+    "stdout": "7\nafter\n",
+    "hasStdout": true
+   },
+"try:\n    print([1, 2][5])\nexcept IndexError:\n    print((lambda x: x * 2)(3))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"try:\n    print(1 // 0)\nexcept ZeroDivisionError:\n    print((lambda: [1, 2])())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
 "def use(f):\n    return f(2)\n\nprint(use(lambda v: v - 1))\n": {
     "stdout": "1\n",
     "hasStdout": true

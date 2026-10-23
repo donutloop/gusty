@@ -1,7 +1,6 @@
-// Roadmap L11.7 · Gap R.383 (closed by **ADR 0403**), with the two rows the closure measured and
-// filed rather than swallowed: **Gap R.389** (an `except` handler's trap catch, which the rewrite must
-// not cross) and **Gap R.390** (an interpolation's field over a folded container, which answers the
-// payload word).
+// Roadmap L11.7 · Gap R.383 (closed by **ADR 0403**), read again one cycle later through the exception
+// flag it exposed (**Gap R.241**, closed by **ADR 0404**), plus **Gap R.390** (an interpolation's field over
+// a folded container, which answers the payload word) and **Gap R.391** (a `match` on a text subject).
 //
 // The AST stores the expressions of three constructs in values that are NOT nodes — a type with no
 // `Span()` to answer, so nothing that filters a field by "can this hold a node?" ever looks inside it:
@@ -16,21 +15,22 @@
 // v + base)` compiled outside the `match` and was refused inside it, at exit 1, with the sentence for a
 // callable that has no word to travel in.
 //
-// This file holds three claims, each on its own leg:
+// This file holds four claims:
 //
-//  1. the reader now reads all three carriers, and the programs they hide ANSWER — asserted against
-//     the record and, in `integration/lambda_carrier_test.go`, against CPython;
-//  2. the REWRITE is a separate decision, and the one carrier the measurement condemns (an `except`
-//     handler, whose frame owns the trap catch the handler is registered on) is declined in words, with
-//     the line and the row, by the pass's own account;
-//  3. the carrier set is closed, and it is closed by reading `ast.go` — a fourth carrier reaches the
-//     reader automatically and fails this case, because a rewrite's opinion about it has to be taken
-//     deliberately rather than inherited.
+//  1. the reader reads all three carriers, and the programs they hide ANSWER — compiled, on the record,
+//     and (in `integration/lambda_carrier_test.go`) against CPython, each beside its un-carried twin;
+//  2. the account says so: `carriers_read` counts the calls it met in each carrier, so "the reader never
+//     met this call" is a claim a script can falsify rather than one it must trust;
+//  3. the handler is REWRITTEN too, now that an accepting arm clears the frame's exception flag on entry
+//     — the position ADR 0403 declined was declined for a fault that was never the pass's (roadmap
+//     Gap R.241), and a carrier the reader can read and the roads can answer has no veto over it;
+//  4. the carrier set is closed, and it is closed by reading `ast.go`: a fourth carrier reaches the reader
+//     automatically and fails this case, because a construct worth reading is a decision someone has to
+//     make against a witness, not a default a reflection inherits.
 package lang
 
 import (
 	"encoding/json"
-	"fmt"
 	goast "go/ast"
 	goparser "go/parser"
 	gotoken "go/token"
@@ -114,122 +114,130 @@ func TestWhatTheWholeProgramReaderSeesNowAnswers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. The carrier the rewrite declines, in words.
+// 2. The handler: read, counted in the account, and — since the frame clears its flag on the accepting
+//    edge — rewritten like every other position.
 // ---------------------------------------------------------------------------
 
-func callableCarrierDeclined() []struct {
-	name   string
-	src    string
-	line   int // the line the CALL was written on, which the account quotes
-	symbol string
-} {
-	return []struct {
-		name   string
-		src    string
-		line   int
-		symbol string
-	}{
+// callableCarrierHandlerAnswered is the family the reader used to be able to see in a `match` arm and an
+// interpolation's field but not in an `except` handler, and which ADR 0403 could read but not rewrite:
+// cloning a call out of a handler used to move it out of the frame whose trap catch the handler is
+// registered on, so the program that caught its own error died with it unhandled at exit 3. That was the
+// exception flag's fault, not the pass's: an accepted exception was cleared only on the edge OUT of the
+// arm, so the post-call check of any call the arm wrote saw a flag still saying "in flight" and took the
+// run to the handler outside this one (roadmap Gap R.241, closed by ADR 0404's clear on the accepting edge).
+// Every row is the SAME statement its un-carried twin is, so a regression cannot hide as "the twin is fine".
+func callableCarrierHandlerAnswered() []struct{ name, src, want, twin string } {
+	return []struct{ name, src, want, twin string }{
 		{
-			name:   "a key lambda in an `except` handler",
-			src:    "def outer():\n    base = 1\n    try:\n        x = 1\n    except ZeroDivisionError:\n        return sorted([3, 1, 2], key=lambda v: v + base)\n    return 0\n\nprint(outer())\n",
-			line:   6,
-			symbol: "sorted",
+			name: "a key lambda in a handler that the program REACHES",
+			src:  "base = 1\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(sorted([3, 1, 2], key=lambda v: v + base))\n",
+			want: "[1, 2, 3]\n",
+			twin: "base = 1\nprint(sorted([3, 1, 2], key=lambda v: v + base))\n",
 		},
 		{
-			name:   "a key lambda in a second handler of the same `try`",
-			src:    "def outer():\n    base = 1\n    try:\n        x = 1\n    except ValueError:\n        return sorted([3, 1, 2], key=lambda v: v + base)\n    except ZeroDivisionError:\n        return 0\n    return 0\n\nprint(outer())\n",
-			line:   6,
-			symbol: "sorted",
+			name: "a higher-order argument in a handler that the program reaches",
+			src:  "def apply(f, v):\n    return f(v)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(apply(lambda x: x * 2, 3))\n",
+			want: "6\n",
+			twin: "def apply(f, v):\n    return f(v)\n\nprint(apply(lambda x: x * 2, 3))\n",
 		},
 		{
-			name:   "a higher-order argument in an `except` handler",
-			src:    "def use(f):\n    return f(2)\n\ntry:\n    z = 1\nexcept ZeroDivisionError:\n    print(use(lambda v: v + 1))\n",
-			line:   7,
-			symbol: "use",
+			name: "a callable passed by name into a handler's argument",
+			src:  "def use(f):\n    return f(2)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(use(lambda v: v + 1))\n",
+			want: "3\n",
+			twin: "def use(f):\n    return f(2)\n\nprint(use(lambda v: v + 1))\n",
+		},
+		{
+			name: "an applied lambda standing in the handler",
+			src:  "try:\n    print([1, 2][5])\nexcept IndexError:\n    print((lambda x: x * 2)(3))\n",
+			want: "6\n",
+			twin: "print((lambda x: x * 2)(3))\n",
+		},
+		{
+			name: "a user call in the handler, over a raise from the body",
+			src:  "def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\nprint(\"after\")\n",
+			want: "7\nafter\n",
+			twin: "def answer():\n    return 7\n\nprint(answer())\nprint(\"after\")\n",
 		},
 	}
 }
 
-// TestWhatTheGateRefusesNamesTheCarrierAndTheRow is the machine path of the restraint: the reader saw
-// the call (that is what Gap R.383 bought), so the account has to SAY it declined it — the carrier by
-// name, the line the call sits on, and the row that owns the missing road — rather than fall back to
-// the generic "nothing for me to do here" sentence, which would describe a program the pass never read.
-func TestWhatTheGateRefusesNamesTheCarrierAndTheRow(t *testing.T) {
+// TestWhatTheReaderSeesInAHandlerNowAnswers is the compiled leg and the record leg of the handler family,
+// with the account beside it: the pass reports the calls it met in the handler (`carriers_read`), rewrote
+// the program, and refuses nothing on the ground of where the call was written — because nothing does any
+// more. A row here that stops answering is roadmap Gap R.241 coming back.
+func TestWhatTheReaderSeesInAHandlerNowAnswers(t *testing.T) {
 	t.Parallel()
-	for _, tc := range callableCarrierDeclined() {
+	for _, tc := range callableCarrierHandlerAnswered() {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			if got := compiledOut(t, tc.src); got != tc.want {
+				t.Fatalf("Gap R.241: the handler's copy answers differently from the reference (the flag clear on the\n"+
+					"accepting edge is what makes this answer).\n got: %q\nwant: %q\n%s", got, tc.want, tc.src)
+			}
+			if got := compiledOut(t, tc.twin); got != tc.want {
+				t.Fatalf("Gap R.241: the TWIN stopped answering (%q), so the pair no longer localises anything.\n got: %q\nwant: %q\n%s",
+					got, got, tc.want, tc.twin)
+			}
+			if got, err := runGoldenStdout(t, tc.src); err != nil {
+				t.Fatalf("the record has no answer for a program this row answers: %v", err)
+			} else if got != tc.want {
+				t.Fatalf("the record and the compiled leg disagree.\nrecord: %q\n  compiled: %q\n%s", got, tc.want, tc.src)
+			}
 			doc, err := CallablesJSON(tc.src)
 			if err != nil {
-				t.Fatalf("a decline is still a document: %v", err)
+				t.Fatalf("the account is a document even for a handler program: %v", err)
 			}
 			var rep struct {
-				Rewritten        bool           `json:"rewritten"`
-				CarriersDeclined map[string]int `json:"carriers_declined"`
-				Refused          []string       `json:"refused"`
+				CarriersRead map[string]int `json:"carriers_read"`
 			}
 			if err := json.Unmarshal([]byte(doc), &rep); err != nil {
 				t.Fatalf("the account is not JSON: %v\n%s", err, doc)
 			}
-			if rep.Rewritten {
-				t.Fatalf("Gap R.389: the pass rewrote a call written in an `except` handler — the program that catches\n" +
-					"its own error today would die unhandled at exit 3. The account:\n" + doc + "\n" + tc.src)
-			}
-			if n := rep.CarriersDeclined[callableCarrierExcept]; n == 0 {
-				t.Fatalf("Gap R.389: the account does not say it declined the handler position (carriers_declined=%v):\n%s\n%s",
-					rep.CarriersDeclined, doc, tc.src)
-			}
-			var joined string
-			for _, r := range rep.Refused {
-				joined += r + "\n"
-			}
-			for _, want := range []string{"except", fmt.Sprintf("line %d", tc.line), "Gap R.389"} {
-				if !strings.Contains(joined, want) {
-					t.Fatalf("Gap R.389: the refusal does not name %q.\naccount:\n%s\n%s", want, joined, tc.src)
-				}
-			}
-			// And the program is refused, not answered: exit 1 with the ordinary road's sentence, which is
-			// what it got before the reader could see the call at all. A refusal beats the wrong answer —
-			// ADR 0166's ordering, worn by the trap that escapes.
-			msg := compiledRefusalOf(tc.src)
-			if msg == "" {
-				t.Fatalf("Gap R.389: the handler's call compiled — either the gate is gone or the trap crossing landed, "+
-					"and this case is the one that has to be DELETED when that happens\n%s", tc.src)
-			}
-			if !strings.Contains(msg, "refused") && !strings.Contains(msg, "not a function") && !strings.Contains(msg, "lambda") {
-				t.Fatalf("Gap R.389: the handler is not refused by a sentence about the call:\n%s", msg)
+			if rep.CarriersRead[callableCarrierExcept] == 0 {
+				t.Fatalf("Gap R.383: the account does not say it read the call out of the handler (carriers_read=%v):\n%s\n%s",
+					rep.CarriersRead, doc, tc.src)
 			}
 		})
 	}
 }
 
-// TestTheGateNeverLeavesACallAtADefinitionThatWasTakenAway is the soundness belt beside the gate. A
-// declined site keeps the name the program wrote; a clone road that took that name's definition out of
-// the module would leave a `call` to a `define` nobody emits, which is a link-time mystery and ADR 0345's
-// forbidden half-rewrite. The mixed program is the witness: the same hook, one call in an arm and one in
-// a handler.
-func TestTheGateNeverLeavesACallAtADefinitionThatWasTakenAway(t *testing.T) {
+// TestEveryCallTheAccountNamesIsADefinitionTheModuleCarries is the soundness invariant the carrier
+// descent has to keep: a call the reader reached in a carrier is a call the roads may point at a minted
+// declaration, and a `call` to a `define` nobody emits is ADR 0345's forbidden half-rewrite — an
+// `llc`/linker mystery rather than a compiler sentence. The mixed program is the witness: the same hook,
+// one call in an arm, one in a handler and one in an interpolation's field, so the pass takes some sites
+// and leaves others for reasons of shape rather than position.
+func TestEveryCallTheAccountNamesIsADefinitionTheModuleCarries(t *testing.T) {
 	t.Parallel()
-	const mixed = "def use(f):\n    return f(2)\n\nmatch 1:\n    case 1:\n        print(use(lambda v: v + 1))\ntry:\n    z = 1\nexcept ZeroDivisionError:\n    print(use(lambda v: v * 3))\n"
-	res, err := Compile(mixed)
-	if err != nil {
-		// A refusal is the safe answer and the one the row expects. It must not be an `llc` rejection.
-		if strings.Contains(err.Error(), "llc") || strings.Contains(err.Error(), "undefined value") {
-			t.Fatalf("Gap R.389: the mixed program reached llc and was rejected — a half-rewrite reached the assembler\n%v\n%s", err, mixed)
+	for _, src := range []string{
+		"def use(f):\n    return f(2)\n\nmatch 1:\n    case 1:\n        print(use(lambda v: v + 1))\ntry:\n    z = 1\nexcept ZeroDivisionError:\n    print(use(lambda v: v * 3))\n",
+		"def apply(f, v):\n    return f(v)\n\nmatch 1:\n    case 1:\n        print(apply(lambda x: x * 2, 3))\nprint(f\"{apply(lambda x: x * 3, 4)}\")\n",
+	} {
+		res, err := Compile(src)
+		if err != nil {
+			if strings.Contains(err.Error(), "llc") || strings.Contains(err.Error(), "undefined value") {
+				t.Fatalf("Gap R.383: a carrier program reached the assembler and was rejected — a half-rewrite got that far\n%v\n%s", err, src)
+			}
+			continue // an honest refusal at the front end is the safe answer
 		}
-		return
-	}
-	// If it compiled, no call may name a symbol the module does not define.
-	for _, line := range strings.Split(res.IR, "\n") {
-		if !strings.Contains(line, "call i32 @gy_use") && !strings.Contains(line, "call i32 @gy_sorted") {
-			continue
-		}
-		for _, sym := range []string{"gy_use", "gy_sorted"} {
-			name := "@" + sym
-			if strings.Contains(line, name) && !strings.Contains(res.IR, "define i32 "+name+"(") {
-				t.Fatalf("Gap R.389: the module calls %s, which it never defines — the gate left a call at a clone it took away\n%s\n%s",
-					name, line, mixed)
+		for _, line := range strings.Split(res.IR, "\n") {
+			if !strings.Contains(line, "call ") || !strings.Contains(line, "@gy_") {
+				continue
+			}
+			start := strings.Index(line, "@gy_")
+			if start < 0 {
+				continue
+			}
+			rest := line[start+1:]
+			end := strings.IndexAny(rest, "( ")
+			if end < 0 {
+				continue
+			}
+			name := rest[:end]
+			if !strings.Contains(res.IR, "define i32 @"+name+"(") {
+				t.Fatalf("Gap R.383: the module calls @%s, which it never defines — a carrier's call was left pointing at a\n"+
+					"declaration that was not emitted\n%s\n%s", name, line, src)
 			}
 		}
 	}
@@ -283,18 +291,6 @@ func callableCarrierPinned() []callableCarrierPinnedRow {
 			want:  "[1, 2, 3]\n",
 			gap:   "Gap R.390",
 			mode:  "ir",
-		},
-		{
-			// A call written in a handler loses the frame's trap catch. Pre-existing: the parent commit
-			// dies the same way on a program with NO lambda in it (`def answer(): return 7`, called from
-			// the handler) — the witness that this is the trap table's row and not the reader's, and the
-			// reason the gate declines the position instead of shipping this byte.
-			name:  "a call in an `except` handler lets the frame's own trap escape",
-			src:   "def answer():\n    return 7\n\ntry:\n    z = 1 / 0\nexcept ZeroDivisionError:\n    print(answer())\n",
-			today: "ZeroDivisionError",
-			want:  "7\n",
-			gap:   "Gap R.389",
-			mode:  "trap",
 		},
 		{
 			// The carrier the reader now reaches, on a subject the `match` road cannot compare: an arm that
@@ -416,8 +412,9 @@ func TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes(t *testing.T) {
 		t.Fatalf("the AST carries nodes in %d non-node types, and the pass names %d:\n got: %v\nwant: %v\n\n"+
 			"A new carrier is readable the day it exists (that is the point of the reflective descent) and is\n"+
 			"NOT yet a position the rewrite has an opinion about: add it to callableCarrierKindOf, decide\n"+
-			"whether a clone may leave it, and put that answer in callableRewriteDeclinedCarriers, before\n"+
-			"this case goes green (roadmap Gap R.383, ADR 0403).",
+			"whether the rewrite may cross it, and take that decision in callableCarrierKindOf and the roads\n"+
+			"before this case goes green (roadmap Gap R.383, ADR 0403; ADR 0404 removed the only veto that\n"+
+			"ever keyed on the reading).",
 			len(got), len(want), got, wantKeys(want))
 	}
 	for _, name := range got {
@@ -441,11 +438,54 @@ func TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes(t *testing.T) {
 	if len(named) != 3 || !named[callableCarrierMatch] || !named[callableCarrierExcept] || !named[callableCarrierInterp] {
 		t.Fatalf("callableCarrierKindOf does not name the three carriers distinctly: %v", named)
 	}
-	if !callableRewriteDeclinedCarriers[callableCarrierExcept] {
-		t.Fatalf("Gap R.389: the handler is not declined — the gate that keeps a caught trap from escaping is gone")
+	// Nothing is declined any more, and the emptiness is a measurement: the handler veto went with **ADR
+	// 0404**, when the fault behind it turned out to be the frame's exception flag (roadmap Gap R.241)
+	// rather than anything about a clone. The witness that a handler's call is therefore REWRITTEN, not
+	// merely read, is the account of a handler program: rewritten, with a minted declaration named in it.
+	if doc, err := CallablesJSON("def use(f):\n    return f(2)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(use(lambda v: v + 1))\n"); err != nil {
+		t.Fatalf("the handler's account could not be printed: %v", err)
+	} else {
+		var rep struct {
+			Rewritten bool     `json:"rewritten"`
+			Symbols   []string `json:"symbols"`
+			Refused   []string `json:"refused"`
+		}
+		if err := json.Unmarshal([]byte(doc), &rep); err != nil {
+			t.Fatalf("the handler's account is not JSON: %v\n%s", err, doc)
+		}
+		if !rep.Rewritten || len(rep.Symbols) == 0 {
+			t.Fatalf("Gap R.241: the pass still will not rewrite a call written in a handler — the veto is back, and with it\n"+
+				"the five programs of `callableCarrierHandlerAnswered` refusing:\n%s", doc)
+		}
+		for _, r := range rep.Refused {
+			if strings.Contains(r, "handler") || strings.Contains(r, "carri") {
+				t.Fatalf("Gap R.241: the account declines a position by name again: %q\n%s", r, doc)
+			}
+		}
 	}
-	if callableRewriteDeclinedCarriers[callableCarrierMatch] || callableRewriteDeclinedCarriers[callableCarrierInterp] {
-		t.Fatalf("Gap R.383: a carrier the measurement ANSWERS is declined — the row is open again")
+	// And each carrier name has to be REACHED, by a program the reader really read: a key nobody can
+	// produce is an account field that lies.
+	reached := map[string]bool{}
+	for _, probe := range []string{
+		"def use(f):\n    return f(2)\n\nmatch 1:\n    case 1:\n        print(use(lambda v: v + 1))\n",
+		"def use(f):\n    return f(2)\n\nprint(f\"{use(lambda v: v + 1)}\")\n",
+		"def use(f):\n    return f(2)\n\ntry:\n    print([1, 2][5])\nexcept IndexError:\n    print(use(lambda v: v + 1))\n",
+	} {
+		prog, perr := parseProgram(probe)
+		if perr != nil {
+			t.Fatalf("the probe does not parse: %v\n%s", perr, probe)
+		}
+		for kind, n := range callableCarrierSites(prog) {
+			if n > 0 {
+				reached[kind] = true
+			}
+		}
+	}
+	for _, kind := range []string{callableCarrierMatch, callableCarrierInterp, callableCarrierExcept} {
+		if !reached[kind] {
+			t.Fatalf("Gap R.383: the carrier %q is named by the pass and reached by no probe — the account's key set has "+
+				"a liar in it", kind)
+		}
 	}
 }
 
@@ -532,7 +572,7 @@ func TestTheCarrierAccountNamesOnlySymbolsTheModuleCarries(t *testing.T) {
 		Rewritten         bool           `json:"rewritten"`
 		HoistedLambdas    int            `json:"hoisted_lambdas"`
 		CaptureParameters int            `json:"capture_parameters"`
-		CarriersDeclined  map[string]int `json:"carriers_declined"`
+		CarriersRead      map[string]int `json:"carriers_read"`
 		Symbols           []string       `json:"symbols"`
 		Refused           []string       `json:"refused"`
 	}
@@ -542,8 +582,12 @@ func TestTheCarrierAccountNamesOnlySymbolsTheModuleCarries(t *testing.T) {
 	if !rep.Rewritten || rep.HoistedLambdas != 1 {
 		t.Fatalf("Gap R.383: the reader still cannot see the `lambda` in the arm — the pass minted nothing for it:\n%s\n%s", doc, src)
 	}
-	if n := rep.CarriersDeclined[callableCarrierExcept]; n != 0 {
-		t.Fatalf("Gap R.383: a `match` arm is counted as a declined carrier (%d): %s", n, doc)
+	if n := rep.CarriersRead[callableCarrierExcept]; n != 0 {
+		t.Fatalf("Gap R.383: a `match` arm's call is counted under the handler carrier (%d): %s", n, doc)
+	}
+	if n := rep.CarriersRead[callableCarrierMatch]; n != 2 {
+		t.Fatalf("Gap R.383: the account does not count the arm's two calls — `print(...)` and the `sorted(...)` "+
+			"whose key was hoisted (carriers_read=%v):\n%s", rep.CarriersRead, doc)
 	}
 	if len(rep.Symbols) == 0 {
 		t.Fatalf("the pass rewrote the program and named no symbol: %s", doc)

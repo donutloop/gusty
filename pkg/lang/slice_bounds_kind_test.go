@@ -417,9 +417,10 @@ func TestTheZeroStepGuardIsInTheModuleWhereTheValueIs(t *testing.T) {
 // raised nothing: `rt_slice` looped and the run was killed (exit 2, the old **Gap R.236**) — and it left for the
 // raise tables above when ADR 0337 put the value question beside the call. What the text road still cannot answer
 // is its own row: a step that is a *value* (`s[::k]`) refuses with the fold's sentence where the reference strides
-// the text, because `rt_str_slice` takes a low and a high and no stride at all (**Gap R.243**). And the `except`
-// arm that calls a function is pinned one altitude out, in `integration/slice_bounds_test.go`, where the run's
-// exit code is the thing (Gap R.241).
+// the text, because `rt_str_slice` takes a low and a high and no stride at all (**Gap R.243**). The `except`
+// arm that calls a function used to be pinned one altitude out, in `integration/slice_bounds_test.go`, where
+// the run's exit code was the thing (**Gap R.241**); an accepting edge now clears the exception flag, so that
+// row answers and moved into that file's answering table.
 func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

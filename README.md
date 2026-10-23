@@ -2318,11 +2318,13 @@ falls back to dynamic dispatch.
   decides whether a type may be entered at all, so `*Type` reaches `*Type` and stops rather than wandering into the
   annotation grammar. **A reader and a rewrite are two questions**: `match_arm` and `interpolation_field` are taken
   and measured answering — eleven programs moved from the parent commit's exit-1 refusal to CPython's bytes (eight in
-  an arm, three in a field), each beside an un-carried twin printing the same bytes — while `except_handler` is
-  DECLINED, on measurement rather than on hunch: with the gate emptied, `try: print([1, 2][5])` /
+  an arm, three in a field), each beside an un-carried twin printing the same bytes — while `except_handler` was
+  DECLINED for one cycle, on measurement rather than on hunch (**ADR 0404** took the veto back; see the next bullet):
+  with the gate emptied, `try: print([1, 2][5])` /
   `except IndexError: print(apply(lambda x: x * 2, 3))` stops being refused and dies at **exit 3** with its own
   `IndexError` unhandled, because the clone moves the call out of the frame whose trap catch the handler is
-  registered on (**ADR 0166** ranks a refusal above that). `gustyc --callables` therefore gains `carriers_declined`,
+  registered on (**ADR 0166** ranks a refusal above that). `gustyc --callables` therefore gained `carriers_declined`
+  (since **ADR 0404**, `carriers_read`),
   so a pass that left a call out cannot be mistaken for one that never saw it, and its `refused` sentence names the
   position, the line and the row. The carrier set is closed by reading `ast.go` itself: a fourth carrier becomes
   readable the day it is added and FAILS `TestTheASTCarriesExpressionsInExactlyTheseThreeNonNodeTypes`, because
@@ -2334,6 +2336,25 @@ falls back to dynamic dispatch.
   still keeps its own second reader of the same AST, which is how this hole came to be fixed in one walker and left
   standing in the other). The record leg gained 27 sources the reference answered and the compiled leg agreed to
   (**8668 → 8695**), and `integration/programs/lambda_carrier.gy` is the line-for-line reference witness.
+
+- **An accepted exception is cleared when the arm accepts it (Gap R.241, Gap R.389, ADR 0404)** —
+  `def answer(): return 7` with `try:` / `    z = 1 / 0` / `except ZeroDivisionError:` / `    print(answer())` prints
+  `7` in the reference; here it printed NOTHING and died at **exit 3** with the `ZeroDivisionError` the handler existed
+  for — on the parent commit too, and on a program with no `lambda` anywhere in it. The arm had run: the flag saying
+  "an exception is in flight" was cleared only on the edge OUT of the arm, and every call the arm writes ends with a
+  check of that module-wide flag, so the arm's own call took the run to the handler OUTSIDE this one — the function's
+  raise-exit printed a traceback and the statement after the `try` never ran. Clearing on the accepting edge, before the
+  arm's first statement, is both the reference's semantics and one `store` in `tryStmt`; the edge-out clear stays as the
+  belt-and-braces **ADR 0218** paid for. That closes the handler half of last round's carrier story: the position
+  **ADR 0403** read and refused to clone out of a handler — a restraint **ADR 0166** endorsed while the fault was
+  unexplained — is taken like any other, `callableRewriteDeclinedCarriers` is DELETED rather than left empty, and
+  twelve programs came over from the parent commit's answer to CPython's bytes — five from an exit-1 refusal (a
+  `sorted(key=lambda …)` hook, two `apply(f, v)` shapes, two `use(lambda v: …)` shapes) and seven from an exit-3
+  uncaught trap, five of the twelve carrying no `lambda` at all (`try: print([1, 2][5])` /
+  `except IndexError: print(apply(lambda x: x * 2, 3))` is `6`). The pass's account field became `carriers_read` — the
+  same count, honestly a reading rather than a permission, taken over distinct call nodes — and the three rows that
+  pinned the escape are DELETED, not edited, with the handler programs moved into the answered tables of both suites
+  and 14 new sources on the record (**8695 → 8709**).
 
 - **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
   0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched

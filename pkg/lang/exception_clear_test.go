@@ -71,9 +71,10 @@ func TestClearPrecedesTheReturnFromAnArm(t *testing.T) {
 
 func TestRaiseInsideAnArmDoesNotGetCleared(t *testing.T) {
 	t.Parallel()
-	// `raise` in an arm is a *new* exception travelling outward, not a handled one. This arm can
-	// never complete normally, so the arm's normal-exit clear must not be emitted at all: a module
-	// for this program that clears the flag anywhere is a module that can swallow the raise.
+	// `raise` in an arm is a *new* exception travelling outward, not a handled one. The arm's ENTRY does
+	// clear the flag — the exception the arm accepted is over before its first statement, which is
+	// roadmap Gap R.241 — so the shape that matters is ORDER: nothing may clear the flag after the arm's
+	// own raise, or the raise is swallowed. Assert exactly that, and assert the raise is there at all.
 	src := "def f() -> int:\n    try:\n        z = 1 // 0\n    except:\n        raise ValueError(\"from the arm\")\n    return 1\n"
 	ir := clearModule(t, src)
 	body := funcBody(ir, "@gy_f")
@@ -83,11 +84,12 @@ func TestRaiseInsideAnArmDoesNotGetCleared(t *testing.T) {
 	if body == "" {
 		t.Fatalf("could not find f's body\n%s", ir)
 	}
-	if !strings.Contains(body, setLine) {
+	setAt := strings.LastIndex(body, setLine)
+	if setAt < 0 {
 		t.Fatalf("the raise in the arm does not set @exn_flag\n%s", body)
 	}
-	if strings.Contains(body, clearLine) {
-		t.Fatalf("an arm that always raises still cleared @exn_flag; the raise would be swallowed\n%s", body)
+	if after := body[setAt:]; strings.Contains(after, clearLine) {
+		t.Fatalf("the flag was cleared after the arm's own raise; the raise would be swallowed\n%s", body)
 	}
 }
 
