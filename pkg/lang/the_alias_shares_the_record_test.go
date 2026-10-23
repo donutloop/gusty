@@ -107,6 +107,33 @@ func theAliasAnswered() []struct {
 		{"an empty alias is still false", "xs = []\nys = xs\nif ys:\n    print(\"t\")\nelse:\n    print(\"f\")\n", "f\n"},
 		{"a single-kind list keeps the road it had", "xs = [7, 8, 9]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "7\n[8, 9]\n"},
 		{"a scalar alias carries no list claim", "a = 1\nb = a\nxs = [None, 1]\nprint(b)\nprint(xs[0])\n", "1\nNone\n"},
+		// The two other containers, which the same door now records (roadmap **Gap R.419**). A dict's value
+		// written through the alias, and a set member added through it, are the two shapes this row was
+		// filed for: the entry arrived with a tag the record had nowhere to put it, so the printer rendered
+		// the text's intern index, and the member reached `@str_tab` at an entry nobody had written.
+		{"a dict's value written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"a dict's second key, an int, through the alias", "d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n", "{'a': 1, 7: 2}\n"},
+		{"the value read back through both names", "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d[\"b\"])\nprint(e[\"b\"])\nprint(len(e))\n", "x\nx\n2\n"},
+		{"the alias reads what the source wrote", "d = {\"a\": 1}\ne = d\nd[\"b\"] = \"x\"\nprint(e)\nprint(d)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"the source reads what the alias wrote", "d = {\"a\": 1}\ne = d\ne[\"b\"] = 2\nd[\"c\"] = \"z\"\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 2, 'c': 'z'}\n{'a': 1, 'b': 2, 'c': 'z'}\n"},
+		{"a dict built empty and filled through the source", "d = {}\ne = d\nd[\"a\"] = 1\nprint(e)\nprint(len(e))\n", "{'a': 1}\n1\n"},
+		{"a chain of three names, mutated at the far end", "d = {\"a\": 1}\ne = d\nf = e\nf[\"b\"] = \"x\"\nprint(d)\nprint(e)\nprint(f)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"a double written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = 1.5\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 1.5}\n{'a': 1, 'b': 1.5}\n"},
+		{"the void written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = None\nprint(d)\nprint(e)\n", "{'a': 1, 'b': None}\n{'a': 1, 'b': None}\n"},
+		{"a nested list read out of the alias", "d = {\"a\": [1, 2]}\ne = d\nprint(e[\"a\"])\n", "[1, 2]\n"},
+		{"membership asked of the alias", "d = {\"a\": 1, \"b\": 2}\ne = d\nprint(\"a\" in e)\nprint(\"z\" in e)\n", "True\nFalse\n"},
+		{"a loop over the alias's keys", "d = {\"a\": 1, \"b\": 2}\ne = d\nfor k in e:\n    print(k)\n", "a\nb\n"},
+		{"the alias of a dict compared with its source", "d = {\"a\": 1}\ne = d\nprint(d == e)\nd[\"b\"] = 2\nprint(d == e)\nprint(len(d) == len(e))\n", "True\nTrue\nTrue\n"},
+		{"a text value read out of the alias and printed twice", "d = {\"a\": 1, \"b\": \"x\"}\ne = d\nprint(e[\"b\"])\nprint(str(e[\"b\"]))\n", "x\nx\n"},
+		{"the void read out of the alias and bound", "d = {\"a\": None, \"b\": \"x\"}\ne = d\nv = e[\"a\"]\nprint(v)\n", "None\n"},
+		{"the aliased dict handed to a function", "def w(x):\n    print(x)\n\nd = {\"a\": 1}\ne = d\nw(e)\nw(d)\n", "{'a': 1}\n{'a': 1}\n"},
+		{"a set member added through the alias", "s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n", "{1, 2, 'a'}\n{1, 2, 'a'}\n"},
+		{"a set member added through the source", "s = {1}\nt = s\ns.add(\"a\")\nprint(t)\nprint(s)\n", "{1, 'a'}\n{1, 'a'}\n"},
+		{"a chain of three names, one member added", "s = {1}\nt = s\nu = t\nu.add(\"a\")\nprint(s)\nprint(t)\nprint(u)\n", "{1, 'a'}\n{1, 'a'}\n{1, 'a'}\n"},
+		{"a float added through the alias", "s = {1}\nt = s\nt.add(1.5)\nprint(t)\n", "{1, 1.5}\n"},
+		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
+		{"the alias of a set compared with its source", "s = {1, 2}\nt = s\nprint(s == t)\nt.add(3)\nprint(s == t)\n", "True\nTrue\n"},
+		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
 	}
 }
 
@@ -411,41 +438,59 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 				"the tag has nowhere to go. The refusal is the standing of the one-word position, not a regression " +
 				"this row introduced",
 		},
-		// The two containers this row left out of the record door on purpose: a dict's and a set's alias is the
-		// SAME defect — the binding shares the handle and not the record — and the answers are the same class of
-		// wrong: a payload printed as a number, and a slot whose tag nobody wrote reaching the printer. Both
-		// reproduce byte-for-byte on the parent build `8aa3029`, which is what makes them the containers' row
-		// and not this row's regression (roadmap Gap R.419, ADR 0166's artifact-at-fault class).
+		// What the dict's and the set's half of the record still leaves owed, each measured on the parent
+		// build `8aa3029` as well as on this one and each therefore a ROW rather than this commit's damage
+		// (ADR 0166's wrong-answer class, ADR 0309's rule that an answer is filed with its bytes).
 		{
-			name:     "a dict's value stored through the alias",
-			src:      "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n",
-			gap:      "Gap R.419",
-			compiled: "{'a': 1, 'b': 1}\n{'a': 'x', 'b': 'x'}\n",
-			python:   "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n",
-			why: "the value written through the alias arrives with its tag and no record to put it in: `d` still " +
-				"claims integer values, so it renders the text's intern index — the list's defect one container over, " +
-				"told by a notebook this row does not write",
+			name:     "the dict rebound under its own alias",
+			src:      "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n",
+			gap:      "Gap R.420",
+			compiled: "{'b': 2}\n{'b': 2}\n",
+			python:   "{'b': 2}\n{'a': 1}\n",
+			why: "the rebinding RELEASES the object the name held (`emitFreeOld` → `rt_free`) and the allocator " +
+				"hands that same slot straight to the new dict, so the alias is left holding a handle that now " +
+				"denotes the second object — the list and the set answer this program correctly, which localises " +
+				"it in the dict's release road and not in the notebook (the **Gap Q.2**/**Q.1** memory family, not " +
+				"the alias's)",
 		},
 		{
-			name:     "a set element added through the alias",
-			src:      "s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n",
-			gap:      "Gap R.419",
-			compiled: "",
-			python:   "{1, 2, 'a'}\n{1, 2, 'a'}\n",
-			crashes:  true,
-			why: "the set door asks its OWN record to decide whether the incoming element needs a tag written with " +
-				"it, and the alias has none, so the payload reaches `@str_tab` at an entry nobody wrote — a crash, " +
-				"and the same missing copy the list door had",
+			name:     "the void added to a set through the alias",
+			src:      "s = {1}\nt = s\nt.add(None)\nprint(t)\n",
+			gap:      "Gap R.421",
+			compiled: "{1, None}\n",
+			python:   "{None, 1}\n",
+			why: "both members are present and both are tagged — only their ORDER is the reference's absence: the " +
+				"reference prints a set in hash order, where the void's slot is 0. The same program with no alias " +
+				"in it prints the same two bytes, which is what makes this the printer's row and not this one's",
 		},
 		{
-			name:     "a dict key added through the alias",
-			src:      "d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n",
-			gap:      "Gap R.419",
+			name:     "a text discarded from a set of numbers through the alias",
+			src:      "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
+			gap:      "Gap R.422",
+			compiled: "{1}\n{1}\n",
+			python:   "{1, 2}\n{1, 2}\n",
+			why: "`discard` asks the SET'S recorded kind instead of the ARGUMENT's tag, so the text's intern index " +
+				"is passed as a number and the member whose payload happens to equal it is removed — a wrong answer " +
+				"at exit 0 that the program with no alias answers identically, byte for byte",
+		},
+		{
+			name:     "a loop over the alias's key/value pairs",
+			src:      "d = {\"a\": 1, \"b\": 2}\ne = d\nfor k, v in e.items():\n    print(k, v)\n",
+			gap:      "Gap R.174",
 			compiled: "",
-			python:   "{'a': 1, 7: 2}\n",
-			crashes:  true,
-			why: "an integer key beside a text one contradicts the record the alias carries, the door declines for " +
-				"want of a claim, and the object is left half-labelled",
+			python:   "a 1\nb 2\n",
+			why: "REFUSED, exactly as the same loop written against `d` is: a container method over a NAME is the " +
+				"standing **Gap R.174** wall, and an alias is a name — the row this one pays is the RECORD of the " +
+				"object, not a new road for the method",
+		},
+		{
+			name:     "a set member removed by value through the alias",
+			src:      "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n",
+			gap:      "Gap R.174",
+			compiled: "",
+			python:   "{'a'}\n",
+			why: "REFUSED, as `s.remove(1)` is: the same method over the same kind of NAME. Paying it wants the " +
+				"tagged-method door, not this file's notebook",
 		},
 	} {
 		r := r

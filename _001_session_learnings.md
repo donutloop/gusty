@@ -14743,3 +14743,45 @@ question of `ys`, and the same backend prints **`0`** at **exit 0**. Two program
    you're willing to prove about it). The guards caught the rest, as they always do: the snapshot's record cell, the
    queue-row total (**194 of 325** — the new **Gap R.419** row) and the ADR cell (**403 records, highest 0412**) are
    the artifacts', not my memory (**Gap R.204**).
+
+## ADR 0413 — the alias door is a CONTAINER door (Gap R.419 closed; Gaps R.420, R.421, R.422 filed, 2026-10-24)
+
+**ADR 0412** paid the list's shared-handle binding and named the dict and the set as "the same defect one
+container over". Their bytes were already pinned in the owed table, so this cycle was a widening rather than a
+discovery — and it still taught me twice.
+
+1. **An empty notebook is not ignorance, it is a confident wrong answer.** The dict store door decides whether an
+   incoming value needs a tag written with it by asking `dictValInt[name]`/`dictValStr[name]`. Handed an alias with
+   *nothing recorded*, it does not abstain — it concludes *nothing contradicts*, stores the entry unlabelled, and the
+   printer renders `{'a': 1, 'b': 1}`: the text's intern index under a label the object never gave it. I had been
+   describing the missing-copy bug as "the door can't see the record". It can't see it *and it answers anyway*, which
+   is why the fix is the copy and not another `if` at the door.
+2. **The same door, widened — not a second door.** Every container already had its store, its add, its printer; they
+   read the same name-keyed maps for every program in the corpus. So `containerKindHeld` + per-kind copying + the
+   `mark*Mixed` trio walking `containerSharers` is the whole change, and the IR is unchanged: `rt_dict_put_tagged`
+   and `rt_set_add_tagged` are still the only lowering. If a fix for a *name* needs an `…_aliased` helper, the fix
+   has grown a second answer to one question (**ADR 0249**'s rule, now with a second example).
+3. **The promotion walk stopped being decoration on the second container.** For the list, copying alone got me most
+   of the way; for the dict, writing `d["b"] = "x"` through the alias promotes the *object*, and clearing the
+   single-kind claim on the mutated name alone left the other name printing every slot through a table it had
+   outgrown — the row's own wrong answer, arriving from the opposite side of the alias. One event, one object, every
+   name.
+4. **Three of the "alias" defects had nothing to do with aliases.** The dict rebound under its own alias prints the
+   *second* dict (the rebinding's `rt_free` releases an object the alias still roots and the allocator hands the same
+   slot straight back); a set with a void member prints `{1, None}` where CPython prints `{None, 1}`; and
+   `s.discard("a")` over `{1, 2}` removes `2`, comparing the payload where the pair is the discriminator. Each
+   reproduces with no alias in the program and on the parent build — that column is what kept them as rows
+   (**Gap R.420**, **R.421**, **R.422**) instead of smuggling three unrelated fixes into a notebook commit.
+5. **A refusal and a wrong answer are different debts, and a harness that conflates them hides one.** The CLI owed
+   table only knew "answered wrongly", so the two **Gap R.417**/**R.174** refusals I moved into it failed with
+   *"the shape was REFUSED rather than answered wrongly — move this row"*. The fix was a `refuses` arm that requires
+   exit 1 and forbids exit 2 (**ADR 0006**, **ADR 0166**), because "still refused" and "still wrong" must each be able
+   to fail independently.
+6. **Measure with a battery, verify with the parent.** 37 dict/set programs, parent `8aa3029` beside this build,
+   each asked of CPython: **15 agreeing → 31, none moved away**. Keeping the parent binary alive is the only reason I
+   can say "this one is older than me" about six of the seven leftovers — and the battery caught two shapes (`t.add(None)`,
+   `discard`) that no table I had written would have asked about.
+7. **Numbers are the artifacts', never mine.** The record went **9061 → 9084** (`tools/recmerge`, from CPython, 23
+   entries, none refused because the compiled leg agreed on all of them), the snapshot's cells to **404 records,
+   highest 0413** and **196 of 328** rows owed, and the guards failed the run until every doc repeated the file's own
+   number rather than my note about it (**Gap R.204**).

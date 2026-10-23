@@ -2625,15 +2625,9 @@ func (g *irGen) promotePairMixed(b *strings.Builder, handle, name, kind string) 
 	case "list":
 		g.markListMixed(name)
 	case "set":
-		g.mixedSets[name] = true
-		g.setElemStr[name] = false
-		g.setElemInt[name] = false
+		g.markSetMixed(name)
 	case "dict key", "dict value":
-		g.mixedDicts[name] = true
-		g.dictKeyStr[name] = false
-		g.dictKeyInt[name] = false
-		g.dictValStr[name] = false
-		g.dictValInt[name] = false
+		g.markDictMixed(name)
 	default:
 		return false
 	}
@@ -2670,15 +2664,9 @@ func (g *irGen) promoteMixed(b *strings.Builder, handle, name, kind string, elem
 	case "list":
 		g.markListMixed(name)
 	case "set":
-		g.mixedSets[name] = true
-		g.setElemStr[name] = false
-		g.setElemInt[name] = false
+		g.markSetMixed(name)
 	case "dict key", "dict value":
-		g.mixedDicts[name] = true
-		g.dictKeyStr[name] = false
-		g.dictKeyInt[name] = false
-		g.dictValStr[name] = false
-		g.dictValInt[name] = false
+		g.markDictMixed(name)
 	default:
 		return false
 	}

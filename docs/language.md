@@ -1726,16 +1726,23 @@ lst.append(7)
   (`Gap R.415`, **ADR 0412**, pays the alias and leaves that one to its own row). A `tuple.pop()` is refused — a tuple is immutable
   (**L11.3**, **ADR 0361**) — and `dict.pop()` over a name is refused with
   `lower.unsupported.container-method-over-a-name` (`Gap R.174`).
-- **A second name for a list is ONE list, and answers the same at every door** (**Gap R.415**, **ADR 0412**).
+- **A second name for a container is ONE container, and answers the same at every door** (**Gap R.415**,
+  **ADR 0412**; **Gap R.419**, **ADR 0413**).
   `ys = xs` shares the object — it is not a copy — and what the object's slots hold is a fact about the OBJECT, not
   about whichever name the read happens to be written against: `print(ys.pop(0))`, `print(ys[0])`,
   `for v in ys: print(v)`, `if ys.pop(0):` and `ys.pop(0) is None` all answer what the same line written against `xs`
   answers, and a mutation is one event on one object wherever it is written — `ys.append("a")` is told to `xs`, and
-  `xs.append("a")` is told to `ys`. A name keeps the facts of the object it HOLDS, so after `xs = [2, None]` the
-  alias `ys` still describes the first list (`print(ys)` is the reference's `[None, 1]`). What this leaves owed is
-  filed rather than smoothed over: an alias of a **dict** or a **set** is the same missing record one container over
-  (`Gap R.419`), and a slot of the alias bound to a name and asked as a condition is refused for the one-word
-  position it is, exactly as the same program with no alias in it is (`Gap R.146`).
+  `xs.append("a")` is told to `ys`. The same rule holds for the other two containers: a value written through an
+  aliased dict arrives with its tag and a record to live in (`print(d)` is the reference's `{'a': 1, 'b': 'x'}`, not
+  the intern index the stale claim rendered), and a member added through an aliased set is stored with its tag rather
+  than reaching the text table unlabelled. A name keeps the facts of the object it HOLDS, so after `xs = [2, None]` the
+  alias `ys` still describes the first list (`print(ys)` is the reference's `[None, 1]`), and `s = {2, 3}` leaves `t`
+  printing `{1}`. What this leaves owed is filed rather than smoothed over: the dict rebound under its own alias is
+  `Gap R.420` (the rebinding releases the object and the allocator hands that slot to the next dict), a set's print
+  order puts the void last (`Gap R.421`), `discard` compares the payload and not the pair (`Gap R.422`) — each of
+  those answers the same way with NO alias in the program — and a container METHOD over an aliased container
+  (`for k, v in e.items():`, `t.remove(1)`) is refused exactly as it is over the source name, because an alias is a
+  name and that is `Gap R.146`/`Gap R.174`'s standing, not this one's.
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.

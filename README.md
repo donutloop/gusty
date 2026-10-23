@@ -2919,6 +2919,39 @@ falls back to dynamic dispatch.
   callee's printer through the alias stays **Gap R.417**, and the slot bound and asked as a condition stays
   **Gap R.146**'s one-word position, refused exactly as its non-alias twin is.
 
+- **The alias door is a CONTAINER door — the dict's and the set's record travels with the handle too
+  (Gap R.419, ADR 0413)** — **ADR 0412** gave `ys = xs` a record and stopped at the list's three claims; the
+  dict's six and the set's three were shared just as little, and the answer was the same class of wrong one
+  container over:
+
+  ```gusty
+  d = {"a": 1}   e = d   e["b"] = "x"
+  print(d)   #  {'a': 1, 'b': 'x'}   reference
+             #  {'a': 1, 'b': 1}     ← this backend, before: the text's intern index, at exit 0
+  s = {1, 2}   t = s   t.add("a")
+  print(s)   #  SIGSEGV              ← an untagged member reaching a table nobody wrote
+  ```
+
+  The fix is the same door, widened: `containerKindHeld` asks which container the notebook says a name
+  holds, `recordContainerAlias` copies THAT container's claims at the shared-handle binding, and
+  `markDictMixed`/`markSetMixed` join `markListMixed` in telling **ADR 0232**'s promotion to every name in
+  the cycle-guarded `containerSharers` walk — because `d["b"] = "x"` written against one name and
+  `t.add("a")` written against another are one event on one object. The row's sharpest finding is about
+  ignorance itself: the dict store's contradiction check asks `dictValInt`/`dictValStr` of the name it is
+  written against, and a name with NO record does not abstain — it concludes *nothing contradicts*, so the
+  entry is stored unlabelled. An empty notebook is a confident wrong answer, not a lack of one (**ADR
+  0172**'s collision at the store door). No new road and no new helper: the store still lowers to
+  `rt_dict_put_tagged`, the member to `rt_set_add_tagged`, and an alias is a NAME — which is also why
+  `for k, v in e.items():` and `t.remove(1)` stay refused exactly as they are over the source name
+  (**Gap R.174**). Measurement over the **37** programs the dict/set battery carries, a build of the parent
+  (`8aa3029`) beside this one, each asked of the pinned CPython: **15 agreeing became 31, and none moved
+  away from the reference**; `tools/recmerge` wrote **23** entries from the reference (**9061 → 9084**) and
+  refused none, and the three pins **Gap R.419** left in the owed tables are DELETED rather than edited.
+  What the row declined to answer is filed with its bytes beside it — **Gap R.420** (a rebinding releases a
+  container another name still holds and the allocator hands that slot to the next object), **Gap R.421**
+  (a set's print order puts the void last) and **Gap R.422** (`discard` compares the payload and not the
+  pair) — each of the three answering identically with NO alias in the program and on the parent build.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

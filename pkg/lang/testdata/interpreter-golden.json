@@ -1,5 +1,119 @@
 {
  "entries": {
+"d = {\"a\": 1, \"b\": \"x\"}\ne = d\nprint(e[\"b\"])\nprint(str(e[\"b\"]))\n": {
+    "stdout": "x\nx\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2}\ne = d\nfor k in e:\n    print(k)\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2}\ne = d\nprint(\"a\" in e)\nprint(\"z\" in e)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\nd[\"b\"] = \"x\"\nprint(e)\nprint(d)\n": {
+    "stdout": "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n": {
+    "stdout": "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d[\"b\"])\nprint(e[\"b\"])\nprint(len(e))\n": {
+    "stdout": "x\nx\n2\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[\"b\"] = 1.5\nprint(d)\nprint(e)\n": {
+    "stdout": "{'a': 1, 'b': 1.5}\n{'a': 1, 'b': 1.5}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[\"b\"] = 2\nd[\"c\"] = \"z\"\nprint(d)\nprint(e)\n": {
+    "stdout": "{'a': 1, 'b': 2, 'c': 'z'}\n{'a': 1, 'b': 2, 'c': 'z'}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[\"b\"] = None\nprint(d)\nprint(e)\n": {
+    "stdout": "{'a': 1, 'b': None}\n{'a': 1, 'b': None}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n": {
+    "stdout": "{'a': 1, 7: 2}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\nf = e\nf[\"b\"] = \"x\"\nprint(d)\nprint(e)\nprint(f)\n": {
+    "stdout": "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\ne = d\nprint(d == e)\nd[\"b\"] = 2\nprint(d == e)\nprint(len(d) == len(e))\n": {
+    "stdout": "True\nTrue\nTrue\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": None, \"b\": \"x\"}\ne = d\nv = e[\"a\"]\nprint(v)\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": [1, 2]}\ne = d\nprint(e[\"a\"])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {}\ne = d\nd[\"a\"] = 1\nprint(e)\nprint(len(e))\n": {
+    "stdout": "{'a': 1}\n1\n",
+    "hasStdout": true
+   },
+
+"def w(x):\n    print(x)\n\nd = {\"a\": 1}\ne = d\nw(e)\nw(d)\n": {
+    "stdout": "{'a': 1}\n{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n": {
+    "stdout": "1\na\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nt = s\nprint(s == t)\nt.add(3)\nprint(s == t)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n": {
+    "stdout": "{1, 2, 'a'}\n{1, 2, 'a'}\n",
+    "hasStdout": true
+   },
+
+"s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n": {
+    "stdout": "{2, 3}\n{1}\n",
+    "hasStdout": true
+   },
+
+"s = {1}\nt = s\ns.add(\"a\")\nprint(t)\nprint(s)\n": {
+    "stdout": "{1, 'a'}\n{1, 'a'}\n",
+    "hasStdout": true
+   },
+
+"s = {1}\nt = s\nt.add(1.5)\nprint(t)\n": {
+    "stdout": "{1, 1.5}\n",
+    "hasStdout": true
+   },
+
+"s = {1}\nt = s\nu = t\nu.add(\"a\")\nprint(s)\nprint(t)\nprint(u)\n": {
+    "stdout": "{1, 'a'}\n{1, 'a'}\n{1, 'a'}\n",
+    "hasStdout": true
+   },
 "xs = [1]\nys = xs\ntry:\n    print(ys.pop(0))\n    print(ys.pop(0))\nexcept IndexError as e:\n    print('caught', e)\n": {
     "stdout": "1\ncaught pop from empty list\n",
     "hasStdout": true

@@ -63,6 +63,29 @@ func aliasRecordFamily() []struct {
 		{"the length asks the alias", "xs = [None, \"a\"]\nys = xs\nprint(len(ys))\n", "2\n"},
 		{"a single-kind list keeps the road it had", "xs = [7, 8, 9]\nys = xs\nprint(ys.pop(0))\nprint(ys)\n", "7\n[8, 9]\n"},
 		{"a scalar alias carries no list claim", "a = 1\nb = a\nxs = [None, 1]\nprint(b)\nprint(xs[0])\n", "1\nNone\n"},
+		// The dict's and the set's half, which **Gap R.419** measured as a payload printed under a label and
+		// a member that reached `@str_tab` untagged. The reference's bytes are re-derived inside every case.
+		{"a dict's value written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"a dict's second key, an int, through the alias", "d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n", "{'a': 1, 7: 2}\n"},
+		{"the value read back through both names", "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d[\"b\"])\nprint(e[\"b\"])\nprint(len(e))\n", "x\nx\n2\n"},
+		{"the alias reads what the source wrote", "d = {\"a\": 1}\ne = d\nd[\"b\"] = \"x\"\nprint(e)\nprint(d)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"the source reads what the alias wrote", "d = {\"a\": 1}\ne = d\ne[\"b\"] = 2\nd[\"c\"] = \"z\"\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 2, 'c': 'z'}\n{'a': 1, 'b': 2, 'c': 'z'}\n"},
+		{"a dict built empty and filled through the source", "d = {}\ne = d\nd[\"a\"] = 1\nprint(e)\nprint(len(e))\n", "{'a': 1}\n1\n"},
+		{"a chain of three names, mutated at the far end", "d = {\"a\": 1}\ne = d\nf = e\nf[\"b\"] = \"x\"\nprint(d)\nprint(e)\nprint(f)\n", "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n"},
+		{"a double written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = 1.5\nprint(d)\nprint(e)\n", "{'a': 1, 'b': 1.5}\n{'a': 1, 'b': 1.5}\n"},
+		{"the void written through the alias", "d = {\"a\": 1}\ne = d\ne[\"b\"] = None\nprint(d)\nprint(e)\n", "{'a': 1, 'b': None}\n{'a': 1, 'b': None}\n"},
+		{"a nested list read out of the alias", "d = {\"a\": [1, 2]}\ne = d\nprint(e[\"a\"])\n", "[1, 2]\n"},
+		{"membership asked of the alias", "d = {\"a\": 1, \"b\": 2}\ne = d\nprint(\"a\" in e)\nprint(\"z\" in e)\n", "True\nFalse\n"},
+		{"a loop over the alias's keys", "d = {\"a\": 1, \"b\": 2}\ne = d\nfor k in e:\n    print(k)\n", "a\nb\n"},
+		{"a text value read out of the alias and printed twice", "d = {\"a\": 1, \"b\": \"x\"}\ne = d\nprint(e[\"b\"])\nprint(str(e[\"b\"]))\n", "x\nx\n"},
+		{"the void read out of the alias and bound", "d = {\"a\": None, \"b\": \"x\"}\ne = d\nv = e[\"a\"]\nprint(v)\n", "None\n"},
+		{"the aliased dict handed to a function", "def w(x):\n    print(x)\n\nd = {\"a\": 1}\ne = d\nw(e)\nw(d)\n", "{'a': 1}\n{'a': 1}\n"},
+		{"a set member added through the alias", "s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n", "{1, 2, 'a'}\n{1, 2, 'a'}\n"},
+		{"a set member added through the source", "s = {1}\nt = s\ns.add(\"a\")\nprint(t)\nprint(s)\n", "{1, 'a'}\n{1, 'a'}\n"},
+		{"a chain of three names, one member added", "s = {1}\nt = s\nu = t\nu.add(\"a\")\nprint(s)\nprint(t)\nprint(u)\n", "{1, 'a'}\n{1, 'a'}\n{1, 'a'}\n"},
+		{"a float added through the alias", "s = {1}\nt = s\nt.add(1.5)\nprint(t)\n", "{1, 1.5}\n"},
+		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
+		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
 	}
 }
 
@@ -190,33 +213,39 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 	for _, r := range []struct {
 		name, src, gap, python, compiled string
 		crashes                          bool
+		refuses                          bool // the shape is DECLINED in words, which is a different debt
 	}{
 		{
 			name: "the callee's printer handed the alias's popped slot", gap: "Gap R.417",
 			src:    "def w(v):\n    print(v)\n\nxs = [None, 1]\nys = xs\nw(ys.pop(0))\n",
 			python: "None\n", compiled: "0\n",
 		},
-		// The two containers this row deliberately left out of the record door. A dict's and a set's alias is
-		// the SAME defect as the list's — the binding shares the handle and not the record — answered with the
-		// element kind missing on the other side, which for a dict's value prints a payload as a number and for
-		// a set's new element hands the printer a word nobody labelled. Both reproduce byte-for-byte on the
-		// parent build `8aa3029`, which is what makes them the container's row and not this row's regression.
+		// The residue of the dict's and the set's half, each byte-identical on the parent build `8aa3029`
+		// and therefore a ROW rather than this commit's damage (**ADR 0166**, **ADR 0309**).
 		{
-			name: "a dict's value stored through the alias", gap: "Gap R.419",
-			src:    "d = {\"a\": 1}\ne = d\ne[\"b\"] = \"x\"\nprint(d)\nprint(e)\n",
-			python: "{'a': 1, 'b': 'x'}\n{'a': 1, 'b': 'x'}\n", compiled: "{'a': 1, 'b': 1}\n{'a': 'x', 'b': 'x'}\n",
+			name: "the dict rebound under its own alias", gap: "Gap R.420",
+			src:    "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n",
+			python: "{'b': 2}\n{'a': 1}\n", compiled: "{'b': 2}\n{'b': 2}\n",
 		},
 		{
-			name: "a set element added through the alias", gap: "Gap R.419",
-			src:    "s = {1, 2}\nt = s\nt.add(\"a\")\nprint(s)\nprint(t)\n",
-			python: "{1, 2, 'a'}\n{1, 2, 'a'}\n", compiled: "",
-			crashes: true,
+			name: "the void added to a set through the alias", gap: "Gap R.421",
+			src:    "s = {1}\nt = s\nt.add(None)\nprint(t)\n",
+			python: "{None, 1}\n", compiled: "{1, None}\n",
 		},
 		{
-			name: "a dict key added through the alias", gap: "Gap R.419",
-			src:    "d = {\"a\": 1}\ne = d\ne[7] = 2\nprint(d)\n",
-			python: "{'a': 1, 7: 2}\n", compiled: "",
-			crashes: true,
+			name: "a text discarded from a set of numbers through the alias", gap: "Gap R.422",
+			src:    "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
+			python: "{1, 2}\n{1, 2}\n", compiled: "{1}\n{1}\n",
+		},
+		{
+			name: "a loop over the alias's key/value pairs", gap: "Gap R.174",
+			src:    "d = {\"a\": 1, \"b\": 2}\ne = d\nfor k, v in e.items():\n    print(k, v)\n",
+			python: "a 1\nb 2\n", compiled: "", refuses: true,
+		},
+		{
+			name: "a set member removed by value through the alias", gap: "Gap R.174",
+			src:    "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n",
+			python: "{'a'}\n", compiled: "", refuses: true,
 		},
 	} {
 		r := r
@@ -232,13 +261,27 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 					"drifted\n%s", r.python, want, r.src)
 			}
 			for _, engine := range cliEngines {
-				stdout, _, code := cliStreams(t, engine, path)
+				stdout, stderr, code := cliStreams(t, engine, path)
 				if code == 0 && stdout == r.python {
 					t.Fatalf("%s closed at the CLI: the program prints the reference's bytes — delete this row and "+
 						"move the program into aliasRecordFamily()\n%s", r.gap, r.src)
 				}
 				if r.crashes {
 					continue // the artifact is at fault (ADR 0166's class), which is the row's own subject
+				}
+				if r.refuses {
+					// A refusal is the standing of a door this row does not open — a container METHOD over a
+					// NAME (**Gap R.174**) — and it must stay a refusal in words, never an answer and never
+					// the assembler's exit 2 (ADR 0006's exit-code contract).
+					if code == 2 {
+						t.Fatalf("%s: exit 2 — the module was the compiler's mistake, not the program's (ADR 0166)\n%s",
+							engine, stderr)
+					}
+					if code != 1 {
+						t.Fatalf("%s: the shape exited %d, want 1 for a refusal in words: %s\n%s",
+							r.gap, code, stderr, r.src)
+					}
+					continue
 				}
 				if code != 0 {
 					t.Fatalf("%s: the shape was REFUSED (exit %d) rather than answered wrongly — an answer and a "+

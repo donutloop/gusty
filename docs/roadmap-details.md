@@ -18125,35 +18125,108 @@ identity rather than by the content arm; where the handles cannot be settled, a 
 is honest and an `icmp` against a `@.lst` is not.
 
 <a id="gap-r-419"></a>
-### Gap R.419 — an alias of a DICT or a SET is the same missing record one container over (⏳ OPEN, filed by **ADR 0412**)
+### Gap R.419 — an alias of a dict or a set answers what the name that built it answers, closed by **ADR 0413**
 
 ```gusty
-d = {"a": 1}               e = d
-e["b"] = "x"
-print(d)      #  {'a': 1, 'b': 'x'}   ← this backend: {'a': 1, 'b': 1}    — exit 0
-print(e)      #  {'a': 1, 'b': 'x'}   ← this backend: {'a': 'x', 'b': 'x'}
+d = {"a": 1}   e = d   e["b"] = "x"
+print(d)   #  {'a': 1, 'b': 'x'}   ← this backend, before: {'a': 1, 'b': 1}   — exit 0
+print(e)   #  {'a': 1, 'b': 'x'}   ← this backend, before: {'a': 'x', 'b': 'x'}
 
-s = {1, 2}    t = s    t.add("a")    print(s)   #  SIGSEGV
-d = {"a": 1}  e = d    e[7] = 2      print(d)   #  SIGSEGV
+s = {1, 2}   t = s   t.add("a")
+print(s)                                                  #  SIGSEGV
 ```
 
-**ADR 0412** pays the LIST's binding and returns at its own door: `recordContainerAlias` copies the three claims that
-make a list read ask the object — `mixedLists`, `listElemStr`, `listElemInt` — and never reaches the dict's
-(`mixedDicts`, `dictKeyStr`, `dictValStr`, `dictKeyInt`, `dictValInt`) or the set's (`mixedSets`, `setElemStr`,
-`setElemInt`). The binding shares those just as little, so the same missing notebook is answered here by the same
-class of wrong: the value written through `e` arrives with its tag and nowhere to put it, `d` still claims integer
-values, and the printer renders the text's intern index under a label the object never gave it (**ADR 0166**'s
-wrong answer at exit 0). The two crashes are the mutation door's own ask — it decides whether the incoming element
-needs a tag written with it, asks its OWN name's record, finds none for the alias, and stores untagged — which is
-the artifact at fault (**Gap R.203**'s class), not the program.
+**ADR 0412** paid the list's shared-handle binding and stopped at its own door: `recordContainerAlias`
+copied the three claims that make a LIST read ask the object and never reached the dict's or the set's,
+which the same binding shares just as little. The class of wrong is identical — the value arrives with
+its tag and nowhere to put it, so the container keeps the single kind its stale record claims and the
+printer renders the text's intern index under a label the object never gave it (**ADR 0166**) — and the
+set's version is worse than wrong, because the untagged member reaches `@str_tab` at an entry nobody
+wrote and the process dies (**Gap R.203**'s artifact-at-fault class).
 
-All three shapes are byte-identical on the parent build `8aa3029`, which is the sentence that separates this row from
-**Gap R.415**'s commit: the list's door had been opened, the dict's and the set's had not been touched. The fix is
-**ADR 0412**'s three halves copied, not re-derived — the claims copied at the binding, the link kept for the read,
-`markDictMixed`/`markSetMixed` told to every `containerSharers` name, and one resolver per container hung beside the
-list's `listElementClaims` so the mutation door, the printer and the read of one container answer one element the same
-way (**ADR 0249**). The third answer must survive the widening: the alias of a container no record describes keeps
-declining — `e.pop("a")` over an aliased dict already refuses with
-`lower.unsupported.container-method-over-a-name` (**Gap R.174**), and a refusal is a different debt from an answer.
-Pinned today in `TestWhatTheAliasRowStillOwesIsFiledNotFixed` and its CLI twin, each with this backend's bytes beside
-the reference's; paying the row DELETES those pins rather than editing them.
+Paying it was not a second fix but the same one applied to the maps the doors already read:
+`containerKindHeld` asks which container the notebook says a name holds, `recordContainerAlias` copies
+that container's claims (`runtimeDicts`/`mixedDicts`/`dictKeyStr`/`dictKeyInt`/`dictValStr`/`dictValInt`,
+`runtimeSets`/`mixedSets`/`setElemStr`/`setElemInt`) and keeps the link, and `markDictMixed` /
+`markSetMixed` join `markListMixed` in telling **ADR 0232**'s promotion to every name in the
+cycle-guarded `containerSharers` walk. The promotion is the load-bearing half here in a way it was not
+for the list: `d["b"] = "x"` writes through the alias, and the dict store's contradiction check
+(`codegen_index.go`'s `contradicts`) asks `dictValInt`/`dictValStr` of the name it is written against —
+a name with a copied record promotes the object and every name that holds it; a name with an empty one
+believes the entry contradicts nothing and leaves the entry unlabelled.
+
+**Measurement** (the 37 programs the dict/set battery carries, a build of the parent `8aa3029` beside a
+build of this commit, each asked of the pinned CPython): **from 15 agreeing to 31, none moving away from
+the reference**, the two shapes this row was filed for among them. `tools/recmerge` wrote **23** entries
+from the reference (the record **9061 → 9084**) and refused none, the compiled leg having agreed on every
+source claimed as paid. The three pins this row leaves in `TestWhatTheAliasRowStillOwesIsFiledNotFixed`
+and its CLI twin are the residue below, and they are DELETED-or-not, not edited.
+
+What the row declined to answer it filed with the bytes it saw, each byte-identical WITHOUT an alias and
+on the parent build: **Gap R.420** (the dict rebound under its own alias — the rebinding releases the
+object and the allocator hands the same slot to the next one), **Gap R.421** (a set's print order puts the
+void last), **Gap R.422** (`discard`/`remove` compare the payload and not the pair). `for k, v in e.items()`
+and `t.remove(1)` stay refused, exactly as the same call written against the source name is: an alias is a
+NAME, and a container METHOD over a name is **Gap R.174**'s standing, which this row does not open.
+
+<a id="gap-r-420"></a>
+### Gap R.420 — a rebinding releases a container another name still holds, and the allocator hands that slot to the next object (⏳ OPEN, filed by **ADR 0413**)
+
+```gusty
+d = {"a": 1}   e = d   d = {"b": 2}
+print(d)          #  {'b': 2}    {'b': 2}    — both legs agree here
+print(e)          #  {'a': 1}    ← this backend: {'b': 2}     — at exit 0
+print(e["a"])     #  1           ← this backend: KeyError: 'a'
+```
+
+The emitted order is the whole row: `%f = load i32, i32* %_d` → `rt_free(%f)` → `rt_root_clear(%_d)` →
+`rt_alloc`. `rt_free` (`codegen_ir_arena_globals.go`) pushes the handle on the free list and knows nothing
+about who else holds it, so the allocation two instructions later takes the same slot back and the object
+the alias roots becomes the new dict — with its own length, its own entries and its own tags. The collector
+is not at fault: `rt_root_put(%_e)` registered the slot, and the root is never consulted by the release.
+
+The control is what localises it. The identical program over a list (`xs = [1]` / `ys = xs` / `xs = [2]` /
+`print(ys)`) prints `[1]` and over a set (`s = {1}` / `t = s` / `s = {2, 3}` / `print(t)`) prints `{1}` —
+both on this build and on the parent `8aa3029`, which is the sentence that keeps this row out of
+**ADR 0413**'s commit and on the tracker. The fix is either to make a rooted handle unrecyclable (the push
+checks `gc.roots[0..gc_roots_used]`) or to give the dict's rebinding the list road's order — build the new
+object, then release the old — and either way the instruction order gets pinned from the module, because an
+ordering that only the current codegen happens to have is a hope rather than a claim. The general question,
+which any second root raises and not only an alias, is the **Gap Q.2**/**Q.1** memory family's; this is the
+smallest program that shows it.
+
+<a id="gap-r-421"></a>
+### Gap R.421 — a set's print order puts the void last (⏳ OPEN, filed by **ADR 0413**)
+
+```gusty
+s = {1}
+s.add(None)
+print(s)      #  {None, 1}   ← this backend: {1, None}      — at exit 0
+```
+
+Nothing is missing and nothing is mislabelled: both members are in the object, both carry their tag
+(**ADR 0232**), and `len` answers 2. What differs is the ORDER the reference's small hash table produces —
+`hash(None)` is 0, so the void occupies the first bucket and prints first — and the printer emits insertion
+order. The alias twin (`t = s` / `t.add(None)`) prints the same two bytes, and so does the parent build,
+which is why this is a row about the printer and not residue of the alias notebook: the same answer must
+come from one printer whichever name reached it (**ADR 0258**'s rule), and it will come from the mixed-set
+arm `mixedSets` already routes.
+
+<a id="gap-r-422"></a>
+### Gap R.422 — `discard` and `remove` ask the set's recorded kind instead of the argument's tag (⏳ OPEN, filed by **ADR 0413**)
+
+```gusty
+s = {1, 2}
+s.discard("a")
+print(s)      #  {1, 2}      ← this backend: {1}            — at exit 0
+```
+
+`add` learned to ask the argument: `rt_set_add_tagged` takes the payload and the tag, and the contradiction
+check promotes the set when the incoming kind is one it has never held. `discard` did not learn it — it asks
+the SET'S record to decide how to read the argument, so the intern index of `"a"` is passed as a number and
+the member whose payload happens to equal that number is removed. It is **ADR 0172**'s collision told at the
+one container door that had not been given the pair: the payload is never the discriminator, the pair is
+(**ADR 0187**, **ADR 0189**). The `remove` spelling over a mixed set is refused today for the method-over-a-name
+reason (**Gap R.174**), and the alias twin answers identically on this build and the parent, so neither half
+is the notebook's: the door that removes by payload alone is.
+
