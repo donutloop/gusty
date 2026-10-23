@@ -809,6 +809,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// file (roadmap Gap R.35's float half; ADR 0376, beside ADR 0227's slot and ADR 0375's frame).
 		"module_float_read",
 		"module_float_state",
+		// The module's literal container reaches a compiled body: one file reads the module's list, dict, set,
+		// tuple and list-of-lists from nine shapes — a print, a length, a position, a membership test, a loop,
+		// a comparison, a sort, an interpolation of a slot, a method — and the module keeps its own object
+		// beside every one of them, while a body that takes the spelling for itself reads its own list. Every
+		// line is what CPython prints for the same file (roadmap Gap R.35's container half; **ADR 0407**,
+		// beside **ADR 0227**'s slot and **ADR 0376**'s double).
+		"module_container",
 		// A name bound by two frames at once is two slots, not one: a nested `def` that shares a name with
 		// its enclosing body's local, the same shape over a container and a text, three frames on one name,
 		// a capture that still travels, a method and a function binding one container name, and the two

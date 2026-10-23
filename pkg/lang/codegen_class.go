@@ -230,6 +230,16 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// A method that assigns to one of its parameters gets a slot for it, like any
 	// other rebinding body (Gap R.3).
 	g.copyInReboundParams(&g.globals, fd, false)
+	// The module's read-only literal containers, bound in this frame before the body reads them — the
+	// same prologue the `def` road takes (`module_container.go`, roadmap Gap R.35's container half). A
+	// method is emitted by its own road, so the hook is taken by both.
+	if err := g.bindModuleContainerReads(&g.globals, fd); err != nil {
+		// The same shape the body loop below uses for a refusal: name it, and let the epilogue close what
+		// has been written. A failed binding leaves the name unbound, so the body's own read refuses too.
+		if g.emitErr == nil {
+			g.emitErr = err
+		}
+	}
 	for _, st := range fd.Body {
 		// A refusal inside a method body used to be dropped on the floor, which turned a source
 		// error the front end should name into an incomplete function definition and a toolchain

@@ -172,12 +172,11 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	g.moduleBinds = map[string][]Expr{}
 	scanRebinds(prog.Stmts, g.moduleBinds)
 	g.strArgBindCache = map[string][]Expr{}
-	g.moduleFloatSlots = moduleFloatSlotNames(prog, g.moduleConsts, g.moduleNames)
-	floatOwned := map[string]bool{}
-	for nm := range g.moduleFloatSlots {
-		floatOwned[nm] = true
-	}
-	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames, floatOwned)
+	g.moduleSlots, g.moduleFloatSlots, g.moduleContainers = moduleTablesFor(prog, g.moduleConsts, g.moduleNames, g.containerRet)
+	g.moduleContainerReads = map[string]bool{}
+	// The CONTAINER half of what a body may know about its module (roadmap Gap R.35): a name the module
+	// binds once, to a literal container, that nothing in the program writes through, is handed to every
+	// body that reads it as a binding of that literal — refused for every name the gate cannot vouch for.
 	// Which container variables are still the literal they were bound to, which is what decides
 	// whether reading one of their slots can be checked against the tag the builder wrote (ADR 0241).
 	g.containerLits = containerLiteralsOf(prog)
@@ -1343,6 +1342,16 @@ type irGen struct {
 	// `global double`. Containers are still not here at all — a container's word is a heap handle that
 	// has to be rooted, which is Gap R.35's other half (`module_float.go`, roadmap Gap R.35).
 	moduleFloatSlots map[string]string
+	// moduleContainers is the third module table, for the CONTAINER word: the module names that some
+	// body reads without binding them, whose one module binding is a plain assignment of a literal
+	// container the program never writes through. Such a name is handed to the reading frame as a
+	// binding — the same `stmtAssign` road the module's own `xs = [1, 2]` goes through — so the frame
+	// owns the slot, the root and every notebook the container doors read by name
+	// (`module_container.go`, roadmap Gap R.35's container half).
+	moduleContainers map[string]containerAnswer
+	// moduleContainerReads records the names THIS frame was handed a copy of, so a diagnostic, an IR
+	// row and a test can ask the emitter what it bound without reaching into the slot tables.
+	moduleContainerReads map[string]bool
 	// moduleSlotDecls is the IR declaring those globals.
 	moduleSlotDecls string
 	// moduleNames is every name the module binds, constant or not. A read of one that is not a

@@ -17628,3 +17628,61 @@ except (ValueError, ZeroDivisionError):    # CPython runs the arm
 parenthesised list — and its naming spelling `except (A, B) as e:`, which ADR 0406's clause would take for free —
 has no grammar at all. The lowering is cheap once the shape parses: the arm's `@exn_code` test becomes an `or` over
 the codes of the listed classes, and the accepting edge binds the name the way ADR 0406's single-type arm does.
+
+### Gap R.35 — the module's CONTAINER half, closed by **ADR 0407**
+
+The float half of this row was written in 2026-10-19 by **ADR 0376** and is not restated here; what closed on
+2026-10-24 is the other half, and it closed on a different mechanism than anyone expected.
+
+```gusty
+xs = [1, 2, 3]
+def n():
+    return len(xs)
+print(n())          # CPython 3; before ADR 0407, exit 1 and Gap R.35's sentence
+```
+
+**The measurement that decided the mechanism.** Two doors were built and measured, back to back, over the same
+probe family:
+
+| mechanism | probes agreeing with CPython |
+|---|---|
+| a per-node interception (the read is answered from the container-answer table at each subscript and concatenation) | 49 of 80 |
+| a **frame binding** (`bindModuleContainerReads` synthesises `xs = <the literal>` in the body's entry prologue) | 40 of 80 on the same subset, and **111 of 178** over the family the tests carry |
+
+The interception looked better and was worse. It answered the subscript positions and nothing else, because every
+position it declined fell to the general road — which, for a name that resolves to module state, refuses. The
+binding answers *nothing* directly: it makes the name a frame slot holding a copy, which is exactly the state
+`xs = [1, 2, 3]` reaches on the first line of a function body, and then the roads that have been right about that
+state for two hundred ADRs answer the module's container too — `len`, `in`, `for`, `print`, a binding to a second
+name, a literal slot, a nested slot. The interception is deleted; the binding is the feature.
+
+**What the copy costs, and why it is affordable.** The program cannot write through it, because the gate refuses
+the program that writes: `xs.append(…)`, `xs[0] = …`, `xs += […]`, a write through an alias, an identity question
+between two names for the object, a body that hands the object back. Each of those is Gap **R.398** and each is
+pinned at exit 1 with CPython's bytes beside it — 11 CLI rows. A copy that answered a program which mutates would
+print the literal while the object changed elsewhere, which is a wrong answer at the exit code of success; the
+house puts that class above any refusal, so the write half is a refusal and a roadmap row rather than a second
+mechanism.
+
+**The wrongness this door refused to inherit.** `def f(): xs = ["a", "b"]; return xs[1]` prints **`1`** — the
+slot's *index*, because the constant-index fold names a word and the word has no tag. `[1.5, 2.5]` prints `2`,
+`[True, False]` prints `0`. That is the function-LOCAL road today, byte-for-byte on the parent build, and it is
+Gap **R.324** · Gap **R.219** · Gap **R.331** waiting for the tagged word (L11.1). Handing the module's container
+to a frame would have inherited it into a new family of programs, so the door asks one more question of a name
+before it binds it: does every road out of this body's `return` name an integer? `return xs[0] + xs[2]` is an
+addition and is answered; `return xs[1]` over a list of doubles is a payload the emitter cannot tag and is
+declined. Decline, not refuse — a body that reads three containers should not lose two of them because the third
+has an unnameable slot, and the declined name does exactly what it did on the parent build.
+
+**The two shapes that still reach the compiler's own error class.** `return xs + [3]` is emitted as a read of
+`%_xs` in a `define` that never allocated it, and the frame-slot audit stops the build at **exit 2** — measured
+identical on the parent, so it is not this door's doing, and it is Gap **R.399**'s first row. The audit is the
+right thing to catch it: an unallocated `%_name` load is a compiler bug, not a program's answer.
+
+**The process lesson, twice over.** The first cut of the gate was written against the emitter's own type and did
+not compile; the fix was to read the file's siblings (`module_float.go`, `container_return.go`, `codegen_module.go`)
+and use the vocabulary the package already has — `irGen`, `containerAnswer` with its `arms`, `containerAnswerRead`,
+`settleContainerKind`. The second was my own stale-table instinct, to edit a failing assertion toward green; the
+house rule ("a row that stops being true FAILS, and the case is DELETED rather than edited") is what made me
+measure the local road instead, which is where the `xs[1]` → `1` discovery came from and why the door has the guard
+it has.

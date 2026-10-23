@@ -872,6 +872,13 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.frameOpen = false
 		return nil
 	}
+	// The module's read-only literal containers, bound in THIS frame before the body reads them
+	// (`module_container.go`, roadmap Gap R.35's container half): the frame gets a slot, a root and the
+	// element notebooks from the one binding road, so every door that reads a container by name asks a
+	// frame that owns what it is told about.
+	if err := g.bindModuleContainerReads(b, fd); err != nil {
+		return err
+	}
 	for _, st := range fd.Body {
 		g.gcCall(b)
 		if err := g.stmt(b, st); err != nil {

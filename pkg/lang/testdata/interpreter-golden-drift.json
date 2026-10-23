@@ -1658,12 +1658,6 @@
     "actual": "jit: codegen: min requires an inline list/set/dict literal"
   },
   {
-    "source": "xs = [1, 2, 3]\n\ndef n() -> int:\n    return len(xs)\n\nprint(n())\n",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"None\"",
-    "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"
-  },
-  {
     "source": "xs = [1, 2, 3]\nprint(xs[-4])\n",
     "reason": "the trap's class or message differs from the record",
     "expected": "IndexError: index out of range",

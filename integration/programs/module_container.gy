@@ -1,0 +1,52 @@
+WORDS = ["apple", "banana", "cherry"]
+NUMBERS = [10, 20, 30, 40, 50]
+TABLE = {"one": 1, "two": 2, "three": 3}
+ROWS = [[1, 2], [3, 4]]
+
+
+def size():
+    return len(NUMBERS)
+
+
+def has_banana():
+    return "banana" in WORDS
+
+
+def sum_up():
+    total = 0
+    for x in NUMBERS:
+        total = total + x
+    return total
+
+
+def truth():
+    return len(WORDS) == 3
+
+
+def dict_slot():
+    return TABLE["two"]
+
+
+def row_slot():
+    return ROWS[1][0]
+
+
+def named():
+    ys = WORDS
+    return len(ys)
+
+
+def show():
+    print("inside:", WORDS, TABLE)
+
+
+print("WORDS:", WORDS)
+print("TABLE:", TABLE)
+print("size():", size())
+print("has_banana():", has_banana())
+print("sum_up():", sum_up())
+print("truth():", truth())
+print("dict_slot():", dict_slot())
+print("row_slot():", row_slot())
+print("named():", named())
+show()

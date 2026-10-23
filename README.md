@@ -2356,6 +2356,35 @@ falls back to dynamic dispatch.
   pinned the escape are DELETED, not edited, with the handler programs moved into the answered tables of both suites
   and 14 new sources on the record (**8695 → 8709**).
 
+- **The module's literal container reaches a compiled body (Gap R.35's container half, ADR 0407)** —
+  `xs = [1, 2, 3]` / `def n(): return len(xs)` / `print(n())` is `3` in the reference, and here it was the row's own
+  refusal at exit 1: **ADR 0227** gave the compiled backend a module global for the `i32` word and **ADR 0376** one
+  for the `double`, and a container was left out on purpose — its word is a heap handle the collector also has to be
+  told about, and every door that reads one asks a name-keyed notebook that the *binding* road writes and no read can
+  invent. It closes on a **binding, not a global**: the body's own entry prologue allocates `%_xs`, roots it with
+  `@rt_root_put`, builds the literal with `@rt_alloc` / `@rt_set_elem` / `@rt_dict_put` and stores the handle — the
+  same three instructions `xs = [1, 2, 3]` emits on the first line of a function — so the print, `len`, position,
+  membership, loop, equality, ordering, `str`, interpolation and slot doors answer the module's container through the
+  code that has been right about a local one all along, in a `def` and in a method alike. Grepping `@gy_mod_` for a
+  container finds nothing, deliberately: one name with two owners is the bug, and a shared handle would answer the
+  identity questions wrongly instead of refusing them. The gate is the feature — a name reaches this road only when
+  its ONE binding is an assignment of a self-describing literal container and nothing anywhere appends to it,
+  assigns a slot of it, augments it, writes through an alias, hands it out of a `return`, or asks which object two
+  names hold; those are **Gap R.398**, pinned at exit 1 with the reference's bytes beside each. A second door was
+  built first and deleted: a per-node interception that answered reads from the container-answer table, which reached
+  49 of 80 probes where the binding reached 111 of 178 — an interception answers the positions it recognises and
+  nothing else, and every position it declines falls to a road that refuses. It also refused to inherit a wrongness it
+  found on the road it was reusing: `def f(): xs = ["a", "b"]; return xs[1]` prints **`1`**, the slot's index, because
+  a constant-index fold names a word and that word carries no tag (**Gap R.324** · **Gap R.219** · **Gap R.331**, byte-
+  identical on the parent build) — so a body whose `return` reaches a slot the emitter cannot name is not handed the
+  container at all. `tools/recmerge` wrote **60 sources** from CPython (**8791 → 8851**) with no compiled-leg refusal,
+  one compiled-vs-record drift row went paid (`def n() -> int: return len(xs)`, ledger 319 → 318), and the corpus gained
+  `integration/programs/module_container.gy`, asserted line-for-line (matrix **232 → 233**, parity-asserted **203 → 204**).
+  Named rather than absorbed: the concatenation frame that still reaches the frame-slot audit at **exit 2**
+  (**Gap R.399**), a slot whose payload the roads cannot name (**Gap R.400**), the nested `def` and `lambda` bodies that
+  take no prologue (**Gap R.401**), and the doors that ask the module's records rather than the frame's
+  (**Gap R.402**).
+
 - **An `except … as name:` arm binds what the exception writes (Gap R.113, ADR 0406)** —
   `try: 1/0` / `except ZeroDivisionError as err:` / `print(err)` is `division by zero` in the reference, and here it
   was a **parse error** at exit 1 on every path: `parseTry` read the type name and then asked for a colon, so the

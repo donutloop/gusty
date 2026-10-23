@@ -2893,11 +2893,54 @@ for i in range(n):
   it into a local, or print it from the body), and a plain read in a position the compiler kept `i32`. A
   nested `def` returning it is refused the same way. Both are L11.6 · Gap R.3c's missing return word.
 
-  What a body still cannot reach is module *containers* (`len(xs)`, `xs.append(v)` for a module-level
-  list): refused, with a message naming module state and the missing machinery rather than misdescribing
-  the value (roadmap Gap R.35's remaining half; a container's word is a heap handle that has to be rooted
-  and whose element operations come from the scope a binding settles). A module-level **text** read by a
-  body prints the intern position today (`Gap R.343`).
+  A module name holding a **container** reaches a body too, since **ADR 0407**, for the containers the program
+  never writes through: a name whose ONE module binding is a plain assignment of a literal container — every slot
+  itself a literal — and which nothing anywhere in the program appends to, assigns a slot of, augments, aliases
+  and then writes, hands out of a `return`, or asks an identity question, is handed to each body that reads it as
+  a **binding of that literal**. The frame then owns the slot, the GC root and every notebook the container doors
+  read by name, so the print, `len`, position, membership, loop, equality, ordering, `str` and interpolation-of-a-
+  slot doors all answer it, in a `def` and in a method alike:
+
+  ```py
+  xs = [1, 2, 3]
+  d = {"a": 1, "b": 2}
+
+  def n() -> int:
+      return len(xs)         # 3 — the module's own list, read at call time
+
+  def first():
+      return xs[0]           # 1 — a slot the literal says is a number, which travels
+
+  def keys():
+      for k in d:            # a, b — the module's dict, walked by its keys
+          print(k)
+
+  print(n(), first(), n() + len(d))   # 1 1 5
+  print(xs)                           # [1, 2, 3] — the module keeps its own object
+  ```
+
+  A copy is honest only while nothing writes through the object, so the write half is refused with a message
+  naming module state — and every one of those refusals is a program CPython runs (roadmap **Gap R.398**; the
+  answer is the tagged value word, **L11.1**, carrying a rooted container as module state):
+
+  ```py
+  xs = [1, 2, 3]
+
+  def show():
+      print(xs)
+
+  xs.append(4)      # writing through the module's object: refused, naming module state
+  show()
+  ```
+
+  Also refused, each with its own row: a body that hands the container (or a slot of it that is itself a
+  container) back to its caller, a name the module binds twice, a name any other binder takes (`for`, `with … as`,
+  `match`, unpacking, `import`), a slot that is a name or a call (`xs = [one()]`), the identity question
+  (`ys is xs`), a nested `def` or a `lambda` reading the name (**Gap R.401** — those two roads take no such
+  prologue), and a `return` of a slot the literal does not read as an integer — a text, a float, a verdict or the
+  singleton — because the road out of a `return` carries an integer honestly and no other kind (**Gap R.400**;
+  it prints the payload today, at the exit code of success, for a list written inside the body too). A module-level
+  **text** read by a body prints the intern position today (`Gap R.343`).
 
 - **A name the body binds is the body's own, and an unwritten read raises** (ADR 0228). Whether a name
   is local is decided by what the body binds *anywhere inside itself*, not by how far the text has got,

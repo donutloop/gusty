@@ -3978,6 +3978,27 @@
     },
     {
       "case": {
+        "id": "programs/module_container",
+        "name": "module_container.gy",
+        "source": "WORDS = [\"apple\", \"banana\", \"cherry\"]\nNUMBERS = [10, 20, 30, 40, 50]\nTABLE = {\"one\": 1, \"two\": 2, \"three\": 3}\nROWS = [[1, 2], [3, 4]]\n\n\ndef size():\n    return len(NUMBERS)\n\n\ndef has_banana():\n    return \"banana\" in WORDS\n\n\ndef sum_up():\n    total = 0\n    for x in NUMBERS:\n        total = total + x\n    return total\n\n\ndef truth():\n    return len(WORDS) == 3\n\n\ndef dict_slot():\n    return TABLE[\"two\"]\n\n\ndef row_slot():\n    return ROWS[1][0]\n\n\ndef named():\n    ys = WORDS\n    return len(ys)\n\n\ndef show():\n    print(\"inside:\", WORDS, TABLE)\n\n\nprint(\"WORDS:\", WORDS)\nprint(\"TABLE:\", TABLE)\nprint(\"size():\", size())\nprint(\"has_banana():\", has_banana())\nprint(\"sum_up():\", sum_up())\nprint(\"truth():\", truth())\nprint(\"dict_slot():\", dict_slot())\nprint(\"row_slot():\", row_slot())\nprint(\"named():\", named())\nshow()\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "WORDS: ['apple', 'banana', 'cherry']\nTABLE: {'one': 1, 'two': 2, 'three': 3}\nsize(): 5\nhas_banana(): True\nsum_up(): 150\ntruth(): True\ndict_slot(): 2\nrow_slot(): 3\nnamed(): 3\ninside: ['apple', 'banana', 'cherry'] {'one': 1, 'two': 2, 'three': 3}\n",
+      "python_ok": true,
+      "python_stdout": "WORDS: ['apple', 'banana', 'cherry']\nTABLE: {'one': 1, 'two': 2, 'three': 3}\nsize(): 5\nhas_banana(): True\nsum_up(): 150\ntruth(): True\ndict_slot(): 2\nrow_slot(): 3\nnamed(): 3\ninside: ['apple', 'banana', 'cherry'] {'one': 1, 'two': 2, 'three': 3}\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/nested_def_shares_a_slot",
         "name": "nested_def_shares_a_slot.gy",
         "source": "# A name bound by two frames at once is two slots, not one (roadmap L11.6 · Gap R.342, ADR 0378).\n#\n# `g.allocd` answers 「does this name already have a stack slot in the frame being emitted」, and one map\n# used to answer it for a whole module. The `def` road reset it; the closure lift and the class road's\n# method emitter never did, so a nested `def` emitted inside a body asked the ENCLOSING body's table,\n# was told 「allocated」, got no `alloca` — and the enclosing body, whose slot the answer had been, then\n# stored through a name its own `define` never had. `llc-20` answered `use of undefined value '%_w'` and\n# a three-line program left at exit 2, the code ADR 0166 reserves for a compiler bug. The written-flag\n# table (ADR 0228) had the same hole one level down: `%bnd_z` for a local on a path that may not write it.\n#\n# Every answer below is CPython's own for this source, and the matrix row is asserted (`OracleMatch`), so\n# the two compiled legs cannot certify each other — they share the table that was the bug.\n\ndef outer():\n    def inner():\n        w = 3\n        return w\n    w = 1.5\n    return inner()\n\ndef containerFrame():\n    def take():\n        xs = [7, 8]\n        return xs[0] + len(xs)\n    xs = [1, 2]\n    return take() + len(xs)\n\ndef textFrame():\n    def tell():\n        s = \"hi\"\n        return len(s)\n    s = \"hello\"\n    return tell() + len(s)\n\ndef threeFrames():\n    def a():\n        v = 1\n        return v\n    def b():\n        v = 2\n        return v\n    v = 3\n    return a() + b() + v\n\ndef captureStillTravels():\n    n = 40\n    def add(k):\n        return k + n\n    return add(2)\n\ndef methodSharesAContainerName():\n    return Box().hold(True) + len([3, 4, 5])\n\nclass Box:\n    def hold(self, ok):\n        ys = [1, 2]\n        if ok:\n            z = 4\n        return len(ys) + z\n\ndef unwrittenInsideALiftedDef():\n    # NOT named `inner`: two nested `def`s of the SAME spelling in two different frames collide on the\n    # global the lift mints for the closure (`@inner_slot = internal global` twice) and `llc` refuses the\n    # module at exit 2 — pre-existing, identical on the pre-ADR 0378 build, and roadmap **Gap R.346**'s row.\n    def mayNotWrite(flag):\n        if flag:\n            z = 1\n        return z\n    try:\n        return mayNotWrite(False)\n    except UnboundLocalError:\n        return -1\n\ndef unwrittenInsideAMethod():\n    try:\n        return Box().hold(False)\n    except UnboundLocalError:\n        return -2\n\nprint(outer())\nprint(containerFrame())\nprint(textFrame())\nprint(threeFrames())\nprint(captureStillTravels())\nprint(methodSharesAContainerName())\nprint(unwrittenInsideALiftedDef())\nprint(unwrittenInsideAMethod())\n",
@@ -5500,11 +5521,11 @@
       ]
     }
   ],
-  "rows": 232,
+  "rows": 233,
   "skipped": 29,
-  "pass": 203,
+  "pass": 204,
   "fail": 0,
-  "oracle_match": 189,
+  "oracle_match": 190,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

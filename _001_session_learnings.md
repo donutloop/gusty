@@ -14426,3 +14426,45 @@ than leaving a reader to find two predicates that disagree.
 agreeing — the only shape of a regression test that cannot decay into a rumour. The corpus program
 `integration/programs/except_as_name.gy` was byte-compared with `python3` before it was registered, and the matrix
 moved 231 → 232 rows with `oracle_match` 188 → 189.
+
+## The module's literal container reaches a compiled body — as a binding (Gap R.35 container half, ADR 0407)
+
+**What I set out to do** was finish a row that had been open since the tracker began: a compiled function that reads
+the module's list. **What I shipped** is half a mechanism, and the interesting part of the session is the half I
+deleted.
+
+1. **I built the interception first, and it looked like the better door.** A `moduleContainerAnswer` hook in the
+   subscript and concatenation roads, answering a read from the container-answer table, measured **49 of 80 probes**
+   agreeing with CPython. The frame binding — one call in the entry prologue that synthesises `xs = <the literal>` and
+   hands it to `stmtAssign` — measured **40 of 80** on the same subset. I nearly kept the winner. What flipped it was
+   asking *why* the interception lost rather than counting what it won: every position the interception declined fell
+   through to the general road, and the general road refuses anything whose name resolves to module state. The binding
+   declines nothing, because it does not answer anything — it puts the name in the state a local container is already
+   in, and two hundred ADRs of roads that have been right about that state answer the module's object for free. The
+   interception is gone. **An interception answers the positions it recognised; a binding answers the positions
+   somebody else wrote.**
+2. **The stale-table instinct fired, and the house rule caught it.** `TestACompiledBodyIsHandedTheModulesContainer`
+   failed on shapes where the general road already refused; my hand went to the expectation. The rule ("a row that
+   stops being true FAILS, and the case is DELETED rather than edited") pushed me to measure the *function-local*
+   analogue instead — which is how I found that `def f(): xs = ["a", "b"]; return xs[1]` prints **`1`** today. The
+   constant-index fold names a machine word, the word has no tag, and the index arrives where the element's payload
+   should have been. That single measurement produced the door's last clause, three roadmap rows, and the reason the
+   door asks a body what its `return` reaches before it hands anything over.
+3. **Decline, do not refuse.** My first version raised the family's module-state error when a body's `return` reached
+   an unnameable slot. It cost 16 probes: a body that reads three containers lost two of them because the third had a
+   double in it. Declining the name keeps the declined name's parent-build behaviour and frees the other two to be
+   answered. A gate that answers "no" too loudly is answering "no" to its neighbours.
+4. **The position, not the shape.** The same `return` question mis-fired twice more before it was right: `return xs[0]
+   + xs[2]` (an addition over slots) and `return not xs` (a count question) were both refused as if they handed the
+   object back. The predicate was never "mentions the container" — it is "the answer is BUILT out of the object",
+   which is a fact about the operand's position and not about the expression tree. `containerOperand` is now three
+   lines and correct, and the two refusals it cost are the two probes that should have cost them.
+5. **Sibling files are the type checker.** My first cut wrote `*LLVMCodeGen`, `TupleLit`, `DictLit.KVs`,
+   `StringLit`, `walkChildren` — none of which exist. This emitter is `irGen`, building IR *text* into a
+   `strings.Builder`, with `containerAnswer{kind, arms, fullyDescribed}`, `Tuple`, `DictLit.Keys/Vals` and its own
+   walker per file. Reading `module_float.go` and `container_return.go` before writing cost me one build cycle;
+   writing first cost me four.
+6. **Two of my probe rows were born wrong and stayed wrong.** `[1.5, 2.5]` → `2` and `[True, False]` → `0` are
+   byte-identical on the parent build, which is the difference between "this door broke it" and "this door found it".
+   The A/B harness makes that distinction mechanically, so the sentence in the ADR is a measured claim and not a
+   hunch about blame.

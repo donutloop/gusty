@@ -19,11 +19,11 @@ package lang
 // Gap R.289, ADR 0356), plus the guard below that fails when ast.go grows an expression the walk has no row
 // for — so the next node type is a failing test rather than a missing answer discovered a cycle later.
 //
-// The second half of this file is the policy a compiled `def` body keeps: it is a separate function and
-// cannot read module-level state at all (Gap R.35 says so out loud), so counting its reads as module reads
-// would spend the permission the module body genuinely needs. A lambda body is an expression in this module
-// and IS a read; a `def` body is not. That asymmetry is asserted here rather than left to the fall of a
-// switch, and the day it changes is Gap R.290's row.
+// The second half of this file is the policy a compiled `def` body keeps. Since **ADR 0407** the body reads the
+// module's container — through a copy the frame mints, not the module's object — so the module body's permission
+// is still its own, which is what the guard below asserts from both sides of the `define`. A lambda body is an
+// expression in this module and IS a read of the module's object; that asymmetry is asserted here rather than
+// left to the fall of a switch, and counting the body's reads in the walk is Gap R.290's own action.
 
 import (
 	goast "go/ast"
@@ -173,9 +173,12 @@ func TestAListNothingReadsIsStillNotAllocated(t *testing.T) {
 	}
 }
 
-// The policy a compiled `def` body keeps: it is a separate function and cannot read module state (Gap R.35),
-// so counting it as a read would spend the permission the module body itself needs. A lambda body is an
-// expression the module evaluates here, and IS a read.
+// The policy a compiled `def` body keeps, restated for **ADR 0407**: the body reads the module's container, and
+// it reads a COPY THE FRAME MINTS rather than the module's object — so the permission the module body needs is
+// still its own. A lambda body is an expression the module evaluates here, and IS a read of the module's object;
+// a `def` body reads one only by building a second. The asymmetry is asserted here rather than left to the fall
+// of a switch, and ADR 0407 is the day Gap R.290's sentence changed: what still owes is counting the body's reads
+// in the walk itself, which is that row's own action.
 func TestALambdaBodyIsAReadAndADefBodyIsNot(t *testing.T) {
 	t.Parallel()
 	lambdaSrc := "xs = [10, 20]\nf = lambda v: xs[1]\nprint(f(0))\n"
@@ -183,10 +186,18 @@ func TestALambdaBodyIsAReadAndADefBodyIsNot(t *testing.T) {
 		t.Fatalf("a lambda body reading the list did not count as a read — a closure is exactly the read this "+
 			"analysis must keep:\n%s", lambdaSrc)
 	}
+	// A `def` body that reads the name gets a copy of its own, and the copy is built WHERE IT READS IT — in the
+	// body's `define`. What the row below protects is the module's side of that: the module never reads `xs` here,
+	// so `@main` must still not be the one building it.
 	defSrc := "xs = [1, 2, 3]\ndef f():\n    return xs[0]\nprint(1)\n"
-	if n := slotWriteCount(t, defSrc); n != 0 {
-		t.Fatalf("a def body counted as a read; a compiled def body cannot read module state at all (Gap R.35), "+
-			"so this spends the permission the module body itself needs:\n%s", defSrc)
+	defIR := irOf(t, defSrc)
+	if n := strings.Count(defineBodyOf(t, defIR, "gy_f"), "call void @rt_set_elem"); n == 0 {
+		t.Fatalf("a def body reading the module's list was handed neither a copy nor a load — ADR 0407's binding " +
+			"never reached this frame, and the read falls back to the road that refuses:\n" + defSrc)
+	}
+	if n := strings.Count(defineBodyOf(t, defIR, "main"), "call void @rt_set_elem"); n != 0 {
+		t.Fatalf("the module body spent %d allocation(s) on a container only a def body reads; the frame that " +
+			"reads it is the one that builds it (ADR 0407), and the module's permission is not this body's to burn:\n" + defSrc)
 	}
 	// …and the def's DEFAULT is a module-level expression, walked even though the body is not.
 	defaultSrc := "xs = [1, 2, 3]\ndef f(v = xs[0]):\n    return 0\nprint(xs[0])\n"

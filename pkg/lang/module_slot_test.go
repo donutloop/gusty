@@ -120,15 +120,20 @@ func TestBodyBindingBeatsModuleBinding(t *testing.T) {
 	}
 }
 
-// TestModuleContainersAndFloatsStillRefuse is the deliberate half: a container read by a body is
-// refused because the operations behind the handle are missing, and a float module name because its
-// slot is a double and L11.6 owns floats. Both refusals must name module state, not misdescribe the
-// value — the old messages called a list a string (Gap R.38).
+// TestModuleContainersAndFloatsStillRefuse is the deliberate half: a container a body WRITES THROUGH is
+// refused, because the copy ADR 0407 hands a reading frame is honest only while nothing writes the object
+// it copies. Reading one is no longer here — `def n(): return len(xs)` over a module list has answered
+// since **ADR 0407**, and its table is `module_container_test.go`; this table keeps only the shapes the
+// gate must decline, so a gate that grew too confident fails here and not there. The float half of the
+// name is history: ADR 0376 gave a module `double` its own global, and the rows this file used to pin for
+// it are gone. Every refusal here must name module state, and must not misdescribe the value — the old
+// messages called a list a string (Gap R.38).
 func TestModuleContainersAndFloatsStillRefuse(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
-		{"len of a module list", "xs = [1, 2]\n\n\ndef n() -> int:\n    return len(xs)\n\n\nprint(n())\n"},
 		{"append on a module list", "xs = [1]\n\n\ndef add() -> None:\n    xs.append(2)\n\n\nadd()\nprint(len(xs))\n"},
+		{"augmented assignment to a module list read by a body", "xs = [1]\n\n\ndef show():\n    print(xs)\n\n\nxs += [2]\nshow()\n"},
+		{"the module's list handed back by a body", "xs = [1, 2]\n\n\ndef give():\n    return xs\n\n\nprint(give())\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
