@@ -1226,8 +1226,8 @@ const astIRSchemaTemplate = `{
         },
         "answer": {
           "type": "string",
-          "enum": ["list", "dict", "set", "tuple", "container"],
-          "description": "What the container scan proved the answer is: the one kind every road through the body answers, or \"container\" when the scan proved a container answer without naming one kind — the undescribed half, which is the verdict that turns a heap handle printed as a number into a refusal (roadmap Gap R.261)."
+          "enum": ["list", "dict", "set", "tuple", "container", "text", "bool", "none"],
+          "description": "What the answer half of the gate proved: the one container kind every road through the body answers, or \"container\" when the scan proved a container answer without naming one kind — the undescribed half, which is the verdict that turns a heap handle printed as a number into a refusal (roadmap Gap R.261) — or, for a body that SPELLS its answer as a text, a verdict or the void, one of text/bool/none, which is the answer the one-word road used to print as its payload (roadmap Gap R.384, ADR 0402)."
         },
         "params": {
           "type": "array",
@@ -1253,7 +1253,7 @@ const astIRSchemaTemplate = `{
         "shape": {
           "type": "string",
           "enum": ["captures_frame", "answers_nothing_provable"],
-          "description": "The stable name of the gate that closed, and the field a script branches on. \"captures_frame\": the body reads a name the frame of the application owns, and a hoisted lambda becomes a def that reads the module instead (roadmap Gap R.386 owns widening that road). \"answers_nothing_provable\": the scan cannot prove one container kind along every road through the body — a number, a text, a verdict and None answer here today (roadmap Gap R.331, Gap R.384)."
+          "description": "The stable name of the gate that closed, and the field a script branches on. \"captures_frame\": the body reads a name the frame of the application owns, and a hoisted lambda becomes a def that reads the module instead (roadmap Gap R.386 owns widening that road). \"answers_nothing_provable\": no scan proves an answer this pass can register — a number or a float answers here because the one-word road renders both correctly and is left alone, and a name, a call or an operation answers here because its kind belongs to a table this gate does not read (roadmap Gap R.331, Gap R.387; the text, verdict and void bodies that used to answer here became declarations under ADR 0402)."
         },
         "reason": {
           "type": "string",

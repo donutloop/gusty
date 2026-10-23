@@ -1,0 +1,91 @@
+# The answer of a `lambda` applied where it is written is a value with a KIND
+# (roadmap L11.7 · Gap R.384, ADR 0402). Every line below is what CPython prints for
+# this same file.
+#
+# The shape: `(lambda: True)()` — a body that spells its answer as a literal, applied
+# where it is written. A `def` whose body is `return True` has answered `True` since
+# ADR 0257, because the print door asks the DECLARATION which kind its answer is:
+# `textReturningCallables` for a text, `IsBoolExpr`'s call arm for a verdict,
+# `fdReturnsValue` for the void. An applied `lambda` had no declaration for any of them
+# to read, so its answer travelled the one-word road and arrived as the payload — `1` for
+# `True`, and the digit `0` for `None` and for a text's @str_tab position, all at exit 0.
+#
+# The fix is not a second answer door. The pass gives the `lambda` the one thing those
+# doors already read — a module-level `FuncDef` — and the three printers a `def`'s answer
+# uses answered every row below with no new arm written (ADR 0401's rule, read again for
+# the three kinds ADR 0368 registers).
+#
+# What this program does NOT contain, said out loud rather than hidden: a body that
+# answers a NUMBER or a FLOAT (`print((lambda: 5)())` is `5` and `print((lambda: 2.5)())`
+# is `2.5` on the one-word road, which answers them correctly and is left alone), a body
+# whose answer is a CALL to a text-answering `def` or an interpolation (roadmap Gap
+# R.387 — the answer exists in the callee's registration, and this pass reads only the
+# body's own spelling), a body that READS a name the module bound (roadmap Gap R.331),
+# and a void answer compared with `None` (roadmap Gap R.388). Those are refusals or wrong
+# answers elsewhere, pinned with today's bytes in `pkg/lang/lambda_answer_test.go`.
+
+print((lambda: True)())
+print((lambda: False)())
+print((lambda: None)())
+print((lambda: "hi")())
+
+verdict = (lambda: True)()
+print(verdict)
+
+text = (lambda: "hi")()
+print(text, len(text), text.upper())
+
+print([(lambda: True)(), (lambda: None)()])
+print({"k": (lambda: "hi")()})
+print({(lambda: "k")(): 1})
+print({(lambda: "k")()})
+
+if (lambda: True)():
+    print("yes")
+
+for c in (lambda: "ab")():
+    print(c)
+
+print(str((lambda: "hi")()))
+print(repr((lambda: "hi")()))
+print((lambda: "a")() + "!")
+print((lambda: "hi")() * 2)
+print((lambda: "hi")() in ["hi", "x"])
+print((lambda: False)() or "fallback")
+print(bool((lambda: "")()))
+print((lambda: True)() == True)
+print((lambda: True)(), (lambda: 2)())
+print((lambda: None)(), (lambda: None)())
+print((lambda x: None)(1))
+print((lambda x=3: None)())
+print([v for v in [(lambda: True)()]])
+
+
+def echo(v):
+    return v
+
+
+print(echo((lambda: "hi")()))
+
+
+def answerer(x):
+    return (lambda: True)()
+
+
+print(answerer(1))
+
+
+class Holder:
+    def show(self):
+        print((lambda: False)())
+
+
+Holder().show()
+
+match 1:
+    case 1:
+        print((lambda: None)())
+
+print((lambda: [1, 2])())
+print((lambda: 5)())
+print((lambda: 2.5)())

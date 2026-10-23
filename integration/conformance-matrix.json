@@ -4230,6 +4230,27 @@
     },
     {
       "case": {
+        "id": "programs/lambda_answer_kind",
+        "name": "lambda_answer_kind.gy",
+        "source": "# The answer of a `lambda` applied where it is written is a value with a KIND\n# (roadmap L11.7 · Gap R.384, ADR 0402). Every line below is what CPython prints for\n# this same file.\n#\n# The shape: `(lambda: True)()` — a body that spells its answer as a literal, applied\n# where it is written. A `def` whose body is `return True` has answered `True` since\n# ADR 0257, because the print door asks the DECLARATION which kind its answer is:\n# `textReturningCallables` for a text, `IsBoolExpr`'s call arm for a verdict,\n# `fdReturnsValue` for the void. An applied `lambda` had no declaration for any of them\n# to read, so its answer travelled the one-word road and arrived as the payload — `1` for\n# `True`, and the digit `0` for `None` and for a text's @str_tab position, all at exit 0.\n#\n# The fix is not a second answer door. The pass gives the `lambda` the one thing those\n# doors already read — a module-level `FuncDef` — and the three printers a `def`'s answer\n# uses answered every row below with no new arm written (ADR 0401's rule, read again for\n# the three kinds ADR 0368 registers).\n#\n# What this program does NOT contain, said out loud rather than hidden: a body that\n# answers a NUMBER or a FLOAT (`print((lambda: 5)())` is `5` and `print((lambda: 2.5)())`\n# is `2.5` on the one-word road, which answers them correctly and is left alone), a body\n# whose answer is a CALL to a text-answering `def` or an interpolation (roadmap Gap\n# R.387 — the answer exists in the callee's registration, and this pass reads only the\n# body's own spelling), a body that READS a name the module bound (roadmap Gap R.331),\n# and a void answer compared with `None` (roadmap Gap R.388). Those are refusals or wrong\n# answers elsewhere, pinned with today's bytes in `pkg/lang/lambda_answer_test.go`.\n\nprint((lambda: True)())\nprint((lambda: False)())\nprint((lambda: None)())\nprint((lambda: \"hi\")())\n\nverdict = (lambda: True)()\nprint(verdict)\n\ntext = (lambda: \"hi\")()\nprint(text, len(text), text.upper())\n\nprint([(lambda: True)(), (lambda: None)()])\nprint({\"k\": (lambda: \"hi\")()})\nprint({(lambda: \"k\")(): 1})\nprint({(lambda: \"k\")()})\n\nif (lambda: True)():\n    print(\"yes\")\n\nfor c in (lambda: \"ab\")():\n    print(c)\n\nprint(str((lambda: \"hi\")()))\nprint(repr((lambda: \"hi\")()))\nprint((lambda: \"a\")() + \"!\")\nprint((lambda: \"hi\")() * 2)\nprint((lambda: \"hi\")() in [\"hi\", \"x\"])\nprint((lambda: False)() or \"fallback\")\nprint(bool((lambda: \"\")()))\nprint((lambda: True)() == True)\nprint((lambda: True)(), (lambda: 2)())\nprint((lambda: None)(), (lambda: None)())\nprint((lambda x: None)(1))\nprint((lambda x=3: None)())\nprint([v for v in [(lambda: True)()]])\n\n\ndef echo(v):\n    return v\n\n\nprint(echo((lambda: \"hi\")()))\n\n\ndef answerer(x):\n    return (lambda: True)()\n\n\nprint(answerer(1))\n\n\nclass Holder:\n    def show(self):\n        print((lambda: False)())\n\n\nHolder().show()\n\nmatch 1:\n    case 1:\n        print((lambda: None)())\n\nprint((lambda: [1, 2])())\nprint((lambda: 5)())\nprint((lambda: 2.5)())\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\nNone\nhi\nTrue\nhi 2 HI\n[True, None]\n{'k': 'hi'}\n{'k': 1}\n{'k'}\nyes\na\nb\nhi\n'hi'\na!\nhihi\nTrue\nfallback\nFalse\nTrue\nTrue 2\nNone None\nNone\nNone\n[True]\nhi\nTrue\nFalse\nNone\n[1, 2]\n5\n2.5\n",
+      "python_ok": true,
+      "python_stdout": "True\nFalse\nNone\nhi\nTrue\nhi 2 HI\n[True, None]\n{'k': 'hi'}\n{'k': 1}\n{'k'}\nyes\na\nb\nhi\n'hi'\na!\nhihi\nTrue\nfallback\nFalse\nTrue\nTrue 2\nNone None\nNone\nNone\n[True]\nhi\nTrue\nFalse\nNone\n[1, 2]\n5\n2.5\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -4911,7 +4932,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/206/prog.ll:36:19: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/207/prog.ll:36:19: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -4925,7 +4946,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/206/prog.ll:36:19: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/207/prog.ll:36:19: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -5431,11 +5452,11 @@
       ]
     }
   ],
-  "rows": 228,
+  "rows": 229,
   "skipped": 30,
-  "pass": 198,
+  "pass": 199,
   "fail": 0,
-  "oracle_match": 184,
+  "oracle_match": 185,
   "oracle_debt": 22,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

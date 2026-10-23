@@ -2279,6 +2279,32 @@ falls back to dynamic dispatch.
   `i32 @.lst1` into a `printf` slot, no `lambda` involved), **Gap R.386** (an applied `lambda` that reads a name and answers a
   container is refused by `list literal elements must be integers, not ` — a sentence naming nothing).
 
+- **An applied `lambda` that SPELLS its answer answers with that kind, not with its slot (Gap R.384, ADR 0402)** —
+  `print((lambda: True)())` printed `1`, `print((lambda: None)())` printed `0`, and `print((lambda: "hi")())` printed
+  `0` on the CLI while the leg that verifies never reached the run time at all, because the hoist's `return` interned
+  the text on a road that only asks for the heap-text runtime when something in the original statement asks for it.
+  A `def` whose body is `return True` has printed `True` since **ADR 0257** and one whose body is `return None` since
+  **ADR 0368**, because the print door never decides a call's kind from its payload — it asks `textReturningCallables`,
+  `IsBoolExpr`'s call arm and `fdReturnsValue`, and all three read a module-level **declaration**. The fix is the same
+  shape as **ADR 0401**'s and reuses it: the pass's answer half gained `appliedLambdaBodyRegisters`, a second question
+  beside the container scan's that reads the body's own spelling (`*StrLit`, `*BoolLit`, `*NoneLit`), and a body that
+  spells one of the three becomes a declaration — then walks the `def` roads it always should have, where the
+  registration, the `ret` and the printer are decisions someone else already made. Nothing new was written: `rt_print_str`,
+  `rt_print_bool` and `rt_print_mixed_value` (with the `answerKindPlan` tag beside it) are the printers a `def` uses,
+  and the interning moved onto the road that requests the runtime, so both legs compile the same module. Asked of CPython
+  first over the 44-program family — each body in a binding, a print, `str`/`repr`, an equality, a concatenation, a
+  multiplication, a method receiver, `len`, a list element, a dict key and value, a set member, a call argument, a
+  condition, a comprehension, a `def`, a method, a `match` arm, a `try` body, a `finally` body, an f-string field, a
+  parameter and a default: **43 newly answered, 1 divergence** kept as evidence rather than reworded — the three carriers
+  whose answer is a CALL or an interpolation (**Gap R.387**, including the f-string arm this cycle deliberately did NOT
+  take, because `scanFreeIn` cannot see a name inside an interpolation's field and hoisting `f"{x}"` would read the
+  MODULE's `x`) and the `is None` verdict over an explicit `return None` (**Gap R.388**, which the `def` twin answers
+  wrongly too). Number and float bodies stay on the one-word road ON PURPOSE — `print((lambda: 5)())` is `5` and
+  `print((lambda: 2.5)())` is `2.5` today, and a hoist there buys nothing while risking the pair road and the
+  double-domain `define`. The record leg gained the 47 programs of that family the retired engine never answered (**8621 →
+  8668** sources), `gustyc --lambda-answers` reports the new kinds (`text`/`bool`/`none`) through the same
+  schema-declared document, and `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness.
+
 - **A refusal about a target names the node the PROGRAM wrote, not the node the parser built (Gap R.379, ADR
   0400)** — ADR 0398 cured the leak at the statement door and its own filing named three more, which sat untouched
   because none of them goes through `noteUnlowered`: `[1, 2][0] = 3` printed `… got *lang.ListLit; CPython accepts

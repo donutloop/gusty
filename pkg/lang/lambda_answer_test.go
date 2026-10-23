@@ -74,6 +74,50 @@ func lambdaAnswerPrograms() []lambdaAnswerRow {
 		// The row was measured at the print door; the f-string field is the same position with a spec engine
 		// in front of it, and the interpolation is where the walk used to stop (Gap R.383's witness).
 		{"an f-string field of the answer", "print(f\"{(lambda: [1, 2])()}\")\n", "[1, 2]\n"},
+		// ---------------------------------------------------------------------
+		// Roadmap Gap R.384 (ADR 0402): an answer that is a TEXT, a VERDICT or the VOID, spelled as a literal
+		// in the body. Each of these printed the payload word at exit 0 — `1` for a verdict, `0` for None and
+		// for a text's @str_tab position — while the `def` twin of the very same body printed the reference's
+		// bytes, because `textReturningCallables`, `IsBoolExpr`'s call arm and `fdReturnsValue` all read a
+		// module-level `FuncDef` and none of them can see a callee that is a `Lambda` node. Every row below
+		// was answered by giving the `lambda` the one thing those doors can read: a declaration.
+		// ---------------------------------------------------------------------
+		{"an applied lambda that answers a verdict answers the verdict", "print((lambda: True)())\n", "True\n"},
+		{"the other verdict", "print((lambda: False)())\n", "False\n"},
+		{"an applied lambda that answers None answers None", "print((lambda: None)())\n", "None\n"},
+		{"an applied lambda that answers a text answers the text", "print((lambda: \"hi\")())\n", "hi\n"},
+		{"the verdict bound to a name", "x = (lambda: True)()\nprint(x)\n", "True\n"},
+		{"the text bound to a name", "x = (lambda: \"hi\")()\nprint(x)\n", "hi\n"},
+		{"None bound to a name", "x = (lambda: None)()\nprint(x)\n", "None\n"},
+		{"str of a text answer", "print(str((lambda: \"hi\")()))\n", "hi\n"},
+		{"repr of a text answer", "print(repr((lambda: \"hi\")()))\n", "'hi'\n"},
+		{"a text answer compared with a literal", "print((lambda: \"hi\")() == \"hi\")\n", "True\n"},
+		{"a text answer repeated", "print((lambda: \"hi\")() * 2)\n", "hihi\n"},
+		{"a text answer concatenated on either side", "print((lambda: \"a\")() + \"!\")\n", "a!\n"},
+		{"a text answer asked of a text method", "print((lambda: \"hi\")().upper())\n", "HI\n"},
+		{"a text answer measured", "print(len((lambda: \"hi\")()))\n", "2\n"},
+		{"a text answer as a loop iterable", "for c in (lambda: \"ab\")():\n    print(c)\n", "a\nb\n"},
+		{"a text answer as a membership needle", "print((lambda: \"hi\")() in [\"hi\", \"x\"])\n", "True\n"},
+		{"the verdict as a condition", "if (lambda: True)():\n    print(\"yes\")\n", "yes\n"},
+		{"the verdict chosen by `or`", "print((lambda: False)() or \"fallback\")\n", "fallback\n"},
+		{"the verdict asked of the truthiness builtin", "print(bool((lambda: \"\")()))\n", "False\n"},
+		{"a verdict and a void as list elements", "print([(lambda: True)(), (lambda: None)()])\n", "[True, None]\n"},
+		{"a text as a list element, read back", "xs = [(lambda: \"hi\")()]\nprint(xs[0])\n", "hi\n"},
+		{"a text as a dict value", "print({\"k\": (lambda: \"hi\")()})\n", "{'k': 'hi'}\n"},
+		{"a text as a dict key", "print({(lambda: \"k\")(): 1})\n", "{'k': 1}\n"},
+		{"a text as a set member", "print({(lambda: \"k\")()})\n", "{'k'}\n"},
+		{"a text answer as a call argument", "def f(v):\n    return v\nprint(f((lambda: \"hi\")()))\n", "hi\n"},
+		{"two answers of three kinds in one print", "print((lambda: True)(), (lambda: 2)())\n", "True 2\n"},
+		{"the void printed twice in one print", "print((lambda: None)(), (lambda: None)())\n", "None None\n"},
+		{"an answer the verdict chose in a ternary", "print((lambda: True)() if 1 else False)\n", "True\n"},
+		{"the verdict is a comprehension element", "print([v for v in [(lambda: True)()]])\n", "[True]\n"},
+		{"the answer with a parameter filled", "print((lambda x: None)(1))\n", "None\n"},
+		{"the answer with a default filled", "print((lambda x=3: None)())\n", "None\n"},
+		{"the verdict answered from inside a def", "def f(x):\n    return (lambda: True)()\nprint(f(1))\n", "True\n"},
+		{"the verdict answered from inside a method", "class C:\n    def m(self):\n        print((lambda: True)())\n\nC().m()\n", "True\n"},
+		{"the void answered in a `match` arm", "match 1:\n    case 1:\n        print((lambda: None)())\n", "None\n"},
+		{"the answer in a `try` and in a `finally`", "try:\n    print((lambda: None)())\nfinally:\n    print((lambda: True)())\n", "None\nTrue\n"},
+		{"the text answered beside a container answer", "print((lambda: \"hi\")())\nprint((lambda: [1, 2])())\n", "hi\n[1, 2]\n"},
 		// Two roads into the same answer: the application written inside a `def` and beside other answers.
 		{"the application written inside a def", "def f():\n    print((lambda: [1, 2])())\n\nf()\n", "[1, 2]\n"},
 		{"two applications in one program", "print((lambda: [1, 2])())\nprint((lambda: [3])())\n", "[1, 2]\n[3]\n"},
@@ -151,6 +195,17 @@ func lambdaAnswerFiledNotFixed() []struct{ name, src, defTwin, gap string } {
 			"def h():\n    return [3, 4]\n\ndef g():\n    return [h(), 1]\n\nprint(g())\n",
 			"Gap R.67",
 		},
+		{
+			// Gap R.171: a void that crosses a call boundary arrives as the bare word 0, because the parameter
+			// has no tag beside it. Now that an applied `lambda` that answers the void becomes a declaration, the
+			// two spellings of the program — the void handed to a forwarding parameter by a hoisted `lambda` and
+			// by a `def` — arrive at the SAME wrong byte, which is the parity this row claims: the missing word
+			// is the parameter's, not the lambda's.
+			"the void handed to a forwarding parameter answers the digit 0 (Gap R.171's, not this row's)",
+			"def f(v):\n    return v\n\nprint(f((lambda: None)()))\n",
+			"def a1():\n    return None\n\ndef f(v):\n    return v\n\nprint(f(a1()))\n",
+			"Gap R.171",
+		},
 	}
 }
 
@@ -192,35 +247,6 @@ type lambdaAnswerOwedRow struct {
 
 func lambdaAnswerOwed() []lambdaAnswerOwedRow {
 	return []lambdaAnswerOwedRow{
-		// Gap R.384 — the same registration, one rung up from the container arm this row paid: an answer
-		// that is a text, a verdict or None still travels as one word and arrives as the slot it lives in.
-		// The `def` twin of each prints what the reference prints, which is what makes it a row rather than
-		// the road being wide. The text arm is also Gap R.333's missing definition: the CLI leg prints the
-		// slot `0`, the leg every `pkg/lang` case walks never reaches the run time at all.
-		{
-			name:  "an applied lambda that answers a text answers its heap slot (the CLI) and is rejected by the assembler (this leg)",
-			src:   "print((lambda: \"hi\")())\n",
-			want:  "hi\n",
-			mode:  "rejects",
-			today: "use of undefined value '@rt_str_intern2'",
-			gap:   "Gap R.384, Gap R.333",
-		},
-		{
-			name:  "an applied lambda that answers a verdict answers its payload",
-			src:   "print((lambda: True)())\n",
-			want:  "True\n",
-			mode:  "prints",
-			today: "1\n",
-			gap:   "Gap R.384",
-		},
-		{
-			name:  "an applied lambda that answers None answers its heap slot",
-			src:   "print((lambda: None)())\n",
-			want:  "None\n",
-			mode:  "prints",
-			today: "0\n",
-			gap:   "Gap R.384",
-		},
 		// Gap R.385 — the shape behind this row's ternary control, with no `lambda` in it at all: the arm
 		// keeps the module-level literal as its value and the print door puts the GLOBAL in an `i32` slot.
 		{
@@ -230,6 +256,68 @@ func lambdaAnswerOwed() []lambdaAnswerOwedRow {
 			mode:  "rejects",
 			today: "global variable reference must have pointer type",
 			gap:   "Gap R.385",
+		},
+		// Gap R.387 — measured while widening Gap R.384's gate. The body spells its kind in the source, but it
+		// spells it as a CALL to a `def` (or as an interpolation), and this pass's answer question reads the
+		// body's own literal, not the callee's registration. The `def` twin — `def outer(): return inner()` —
+		// prints the reference's bytes, so the answer exists; what is missing is the walk from one body to the
+		// other. The f-string arm is the dangerous one: `scanFreeIn` (the frame gate's reader) filters slice
+		// fields by `nodeField`, exactly like the `callableWalk` of Gap R.383, so it cannot see a Name inside
+		// an interpolation's field — hoisting such a body would read the MODULE's name where the program wrote
+		// the frame's, which is ADR 0166's wrong answer at exit 0. That arm waits for the walk, not for a gate.
+		{
+			name:  "an applied lambda whose body is a CALL to a text-answering def answers the @str_tab position",
+			src:   "def inner():\n    return \"hi\"\n\nprint((lambda: inner())())\n",
+			want:  "hi\n",
+			mode:  "prints",
+			today: "0\n",
+			gap:   "Gap R.387",
+		},
+		{
+			name:  "an applied lambda whose body is a CALL to a verdict-answering def answers the payload",
+			src:   "def ib():\n    return True\n\nprint((lambda: ib())())\n",
+			want:  "True\n",
+			mode:  "prints",
+			today: "1\n",
+			gap:   "Gap R.387",
+		},
+		{
+			name:  "an applied lambda whose body is a CALL to a void-answering def answers the void word",
+			src:   "def iN():\n    return None\n\nprint((lambda: iN())())\n",
+			want:  "None\n",
+			mode:  "prints",
+			today: "0\n",
+			gap:   "Gap R.387",
+		},
+		{
+			// The two legs disagree for this one, which is why it is pinned in `rejects` mode: the CLI links and
+			// prints the payload word `0`, and the leg every `pkg/lang` case walks never reaches the run time at
+			// all, because the closure road interns the interpolation into a module that has no `@rt_str_intern2`
+			// definition — roadmap Gap R.333's missing runtime block, worn by an f-string body (ADR 0401 measured
+			// the same pair for a text body before this pass took those bodies at all).
+			name:  "an applied lambda whose body is an interpolation dies in the assembler (the CLI prints the void word)",
+			src:   "print((lambda: f\"hi{2}\")())\n",
+			want:  "hi2\n",
+			mode:  "rejects",
+			today: "use of undefined value '@rt_str_intern2'",
+			gap:   "Gap R.387, Gap R.333",
+		},
+		// Gap R.388 — the void SPELLED as `return None` is not the void reached by falling off the end. A body
+		// with no `return` stores the run-time kind word and `f() is None` answers True; a body that writes
+		// `return None` stores nothing, so `is`/`==` compare the payload `0` against None and answer False at
+		// exit 0. Roadmap Gap R.228's own Definition of done reads “`print(f())` writes `None` on both legs and
+		// `f() is None` is `True`” — the first half holds for both spellings, the second holds only for the
+		// fall-off-the-end one, and no test asked the question, which is how a DoD cell came to state an answer
+		// the toolchain does not give. The lambda spelling below is the same program with the hoist in front of
+		// it, which is why it is measured here; its `def` twin answers False too (the parity row in
+		// `lambdaAnswerFiledNotFixed`), so the row belongs to the comparison door and not to this pass.
+		{
+			name:  "a void answer compared with None answers False (the `def` twin does too)",
+			src:   "print((lambda: None)() is None)\n",
+			want:  "True\n",
+			mode:  "prints",
+			today: "False\n",
+			gap:   "Gap R.388",
 		},
 		// Gap R.386 — the gate this row left shut: a body that READS the enclosing frame stays on the
 		// closure road, and the closure road has no container answer, so the program dies with the literal
@@ -459,18 +547,26 @@ func TestWhatTheWholeProgramReaderCannotSeeIsTheWalkHole(t *testing.T) {
 // The IR the answer travels in.
 // ----------------------------------------------------------------------------
 
-// TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal is the row's IR claim: the declaration the
-// pass mints materialises the container at the `ret`, so the word that crosses the return is a register
-// holding a handle. `ret i32 @.lst1` — a module constant in an integer position — is the instruction
-// `llc-20` refused at exit 2, and this row fails if it comes back.
-func TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name   string
-		src    string
-		need   []string
-		forbid []string
-	}{
+// lambdaAnswerIRRow is one row of the IR table the row's claim is read off: what the emitted module has to
+// carry, what it must not carry, and — for the three kinds roadmap Gap R.384 registered (ADR 0402) — whether
+// the answer is allowed to reach `@printf` as a number at all.
+type lambdaAnswerIRRow struct {
+	name   string
+	src    string
+	need   []string
+	forbid []string
+	// answerNeverReachesPrintf asserts that no `@printf` call in one of the PROGRAM's own bodies is handed an
+	// `i32` register — the shape that printed `1` for a verdict and `0` for None and for a text. It is asserted
+	// over the program's bodies rather than over a `%d` format constant in the module, because the runtime blocks
+	// carry formats of their own and a module-wide ban fails on `rt_gc_report`'s own text.
+	answerNeverReachesPrintf bool
+	// wantPrintfOfAnswer is the control's opposite claim: the answer DOES reach the number printer, because
+	// this body spells a number and the one-word road is exactly the road the row keeps for it.
+	wantPrintfOfAnswer bool
+}
+
+func lambdaAnswerIRRows() []lambdaAnswerIRRow {
+	return []lambdaAnswerIRRow{
 		{
 			name:   "a list literal answer",
 			src:    "print((lambda: [1, 2])())\n",
@@ -497,7 +593,50 @@ func TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal(t *testing.T
 			need:   []string{"define i32 @gy_lambda_0()", "ret i32 5"},
 			forbid: []string{"__cans", "call i32 @rt_alloc("},
 		},
-	} {
+		// Roadmap Gap R.384 (ADR 0402): the three kinds the `def` answer tables register and the one-word road
+		// cannot render. Each row asserts the PRINTER the kind owns and that the answer never reaches printf's
+		// number — printf handed the payload is exactly what printed `1` for `True` and `0` for `None` and for a
+		// text. The text row is also roadmap Gap R.333's witness: the hoisted `return` interns through
+		// `@rt_str_intern2`, and the block that DEFINES it is in the module, which is the definition the closure
+		// road's side-buffer emission leaves out and `llc-20` refused at exit 2 for the very same source.
+		{
+			name:                     "a verdict answer is printed by the bool printer, never by printf's number",
+			src:                      "print((lambda: True)())\n",
+			need:                     []string{"define i32 @gy_lambda_0()", "ret i32 1", "call void @rt_print_bool(i32 %"},
+			answerNeverReachesPrintf: true,
+		},
+		{
+			name:                     "a void answer is printed by the tag-reading printer",
+			src:                      "print((lambda: None)())\n",
+			need:                     []string{"define i32 @gy_lambda_0()", "call void @rt_print_mixed_value(i32 %", "store i32 3, i32* @gy_lambda_0.anst"},
+			answerNeverReachesPrintf: true,
+		},
+		{
+			name:                     "a text answer is interned at the return and printed by the text printer",
+			src:                      "print((lambda: \"hi\")())\n",
+			need:                     []string{"define i32 @gy_lambda_0()", "call i32 @rt_str_intern2(", "ret i32 %", "call void @rt_print_str(i32 %", "define internal i32 @rt_str_intern2("},
+			forbid:                   []string{"ret i32 @."},
+			answerNeverReachesPrintf: true,
+		},
+		{
+			// The gate's own boundary, read off the module rather than off a print: a body that spells a NUMBER
+			// keeps the number road, so the widening above cannot have quietly routed every answer through the
+			// tag-reading printers, and the control below is the printf the three rows above forbid.
+			name:               "the number control keeps the number printer",
+			src:                "print((lambda: 5)())\n",
+			need:               []string{"call i32 @gy_lambda_0()", "ret i32 5"},
+			wantPrintfOfAnswer: true,
+		},
+	}
+}
+
+// TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal is the row's IR claim: the declaration the
+// pass mints materialises the container at the `ret`, so the word that crosses the return is a register
+// holding a handle. `ret i32 @.lst1` — a module constant in an integer position — is the instruction
+// `llc-20` refused at exit 2, and this row fails if it comes back.
+func TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal(t *testing.T) {
+	t.Parallel()
+	for _, tc := range lambdaAnswerIRRows() {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -514,6 +653,35 @@ func TestTheHoistedAnswerIsBuiltAtTheReturnAndNeverTravelsAsAGlobal(t *testing.T
 				if strings.Contains(res.IR, bad) {
 					t.Fatalf("the module carries the forbidden %s:\n%s", bad, res.IR)
 				}
+			}
+			// The printf discipline, asked of the PROGRAM's own bodies only: `@main` and the `@gy_*` frames the
+			// compiler emits. The runtime blocks are not the program's answer and keep their own formats.
+			inProgram, sawNumberPrint := false, false
+			for _, line := range strings.Split(res.IR, "\n") {
+				if strings.HasPrefix(line, "define ") {
+					head := strings.SplitN(strings.TrimPrefix(line, "define "), "(", 2)[0]
+					// `define i32 @main()` spells the symbol AFTER its return type; the name is what decides
+					// whether this body belongs to the program or to the runtime block.
+					if i := strings.Index(head, "@"); i >= 0 {
+						head = head[i:]
+					} else {
+						head = ""
+					}
+					inProgram = head == "@main" || strings.HasPrefix(head, "@gy_")
+					continue
+				}
+				if !inProgram || !strings.Contains(line, "@printf(") {
+					continue
+				}
+				if strings.Contains(line, ", i32 %") {
+					sawNumberPrint = true
+				}
+			}
+			if tc.answerNeverReachesPrintf && sawNumberPrint {
+				t.Fatalf("the answer reached printf's number format in a program whose printer knows its kind:\n%s", res.IR)
+			}
+			if tc.wantPrintfOfAnswer && !sawNumberPrint {
+				t.Fatalf("a body that spells a number lost the number printer it has always had:\n%s", res.IR)
 			}
 			// Every `define` of the row's program is a definition of one symbol: the pass mints names
 			// beside the emitter's own counter, and two `define`s of one spelling is the exit-2 shape.
@@ -552,10 +720,19 @@ func TestTheHoistIsDecidedByTheProgramAlone(t *testing.T) {
 		{"a list answer is hoisted", "print((lambda: [1, 2])())\n", 1},
 		{"two applications are two declarations", "print((lambda: [1])())\nprint((lambda: [2])())\n", 2},
 		{"a number answer is not", "print((lambda: 5)())\n", 0},
-		{"a text answer is not — that is Gap R.331's other half", "print((lambda: \"hi\")())\n", 0},
 		{"a float answer is not", "print((lambda: 1.5)())\n", 0},
-		{"a None answer is not", "print((lambda: None)())\n", 0},
-		{"a verdict answer is not", "print((lambda: True)())\n", 0},
+		// Roadmap Gap R.384 (ADR 0402): the three kinds the `def` roads register and the one-word road cannot
+		// render are now hoisted, because the hoist IS the answer — the declaration is what `textReturningCallables`,
+		// `IsBoolExpr` and `fdReturnsValue` need in order to say anything about the call at all.
+		{"a text answer is hoisted", "print((lambda: \"hi\")())\n", 1},
+		{"a None answer is hoisted", "print((lambda: None)())\n", 1},
+		{"a verdict answer is hoisted", "print((lambda: True)())\n", 1},
+		{"the other verdict is hoisted", "print((lambda: False)())\n", 1},
+		{"the void answered through a parameter is hoisted", "print((lambda x: None)(1))\n", 1},
+		// … and the shapes that borrow another body's registration are NOT: this pass reads the body's own
+		// spelling, not the callee's table entry (roadmap Gap R.387).
+		{"a body that is a call to a text-answering def is not — Gap R.387", "def inner():\n    return \"hi\"\n\nprint((lambda: inner())())\n", 0},
+		{"a body that is an interpolation is not — Gap R.387, and the frame reader cannot see its field", "print((lambda: f\"hi{2}\")())\n", 0},
 		{"a body that reads the frame is not", "def f(x):\n    return (lambda: [x])()\n\nprint(f(1))\n", 0},
 		{"a body that reads a module name is not", "t = [1, 2]\nprint((lambda: t)())\n", 0},
 		{"a parameter handed a double is not — the pair road owns that value", "print((lambda v: [v, 1])(2.5))\n", 0},
@@ -698,8 +875,15 @@ func TestWhatTheHoistLeavesAloneStillAnswersWhatItDid(t *testing.T) {
 		want    string // the bytes this toolchain prints, pinned (not the reference's)
 		refuses string // or the sentence it refuses with
 	}{
-		{"a None answer is still the word it always was", "print((lambda: None)())\n", "0\n", ""},
-		{"a verdict answer is still the word it always was", "print((lambda: True)())\n", "1\n", ""},
+		{"a number answer is still the word it always was", "print((lambda: 5)())\n", "5\n", ""},
+		{"a float answer is still the word it always was", "print((lambda: 2.5)())\n", "2.5\n", ""},
+		{
+			// The two shapes Gap R.387 owns: the pass declines them, so the bytes they printed before the gate
+			// widened are the bytes they print after. A "gate" that moved one of these moved a program it claims
+			// not to touch.
+			"a body that is a call to a text-answering def is still the payload it always was",
+			"def inner():\n    return \"hi\"\n\nprint((lambda: inner())())\n", "0\n", "",
+		},
 		{
 			"a pair handed to a slot is still refused by the literal road",
 			"print((lambda v: [v, 1])(2.5))\n", "", "list literal elements must be integers",
@@ -860,6 +1044,56 @@ func TestWhatThePassSaysAboutItselfNamesEveryApplication(t *testing.T) {
 	}
 	if doc.NamesConsumed < len(doc.Declarations) {
 		t.Fatalf("the pass consumed %d names for %d declarations", doc.NamesConsumed, len(doc.Declarations))
+	}
+}
+
+// TestWhatThePassCallsAVerdictATextAndTheVoid is the machine path for the three answers roadmap Gap R.384
+// added to the gate (ADR 0402): the account names each declaration's answer with the word the `def` roads use,
+// so an agent can branch on `bool`/`text`/`none` instead of scraping the module. The number row beside them is
+// the negative half — a body whose answer the one-word road already renders is declined, and said to be.
+func TestWhatThePassCallsAVerdictATextAndTheVoid(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		src    string
+		answer string
+	}{
+		{"a verdict", "print((lambda: True)())\n", "bool"},
+		{"the other verdict", "print((lambda: False)())\n", "bool"},
+		{"the void", "print((lambda: None)())\n", "none"},
+		{"a text", "print((lambda: \"hi\")())\n", "text"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			doc := askThePassItsAccount(t, tc.src)
+			if !doc.Rewritten || len(doc.Declarations) != 1 {
+				t.Fatalf("one application, one declaration expected: rewritten=%v %+v\n%s", doc.Rewritten, doc.Declarations, tc.src)
+			}
+			d := doc.Declarations[0]
+			if d.Answer != tc.answer {
+				t.Fatalf("the account calls the answer %q, the %s road calls it %q\n%s", d.Answer, tc.name, tc.answer, tc.src)
+			}
+			if d.Symbol == "" || d.Line == 0 {
+				t.Fatalf("the declaration names no symbol or no line: %+v\n%s", d, tc.src)
+			}
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("the compiled leg refused a program the reference answers: %v\n%s", err, tc.src)
+			}
+			// The account's only claim worth trusting: the symbol it names is a define the module carries.
+			if want := "define i32 @gy_" + d.Symbol + "()"; !strings.Contains(res.IR, want) {
+				t.Fatalf("the account says %s answers a %s, and the module never carried it\n%s", d.Symbol, d.Answer, res.IR)
+			}
+		})
+	}
+	// The number control, from the same document: declined, and named as declined.
+	num := askThePassItsAccount(t, "print((lambda: 5)())\n")
+	if num.Rewritten || len(num.Declarations) != 0 || len(num.Declined) != 1 || num.Declined[0].Shape != "answers_nothing_provable" {
+		t.Fatalf("a number answer is the one-word road's, and the account has to say so: %+v", num)
+	}
+	if !strings.Contains(num.Declined[0].Reason, "number") || !strings.Contains(num.Declined[0].Reason, "roadmap Gap R.") {
+		t.Fatalf("the decline names no shape the author can act on and no row that owns it:\n%s", num.Declined[0].Reason)
 	}
 }
 

@@ -5817,7 +5817,10 @@ in. `--emit-ast` and `gusty fmt` still see the `lambda` the program typed: the r
 What this does NOT buy, each with the row that owns it:
 
 ```python
-print((lambda: "hi")())        # prints 0 where the reference prints hi — Gap R.384 (same for True -> 1, None -> 0)
+def inner():
+    return "hi"
+print((lambda: inner())())     # prints 0 where the reference prints hi — Gap R.387 (the `def` twin prints hi;
+                               # the answer is in the CALLEE's registration, one node past this gate)
 def f(x):
     return (lambda: [x])()     # refused: the body reads the frame, so it keeps the capture road, which has
                                # no container answer — Gap R.386 (the `def` twin prints [2])
@@ -5832,7 +5835,76 @@ table knows … (roadmap Gap R.67, ADR 0333)`, the sentence its `def` twin gets,
 an f-string field is also still invisible to the *clone* road's reader — the applied-answer road reaches those carriers
 and the defunctionalisation pass does not, which is **Gap R.383**'s shared walk.
 
+### An applied `lambda` that spells its answer is a value with a kind (L11.7, Gap R.384, ADR 0402)
+
+```python
+print((lambda: True)())                          # True     — was `1` at exit 0
+print((lambda: False)())                         # False    — was `0`
+print((lambda: None)())                          # None     — was `0`
+print((lambda: "hi")())                          # hi       — was `0`; the compiling leg's llc refused the module
+print((lambda: "hi")() == "hi")                   # True
+t = (lambda: "hi")()                             # a binding
+print(t, len(t), t.upper(), t * 2)               # hi 2 HI hihi
+print(str((lambda: "hi")()), repr((lambda: "hi")()))   # hi 'hi'
+print((lambda: "a")() + "!")                      # a!
+print((lambda: "hi")() in ["hi", "x"])            # True
+for c in (lambda: "ab")():                         # a loop over the answer
+    print(c)                                     # a / b
+if (lambda: True)():                              # a condition
+    print("yes")
+print([(lambda: True)(), (lambda: None)()])       # [True, None]
+print({"k": (lambda: "hi")()})                    # {'k': 'hi'}
+print({(lambda: "k")(): 1}, {(lambda: "k")()})    # {'k': 1} {'k'}
+print(f"{(lambda: True)()}")                       # True     — an interpolation's field
+print((lambda: False)() or "fallback")            # fallback
+print(bool((lambda: "")()))                       # False
+print((lambda x: None)(1))                        # None     — a parameter, or a default, filled
+def echo(v):
+    return v
+print(echo((lambda: "hi")()))                     # hi       — across a call boundary
+```
+
+The section above this one is the rule; this one is the same rule read by the three doors that had no arm for a
+callee they could not see. A `def` whose body is `return True` has printed `True` since **ADR 0257**, and a `def`
+whose body is `return None` has printed `None` since **ADR 0368**, because the print door never decides a call's kind
+from the payload — it asks `textReturningCallables` (**ADR 0366**), `IsBoolExpr`'s call arm and `fdReturnsValue`, and
+every one of those reads a module-level **declaration**. An applied `lambda` had none, so its answer travelled the
+one-word road and arrived as the number it was stored in.
+
+**ADR 0402** adds a second question to the pass's answer half beside the container scan's: `appliedLambdaBodyRegisters`
+reads the body's own spelling — `*StrLit`, `*BoolLit`, `*NoneLit` — and a body that spells one of the three becomes a
+declaration exactly as a container answer does. Nothing else was written: `rt_print_str`, `rt_print_bool` and
+`rt_print_mixed_value` (with the `answerKindPlan` tag the `return` road stores beside it) are the printers a `def`
+has always used, and the family they cover is the same family the `def` twin of every row prints.
+
+Two boundaries, both asserted rather than assumed. A body that spells a NUMBER or a FLOAT is left on the one-word
+road on purpose — `print((lambda: 5)())` is `5`, `print((lambda: 2.5)())` is `2.5`, and a hoist there buys nothing
+and risks the pair road and the double-domain `define`; the pass's own account lists those bodies as declined, under
+`answers_nothing_provable`, with the reason saying which shapes the road renders correctly. And the gate will not take
+an answer the source does not spell:
+
+```python
+def inner():
+    return "hi"
+print((lambda: inner())())     # 0 where the reference prints hi — Gap R.387: the kind is in the CALLEE's table
+def ib():
+    return True
+print((lambda: ib())())        # 1 where the reference prints True — the same row, another spelling
+print((lambda: f"hi{2}")())    # 0 (and llc refuses the module on the verifying leg) — Gap R.387, whose arm stays
+                               # shut because scanFreeIn cannot see a name inside an interpolation's field
+                               # (the Gap R.383 blindfold): hoisting `f"{x}"` would read the MODULE's x
+def f(v):
+    return v
+print(f((lambda: None)()))     # 0 — Gap R.171: the void crosses a call boundary as the bare word, `def` twins too
+print((lambda: None)() is None)# False — Gap R.388: `def f(): return None` / `print(f() is None)` answers False too
+```
+
+Each of those five is pinned with today's byte beside the reference's in both `pkg/lang/lambda_answer_test.go` and
+`integration/lambda_answer_kind_test.go`, so the day one of them answers it stops being a footnote and fails a case.
+`integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness for the answered family.
+
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
+
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in the compiled backend: the AOT codegen folds `int` on
 literal int/string args to a compile-time constant. `float` is

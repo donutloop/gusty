@@ -14181,3 +14181,48 @@ printed by the tool for a source printed beside it.
   gate that declined that program is mine and correct, and the sentence it falls through to is a different row's
   embarrassment (**Gap R.386**). Writing the `def` twin beside every declined program is what lets me say which of the two
   is the missing road.
+
+---
+
+## ADR 0402 — an applied `lambda` that SPELLS its answer becomes a declaration too (Gap R.384 closed; Gaps R.387, R.388 filed, 2026-10-23)
+
+- **An existing pass is the first place to look for the second half of a fix.** Yesterday's cycle minted
+  `hoistAppliedLambdaAnswers` for container answers and filed Gap R.384 as "the same missing declaration, three more
+  kinds". Closing it cost ~100 lines, all of them inside that one file: a second question in the answer half
+  (`appliedLambdaBodyRegisters`, reading the body's own `*StrLit`/`*BoolLit`/`*NoneLit`) and nothing else. Every
+  consequence was already built — the hoist's `return` reaches `stmtReturn`, which already registers text through
+  `textReturningCallables`, verdicts through `IsBoolExpr`'s call arm, and the void through `answerKindPlan`'s tag
+  table. When a fresh pass would have had to re-implement all three, the declaration instead made the emitter ask
+  them the way it asks a `def`. The number to remember: **43 of 44 family programs came to CPython's bytes with zero
+  new IR.**
+- **A fix is not a verdict, and a hoist is not free — so keep a control row.** Number and float bodies were the
+  temptation: hoisting them is *also* free, and `print((lambda: 5)())` is already `5` on the one-word road. Two rows
+  say so in both suites (`wantIRStr` demands `printf` survives, i.e. the body was NOT hoisted), because the failure
+  mode of a widening pass is not that it misses something, it is that it takes something away — ADR 0273's rule in
+  its usual role.
+- **The leg you test on is the leg whose bug you find.** `print((lambda: "hi")())` printed `0` under the CLI and
+  refused to compile in-process: `llc-20` on `use of undefined value '@rt_str_intern2'`. ADR 0401's hoist emitted
+  `return "hi"` from a body the original statement never contained, so the text-interning road's *demand* — which
+  runs in `emitProgram`'s walk over AST statements — never saw the string, and `runtimeText` stayed false. Moving
+  `ensureStringConst` into `emitReturnStatement`'s `*StrLit` arm put the demand on the road that needs the runtime,
+  and it fixed the CLI leg too, which had been printing `0` for the same reason (the print door's
+  `textReturningCallables` arm sits inside the block `cg.textReturning` opens). Both legs, one edit, because the
+  second leg had been lying about the first.
+- **A gate you widen must be widened on evidence you gathered first.** Before touching `appliedLambdaBodyRegisters`
+  I probed 44 programs and got: 40 already green (controls), 4 red. Three of the four red ones were Gap R.384's
+  literal kinds; the fourth was `print((lambda: None)() is None)` — a shape I had not thought to ask. Filing it
+  (**Gap R.388**, with the `def` twin printing `False` too, and the body-that-falls-off-the-end twin printing
+  `True`) took the temptation to "just fix that as well" off the table and onto the tracker, where its fix has a
+  door to fix (`tryArity0CallableComparison`'s `answerKind` parameter, which its caller passes `""` to).
+- **Do not take the arm whose guard you know is broken.** Gap R.387 lists an f-string body as owed, and accepting
+  `*FStringLit` in the gate is four lines. I left those four lines unwritten because `scanFreeIn` — the frame gate's
+  reader — cannot see a name inside an interpolation's field (Gap R.383's `nodeField` blindfold), so hoisting
+  `return f"{x}"` would build a `def` that reads the MODULE's `x` and answers quietly wrong. The ADR says this out
+  loud under "Rejected" rather than leaving it as an omission, because the tempting version of this row is the one
+  that ships a wrong answer at exit 0.
+- **A count in a file is not a count in the docs that describe it, and the guard names the three that matter.**
+  `tools/recmerge` grew the record 8621 → 8668; `TestTheArtifactTableCountsAreTheFilesOwn`,
+  `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn` and
+  `TestTheRoadmapSnapshotIsMeasuredNotRemembered` named `AGENTS.md`, `docs/operations.md`'s artifact table and the
+  roadmap Snapshot row — and only those. `docs/language.md`'s new section quotes *history* ("7743 → 7762"), which
+  stays as written; changing yesterday's measurement to match today's is how a tracker starts lying.

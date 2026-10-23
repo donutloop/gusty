@@ -1,5 +1,238 @@
 {
  "entries": {
+"class Holder:\n    def show(self):\n        print((lambda: False)())\n\nHolder().show()\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def answerer(x):\n    return (lambda: True)()\n\nprint(answerer(1))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def echo(v):\n    return v\n\nprint(echo((lambda: \"hi\")()))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"print((lambda: 2.5)())\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"print((lambda: 5)())\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"print((lambda: 5)())\nprint((lambda: \"hi\")())\n": {
+    "stdout": "5\nhi\n",
+    "hasStdout": true
+   },
+
+"print((lambda: True)() == True)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: [1, 2])())\nprint((lambda: \"hi\")())\n": {
+    "stdout": "[1, 2]\nhi\n",
+    "hasStdout": true
+   },
+
+"print(f\"{(lambda: True)()}\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"t = (lambda: \"hi\")()\nprint(t, len(t), t.upper())\n": {
+    "stdout": "hi 2 HI\n",
+    "hasStdout": true
+   },
+
+"v = (lambda: True)()\nprint(v)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+"class C:\n    def m(self):\n        print((lambda: True)())\n\nC().m()\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    return v\nprint(f((lambda: \"hi\")()))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return (lambda: True)()\nprint(f(1))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"for c in (lambda: \"ab\")():\n    print(c)\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"if (lambda: True)():\n    print(\"yes\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"match 1:\n    case 1:\n        print((lambda: None)())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print((lambda x: None)(1))\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print((lambda x=3: None)())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"a\")() + \"!\")\n": {
+    "stdout": "a!\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")() * 2)\n": {
+    "stdout": "hihi\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")() == \"hi\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")() in [\"hi\", \"x\"])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")())\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")())\nprint((lambda: [1, 2])())\n": {
+    "stdout": "hi\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print((lambda: \"hi\")().upper())\n": {
+    "stdout": "HI\n",
+    "hasStdout": true
+   },
+
+"print((lambda: False)() or \"fallback\")\n": {
+    "stdout": "fallback\n",
+    "hasStdout": true
+   },
+
+"print((lambda: False)())\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print((lambda: None)())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print((lambda: None)(), (lambda: None)())\n": {
+    "stdout": "None None\n",
+    "hasStdout": true
+   },
+
+"print((lambda: True)() if 1 else False)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: True)())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: True)(), (lambda: 2)())\n": {
+    "stdout": "True 2\n",
+    "hasStdout": true
+   },
+
+"print([(lambda: True)(), (lambda: None)()])\n": {
+    "stdout": "[True, None]\n",
+    "hasStdout": true
+   },
+
+"print([v for v in [(lambda: True)()]])\n": {
+    "stdout": "[True]\n",
+    "hasStdout": true
+   },
+
+"print(bool((lambda: \"\")()))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(len((lambda: \"hi\")()))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(repr((lambda: \"hi\")()))\n": {
+    "stdout": "'hi'\n",
+    "hasStdout": true
+   },
+
+"print(str((lambda: \"hi\")()))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"print({\"k\": (lambda: \"hi\")()})\n": {
+    "stdout": "{'k': 'hi'}\n",
+    "hasStdout": true
+   },
+
+"print({(lambda: \"k\")(): 1})\n": {
+    "stdout": "{'k': 1}\n",
+    "hasStdout": true
+   },
+
+"print({(lambda: \"k\")()})\n": {
+    "stdout": "{'k'}\n",
+    "hasStdout": true
+   },
+
+"try:\n    print((lambda: None)())\nfinally:\n    print((lambda: True)())\n": {
+    "stdout": "None\nTrue\n",
+    "hasStdout": true
+   },
+
+"x = (lambda: \"hi\")()\nprint(x)\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"x = (lambda: None)()\nprint(x)\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"x = (lambda: True)()\nprint(x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [(lambda: \"hi\")()]\nprint(xs[0])\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
 "class C:\n    def m(self):\n        print((lambda: [1, 2])())\n\nC().m()\n": {
     "stdout": "[1, 2]\n",
     "hasStdout": true

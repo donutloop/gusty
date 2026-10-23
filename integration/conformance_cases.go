@@ -874,6 +874,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ADR 0399). The reads that still need a function VALUE (a hook calling a name bound to one, handing
 		// one to another function) stay refusals. Every line is what CPython prints for the same file.
 		"hook_named_call",
+		// The answer of a `lambda` applied where it is written carries its kind: a verdict, the void and a text
+		// are printed by the three printers a `def`'s answer uses, because the pass gives the `lambda` the one
+		// thing those doors can read — a declaration (roadmap Gap R.384, ADR 0402). Every line is what CPython
+		// prints for the same file.
+		"lambda_answer_kind",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

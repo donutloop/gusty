@@ -39,11 +39,19 @@ package lang
 //     so it stays on the emitter's capture road, which carries it as a parameter the call fills. The
 //     question is asked by `lambdaFreeNames` — the one door that decides what a body is free in — so
 //     the two roads cannot disagree about it (ADR 0232).
-//   - the minted declaration lands in ADR 0333's table, described or undescribed. A body that answers a
-//     number, a text, a float or `None` is not this pass's program: it keeps the one-word road it has
-//     always travelled, and the hoist would buy nothing but risk. A body that answers a name the module
-//     bound, a call this scan cannot follow, or a container of two different kinds is likewise left
-//     where it is — the scan's gate is the row, and this pass borrows the row.
+//   - the minted declaration lands in ADR 0333's table, described or undescribed — OR the body spells one
+//     of the three kinds the `def` roads register and the one-word road cannot render: a TEXT, a VERDICT,
+//     or the VOID (`None`). Those three are answered by `textReturningCallables`, by `IsBoolExpr`'s
+//     call arm and by `fdReturnsValue`, every one of which reads a module-level `FuncDef` and none of
+//     which can see a callee that is a `Lambda` node — which is why `(lambda: True)()` printed `1` where
+//     `def a(): return True` prints `True` (roadmap **Gap R.384**, ADR 0368's answer direction). A body
+//     that answers a NUMBER or a FLOAT is not this pass's program: its one-word road already answers,
+//     and a hoist that bought nothing but risk was not worth the exit-2 class. A body that answers a name
+//     the module bound, a call this scan cannot follow, or a container of two different kinds is likewise
+//     left where it is — the scans' gates are the rows, and this pass borrows the rows.
+//
+// The two answer questions are asked by `appliedLambdaProved`, and both are asked of the program AFTER
+// the rewrite, which is why the pass runs rounds.
 //
 // The second gate is asked of the program AFTER the rewrite, which is why the pass runs in rounds:
 // `(lambda v: [v, 1])(2.5)` hands its parameter a value that crosses as a (payload, tag) pair, and only
@@ -125,7 +133,7 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 	}
 	// The account, filled by the path the rewrite takes and read out at every exit — a document that
 	// described a hoist the compiler did not perform would be worse than no document at all.
-	say := func(keep map[int]bool, kinds map[int]containerAnswerKind, settled bool, minted int) {
+	say := func(keep map[int]bool, kinds map[int]containerAnswerKind, answers map[int]string, settled bool, minted int) {
 		if rep == nil {
 			return
 		}
@@ -138,7 +146,7 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 					line = s.site.Span().Line
 				}
 				rep.declared = append(rep.declared, lambdaAnswerDeclared{
-					symbol: names[s.index], lam: s.lam, kind: kinds[s.index], line: line,
+					symbol: names[s.index], lam: s.lam, kind: kinds[s.index], answer: answers[s.index], line: line,
 				})
 				continue
 			}
@@ -146,7 +154,7 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 		}
 	}
 	declined := func(minted int) (*Program, int) {
-		say(nil, nil, false, minted)
+		say(nil, nil, nil, false, minted)
 		return prog, 0
 	}
 	allow := map[int]bool{}
@@ -187,7 +195,7 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 			return declined(minted)
 		}
 		fresh.Stmts = append(fresh.Stmts, stmtsOfFuncDefs(defs)...)
-		next, nextKinds := appliedLambdaProved(fresh, hoisted)
+		next, nextKinds, nextAnswers := appliedLambdaProved(fresh, hoisted)
 		if askForAll {
 			// The trial round: everything answerable went in, and the scan says which of it is an answer.
 			askForAll = false
@@ -200,7 +208,7 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 			continue
 		}
 		if appliedLambdaSameSet(allow, next) {
-			say(allow, nextKinds, true, minted)
+			say(allow, nextKinds, nextAnswers, true, minted)
 			return fresh, minted
 		}
 		allow = next
@@ -356,18 +364,21 @@ func appliedLambdaDeclaration(lam *Lambda, name string, src Span) *FuncDef {
 	return fd
 }
 
-// appliedLambdaProved asks the only question that decides whether a hoist stays: does ADR 0333's scan
-// read this declaration as answering a container — described, or proved-and-undescribed? Both answers
-// are keeps, because the second is the one that turns a printed handle into a refusal (Gap R.261).
-// Anything else is a pull-back: the emitter's road, which for these shapes dies in `llc` or prints the
-// allocator's slot, is at least the road the rows describe. The kinds travel beside the keeps so the
-// pass can say, in its account, what answer each declaration proved — asked of the same scan run, so the
-// document and the rewrite cannot hold two versions of one verdict (ADR 0232, ADR 0379).
-func appliedLambdaProved(p *Program, sites []*appliedLambdaSite) (map[int]bool, map[int]containerAnswerKind) {
+// appliedLambdaProved asks the only question that decides whether a hoist stays: does ADR 0333's scan read
+// this declaration as answering a container — described, or proved-and-undescribed? Both answers are keeps,
+// because the second is the one that turns a printed handle into a refusal (Gap R.261). The second question
+// is asked of the body the pass itself wrote — `appliedLambdaBodyRegisters`, the text/verdict/void arm of
+// roadmap **Gap R.384** — and a body that answers neither is pulled back: the emitter's road, which for
+// these shapes dies in `llc` or prints the allocator's slot, is at least the road the rows describe. The
+// kinds travel beside the keeps so the pass can say, in its account, what answer each declaration proved —
+// asked of the same scan run, so the document and the rewrite cannot hold two versions of one verdict
+// (ADR 0232, ADR 0379).
+func appliedLambdaProved(p *Program, sites []*appliedLambdaSite) (map[int]bool, map[int]containerAnswerKind, map[int]string) {
 	keep := map[int]bool{}
 	kinds := map[int]containerAnswerKind{}
+	answers := map[int]string{}
 	if p == nil || len(sites) == 0 {
-		return keep, kinds
+		return keep, kinds, answers
 	}
 	described, undescribed := containerAnswerScan(p)
 	for _, s := range sites {
@@ -380,9 +391,58 @@ func appliedLambdaProved(p *Program, sites []*appliedLambdaSite) (map[int]bool, 
 		}
 		if ans, ok := undescribed[s.def.Name]; ok {
 			keep[s.index], kinds[s.index] = true, ans.kind
+			continue
+		}
+		if word := appliedLambdaBodyRegisters(s.lam); word != "" {
+			keep[s.index], answers[s.index] = true, word
 		}
 	}
-	return keep, kinds
+	return keep, kinds, answers
+}
+
+// The answer words the account publishes for a declaration whose answer is not a container. They are the
+// three kinds the `def` roads register and the one-word road prints as its payload: the @str_tab position,
+// the 0/1 of a verdict, and the void's word.
+const (
+	lambdaAnswerText = "text"
+	lambdaAnswerBool = "bool"
+	lambdaAnswerNone = "none"
+)
+
+// appliedLambdaBodyRegisters is the answer half's second question, and it is asked of the ONE spelling both
+// roads share — `lambdaFuncDef`'s single `return` of the body — so the pass and the emitter can never agree
+// about two different programs. It answers a kind only when the body's answer is WRITTEN in the source as
+// that kind: a text, a verdict, or the void. Every one of those three is a fact the `def` side already knows
+// how to publish — `textReturningCallables` registers the text, `IsBoolExpr`'s call arm reads the verdict off
+// the declaration's own returns, `fdReturnsValue` says the void answers nothing — and none of the three can
+// read a callee that is a `Lambda` node, which is the whole of why `(lambda: True)()` printed `1` and
+// `(lambda: None)()` printed `0` at **exit 0** while their `def` twins printed the reference's bytes
+// (roadmap **Gap R.384**, ADR 0368, ADR 0257).
+//
+// What it will not claim:
+//
+//   - a number or a float. Their one-word road answers correctly today (`print((lambda: 5)())` is `5`,
+//     `print((lambda: 2.5)())` is `2.5`), so a hoist would be a rewrite with all of the risk — the pair
+//     road, the double-domain `define`, ADR 0370's float-frame gate — and none of the gain.
+//   - an answer the source does not spell. A body that returns a NAME, a CALL, a comprehension or a
+//     container is answered by the scans, not by this predicate; a name the module bound and a call the
+//     scan cannot follow stay on the emitter's road, where the door refuses in words instead of guessing
+//     a kind from a payload (Gap R.331, Gap R.386).
+//   - an attribute, a subscript, a binary operation: shapes whose kind is a run-time question, and a gate
+//     that guesses is worse than a gate that declines.
+func appliedLambdaBodyRegisters(lam *Lambda) string {
+	if lam == nil || lam.Body == nil {
+		return ""
+	}
+	switch lam.Body.(type) {
+	case *StrLit:
+		return lambdaAnswerText
+	case *BoolLit:
+		return lambdaAnswerBool
+	case *NoneLit:
+		return lambdaAnswerNone
+	}
+	return ""
 }
 
 // programDefinedNames is every spelling the program itself declares: a `def`, a `class`, an `extern`,
@@ -492,6 +552,9 @@ type lambdaAnswerDeclared struct {
 	symbol string
 	lam    *Lambda
 	kind   containerAnswerKind
+	// answer is the spelled kind for the three answers that are not containers — "text", "bool", "none"
+	// (roadmap Gap R.384). Empty means the answer came from the container scan and `kind` is the word.
+	answer string
 	line   int
 }
 
@@ -508,8 +571,9 @@ const (
 	// lambdaAnswerShapeCaptures is the frame half of the gate: the body reads a name the application's
 	// frame owns, and a hoisted `lambda` reads the module. Roadmap Gap R.386 owns the widening.
 	lambdaAnswerShapeCaptures = "captures_frame"
-	// lambdaAnswerShapeUnproved is the answer half: the scan cannot prove one container kind along every
-	// road through the body. A number, a text, a verdict and `None` answer here today (Gap R.384).
+	// lambdaAnswerShapeUnproved is the answer half: no scan can prove one kind along every road through the
+	// body. A number and a float answer here because their one-word road already answers; a name, a call and
+	// an operation answer here because the scans cannot follow them (Gap R.331, Gap R.384).
 	lambdaAnswerShapeUnproved = "answers_nothing_provable"
 )
 
@@ -523,9 +587,12 @@ func lambdaAnswerDeclineFor(s *appliedLambdaSite) lambdaAnswerDecline {
 	}
 	if appliedLambdaBodyCarriable(s.lam) {
 		return lambdaAnswerDecline{
-			shape:  lambdaAnswerShapeUnproved,
-			reason: "the body does not answer one container kind along every road through it, so its answer keeps the one-word road it has always travelled — a number, a text, a verdict and None are what the answer table does not register for a `lambda` yet (roadmap Gap R.331, Gap R.384, ADR 0333)",
-			line:   line,
+			shape: lambdaAnswerShapeUnproved,
+			reason: "the body does not answer one container the scan can prove, nor a text, a verdict or " +
+				"None written as a literal, so its answer keeps the one-word road it has always travelled — a " +
+				"number and a float answer correctly that way, and a name, a call or an operation is a kind no " +
+				"scan can name for a `lambda` yet (roadmap Gap R.331, Gap R.386, ADR 0333)",
+			line: line,
 		}
 	}
 	free := map[string]bool{}
@@ -600,7 +667,10 @@ func LambdaAnswersJSON(src string) (string, error) {
 	doc.Settled = acc.settled
 	doc.NamesConsumed = consumed
 	for _, d := range acc.declared {
-		entry := lambdaAnswerDeclJSON{Symbol: d.symbol, Answer: d.kind.String(), Line: d.line}
+		entry := lambdaAnswerDeclJSON{Symbol: d.symbol, Answer: d.answer, Line: d.line}
+		if entry.Answer == "" {
+			entry.Answer = d.kind.String()
+		}
 		if entry.Answer == "" {
 			// The scan proved a container answer without naming one kind — the undescribed half, which
 			// is what turns a printed handle into a refusal (Gap R.261). Say that rather than nothing.

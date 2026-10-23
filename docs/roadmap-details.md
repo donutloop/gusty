@@ -15288,6 +15288,32 @@ what keeps them on this row instead of in a file), and the three pins in `lambda
 arm waits on **Gap R.333**’s per-emission request for the block; landing the bool and `None` arms first is a
 legitimate intermediate state and the pin’s failure text says so.
 
+**Closed 2026-10-23 by ADR 0402.** The gate got a second question rather than a second door:
+`appliedLambdaBodyRegisters` reads the body’s own spelling — `*StrLit`, `*BoolLit`, `*NoneLit` — and a body that
+spells one of the three is a keep beside the container scan’s verdicts. Nothing downstream was written. The three
+printers a `def` has always used answered the family: `rt_print_bool` for the verdict, `rt_print_mixed_value` for
+the void (with the `store i32 3, i32* @gy_lambda_0.anst` that `answerKindPlan` mints beside the return), and
+`rt_print_str` for the text, whose `@rt_str_intern2` call now travels the road that ASKS for the heap block — so
+the module `llc-20` had refused verifies, and the CLI and the verifying leg print the same `hi` instead of one
+leg’s `0` and the other leg’s rejection.
+
+The measurement is a 44-program family run against `python3` before and after: **43 of them moved from the
+payload word to the reference’s bytes**, and the 44th — `print((lambda: None)() is None)` — printed `False` before
+and after, which is **Gap R.388** and is the reason the row was not closed on a table of 43. The controls are in
+the same table as the wins: `print((lambda: 5)())` is `5` and `print((lambda: 2.5)())` is `2.5`, on the one-word
+road, untouched, because a number’s payload IS its answer and a hoist there would be risk bought for nothing —
+the pass’s own account still lists those bodies as declined, with the reason naming the shape.
+
+What the gate still will not take is **Gap R.387**: a body whose kind lives one node away, in a callee’s
+registration (`(lambda: inner())()`) or in an interpolation (`(lambda: f"hi{2}")()`). The f-string arm is the one
+worth reading twice, because the reason it is not taken is not caution but a hole in a reader this pass depends
+on: `scanFreeIn` — reached through `lambdaFreeNames`, the frame gate’s one door — filters slice fields by
+`nodeField`, exactly like the `callableWalk` of **Gap R.383**, so it cannot see a `Name` inside an interpolation’s
+field. A body of `f"{x}"` therefore reports NO free names, and hoisting it would read the MODULE’s `x` where the
+program wrote the frame’s: a wrong answer at exit 0, wearing this pass’s clothes. That is recorded as
+**Gap R.387**’s second gate, and it is a reason the walk has to be fixed before the arm opens — not a reason to
+leave the four programs unpinned.
+
 ### Gap R.385 — a container in a ternary arm is emitted where a word belongs, with no lambda in the program
 
 ```console
@@ -17048,3 +17074,109 @@ Witness: `a_second_call_to_the_same_callee_reuses_the_first_calls_pair_word` and
 The conformance program avoids the shape deliberately — its callees are each called with one consistent
 argument shape — and that omission is this row's admission that the program would not otherwise print CPython's
 bytes.
+
+### Gap R.387 — an applied lambda whose answer lives in a CALL or an interpolation still answers the payload word
+
+```console
+$ python3 -c 'def inner(): return "hi"
+print((lambda: inner())())'
+hi
+$ gustyc --eval 'print((lambda: inner())())'      # inner declared above it
+0
+```
+
+Four bodies, all measured on 2026-10-23 while **ADR 0402** was widening **Gap R.384**’s gate, and all four were
+written as candidate rows for that row’s answered table before the gate declined them on their own evidence:
+
+| source | reference | this toolchain |
+|---|---|---|
+| `def inner(): return "hi"` / `print((lambda: inner())())` | `hi` | **`0`** at exit 0 |
+| `def ib(): return True` / `print((lambda: ib())())` | `True` | **`1`** at exit 0 |
+| `def iN(): return None` / `print((lambda: iN())())` | `None` | **`0`** at exit 0 |
+| `print((lambda: f"hi{2}")())` | `hi2` | **`0`** on the CLI; `llc-20` refuses the module on the verifying leg |
+
+The `def` twin of every one of them prints the reference’s bytes — `def outer(): return inner()` / `print(outer())`
+is `hi`, and `def o(): return f"hi{2}"` prints `hi2` — so this is not a missing road. The answer is already
+registered: `textReturningCallables` (**ADR 0366**) knows `inner` hands back a text, `answerKindPlan`
+(**ADR 0368**) knows what `iN` hands back, and the print door reads all of it for a `def`’s call. What is missing
+is the walk from one body to the other. `appliedLambdaBodyRegisters` asks whether the body’s OWN node is a
+`*StrLit`, a `*BoolLit` or a `*NoneLit`, and a body of `inner()` is a `*Call` whose kind belongs to somebody else.
+
+The honest version of the fix is therefore to ask the callee, not the body — run the two doors the `def` side
+already runs over the rewritten program (`textReturningCallables(prog, answerKindPlanOf(prog, pairReturns))` and
+the `fdReturnsValue`/`IsBoolExpr` arms) and let a body whose single `return` is a `*Call` to a registered name be
+a keep. What it must NOT be is a third reader of a body’s returns: `answerKindPlan`’s `armOf` already walks
+`return other(...)` and forwards the callee’s word, and **Gap R.383** is the record of what two readers of one
+tree do to a language.
+
+The interpolation arm has a second gate, and it is the part of this row worth quoting to anyone who wants to
+“just add the case”. The hoist is only sound when the body reads nothing the frame owns, and the door that decides
+that is `lambdaFreeNames` → `scanFreeIn`, which filters slice fields by `nodeField` — the same `callableWalk`
+blindfold **Gap R.383** filed. `FStringPart` is not a `Node`, so a body of `f"{x}"` reports NO free names, and the
+frame gate opens for a body that reads `x`:
+
+```console
+$ python3 -c 'x = 99
+def f():
+    x = 7
+    return (lambda: f"{x}")()
+print(f())'
+7
+$ gustyc --eval 'x = 99
+def f():
+    x = 7
+    return (lambda: f"{x}")()
+print(f())'
+0
+```
+
+Hoisting that body would have made the program read the MODULE’s `x`, which is **ADR 0166**’s wrong answer at
+**exit 0** produced by the very pass whose job is to stop wrong answers. The arm stays shut, the four programs stay
+pinned with today’s byte beside the reference’s (two in `pkg/lang/lambda_answer_test.go::lambdaAnswerOwed`, two in
+`integration/lambda_answer_kind_test.go::lambdaAnswerKindPinned`, plus the two CLI/JIT disagreements pinned by
+their `llc` sentence), and the interpolation moves when the WALK moves — which is **Gap R.383**’s definition of
+done, whose own DoD is to DELETE a walker rather than to add one.
+
+### Gap R.388 — a void answer compared with None answers False, but only when the body writes `return None`
+
+```console
+$ python3 -c 'def f(): return None
+print(f() is None, f() == None)'
+True True
+$ gustyc --eval 'def f(): return None
+print(f() is None, f() == None)'
+False False
+```
+
+The same question asked of a body that FALLS OFF ITS END answers `True` today:
+
+```console
+$ python3 -c 'def f():
+    x = 1
+print(f() is None)'
+True
+$ gustyc --eval 'def f():
+    x = 1
+print(f() is None)'
+True
+```
+
+The difference is which road emits the `return`. The epilogue road stores the run-time kind word **ADR 0368**
+mints — `store i32 3, i32* @gy_f.anst`, `TagNone` as the tag table means it — and the comparison door reads that
+word. The explicit `return None` road stores nothing, and the body is not in the plan’s `void` set either:
+`answersOnlyTheVoid` is built from bodies that answer *nothing but the void*, and a body with a written
+`return None` answers something as far as that scan is concerned. What reaches `is`/`==` is the payload `0` and a
+missing kind, and the verdict is `False` at the exit code of success.
+
+The applied-`lambda` spelling answers `False` identically — `print((lambda: None)() is None)` — and its `def` twin
+answers `False` too, which is what localises the row to the comparison door rather than to **ADR 0402**’s pass:
+the pass made `print((lambda: None)())` print `None` in the same commit, and left this beside it as a control.
+
+Why it is a fresh ID rather than an instance of **Gap R.228**: that row is ✅ `DONE`, its print-door half is paid
+and stays paid (`print(f())` writes `None` for BOTH spellings). But its Definition of done reads “`print(f())`
+writes `None` on both legs **and `f() is None` is `True`**”, and the second half of that sentence is false for the
+explicit `return None` spelling — a claim no test ever asked. `grep` for `is None` across `answer_kind_test.go`
+and `mixed_answer_kind_test.go` finds nothing. That is the process lesson worth keeping: a DoD cell is a claim, and
+a claim nobody runs is a claim that quietly stops being true. **Gap R.171** owns the same missing word one position
+later (the void crossing a call boundary as the bare `0`, which the `def` twin here also demonstrates through a
+forwarding parameter), and **L11.1** owns the tagged value word that would make the comparison answerable at all.
