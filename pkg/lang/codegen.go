@@ -747,13 +747,14 @@ func hoistAllocas(module string) string {
 		out = append(out, lead...)
 		// A hoisted variable slot also gets the one thing a road that forgets to initialise its slot
 		// cannot supply from where it sits: a defined value. `%_x = alloca i32` with nothing written to
-		// it is read by the release-the-old-binding prologue (`load i32, i32* %_x` / `rt_free`), and the
+		// it is read by the release-the-old-binding prologue (`load i32, i32* %_x` / `rt_release`), and the
 		// frame's previous contents are whatever the last call left on the stack — a garbage handle fed
-		// to rt_free corrupts the allocator's free list, the next rt_alloc walks off the arena, and the
+		// to the release door corrupts the allocator's free list, the next rt_alloc walks off the arena, and the
 		// program dies by SIGSEGV with the artifact, not the source, at fault (roadmap Gap R.258, found
 		// by ADR 0343's overlapping cases). Zero is what "this variable holds no object yet" already
 		// means everywhere else: the container-binding road stores 0 when it creates a slot, and
-		// emitFreeOld skips rt_free on 0. Asking here is the rule, rather than the forty-site hope.
+		// emitFree's null test is the door that turns 0 back into "no object". Asking here is the rule,
+		// rather than the forty-site hope.
 		//
 		// The stores go *after* the whole alloca run, not beside their slots: a root stack identifies a
 		// variable by slot address, so every allocation must still precede every instruction of the block

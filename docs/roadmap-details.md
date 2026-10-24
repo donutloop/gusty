@@ -12112,7 +12112,7 @@ missing question is already Gap R.234.
 
 <a id="gap-r-257"></a>
 
-### Gap R.257 — rebinding one alias frees the object the other still names (PLANNED, found by ADR 0341)
+### Gap R.257 — rebinding one alias frees the object the other still names (✅ DONE, found by ADR 0341, closed by ADR 0414)
 
 ```python
 y = {1: 2}
@@ -12134,6 +12134,17 @@ here, not only the trap. The fix belongs to the handle copy, not to the notebook
 release once (the heap block already owns `rt_alloc`/`rt_free`), or the shape is refused by name until then.
 Filed from this row's own probe table, reproduced identically on the commit before ADR 0341, and pinned as a
 debt row (not a promise) in `pkg/lang/rebind_kind_test.go` and `integration/rebind_kind_test.go`.
+
+**ADR 0414** closed it, and not with the mechanism this row named. The row asked for a count carried by the
+object; what answers it is a question asked of the NAMES, at the one table that already decides who holds what
+— `@rt_release` walks `gc.roots` / `gc.kinds` and declines the push while a root names the handle. The pinned
+program prints `7 / 7 / 2` at exit 0 (dead with `KeyError: 1` at exit 3 on the tagged parent `f7723b2`), and the
+row's Definition of done is witnessed in full: the pinned program, its 50-iteration loop form that forces the
+freed slot round the arena, and both negative controls (a name rebound with no alias, an alias never rebound)
+in `integration/rebind_kind_test.go::TestTheAliasReboundKeepsWhatTheOtherNameHolds`, with the reference re-derived
+inside each case and each program on the record, plus `integration/programs/rebound_alias_kept.gy` as a matrix row.
+What the per-name question cannot see — an object that survives only in another container's SLOT, which no root
+names — is **Gap R.427**, and that is the shape a per-object count is still owed for.
 
 ### Gap R.258 — a variable whose binding had not run was read, and the allocator died for it (PAID by ADR 0343)
 
@@ -18170,7 +18181,7 @@ and `t.remove(1)` stay refused, exactly as the same call written against the sou
 NAME, and a container METHOD over a name is **Gap R.174**'s standing, which this row does not open.
 
 <a id="gap-r-420"></a>
-### Gap R.420 — a rebinding releases a container another name still holds, and the allocator hands that slot to the next object (⏳ OPEN, filed by **ADR 0413**)
+### Gap R.420 — a rebinding releases a container another name still holds, and the allocator hands that slot to the next object (✅ DONE, filed by **ADR 0413**, closed by **ADR 0414**)
 
 ```gusty
 d = {"a": 1}   e = d   d = {"b": 2}
@@ -18179,21 +18190,41 @@ print(e)          #  {'a': 1}    ← this backend: {'b': 2}     — at exit 0
 print(e["a"])     #  1           ← this backend: KeyError: 'a'
 ```
 
-The emitted order is the whole row: `%f = load i32, i32* %_d` → `rt_free(%f)` → `rt_root_clear(%_d)` →
+The emitted order was the whole row: `%f = load i32, i32* %_d` → `rt_free(%f)` → `rt_root_clear(%_d)` →
 `rt_alloc`. `rt_free` (`codegen_ir_arena_globals.go`) pushes the handle on the free list and knows nothing
 about who else holds it, so the allocation two instructions later takes the same slot back and the object
 the alias roots becomes the new dict — with its own length, its own entries and its own tags. The collector
 is not at fault: `rt_root_put(%_e)` registered the slot, and the root is never consulted by the release.
 
-The control is what localises it. The identical program over a list (`xs = [1]` / `ys = xs` / `xs = [2]` /
-`print(ys)`) prints `[1]` and over a set (`s = {1}` / `t = s` / `s = {2, 3}` / `print(t)`) prints `{1}` —
+The control is what localised it. The identical program over a list (`xs = [1]` / `ys = xs` / `xs = [2]` /
+`print(ys)`) printed `[1]` and over a set (`s = {1}` / `t = s` / `s = {2, 3}` / `print(t)`) printed `{1}` —
 both on this build and on the parent `8aa3029`, which is the sentence that keeps this row out of
-**ADR 0413**'s commit and on the tracker. The fix is either to make a rooted handle unrecyclable (the push
-checks `gc.roots[0..gc_roots_used]`) or to give the dict's rebinding the list road's order — build the new
-object, then release the old — and either way the instruction order gets pinned from the module, because an
-ordering that only the current codegen happens to have is a hope rather than a claim. The general question,
-which any second root raises and not only an alias, is the **Gap Q.2**/**Q.1** memory family's; this is the
-smallest program that shows it.
+**ADR 0413**'s commit and on the tracker. The list road's order (build the new object, then release the old)
+is why it was never bitten; the dict's road releases first, and eleven binding sites share the one release door.
+
+**ADR 0414** paid it at the door rather than at either caller. `emitFree` now emits `call void @rt_release(i32 %h)`
+behind the same null test it always had, and `@rt_release` walks the collector's own table — `gc.roots` / `gc.kinds`
+to `gc_roots_used`, the same kind byte, so an `int` root whose word happens to be a slot index cannot veto anything —
+returning without a push when any entry holds the handle. `emitFreeOld` tags the *rebinding's* entry dead first, so
+the question is "does any OTHER name hold this?" and the slot being written over cannot veto its own release. The
+module now contains exactly one `call void @rt_free(`, inside `@rt_release`: the sweep pushes `free_next` inline, so the
+question has one place to be asked and one place to be read off the IR — and the six positions of a rebinding (`load` →
+`rt_root_clear` → `icmp ne` → `rt_release` → `rt_alloc` → `store`) are pinned from the module in
+`pkg/lang/releasing_a_shared_handle_test.go`, which is what the row's "pin the instruction order" clause asked for.
+
+Why the collector was never the fix, and what the declined push costs: `rt_gc` marks the whole free list dead (`2`)
+before it marks from the roots and `rt_gc_mark` marks only an unmarked slot, so a rooted object once pushed stayed
+pushable — and letting the root mark override that mark, the first alternative, leaves a LIVE object on the free list
+for `rt_alloc` to hand out. A declined release bills one occupancy to `heap_live` until the sweep takes the object the
+normal way; the 500-iteration churn reports the same `total_freed=1998` as its parent, and the 2000-iteration one has
+to say `exhausted=0` with `total_freed` non-zero or its case fails.
+
+Two rows come out of the same battery and were paid nothing: **Gap R.427** (an object that survives only in another
+container's SLOT is still released — the door asks the root table, and a slot is not a root; byte-identical on the
+tagged parent `f7723b2`) and **Gap R.426** (`sorted` over a dict sorts the entry array's first `len` words rather than
+its keys, also byte-identical on the parent). **Gap R.257**'s pinned program — dead with `KeyError: 1` at exit 3 on the
+tagged parent — answers the reference's `7 / 7 / 2` on this door and was promoted with its loop form and its two
+negative controls into `integration/rebind_kind_test.go::TestTheAliasReboundKeepsWhatTheOtherNameHolds` and the corpus.
 
 <a id="gap-r-421"></a>
 ### Gap R.421 — a set's print order puts the void last (✅ DONE, filed by **ADR 0413**, closed by **ADR 0415**)
@@ -18331,3 +18362,59 @@ that one word, not evidence for the rule. The fix is a hash, not a guess: intern
 the payload at intern time and let `rt_member_bucket` read it, keeping the rule in the one helper and the salt
 where the reference keeps it. The row is byte-identical on the parent build, so the order this backend lacks for
 texts predates the order it gained for numbers; the difference is that there is now a place to put the answer.
+
+<a id="gap-r-426"></a>
+### Gap R.426 — `sorted` over a dict sorts the entry array's first `len` words, not its keys (⏳ OPEN, filed by **ADR 0414**)
+
+```gusty
+d = {"a": 1, "b": 2}
+print(sorted(d))                 #  ['a', 'b']   ← this backend: ['a', 1]      — at exit 0
+print(sorted(d, reverse=True))   #  ['b', 'a']   ← this backend: [1, 'a']      — at exit 0
+for k in d:                      #  a            b                              — this backend agrees
+```
+
+One program, two doors over the same dict, and one of them wrong. The loop walks the keys; the sort loop walks
+the array — and a dict's array holds **two words per entry** while its `len` counts entries, the same pair of facts
+`rt_gc`'s element walk had to be taught (**ADR 0350**'s stride note: `stride = isDict ? 2 : 1`, read from the object's
+kind word). So a two-entry dict is "sorted" over its first two words, which are a key and a value, and the answer is a
+one-entry sort wearing one of each. Nothing raises and nothing refuses.
+
+The neighbours are honest, which is what keeps this one door's row: `list(d)`, `set(d)`, `tuple(d)`, `max(d)`,
+`min(d)` and `sum(d)` all stop the build with their own existing capability sentences (**ADR 0346**'s registry), and
+the set-order family (**Gap R.424**, **Gap R.425**) is a different question about a different container. Measured
+2026-10-24 while writing **ADR 0414**'s held-container battery, and byte-identical on the tagged parent `f7723b2` —
+the sentence that makes it a row rather than that commit's damage. The fix is the stride question asked at the top of
+the sort loop (ask the object what it is, walk a dict by its keys) and, until that arm exists, a refusal that names the
+missing half rather than an answer built from a payload.
+
+<a id="gap-r-427"></a>
+### Gap R.427 — a value that lives only in another container's slot is released, because the release asks the root table and a slot is not a root (⏳ OPEN, filed by **ADR 0414**)
+
+```gusty
+xs = {"a": 1}
+d = {"k": xs}          # the dict's SLOT holds xs's object; no root names it
+xs = {"b": 2}          # the rebinding releases it
+for i in range(3):
+    t = [i]            # the first allocation takes the slot back
+print(d["k"])          #  {'a': 1}   ← this backend: {'b': 2}   — at exit 0
+```
+
+**ADR 0414** put a question in front of the free list: *does any registered root still name this handle?* Every shape
+this family was measured in — an alias, a chain of names, a frame's own rebinding — is a shape where the answer is a
+name, and the root table is exactly the table of names. This is the shape where it is not. `d`'s entry is a payload the
+slot's TAG says is a dict (**ADR 0232**), and a tag is data, not an entry in `gc.roots`: the collector's mark phase
+sees the containment (it walks slots and marks what their tags say are objects) and the release door does not.
+
+The list twin answers correctly — same program with lists prints `[1, 2]` — because the list road builds the new object
+before releasing the old, which is the other half of the alternative **ADR 0414** rejected. That is also why the shape
+is reproducible only for the container whose road releases first, and why the row's DoD pins the list twin beside it:
+a fix that reaches one and breaks the other has not answered the question.
+
+Two ways out, both named by **Gap R.257**'s `Blocked on` cell rather than invented here. The clean one is the count on
+the OBJECT the row never got: a reference per heap slot, bumped at every door that stores a handle into a container —
+`rt_dict_put_tagged`, `rt_list_set_tagged`, `rt_set_add_tagged`, the tag door `rt_tag_elem`, the instance-field road —
+and cleared when the sweep recycles the slot; the count is only trustworthy if every store door remembers to bill it,
+which is the reason it is a row and not this commit. The smaller one widens this door: ask a rooted container's slots
+too, at the price of walking what the roots reach on every release. What will not do is the current per-name question,
+which cannot see an object that no name holds — and the ADR says so about its own decision rather than leaving the
+reader to find the boundary by program.

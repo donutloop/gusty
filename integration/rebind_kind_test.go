@@ -16,6 +16,8 @@ package integration
 import (
 	"strings"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 func TestAReboundContainerAtTheCLIMatchesCPython(t *testing.T) {
@@ -166,25 +168,60 @@ func TestAReboundContainersTrapsStayCatchable(t *testing.T) {
 	}
 }
 
-// TestTheAliasedContainerIsADebtRowNotAnAnswer pins the divergence the rebinding family walks into that
-// this row does not own: `b = a` copies the handle, so the two names hold ONE object, and the rebinding
-// `b = [7, 8]` frees the object `a` still names. The reference prints "7\n7\n2\n" at exit 0; both the
-// commit before ADR 0341 and this one die with `KeyError: 1` at exit 3 (roadmap Gap R.257). It is pinned
-// as a debt, with the reference's answer beside it, because a wrong answer at exit 0 and a death at exit 3
-// are both worse than the refusal this row is careful about — and because the fix belongs to the handle
-// copy, not to the kind claim ADR 0341 settled.
-func TestTheAliasedContainerIsADebtRowNotAnAnswer(t *testing.T) {
+// TestTheAliasReboundKeepsWhatTheOtherNameHolds is **Gap R.257**'s program, PROMOTED out of the debt table it
+// was pinned in. The row's claim was that `b = a` copies the handle, so the two names hold ONE object, and the
+// rebinding `b = [7, 8]` freed it — `print(a[1])` then died with `KeyError: 1` at exit 3 when the freed slot
+// was up for reuse, and answered wrongly when it was not, which is the worse face. The release door now asks
+// the collector's own root table before it pushes (**ADR 0414**), and the program prints the reference's
+// `7 / 7 / 2` at exit 0.
+//
+// The mechanism the row named was a count on the OBJECT (a refcount, so a copy shares the decision); what
+// answers it is a question to the NAMES, asked of the one table that already exists. That difference is why
+// the containment face of the same disease — a value that survives only in another container's slot, which no
+// root names — is a row of its own (**Gap R.427**) rather than a footnote here.
+func TestTheAliasReboundKeepsWhatTheOtherNameHolds(t *testing.T) {
 	t.Parallel()
-	const src = "y = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\n"
-	path := writeSrc(t, t.TempDir(), "rebind_alias_debt.gy", src)
-	if py, ok := cpythonOut(t, path); ok && py != "7\n7\n2\n" {
-		t.Fatalf("the reference's answer this row writes into Gap R.257 changed: %q", py)
-	}
-	for _, engine := range cliEngines {
-		combined := cliRun(t, engine, path)
-		if !strings.Contains(combined, "KeyError: 1") {
-			t.Errorf("%s no longer dies the way Gap R.257 records (%s); if the alias now answers, promote the program to the answered table, the record and the conformance corpus", engine, combined)
-		}
+	for _, tc := range []struct {
+		name, src, want string
+	}{
+		{
+			"the row's own program",
+			"y = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\n",
+			"7\n7\n2\n",
+		},
+		{
+			"the loop form, which forces the freed slot round the arena",
+			"a = {1: 2}\nb = a\nfor i in range(50):\n    t = [i]\n    b = [7, 8]\nprint(a[1])\nprint(len(a))\n",
+			"2\n1\n",
+		},
+		{
+			"the negative control: a name rebound with no alias",
+			"a = {1: 2}\na = [7, 8]\nprint(a[0])\nprint(len(a))\n",
+			"7\n2\n",
+		},
+		{
+			"the negative control: an alias that is never rebound",
+			"a = {1: 2}\nb = a\nprint(a[1])\nprint(b[1])\nprint(len(a) == len(b))\n",
+			"2\n2\nTrue\n",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "rebound_alias_kept.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the reference's answer this row writes into Gap R.257 changed: %q, want %q\n%s", py, tc.want, tc.src)
+			}
+			if !lang.HasGoldenAnswer(tc.src) {
+				t.Fatalf("%q is not on the record — record it from the reference with tools/recmerge\n%s", tc.src, tc.src)
+			}
+			for _, engine := range cliEngines {
+				out, code := cliRunCode(t, engine, path)
+				if code != 0 || out != tc.want {
+					t.Fatalf("%s printed %q exit %d, want %q (%s)", engine, out, code, tc.want, cliRun(t, engine, path))
+				}
+			}
+		})
 	}
 }
 

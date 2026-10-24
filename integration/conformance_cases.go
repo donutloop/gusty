@@ -910,6 +910,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// that returns the name and a method with a `finally`, and the file's every line is what CPython
 		// prints for it.
 		"except_as_name",
+		// A container rebound under a second name keeps answering for the name that held it: the release door
+		// asks the collector's own root table before it pushes the slot on the free list, so the alias is never
+		// left pointing at the object that took its slot (**ADR 0414**, roadmap **Gap R.420**). The program walks
+		// the dict, the list and the set, a value read out of a dict, a frame's own rebinding, a 200-iteration
+		// churn that holds one container and vends another, and the miss the held dict still earns; every line
+		// is what CPython prints for it.
+		"rebound_alias",
+		// What **Gap R.257** was filed for, and the row's own loop form: `b = a` shares one object, the rebinding
+		// releases it, the release declines because a name still names it, and the two negative controls (a name
+		// rebound with no alias, an alias never rebound) keep the road they always had (**ADR 0414**).
+		"rebound_alias_kept",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

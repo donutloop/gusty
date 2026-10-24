@@ -145,6 +145,12 @@ func theAliasAnswered() []struct {
 		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
 		{"the alias of a set compared with its source", "s = {1, 2}\nt = s\nprint(s == t)\nt.add(3)\nprint(s == t)\n", "True\nTrue\n"},
 		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
+		// The dict's half of the same sentence was the release road's, not the notebook's: the rebinding pushed
+		// the still-held object's slot onto the free list and the next allocation wrote the new dict over it
+		// (**Gap R.420**, **ADR 0414**). It sits here beside the set's twin because from here on the two
+		// containers answer the same question at the same door.
+		{"the dict rebound under its own alias", "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n", "{'b': 2}\n{'a': 1}\n"},
+		{"the dict rebound under its own alias, read through the alias", "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(e[\"a\"])\nprint(\"a\" in e)\nprint(len(e))\n", "1\nTrue\n1\n"},
 		// The order the members come back in, which is the reference's order and not the order the source
 		// named them in (roadmap **Gap R.421**, ADR 0415). A set is an open-addressed table there and every
 		// reader walks it in bucket order, so the void — whose hash lands it in bucket 0 — comes first,
@@ -468,18 +474,10 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 		// What the dict's and the set's half of the record still leaves owed, each measured on the parent
 		// build `8aa3029` as well as on this one and each therefore a ROW rather than this commit's damage
 		// (ADR 0166's wrong-answer class, ADR 0309's rule that an answer is filed with its bytes).
-		{
-			name:     "the dict rebound under its own alias",
-			src:      "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n",
-			gap:      "Gap R.420",
-			compiled: "{'b': 2}\n{'b': 2}\n",
-			python:   "{'b': 2}\n{'a': 1}\n",
-			why: "the rebinding RELEASES the object the name held (`emitFreeOld` → `rt_free`) and the allocator " +
-				"hands that same slot straight to the new dict, so the alias is left holding a handle that now " +
-				"denotes the second object — the list and the set answer this program correctly, which localises " +
-				"it in the dict's release road and not in the notebook (the **Gap Q.2**/**Q.1** memory family, not " +
-				"the alias's)",
-		},
+		//
+		// The dict's half — the rebound alias — was the last of these and is GONE: the release door now asks
+		// the root table before it pushes the slot (**Gap R.420**, **ADR 0414**), and the program moved into
+		// theAliasAnswered() beside the set's twin rather than being edited here.
 		{
 			name:     "a text discarded from a set of numbers through the alias",
 			src:      "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",

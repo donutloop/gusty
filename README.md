@@ -2986,6 +2986,35 @@ falls back to dynamic dispatch.
   a live reference over one order (**ADR 0166**: a wrong answer's pin is a debt, not a witness). **ADR 0414** is left unissued on purpose: the in-flight
   release-door change owns that number, and this row is not it.
 
+- **A released container is asked who still holds it, at the door in front of the free list (Gap R.420 +
+  Gap R.257, ADR 0414)** — `d = {"a": 1}` / `e = d` / `d = {"b": 2}` / `print(d)` / `print(e)` printed
+  `{'b': 2}` **twice** at **exit 0** where CPython prints `{'b': 2}` then `{'a': 1}`, and `print(e["a"])`
+  raised `KeyError: 'a'` over a dict that had never lost its `a` — the same lie told twice. `e = d` copies the
+  handle (**ADR 0412**), and the rebinding's release pushed that one object's slot on the allocator's free list,
+  so the very next `rt_alloc` took the slot back and wrote the SECOND dict into it: the alias's handle, being a
+  slot number, denoted the new object. The collector could not undo it and the reason is the design: `rt_gc`
+  marks the whole free list dead (`2`) BEFORE it marks from the roots, and `rt_gc_mark` marks only a slot whose
+  mark is `0`, so a rooted object once pushed stayed pushable — while letting the root mark override that dead
+  mark, the first alternative, leaves a LIVE object on the free list for `rt_alloc` to hand out. The question
+  therefore moved to the door in front of the push. `emitFree` calls `@rt_release`, which walks the collector's
+  own table — `gc.roots` / `gc.kinds` to `gc_roots_used`, the same kind byte, so twelve `int` roots whose words
+  are the indices `0..12` veto nothing — and declines to push while any entry holds the handle;
+  `emitFreeOld` tags the REBINDING's own entry dead first, so the question is “does any OTHER name hold this?”
+  and not a permanent veto by the slot being written over (**ADR 0181**'s precision, asked at the door as well as
+  at the sweep). A declined release costs one occupancy until the sweep — which is the road allowed to decide
+  liveness (**ADR 0350**) — and that is measured, not promised: a 500-iteration churn reports the same
+  `total_freed=1998` as its parent and a 2000-iteration one has to answer with `exhausted=0`. `@rt_free` now has
+  exactly ONE caller in a module and it stands inside `@rt_release` (the sweep pushes `free_next` inline), and the
+  six positions of a rebinding — `load` → `rt_root_clear` → `icmp ne` → `rt_release` → `rt_alloc` → `store` — are
+  pinned from the emitted `define` blocks, because an order the codegen merely happens to have is a hope and not a
+  claim. **Gap R.257**'s pinned program came with it: `a = {1: 2}` / `b = a` / `b = [7, 8]` / `print(a[1])`, dead
+  with `KeyError: 1` at exit 3 on the tagged parent, prints the reference's `7 / 7 / 2` and was promoted — loop form
+  and both negative controls included — into the answered table, the record and the corpus. What the per-name
+  question cannot see is filed rather than smoothed: a value that survives only in another container's SLOT is
+  still released eagerly, because a tag is data and not an entry in `gc.roots` (**Gap R.427**), and `sorted(d)` over
+  a dict sorts the entry array's first `len` words instead of its keys — `['a', 1]` for `['a', 'b']` (**Gap R.426**,
+  both byte-identical on the parent `f7723b2`). `tools/recmerge` wrote **30** entries from the reference (record
+  **9094 → 9124**) and refused none; the two owed-table pins this row paid are DELETED, not edited.
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

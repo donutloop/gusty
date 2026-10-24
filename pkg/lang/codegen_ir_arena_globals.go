@@ -1,5 +1,6 @@
 // The arena itself: the parallel tables, the free list, rt_alloc (with the window-doubling door of ADR 0350)
-// and rt_free, plus the element read/write doors. One block of heapRuntimeIRTmpl.
+// and the two release doors — rt_release, the one a program body calls, and the rt_free push under it — plus
+// the element read/write doors. One block of heapRuntimeIRTmpl.
 package lang
 
 // heapIRArenaGlobals is one block of the arena's runtime block; heapRuntimeIRTmpl in codegen_ir_arena.go is
@@ -110,6 +111,57 @@ alloc_reuse:
   %lv21 = add i32 %lv2, 1
   store i32 %lv21, i32* @heap_live
   ret i32 %fh
+}
+
+; The rebinding's release, and the one contract rt_free never had: a handle that another live slot still
+; names may NOT go on the free list. The collector cannot undo it — rt_gc marks the whole free list dead (2)
+; BEFORE it marks from the roots, and rt_gc_mark only marks a slot whose mark is 0 — so a rooted object that
+; was pushed stays pushable, and the next rt_alloc writes a fresh container over the object a name is still
+; reading (roadmap **Gap R.420**, **ADR 0414**: d = {"a": 1} / e = d / d = {"b": 2} / print(e) printed the
+; SECOND dict, because the freed slot came back as the new one and e's handle now denoted it).
+; So ask the same table the collector asks — every root entry whose kind says “handle” — and if any of them
+; holds this handle, do nothing: skipping the eager release costs an occupancy until the next sweep, never a
+; live object, and the sweep is the thing that is allowed to decide liveness (ADR 0181's precision, ADR 0350's
+; growth). The caller clears the REBINDING's own root entry first, so this is the question “does any OTHER
+; name hold it?” and not a permanent veto by the slot being overwritten.
+;
+; It asks the table the way rt_gc asks it — the same @gc.roots / @gc.kinds globals, the same kind test, the same
+; walk to @gc_roots_used — because a release that consulted a different table than the collector would be a
+; second answer to “who is holding this”, and ADR 0273's rule is that a fact asked twice is decided once.
+; Nothing but this door calls @rt_free — the collector's sweep pushes its own slots inline — which is why the
+; claim over it is a case in pkg/lang/releasing_a_shared_handle_test.go rather than a comment here.
+define internal void @rt_release(i32 %h) {
+entry:
+  %top = load i32, i32* @gc_roots_used
+  br label %rl.loop
+rl.loop:
+  %i = phi i32 [ 0, %entry ], [ %i.next, %rl.step ]
+  %end = icmp sge i32 %i, %top
+  br i1 %end, label %rl.free, label %rl.body
+rl.body:
+  ; A slot tagged 0 holds a raw value (or nothing): the collector does not scan it and neither does this,
+  ; which is the precision ADR 0181 bought — and the reason a rebinding to an int can veto nothing.
+  %kp = getelementptr [@CAP@ x i8], [@CAP@ x i8]* @gc.kinds, i32 0, i32 %i
+  %kv = load i8, i8* %kp
+  %isHandle = icmp ne i8 %kv, 0
+  br i1 %isHandle, label %rl.check, label %rl.step
+rl.check:
+  %rp = getelementptr [@CAP@ x i32*], [@CAP@ x i32*]* @gc.roots, i32 0, i32 %i
+  %rpp = load i32*, i32** %rp
+  %rnull = icmp eq i32* %rpp, null
+  br i1 %rnull, label %rl.step, label %rl.cmp
+rl.cmp:
+  %rv = load i32, i32* %rpp
+  %same = icmp eq i32 %rv, %h
+  br i1 %same, label %rl.keep, label %rl.step
+rl.step:
+  %i.next = add i32 %i, 1
+  br label %rl.loop
+rl.free:
+  call void @rt_free(i32 %h)
+  ret void
+rl.keep:
+  ret void
 }
 
 define internal void @rt_free(i32 %h) {

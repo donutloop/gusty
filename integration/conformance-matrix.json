@@ -4356,6 +4356,48 @@
     },
     {
       "case": {
+        "id": "programs/rebound_alias",
+        "name": "rebound_alias.gy",
+        "source": "# A container rebound under a second name keeps answering for the name that held it.\n# (roadmap Gap R.420, ADR 0414) The rebinding releases the object the name held; the\n# release goes on the allocator's free list only when no other rooted slot still names\n# it, so the alias is never left pointing at the object that took its slot.\nd = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\nprint(e[\"a\"])\nxs = [1]\nys = xs\nxs = [2]\nprint(ys)\nprint(xs)\nxs.append(3)\nprint(ys)\nprint(xs)\ns = {1}\nt = s\ns = {2, 3}\nprint(t)\nprint(s)\nheld = {\"k\": [1, 2]}\nkeeper = held[\"k\"]\nheld = {\"k\": [3]}\nprint(keeper)\nprint(held[\"k\"])\ntotal = 0\nfor i in range(200):\n    w = {\"a\": i}\n    v = w\n    w = {\"b\": 1}\n    w = {\"c\": 2}\n    total = total + v[\"a\"]\nprint(total)\nprint(len(w))\ntry:\n    print(e[\"zz\"])\nexcept KeyError:\n    print(\"caught\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "{'b': 2}\n{'a': 1}\n1\n[1]\n[2]\n[1]\n[2, 3]\n{1}\n{2, 3}\n[1, 2]\n[3]\n19900\n1\ncaught\n",
+      "python_ok": true,
+      "python_stdout": "{'b': 2}\n{'a': 1}\n1\n[1]\n[2]\n[1]\n[2, 3]\n{1}\n{2, 3}\n[1, 2]\n[3]\n19900\n1\ncaught\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/rebound_alias_kept",
+        "name": "rebound_alias_kept.gy",
+        "source": "# What **Gap R.257** was filed for, answered: `b = a` shares ONE object between two names, the\n# rebinding `b = [7, 8]` releases the one `a` still names, and the release now declines — so the\n# next allocation does not take that slot and write a list over the dict (ADR 0414).\n# The loop form is the same shape with the freed slot forced round the arena, and the last four\n# lines are the negative controls: a name rebound with no alias, and an alias never rebound.\ny = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\nc = {1: 2}\nd = c\nfor i in range(50):\n    t = [i]\n    d = [7, 8]\nprint(c[1])\nprint(len(c))\nprint(len(d))\nprint(len(t))\nw = {1: 2}\nw = [9]\nprint(w[0])\np = {1: 2}\nq = p\nprint(p[1])\nprint(q[1])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "7\n7\n2\n2\n1\n2\n1\n9\n2\n2\n",
+      "python_ok": true,
+      "python_stdout": "7\n7\n2\n2\n1\n2\n1\n9\n2\n2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5521,11 +5563,11 @@
       ]
     }
   ],
-  "rows": 233,
+  "rows": 235,
   "skipped": 29,
-  "pass": 204,
+  "pass": 206,
   "fail": 0,
-  "oracle_match": 190,
+  "oracle_match": 192,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

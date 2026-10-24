@@ -14834,3 +14834,69 @@ discovery — and it still taught me twice.
    that, and put the work back. Two rules fell out of it: **never commit another worker's in-flight change to pay for
    your own green**, and **leave a number you did not earn unissued** — `ADR 0414` belongs to that change, so this row
    cites `0415` and says why in its Status cell.
+
+## ADR 0414 — a released container is asked who still holds it, at the door in front of the free list (Gaps R.420 and R.257 closed; Gaps R.426, R.427 filed, 2026-10-24)
+
+1. **A free list is a queue of slots, and a slot cannot be both free and rooted — so the question has to be
+   asked before the push.** The obvious fix was in the collector: `rt_gc` marks the whole free list dead (`2`)
+   before it marks from the roots, and `rt_gc_mark` only marks a slot whose mark is `0`, which is why a rooted
+   object that had been released stayed pushable. Letting the root mark override that dead mark looks like a
+   two-line repair and is a corruption machine: the slot stays on the free list, live, and the next `rt_alloc`
+   hands a live object to a fresh container. The mark array is one pass's scratch; ownership lives in the free
+   list. Every "fix it in the GC" instinct about this family has to survive that sentence first.
+
+2. **The parked change was the right shape, and finishing it was cheaper than rewriting it.** **ADR 0415**'s
+   session set aside another worker's uncommitted `rt_release` and deliberately left `ADR 0414` unissued for it.
+   This round picked that change up: it already had the door, the kind-byte gate and the clear-before-release
+   order, and it already answered the row's two programs. What it did not have was the witnesses, and the
+   difference between the two states is the whole commit — see rule 6. Adding `g.heapUsed = true` inside
+   `emitFree` (the road that emits a call into a gated block claims the block, **ADR 0173**) also stopped the
+   change depending on the textual block-usage probe noticing a call the flag was supposed to assert.
+
+3. **A witness is a claim about the artifact, and for a release-order bug the artifact is the instruction
+   sequence.** Two runs of the same source can differ here depending on whether the freed slot happens to be up
+   for reuse: the same disease showed itself as `KeyError: 1` at exit 3 in one program and as a silently plausible
+   number in another. Output-only tests certify whichever case the allocator was in the mood for. So the suite now
+   reads the emitted `define` blocks: `@rt_free` has exactly one caller in a module and it stands inside
+   `@rt_release`; and the six positions of a rebinding — `load %_d` → `rt_root_clear %_d` → `icmp ne` →
+   `rt_release` → `rt_alloc` → `store %_d` — are compared pairwise, each adjacent pair load-bearing (clear-before-load
+   releases an untested word, release-after-store frees the NEW object, alloc-before-release hands the freed slot
+   straight to the new dict).
+
+4. **Ask the kind, never the payload — and prove it with the arena's own number.** The first draft of the door
+   compared "does any root's word equal this handle?", which is the conservative collector's failure re-opened: an
+   `int` variable holding `3` would veto the release of slot `3`, and every program with a small integer in scope
+   would leak. The gate is the kind byte, exactly as in the collector's mark phase (**ADR 0181**). The test that
+   keeps it honest does not read a comment: it pads a program with twelve int roots whose words are the indices
+   `0..12` and requires the collector's `headroom=` to be identical to the same program without them.
+
+5. **A row paid by a mechanism it did not name still closes — and its `Blocked on` cell is where the residue goes.**
+   **Gap R.257** asked for a refcount carried by the object; what answers it is a question asked of the names,
+   because the names are what the root table holds. Its Definition of done (pinned program, loop form that forces
+   the freed slot round the arena, two negative controls) is met, so it closed and its debt pin was DELETED — which
+   is what that pin's own failure message said to do. But the mechanism chose the row's boundary: an object that
+   survives only in another container's SLOT is invisible to a table of names, so `xs = {"a": 1}` / `d = {"k": xs}` /
+   `xs = {"b": 2}` / allocate / `print(d["k"])` still prints the second dict. That is **Gap R.427**, filed with the
+   list twin (which is right, because that road allocates before it releases) pinned beside it, and the row links
+   back to R.257's `Blocked on` for the count that would settle it.
+
+6. **"It works when I run it" is not a commit.** The parked change already made both row programs print the
+   reference's bytes; it had no test file, no record entries, no docs, and the two owed-table pins that its own fix
+   invalidates were still in the tree failing. Half of this round was the parts that make a behaviour a fact: 17
+   answered shapes on the compiled leg AND the record leg, the traps beside them, the two IR-shape suites, the CLI
+   family against a live `python3`, two corpus programs plus their matrix rows, 30 records from `tools/recmerge`,
+   and the deletion of the pins that the fix had silently paid (`TestWhatTheAliasRowStillOwesIsFiledNotFixed`, its
+   CLI twin, and `TestTheAliasedContainerIsADebtRowNotAnAnswer` — whose failure was the only reason I found
+   **Gap R.257** had been paid too).
+
+7. **Guards found the second row; eyeballs would not have.** `sorted(d)` over `{"a": 1, "b": 2}` answering
+   `['a', 1]` turned up because I wrote a family case asking a held dict's keys and diffed against CPython — the
+   dict's array holds two words per entry while its `len` counts entries, the same stride question `rt_gc` was
+   taught in **ADR 0350**. Filed as **Gap R.426** with the parent build named, not adopted: one commit, one feature.
+
+8. **Numbers are the artifacts'.** `tools/recmerge` took the record **9094 → 9124** (30 entries, none refused), the
+   corpus grew two programs and two matrix rows, and the snapshot moved to **406 records, highest 0415** and
+   **198 of 333** — every one of them written after a guard quoted the file's number back at me, and two of the
+   owed-table rows I closed being counted before I noticed they were closed. The `TestEmptyBindingNeverFreesHandleZero`
+   guard also had to be re-pointed at the door that exists (`rt_release` behind its null test) rather than the push
+   underneath it; its slot-0 half is unchanged, and the file says who asks what now.

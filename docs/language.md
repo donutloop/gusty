@@ -6194,9 +6194,10 @@ list-variable reads the mutated length via `rt_list_len`, `x[i]` reads a
 mutated element via `rt_get_elem` (including a runtime index variable, e.g.
 `x[a]`), and `print(x)` for a list-variable renders
 the live contents via `rt_print_list`. Rebinding a list variable (`x = [...]`
-again) frees its old heap slot via `rt_free` into a free-list that `rt_alloc`
-recycles, so long-running programs don't leak heap slots. Rebinding a list var
-to a non-list value (`x = [1,2]; x = 5`) also frees its slot. Inline list
+again) releases its old heap slot through `rt_release`, which pushes it on the
+free list that `rt_alloc` recycles — and declines to, while another rooted
+variable still names it (**ADR 0414**) — so long-running programs don't leak heap slots. Rebinding a list var
+to a non-list value (`x = [1,2]; x = 5`) also releases its slot. Inline list
 literals (`len([1,2])`, `print([1,2])`) keep compile-time folding. Local dict
 literals (`d = {1: 10}`) also allocate runtime heap dict objects: `d[k]` reads
 via `rt_dict_get`, `len(d)` via `rt_dict_len`, and `print(d)` via
@@ -6205,8 +6206,17 @@ imported dicts stay compile-time globals. Local set
 literals (`s = {1, 2}`) allocate runtime heap set objects: `len(s)` via
 `rt_set_len` and `print(s)` via `rt_set_print`. Inline sets in expressions and
 module-imported sets stay compile-time globals. Rebinding a var across collection
-kinds (list -> dict -> set -> scalar) frees the old heap slot via `rt_free`,
-so long-running programs don't leak slots on rebind. The arena the slots come out of grows
+kinds (list -> dict -> set -> scalar) releases the old heap slot through `rt_release`,
+so long-running programs don't leak slots on rebind.
+
+A container is a value with several names, and the release respects that (**ADR 0414**, roadmap
+**Gap R.420**/**Gap R.257**): `e = d` copies the handle, so `d` and `e` name ONE object, and rebinding
+one of them may not put that object's slot back on the free list while the other still reads it.
+`rt_release` therefore asks the collector's own root table before it pushes, and a slot is only recycled
+when no rooted variable names it — `d = {"a": 1}` / `e = d` / `d = {"b": 2}` prints `{'b': 2}` then
+`{'a': 1}`, and `e["a"]` is still `1`. What a name does not hold, the table cannot see: a value that
+survives only inside another container's slot is still released eagerly by a rebinding, which is roadmap
+**Gap R.427**. The arena the slots come out of grows
 (ADR 0350): `rt_alloc` doubles the window it has committed until it reaches the reservation,
 and only when even that is full does it return a -1 sentinel instead of writing out of bounds —
 which the caller turns into `MemoryError` (§ The compiled arena, ADR 0347), so pathological

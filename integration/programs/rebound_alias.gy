@@ -1,0 +1,41 @@
+# A container rebound under a second name keeps answering for the name that held it.
+# (roadmap Gap R.420, ADR 0414) The rebinding releases the object the name held; the
+# release goes on the allocator's free list only when no other rooted slot still names
+# it, so the alias is never left pointing at the object that took its slot.
+d = {"a": 1}
+e = d
+d = {"b": 2}
+print(d)
+print(e)
+print(e["a"])
+xs = [1]
+ys = xs
+xs = [2]
+print(ys)
+print(xs)
+xs.append(3)
+print(ys)
+print(xs)
+s = {1}
+t = s
+s = {2, 3}
+print(t)
+print(s)
+held = {"k": [1, 2]}
+keeper = held["k"]
+held = {"k": [3]}
+print(keeper)
+print(held["k"])
+total = 0
+for i in range(200):
+    w = {"a": i}
+    v = w
+    w = {"b": 1}
+    w = {"c": 2}
+    total = total + v["a"]
+print(total)
+print(len(w))
+try:
+    print(e["zz"])
+except KeyError:
+    print("caught")

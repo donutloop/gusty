@@ -598,11 +598,14 @@ func TestAReboundContainerIsReadByTheSameRoadsAsAContainerBoundOnce(t *testing.T
 	}
 }
 
-// TestTheAliasedContainerIsNotThisRowsDebt pins the shape the row measured and did NOT fix: `b = a` copies
-// the handle, so both names hold one object, and `b = [7, 8]` frees it while `a` still names it. Whether
-// the read of `a` dies or prints a plausible number depends on whether the allocator recycles the freed
-// slot — the worst property a heap can have. It belongs to the handle copy, not the kind claim
-// (roadmap Gap R.257, pinned as a debt row in integration/rebind_kind_test.go with the reference's answer).
+// TestTheAliasedContainerIsNotThisRowsDebt is the shape the kind claim never owned and never broke: `b = a`
+// copies the handle, so both names hold one object, and the rebinding `b = [7, 8]` used to free it while `a`
+// still named it — the read of `a` then died or printed a plausible number depending on whether the allocator
+// recycled the freed slot, which is the worst property a heap can have. **ADR 0414** closed it (roadmap
+// **Gap R.257**): the release door asks the collector's own root table before it pushes, so both names answer
+// and the program prints the reference's bytes. The parity assertion here is the same program on the record leg
+// and the compiled leg; the CLI leg, the loop form and the negative controls live in
+// `integration/rebind_kind_test.go::TestTheAliasReboundKeepsWhatTheOtherNameHolds`.
 func TestTheAliasedContainerIsNotThisRowsDebt(t *testing.T) {
 	t.Parallel()
 	const src = "y = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\n"
@@ -611,10 +614,21 @@ func TestTheAliasedContainerIsNotThisRowsDebt(t *testing.T) {
 		t.Fatalf("the alias program failed to compile: %v", err)
 	}
 	assertNoForbiddenIR(t, src, res.IR)
-	// The row's own half of that program does answer, and it is the reason the free is the bug: the name
+	// The row's own half of that program does answer, and it is the reason the free was the bug: the name
 	// being rebound reads its own new object through the list roads.
 	if out, trap := runForParity(t, "a = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\n"); trap != "" || out != "7" {
 		t.Fatalf("the rebound alias printed %q (trap %q), want \"7\"", out, trap)
+	}
+	// And the half that used to die answers too — Gap R.257's promoted program, on both legs.
+	if out, trap := runForParity(t, src); trap != "" || out != "7\n7\n2" {
+		t.Fatalf("the alias whose twin was rebound printed %q (trap %q), want \"7\\n7\\n2\\n\" — the release door "+
+			"released an object the other name still holds\n%s", out, trap, src)
+	}
+	if !HasGoldenAnswer(src) {
+		t.Fatalf("%q is not on the record — record it from the reference with tools/recmerge\n%s", src, src)
+	}
+	if recorded, err := runGoldenStdout(t, src); err != nil || recorded != "7\n7\n2\n" {
+		t.Fatalf("the record leg reads %q (err %v), want \"7\\n7\\n2\\n\"\n%s", recorded, err, src)
 	}
 }
 

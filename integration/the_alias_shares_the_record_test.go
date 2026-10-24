@@ -95,6 +95,12 @@ func aliasRecordFamily() []struct {
 		{"a float added through the alias", "s = {1}\nt = s\nt.add(1.5)\nprint(t)\n", "{1, 1.5}\n"},
 		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
 		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
+		// The dict's twin of the two rows above was the release door's, not the notebook's: the rebinding pushed
+		// the still-held object's slot onto the free list and the next allocation wrote the new dict over it
+		// (**Gap R.420**, **ADR 0414**). It is answered now, so it moved out of the filed table rather than
+		// being edited there.
+		{"the dict rebound under its own alias", "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n", "{'b': 2}\n{'a': 1}\n"},
+		{"the rebound dict read through the alias", "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(e[\"a\"])\nprint(\"a\" in e)\nprint(len(e))\n", "1\nTrue\n1\n"},
 		// The set's ORDER, which is the reference's bucket order and not the order the source named the
 		// members in (**Gap R.421**, ADR 0415). The linked binary and `python3` print these byte for byte.
 		{"the void added to a set through the alias", "s = {1}\nt = s\nt.add(None)\nprint(t)\nprint(s)\n", "{None, 1}\n{None, 1}\n"},
@@ -241,12 +247,9 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 			python: "None\n", compiled: "0\n",
 		},
 		// The residue of the dict's and the set's half, each byte-identical on the parent build `8aa3029`
-		// and therefore a ROW rather than this commit's damage (**ADR 0166**, **ADR 0309**).
-		{
-			name: "the dict rebound under its own alias", gap: "Gap R.420",
-			src:    "d = {\"a\": 1}\ne = d\nd = {\"b\": 2}\nprint(d)\nprint(e)\n",
-			python: "{'b': 2}\n{'a': 1}\n", compiled: "{'b': 2}\n{'b': 2}\n",
-		},
+		// and therefore a ROW rather than this commit's damage (**ADR 0166**, **ADR 0309**). The dict's half
+		// of this list — the rebound alias, **Gap R.420** — is answered and lives in `aliasRecordFamily()`;
+		// a filed row that closes is DELETED here, not edited.
 		{
 			name: "a text discarded from a set of numbers through the alias", gap: "Gap R.422",
 			src:    "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
