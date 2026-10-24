@@ -3015,6 +3015,24 @@ falls back to dynamic dispatch.
   a dict sorts the entry array's first `len` words instead of its keys — `['a', 1]` for `['a', 'b']` (**Gap R.426**,
   both byte-identical on the parent `f7723b2`). `tools/recmerge` wrote **30** entries from the reference (record
   **9094 → 9124**) and refused none; the two owed-table pins this row paid are DELETED, not edited.
+- **A class keeps the members its body bound, and the read asks the class (Gap R.297, ADR 0418)** —
+  `xs = [1, 2, 3]` / `class C:` / `first = xs[0]` / `print(C.first)` stopped the build with
+  **`unsupported attr expression`** where CPython prints **`1`**: the class walk registered the methods and dropped every
+  other statement of the body, so the read fell through the value road's cases onto a sentence naming an AST node at the
+  program (**Gap R.116**'s rule). Python builds a class by executing its body, and what the body bound becomes an
+  attribute of the CLASS — a different road from an instance attribute, which lives in the object's slot array behind
+  `@rt_inst_get`, and the temptation was to reach for the machinery that already existed. `classInfo` now keeps a member
+  table, and the read lowers the bound **expression** where it is READ: a body runs once and the read may stand anywhere
+  after it, which is also what makes `C.first = 5` then `print(C.first)` answer `5` without a runtime attribute store.
+  Only values whose re-lowering is a read, not an event, are kept that way, and the print-side kind questions ask the
+  same table — `print(C.label)` first came out `0`, the intern table's index, until the text question was taught to read
+  it too. What cannot be lowered faithfully is refused with its kind named rather than answered as the payload word: the
+  first version printed `1.5` as `1.0`, `True` as `1` and `None` as `0`, and the row was only shipped once those became
+  refusals (**Gap R.431**, alongside the container- and call-bound members and `C.new = 1`). Whole numbers, texts, the
+  arithmetic and concatenation over them, a member in a condition, the rebinding, and `__doc__` answer the reference's
+  bytes on the compiled leg, the record leg and the CLI leg; the instance road is pinned as the untouched neighbour, and
+  `tools/recmerge` wrote **16** entries from the reference (**9156 → 9172**), refusing none.
+
 - **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
   ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and
   `print(sorted(d, reverse=True))` wrote **`[1, 'a']`**, both at **exit 0**, where CPython writes `['a', 'b']` and

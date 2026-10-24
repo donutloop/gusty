@@ -14962,3 +14962,32 @@ discovery — and it still taught me twice.
    substring ban — the first version of that assertion failed on a clean fix. What says something is: the key door's own
    `define` block contains the stride and the bound, and nothing between the key door's call and `@rt_sort` is a
    `rt_list_copy`.
+
+## ADR 0418 — a class keeps the members its body bound, and the read asks the class (Gap R.297 closed; Gap R.431 filed, 2026-10-24)
+
+1. **A dropped statement is a missing feature wearing a lexer's clothes.** The class walk took `*FuncDef` and `continue`d
+   on everything else, so a class-body binding simply did not exist, and the read died on the dispatcher's last
+   sentence. The tell was that sentence itself: `unsupported attr expression` names an AST node at a program — that is
+   **Gap R.116**'s rule doing the work of a bug report, and it is worth reading refusal text as evidence about the road
+   that never ran.
+
+2. **Neighbouring roads are not the same road.** The instance attribute machinery (`@rt_inst_get`, `attrSlot`) was
+   right there, mature, and wrong: it addresses an OBJECT's slots, and a class here is a resolved name with no object.
+   The row's own control family — `self.x` in `__init__`, `inst.x = 9`, a method reading `self.x` — is what makes "I did
+   not borrow the other road" a claim the suite holds.
+
+3. **Keep the expression, lower it at the read — and know exactly why that is legal.** A class body runs once and the
+   read may stand anywhere after it, so re-lowering is a *read* for scalars, indexes and arithmetic. The moment it would
+   be an event — a container literal minting a fresh object per read, a call running twice — the equivalence is gone and
+   the shape has to be refused. Writing that boundary down in the predicate's comment is part of the feature.
+
+4. **Teach the kind questions or refuse; do not answer the payload.** `print(C.label)` printed `0` until `stringVal`
+   read the member table, and the first version printed `1.0 / 1 / 0` for `1.5 / True / None`. Refusing with the kind
+   named (`"the class body binds flag to a verdict member …"`) is the honest shape, and two tables (`attrs`, `owedAttrs`)
+   exist only so a refusal can distinguish "the class never bound that" from "the class bound it and I cannot answer it
+   yet" — otherwise the sentence sends the reader to the wrong row.
+
+5. **Check the reference before believing your own expectation.** I wrote `'hi'` into a `print` row because a str's
+   *repr* is quoted; `print(C.label)` prints `hi`. The guard here is that `tools/recmerge` records from CPython and
+   refuses when the compiled leg disagrees, so an invented expectation cannot survive the record leg — but it cost a
+   round trip that reading `python3 -c 'print("hi")'` would not have.

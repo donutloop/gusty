@@ -1078,6 +1078,24 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, slot, v))
 			return nil
 		}
+		// `C.first = 5` — a class member rebound through the class name. The reference rebinds the class
+		// attribute, and the next `C.first` reads the new value; this road can honour that for a value whose
+		// lowering is a read rather than an event, because the class table holds the EXPRESSION and the read
+		// lowers it where it stands (roadmap Gap R.297, ADR 0418). A member that was never in the body is not
+		// created here: the reference creates it, and this backend leaves that to the row that owns an
+		// attribute the class does not hold (roadmap Gap R.431).
+		if nm, isName := attr.Obj.(*Name); isName {
+			if ci, isClass := g.classInfos[nm.Value]; isClass {
+				if _, held := ci.attrs[attr.Name.Value]; held && classAttrValueStable(n.Value) {
+					if ci.attrs == nil {
+						ci.attrs = map[string]Expr{}
+					}
+					ci.attrs[attr.Name.Value] = n.Value
+					return nil
+				}
+				return fmt.Errorf("codegen: cannot store %s.%s — this backend keeps a class member only for the values a class body bound it to, and %s is not one of them; the reference rebinds the class attribute here, and a member the class never bound, or one held by a call or a container, is roadmap Gap R.431", nm.Value, attr.Name.Value, nodeSurface(n.Value))
+			}
+		}
 		return fmt.Errorf("codegen: cannot store an attribute on %s — this backend writes an attribute only on an instance the compiler typed, and the reference raises AttributeError for this program (roadmap L11.1, Gap R.272)", nodeSurface(n.Target))
 	} else {
 		// The defensive arm: the front end admits a name, an attribute, a subscript and a tuple, and the codegen

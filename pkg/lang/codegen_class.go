@@ -13,6 +13,17 @@ type classInfo struct {
 	bases   []string
 	methods map[string]string // method name -> LLVM function name
 	doc     string
+	// attrs is the class's OWN members: the names the class body binds (`class C:` / `first = xs[0]`),
+	// which are attributes of the CLASS and are read through the class name (`C.first`) — a different
+	// road from the instance attributes below, which live in the object's slot table and are read through
+	// an instance (roadmap Gap R.297, ADR 0418). The expression is kept rather than a value because a
+	// class body runs once when the class is made, and the read may stand anywhere after it.
+	attrs map[string]Expr
+	// owedAttrs is the same table for the bindings this road must not answer yet: a float member prints
+	// 1.0 where the reference prints 1.5, and a verdict or a void prints 1 and 0 where the reference prints
+	// True and None — the answer class this contract ranks worst, so the read refuses instead and names
+	// roadmap Gap R.431, which owns the tagged-pair read that would answer them (ADR 0418).
+	owedAttrs map[string]Expr
 }
 
 func (g *irGen) registerClass(cd *ClassDef) {
@@ -36,6 +47,33 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		}
 	}
 	g.classInfos[cd.Name] = ci
+	// The class body's own bindings are the class's members. The reference builds a class by executing
+	// its body, so `first = xs[0]` inside `class C:` is a name the class holds and `C.first` reads; this
+	// backend walked the body only for methods and dropped the rest, which is why `print(C.first)` stopped
+	// the build with `unsupported attr expression` where CPython prints 1 (roadmap Gap R.297, ADR 0418).
+	for _, st := range cd.Body {
+		as, ok := st.(*AssignStmt)
+		if !ok {
+			continue
+		}
+		nm, ok := as.Target.(*Name)
+		if !ok || nm == nil {
+			continue
+		}
+		if ci.attrs == nil {
+			ci.attrs = map[string]Expr{}
+		}
+		if classAttrValueStable(as.Value) {
+			ci.attrs[nm.Value] = as.Value
+			continue
+		}
+		if classAttrValueRecorded(as.Value) {
+			if ci.owedAttrs == nil {
+				ci.owedAttrs = map[string]Expr{}
+			}
+			ci.owedAttrs[nm.Value] = as.Value
+		}
+	}
 	for _, st := range cd.Body {
 		fd, ok := st.(*FuncDef)
 		if !ok {
@@ -717,4 +755,54 @@ func (g *irGen) receiverClass(recv Expr) string {
 		}
 	}
 	return ""
+}
+
+// classAttrValueStable answers which class-body bindings this road may keep as an EXPRESSION and lower again
+// at the read: the ones whose lowering builds no new object and calls nothing. Re-lowering a container
+// literal would mint a fresh one per read, so `C.items.append(1)` and `print(C.items)` would disagree about
+// the list, and a call would run again where the reference ran it once — both stay refused (roadmap
+// Gap R.431). A name, a literal of the scalar kinds, a position of a literal container and a sum of those
+// are the shapes the read can be trusted with.
+func classAttrValueStable(e Expr) bool {
+	switch x := e.(type) {
+	case *IntLit, *StrLit:
+		return true
+	case *Name:
+		return true
+	case *Index:
+		// A position of a container the front end can see (`first = xs[0]`, the program the row is pinned
+		// with) is a read, not a new object: lowering it again asks the same slot.
+		return classAttrValueStable(x.Obj) && classAttrValueStable(x.Idx)
+	case *BinOp:
+		return classAttrValueStable(x.L) && classAttrValueStable(x.R)
+	case *UnOp:
+		return classAttrValueStable(x.X)
+	case *CondExpr:
+		return classAttrValueStable(x.Cond) && classAttrValueStable(x.If) && classAttrValueStable(x.Else)
+	}
+	return false
+}
+
+// classAttrValueRecorded is the wider question the READ asks when it has to refuse: the binding is a value
+// this road recognises but cannot answer faithfully yet, so the sentence names the kind instead of claiming
+// the class holds no such member (roadmap Gap R.431, ADR 0418).
+func classAttrValueRecorded(e Expr) bool {
+	return e != nil
+}
+
+// classAttrKindNames the owed value for the refusal that names it.
+func classAttrKindName(e Expr) string {
+	switch e.(type) {
+	case *FloatLit:
+		return "a fractional member"
+	case *BoolLit:
+		return "a verdict member"
+	case *NoneLit:
+		return "a void member"
+	case *Call:
+		return "a member bound by a call"
+	case *ListLit, *DictLit, *SetLit, *Tuple, *Comp, *Lambda:
+		return "a member bound to a container or a callable"
+	}
+	return "a member whose value this road cannot lower faithfully"
 }

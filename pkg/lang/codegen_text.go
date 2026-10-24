@@ -316,6 +316,17 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				}
 			}
 		}
+		// A MEMBER OF A CLASS read through the class name is a text when the class body bound a text to it:
+		// `class C:` / `label = "hi"` / `print(C.label)` answers 'hi', and without this arm the read lowers to
+		// the intern table's INDEX and prints 0 — the number the reader never wrote (roadmap Gap R.297,
+		// ADR 0418). The class's member table is the same one the value road reads.
+		if nm, ok := e.(*Attr).Obj.(*Name); ok {
+			if ci, isClass := g.classInfos[nm.Value]; isClass {
+				if v, held := ci.attrs[e.(*Attr).Name.Value]; held {
+					return g.stringVal(v)
+				}
+			}
+		}
 		// imported module global folded to a string (data imports)
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {

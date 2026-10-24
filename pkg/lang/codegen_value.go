@@ -88,6 +88,30 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return ret, nil
 		}
 
+		// A MEMBER OF A CLASS, read through the class name: `C.first`. The reference runs a class body and
+		// keeps what it bound as attributes of the class, so `class C:` / `first = xs[0]` / `print(C.first)`
+		// prints 1. This backend dropped every non-method statement of the body and reached this sentence
+		// instead — `unsupported attr expression`, which names an AST node rather than the program, and stops
+		// a build the reference simply runs (roadmap Gap R.297, ADR 0418; the sentence rule is Gap R.116).
+		//
+		// The read asks the class's own table, which is a different road from the instance attributes above:
+		// those live in the object's slot array and are addressed by `@rt_inst_get`, and an instance is a
+		// value with a class word, while a class here is a name the front end resolved. The recorded
+		// expression is lowered where it is READ, which is what keeps a text printing as a text and a number
+		// as a number without a second value representation for the class road.
+		if nm, isName := n.Obj.(*Name); isName {
+			if ci, isClass := g.classInfos[nm.Value]; isClass {
+				member := n.Name.Value
+				if v, held := ci.attrs[member]; held {
+					return g.value(b, v)
+				}
+				if v, owed := ci.owedAttrs[member]; owed {
+					return "", fmt.Errorf("codegen: %s.%s is refused: the class body binds %s to %s, and this backend reads a class member only where the read lowers to the same word the reference prints — a fractional, verdict or void member needs the tagged value word that carries its own kind (roadmap L11.1, Gap R.431)", nm.Value, member, member, classAttrKindName(v))
+				}
+				return "", fmt.Errorf("codegen: %s.%s is refused: the class names no member of that name — its body binds methods, and %s holds nothing the class could answer with, so the reference would raise AttributeError here (a member the body never bound, and one bound by a call or a container, are roadmap Gap R.431)", nm.Value, member, member)
+			}
+		}
+
 		// `mod.var` — imported module global folded to a constant by resolveImports.
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {

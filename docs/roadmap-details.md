@@ -18500,3 +18500,45 @@ question `sortedDict` now asks — ask the argument what it is — and a set arm
 (these are contiguous, at stride one, so `@rt_list_copy` already reaches them) and hands it to `@rt_sort` / `@rt_reverse`
 with the comparator the members' own kinds pick. Until then the honest shape is a refusal, and the pin
 (`TestWhatSortingASetStillOwesIsFiledNotFixed`) fails if the door starts answering, so the row has to be closed on purpose.
+
+<a id="gap-r-431"></a>
+### Gap R.431 — the class-member road answers the members it can lower and refuses the rest (⏳ OPEN, filed by **ADR 0418**)
+
+```gusty
+class C:
+    ratio = 1.5
+    flag = True
+    nothing = None
+    items = [1, 2]
+    n = abs(-1)
+print(C.ratio)         #  1.5        ← this backend: refused, exit 1
+print(C.flag)          #  True       ← refused
+print(C.nothing)       #  None       ← refused
+print(C.items)         #  [1, 2]     ← refused
+print(C.n)             #  1          ← refused
+C.new = 1              #             ← refused; the reference creates the attribute
+print(C.new)           #  1          ← refused
+```
+
+**ADR 0418** gave the class a member table and the read asks it. The table holds the bound **expression**, lowered
+where it is read, which is what makes `C.first = 5` followed by `print(C.first)` answer 5 without a runtime attribute
+store — and it is also the limit. A value whose re-lowering is not a read cannot be kept that way honestly:
+
+* **a fractional member** — the read hands the reader the payload word, so `1.5` came out `1.0` in the first version of
+  this road. Faithful printing needs the boxed double, which is what `@float_box` and a tag exist for
+  (**ADR 0413**'s note about where a float's value actually lives).
+* **a verdict member, a void member** — `True` came out `1`, `None` came out `0`. The one word for a value cannot say
+  which of the three it is; that is **L11.1**/**ADR 0232**'s tagged value word, and the class road is one more position
+  that needs it.
+* **a container member** — building it at each read mints a fresh object per read, so `C.items.append(1)` and
+  `print(C.items)` would disagree. It has to be built once, at the class's making, which is an arena decision.
+* **a call-bound member** — re-lowering runs the call again. The reference ran the body once.
+* **`C.new = 1`** — the reference creates the attribute on the class; this road re-binds only a member the body already
+  bound, so the write refuses. The read of an unbound name refuses too, in the AttributeError-shaped sentence — which is
+  at least the reference's *class* of outcome, though not its catchability.
+* **`len(C.label)`** — the read knows the member is a text and the `len` road still asks for an inline literal.
+
+Every one of these is exit **1** with the class, the member and the missing half named, and none of them is a wrong
+answer; the pins are in `pkg/lang/a_class_member_read_by_name_test.go` and its CLI twin, and a case that starts ANSWERING
+fails the pin, so the row has to be closed on purpose. The direction is one thing, not five: give the read the
+(payload, tag) pair — **ADR 0316**'s and **ADR 0324**'s shape — and record the member's kind beside its expression.

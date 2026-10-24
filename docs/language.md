@@ -5428,6 +5428,27 @@ ADR 0340, and refuses naming that reason (roadmap L11.7, **Gap R.269**; ADR 0191
 declaration of its own so the door that calls a named callable has a name to call, and which **ADR 0363**
 registers with the scan that decides a parameter's kind, so the hook's body may ask the element doors.
 
+**A class's own members are read through the class name** (roadmap **Gap R.297**, **ADR 0418**). A class body runs, and
+what it bound becomes an attribute of the class — the reference reads it, and so does this backend:
+
+```gusty
+class C:
+    first = 1
+    label = "hi"
+
+print(C.first)            # 1
+print(C.label)            # hi
+print(C.first + 1)        # 2
+print(C.label + "!")      # hi!
+C.first = 5
+print(C.first)            # 5
+```
+
+That is a different road from an instance attribute (`self.x`, `inst.x`), which lives in the object's slot array; the two
+are pinned as neighbours so opening one cannot move the other. What the road will not answer is refused in words naming
+the member's kind rather than printed as a payload: a fractional member, a verdict member, a void member, a container
+member, a member bound by a call, and a member the body never bound are roadmap **Gap R.431**.
+
 **A dict sorts its keys** (roadmap **Gap R.426**, **ADR 0417**). `sorted(d)` is the reference's `sorted(d)`: it answers
 a list of the dict's KEYS, in the reference's order, and leaves `d` and its entry order alone —
 

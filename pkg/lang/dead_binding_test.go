@@ -80,6 +80,11 @@ func TestAReadInTheConstructsTheOldWalkersMissedKeepsTheAllocation(t *testing.T)
 		{"a_raise_caught_by_a_handler", "xs = [1, 2, 3]\ntry:\n    raise Exception(str(xs[0]))\nexcept Exception:\n    print(9)\n", "9\n"},
 		{"a_container_method_argument", "xs = [1, 2]\nxs.append(3)\nprint(len(xs))\n", "3\n"},
 		{"a_measured_container", "xs = [1, 2, 3]\nprint(len(xs))\n", "3\n"},
+		// A member the class body bound, read through the CLASS NAME: the reference runs the body and keeps
+		// what it bound, and the read asks the class's own member table (roadmap Gap R.297, ADR 0418). The
+		// row used to sit in TestAReadCountsEvenWhereTheBackendHasNoAnswerYet demanding the
+		// `unsupported attr expression` sentence.
+		{"a_class_body_member_read_by_name", "xs = [1, 2, 3]\nclass C:\n    first = xs[0]\nprint(C.first)\n", "1\n"},
 		// A tuple in an argument list is a value the call road carries since ADR 0361 (roadmap Gap R.295
 		// — this row used to sit in TestAReadCountsEvenWhereTheBackendHasNoAnswerYet demanding the
 		// `unsupported expression *lang.Tuple` sentence).
@@ -117,12 +122,6 @@ func TestAReadCountsEvenWhereTheBackendHasNoAnswerYet(t *testing.T) {
 			src:    "xs = [1, 2, 3]\nprint(sum((x for x in xs)))\n",
 			row:    "Gap R.296",
 			refuse: "sum requires an inline list",
-		},
-		{
-			name:   "a_class_body_member",
-			src:    "xs = [1, 2, 3]\nclass C:\n    first = xs[0]\nprint(C.first)\n",
-			row:    "Gap R.297",
-			refuse: "unsupported attr expression",
 		},
 		{
 			name:   "a_comprehension_reading_a_class_body_name",

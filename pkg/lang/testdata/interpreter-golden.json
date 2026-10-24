@@ -1,5 +1,84 @@
 {
  "entries": {
+"class A:\n    v = 1\nclass B:\n    v = 2\nprint(A.v)\nprint(B.v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class C:\n    \"\"\"the doc\"\"\"\n    first = 1\nprint(C.__doc__)\nprint(C.first)\n": {
+    "stdout": "the doc\n1\n",
+    "hasStdout": true
+   },
+
+"class C:\n    count = 2\nif C.count:\n    print(\"nonzero\")\nelse:\n    print(\"zero\")\n": {
+    "stdout": "nonzero\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __init__(self):\n        self.x = 3\n    def twice(self):\n        return self.x * 2\n\nprint(C().twice())\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __init__(self):\n        self.x = 7\n\ninst = C()\ninst.x = 9\nprint(inst.x)\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __init__(self):\n        self.x = 7\n\nprint(C().x)\n": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def two(self):\n        return 2\n\nprint(C().two())\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 1\n    label = \"hi\"\nC.first = 5\nprint(C.first)\nprint(C.label)\n": {
+    "stdout": "5\nhi\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 1\n    label = \"hi\"\nprint(C.first)\nprint(C.label)\n": {
+    "stdout": "1\nhi\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 1\nC.first = 5\nprint(C.first)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 1\nprint(C.first + 1)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 1\nprint(C.first)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class C:\n    first = 4\nprint(C.first)\nprint(C.first)\n": {
+    "stdout": "4\n4\n",
+    "hasStdout": true
+   },
+
+"class C:\n    label = \"hi\"\nprint(C.label + \"!\")\n": {
+    "stdout": "hi!\n",
+    "hasStdout": true
+   },
+
+"class C:\n    label = \"hi\"\nprint(C.label)\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nclass C:\n    first = xs[0]\nprint(C.first)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
 "d = {\"pear\": 1, \"apple\": 2, \"fig\": 3, \"banana\": 4}\nprint(sorted(d))\nprint(sorted(d, reverse=True))\nprint(sorted(d))\nfor k in d:\n    print(k)\nn = 0\nfor k in d:\n    n = n + 1\nprint(n)\nxs = sorted(d)\nprint(xs)\nprint(len(xs))\nprint(xs[0])\nprint(xs[3])\nprint(d[\"pear\"])\ncounts = {3: \"c\", 1: \"a\", 2: \"b\"}\nprint(sorted(counts))\nprint(sorted(counts, reverse=True))\nprint(counts[2])\nbuilt = {}\nbuilt[\"q\"] = 1\nbuilt[\"p\"] = 2\nprint(sorted(built))\nalias = d\nprint(sorted(alias))\nprint(sorted(d))\n": {
     "stdout": "['apple', 'banana', 'fig', 'pear']\n['pear', 'fig', 'banana', 'apple']\n['apple', 'banana', 'fig', 'pear']\npear\napple\nfig\nbanana\n4\n['apple', 'banana', 'fig', 'pear']\n4\napple\npear\n1\n[1, 2, 3]\n[3, 2, 1]\nb\n['p', 'q']\n['apple', 'banana', 'fig', 'pear']\n['apple', 'banana', 'fig', 'pear']\n",
     "hasStdout": true
