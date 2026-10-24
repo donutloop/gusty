@@ -1627,8 +1627,18 @@ Rules that the compiled backend implement:
   call sites answer whether the parameter holds one, so `show(True)` prints `True` (ADR 0348; Gap R.111),
   and only a position the call sites contradict prints the number it was stored as (Gap R.270).
   Inside containers strings are quoted as Python does.
-  Sets iterate in **insertion order** in the compiled backend — deterministic, and identical between
-  them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
+  A set keeps its members in the order the reference's table gives them, and the order is decided once, at
+  the door that inserts: a number sits at `payload mod 8` of the first table, a verdict at `0`/`1`, and the
+  void ahead of every one of them (its hash lands it in bucket 0), so `s = {2}` / `s.add(1)` /
+  `s.add(None)` prints `{None, 1, 2}` — and `for x in s` walks the very same sequence, because `print` and
+  the loop read the one array the container owns (`Gap R.421`, ADR 0415). A member the payload cannot
+  answer for — a text — keeps insertion order after the numbers, which is the only order that can be
+  promised for a kind whose reference hash is salted per process: `{"q", "r"}` prints as `{'q', 'r'}`
+  here. Two members that collide in a bucket, and a set big enough to outgrow the first table, are the
+  reference's probe sequence and rehash this backend does not yet simulate (`Gap R.424`), and a TEXT member
+  sits after the numbers because the reference's hash of it is salted per process and no function of the payload
+  can reproduce it (`Gap R.425`) — the reference legs here pin that salt (`PYTHONHASHSEED=0`), which makes the
+  reference's answer reproducible without making it knowable.
 
 ### Strings across a function boundary
 
@@ -1738,8 +1748,9 @@ lst.append(7)
   than reaching the text table unlabelled. A name keeps the facts of the object it HOLDS, so after `xs = [2, None]` the
   alias `ys` still describes the first list (`print(ys)` is the reference's `[None, 1]`), and `s = {2, 3}` leaves `t`
   printing `{1}`. What this leaves owed is filed rather than smoothed over: the dict rebound under its own alias is
-  `Gap R.420` (the rebinding releases the object and the allocator hands that slot to the next dict), a set's print
-  order puts the void last (`Gap R.421`), `discard` compares the payload and not the pair (`Gap R.422`) — each of
+  `Gap R.420` (the rebinding releases the object and the allocator hands that slot to the next dict), the set built
+  from a LITERAL writes its members with no tag and in the order the source named them (`Gap R.423`), `discard`
+  compares the payload and not the pair (`Gap R.422`) — each of
   those answers the same way with NO alias in the program — and a container METHOD over an aliased container
   (`for k, v in e.items():`, `t.remove(1)`) is refused exactly as it is over the source name, because an alias is a
   name and that is `Gap R.146`/`Gap R.174`'s standing, not this one's.

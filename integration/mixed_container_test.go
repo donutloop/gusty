@@ -61,8 +61,14 @@ func TestMixedContainersAnswerLikeTheRecord(t *testing.T) {
 			"d = {\"a\": 1}\nd[\"b\"] = \"x\"\nprint(d[\"b\"])\nprint(1 if \"b\" in d else 0)\n",
 			"x\n1\n"},
 		{"mixed_set_print",
+			// The reference's own bytes with its string hash pinned (PYTHONHASHSEED=0, which is what
+			// pkg/lang/oracle.go hands every reference leg): the void first, because its hash lands it in
+			// the table's bucket 0, then the number, then the text. Until **ADR 0415** this cell read
+			// {1, 'a', None} — the insertion order, under a label saying "CPython's" — and eight unpinned
+			// `python3` runs of this very program do not produce those bytes either. The void's place and
+			// the number's are **ADR 0415**'s rule; the text's is the luck of its bucket (**Gap R.425**).
 			"s = {1, \"a\", None}\nprint(s)\n",
-			"{1, 'a', None}\n"},
+			"{None, 1, 'a'}\n"},
 		{"mixed_set_membership",
 			"s = {1, \"a\", None}\nprint(1 if 1 in s else 0)\nprint(1 if \"a\" in s else 0)\nprint(1 if 7 in s else 0)\n",
 			"1\n1\n0\n"},
@@ -147,13 +153,17 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 		{"mixed_dict_heterogeneous_keys", "d = {1: \"x\", \"k\": 2, None: 3}\nprint(len(d))\nprint(d[1])\nprint(d[\"k\"])\nprint(d[None])\n"},
 		{"mixed_dict_membership", "d = {\"a\": 1, \"b\": \"x\"}\nprint(1 if \"a\" in d else 0)\nprint(1 if \"z\" in d else 0)\n"},
 		{"mixed_dict_iteration", "d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nfor k in d:\n    print(k)\n"},
-		// No set-printing row here on purpose. CPython prints a set in hash order — {1, "a",
-		// None} comes out {'a', 1, None} — and gusty prints it in insertion order, which is
-		// documented (docs/language.md, "Sets iterate in insertion order in the compiled path")
-		// and is what makes the two backends' output comparable at all. The engines are
-		// compared against each other for rendering, in
-		// TestMixedContainersAnswerLikeTheRecord; the oracle decides the *answers*.
+		// Set printing is here now that it can be. It was excluded because the compiled path printed a
+		// set in insertion order while CPython prints hash order — two orders, and no comparison worth
+		// the name. **ADR 0415** gave the container one order, the reference's bucket order, kept at the
+		// door that inserts; and the reference leg already pins `PYTHONHASHSEED=0`
+		// (**pkg/lang/oracle.go**), so the answer it compares against is reproducible. The
+		// numbers-and-void cases below are that rule; a TEXT member is the luck of its bucket and is
+		// **Gap R.425**.
 		{"mixed_set_membership", "s = {1, \"a\", None}\nprint(1 if 1 in s else 0)\nprint(1 if \"a\" in s else 0)\nprint(1 if 7 in s else 0)\n"},
+		{"mixed_set_print_the_void_and_the_numbers", "s = {2}\ns.add(1)\ns.add(None)\nprint(s)\n"},
+		{"mixed_set_print_through_the_alias", "s = {1}\nt = s\nt.add(None)\nt.add(3)\nprint(t)\n"},
+		{"mixed_set_print_a_set_the_verdict_joined", "s = {2}\ns.add(True)\nprint(s)\n"},
 		{"mixed_set_discard", "s = {1, \"a\", None}\ns.discard(1)\nprint(len(s))\nprint(1 if 1 in s else 0)\n"},
 		{"a_string_needle_is_not_an_integer_key", "d = {1: \"one\"}\ntry:\n    print(d[\"a\"])\nexcept KeyError:\n    print(\"KeyError\")\n"},
 		{"an_integer_needle_is_not_a_string_key", "d = {\"a\": 1}\ntry:\n    print(d[1])\nexcept KeyError:\n    print(\"KeyError\")\n"},

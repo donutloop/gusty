@@ -22,6 +22,15 @@ import (
 // Every expectation is re-derived from a live `python3` inside the case, so a table whose premise drifted
 // fails rather than certifies the drift; the traps are checked as traps (exit **3**, never exit 1 for a
 // refusal and never exit **2**, which ADR 0166 reserves for a module `llc` had to reject).
+//
+// The family grew the set's ORDER with **ADR 0415** (**Gap R.421**, closed): the void added to a set of
+// numbers, the number that joins a set the void already stands in, the verdict, the member added twice, the
+// promotion through the alias with the void keeping its place, and the LOOP over such a set — the linked
+// binary and `python3` printing the same bytes for each, at exit 0. The order is decided by the door that
+// inserts, not by the printer, and the loop program is the case that holds that claim: print and `for` read
+// one array and may not disagree. What the row measured and did not buy is pinned as owed at the CLI with
+// its bytes — the set built from a literal, which writes no tags and no order (**Gap R.423**), and the
+// collision and the table that outgrows its first 8 buckets (**Gap R.424**).
 
 // aliasRecordFamily is the answered family at the CLI: each program is run by the linked binary and by the
 // reference, and both must answer the same way.
@@ -86,6 +95,17 @@ func aliasRecordFamily() []struct {
 		{"a float added through the alias", "s = {1}\nt = s\nt.add(1.5)\nprint(t)\n", "{1, 1.5}\n"},
 		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
 		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
+		// The set's ORDER, which is the reference's bucket order and not the order the source named the
+		// members in (**Gap R.421**, ADR 0415). The linked binary and `python3` print these byte for byte.
+		{"the void added to a set through the alias", "s = {1}\nt = s\nt.add(None)\nprint(t)\nprint(s)\n", "{None, 1}\n{None, 1}\n"},
+		{"the void added to a set of numbers", "s = set()\ns.add(1)\ns.add(None)\nprint(s)\n", "{None, 1}\n"},
+		{"a set the number joins after the void", "s = {2}\ns.add(None)\ns.add(1)\nprint(s)\n", "{None, 1, 2}\n"},
+		{"the verdict added to a set of numbers", "s = {2}\ns.add(True)\nprint(s)\n", "{True, 2}\n"},
+		{"the void added through the alias, the number after it", "s = {1}\nt = s\nt.add(None)\nt.add(3)\nprint(t)\n", "{None, 1, 3}\n"},
+		{"the loop over a set the void joined", "s = {2}\ns.add(1)\ns.add(None)\nfor x in s:\n    print(x)\n", "None\n1\n2\n"},
+		{"the member added twice is one member", "s = {1, 2}\ns.add(1)\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n"},
+		{"the alias promotes and the void keeps its place", "s = {1}\nt = s\nt.add(\"a\")\nt.add(None)\nprint(s)\nprint(t)\n", "{None, 1, 'a'}\n{None, 1, 'a'}\n"},
+		{"zero and the void, both in bucket 0", "s = set()\ns.add(4)\ns.add(None)\ns.add(0)\nprint(s)\n", "{None, 0, 4}\n"},
 	}
 }
 
@@ -228,14 +248,34 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 			python: "{'b': 2}\n{'a': 1}\n", compiled: "{'b': 2}\n{'b': 2}\n",
 		},
 		{
-			name: "the void added to a set through the alias", gap: "Gap R.421",
-			src:    "s = {1}\nt = s\nt.add(None)\nprint(t)\n",
-			python: "{None, 1}\n", compiled: "{1, None}\n",
-		},
-		{
 			name: "a text discarded from a set of numbers through the alias", gap: "Gap R.422",
 			src:    "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
 			python: "{1, 2}\n{1, 2}\n", compiled: "{1}\n{1}\n",
+		},
+		{
+			name: "the set built from a literal, joined by a number", gap: "Gap R.423",
+			src:    "s = {7, 2}\ns.add(9)\nprint(s)\n",
+			python: "{9, 2, 7}\n", compiled: "{9, 7, 2}\n",
+		},
+		{
+			name: "the set built from a literal and never reordered", gap: "Gap R.423",
+			src:    "s = {3, 1, 2}\nprint(s)\n",
+			python: "{1, 2, 3}\n", compiled: "{3, 1, 2}\n",
+		},
+		{
+			name: "the text that joins a set of numbers", gap: "Gap R.425",
+			src:    "s = set()\ns.add(3)\ns.add(\"a\")\nprint(s)\n",
+			python: "{'a', 3}\n", compiled: "{3, 'a'}\n",
+		},
+		{
+			name: "two members whose buckets collide", gap: "Gap R.424",
+			src:    "s = set()\ns.add(5)\ns.add(3)\ns.add(9)\ns.add(1)\nprint(s)\n",
+			python: "{9, 3, 5, 1}\n", compiled: "{9, 1, 3, 5}\n",
+		},
+		{
+			name: "the set that outgrows the first table", gap: "Gap R.424",
+			src:    "s = set()\nfor i in range(9):\n    s.add(i * 4)\nprint(s)\n",
+			python: "{0, 32, 4, 8, 12, 16, 20, 24, 28}\n", compiled: "{0, 8, 16, 24, 32, 4, 12, 20, 28}\n",
 		},
 		{
 			name: "a loop over the alias's key/value pairs", gap: "Gap R.174",

@@ -10,10 +10,48 @@ const heapIRSet = `
 @.fmtssep = private unnamed_addr constant [3 x i8] c", \00"
 @.fmtsclose = private unnamed_addr constant [2 x i8] c"}\00"
 
+; rt_member_bucket answers the one question the set's order is built from: where does this pair
+; sit in the reference's order? The reference's set is an open-addressed table, and the array every
+; reader walks is that table read in bucket order — bucket = hash(payload) mod (table size). For the
+; kinds the payload can answer for, that is the payload's own floor-mod: an int hashes to itself
+; (with CPython's documented remap of -1 to -2, so that -1 never wears the error value), a verdict
+; hashes to 0/1, and the void hashes to a constant that lands it in bucket 0 — ahead of every small
+; number, which is why the reference spells the three lines s = {1} / s.add(None) / print(s) as
+; {None, 1} where this runtime used to print them in the order the program mentioned them
+; (roadmap Gap R.421, ADR 0415). A pair the payload cannot answer for — a text, a container — gets
+; 8, the "not participating" answer: the reference's own hash for those is not a function of the
+; payload at all (a text's is salted per process), so such a member keeps the position the insertion
+; gave it, after the numbers.
+define internal i32 @rt_member_bucket(i32 %v, i32 %t) {
+entry:
+  %isNone = icmp eq i32 %t, 3
+  br i1 %isNone, label %void0, label %chknum
+void0:
+  ret i32 0
+chknum:
+  %isInt = icmp eq i32 %t, 0
+  %isBool = icmp eq i32 %t, 2
+  %num = or i1 %isInt, %isBool
+  br i1 %num, label %mod, label %aside
+aside:
+  ret i32 8
+mod:
+  %isMinusOne = icmp eq i32 %v, -1
+  %hv = select i1 %isMinusOne, i32 -2, i32 %v
+  %r = srem i32 %hv, 8
+  %neg = icmp slt i32 %r, 0
+  %radj = add i32 %r, 8
+  %bk = select i1 %neg, i32 %radj, i32 %r
+  ret i32 %bk
+}
+
 ; rt_set_add_tagged is rt_set_add with the tag for the slot it writes. Adding a member that is
-; already there writes nothing, and the tag store below then lands one past the end — harmless,
-; because no loop reads past len, and the member that is there already keeps the tag it was added
-; with (ADR 0189).
+; already there writes nothing at all, and a member that is NOT already there does not simply go on
+; the tail: it goes where its bucket belongs, and the tail shifts up one to make room — payload AND
+; tag together, the pair rule of ADR 0410, because a shift that moved the payload alone would leave
+; the shifted member wearing the kind of the slot it landed on. The array is the order both the
+; printer and the loop read, so ordering it here is the one place the reference's order is decided;
+; ordering the printer instead would have print and a for-loop over the same set disagree.
 define internal void @rt_set_add_tagged(i32 %h, i32 %v, i32 %t) {
 entry:
   %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -37,9 +75,45 @@ cont:
   %next = add i32 %i, 1
   br label %check
 add:
-  %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %len
+  %bk = call i32 @rt_member_bucket(i32 %v, i32 %t)
+  br label %find
+find:
+  ; the position is the first member whose bucket is strictly greater; equal buckets keep the
+  ; order the insertions gave them, which is the probe order the reference's table keeps
+  %p = phi i32 [ 0, %add ], [ %pn, %after ]
+  %pc = icmp slt i32 %p, %len
+  br i1 %pc, label %fcmp, label %place
+fcmp:
+  %fep = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %p
+  %fv = load i32, i32* %fep
+  %ftp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %p
+  %ft = load i32, i32* %ftp
+  %fb = call i32 @rt_member_bucket(i32 %fv, i32 %ft)
+  %gt = icmp sgt i32 %fb, %bk
+  br i1 %gt, label %place, label %after
+after:
+  %pn = add i32 %p, 1
+  br label %find
+place:
+  %j = phi i32 [ %len, %find ], [ %len, %fcmp ], [ %jnext, %shift ]
+  %has = icmp sgt i32 %j, %p
+  br i1 %has, label %shift, label %grow
+shift:
+  %src = sub i32 %j, 1
+  %sp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %src
+  %sv = load i32, i32* %sp
+  %dst = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %j
+  store i32 %sv, i32* %dst
+  %stp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %src
+  %stv = load i32, i32* %stp
+  %dtp = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  store i32 %stv, i32* %dtp
+  %jnext = sub i32 %j, 1
+  br label %place
+grow:
+  %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %p
   store i32 %v, i32* %kp2
-  %tg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
+  %tg = getelementptr [@HEAPSLOTS@ x [256 x i32]], [@HEAPSLOTS@ x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %p
   store i32 %t, i32* %tg
   %len2 = add i32 %len, 1
   store i32 %len2, i32* %lp

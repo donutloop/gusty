@@ -14785,3 +14785,49 @@ discovery — and it still taught me twice.
    entries, none refused because the compiled leg agreed on all of them), the snapshot's cells to **404 records,
    highest 0413** and **196 of 328** rows owed, and the guards failed the run until every doc repeated the file's own
    number rather than my note about it (**Gap R.204**).
+
+## ADR 0415 — a set keeps its members in the reference's bucket order, at the door that inserts (Gap R.421 closed; Gaps R.423, R.424 filed, 2026-10-24)
+
+1. **An order is not cosmetic when two doors read one array.** The row arrived as "the printer puts the void
+   last", and the printer is exactly where it must not be fixed: `print(s)` and `for x in s` are two doors over the
+   same `@heap` slots, and CPython answers them with one sequence because it has one table. A sort inside
+   `rt_set_print_mixed` would have printed `{None, 1}` while the loop went on printing `1, None` — two orders for one
+   set, one of them invisible until someone writes the loop. The loop program is therefore pinned in the same table
+   as its `print` twin, so a future printer-sort fails the row instead of passing it.
+
+2. **Copy the reference's RULE, not its shape.** The bucket is `hash(x) mod size`; an int hashes to itself, and
+   CPython's own documented exception — `hash(-1) == -2`, so that `-1` never wears the value the C API reserves for
+   an error — is not a quirk to invent around but part of the rule worth carrying. The void hashes to a constant that
+   lands it in bucket 0, which is the whole of "the void prints first". And where the reference's hash is not a
+   function of the payload at all — a text's is salted per process, and four runs of `{"a", None}` really did give two
+   different orders — the answer is `8`, "not participating", and the member keeps its insertion position. Guessing a
+   bucket for a text would have broken the record-agreed `{1, 2, 'a'}` to chase a coin flip.
+
+3. **A shift is a shift is a shift.** Making `add` insert meant moving the tail right by one, and the pair rule of
+   **ADR 0410** applies verbatim in the other direction: move payload and tag together or every moved member wakes up
+   wearing the kind of the slot it landed on. The three doors are now `rt_pop` (left), `rt_reverse`'s swap, and this
+   one (right) — the same sentence in `codegen_ir_set.go`'s comment keeps them from drifting apart.
+
+4. **The measured boundary became two rows, not two hedges.** `{5, 3, 9, 1}` and a 9-member set that trips the
+   reference's resize are wrong at exit 0 after this commit exactly as before it — differently wrong, which is worse
+   to read and no worse to a user. They are **Gap R.424** with the reference's bytes and this backend's pinned side by
+   side, in both owed tables, rather than a rule quietly extended until the two tables happen to agree. **Gap R.423**
+   is the discovery underneath: the literal road fills a set with `rt_set_elem` and writes **no tag at all**, so the
+   new bucket rule read a tag word left by that heap slot's previous tenant (`ADR 0410`'s uncleared `@heap_tags`) and
+   placed a literal-built set's members nowhere. One road, one rule — the literal belongs at the same door as
+   `s.add(v)`, and that is the row.
+
+5. **Numbers are the artifacts', never mine — and `--emit-llvm`'s argument shape bit me twice.** `--emit-llvm`
+   consumes the next argv, so `--emit-llvm --verify --file x.gy` reported `undefined name "verify"`: the CLI is
+   `--file x.gy --emit-llvm`, or ask `tools/gymap`. The record is **9084 → 9094** from `tools/recmerge` (10 sources,
+   none refused, the compiled leg agreeing on every one), and the snapshot cells moved to **405 records, highest
+   0415** and **197 of 330** only after the guards read the files and told me the numbers they had already earned.
+
+6. **A sibling worker's uncommitted change can falsify your pins; park it, do not adopt it.** Halfway through this
+   cycle the tree held someone else's uncommitted **Gap R.420** work (`rt_release`, a root-aware release, in
+   `codegen_gc.go` and `codegen_ir_arena_globals.go`) — which made the R.420 pins this session had just committed fail
+   with *"already paid — delete it"*, and made my gate red over a change I neither wrote nor could finish. I copied
+   both files aside with their md5s, restored them to HEAD so the suite measured my change alone, gated and committed
+   that, and put the work back. Two rules fell out of it: **never commit another worker's in-flight change to pay for
+   your own green**, and **leave a number you did not earn unissued** — `ADR 0414` belongs to that change, so this row
+   cites `0415` and says why in its Status cell.

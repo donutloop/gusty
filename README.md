@@ -2952,6 +2952,38 @@ falls back to dynamic dispatch.
   (a set's print order puts the void last) and **Gap R.422** (`discard` compares the payload and not the
   pair) — each of the three answering identically with NO alias in the program and on the parent build.
 
+- **A set keeps its members in the reference's bucket order, and the add door decides it (Gap R.421, ADR
+  0415)** — `s = {1}` / `s.add(None)` / `print(s)` printed `{1, None}` where CPython prints `{None, 1}`,
+  at **exit 0**: both members were in the object and both carried their tag (**ADR 0232**), so the absence
+  was the ORDER, and an order is not cosmetic here because `print(s)` and `for x in s` are two doors over
+  one array and the reference answers them with one sequence — the record's `repr` is that sequence too.
+  The row's first route was the printer, and that is the route it rejected: sorting at print time fixes the
+  first door and strands the second, and every later reader (`sorted`, a join, a comparison) inherits the
+  same choice to re-make. The order went into the container instead. `@rt_member_bucket(i32 %v, i32 %t)`
+  answers where a pair belongs — `0` for the void, whose hash lands it in the table's first bucket; the
+  payload's floor-mod 8 for a number or a verdict, an int hashing to itself with CPython's documented remap
+  of `-1` to `-2`; and `8` as the *not participating* answer for any kind the payload cannot speak for, a
+  text's salted hash included, which is why `t.add("a")` after `s = {1, 2}` still prints `{1, 2, 'a'}` —
+  the honest answer to an unanswerable question. `@rt_set_add_tagged` then **inserts** at the first member
+  whose bucket is strictly greater and shifts the tail up one, payload AND tag together (**ADR 0410**'s
+  pair rule: a shift that moved the payload alone leaves every shifted member wearing the kind of the slot
+  it landed on), equal buckets keeping insertion order as the reference's probe leaves them. Nothing sorts
+  at print time; dedupe is untouched and still asks the pair, so `s.add(1)` on `{1, 2}` is one member. The
+  finding the row did not buy is filed with its bytes: the set built from a LITERAL is filled with
+  `rt_set_elem` and writes no tags at all, so `s = {3, 1, 2}` keeps the source's order and `s = {7, 2}` /
+  `s.add(9)` places the new member ahead of two the door cannot read (**Gap R.423**), and a collision or a
+  table that outgrows its first 8 buckets wants the reference's perturb probe and its rehash (**Gap R.424**)
+  — and a TEXT member, whose bucket is a per-process salted hash the payload cannot answer for, is parked after
+  the numbers, which costs it the reference's place for eight of fifteen words the pinned oracle orders the other
+  way and is filed as **Gap R.425**. Measurement with a build of the parent beside this one, over the **89**
+  programs the battery and the two alias files carry: **9 moved to the reference's answer, 65 controls held, none
+  moved away from the reference**; the leftover programs are exactly those rows. `tools/recmerge` wrote **10**
+  entries from the reference (**9084 → 9094**) and refused none. The commit also corrected a pin that had
+  `"want CPython's"` above `{1, 'a', None}` for `s = {1, "a", None}` — bytes eight unpinned `python3` runs do not
+  produce — and lifted that file's ban on oracle set-print cases, three of which now compare the linked binary to
+  a live reference over one order (**ADR 0166**: a wrong answer's pin is a debt, not a witness). **ADR 0414** is left unissued on purpose: the in-flight
+  release-door change owns that number, and this row is not it.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

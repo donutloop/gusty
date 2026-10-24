@@ -18196,7 +18196,7 @@ which any second root raises and not only an alias, is the **Gap Q.2**/**Q.1** m
 smallest program that shows it.
 
 <a id="gap-r-421"></a>
-### Gap R.421 — a set's print order puts the void last (⏳ OPEN, filed by **ADR 0413**)
+### Gap R.421 — a set's print order puts the void last (✅ DONE, filed by **ADR 0413**, closed by **ADR 0415**)
 
 ```gusty
 s = {1}
@@ -18205,12 +18205,30 @@ print(s)      #  {None, 1}   ← this backend: {1, None}      — at exit 0
 ```
 
 Nothing is missing and nothing is mislabelled: both members are in the object, both carry their tag
-(**ADR 0232**), and `len` answers 2. What differs is the ORDER the reference's small hash table produces —
-`hash(None)` is 0, so the void occupies the first bucket and prints first — and the printer emits insertion
-order. The alias twin (`t = s` / `t.add(None)`) prints the same two bytes, and so does the parent build,
-which is why this is a row about the printer and not residue of the alias notebook: the same answer must
-come from one printer whichever name reached it (**ADR 0258**'s rule), and it will come from the mixed-set
-arm `mixedSets` already routes.
+(**ADR 0232**), and `len` answers 2. What differs is the ORDER — the reference's `set` is an open-addressed table
+whose bucket is `hash(x) mod (table size)`, and the sequence every reader walks is that table read in bucket order;
+the void's hash lands it in bucket 0, ahead of every small number.
+
+**Closed by ADR 0415, in the container rather than at the call site.** `@rt_member_bucket(i32 %v, i32 %t)` answers
+where a pair belongs — 0 for the void, the payload's floor-mod 8 for an int or a verdict (an int hashes to itself,
+with CPython's documented remap of `-1` to `-2`), and 8 as the "not participating" answer for a kind the payload
+cannot speak for, a text's salted hash included, which is why `t.add("a")` after `s = {1, 2}` still prints
+`{1, 2, 'a'}` as the record says. `@rt_set_add_tagged` inserts at the first member whose bucket is strictly greater
+and shifts the tail up one, **payload and tag together** (**ADR 0410**'s pair rule — a shift that moved the payload
+alone would leave every shifted member wearing the kind of the slot it landed on); equal buckets keep insertion
+order, which is what the reference's probe leaves for the sets that do not collide.
+
+The row's own claim is that this is the printer's absence no longer: nothing sorts at print time, because `print(s)`
+and `for x in s` are two doors over one array and the reference answers them with one sequence. Sorting inside
+`rt_set_print_mixed` would have fixed the first and stranded the second — and a third door (`sorted`, a join, a
+comparison) would inherit the same choice to make again. The loop program is pinned beside its `print` twin in the
+same table for that reason: `s = {2}` / `s.add(1)` / `s.add(None)` / `for x in s: print(x)` is `None`, `1`, `2`.
+
+Measured with a build of the parent beside this one over the 89 programs the battery and the two alias files carry:
+**9 moved to the reference's answer, 65 controls held, none moved away**, 4 still differ — and the four are rows:
+the literal road that writes no tags and no order is **Gap R.423**, and the perturb probe and the resize/rehash this
+door does not simulate is **Gap R.424**. `tools/recmerge` wrote **10** entries from the reference (record
+**9084 → 9094**), refusing none.
 
 <a id="gap-r-422"></a>
 ### Gap R.422 — `discard` and `remove` ask the set's recorded kind instead of the argument's tag (⏳ OPEN, filed by **ADR 0413**)
@@ -18230,3 +18248,81 @@ one container door that had not been given the pair: the payload is never the di
 reason (**Gap R.174**), and the alias twin answers identically on this build and the parent, so neither half
 is the notebook's: the door that removes by payload alone is.
 
+
+<a id="gap-r-423"></a>
+### Gap R.423 — the set built from a literal writes its members with `rt_set_elem` and no tag (⏳ OPEN, filed by **ADR 0415**)
+
+```gusty
+s = {3, 1, 2}
+print(s)      #  {1, 2, 3}   ← this backend: {3, 1, 2}      — at exit 0
+
+s = {7, 2}
+s.add(9)
+print(s)      #  {9, 2, 7}   ← this backend: {9, 7, 2}      — at exit 0
+```
+
+**ADR 0415** put the reference's bucket order in the door that inserts, and found that half the sets in the language
+never pass through that door. A set literal is filled positionally — `rt_alloc` and one `rt_set_elem(h, i, v)` per
+member — so its members arrive in the order the SOURCE named them, and, more consequentially, with **no tag written
+beside any of them**. `@heap_tags` is not cleared when a slot is freed (**ADR 0410** said so of `rt_pop`), so the
+tag a literal member carries is whatever that heap word's last tenant left. The second program above is the proof:
+the `9` was placed correctly by the new rule, and the two literal members were placed nowhere, because
+`rt_member_bucket` was handed a tag word nobody had written for them.
+
+The fix is one road, not a compile-time echo of the bucket rule: the literal goes down `rt_set_add_tagged`, the door
+`s.add(v)` and the set comprehension already use, so the tag and the order are written by the same code that writes
+a member — and the dead-heap-object pass (**ADR 0143**), which recognises the `rt_alloc` + `rt_set_elem` sequence, is
+re-taught rather than starved. Until then a set written one way and added to another has two orders to disagree
+about, which is the shape of this row.
+
+<a id="gap-r-424"></a>
+### Gap R.424 — members that collide, and a set that outgrows the first table (⏳ OPEN, filed by **ADR 0415**)
+
+```gusty
+s = set()
+s.add(5)
+s.add(3)
+s.add(9)
+s.add(1)
+print(s)      #  {9, 3, 5, 1}  ← this backend: {9, 1, 3, 5}  — at exit 0
+
+s = set()
+for i in range(9):
+    s.add(i * 4)
+print(s)      #  {0, 32, 4, 8, 12, 16, 20, 24, 28}
+              #  ← this backend: {0, 8, 16, 24, 32, 4, 12, 20, 28}
+```
+
+The boundary of **ADR 0415**'s rule, pinned where it was found. The door divides by the first table's 8 and keeps
+equal buckets in insertion order; the reference probes a collision with `j = (5*j + 1 + perturb) mod size` and, when
+occupancy reaches three-fifths, resizes and **rehashes every member against the new size** — so `32`, whose bucket
+under 32 is 0, comes to stand right after `0` in a table whose first bucket 0 was already taken by `0` itself. Every
+set whose members land in distinct buckets of the first table answers the reference, which is every set the record
+and the alias family carry; these two programs are the reachable edge of that claim, and they are the reason the
+bucket rule is stated exactly once, in `rt_member_bucket`, where the size and the probe belong.
+
+<a id="gap-r-425"></a>
+### Gap R.425 — a text member of a set sits where a hash this backend cannot compute would put it (⏳ OPEN, filed by **ADR 0415**)
+
+```gusty
+s = set()
+s.add(3)
+s.add("a")
+print(s)      #  {'a', 3}    ← this backend: {3, 'a'}        — at exit 0
+```
+
+**ADR 0415** put the reference's bucket rule in one helper and found that three of its arms — the int, the
+verdict, the void — are answerable from the payload and the fourth is not. The reference's `hash("a")` is salted
+per process; the reference legs of this repository pin that salt (`PYTHONHASHSEED=0`, `pkg/lang/oracle.go`), so
+the answer above is stable *for the harness* while being unknowable *as a rule* — the payload the compiled path
+holds is an index into `@str_tab`, and **ADR 0172** settled long ago that the index is not the value. The door
+therefore answers "not participating" (bucket 8), and a text keeps the position the insertion gave it, after the
+numbers.
+
+That is the honest arm of the rule, and this row is where its cost is recorded rather than hidden: over fifteen
+words, eight print their text ahead of `3` in the pinned reference and none does here. It also explains why
+`s = {1, "a", None}` / `print(s)` agrees today — `"a"`'s bucket happens to fall after the `1` — which is luck of
+that one word, not evidence for the rule. The fix is a hash, not a guess: intern the reference's string hash beside
+the payload at intern time and let `rt_member_bucket` read it, keeping the rule in the one helper and the salt
+where the reference keeps it. The row is byte-identical on the parent build, so the order this backend lacks for
+texts predates the order it gained for numbers; the difference is that there is now a place to put the answer.

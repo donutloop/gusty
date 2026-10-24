@@ -51,6 +51,17 @@ import (
 // container over and is filed as **Gap R.419**, two wrong answers and two crashes beside it; and a slot
 // of the alias bound to a name and asked as a condition is **Gap R.146**'s one-word position, refusal and
 // all, which is what the non-alias twin does too.
+//
+// The family grew a third dimension with **ADR 0415** (**Gap R.421**, closed): the set's ORDER. A set is an
+// open-addressed table in the reference and the array every reader walks is that table in bucket order, so
+// the void — whose hash lands it in bucket 0 — comes before every small number, and `print(s)` and
+// `for x in s` must answer the same sequence or the same set has two orders. The order is kept by the door
+// that inserts (`rt_set_add_tagged` over `rt_member_bucket`), never by the printer, which is why the loop
+// program sits in this table beside its `print` twin rather than in a printer file. Measurement with a
+// build of the parent (**ADR 0413**) beside this one over the 89 programs the battery and these two files
+// carry: **9 moved to the reference's answer, 65 controls held, none moved away**, 4 still differ — and
+// those 4 are rows too: the literal road that writes members with `rt_set_elem` and no tag at all is
+// **Gap R.423**, and the reference's perturb probe and its resize/rehash are **Gap R.424**.
 
 // theAliasAnswered is the family this row pays: every read of a list asked through the name the program
 // bound to it, and the control that keeps the single-kind road standing.
@@ -134,6 +145,22 @@ func theAliasAnswered() []struct {
 		{"a loop over the alias's members", "s = {1, \"a\"}\nt = s\nfor v in t:\n    print(v)\n", "1\na\n"},
 		{"the alias of a set compared with its source", "s = {1, 2}\nt = s\nprint(s == t)\nt.add(3)\nprint(s == t)\n", "True\nTrue\n"},
 		{"the set rebound under its own alias", "s = {1}\nt = s\ns = {2, 3}\nprint(s)\nprint(t)\n", "{2, 3}\n{1}\n"},
+		// The order the members come back in, which is the reference's order and not the order the source
+		// named them in (roadmap **Gap R.421**, ADR 0415). A set is an open-addressed table there and every
+		// reader walks it in bucket order, so the void — whose hash lands it in bucket 0 — comes first,
+		// ahead of every small number. These are the shapes that were pinned as owed bytes here until this
+		// row paid them; the loop case is the one that decides WHERE the order lives, because print and the
+		// loop read the same array and may not disagree.
+		{"the void added to a set through the alias", "s = {1}\nt = s\nt.add(None)\nprint(t)\nprint(s)\n", "{None, 1}\n{None, 1}\n"},
+		{"the void added to a set of numbers", "s = set()\ns.add(1)\ns.add(None)\nprint(s)\n", "{None, 1}\n"},
+		{"a set the number joins after the void", "s = {2}\ns.add(None)\ns.add(1)\nprint(s)\n", "{None, 1, 2}\n"},
+		{"the verdict added to a set of numbers", "s = {2}\ns.add(True)\nprint(s)\n", "{True, 2}\n"},
+		{"the void added through the alias, the number after it", "s = {1}\nt = s\nt.add(None)\nt.add(3)\nprint(t)\n", "{None, 1, 3}\n"},
+		{"the loop over a set the void joined", "s = {2}\ns.add(1)\ns.add(None)\nfor x in s:\n    print(x)\n", "None\n1\n2\n"},
+		{"the member added twice is one member", "s = {1, 2}\ns.add(1)\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n"},
+		{"the alias promotes and the void keeps its place", "s = {1}\nt = s\nt.add(\"a\")\nt.add(None)\nprint(s)\nprint(t)\n", "{None, 1, 'a'}\n{None, 1, 'a'}\n"},
+		{"the void and the number counted", "s = {1}\ns.add(None)\nprint(len(s))\nprint(1 in s)\nprint(None in s or s is None)\n", "2\nTrue\nTrue\n"},
+		{"zero and the void, both in bucket 0", "s = set()\ns.add(4)\ns.add(None)\ns.add(0)\nprint(s)\n", "{None, 0, 4}\n"},
 	}
 }
 
@@ -454,16 +481,6 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 				"the alias's)",
 		},
 		{
-			name:     "the void added to a set through the alias",
-			src:      "s = {1}\nt = s\nt.add(None)\nprint(t)\n",
-			gap:      "Gap R.421",
-			compiled: "{1, None}\n",
-			python:   "{None, 1}\n",
-			why: "both members are present and both are tagged — only their ORDER is the reference's absence: the " +
-				"reference prints a set in hash order, where the void's slot is 0. The same program with no alias " +
-				"in it prints the same two bytes, which is what makes this the printer's row and not this one's",
-		},
-		{
 			name:     "a text discarded from a set of numbers through the alias",
 			src:      "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
 			gap:      "Gap R.422",
@@ -472,6 +489,61 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 			why: "`discard` asks the SET'S recorded kind instead of the ARGUMENT's tag, so the text's intern index " +
 				"is passed as a number and the member whose payload happens to equal it is removed — a wrong answer " +
 				"at exit 0 that the program with no alias answers identically, byte for byte",
+		},
+		{
+			name:     "the set built from a literal, joined by a number",
+			src:      "s = {7, 2}\ns.add(9)\nprint(s)\n",
+			gap:      "Gap R.423",
+			compiled: "{9, 7, 2}\n",
+			python:   "{9, 2, 7}\n",
+			why: "the literal road writes the members with `rt_set_elem` and writes NO tag beside them, so the add " +
+				"door asks `rt_member_bucket` of a pair whose tag word is whatever that heap slot's last tenant left " +
+				"(ADR 0410's uncleared tag array): the two literal members are read as not-participating and the new " +
+				"member lands ahead of them. The release of the tag duty is the road's, not the order rule's",
+		},
+		{
+			name:     "the set built from a literal and never reordered",
+			src:      "s = {3, 1, 2}\nprint(s)\n",
+			gap:      "Gap R.423",
+			compiled: "{3, 1, 2}\n",
+			python:   "{1, 2, 3}\n",
+			why: "the same road's other face: a literal's members go into the array in the order the SOURCE named " +
+				"them, because nothing on that road asks the bucket question the add door now asks. One road, one " +
+				"rule — until it carries the tag and the order both, a set written one way and added to another has " +
+				"two orders to disagree about",
+		},
+		{
+			name:     "the text that joins a set of numbers",
+			src:      "s = set()\ns.add(3)\ns.add(\"a\")\nprint(s)\n",
+			gap:      "Gap R.425",
+			compiled: "{3, 'a'}\n",
+			python:   "{'a', 3}\n",
+			why: "the payload of a text is an intern index and the reference's hash of it is salted per " +
+				"process, so `rt_member_bucket` (**ADR 0415**) answers its own \"not participating\" and the " +
+				"member keeps the insertion's position, after the numbers. Over fifteen words the pinned " +
+				"reference puts EIGHT of them ahead of the 3 and this backend puts none: the arm of the rule " +
+				"the payload cannot answer for, recorded rather than smoothed",
+		},
+		{
+			name:     "two members whose buckets collide",
+			src:      "s = set()\ns.add(5)\ns.add(3)\ns.add(9)\ns.add(1)\nprint(s)\n",
+			gap:      "Gap R.424",
+			compiled: "{9, 1, 3, 5}\n",
+			python:   "{9, 3, 5, 1}\n",
+			why: "5, 3 and 1 all hash into the same bucket the reference's probe sequence walks with its perturb " +
+				"rule (`j = (5*j + 1 + perturb) mod size`), where this door keeps equal buckets in insertion order. " +
+				"The order is right for every set whose members land in distinct buckets, which is every set the " +
+				"record and this family carries",
+		},
+		{
+			name:     "the set that outgrows the first table",
+			src:      "s = set()\nfor i in range(9):\n    s.add(i * 4)\nprint(s)\n",
+			gap:      "Gap R.424",
+			compiled: "{0, 8, 16, 24, 32, 4, 12, 20, 28}\n",
+			python:   "{0, 32, 4, 8, 12, 16, 20, 24, 28}\n",
+			why: "the reference resizes at three-fifths occupancy and REHASHES every member against the new size; " +
+				"this door divides by the first table's 8 whatever the count. The bucket rule is stated once, in " +
+				"`rt_member_bucket`, and the size is the half of it that is not yet there",
 		},
 		{
 			name:     "a loop over the alias's key/value pairs",
