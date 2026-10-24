@@ -2969,9 +2969,11 @@ falls back to dynamic dispatch.
   pair rule: a shift that moved the payload alone leaves every shifted member wearing the kind of the slot
   it landed on), equal buckets keeping insertion order as the reference's probe leaves them. Nothing sorts
   at print time; dedupe is untouched and still asks the pair, so `s.add(1)` on `{1, 2}` is one member. The
-  finding the row did not buy is filed with its bytes: the set built from a LITERAL is filled with
-  `rt_set_elem` and writes no tags at all, so `s = {3, 1, 2}` keeps the source's order and `s = {7, 2}` /
-  `s.add(9)` places the new member ahead of two the door cannot read (**Gap R.423**), and a collision or a
+  finding the row did not buy is filed with its bytes: the set literal has TWO fill roads — its mixed arm goes
+  through the ordered door, so `s = {1, None, 3}` prints `{None, 1, 3}`, while its single-kind arm fills positionally
+  with `rt_set_elem` beside `rt_tag_elem` — the tags ARE written (**ADR 0187**, **ADR 0189**), what that arm withholds
+  is the PLACE — so `s = {3, 1, 2}` keeps the source's order and `s = {7, 2}` / `s.add(9)` lands the new member ahead
+  of two that were never placed (**Gap R.423**), and a collision or a
   table that outgrows its first 8 buckets wants the reference's perturb probe and its rehash (**Gap R.424**)
   — and a TEXT member, whose bucket is a per-process salted hash the payload cannot answer for, is parked after
   the numbers, which costs it the reference's place for eight of fifteen words the pinned oracle orders the other

@@ -18250,7 +18250,7 @@ is the notebook's: the door that removes by payload alone is.
 
 
 <a id="gap-r-423"></a>
-### Gap R.423 — the set built from a literal writes its members with `rt_set_elem` and no tag (⏳ OPEN, filed by **ADR 0415**)
+### Gap R.423 — the set's single-kind literal fills its members positionally, in the order the source named them (⏳ OPEN, filed by **ADR 0415**)
 
 ```gusty
 s = {3, 1, 2}
@@ -18261,13 +18261,18 @@ s.add(9)
 print(s)      #  {9, 2, 7}   ← this backend: {9, 7, 2}      — at exit 0
 ```
 
-**ADR 0415** put the reference's bucket order in the door that inserts, and found that half the sets in the language
-never pass through that door. A set literal is filled positionally — `rt_alloc` and one `rt_set_elem(h, i, v)` per
-member — so its members arrive in the order the SOURCE named them, and, more consequentially, with **no tag written
-beside any of them**. `@heap_tags` is not cleared when a slot is freed (**ADR 0410** said so of `rt_pop`), so the
-tag a literal member carries is whatever that heap word's last tenant left. The second program above is the proof:
-the `9` was placed correctly by the new rule, and the two literal members were placed nowhere, because
-`rt_member_bucket` was handed a tag word nobody had written for them.
+**ADR 0415** put the reference's bucket order in the door that inserts, and found that the set has two fill roads and
+only one of them is that door. The literal road branches: when the members describe themselves (the mixed arm) every
+member goes through `rt_set_add_tagged` and lands where its bucket belongs — `s = {1, None, 3}` prints `{None, 1, 3}`;
+when they are all of one kind (the single-kind arm) each member is written positionally, `rt_set_elem(h, i, v)` beside
+`rt_tag_elem(h, i, t)`, in the order the SOURCE named them — `s = {3, 1, 2}` prints `{3, 1, 2}`.
+
+The claim this row first carried was that the positional arm writes no tag. It does: `rt_tag_elem` sits beside every
+member, exactly as **ADR 0187** and **ADR 0189** require, and the worktree that measured the two programs above says so.
+What the arm withholds is the PLACE. `rt_set_add_tagged` inserts relative to the array it is handed, and the array the
+positional arm left is in source order — so in the second program the `9` is placed correctly (first, its bucket is the
+smallest) ahead of a `7` and a `2` that were never placed at all. One road, one rule; the mixed arm is the existence
+proof that the rule works when both arms share it.
 
 The fix is one road, not a compile-time echo of the bucket rule: the literal goes down `rt_set_add_tagged`, the door
 `s.add(v)` and the set comprehension already use, so the tag and the order are written by the same code that writes

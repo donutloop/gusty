@@ -14812,9 +14812,12 @@ discovery — and it still taught me twice.
    reference's resize are wrong at exit 0 after this commit exactly as before it — differently wrong, which is worse
    to read and no worse to a user. They are **Gap R.424** with the reference's bytes and this backend's pinned side by
    side, in both owed tables, rather than a rule quietly extended until the two tables happen to agree. **Gap R.423**
-   is the discovery underneath: the literal road fills a set with `rt_set_elem` and writes **no tag at all**, so the
-   new bucket rule read a tag word left by that heap slot's previous tenant (`ADR 0410`'s uncleared `@heap_tags`) and
-   placed a literal-built set's members nowhere. One road, one rule — the literal belongs at the same door as
+   is the discovery underneath — and the claim I had to take back. The set literal has two fill roads: its mixed arm
+   goes through the ordered door (`s = {1, None, 3}` prints `{None, 1, 3}`), its single-kind arm fills positionally with
+   `rt_set_elem` beside `rt_tag_elem` (`s = {3, 1, 2}` keeps the source's order). My first statement blamed the missing
+   order on a missing tag; a build of the tree showed `rt_tag_elem` beside every positional member, exactly as **ADR
+   0187**/**ADR 0189** require. What that arm withholds is the PLACE, not the tag — and a row's root-cause sentence is a
+   claim about the artifact, so it was corrected the same day rather than left to rot. One road, one rule — the literal belongs at the same door as
    `s.add(v)`, and that is the row.
 
 5. **Numbers are the artifacts', never mine — and `--emit-llvm`'s argument shape bit me twice.** `--emit-llvm`

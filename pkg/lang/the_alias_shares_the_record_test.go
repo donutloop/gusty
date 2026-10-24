@@ -496,10 +496,11 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 			gap:      "Gap R.423",
 			compiled: "{9, 7, 2}\n",
 			python:   "{9, 2, 7}\n",
-			why: "the literal road writes the members with `rt_set_elem` and writes NO tag beside them, so the add " +
-				"door asks `rt_member_bucket` of a pair whose tag word is whatever that heap slot's last tenant left " +
-				"(ADR 0410's uncleared tag array): the two literal members are read as not-participating and the new " +
-				"member lands ahead of them. The release of the tag duty is the road's, not the order rule's",
+			why: "the literal road has two arms: the MIXED one fills through `rt_set_add_tagged` and so keeps the " +
+				"bucket order, the single-kind one fills positionally with `rt_set_elem` beside `rt_tag_elem` — the " +
+				"tags ARE written (**ADR 0187**, **ADR 0189**), what that arm withholds is the PLACE. The add door " +
+				"inserts relative to the array it is handed, and that array is in the source's order, so the new " +
+				"member lands ahead of two members that were never placed at all",
 		},
 		{
 			name:     "the set built from a literal and never reordered",

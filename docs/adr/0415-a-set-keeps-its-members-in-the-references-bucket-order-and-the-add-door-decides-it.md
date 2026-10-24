@@ -3,8 +3,8 @@
 ## Status
 
 Accepted — 2026-10-24. Closes **roadmap Gap R.421** (a set's print order puts the void last). Files two rows it
-measured beside itself and did not buy: **Gap R.423** (the set built from a literal writes its members with
-`rt_set_elem` and no tag, and keeps the order the source named them in) and **Gap R.424** (members whose buckets
+measured beside itself and did not buy: **Gap R.423** (the set's single-kind literal arm fills its members positionally with
+`rt_set_elem` + `rt_tag_elem`, in the order the source named them, while its mixed arm goes through the ordered door) and **Gap R.424** (members whose buckets
 collide, and a set that outgrows the first table, where the reference's probe sequence and its rehash decide).
 It also files the arm of its own rule the payload cannot answer for — **Gap R.425** (a TEXT member sits after the
 numbers here and at a salted hash's mercy in the reference) — and corrects a pin in
@@ -80,6 +80,13 @@ helper that both halves of that door ask.**
   the file, not remembered, in `AGENTS.md`, `docs/operations.md` and the `roadmap.md` snapshot.
 - The order is now a fact about the object rather than a fact about the call site, so a future `sorted`, join or set
   comparison inherits it instead of reinventing it — and inherits **Gap R.424**'s debt too, which is where it belongs.
+- The row found a second fill road on the way, and had to take back a sentence about it. `s = {3, 1, 2}` (every member
+  one kind) is filled positionally, in the source's order, and prints `{3, 1, 2}`; `s = {1, None, 3}` (the mixed arm of
+  the same literal road) goes through the ordered door and prints the reference's `{None, 1, 3}`. That is **Gap R.423**.
+  The first draft of the row said the positional arm writes no tag — a build of the tree showed `rt_tag_elem` beside
+  every member, exactly as **ADR 0187**/**ADR 0189** require. What that arm withholds is the PLACE, not the tag. A
+  root-cause sentence is a claim about the artifact, and an artifact that contradicts it is a second debt: corrected the
+  same day, in the row, the details, the README and the pinned owed byte.
 - `integration/mixed_container_test.go` carried `{1, 'a', None}` under the label *"want CPython's"* for
   `s = {1, "a", None}` / `print(s)`, and its oracle half carried a comment excluding set printing "on purpose",
   because comparing a hash order to an insertion order was not a comparison. Both were true of the backend that
@@ -103,8 +110,9 @@ helper that both halves of that door ask.**
 - **Sort the literal road in Go at compile time.** Reaches the same bytes for literals, but puts a second copy of the
   rule in the compiler where the runtime copy already lives, and the set-literal road is the target of the
   dead-heap-object pass (**ADR 0143**), which recognises `rt_alloc` + `rt_set_elem` sequences. Filed as **Gap R.423**
-  instead — the literal road needs the tag store as much as the order, and the two want one door, not one compile-time
-  echo.
+  instead, with the fix being the door rather than an echo of the rule: the literal's mixed arm already goes through
+  `rt_set_add_tagged` and answers the reference, which is the existence proof that the single-kind arm only has to use
+  the same door.
 - **Simulate CPython's perturb probe (`j = (5*j + 1 + perturb) mod size`) and its resize/rehash now.** Correct for
   collisions and large tables, and it is a table implementation, not a rule one helper can hold; measured and filed as
   **Gap R.424** with the reference's bytes and this backend's beside them, both reachable from the pinned suite.
