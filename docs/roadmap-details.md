@@ -18364,7 +18364,7 @@ where the reference keeps it. The row is byte-identical on the parent build, so 
 texts predates the order it gained for numbers; the difference is that there is now a place to put the answer.
 
 <a id="gap-r-426"></a>
-### Gap R.426 — `sorted` over a dict sorts the entry array's first `len` words, not its keys (⏳ OPEN, filed by **ADR 0414**)
+### Gap R.426 — `sorted` over a dict sorts the entry array's first `len` words, not its keys (✅ DONE, filed by **ADR 0414**, closed by **ADR 0417**)
 
 ```gusty
 d = {"a": 1, "b": 2}
@@ -18386,6 +18386,33 @@ the set-order family (**Gap R.424**, **Gap R.425**) is a different question abou
 the sentence that makes it a row rather than that commit's damage. The fix is the stride question asked at the top of
 the sort loop (ask the object what it is, walk a dict by its keys) and, until that arm exists, a refusal that names the
 missing half rather than an answer built from a payload.
+
+**What paid it.** `sortedRuntime` now asks its argument what it is before it copies anything, and a dict goes down its
+own arm (`sortedDict` / `sortedDictAnswers` in `pkg/lang/codegen_container.go`). The comparator is decided by the
+record the front end already keeps of a dict's keys — `dictKeyStr`, `dictKeyInt`, `mixedDicts`, the same facts the print
+and `in` roads read a dict by — so the order comes from the object's own record rather than from a guess about the
+source text, which is what makes `g = {}` / `g["q"] = 1` / `g["p"] = 2` / `sorted(g)` answerable at all (the literal the
+binding left behind says nothing by then). The copy is built by the module's one new door, `@rt_dict_keys`, which walks
+the entry array at `%w = mul i32 %i, 2` and stops at `@rt_dict_len` — the same stride question `rt_gc` asks and
+`rt_dict_print_mixed` asks — and `@rt_sort` is handed that copy and nothing else, which the IR row asserts by reading
+the block rather than by trusting this prose.
+
+**The half the first version got wrong, and what caught it.** Reading each key's tag out of `@heap_tags` was not
+enough: a dict whose keys are all of one kind is stored through the UNTAGGED put — its kind lives in the compiler's
+record, not in the arena — so the tag word for a text key said only who had slept in that slot last, and
+`xs = sorted(d)` printed `['b', 'a']` as `[1, 0]`, the two indexes into `@str_tab`. The door therefore takes the key
+kind as an argument and uses it for a TEXT key and for nothing else: every other kind arrives through the tagged put
+and keeps the tag it was written with, which is why a verdict key still prints `True` rather than `1`. The second half
+was the binding: the assignment road that gives `xs = sorted(...)` its element kinds read them from a list source or a
+list literal only, so it now asks the KEYS of a dict source, and a key that is neither a plain number nor a text marks
+the copy's elements as tag-printed. Both were measured against `python3` in the same case, not asserted from here.
+
+**What the arm refuses, and why that is the answer rather than a dodge.** Keys of more than one kind (the reference
+raises `TypeError: '<' not supported between instances of 'str' and 'int'`), fractional keys (whose value lives in
+`@float_box` while the slot carries a handle, so the payload comparator would order them by arrival), and a key no
+record describes — `x = 3` / `y = 1` / `sorted({x: 1, y: 2})` — all leave the build in words that name the missing half
+and **Gap R.429**. `for k in sorted(d)` stays the `for` road's own refusal (**Gap R.247**'s dict half), and
+`sorted(<set>)` answering the set's insertion order is **Gap R.430**, filed beside this one by the same control family.
 
 <a id="gap-r-427"></a>
 ### Gap R.427 — a value that lives only in another container's slot is released, because the release asks the root table and a slot is not a root (⏳ OPEN, filed by **ADR 0414**)
@@ -18418,3 +18445,58 @@ which is the reason it is a row and not this commit. The smaller one widens this
 too, at the price of walking what the roots reach on every release. What will not do is the current per-name question,
 which cannot see an object that no name holds — and the ADR says so about its own decision rather than leaving the
 reader to find the boundary by program.
+
+<a id="gap-r-429"></a>
+### Gap R.429 — the dict-sort arm refuses the keys it cannot name (⏳ OPEN, filed by **ADR 0417**)
+
+```gusty
+print(sorted({1: "x", "b": 2}))        #  TypeError: '<' not supported between   ← this backend: refused, exit 1
+print(sorted({1.5: "x", 2.5: "y"}))    #  [1.5, 2.5]                             ← this backend: refused, exit 1
+x = 3
+y = 1
+print(sorted({x: 1, y: 2}))            #  [1, 3]                                 ← this backend: refused, exit 1
+```
+
+**ADR 0417** gave `sorted` a dict arm, and the arm answers every dict whose keys it can name. These three it stops,
+and each stop is a missing half rather than a decision to be unhelpful:
+
+* **two kinds of key** — the reference asks each key its own `__lt__`, so `{1: "x", "b": 2}` fails inside the sort with
+  `TypeError: '<' not supported between instances of 'str' and 'int'`, at exit 3, catchable by `except TypeError`. The
+  comparator this door owns takes a mode, not a pair of tags: `rt_elem_gt(a, b, mode)` compares two payloads as numbers
+  or two intern indexes with `strcmp`, and has no arm that can say "these two do not order against each other". A total
+  order invented across kinds is an answer no language in this family gives, so the program is refused instead. What the
+  row owes is the tagged comparator **ADR 0316** (`@rt_pair_fold`) and **ADR 0324** (`@rt_pair_order`) already use for
+  folds and slot reads, raising CPython's own sentence from the IR — which also owes **ADR 0382**'s ordering door.
+* **a fractional key** — since **ADR 0413** a float's value lives in `@float_box` and its slot carries a handle, so the
+  payload comparator sorts `{1.5: …, 2.5: …}` by ALLOCATION ORDER. The arm would have printed a plausible list of numbers
+  the program never ordered. It refuses, naming the box table.
+* **a key the program named rather than wrote** — `{a: 1, b: 2}` answers (the front end's `strVals` table says what those
+  names hold), `{x: 1, y: 2}` does not: there is no `intVals` twin for a name, so the key's kind is a fact the front end
+  never wrote down — the same shape of cause as **Gap R.354**, and the same cure: write the fact down.
+
+All three are exit **1** refusals carrying `Gap R.429`, pinned in `pkg/lang/a_dict_sorts_its_keys_test.go` and
+`integration/a_dict_sorts_its_keys_test.go`; a case that starts ANSWERING where it used to refuse fails the pin, so the
+row cannot be paid by quietly deleting it.
+
+<a id="gap-r-430"></a>
+### Gap R.430 — `sorted` over a SET answers the set's own insertion order (⏳ OPEN, filed by **ADR 0417**)
+
+```gusty
+t = {"c", "a", "b"}
+print(sorted(t))                  #  ['a', 'b', 'c']  ← this backend: ['c', 'a', 'b']  — at exit 0
+print(sorted(t, reverse=True))    #  ['c', 'b', 'a']  ← this backend: ['c', 'a', 'b']  — at exit 0
+```
+
+This is **Gap R.426**'s control case, and controls are where a fix that generalises one container and quietly ignores
+another gets caught. The two forms print the SAME bytes, which is the tell: for a set the door never reaches
+`@rt_sort` at all, so `reverse=` reverses nothing and the set's own member sequence is echoed back. An inline set literal
+of plain integers is the exception that proves the shape of the bug — `print(sorted({3, 1, 2}))` is `[1, 2, 3]` — because
+that shape folds at compile time, so a sorting door exists in the file while being absent for everything else.
+
+Measured byte-identical on the parent of **ADR 0417**, which is what keeps it a row of its own rather than damage this
+commit did. It is also not the set-order family: **Gap R.421** / **Gap R.424** / **Gap R.425** are about the order a set
+PRINTS its members in, which is a bucket question, and this is a sort that does not run. What it owes is the same first
+question `sortedDict` now asks — ask the argument what it is — and a set arm that builds a fresh heap list of the members
+(these are contiguous, at stride one, so `@rt_list_copy` already reaches them) and hands it to `@rt_sort` / `@rt_reverse`
+with the comparator the members' own kinds pick. Until then the honest shape is a refusal, and the pin
+(`TestWhatSortingASetStillOwesIsFiledNotFixed`) fails if the door starts answering, so the row has to be closed on purpose.

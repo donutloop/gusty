@@ -1,0 +1,27 @@
+d = {"pear": 1, "apple": 2, "fig": 3, "banana": 4}
+print(sorted(d))
+print(sorted(d, reverse=True))
+print(sorted(d))
+for k in d:
+    print(k)
+n = 0
+for k in d:
+    n = n + 1
+print(n)
+xs = sorted(d)
+print(xs)
+print(len(xs))
+print(xs[0])
+print(xs[3])
+print(d["pear"])
+counts = {3: "c", 1: "a", 2: "b"}
+print(sorted(counts))
+print(sorted(counts, reverse=True))
+print(counts[2])
+built = {}
+built["q"] = 1
+built["p"] = 2
+print(sorted(built))
+alias = d
+print(sorted(alias))
+print(sorted(d))

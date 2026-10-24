@@ -110,7 +110,7 @@ func TestTaggedListEmitsTagsAndPrintsThroughTheTaggedPrinter(t *testing.T) {
 	// The handle temp's name is codegen's business; the slot index and tag value are ours.
 	for _, want := range []string{", i32 0, i32 0)", ", i32 1, i32 4)", ", i32 2, i32 3)"} {
 		if !strings.Contains(res.IR, want) {
-			t.Errorf("module is missing the tag write %q\ngot: %s", want, irLinesContaining(res.IR, "rt_tag_elem"))
+			t.Errorf("module is missing the tag write %q\ngot: %s", want, irLinesAll(res.IR, "rt_tag_elem"))
 		}
 	}
 	for _, line := range strings.Split(res.IR, "\n") {
@@ -298,14 +298,19 @@ func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 	if !strings.Contains(res.IR, "call void @rt_append_tagged(") {
-		t.Errorf("append should write payload and tag together:\n%s", irLinesContaining(res.IR, "rt_append"))
+		t.Errorf("append should write payload and tag together:\n%s", irLinesAll(res.IR, "rt_append"))
 	}
-	// Slot 0 becomes a string (TagStr = 4) and the appended slot carries None (TagNone = 3).
-	if !strings.Contains(strings.Join(irLinesContaining(res.IR, "rt_tag_elem"), "\n"), ", i32 0, i32 4)") {
-		t.Errorf("item write must retag slot 0 as a string:\n%s", strings.Join(irLinesContaining(res.IR, "rt_tag_elem"), "\n"))
+	// Slot 0 becomes a string (TagStr = 4) and the appended slot carries None (TagNone = 3). The claim is
+	// about the MODULE, so it is asked of every line that mentions the door: the shared `irLinesContaining`
+	// sampler keeps the first six matches to keep failure output short, and a runtime helper added below the
+	// program's own block pushes this line out of that window without the program's behaviour moving — which
+	// is how the dict key door of ADR 0417 (roadmap Gap R.426) came to fail this case while changing nothing
+	// about it. A sampled window cannot certify an absence.
+	if !strings.Contains(strings.Join(irLinesAll(res.IR, "rt_tag_elem"), "\n"), ", i32 0, i32 4)") {
+		t.Errorf("item write must retag slot 0 as a string:\n%s", strings.Join(irLinesAll(res.IR, "rt_tag_elem"), "\n"))
 	}
-	if !strings.Contains(strings.Join(irLinesContaining(res.IR, "rt_append_tagged"), "\n"), ", i32 3)") {
-		t.Errorf("append must carry the None tag:\n%s", irLinesContaining(res.IR, "rt_append_tagged"))
+	if !strings.Contains(strings.Join(irLinesAll(res.IR, "rt_append_tagged"), "\n"), ", i32 3)") {
+		t.Errorf("append must carry the None tag:\n%s", irLinesAll(res.IR, "rt_append_tagged"))
 	}
 }
 
@@ -360,4 +365,18 @@ func TestTagPrinterQuotesOnlyInsideContainers(t *testing.T) {
 	if !regexp.MustCompile(`rt_print_mixed_value\(i32 %t\d+, i32 %t\d+, i32 0\)`).MatchString(loop.IR) {
 		t.Errorf("top-level print of a tagged value should pass quote=0 (str): %s", irLinesContaining(loop.IR, "rt_print_mixed_value"))
 	}
+}
+
+// irLinesAll is `irLinesContaining` without its six-line reporting cap. An assertion that a line is
+// PRESENT has to be asked of the whole module: the cap is a readability device for failure output, and a
+// runtime helper added below a program's own block can push the witnessed line out of the window without
+// the program's behaviour moving at all (roadmap Gap R.426, ADR 0417).
+func irLinesAll(ir, needle string) []string {
+	var out []string
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.Contains(line, needle) {
+			out = append(out, strings.TrimSpace(line))
+		}
+	}
+	return out
 }

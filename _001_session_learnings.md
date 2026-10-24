@@ -14900,3 +14900,65 @@ discovery — and it still taught me twice.
    owed-table rows I closed being counted before I noticed they were closed. The `TestEmptyBindingNeverFreesHandleZero`
    guard also had to be re-pointed at the door that exists (`rt_release` behind its null test) rather than the push
    underneath it; its slot-0 half is unchanged, and the file says who asks what now.
+
+## ADR 0417 — a dict is sorted by its keys, at the door that copies it (Gap R.426 closed; Gaps R.429, R.430 filed, 2026-10-24)
+
+1. **"Ask the base what it is" is a rule, not a fix.** Three doors walk a dict's payload array — the collector, the
+   printer, and `sorted` — and two of them had been *told* the stride separately (`rt_gc`'s `stride = isDict ? 2 : 1`,
+   `rt_dict_print_mixed`'s `idx = mul i32 %i, 2`). The third one was never told; it just copied and sorted. A door that
+   reaches for a word in an arena it has not identified is the defect, and the row is the third instance of it. The
+   lesson to keep: when a fix lands on one container, the control family is where the next row is, and the fix should
+   not be considered done until the containers it did *not* touch are pinned as still answering.
+
+2. **The record leg found the second half of the bug, not the first.** The first version of the door read each key's tag
+   out of `@heap_tags` and printed `['b', 'a']` as `[1, 0]` — the two indexes into `@str_tab` — because a *single-kind*
+   dict is filled by the UNTAGGED `rt_dict_put` and keeps its kind only in the compiler's tables. That is a fact about
+   **ADR 0232**'s own design (the tag array is not cleared on free, which `rt_append_tagged`'s comment has always said),
+   read in the wrong direction: "the slot describes itself" is true only of slots somebody tagged. Fix: one question to
+   the record (texts), one question to the slot (everything else), both answered by the codegen that chose the comparator.
+
+3. **Sorting produces a LIST, and every list door has to be told.** `print(sorted(d))` was right while
+   `xs = sorted(d)` / `print(xs)` printed `[1, 0]`, because the assignment road inherits a sorted copy's element kinds
+   from a `*Name` or a `*ListLit` source and had no arm for a dict. Symptom: one door correct, the neighbour printing
+   intern indexes. Cause: the fact "what are this list's elements" is carried by a table keyed by NAME, so any new road
+   that manufactures a list has to fill it. `sortedDictElementFacts` is that fill, and it reads KEYS.
+
+4. **Ask the record, not the literal, when a name can have moved on.** Deriving the key kinds from the dict *literal*
+   fails `g = {}` / `g["q"] = 1` / `sorted(g)` in the worst available direction — it would answer `[]` for a two-key
+   dict. `dictKeyStr` / `dictKeyInt` / `mixedDicts` are the front end's record of what the keys are *now*, they are what
+   the print and `in` roads already read, and the item-store road maintains them. Where the record is silent the build is
+   refused (`Gap R.429`), and the refusal is a fact rather than a shrug: `containerLits` still holding an untouched empty
+   literal is what lets `d = {}` / `sorted(d)` answer `[]` honestly.
+
+5. **A refusal where the reference *raises* is a decision to write down.** `{1: "x", "b": 2}` makes CPython raise
+   `TypeError: '<' not supported between instances of 'str' and 'int'` at exit 3; this build refuses at exit 1. `tools/recmerge`
+   refused to record that source ("the compiled backend refused a program the reference traps"), which is the artifact
+   telling me the pair is a divergence and not a witness. So those three shapes are pinned as refusals only, are filed as
+   **Gap R.429** with the reference's bytes beside each, and reuse the mixed-kind LIST sort's existing sentence so that
+   "a sort over more than one kind" has one wording in this house (**ADR 0191**).
+
+6. **Controls are the highest-yield cases in the file.** `sorted(<set>)` went in as "prove I did not break the list
+   road", printed the set's own order back — identical for `reverse=True`, which is the tell that `@rt_sort` never ran —
+   and became **Gap R.430**, complete with a pin (`TestWhatSortingASetStillOwesIsFiledNotFixed`) that FAILS if the door
+   starts answering, so the row cannot be paid by a stray commit and nobody notices.
+
+7. **Neighbour hygiene over convenience.** Another agent's in-flight change to `rt_set_discard` was in the working tree
+   when this round started. It was parked to `/tmp/other-agent-r422-r428.patch`, this round was measured against a clean
+   `1978ea0`, and **ADR 0416** / **Gap R.428** were left unissued because they are that change's — the same discipline
+   **ADR 0415** practised toward **ADR 0414**. A number you did not earn is a number you do not take.
+
+9. **A sampled window cannot certify an absence — and it can frame an innocent commit.** The gate's only failure was
+   `TestElementWriteAndAppendTagTheSlot`, which asserts the module contains `rt_tag_elem(..., i32 0, i32 4)` for
+   `xs[0] = "z"`. It asked through `irLinesContaining`, a helper that returns the **first six** matches for readable
+   failure output. `@rt_dict_keys` added two `rt_tag_elem` lines below the program's block, the witnessed line fell out
+   of the window, and a behaviour that had not moved looked broken. The whole-module diff between the parent and this
+   commit is *literally* the added helper (I dumped both `Compile` outputs to files and diffed them), which is how I
+   know the fix was in the assertion and not in the compiler. The rule this leaves: an assertion that a line is PRESENT
+   reads the module (`irLinesAll`, now in `pkg/lang/mixed_list_test.go`); the six-line cap is for REPORTING what was
+   found, never for deciding what is missing.
+
+8. **The IR row has to read the block, not the module.** `rt_get_elem(i32 %h, i32 %i)` appears all over the runtime
+   (`rt_list_copy`, the slot read roads), so "the dict is not walked through the list door" cannot be a module-wide
+   substring ban — the first version of that assertion failed on a clean fix. What says something is: the key door's own
+   `define` block contains the stride and the bound, and nothing between the key door's call and `@rt_sort` is a
+   `rt_list_copy`.

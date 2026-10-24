@@ -4398,6 +4398,27 @@
     },
     {
       "case": {
+        "id": "programs/sorted_dict_keys",
+        "name": "sorted_dict_keys.gy",
+        "source": "d = {\"pear\": 1, \"apple\": 2, \"fig\": 3, \"banana\": 4}\nprint(sorted(d))\nprint(sorted(d, reverse=True))\nprint(sorted(d))\nfor k in d:\n    print(k)\nn = 0\nfor k in d:\n    n = n + 1\nprint(n)\nxs = sorted(d)\nprint(xs)\nprint(len(xs))\nprint(xs[0])\nprint(xs[3])\nprint(d[\"pear\"])\ncounts = {3: \"c\", 1: \"a\", 2: \"b\"}\nprint(sorted(counts))\nprint(sorted(counts, reverse=True))\nprint(counts[2])\nbuilt = {}\nbuilt[\"q\"] = 1\nbuilt[\"p\"] = 2\nprint(sorted(built))\nalias = d\nprint(sorted(alias))\nprint(sorted(d))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "['apple', 'banana', 'fig', 'pear']\n['pear', 'fig', 'banana', 'apple']\n['apple', 'banana', 'fig', 'pear']\npear\napple\nfig\nbanana\n4\n['apple', 'banana', 'fig', 'pear']\n4\napple\npear\n1\n[1, 2, 3]\n[3, 2, 1]\nb\n['p', 'q']\n['apple', 'banana', 'fig', 'pear']\n['apple', 'banana', 'fig', 'pear']\n",
+      "python_ok": true,
+      "python_stdout": "['apple', 'banana', 'fig', 'pear']\n['pear', 'fig', 'banana', 'apple']\n['apple', 'banana', 'fig', 'pear']\npear\napple\nfig\nbanana\n4\n['apple', 'banana', 'fig', 'pear']\n4\napple\npear\n1\n[1, 2, 3]\n[3, 2, 1]\nb\n['p', 'q']\n['apple', 'banana', 'fig', 'pear']\n['apple', 'banana', 'fig', 'pear']\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5563,11 +5584,11 @@
       ]
     }
   ],
-  "rows": 235,
+  "rows": 236,
   "skipped": 29,
-  "pass": 206,
+  "pass": 207,
   "fail": 0,
-  "oracle_match": 192,
+  "oracle_match": 193,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

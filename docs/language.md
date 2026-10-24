@@ -5428,6 +5428,27 @@ ADR 0340, and refuses naming that reason (roadmap L11.7, **Gap R.269**; ADR 0191
 declaration of its own so the door that calls a named callable has a name to call, and which **ADR 0363**
 registers with the scan that decides a parameter's kind, so the hook's body may ask the element doors.
 
+**A dict sorts its keys** (roadmap **Gap R.426**, **ADR 0417**). `sorted(d)` is the reference's `sorted(d)`: it answers
+a list of the dict's KEYS, in the reference's order, and leaves `d` and its entry order alone —
+
+```gusty
+d = {"pear": 1, "apple": 2}
+print(sorted(d))                  # ['apple', 'pear']
+print(sorted(d, reverse=True))    # ['pear', 'apple']
+for k in d: print(k)               # pear, apple    — the dict is untouched by the sort
+xs = sorted({"b": 2, "a": 1})
+print(xs, len(xs), xs[0])          # ['a', 'b'] 2 a
+```
+
+The answer comes from the dict, not from the text that built it: the door asks the record of the keys, which is what lets
+a dict the program grew by item stores (`g = {}` then `g["q"] = 1`) answer too. The keys' kinds also decide how they are
+ordered and how they print, from one record, so a verdict key orders as a number and prints `True`. What the record cannot
+name is refused rather than ordered by a rule the language does not have — keys of more than one kind (the reference raises
+`TypeError: '<' not supported between instances of 'str' and 'int'`), a fractional key, and a key the compiler holds no kind
+for; each names the missing half and roadmap **Gap R.429**. A SET is a separate case that is still owed: `sorted(s)` echoes
+the set's own order today, and that is roadmap **Gap R.430** — as is `for k in sorted(d)`, which the loop road still refuses
+(**Gap R.247**).
+
 **What used to be wrong with the shape, and what it took to see it** (roadmap **Gap R.258**, paid by
 **ADR 0343**): `x = sorted([3, 1, 2], reverse=True)` followed by `x` died by `SIGSEGV` inside `@rt_alloc` while
 `print(sorted([3, 1, 2]))` answered — because the variable's stack slot, hoisted to the top of the function for

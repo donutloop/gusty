@@ -1006,9 +1006,23 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 								if g.mixedLists[src.Value] {
 									g.mixedLists[nm.Value] = true
 								}
+								// A sorted DICT is a list of that dict's KEYS, so what the copy holds
+								// is what the keys are: asking only the list record printed
+								// `xs = sorted(d)` over {"b": 2, "a": 1} as [1, 0] — the two indexes
+								// into the intern table, where the reference prints ['a', 'b']
+								// (roadmap Gap R.426, ADR 0417).
+								if g.nameContainerKind(src.Value) == "dict" && g.dictKeyStr[src.Value] && !g.dictKeyInt[src.Value] {
+									g.listElemStr[nm.Value] = true
+								}
 							case *ListLit:
 								if g.allElemsPrintAsText(src.Elems) {
 									g.listElemStr[nm.Value] = true
+								}
+							default:
+								if txt, tagged := g.sortedDictElementFacts(call.Args[0]); txt {
+									g.listElemStr[nm.Value] = true
+								} else if tagged {
+									g.mixedLists[nm.Value] = true
 								}
 							}
 						}

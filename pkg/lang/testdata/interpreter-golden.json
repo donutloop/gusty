@@ -1,5 +1,163 @@
 {
  "entries": {
+"d = {\"pear\": 1, \"apple\": 2, \"fig\": 3, \"banana\": 4}\nprint(sorted(d))\nprint(sorted(d, reverse=True))\nprint(sorted(d))\nfor k in d:\n    print(k)\nn = 0\nfor k in d:\n    n = n + 1\nprint(n)\nxs = sorted(d)\nprint(xs)\nprint(len(xs))\nprint(xs[0])\nprint(xs[3])\nprint(d[\"pear\"])\ncounts = {3: \"c\", 1: \"a\", 2: \"b\"}\nprint(sorted(counts))\nprint(sorted(counts, reverse=True))\nprint(counts[2])\nbuilt = {}\nbuilt[\"q\"] = 1\nbuilt[\"p\"] = 2\nprint(sorted(built))\nalias = d\nprint(sorted(alias))\nprint(sorted(d))\n": {
+    "stdout": "['apple', 'banana', 'fig', 'pear']\n['pear', 'fig', 'banana', 'apple']\n['apple', 'banana', 'fig', 'pear']\npear\napple\nfig\nbanana\n4\n['apple', 'banana', 'fig', 'pear']\n4\napple\npear\n1\n[1, 2, 3]\n[3, 2, 1]\nb\n['p', 'q']\n['apple', 'banana', 'fig', 'pear']\n['apple', 'banana', 'fig', 'pear']\n",
+    "hasStdout": true
+   },
+"a = \"b\"\nb = \"a\"\nprint(sorted({a: 1, b: 2}))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"a = {\"b\": 2, \"a\": 1}\nc = {2: \"x\", 1: \"y\"}\nprint(sorted(a))\nprint(sorted(c))\n": {
+    "stdout": "['a', 'b']\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2}\nprint(sorted(d))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2}\nprint(sorted(d, reverse=True))\n": {
+    "stdout": "['b', 'a']\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1, \"c\": 3}\nprint(sorted(d))\n": {
+    "stdout": "['a', 'b', 'c']\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1, \"c\": 3}\nprint(sorted(d))\nfor k in d:\n    print(k)\n": {
+    "stdout": "['a', 'b', 'c']\nb\na\nc\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1, \"c\": 3}\nxs = sorted(d)\nfor k in d:\n    print(k in xs)\nprint(len(xs))\n": {
+    "stdout": "True\nTrue\nTrue\n3\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\ne = d\nprint(sorted(e))\nprint(sorted(d))\n": {
+    "stdout": "['a', 'b']\n['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\nprint(d)\nprint(len(d))\nprint(\"a\" in d)\n": {
+    "stdout": "{'b': 2, 'a': 1}\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\nprint(d[\"b\"])\nprint(sorted(d))\nprint(len(d))\n": {
+    "stdout": "2\n['a', 'b']\n2\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\nprint(sorted(d))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\nprint(sorted(d))\nprint(sorted(d))\nfor k in d:\n    print(k)\nprint(d[\"b\"])\n": {
+    "stdout": "['a', 'b']\n['a', 'b']\nb\na\n2\n",
+    "hasStdout": true
+   },
+
+"d = {\"b\": 2, \"a\": 1}\nxs = sorted(d)\nprint(xs)\nprint(len(xs))\nprint(xs[0])\n": {
+    "stdout": "['a', 'b']\n2\na\n",
+    "hasStdout": true
+   },
+
+"d = {3: \"c\", 1: \"a\", 2: \"b\"}\nxs = sorted(d)\nfor k in d:\n    print(k in xs)\nprint(len(xs))\n": {
+    "stdout": "True\nTrue\nTrue\n3\n",
+    "hasStdout": true
+   },
+
+"d = {}\nprint(sorted(d))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"g = {}\ng[\"q\"] = 1\ng[\"p\"] = 2\nprint(sorted(g))\n": {
+    "stdout": "['p', 'q']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"a\": {\"n\": 1}, \"b\": 2}))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"b\": 1, \"a\": 2, \"b\": 3}))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"b\": [1], \"a\": [2]}))\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"pear\": 1, \"apple\": 2, \"fig\": 3, \"banana\": 4}))\n": {
+    "stdout": "['apple', 'banana', 'fig', 'pear']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"pear\": 1, \"apple\": 2, \"fig\": 3, \"banana\": 4}, reverse=True))\n": {
+    "stdout": "['pear', 'fig', 'banana', 'apple']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({3: \"c\", 1: \"a\", 2: \"b\"}))\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"print(sorted({3: \"c\", 1: \"a\", 2: \"b\"}, reverse=True))\n": {
+    "stdout": "[3, 2, 1]\n",
+    "hasStdout": true
+   },
+
+"print(sorted({None: 1}))\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"print(sorted({True: 1, False: 0}))\n": {
+    "stdout": "[False, True]\n",
+    "hasStdout": true
+   },
+
+"print(sorted({}))\n": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = sorted({\"b\": 2, \"a\": 1})\nprint(xs)\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs = sorted({3: \"c\", 1: \"a\"})\nprint(xs)\nprint(xs[0])\n": {
+    "stdout": "[1, 3]\n1\n",
+    "hasStdout": true
+   },
+
+"xs = sorted({True: 1, False: 0})\nprint(xs)\n": {
+    "stdout": "[False, True]\n",
+    "hasStdout": true
+   },
+
+"ys = [\"b\", \"a\"]\nxs = sorted(ys)\nprint(xs)\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"ys = [3, 1, 2]\nxs = sorted(ys)\nprint(xs)\nprint(ys)\n": {
+    "stdout": "[1, 2, 3]\n[3, 1, 2]\n",
+    "hasStdout": true
+   },
 "# What **Gap R.257** was filed for, answered: `b = a` shares ONE object between two names, the\n# rebinding `b = [7, 8]` releases the one `a` still names, and the release now declines — so the\n# next allocation does not take that slot and write a list over the dict (ADR 0414).\n# The loop form is the same shape with the freed slot forced round the arena, and the last four\n# lines are the negative controls: a name rebound with no alias, and an alias never rebound.\ny = {1: 2}\ny = 5\ny = [7, 8]\nprint(y[0])\na = {1: 2}\nb = a\nb = [7, 8]\nprint(b[0])\nprint(a[1])\nc = {1: 2}\nd = c\nfor i in range(50):\n    t = [i]\n    d = [7, 8]\nprint(c[1])\nprint(len(c))\nprint(len(d))\nprint(len(t))\nw = {1: 2}\nw = [9]\nprint(w[0])\np = {1: 2}\nq = p\nprint(p[1])\nprint(q[1])\n": {
     "stdout": "7\n7\n2\n2\n1\n2\n1\n9\n2\n2\n",
     "hasStdout": true

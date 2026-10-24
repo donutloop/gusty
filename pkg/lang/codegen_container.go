@@ -20,6 +20,14 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 	if kc := g.keyedSortedCall(b, c, true); kc.done {
 		return kc.handle, kc.err
 	}
+	// A DICT sorts its KEYS. That is not a detail of the comparator: the entry array holds two words
+	// per entry while its length word counts entries, so the copy-and-sort this road does for a list
+	// reads a dict's keys and values interleaved and prints ['a', 1] for {"a":1,"b":2} at exit 0
+	// (roadmap Gap R.426, ADR 0417). The arm below builds the sort's input through @rt_dict_keys —
+	// stride two, stopped at the entry count — and hands the ordering the keys' own tags.
+	if h, handled, derr := g.sortedDict(b, c); handled {
+		return h, derr
+	}
 	// A literal argument is freshly allocated by containerOperand, so sorting it in place is
 	// correct; a variable must be copied first, because sorted(xs) leaves xs in its own order.
 	argIsFresh := true
@@ -86,6 +94,225 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 		}
 	}
 	return slot, nil
+}
+
+// sortedDictAnswers asks whether a `sorted` argument is a dict this road can answer, and if so with
+// which comparator: 1 sorts the keys as interned texts, 0 as numbers. It answers handled=false for
+// every argument that is no dict at all, which leaves the list and set roads exactly as they were.
+//
+// The reference's `sorted` walks a dict for its KEYS, and this road could not simply copy the
+// container and sort it the way it copies a list: a dict's payload array holds TWO words per entry —
+// the key at 2i, the value at 2i+1 — while its length word counts ENTRIES, so the copy read `len`
+// words positionally and sorted keys and values together. `d = {"a": 1, "b": 2}` / `print(sorted(d))`
+// wrote ['a', 1] and `print(sorted(d, reverse=True))` wrote [1, 'a'] — one key and one value dressed
+// up as the two items of a sort over a two-entry dict, at exit 0 — while `for k in d` walked the same
+// dict's keys correctly in the same program, and `list(d)` / `max(d)` / `sum(d)` already refused by
+// their own sentences (roadmap Gap R.426, ADR 0417). The arm below asks the dict its keys through
+// @rt_dict_keys, which strides by two and stops at the entry count, and sorts THAT list.
+//
+// The ordering belongs to the keys, so it is asked of the record the front end keeps of them —
+// dictKeyStr / dictKeyInt / mixedDicts, the same facts the print and `in` roads read a dict by — and
+// not of the source text: that is what makes `d = {}` followed by `d["q"] = 1` answerable at all.
+// Where the record cannot say, the program is refused in words rather than ordered by a rule the
+// language does not have: a dict whose keys mix kinds, a key that is neither a number nor a text (the
+// reference asks it its own __lt__), and float keys (whose value lives in @float_box while the slot
+// carries a handle, so the numeric comparator would order them by arrival) are all roadmap Gap R.429.
+func (g *irGen) sortedDictAnswers(e Expr) (mode int, keyTag int, handled bool, err error) {
+	name := ""
+	known := false
+	switch x := e.(type) {
+	case *DictLit:
+		// A sort over no more than one key compares nothing, so the keys' kinds are not asked:
+		// `sorted({None: 1})` is [None] in the reference, and a door that refused it for not being a
+		// number or a text would be refusing a program whose ordering it never had to perform.
+		if len(x.Keys) <= 1 {
+			if len(x.Keys) == 1 {
+				return 0, sortedDictKeyTag(x.Keys[0]), true, nil
+			}
+			return 0, elemTagInt, true, nil
+		}
+		sawText, sawNum, sawFloat, sawOther := false, false, false, false
+		for _, k := range x.Keys {
+			switch key := k.(type) {
+			case *StrLit:
+				sawText = true
+			case *IntLit, *BoolLit:
+				sawNum = true
+			case *FloatLit:
+				sawFloat = true
+			case *Name:
+				// A key the program named rather than wrote. The front end keeps the text of a name
+				// it has only ever seen hold one string, and that record answers "is this key a text"
+				// for `{a: 1, b: 2}`; anything else is a kind no record holds and the door says so.
+				if _, held := g.strVals[key.Value]; held {
+					sawText = true
+				} else {
+					sawOther = true
+				}
+			default:
+				sawOther = true
+			}
+		}
+		switch {
+		case sawOther:
+			return 0, elemTagInt, true, fmt.Errorf("codegen: sorted(%s) is refused: this backend sorts the keys of a dict whose keys are numbers or texts, and one of these keys is neither — the reference asks the key its own __lt__ at run time, which needs the value word that carries its kind (roadmap Gap R.429)", exprSurface(e))
+		case sawText && sawNum:
+			return 0, elemTagInt, true, fmt.Errorf("cannot sort the keys of %s because they are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191; the dict arm is roadmap Gap R.429)", exprSurface(e))
+		case sawText && sawFloat:
+			return 0, elemTagInt, true, fmt.Errorf("cannot sort the keys of %s because they are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191; the dict arm is roadmap Gap R.429)", exprSurface(e))
+		case sawNum && sawFloat:
+			// Numbers of two kinds DO order against each other in the reference; they do not in this
+			// comparator, which reads a float's value out of the box table only where a door was told
+			// to. Ordering them by payload would be an answer no language gives.
+			return 0, elemTagInt, true, fmt.Errorf("codegen: sorted(%s) is refused: this backend compares container slots by payload, and a float key's value lives in the box table rather than in its slot, so a mix of whole and fractional keys would order by arrival (roadmap Gap R.429)", exprSurface(e))
+		case sawFloat:
+			return 0, elemTagInt, true, fmt.Errorf("codegen: sorted(%s) is refused: this backend compares container slots by payload, and a float key's value lives in the box table rather than in its slot, so its keys would order by arrival — the reference asks each key its own __lt__ (roadmap Gap R.429)", exprSurface(e))
+		case sawText:
+			return 1, elemTagStr, true, nil
+		default:
+			return 0, elemTagInt, true, nil
+		}
+	case *Name:
+		name, known = x.Value, g.nameContainerKind(x.Value) == "dict"
+	}
+	if !known {
+		return 0, elemTagInt, false, nil
+	}
+	switch {
+	case g.mixedDicts[name]:
+		return 0, elemTagInt, true, fmt.Errorf("cannot sort the keys of %s because they are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191; the dict arm is roadmap Gap R.429)", exprSurface(e))
+	case g.dictKeyStr[name] && !g.dictKeyInt[name]:
+		return 1, elemTagStr, true, nil
+	case g.dictKeyInt[name] && !g.dictKeyStr[name]:
+		return 0, elemTagInt, true, nil
+	}
+	// Nothing recorded for either kind: a name the binder settled and never wrote a key kind for.
+	// The only honest reading is the one the binding left on record — an empty dict literal that no
+	// item store has touched since, which sorts to the empty list. Anything else is refused.
+	if lit, ok := g.containerLits[name]; ok {
+		if dl, isDict := lit.(*DictLit); isDict && len(dl.Keys) == 0 {
+			return 0, elemTagInt, true, nil
+		}
+	}
+	return 0, elemTagInt, true, fmt.Errorf("codegen: sorted(%s) is refused: the name holds a dict the front end cannot name the keys of — a dict whose key kinds were never settled leaves the compiler nothing to order by, and the reference asks each key its own __lt__ at run time (roadmap Gap R.429)", exprSurface(e))
+}
+
+// sortedDictElementFacts tells the assignment road what the list that `sorted(<dict>)` builds holds:
+// textElems when every key prints as a text, taggedElems when the keys are not all plain integers --
+// bools, None, a key whose kind only the slot can name -- so each element has to print from its own tag
+// rather than from the list's single recorded kind. Without it `xs = sorted({True: 1, False: 0})` printed
+// [0, 1]: the copy carried bool tags and the printer was told "numbers" (roadmap Gap R.426, ADR 0417).
+func (g *irGen) sortedDictElementFacts(e Expr) (textElems, taggedElems bool) {
+	switch x := e.(type) {
+	case *DictLit:
+		allText, allPlainInt := true, true
+		for _, k := range x.Keys {
+			if _, ok := k.(*StrLit); !ok {
+				allText = false
+			}
+			if _, ok := k.(*IntLit); !ok {
+				allPlainInt = false
+			}
+		}
+		return allText, !allPlainInt
+	case *Name:
+		if g.nameContainerKind(x.Value) != "dict" {
+			return false, false
+		}
+		return g.dictKeyStr[x.Value] && !g.dictKeyInt[x.Value], false
+	}
+	return false, false
+}
+
+// The element tags the copy door writes, spelled once here so the sort's comparator and the printed
+// kind of a key come from one table (ADR 0232's slot-describes-itself rule).
+const (
+	elemTagInt  = 0
+	elemTagStr  = 4
+	elemTagNil  = 3
+	elemTagBool = 2
+)
+
+// sortedDictKeyTag names the tag a single key carries, for the sort that never runs and the print that
+// still does: a one-key dict is answered without asking any ordering, but the key still has to print as
+// what it is — [None], not [0].
+func sortedDictKeyTag(k Expr) int {
+	switch k.(type) {
+	case *StrLit:
+		return elemTagStr
+	case *BoolLit:
+		return elemTagBool
+	case nil:
+		return elemTagNil
+	default:
+		return elemTagInt
+	}
+}
+
+// dictLiteralKeysAreText / AreNumeric / AreFloat classify a dict literal's keys for the sort's
+// comparator. They are one question each so the three cannot disagree about one literal, and an
+// empty literal is answered by its caller before any of them is asked.
+func (g *irGen) dictLiteralKeysAreText(dl *DictLit) bool {
+	for _, k := range dl.Keys {
+		if _, ok := k.(*StrLit); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *irGen) dictLiteralKeysAreNumeric(dl *DictLit) bool {
+	for _, k := range dl.Keys {
+		switch k.(type) {
+		case *IntLit, *BoolLit:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (g *irGen) dictLiteralKeysAreFloat(dl *DictLit) bool {
+	for _, k := range dl.Keys {
+		if _, ok := k.(*FloatLit); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// sortedDict lowers sorted(<dict>) — see sortedDictAnswers for what the door takes and what it
+// refuses. reverse= is read by name and by position exactly as the list road reads it (Gap R.249).
+func (g *irGen) sortedDict(b *strings.Builder, c *Call) (string, bool, error) {
+	mode, keyTag, handled, kerr := g.sortedDictAnswers(c.Args[0])
+	if !handled {
+		return "", false, nil
+	}
+	if kerr != nil {
+		return "", true, kerr
+	}
+	dv, derr := g.containerOperand(b, c.Args[0])
+	if derr != nil {
+		return "", true, derr
+	}
+	g.heapSeq++
+	slot := fmt.Sprintf("%%h%d", g.heapSeq)
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_keys(i32 %s, i32 %d)\n", slot, dv, keyTag))
+	b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %s, i32 %d)\n", slot, mode))
+	if len(c.Args) == 2 {
+		revExpr := c.Args[1]
+		if kw, ok := c.Args[1].(*KeywordArg); ok {
+			revExpr = kw.Value
+		}
+		rv, rerr := g.constIntVal(revExpr)
+		if rerr != nil {
+			return "", true, fmt.Errorf("sorted(reverse=...) needs a constant flag (roadmap L11.7)")
+		}
+		if rv != 0 {
+			b.WriteString(fmt.Sprintf("  call void @rt_reverse(i32 %s)\n", slot))
+		}
+	}
+	return slot, true, nil
 }
 
 // reversedExprs returns a copy of elems with the order reversed.

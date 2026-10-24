@@ -3015,6 +3015,31 @@ falls back to dynamic dispatch.
   a dict sorts the entry array's first `len` words instead of its keys — `['a', 1]` for `['a', 'b']` (**Gap R.426**,
   both byte-identical on the parent `f7723b2`). `tools/recmerge` wrote **30** entries from the reference (record
   **9094 → 9124**) and refused none; the two owed-table pins this row paid are DELETED, not edited.
+- **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
+  ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and
+  `print(sorted(d, reverse=True))` wrote **`[1, 'a']`**, both at **exit 0**, where CPython writes `['a', 'b']` and
+  `['b', 'a']`: one key and one value, dressed up as the two items of a sort over a two-entry dict. `sorted` had one
+  runtime road — copy the container, sort the copy — which is right for a list (**ADR 0191**'s `sorted(xs)` leaves `xs`
+  alone) and wrong for a dict, because a dict's payload array holds TWO words per entry while its length word counts
+  ENTRIES; the copy read `len` words positionally. In the same program `for k in d` walked the keys correctly, and
+  `list(d)` / `max(d)` / `sum(d)` all refused by their own sentences, so the lie was this door's alone. The road now asks
+  its argument what it is before it copies anything, and a dict is walked by the module's one new door, `@rt_dict_keys`
+  — `%w = mul i32 %i, 2`, stopped at `@rt_dict_len` — the same stride the collector asks in `rt_gc` (**ADR 0350**) and the
+  printer asks in `rt_dict_print_mixed`; `@rt_sort` is handed the key copy and nothing else, asserted by reading the
+  block. The comparator and the printed kind of a key come from ONE record of the keys (`dictKeyStr` / `dictKeyInt` /
+  `mixedDicts`), which is what makes a dict the program grew by item stores answerable, and it took two measurements to
+  get right: a single-kind dict is stored through the UNTAGGED put, so a text key's arena tag word is whatever the last
+  tenant left (`xs = sorted(d)` printed the `@str_tab` indexes, `[1, 0]`), and the assignment road that gives
+  `xs = sorted(...)` its element kinds looked only at list sources, so it now reads them off the dict's KEYS. Text keys,
+  whole-number keys and verdict keys answer the reference's bytes; keys of more than one kind, a fractional key and a key
+  no record describes are refused in words that name the missing half (**Gap R.429**), including the mixed pair where the
+  reference *raises* — an ordering across kinds is not this backend's to invent (**ADR 0191**). The control family is
+  where the next row came from: `sorted(<set>)` echoes the set's own insertion order, `reverse=` and all, byte-identical
+  on this commit's parent, and is filed as **Gap R.430** with a pin that fails if the door starts answering by accident.
+  `tools/recmerge` wrote **32** entries from the reference (**9124 → 9156**) and refused none; the corpus gains
+  `integration/programs/sorted_dict_keys.gy` (matrix **235 → 236** rows, **206 → 207** passing, oracle `match`
+  **192 → 193**, drift **0**). **ADR 0416** is left unissued here on purpose — the in-flight set-member change owns it.
+
 - **The corpus has a third opinion (L11.9)** — parity between the compiled backend can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program on the record, the compiled binary **and CPython**, and each case

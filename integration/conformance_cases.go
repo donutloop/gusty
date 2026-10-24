@@ -921,6 +921,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// releases it, the release declines because a name still names it, and the two negative controls (a name
 		// rebound with no alias, an alias never rebound) keep the road they always had (**ADR 0414**).
 		"rebound_alias_kept",
+		// A dict handed to `sorted` sorts its KEYS: the door walks the entry array at stride two and stops at
+		// the entry count, because a dict's length word counts entries while its array holds two words per
+		// entry (**ADR 0417**, roadmap **Gap R.426**). The program walks the same dict the sort answers, keeps
+		// the sorted keys under a name, builds a dict by item stores and sorts that, and sorts a dict held by
+		// two names; every line is what CPython prints for it.
+		"sorted_dict_keys",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
