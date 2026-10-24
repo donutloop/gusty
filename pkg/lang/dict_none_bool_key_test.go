@@ -296,6 +296,19 @@ func TestTheNoneKeyRoadAnswersWhatTheReferencePrintsInEveryDoorPosition(t *testi
 		{"text/fstring_repr", `"hi"`, "print(f\"{d[K]!r}\")", "'hi'\n", "", ""},
 		{"text/compared", `"hi"`, "print(d[K] == [1, 2])", "False\n", "", "Gap R.83"},
 		{"text/in_a_list", `"hi"`, "print([d[K], 1])", "['hi', 1]\n", "", ""},
+		// The operator roads, which are this dict's own defect (roadmap Gap R.285, ADR 0419): every one of
+		// them asked the dict what kind its VALUES were, a mixed dict records no such kind, and so each road
+		// chose the number's word for a text. The void-keyed column printed `0` for the repeat (the interned
+		// index, doubled) and refused the concatenation, while the int-keyed column refused both, and CPython
+		// answered all of it. The pins those two answers used to live in are DELETED below.
+		{"text/concatenated", `"a"`, `print(d[K] + "b")`, "ab\n", "", ""},
+		{"text/repeated", `"a"`, `print(d[K] * 2)`, "aa\n", "", ""},
+		{"text/repeated_by_a_name", `"a"`, "n = 2\nprint(d[K] * n)", "aa\n", "", ""},
+		{"text/repeated_the_other_way", `"a"`, `print(2 * d[K])`, "aa\n", "", ""},
+		{"text/upper", `"a"`, `print(d[K].upper())`, "A\n", "", ""},
+		{"text/interpolated", `"a"`, `print(f"x{d[K]}y")`, "xay\n", "", ""},
+		{"text/length", `"abc"`, `print(len(d[K]) == 3)`, "True\n", "", ""},
+		{"text/equality", `"abc"`, `print(d[K] == "abc")`, "True\n", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -382,20 +395,13 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// an `if`, `while`, ternary and `bool()` over a self-describing entry ask the same subscript pair print
 		// asks and send it through `@rt_pair_truth` (roadmap Gap R.284, ADR 0388). The answers are asserted in
 		// `dict_entry_truth_test.go`.
-		{
-			name:        "a_text_entry_concatenated",
-			src:         "d = {None: \"a\"}\nprint(d[None] + \"b\")\n",
-			wantRefusal: "concatenating a string with a value that is not a string",
-			reference:   `d[None] + "b" is "ab"`,
-			row:         "Gap R.285",
-		},
-		{
-			name:      "a_text_entry_repeated",
-			src:       "d = {None: \"a\"}\nprint(d[None] * 2)\n",
-			wantOut:   "0\n",
-			reference: `d[None] * 2 is "aa" — and the int-key twin of this program refuses rather than answer`,
-			row:       "Gap R.285",
-		},
+		// The two Gap R.285 rows that used to sit here — the concatenation that refused and the repeat that
+		// printed `0`, the interned index of the entry's text doubled as a number — are DELETED, not edited.
+		// The static key door reads the void and the verdict now, the object answers an integer key by its
+		// tag, and the operator roads ask the ENTRY what it holds (ADR 0419); the seven operator shapes are
+		// asserted against CPython in `TestTheNoneKeyRoadAnswersWhatTheReferencePrintsInEveryDoorPosition`,
+		// over both key spellings, and `pkg/lang/none_key_label_roads_test.go` and its CLI twin in
+		// `integration/none_key_label_roads_test.go` carry the rest of the row's contract.
 		{
 			name:      "a_name_holding_none_as_the_key",
 			src:       "d = {None: 3.5}\nk = None\nprint(d[k])\n",

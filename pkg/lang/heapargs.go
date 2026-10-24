@@ -4007,17 +4007,43 @@ func (g *irGen) builtSlotPair(b *strings.Builder, ix *Index) (payload, tag strin
 	if _, seen := g.staticSlotTag(ix.Obj, ix.Idx); seen {
 		return "", "", false
 	}
+	return g.slotPairFromTheObject(b, ix)
+}
+
+// slotPairFromTheObject is `builtSlotPair` with the static door taken out of the way: it reads the slot
+// and hands back the (payload, tag) pair the WRITER left beside the payload, whatever the compiler's own
+// notebooks say the slot is.
+func (g *irGen) slotPairFromTheObject(b *strings.Builder, ix *Index) (payload, tag string, ok bool) {
 	base, baseKind, okBase := g.containerHandleOf(b, ix.Obj)
 	if okBase {
 		return g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
 	}
-	// The side the slot is read out of is not a container the notebook describes — it is itself a slot,
-	// which is the shape `xs.append([[7, 8]])` / `7 in xs[0][0]` and `d["a"] = {"k": [1, 2]}` /
-	// `for v in d["a"]["k"]` have. ADR 0251 reads such a chain one level at a time, dispatching each
-	// inner read on the tag the outer one reported, and the pair that comes back off the end is exactly
-	// what the four arms below want: they never asked how deep the chain was, only what the object at
-	// its end is (roadmap L11.1, Gap R.210).
+	// The side the slot is read out of is not a container the notebook describes — it is itself a slot.
+	// ADR 0251 reads such a chain one level at a time, dispatching each inner read on the tag the outer
+	// one reported, and the pair that comes back off the end is exactly what the arms below want: they
+	// never asked how deep the chain was, only what the object at its end is (roadmap L11.1, Gap R.210).
 	return g.runtimeSlotPairDeep(b, ix)
+}
+
+// slotPairWhereStaticLabelCannotWalk is the widening **ADR 0419** had to make before it could open the
+// static key door at all (roadmap Gap R.285). Two roads — the membership test and the `for` loop — ask
+// an entry's KIND in order to decide what question to ask the entry at all: walk its slots, its keys,
+// its members, or test a substring. Where the compiler's notebooks describe the slot as a container,
+// the static answer is sound and those roads keep using it. Where the slot holds a text, a number, a
+// verdict or the void, the static label is a kind NEITHER road can walk, and reading the payload as a
+// heap handle is how `for x in d[None]` came to print nothing at the exit code of success and
+// `1 in d[None]` came to answer False where the reference raises `argument of type 'int' is not
+// iterable`. Those two roads now ask the object, whose tag says which arm runs and raises the sentence
+// the reference raises for a kind with no elements (ADR 0323's rule for a slot, applied one step wider:
+// to a slot the COMPILER can describe and the road still cannot walk).
+func (g *irGen) slotPairWhereStaticLabelCannotWalk(b *strings.Builder, ix *Index) (payload, tag string, ok bool) {
+	tg, seen := g.staticSlotTag(ix.Obj, ix.Idx)
+	if !seen || g.containerTag(tg) {
+		// Either only the object knows (and `builtSlotPair` already answered), or the static label is a
+		// container these roads know how to walk and the static road owns the question.
+		return "", "", false
+	}
+	return g.slotPairFromTheObject(b, ix)
 }
 
 // The five sentences an object's own class must name. They are not one template with the word
@@ -4133,6 +4159,12 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 		return "", false, nil
 	}
 	hay, hayTag, okRead := g.builtSlotPair(b, ix)
+	if !okRead || hay == "" || hayTag == "" {
+		// The static door may well READ this slot and still label it with a kind a membership test cannot
+		// walk — a text, a number, a verdict, the void. The object is what says which arm runs, and what
+		// raises for a kind with no elements (roadmap Gap R.285, ADR 0419).
+		hay, hayTag, okRead = g.slotPairWhereStaticLabelCannotWalk(b, ix)
+	}
 	if !okRead || hay == "" || hayTag == "" {
 		return "", false, nil
 	}
@@ -4382,6 +4414,112 @@ func (g *irGen) staticSlotTag(container Expr, key Expr) (int32, bool) {
 	return g.elemKindTag(el)
 }
 
+// staticSlotIsText answers the OPERATOR label roads -- the question `is this operand a text?` that the
+// concatenation, the repeat and the method doors ask before they choose a word for a value. For a read
+// out of a dict literal the compiler can still walk, the answer is the answer about the ENTRY: `d =
+// {None: "a"}` / `print(d[None] + "b")` is `ab` and `print(d[None] * 2)` is `aa`, and until the static
+// key door could read a void key (ADR 0419) this road answered "not a text" for the `None`-keyed dict
+// while answering "a text" for the `1`-keyed one -- the same program, two answers, and neither of them
+// the reference's (roadmap Gap R.285).
+//
+// The permission is ADR 0241's, unchanged: the literal is only consulted where it still describes the
+// object's slots. The SCOPE is this row's own defect: a DICT. Measured, widening it one step further --
+// to a LIST slot -- moved programs the pair door answers correctly onto a one-word road that refuses
+// them: `print(len(["a"][0]))` printed `1` before and refused after, at exit 1, with ADR 0331's own
+// sentence, because `exprIsString` is also the question `len`, the ordering road and the print door ask,
+// and a list element those roads reach through the pair door is a value whose tag the fold cannot carry.
+// A dict is where the answer was missing and nothing else was using the question: a dict whose keys or
+// values mix kinds has NO kind recorded on the variable at all (`dictValStr` is cleared with the rest,
+// because the object is self-describing), so every operator road answered "not a text" for every entry of
+// a mixed dict -- which is why `{None: "a", 1: "b"}` / `print(d[1] + "z")` refused while
+// `{1: "a", 2: "b"}` answered, and why the void-keyed dict had no operator road that agreed with the
+// object-reading road (roadmap Gap R.285, ADR 0419).
+func (g *irGen) staticSlotIsText(ix *Index) bool {
+	if ix == nil {
+		return false
+	}
+	if kind, isDict := g.staticContainerKind(ix.Obj); !isDict || kind != "dict" {
+		return false
+	}
+	el, ok := g.staticElemExpr(ix.Obj, ix.Idx)
+	if !ok || el == nil {
+		// The key names no entry the literal holds. That is not "not a text" -- it is a READ THAT RAISES,
+		// and the road that refuses to label it is the difference between the reference's
+		// `KeyError: False` and a compiler that declines the program (measured, and the row that owns the
+		// sentence's honesty is Gap R.116's). The read is emitted, the lookup raises before any
+		// concatenation's semantics can be chosen, and the guarantee that the entry really is absent is
+		// ADR 0241's: the moment the program WRITES that key the literal stops describing the object's
+		// slots, and this door is silent for that dict again (roadmap Gap R.285, ADR 0419).
+		return g.dictLiteralHasNoSuchKey(ix.Obj, ix.Idx)
+	}
+	if g.exprIsString(el) {
+		return true
+	}
+	_, isStr := g.stringVal(el)
+	return isStr
+}
+
+// dictLiteralHasNoSuchKey answers the read road's question -- `can this subscript miss?` -- of a dict the
+// compiler still holds the literal for. It is true only when every key the literal spells is a key the
+// static door can compare (so "none of them matches" is a decision and not a shrug): a key the door cannot
+// read at all makes the whole walk unknown, and unknown is a refusal, not a raise.
+func (g *irGen) dictLiteralHasNoSuchKey(container, key Expr) bool {
+	// BOTH sides have to be readable for "no entry matches" to be a decision rather than a shrug. The
+	// literal's keys are half of it; the KEY BEING LOOKED UP is the other half, and leaving that question
+	// unasked was a regression this row measured and paid: `d = {1: 2, 3: 4}` / `for k in d:` /
+	// `    t = t + d[k]` asks the door about a key the compiler never saw (a loop variable), every literal
+	// key fails to match it, the walk answered "that key names no entry — the read will raise", the label
+	// road believed it was a text, and `t + d[k]` — two integers — was refused with the concatenation's
+	// sentence (`pkg/lang/dict_iteration_test.go`'s twin in `integration/dict_iteration_test.go`, which
+	// printed `6` on this row's parent). An unreadable lookup key means the read may land on ANY entry, so
+	// the answer is nothing at all and the object-reading road takes the program (roadmap Gap R.285).
+	if !g.constKeyIsReadable(key) {
+		return false
+	}
+	c := container
+	for {
+		switch n := c.(type) {
+		case *Name:
+			if lit, ok := g.containerLits[n.Value]; ok {
+				c = lit
+				continue
+			}
+			if lit, ok := g.staticDicts[n.Value]; ok {
+				c = lit
+				continue
+			}
+			return false
+		case *DictLit:
+			for _, k := range n.Keys {
+				if !g.constKeyIsReadable(k) {
+					return false // the door cannot compare this key, so nothing is known about the miss
+				}
+				if g.constKeysMatch(k, key) {
+					return false
+				}
+			}
+			return len(n.Keys) > 0
+		default:
+			return false
+		}
+	}
+}
+
+// constKeyIsReadable is the door's own honesty question: does `constKeysMatch` have an arm for a key
+// spelled this way at all. A container key (a list, a dict, a set, a tuple) has none -- and is unhashable
+// besides, which is a raise the read road words -- and a call, a name or a comprehension is a value the
+// compiler has not seen.
+func (g *irGen) constKeyIsReadable(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit:
+		return true
+	}
+	if _, ok := g.stringVal(e); ok {
+		return true
+	}
+	return false
+}
+
 // staticElemExpr answers what an element read denotes when the compiler can walk the container's
 // own literal all the way down: with `xs = [[1, 2], [3, 4]]`, `xs[0]` is the list literal `[1, 2]`,
 // and with `m = {0: [1, 2], 1: 3}`, `m[0][1]` is the integer 2. A container reached through a value
@@ -4444,16 +4582,44 @@ func (g *irGen) staticElemExpr(container Expr, key Expr) (Expr, bool) {
 // interned string and the integer it happens to be indexed by are the same bits and different keys
 // (ADR 0232), so the kind is checked before the number.
 //
-// There is no `None` arm here, and one is not simply missing: roadmap Gap R.285 measured what adding
-// it does, and the answer was that two roads which ask this door about an entry's kind start answering
-// wrong for a `None` key in four shapes — `"a" in d[None]` over a text answers False and over an
-// integer answers False where the reference raises `argument of type 'int' is not iterable`, and
-// `for x in d[None]` prints nothing over a text and `0 1 2` over the integer 5 where the reference
-// raises for both. A `None` also has no arm against an `IntLit`: the fold below reads a `NoneLit` as
-// the integer 0, so `{0: "a"}` read by `None` finds an entry the program never wrote — which is
-// harmless only because every road that reaches it still asks the *object*, whose tag-aware lookup
-// raises the reference's `KeyError: None`. Both halves, with the measurements, are that row's.
+// The two arms this door used to lack are the void key and the verdict key, and **ADR 0419** opened
+// them together with the two roads that were the reason they stayed shut (roadmap Gap R.285). The
+// measurement that kept the `None` arm out for eight weeks was this: `"a" in d[None]` over an integer
+// answered False where the reference raises `argument of type 'int' is not iterable`, and
+// `for x in d[None]` printed nothing over a text and `0 1 2` over the integer 5 where the reference
+// raises for both. Neither of those is this door's fault — they are two *callers* that read an
+// entry's kind off this door and then walked the entry as a container they could not walk. Those two
+// callers now ask the object instead (`slotPairWhereStaticLabelCannotWalk`), which is the order the
+// row prescribed: widen the label roads first, then the door, so the four rows are controls and not
+// regressions.
+//
+// The void key is answered FIRST, before any number arm can reach it: `foldConstInt` reads a
+// `NoneLit` as the integer 0, so an `IntLit` key compared against a `None` index would statically
+// find an entry the program never wrote — `{0: "a"}` read by `None`. That crossing is refused here
+// rather than being left harmless-by-luck, as it was while every road that reached it happened to ask
+// the object (whose tag-aware lookup raises the reference's `KeyError: None`, now pinned both ways).
+//
+// A verdict key is the number the reference says it is — `{True: "a"}[1]` and `{1: "a"}[True]` are one
+// lookup — but it is never a text, which is why the kind is asked before the number there too.
 func (g *irGen) constKeysMatch(a, b Expr) bool {
+	// The void is a key of its own kind, equal to nothing but itself: not 0, not False, not 0.0.
+	if _, isNone := a.(*NoneLit); isNone {
+		_, bIsNone := b.(*NoneLit)
+		return bIsNone
+	}
+	if _, isNone := b.(*NoneLit); isNone {
+		return false // the symmetric half — an integer, float or text key is never the void key
+	}
+	if ab, isBool := a.(*BoolLit); isBool {
+		if isStringExpr(b) {
+			return false
+		}
+		if bb, isBoolB := b.(*BoolLit); isBoolB {
+			return ab.Value == bb.Value
+		}
+		bi, ok2 := g.foldConstInt(b)
+		return ok2 && bi == constBoolWord(ab.Value)
+	}
 	if ai, ok := a.(*IntLit); ok {
 		if isStringExpr(b) {
 			return false
@@ -4467,6 +4633,14 @@ func (g *irGen) constKeysMatch(a, b Expr) bool {
 	}
 	bs, ok2 := g.stringVal(b)
 	return ok2 && as == bs
+}
+
+// constBoolWord is the number a verdict key carries in the reference's identity space.
+func constBoolWord(v bool) int64 {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // containerSlotRead reads one slot out of a container the compiler holds a handle for, and returns

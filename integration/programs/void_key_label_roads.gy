@@ -1,0 +1,94 @@
+# The dict's static key door reads a `None` and a verdict key, so every road that LABELS an operand —
+# the concatenation, the repeat, the method, the length, the interpolation, the condition, the loop and
+# the membership test — agrees with the road that reads the object. The two `print`s at the top are the
+# row: the first refused this build with a sentence about a `TypeError` the reference does not raise, and
+# the second printed `0`, the interned text's index, at the exit code of success (roadmap Gap R.285,
+# ADR 0419). The raises below are the controls that kept the door shut: a number has no elements, keys,
+# members or characters, and the reference stops on each. Every line is what the reference prints, one
+# for one.
+d = {None: "a"}
+print(d[None] + "b")
+print(d[None] * 2)
+print(d[None].upper())
+print(len(d[None]))
+print(f"v={d[None]}")
+print(str(d[None]), repr(d[None]))
+print(d[None] == "a")
+print([d[None], 1])
+print(d[None] or "fallback")
+h = {None: "hello"}
+print(h[None][1])
+print(h[None][0:2])
+two = {None: "a", 1: "b"}
+print(two[None] + two[1])
+n = {None: 5}
+print(n[None] + 1)
+print(n[None] * 1)
+r = {None: 2.5}
+print(r[None] * 2)
+c = {None: [1, 2]}
+print(c[None] + [3])
+print(c[None][0] + 1)
+for v in c[None]:
+    print(v)
+print(1 in c[None])
+t = {None: "ab"}
+for ch in t[None]:
+    print(ch)
+print("a" in t[None], "z" in t[None])
+m = {None: {"k": 1}}
+for k in m[None]:
+    print(k)
+if d[None]:
+    print("the entry is true")
+else:
+    print("the entry is false")
+e = {None: ""}
+if e[None]:
+    print("the empty entry is true")
+else:
+    print("the empty entry is false")
+# A verdict key is the number the reference says it is, and the void is a key of its own kind.
+z = {0: "zero"}
+print(z[False], z[0])
+o = {1: "one"}
+print(o[True], o[1])
+both = {None: 1, 0: 2}
+print(len(both), both[None], both[0])
+print({None: "x", True: 2})
+# A number and the void have nothing to walk: membership names the type, a loop names the object.
+try:
+    print(1 in n[None])
+except TypeError as err:
+    print("membership:", err)
+try:
+    for v in n[None]:
+        print(v)
+except TypeError as err:
+    print("loop:", err)
+try:
+    print(len(n[None]))
+except TypeError as err:
+    print("length:", err)
+try:
+    for v in {None: None}[None]:
+        print(v)
+except TypeError as err:
+    print("void loop:", err)
+# And the void is not the number 0: the entry the program did not write stays unwritten.
+try:
+    print(z[None])
+except KeyError as err:
+    print("no entry under None:", err)
+try:
+    print(d[0])
+except KeyError as err:
+    print("no entry under 0:", err)
+xs = [5]
+try:
+    print(1 in xs[0])
+except TypeError as err:
+    print("number slot:", err)
+ys = ["ab"]
+for ch in ys[0]:
+    print(ch)

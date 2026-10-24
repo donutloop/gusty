@@ -128,12 +128,41 @@ func TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises(t *testin
 			"KeyError", "0",
 		},
 		{
+			// Gap R.231, PAID by ADR 0419. A number subscripting a TEXT-keyed dict used to read the
+			// POSITION and answer `1 2` at exit 0; the read road now asks the key's kind, which is the
+			// question the hashing door has always asked, and the answer is the reference's miss.
+			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",
+			"KeyError", "0",
+		},
+		{
+			"def f():\n    return {\"a\": 1, \"b\": 2}\n\nprint(f()[0])",
+			"KeyError", "0",
+		},
+		{
+			// The twin that must keep answering, so the two halves of the key question cannot drift: a
+			// number key read by that number is a hit.
+			"d = {0: \"zero\"}\nprint(d[0])",
+			"HIT:zero", "",
+		},
+		{
 			"def b():\n    return [1, 2]\n\nprint(b()[\"a\"])",
 			"TypeError", "list indices must be integers or slices, not str",
 		},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
+			if strings.HasPrefix(tt.class, "HIT:") {
+				// A hit row standing in a raise table: the same road's other answer, kept beside the miss.
+				want := strings.TrimPrefix(tt.class, "HIT:")
+				res, err := JIT(tt.src, 0)
+				if err != nil {
+					t.Fatalf("%q was refused: %v", tt.src, err)
+				}
+				if res.Output != want+"\n" {
+					t.Fatalf("%q printed %q, want %q", tt.src, res.Output, want+"\n")
+				}
+				return
+			}
 			class, message := jitTrap(t, tt.src)
 			if class != tt.class || message != tt.message {
 				t.Fatalf("%q raised %s: %s; the reference raises %s: %s", tt.src, class, message, tt.class, tt.message)
@@ -152,6 +181,9 @@ func TestATrapInsideACallResultSubscriptIsCatchable(t *testing.T) {
 	}{
 		{"def b():\n    return [1, 2]\n\ntry:\n    print(b()[9])\nexcept IndexError:\n    print(\"caught\")", "caught"},
 		{"def f():\n    return {\"a\": 1}\n\ntry:\n    print(f()[\"b\"])\nexcept KeyError:\n    print(\"missing\")", "missing"},
+		{
+			// Gap R.231 / ADR 0419: the miss is a trap the program can TAKE, not a value it was handed.
+			"d = {\"a\": 1}\ntry:\n    print(d[0])\nexcept KeyError as e:\n    print(\"caught\", e)", "caught 0"},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
@@ -336,12 +368,11 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 		},
 		// A neighbour measured while writing this row, wrong for EVERY base — a literal, a variable
 		// or a call's answer alike — so the subscript road inherits the wrongness rather than causing it.
-		{
-			"a text-keyed dict subscripted by a number",
-			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",
-			"1 2", "KeyError: 0",
-			"roadmap Gap R.231 (a number is a key like any other; the read road treats it as a position whatever the keys say)",
-		},
+		// The `a text-keyed dict subscripted by a number` row that used to sit here is DELETED, not edited:
+		// it answers the reference now. Its rows live in
+		// `TestASubscriptPastTheEndOfACallResultRaisesWhatTheReferenceRaises` (the miss, the call-result
+		// twin and the number-key hit) and `TestATrapInsideACallResultSubscriptIsCatchable` (the same miss
+		// taken by the program) — the row that owned it, roadmap Gap R.231, is closed.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -403,6 +403,15 @@ func (g *irGen) numericFoldElems(elems []Expr) (vals []float64, isFloatElem []bo
 // name, an element a literal wrote into a slot. It is a hook on BoolEnv as well as a step of
 // numericFoldElems for exactly one reason: the two questions must not own two rules.
 func (g *irGen) foldableCandidate(e Expr) (float64, bool, bool) {
+	if ix, isIndex := e.(*Index); isIndex {
+		// The same decline, asked BEFORE the fold's own float road: `floatEval` reads the fraction out of a
+		// literal-backed slot too, and the register it lands is a double the consumer cannot hold.
+		if el, ok := g.staticNumericElem(ix); ok {
+			if _, isFloat := el.(*FloatLit); isFloat {
+				return 0, false, false
+			}
+		}
+	}
 	if fv, isF := g.floatEval(e); isF {
 		return fv, true, true
 	}
@@ -411,6 +420,18 @@ func (g *irGen) foldableCandidate(e Expr) (float64, bool, bool) {
 	// over it is still settled by the source and the renderer may name its kind.
 	if ix, ok := e.(*Index); ok {
 		if el, ok2 := g.staticNumericElem(ix); ok2 {
+			// A slot that holds a FRACTIONAL number is declined here, and only a fractional one. The fold
+			// answers a fold with a compile-time double, and the roads that consume it want a VALUE word:
+			// print has a double road and takes the register, but a call's argument, a container slot and a
+			// one-word position all want the handle of a @float_box object, and handing them a double is what
+			// makes `llc` reject the module — `call i32 @gy_f(i32 %t13)` over `%t13 = fadd double 0.0, 3.5`,
+			// exit 2 (measured on a float LITERAL too — `print(f(max(3.5, 2)))` — which is the row that owns
+			// the fold's own half of this; a slot read is this one's, because the slot's fraction has always
+			// travelled as a (payload, tag) pair and the pair is what the ordinary comparison road reads
+			// correctly). A whole number out of a slot is a true one-word value and keeps folding.
+			if _, isFloat := el.(*FloatLit); isFloat {
+				return 0, false, false
+			}
 			return minMaxCandidateValue(el, nil)
 		}
 	}

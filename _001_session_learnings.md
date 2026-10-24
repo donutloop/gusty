@@ -14991,3 +14991,82 @@ discovery — and it still taught me twice.
    *repr* is quoted; `print(C.label)` prints `hi`. The guard here is that `tools/recmerge` records from CPython and
    refuses when the compiled leg disagrees, so an invented expectation cannot survive the record leg — but it cost a
    round trip that reading `python3 -c 'print("hi")'` would not have.
+
+## ADR 0419 — the dict's static key door reads the void and the verdict, and the roads that LABEL an operand ask the object first (Gap R.285 closed, 2026-10-24)
+
+1. **A reverted measurement is the most valuable thing a code comment can hold.** ADR 0353 had built the
+   `None` arm, watched four programs go wrong, reverted it, and left the table in the comment above the door.
+   Without that table I would have rebuilt the same arm and shipped the same four wrong answers. The comment
+   also told me the order to fix in — roads, then door — which is the difference between those four rows being
+   regressions and being controls. Writing measurements (not just decisions) into the source is what let this
+   cycle happen at all.
+
+2. **"Which kind is it" and "which word is it" are different questions, and I learned it by breaking three
+   green programs.** My first version widened both text predicates, because both take an expression and return
+   a bool and both are about texts. `exprIsString` answers the KIND; `printsAsInternedStr` answers something
+   stronger — that the WORD is an `@str_tab` index a road may print or concatenate directly — and for a
+   container whose slots describe themselves that second claim needs the tag beside the payload. Widening it
+   moved `print(["a", "b"][0])`, `xs = [1, "a", None]` / `print(xs[1])` and `xs = [["a","b"]]` /
+   `print(xs[0][0])` from correct answers to exit-1 refusals. The gate `tools/recmerge` could not catch for me
+   (the refused programs were never in the tables I was editing) — only the full concurrent suite did, which is
+   the argument for the gate being the makefile's runner and not the package's tests I happened to think of.
+
+3. **Widen a door only after its callers can honour every answer it can give.** The two roads that broke were
+   not readers of the entry, they were readers of the entry's KIND used to decide *whether to read it at all*.
+   The tell was the shape of the wrong answers: "prints nothing" and "answers False" — the two signatures of a
+   road that took a label it could not act on and did the nothing-shaped thing anyway.
+
+4. **`harmless only because another road catches it` is a bug report in disguise.** The old comment said the
+   `{0: "a"}`-read-by-`None` crossing was harmless because every road that reached it still asked the object.
+   That is one refactor away from a wrong answer, so the answer went into the door itself (the void arm sits
+   BEFORE the number arms, because `foldConstInt` reads a `NoneLit` as `0`) and the crossing is pinned twice —
+   once as a decision of the door asked as a function, once as a program raising `KeyError: None`.
+
+5. **Fix the wrong answer you find while fixing one, if your change is what makes it reachable.**
+   `{None: "a", 1: "b"}` / `print(d[None] + d[1])` emitted `add i32` over two interned indices and printed `b`
+   (it printed `1` before my change — wrong then, wrong now). Leaving it would have been a new wrong answer
+   with my commit as its author. Same for `xs = [5]` / `print(1 in xs[0])` (was `False` at exit 0) and
+   `xs = ["ab"]` / `for x in xs[0]` (printed nothing): no `None` anywhere, same label road, paid in the same
+   commit because the door that caused them is the door this row opens.
+
+6. **The artifact is a living file and a stale one lies.** A prior full run with the regression in the tree
+   rewrote `integration/conformance-matrix.json` with `debt` rows for three programs; the recording guard then
+   failed on the *committed* artifact, not on my code. Regenerating (`go test -run 'TestConformanceMatrix$'
+   ./integration/`) is part of adding a program, along with registering its name in `conformanceStandalone()` —
+   a `.gy` file alone is not a matrix row.
+
+7. **One question per operand, asked by one door.** The concatenation refusing `d[None] + "b"` while the print
+   door printed `d[None]` correctly was the same defect as the loop and the membership test, wearing an
+   operator's face. `isStrOperand` now asks `exprIsString` too, so an operand cannot be a text to one door and
+   a number to its neighbour — the ADR 0384 rule, re-learned from the other side.
+
+8. **A guard can tell you that your new evidence is not evidence — and you believe it.** `tools/recmerge`
+   recorded 107 sources for this row and a full run then failed
+   `TestTheRecordNeverInterpolatedASlotReadSoTheFieldIsWitnessedByItsPrintTwinAlone`: twelve of my entries were
+   `print(f"{d[None]}")` / `print(f"{d[1]!r}")`, i.e. an *interpolated slot read*, and the record leg is kept
+   deliberately silent about that shape so nobody can claim the engine ever got the field right. The right move
+   was not to relax the guard and not to argue that a reference-recorded entry is different — it was to withdraw
+   the twelve entries (record 9279 → 9267, `tools/recmerge`'s own count went from 107 written to 95 kept) and let
+   the field be witnessed the way the guard says it is witnessed: by the `print(d[K])` twin in the same ladder,
+   and by the live-`python3` CLI row. A minted record is worth less than the property that makes records
+   trustworthy.
+
+9. **When your change moves a wrong answer, the move is a finding.** `d = {None: (1,)}` / `print(d[None] * 2)`
+   printed `6` (the interned index, doubled) before this row and `[1, 1]` after it — still wrong, newly
+   *specific*. The int-key twin printed `[1, 1]` on the parent too, and `t = (1,)` / `print(t * 2)` prints
+   `(1, 1)`, which localises the defect to the sequence door asking a **kind** where the pair door had just
+   handed it a **tag**. That is roadmap **Gap R.434**, filed with today's bytes pinned beside the reference's in
+   both suites — and the sibling shape (a fractional slot through `max` into a call, `3` where the reference says
+   `3.5`) is **Gap R.433**, the row the fold-decline decision created. Neither was fixed: fixing them is a
+   second row's work (AGENTS' one-feature rule), but measuring them, naming them and pinning them in the same
+   commit is not optional, because they are the residue my own change made visible.
+
+10. **Compare against the parent, in bulk, before you believe a green suite.** Three green targeted runs said
+    nothing about `print(len(["a"][0]))`, which my widened text predicate had quietly broken. The cheap
+    instrument that found it (and eleven others) was a 2 650-source sweep of the record corpus run against a
+    `git worktree` build of `HEAD`, classified by exit class and stdout — `1848 match, 16 better, 0 worse`
+    before the last three fixes. The classifier's ranks matter as much as its corpus: my first version ranked
+    "the reference raises and the compiled leg now raises too" as a regression, which buried the real signal
+    under fifteen fake ones. A baseline binary built from `HEAD` in a detached worktree
+    (`git worktree add --detach /tmp/wt-head HEAD`) is the single most useful thing in this cycle's toolkit
+    besides `tools/recmerge`.

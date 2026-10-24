@@ -1,5 +1,495 @@
 {
  "entries": {
+"d = {0: \"a\"}\nprint(d[0] * 3)\n": {
+    "stdout": "aaa\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nn = 2\nprint(d[1] * n)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(2 * d[1])\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(d[1] * 2)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(d[1].upper())\n": {
+    "stdout": "A\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(f\"x{d[1]}y\")\n": {
+    "stdout": "xay\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"abc\"}\nprint(d[1] == \"abc\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"abc\"}\nprint(len(d[1]) == 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"hi\"}\nfor v in d[1]:\n    print(v)\n": {
+    "stdout": "h\ni\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"hi\"}\nprint(d[1])\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"d = {1: 3.5}\nfor v in d[1]:\n    print(v)\n": {
+    "err": "TypeError: 'float' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not iterable"
+   },
+
+"d = {1: 3.5}\nprint(d[1])\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"d = {1: [1, 2]}\nfor v in d[1]:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {1: [1, 2]}\nprint([d[1], 1])\n": {
+    "stdout": "[[1, 2], 1]\n",
+    "hasStdout": true
+   },
+
+"d = {1: [1, 2]}\nprint(d[1])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {1: [1, 2]}\nprint(str(d[1]))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"True\"}\nprint(d[None] + \"z\")\n": {
+    "stdout": "Truez\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\", 0: \"b\"}\nfor k in d:\n    print(k)\n": {
+    "stdout": "None\n0\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nn = 2\nprint(d[None] * n)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(2 * d[None])\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint([d[None], \"b\"])\n": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(f\"x{d[None]}y\")\n": {
+    "stdout": "xay\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"ab\"}\nfor c in d[None]:\n    print(c)\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"abc\"}\nprint(d[None] == \"abc\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"abc\"}\nprint(len(d[None]) == 3)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"abc\"}\nprint(len(d[None]) == 3, d[None] == \"abc\")\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nfor v in d[None]:\n    print(v)\n": {
+    "stdout": "h\ni\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint([d[None], 1])\n": {
+    "stdout": "['hi', 1]\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(d[None] == [1, 2])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(len(d[None]))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hi\"}\nprint(str(d[None]))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, \"name\": 2}\nprint(None in d, \"name\" in d, 0 in d)\n": {
+    "stdout": "True True False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: \"two\"}\nprint(d)\n": {
+    "stdout": "{None: 1, 0: 'two'}\n",
+    "hasStdout": true
+   },
+
+"d = {None: 2}\nprint(d[None] + 1)\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nfor v in d[None]:\n    print(v)\n": {
+    "err": "TypeError: 'float' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not iterable"
+   },
+
+"d = {None: 3.5}\nprint(d[None] == [1, 2])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nprint(len(d[None]))\n": {
+    "err": "TypeError: object of type 'float' has no len()",
+    "exnType": "TypeError",
+    "exnMsg": "object of type 'float' has no len()"
+   },
+
+"d = {None: 3.5}\nprint(str(d[None]))\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2, 3]}\nprint(len(d[None]))\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nfor v in d[None]:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint([d[None], 1])\n": {
+    "stdout": "[[1, 2], 1]\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint(d[None] == [1, 2])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint(str(d[None]))\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nx = d[None]\nprint(x)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1]}\nprint(d[None] * 2)\n": {
+    "stdout": "[1, 1]\n",
+    "hasStdout": true
+   },
+
+"d = {True: \"a\"}\nprint(d[1] + \"b\")\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+"# The dict's static key door reads a `None` and a verdict key, so every road that LABELS an operand —\n# the concatenation, the repeat, the method, the length, the interpolation, the condition, the loop and\n# the membership test — agrees with the road that reads the object. The two `print`s at the top are the\n# row: the first refused this build with a sentence about a `TypeError` the reference does not raise, and\n# the second printed `0`, the interned text's index, at the exit code of success (roadmap Gap R.285,\n# ADR 0419). The raises below are the controls that kept the door shut: a number has no elements, keys,\n# members or characters, and the reference stops on each. Every line is what the reference prints, one\n# for one.\nd = {None: \"a\"}\nprint(d[None] + \"b\")\nprint(d[None] * 2)\nprint(d[None].upper())\nprint(len(d[None]))\nprint(f\"v={d[None]}\")\nprint(str(d[None]), repr(d[None]))\nprint(d[None] == \"a\")\nprint([d[None], 1])\nprint(d[None] or \"fallback\")\nh = {None: \"hello\"}\nprint(h[None][1])\nprint(h[None][0:2])\ntwo = {None: \"a\", 1: \"b\"}\nprint(two[None] + two[1])\nn = {None: 5}\nprint(n[None] + 1)\nprint(n[None] * 1)\nr = {None: 2.5}\nprint(r[None] * 2)\nc = {None: [1, 2]}\nprint(c[None] + [3])\nprint(c[None][0] + 1)\nfor v in c[None]:\n    print(v)\nprint(1 in c[None])\nt = {None: \"ab\"}\nfor ch in t[None]:\n    print(ch)\nprint(\"a\" in t[None], \"z\" in t[None])\nm = {None: {\"k\": 1}}\nfor k in m[None]:\n    print(k)\nif d[None]:\n    print(\"the entry is true\")\nelse:\n    print(\"the entry is false\")\ne = {None: \"\"}\nif e[None]:\n    print(\"the empty entry is true\")\nelse:\n    print(\"the empty entry is false\")\n# A verdict key is the number the reference says it is, and the void is a key of its own kind.\nz = {0: \"zero\"}\nprint(z[False], z[0])\no = {1: \"one\"}\nprint(o[True], o[1])\nboth = {None: 1, 0: 2}\nprint(len(both), both[None], both[0])\nprint({None: \"x\", True: 2})\n# A number and the void have nothing to walk: membership names the type, a loop names the object.\ntry:\n    print(1 in n[None])\nexcept TypeError as err:\n    print(\"membership:\", err)\ntry:\n    for v in n[None]:\n        print(v)\nexcept TypeError as err:\n    print(\"loop:\", err)\ntry:\n    print(len(n[None]))\nexcept TypeError as err:\n    print(\"length:\", err)\ntry:\n    for v in {None: None}[None]:\n        print(v)\nexcept TypeError as err:\n    print(\"void loop:\", err)\n# And the void is not the number 0: the entry the program did not write stays unwritten.\ntry:\n    print(z[None])\nexcept KeyError as err:\n    print(\"no entry under None:\", err)\ntry:\n    print(d[0])\nexcept KeyError as err:\n    print(\"no entry under 0:\", err)\nxs = [5]\ntry:\n    print(1 in xs[0])\nexcept TypeError as err:\n    print(\"number slot:\", err)\nys = [\"ab\"]\nfor ch in ys[0]:\n    print(ch)\n": {
+    "stdout": "ab\naa\nA\n1\nv=a\na 'a'\nTrue\n['a', 1]\na\ne\nhe\nab\n6\n5\n5.0\n[1, 2, 3]\n2\n1\n2\nTrue\na\nb\nTrue False\nk\nthe entry is true\nthe empty entry is false\nzero zero\none one\n2 1 2\n{None: 'x', True: 2}\nmembership: argument of type 'int' is not iterable\nloop: 'int' object is not iterable\nlength: object of type 'int' has no len()\nvoid loop: 'NoneType' object is not iterable\nno entry under None: None\nno entry under 0: 0\nnumber slot: argument of type 'int' is not iterable\na\nb\n",
+    "hasStdout": true
+   },
+
+"d = {0: \"a\"}\nprint(d[None])\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+
+"d = {0: \"a\"}\ntry:\n    print(d[None])\nexcept KeyError as e:\n    print(\"caught\", e)\n": {
+    "stdout": "caught None\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(d[1] + \"b\")\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"a\"}\nprint(d[None])\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+
+"d = {1: \"one\"}\nprint(d[1.0])\n": {
+    "stdout": "one\n",
+    "hasStdout": true
+   },
+
+"d = {1: \"one\"}\nprint(d[1])\n": {
+    "stdout": "one\n",
+    "hasStdout": true
+   },
+
+"d = {False: \"a\"}\nprint(d[False] * 2)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {False: \"a\"}\nprint(d[None])\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+
+"d = {None: \"\"}\nif d[None]:\n    print(\"yes\")\nelse:\n    print(\"no\")\n": {
+    "stdout": "no\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\", 1: \"b\"}\nprint(d[None] + d[1])\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\ndef f(v):\n    return v\nprint(f(d[None]))\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nif d[None]:\n    print(\"yes\")\nelse:\n    print(\"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(\"a\" in d[None])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint([d[None], 1])\n": {
+    "stdout": "['a', 1]\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(d[0])\n": {
+    "err": "KeyError: 0",
+    "exnType": "KeyError",
+    "exnMsg": "0"
+   },
+
+"d = {None: \"a\"}\nprint(d[False])\n": {
+    "err": "KeyError: False",
+    "exnType": "KeyError",
+    "exnMsg": "False"
+   },
+
+"d = {None: \"a\"}\nprint(d[None] * 2)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(d[None] + \"b\")\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(d[None] == \"a\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(d[None].upper())\n": {
+    "stdout": "A\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(d[True])\n": {
+    "err": "KeyError: True",
+    "exnType": "KeyError",
+    "exnMsg": "True"
+   },
+
+"d = {None: \"a\"}\nprint(f\"v={d[None]}\")\n": {
+    "stdout": "v=a\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(len(d[None]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nprint(str(d[None]), repr(d[None]))\n": {
+    "stdout": "a 'a'\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"ab\"}\nfor x in d[None]:\n    print(x)\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"ab\"}\nprint(\"z\" in d[None])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hello\"}\nprint(d[None][0:2])\n": {
+    "stdout": "he\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"hello\"}\nprint(d[None][1])\n": {
+    "stdout": "e\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: 2}\nprint(d[None], d[0])\n": {
+    "stdout": "1 2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: 2}\nprint(len(d))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: 2}\nprint(len(d), d[None], d[0])\n": {
+    "stdout": "2 1 2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 2.5}\nprint(d[None] * 2)\n": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"d = {None: 5}\nfor x in d[None]:\n    print(x)\n": {
+    "err": "TypeError: 'int' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not iterable"
+   },
+
+"d = {None: 5}\nprint(1 in d[None])\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"d = {None: 5}\nprint(d[None] + 1)\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"d = {None: 5}\nprint(len(d[None]))\n": {
+    "err": "TypeError: object of type 'int' has no len()",
+    "exnType": "TypeError",
+    "exnMsg": "object of type 'int' has no len()"
+   },
+
+"d = {None: None}\nfor x in d[None]:\n    print(x)\n": {
+    "err": "TypeError: 'NoneType' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not iterable"
+   },
+
+"d = {None: None}\nprint(1 in d[None])\n": {
+    "err": "TypeError: argument of type 'NoneType' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'NoneType' is not iterable"
+   },
+
+"d = {None: True}\nfor x in d[None]:\n    print(x)\n": {
+    "err": "TypeError: 'bool' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'bool' object is not iterable"
+   },
+
+"d = {None: [1, 2]}\nfor x in d[None]:\n    print(x)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint(1 in d[None])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint(d[None] + [3])\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nprint(d[None][0] + 1)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: {\"k\": 1}}\nfor k in d[None]:\n    print(k)\n": {
+    "stdout": "k\n",
+    "hasStdout": true
+   },
+
+"d = {True: \"a\"}\nprint(d[True] + \"b\")\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"print({None: \"x\", True: 2})\n": {
+    "stdout": "{None: 'x', True: 2}\n",
+    "hasStdout": true
+   },
+
+"xs = [5]\nfor x in xs[0]:\n    print(x)\n": {
+    "err": "TypeError: 'int' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not iterable"
+   },
+
+"xs = [5]\nprint(1 in xs[0])\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
 "class A:\n    v = 1\nclass B:\n    v = 2\nprint(A.v)\nprint(B.v)\n": {
     "stdout": "1\n2\n",
     "hasStdout": true

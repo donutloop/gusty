@@ -150,6 +150,13 @@ func TestASlicePastTheEndRaisesWhatTheReferenceRaises(t *testing.T) {
 			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0][9])",
 			"TypeError", "'float' object is not subscriptable",
 		},
+		{
+			// Gap R.231, PAID by ADR 0419: a number subscripting a TEXT-keyed dict read the position and
+			// answered `1 2` at exit 0. A subscript is a key whatever it is spelled with, and the miss is
+			// the reference's.
+			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",
+			"KeyError", "0",
+		},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
@@ -176,6 +183,11 @@ func TestATrapInsideASliceReadIsCatchable(t *testing.T) {
 		{
 			"def b():\n    return [1.5, \"a\", [7]]\n\ntry:\n    print(b()[0:2][0][9])\nexcept TypeError:\n    print(\"caught\")",
 			"caught",
+		},
+		{
+			// Gap R.231 / ADR 0419: the key miss is a trap the program can take.
+			"d = {\"a\": 1}\ntry:\n    print(d[0])\nexcept KeyError as e:\n    print(\"caught\", e)",
+			"caught 0",
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
@@ -339,12 +351,11 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// the wrong answer `[1]` pinned — is answered by ADR 0336: the shape now raises the reference's
 		// `TypeError: slice indices must be integers or None or have an __index__ method`. It is witnessed in
 		// `slice_bounds_kind_test.go`, where a row that stops raising fails rather than quietly disappearing.
-		{
-			"a text-keyed dict subscripted by a number",
-			"d = {\"a\": 1, \"b\": 2}\nprint(d[0], d[1])",
-			"1 2", "KeyError: 0",
-			"roadmap Gap R.231 (a number is a key like any other; the read road treats it as a position whatever the keys say)",
-		},
+		// The `a text-keyed dict subscripted by a number` row that used to sit here recorded the compiled leg
+		// answering `1 2` where the reference raises `KeyError: 0` (roadmap Gap R.231). It is DELETED, not
+		// edited: the read road asks the key's kind now, so the program raises the reference's own miss and
+		// the row is witnessed in `TestASlicePastTheEndRaisesWhatTheReferenceRaises` and its catchable twin
+		// in `TestATrapInsideASliceReadIsCatchable`. Gap R.231 is closed by ADR 0419.
 		{
 			"two text slots of a copy joined",
 			"xs = [\"x\", \"y\"]\nprint(xs[0:2][0] + xs[0:2][1])",

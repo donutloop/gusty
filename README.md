@@ -3032,6 +3032,49 @@ falls back to dynamic dispatch.
   arithmetic and concatenation over them, a member in a condition, the rebinding, and `__doc__` answer the reference's
   bytes on the compiled leg, the record leg and the CLI leg; the instance road is pinned as the untouched neighbour, and
   `tools/recmerge` wrote **16** entries from the reference (**9156 → 9172**), refusing none.
+- **A dict reads its void and verdict keys — and the roads that LABEL an operand ask the object first
+  (Gap R.285, ADR 0419)** — `d = {None: "a"}` / `print(d[None] + "b")` stopped the build with
+  **`concatenating a string with a value that is not a string … CPython raises TypeError for it`**, a sentence
+  that is **false of the program** (CPython answers `ab`), and `print(d[None] * 2)` printed **`0`** — the interned
+  text's index — at the exit code of success, while the `1`-keyed twin answered both all along. One construct, two
+  answers, decided by which KIND the key was spelled with: the door that answers *what kind is in this entry*
+  (`constKeysMatch`, which walks the dict's own literal) had arms for an integer, a text and a float and none for
+  the void or a verdict. The arm was not simply missing — **ADR 0353** built it, measured it and reverted it,
+  because two *callers* of that door then answered wrong: the membership test and the `for` loop each read an
+  entry's kind to decide what question to ask at all (walk its slots, its keys, its members, or test a substring),
+  and neither can walk a text, a number, a verdict or the void, so each read the payload as a heap handle and
+  answered at exit 0 — `1 in d[None]` said `False` where the reference raises `argument of type 'int' is not
+  iterable`, and `for x in d[None]` over `5` printed `0 1 2`. So the row went in the order the record prescribed:
+  **the two label roads first** (they ask the object for the slot's `(payload, tag)` pair through
+  `slotPairWhereStaticLabelCannotWalk`, whose tag chooses the arm and raises for a kind with no elements), **then
+  the door** — with the void answered before any number arm can reach it, because the constant fold reads a
+  `NoneLit` as the integer `0` and `{0: "a"}` read by `None` had been finding an entry the program never wrote
+  (harmless only by luck: the object road caught it. A gate that is only correct because another road exists is
+  not a gate). `print({0: "a"}[None])` raises `KeyError: None`, pinned both as a decision of the door asked **as a
+  function** over 21 key/index pairs and as a program. Two predicates, two questions, one measurement: `exprIsString`
+  (*what kind is this value*) asks the literal, and the concatenation's gate asks it too — otherwise
+  `{None: "a", 1: "b"}` / `print(d[None] + d[1])` emits `add i32` over two `@str_tab` indices and prints `b`;
+  `printsAsInternedStr` (*is the WORD an index a road may print directly*) is NOT widened, because measured, it
+  took `print(["a", "b"][0])` and two pinned neighbours from answers to exit-1 refusals. Sixteen shapes that were
+  wrong answers at exit 0 are the reference's now, and two never had a `None` in them: `xs = [5]` /
+  `print(1 in xs[0])` answered `False` and `xs = ["ab"]` / `for x in xs[0]` printed nothing.
+  The door behind the door was in the read road: an **integer** key was the one key spelled without a tag, so it
+  took the untagged `rt_dict_has`/`rt_dict_get` pair — which compares payloads alone, and the void's payload IS 0.
+  That is where `d = {"a": 1, "b": 2}` / `print(d[0], d[1])` answered `1 2` at exit 0; the integer key now carries
+  `TagInt` to the tagged doors every other key has asked since **ADR 0232**, the program raises the reference's
+  `KeyError: 0` catchably, `{0: "zero"}` still answers `zero`, and **Gap R.231** closes as the side-effect its own
+  Definition of Done described. `tools/recmerge` kept **95** entries recorded from the reference (**9172 → 9267**)
+  and refused four sources rather than let an answer be self-certified; **twelve more were withdrawn by hand** —
+  they were interpolated slot reads (`print(f"{d[None]}")`), and the record leg is kept permanently silent about
+  that field, which is witnessed by its `print` twin and by the live-`python3` CLI row instead. The two Gap R.285
+  pins in `integration/dict_none_bool_key_test.go` are DELETED, not edited, and `integration/programs/void_key_label_roads.gy`
+  joins the corpus as an asserted `match` row. Two defects the change made visible are FILED, not fixed:
+  **Gap R.434** (`d = {None: (1,)}` / `print(d[None] * 2)` writes `[1, 1]` and `print(d[None] + (2,))` raises a
+  sentence about a list the program never wrote, because the sequence door asks a KIND where the pair door handed it
+  a TAG — byte-identical with an `int` key on this commit's parent) and **Gap R.433** (a fraction in a slot through
+  `max` into a call answers `3` for `3.5`, because the fold that would keep it hands a bare `double` to a one-word
+  position and `llc` rejects the module).
+
 
 - **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
   ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and

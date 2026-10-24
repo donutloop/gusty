@@ -927,6 +927,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the sorted keys under a name, builds a dict by item stores and sorts that, and sorts a dict held by
 		// two names; every line is what CPython prints for it.
 		"sorted_dict_keys",
+		// The dict's static key door reads a `None` and a verdict key, so the concatenation, the repeat,
+		// the method, the length, the interpolation, the loop and the membership test all ask an entry the
+		// same question the print road asks it — and the two roads that LABEL an operand before walking it
+		// ask the OBJECT, whose tag says which arm runs and raises for a kind with no elements (**ADR 0419**,
+		// roadmap **Gap R.285**). The program concatenates and repeats a void-keyed text, walks a void-keyed
+		// list, dict and text, crosses the void key against the number 0, and catches what the reference
+		// raises for a number it was asked to walk; every line is what CPython prints for it.
+		"void_key_label_roads",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

@@ -729,6 +729,16 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 			// dict case was missing, so `d["k"] = "v"; print(d["k"])` printed the
 			// integer index whenever the whole dict had not been printed first (the
 			// runtime @estr flag only covers printing the container itself).
+			//
+			// This question is NOT widened to the entry itself (roadmap Gap R.285, ADR 0419): measured, and
+			// the measurement is the difference between the two predicates. `exprIsString` answers what KIND
+			// a value is, and the literal that still describes the object's slots can say so for an entry no
+			// name records a kind for. This predicate answers something stronger — that the WORD is an
+			// @str_tab index a road may print or concatenate directly — and a container whose slots describe
+			// themselves has to answer that one with the tag beside the payload: widening it here took
+			// `print(["a", "b"][0])`, `xs = [1, "a", None]` / `print(xs[1])` and `xs = [["a","b"]]` /
+			// `print(xs[0][0])` from the pair door to a one-word road that refused them (ADR 0331's own
+			// sentence, at exit 1 for programs the reference prints).
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
 		}
 		if dl, isLit := v.Obj.(*DictLit); isLit {
@@ -737,6 +747,7 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 			// (roadmap Gap R.215, ADR 0327).
 			return g.dictLiteralValueIsString(dl, v.Idx)
 		}
+		return false
 	}
 	return false
 }

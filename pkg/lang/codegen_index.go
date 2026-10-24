@@ -593,6 +593,18 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 				kt := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", kt, nm.Value))
 				keyTag = kt
+			} else {
+				// An integer key is a key like any other, and the object answers it with the pair the writer
+				// left beside it. The untagged `rt_dict_has`/`rt_dict_get` pair compares PAYLOADS, and the
+				// void's payload is 0 — so `{None: "a"}` read by `0` found the entry the program never wrote
+				// and handed back the interned index of "a", which `* 2` printed as `0` at the exit code of
+				// success while the reference raises `KeyError: 0` (roadmap Gap R.285, ADR 0419). The tag is
+				// where the void, the verdict and the number stop colliding: `rt_payload_eq` compares a bool
+				// and a number AS numbers, so `d[1]` over `{True: "a"}` stays the one lookup the reference
+				// performs, and it compares the void against nothing at all. Same door, one question, for a
+				// key spelled a number and a key spelled anything else (ADR 0232's rule, taken to the last
+				// road that had not taken it).
+				keyTag = strconv.FormatInt(int64(TagInt), 10)
 			}
 			if keyTag != "" {
 				g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Idx, n.Span())

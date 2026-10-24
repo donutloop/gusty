@@ -444,6 +444,13 @@ func (g *irGen) exprIsString(e Expr) bool {
 		if _, isStr := g.stringVal(v.Obj); isStr {
 			return true
 		}
+		// The entry itself, asked of the literal that still describes the object's slots — the road that
+		// knows a `None`-keyed entry is a text when the name's own kind bookkeeping cannot say it, because
+		// a dict whose key is the void has no single value kind to record (roadmap Gap R.285, ADR 0419).
+		// It is asked BEFORE the name's bookkeeping, which is the record a dict with a void key has none of.
+		if g.staticSlotIsText(v) {
+			return true
+		}
 		if nm, ok := v.Obj.(*Name); ok {
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
 		}

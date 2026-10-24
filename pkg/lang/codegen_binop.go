@@ -397,7 +397,16 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 			if _, ok := g.stringVal(e); ok {
 				return true
 			}
-			return g.printsAsInternedStr(e)
+			if g.printsAsInternedStr(e) {
+				return true
+			}
+			// The same question, asked by the road that PRINTS. An entry read out of a dict whose key the
+			// compiler cannot spell has no kind recorded on the name, so the two predicates above both
+			// decline — and the fall-through was an `add i32` over two @str_tab indices, printed back as a
+			// text: `{None: "a", 1: "b"}` / `print(d[None] + d[1])` answered `1` before this row and `b`
+			// with only the label road widened. One question per operand, one answer (roadmap Gap R.285,
+			// ADR 0419; the rule ADR 0384 already applies to a container slot).
+			return g.exprIsString(e)
 		}
 		if (isStrOperand(n.L) || isStrOperand(n.R)) && n.Op != "+" {
 			// The message has to say what is missing rather than claim orderings on text have no

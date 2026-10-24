@@ -13283,6 +13283,48 @@ is harmless because every road that reaches it still asks the *object*, whose ta
 reference's `KeyError: None` — pin that too, so the day the static answer wins the argument, the crossing fails
 a case instead of printing `"a"`.
 
+#### Paid by **ADR 0419** (2026-10-24) — the order was the whole feature
+
+The row closed in the order this section prescribed, and the order is not a stylistic preference: open the
+door first and the four measurements above come back as regressions; open the two label roads first and
+they come back as **controls**. That is why the row was one row.
+
+* **The roads.** The membership test (`membershipOfBuiltSlotHaystack`) and the loop (`stmtFor`'s `*Index`
+  arm) ask the object for the slot's `(payload, tag)` pair through a new door,
+  `slotPairWhereStaticLabelCannotWalk` — `builtSlotPair` with the static decline taken out of it, and which
+  stands aside unless the static label is a kind the road cannot walk (list, dict and set slots keep the
+  sound static road, so ADR 0241's promise and its pinned rows are untouched). The tag then chooses the
+  arm: `@rt_iter_len`/`@rt_iter_elem`/`@rt_iter_tag` step a text one character at a time,
+  `@rt_contains_tagged` and its dict/set siblings ask the membership question, and a number, a verdict or
+  the void leaves through the program's own `except TypeError:` with the sentence the reference writes —
+  membership naming the **type**, the loop naming the **object**.
+* **The door.** `constKeysMatch` answers a void key against a void index and nothing else, **first**,
+  before any number arm can reach it, which is what kills the `{0: "a"}`-read-by-`None` crossing at the
+  door instead of leaving it to the mercy of the object road. The verdict arm keeps the reference's
+  identity rule (`1`, `True`, `1.0` are one key) and the kind-before-number rule that keeps an `@str_tab`
+  index from colliding with the integer it is indexed by (ADR 0232).
+* **The measurement that shaped the fix.** The first attempt widened BOTH text predicates. `exprIsString`
+  answers *what kind is this value*, which the literal may state for an entry no name records a kind for.
+  `printsAsInternedStr` answers something stronger — *the word is an `@str_tab` index a road may print
+  directly* — and a container whose slots describe themselves must answer that one with the tag beside the
+  payload. Widening it took three pinned programs (`print(["a", "b"][0])`, `xs = [1, "a", None]` /
+  `print(xs[1])`, `xs = [["a","b"]]` / `print(xs[0][0])`) from answers to **exit-1 refusals**. The arm is
+  out, and the reason is written in the source beside the predicate that stayed narrow.
+* **A wrong answer found while fixing one.** With the label road widened and the gate beside it not,
+  `{None: "a", 1: "b"}` / `print(d[None] + d[1])` emitted `%t = add i32 %g2, %g3` and printed the sum of two
+  interned indices as a text — `b` (it had printed `1` before the row, so both answers were wrong and only
+  one was new). The concatenation's own gate now asks `exprIsString`, the question the print road asks of
+  the same operand, and `rt_str_cat` answers in both orders.
+* **Two shapes nobody had asked about, paid because the door that caused them is the door this row opens.**
+  `xs = [5]` / `print(1 in xs[0])` answered `False` at exit 0 where the reference raises, and
+  `xs = ["ab"]` / `for x in xs[0]: print(x)` printed nothing — no `None` in either program, both reached by
+  the same static label.
+* **What stays owed already has rows:** the slice of a base the records do not describe is **Gap R.235**
+  (`print(d[None][1:])`), sorting keys of more than one kind is **Gap R.429**, a name whose last binding
+  was the void is **Gap R.286**, arithmetic on a mixed container's slot is **Gap R.82**. Each is pinned
+  with today's answer beside the reference's in
+  `TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed`, so a fix has to close the pin on purpose.
+
 ### Gap R.286 — a name whose last binding was `None` is not a key the read carries a tag for
 
 ```gusty
@@ -18542,3 +18584,68 @@ Every one of these is exit **1** with the class, the member and the missing half
 answer; the pins are in `pkg/lang/a_class_member_read_by_name_test.go` and its CLI twin, and a case that starts ANSWERING
 fails the pin, so the row has to be closed on purpose. The direction is one thing, not five: give the read the
 (payload, tag) pair — **ADR 0316**'s and **ADR 0324**'s shape — and record the member's kind beside its expression.
+
+<a id="gap-r-433"></a>
+### Gap R.433 — the `min`/`max` fold's fractional answer is a double where the position wants a value word (⏳ OPEN, filed by **ADR 0419**)
+
+`def f(v):` / `    return v` / `print(f(max(3.5, 2)))` is `3.5` in the reference and **exit 2** here:
+
+```llvm
+%t4 = fadd double 0.0, 3.500000e+00
+%t5 = call i32 @gy_f(i32 %t4)      ; llc: "InvalidMergedColor"… no: "argument 0 to call i32 @gy_f(i32 …)"
+```
+
+`llc` rejects the module, which ADR 0166 reserves for a compiler bug, so this is not a refusal to be filed and
+forgotten: it is the compiler writing a module that cannot be assembled.
+
+The fold is the door. `emitScalarMinMax` knows both operands at compile time, compares them, and hands the
+winner to `materialiseFloat` — which is exactly right for the print road, whose float arm takes a `double`
+register, and exactly wrong for every position that holds a *value*: a call argument, a container slot, a
+`return` word. Those positions are one machine word wide and the boxing road (`call i32 @rt_float_new(double
+3.5e+00)`) is what puts a fraction into them. A fraction spelled as a literal and passed the same way is fine,
+because it walks the ordinary road and gets boxed — the fold is the only door that lets a bare double out of
+the compiler's hand.
+
+**The slot's half was taken out of this row by ADR 0419.** `d = {1: 3.5}` / `print(f(max(d[1], 2)))` blew up
+the same way; `foldableCandidate` now declines a fractional number arriving through an `Index` slot, so that
+program compiles and answers `3`. Answering `3` where the reference answers `3.5` is a wrong answer, and it is
+filed here rather than hidden: the fold was traded for the pair road, and the pair road hands **one word** to
+the call, which is L11.1/ADR 0232's tagged-value-word debt in a new costume. The pin for the slot's half is
+`pkg/lang/none_key_label_roads_test.go::TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed` (today's
+bytes `3\n` beside the reference's `3.5\n`) and `integration/none_key_label_roads_test.go::TestTheVoidKeyRoadsAnswerWrongArePinnedBesideTheReference`;
+the literal's half stays unpinned because a test that reaches exit 2 *is* the bug.
+
+The direction is one decision, not two: box the fold's answer the way the ordinary road boxes a float literal
+(`rt_float_new` plus a tag beside it) and let the comparison stay a fold — or ask, before choosing the fold at
+all, whether the answer leaves the double's hand into a position that holds a value, which is the same
+question `arithWouldRefuse` already asks arithmetic.
+
+<a id="gap-r-434"></a>
+### Gap R.434 — a tuple in a dict slot is repeated and concatenated as a list (⏳ OPEN, found by **ADR 0419**)
+
+```
+d = {None: (1,)}
+print(d[None] * 2)      # reference: (1, 1)    this backend: [1, 1]   exit 0
+print(d[None] + (2,))   # reference: (1, 2)    this backend: TypeError: can only concatenate list (not "tuple") to list
+```
+
+Three neighbours answer correctly, which is what makes this a door and not a general illness:
+`print(d[None])` prints `(1,)`, `print(len(d[None]))` prints `1`, and `for v in d[None]:` prints `1`. It is the
+**sequence** arms — ADR 0365's `@rt_seq_repeat` and `@rt_seq_concat` — that get the kind wrong.
+
+The repeat road asks a *kind* of its operand (`pkg/lang/sequence_ops.go` decides the shape while the operands
+can still be asked, which is ADR 0365's design) and a slot read has no static kind to answer with, so the list
+arm wins: `rt_seq_repeat(a, b, TagList)` builds a list out of the tuple's payload words. The concatenation is
+worse, because the runtime believes the label and raises its own true sentence about a program that never
+mentions a list — a trap the reference does not raise is the worst shape of the three, since the program dies
+for a reason it cannot have.
+
+`t = (1,)` / `print(t * 2)` prints `(1, 1)`, so the road is sound for a name and loses the tuple only on the
+way out of a slot. The **int-key** twin, `d = {1: (1,)}` / `print(d[1] * 2)`, prints `[1, 1]` on this row's
+parent too (`/tmp/gusty.stub` at `7cbffb5`), which is the measurement that keeps ADR 0419's void arm from being
+blamed for it: the void arm walked into a defect that was already there, wrote it into the ledger, and left.
+
+The pair door already hands the slot's `(payload, tag)` to the roads that ask for a pair
+(`slotPairFromTheObject`, `slotPairWhereStaticLabelCannotWalk`). The direction is therefore not new machinery:
+the sequence door has to *ask that pair* — the same question ADR 0365's own `in`/`==`/`for` roads ask — and
+pass `TagTuple` where the tag says tuple, instead of asking a kind and settling for the list.

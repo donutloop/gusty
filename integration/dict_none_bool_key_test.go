@@ -185,20 +185,11 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 		reference string
 		row       string
 	}{
-		{
-			name:      "a_text_entry_concatenated_refuses",
-			src:       "d = {None: \"a\"}\nprint(d[None] + \"b\")\n",
-			wantErr:   "concatenating a string with a value that is not a string",
-			reference: `"ab"`,
-			row:       "Gap R.285",
-		},
-		{
-			name:      "a_text_entry_repeated_answers_the_payload",
-			src:       "d = {None: \"a\"}\nprint(d[None] * 2)\n",
-			wantOut:   "0\n",
-			reference: `"aa"`,
-			row:       "Gap R.285",
-		},
+		// The two rows this table pinned for **Gap R.285** — `print(d[None] + "b")` refusing with a sentence
+		// that was FALSE of the program, and `print(d[None] * 2)` printing the interned index `0` at the exit
+		// code of success — are PAID, and their pins are DELETED rather than edited: the answers live in
+		// `TestAVoidKeyedEntryAnswersEveryOperatorRoadAtTheCLI` in `integration/none_key_label_roads_test.go`,
+		// where the expectation is the bytes CPython printed (roadmap **Gap R.285**, **ADR 0419**).
 		{
 			// The truth of the entry used to sit here, pinned as the wrong arm it took: `d = {None: "hi"}` /
 			// `if d[None]:` branched the interned text's index against zero. It is paid — the condition's head

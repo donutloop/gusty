@@ -240,6 +240,19 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 			mixedIter = true
 			hVal = h
 			iterTag = t
+		} else if h, t, okPair := g.slotPairWhereStaticLabelCannotWalk(b, ix); okPair && h != "" && t != "" {
+			// The compiler CAN read this slot — and what it reads is a kind a loop cannot step over: a text,
+			// a number, a verdict, the void. A static label of that shape is not permission to walk the
+			// payload as a handle (that printed nothing for `for x in d[None]` over a text, and `0 1 2` over
+			// the integer 5, both at the exit code of success) and not permission to fall through to the
+			// counter road, which reads the word as a repeat count (Gap R.299's accident). The object's tag
+			// chooses the arm, and raises the reference's `'int' object is not iterable` for a kind with no
+			// elements (roadmap Gap R.285, ADR 0419; the same widening ADR 0323 gave a slot the compiler
+			// could not describe).
+			iterKind = "tagged"
+			mixedIter = true
+			hVal = h
+			iterTag = t
 		}
 	}
 	if iterKind != "" {

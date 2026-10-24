@@ -554,7 +554,7 @@ func TestAReboundContainerIsReadByTheSameRoadsAsAContainerBoundOnce(t *testing.T
 			"a list rebound to a dict",
 			"x = [1, 2]\nx = {1: 10}\nprint(x)\nprint(x[1])\nprint(len(x))\nprint(1 in x)\nfor k in x:\n    print(k)\n",
 			"x = {1: 10}\nprint(x)\nprint(x[1])\nprint(len(x))\nprint(1 in x)\nfor k in x:\n    print(k)\n",
-			[]string{"rt_dict_get", "rt_dict_print"},
+			[]string{"rt_dict_get_tagged", "rt_dict_print"},
 		},
 		{
 			"a text list rebound to a number list",

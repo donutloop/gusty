@@ -4419,6 +4419,27 @@
     },
     {
       "case": {
+        "id": "programs/void_key_label_roads",
+        "name": "void_key_label_roads.gy",
+        "source": "# The dict's static key door reads a `None` and a verdict key, so every road that LABELS an operand —\n# the concatenation, the repeat, the method, the length, the interpolation, the condition, the loop and\n# the membership test — agrees with the road that reads the object. The two `print`s at the top are the\n# row: the first refused this build with a sentence about a `TypeError` the reference does not raise, and\n# the second printed `0`, the interned text's index, at the exit code of success (roadmap Gap R.285,\n# ADR 0419). The raises below are the controls that kept the door shut: a number has no elements, keys,\n# members or characters, and the reference stops on each. Every line is what the reference prints, one\n# for one.\nd = {None: \"a\"}\nprint(d[None] + \"b\")\nprint(d[None] * 2)\nprint(d[None].upper())\nprint(len(d[None]))\nprint(f\"v={d[None]}\")\nprint(str(d[None]), repr(d[None]))\nprint(d[None] == \"a\")\nprint([d[None], 1])\nprint(d[None] or \"fallback\")\nh = {None: \"hello\"}\nprint(h[None][1])\nprint(h[None][0:2])\ntwo = {None: \"a\", 1: \"b\"}\nprint(two[None] + two[1])\nn = {None: 5}\nprint(n[None] + 1)\nprint(n[None] * 1)\nr = {None: 2.5}\nprint(r[None] * 2)\nc = {None: [1, 2]}\nprint(c[None] + [3])\nprint(c[None][0] + 1)\nfor v in c[None]:\n    print(v)\nprint(1 in c[None])\nt = {None: \"ab\"}\nfor ch in t[None]:\n    print(ch)\nprint(\"a\" in t[None], \"z\" in t[None])\nm = {None: {\"k\": 1}}\nfor k in m[None]:\n    print(k)\nif d[None]:\n    print(\"the entry is true\")\nelse:\n    print(\"the entry is false\")\ne = {None: \"\"}\nif e[None]:\n    print(\"the empty entry is true\")\nelse:\n    print(\"the empty entry is false\")\n# A verdict key is the number the reference says it is, and the void is a key of its own kind.\nz = {0: \"zero\"}\nprint(z[False], z[0])\no = {1: \"one\"}\nprint(o[True], o[1])\nboth = {None: 1, 0: 2}\nprint(len(both), both[None], both[0])\nprint({None: \"x\", True: 2})\n# A number and the void have nothing to walk: membership names the type, a loop names the object.\ntry:\n    print(1 in n[None])\nexcept TypeError as err:\n    print(\"membership:\", err)\ntry:\n    for v in n[None]:\n        print(v)\nexcept TypeError as err:\n    print(\"loop:\", err)\ntry:\n    print(len(n[None]))\nexcept TypeError as err:\n    print(\"length:\", err)\ntry:\n    for v in {None: None}[None]:\n        print(v)\nexcept TypeError as err:\n    print(\"void loop:\", err)\n# And the void is not the number 0: the entry the program did not write stays unwritten.\ntry:\n    print(z[None])\nexcept KeyError as err:\n    print(\"no entry under None:\", err)\ntry:\n    print(d[0])\nexcept KeyError as err:\n    print(\"no entry under 0:\", err)\nxs = [5]\ntry:\n    print(1 in xs[0])\nexcept TypeError as err:\n    print(\"number slot:\", err)\nys = [\"ab\"]\nfor ch in ys[0]:\n    print(ch)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "ab\naa\nA\n1\nv=a\na 'a'\nTrue\n['a', 1]\na\ne\nhe\nab\n6\n5\n5.0\n[1, 2, 3]\n2\n1\n2\nTrue\na\nb\nTrue False\nk\nthe entry is true\nthe empty entry is false\nzero zero\none one\n2 1 2\n{None: 'x', True: 2}\nmembership: argument of type 'int' is not iterable\nloop: 'int' object is not iterable\nlength: object of type 'int' has no len()\nvoid loop: 'NoneType' object is not iterable\nno entry under None: None\nno entry under 0: 0\nnumber slot: argument of type 'int' is not iterable\na\nb\n",
+      "python_ok": true,
+      "python_stdout": "ab\naa\nA\n1\nv=a\na 'a'\nTrue\n['a', 1]\na\ne\nhe\nab\n6\n5\n5.0\n[1, 2, 3]\n2\n1\n2\nTrue\na\nb\nTrue False\nk\nthe entry is true\nthe empty entry is false\nzero zero\none one\n2 1 2\n{None: 'x', True: 2}\nmembership: argument of type 'int' is not iterable\nloop: 'int' object is not iterable\nlength: object of type 'int' has no len()\nvoid loop: 'NoneType' object is not iterable\nno entry under None: None\nno entry under 0: 0\nnumber slot: argument of type 'int' is not iterable\na\nb\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5584,11 +5605,11 @@
       ]
     }
   ],
-  "rows": 236,
+  "rows": 237,
   "skipped": 29,
-  "pass": 207,
+  "pass": 208,
   "fail": 0,
-  "oracle_match": 193,
+  "oracle_match": 194,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

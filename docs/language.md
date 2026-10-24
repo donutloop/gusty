@@ -1495,10 +1495,35 @@ Rules that the compiled backend implement:
   back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
   object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says
   `'list'`, the reference's left-to-right hashability walk). What the same read still cannot reach is
-  three rows, each pinned with today's answer beside the reference's: `+`/`*` over the entry
-  (**Gap R.285**), and a **name** whose last binding was `None`, which arrives as an untagged word and raises
-  `KeyError` where the reference prints the entry (**R.286**), and a **set** entry, whose tag the builders never
-  write, so it prints its handle and is truthy (**R.360**). What it does reach: the f-string field of the entry
+  two rows, each pinned with today's answer beside the reference's: a **name** whose last binding was `None`,
+  which arrives as an untagged word and raises `KeyError` where the reference prints the entry (**R.286**),
+  and a **set** entry, whose tag the builders never write, so it prints its handle and is truthy (**R.360**).
+  `+`/`*` over the entry are **paid**: `d = {None: "a"}` answers `print(d[None] + "b")` with `ab` and
+  `print(d[None] * 2)` with `aa`, as do the method road (`d[None].upper()`), the length road, the
+  interpolation field, `str`/`repr`, the equality door, the condition door, a container element, a call
+  argument, a character of the entry and a slice of it (**R.285**, **ADR 0419**). The rule that pays them is
+  one question per operand: the dict's static key door reads a `None` and a verdict key — and the two roads
+  that read an entry's KIND in order to decide *what question to ask the entry at all*, the membership test
+  and the `for` loop, ask the **object** instead, whose tag says which arm runs and raises the reference's
+  sentence for a kind with no elements:
+
+  ```gusty
+  d = {None: "a"}
+  print(d[None] + "b")           # ab    (was refused: "CPython raises TypeError for it" — it does not)
+  print(d[None] * 2)             # aa    (was 0 — the text's @str_tab index, at exit 0)
+  print(d[None].upper())         # A
+  t = {None: "ab"}
+  for ch in t[None]:
+      print(ch)                  # a, b   (was: nothing printed, exit 0)
+  print(1 in {None: 5}[None])    # TypeError: argument of type 'int' is not iterable (was False)
+  xs = [5]
+  print(1 in xs[0])              # the same raise — no `None` in the program; the label road caused both
+  print({0: "a"}[None])          # KeyError: None — the void is a key of its own kind, not the number 0
+  ```
+
+  A `None` key is therefore not the number `0` to this backend even though the constant fold reads a
+  `NoneLit` as `0`: the key door answers the void FIRST, before any number arm can reach it. `1`, `True` and
+  `1.0` remain one key, which is the reference's rule, and `print({0: "a"}[False])` still answers `a`. What it does reach: the f-string field of the entry
   (**R.283**, **ADR 0356**), `abs` and the `min`/`max`/`sum` folds of it (**R.287**, **ADR 0387**), and its
   **truth** — `if d[None]:`, `while d[None]:`, `"y" if d[None] else "n"` and `bool(d[None])` all branch the
   reference's way (**R.284**, **ADR 0388**), because the condition asks the entry the same `(payload, tag)` pair
@@ -1513,7 +1538,16 @@ Rules that the compiled backend implement:
   callee that TESTS its own parameter — `if v:` over the pair — still asks the payload (**R.361**), a recursive
   callee that hands the parameter back and a ternary whose chosen arm is the parameter keep one word for the
   answer (**R.146**, **R.147**), and an entry bound to a name first (`x = d["a"]` then `id(x)`) is still the
-  one-word position of **Gap R.146**.
+  one-word position of **Gap R.146**. Two more shapes are pinned the same way because this row's own measurement
+  walked into them: a **tuple** that lives in a slot is repeated and concatenated as a **list** — `d = {None: (1,)}`
+  with `print(d[None] * 2)` writes `[1, 1]` where the reference writes `(1, 1)`, and `print(d[None] + (2,))` raises
+  `TypeError: can only concatenate list (not "tuple") to list` where it writes `(1, 2)` — because the sequence door
+  asks its operand a KIND and a slot read has no static kind, so the list arm answers for the tuple (**R.434**);
+  and a FRACTION in a slot that goes through `min`/`max` into a call loses its fraction (`3` for `3.5`), because the
+  fold that would keep it hands a bare `double` to a position one word wide and `llc` rejects the module (**R.433**).
+  `print(d[None])`, `len(d[None])` and `for v in d[None]` all answer correctly, which is what makes those two doors
+  rather than a general illness — and the same program with an `int` key behaves identically, so it is the SLOT, not
+  the void key, that costs the tuple its brackets.
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same
