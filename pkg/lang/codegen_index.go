@@ -410,6 +410,41 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
+// dictKeyNameTag answers the question ADR 0232 says every key must answer — WHICH KIND is this key, beside
+// its payload — of a key that reached the door through a BINDING rather than spelled as a literal.
+//
+// The road had one arm for that, and it was unreachable: it sat in the `else` of a test on
+// `n.Idx.(*IntLit)`, so it could only run for an index that was BOTH an `*IntLit` and a `*Name`. Every
+// name key therefore fell to the tag of its payload word alone, and the void's payload IS 0 — which is
+// why `d = {None: 3.5}` / `k = None` / `print(d[k])` died `KeyError: key not found` where the reference
+// prints `3.5`: the IR asked `rt_dict_has_tagged(i32 %h, i32 %_k.ld1, i32 0)`, 0 being TagInt, and the
+// entry's key is stored as (0, TagNone) (roadmap Gap R.286, measured on the IR of ADR 0419's build).
+//
+// Three records answer it, in the order that keeps every road that works today working:
+//
+//   - a name the PAIR road bound (`taggedVars`, ADR 0233) carries its own tag word in `_<name>_tag`, and
+//     the load is the answer — that was the arm's own intention, and the alloca's presence is asked too,
+//     because a load of a register this function never allocated is exit 2 (ADR 0166) rather than an answer;
+//   - everything else asks `elemKindTag`, the door every other position already asks: it is where the
+//     container key, the unrolled loop's per-item tag, the VOID and the VERDICT a binding left behind
+//     come from (Gap R.286 put the two singletons into that door rather than repeating them here, so the
+//     read, the pair road and the membership test cannot disagree about what the same name is).
+func (g *irGen) dictKeyNameTag(b *strings.Builder, key Expr) (string, bool) {
+	if nm, isName := key.(*Name); isName && g != nil {
+		// A loop variable the unroll gave a per-item tag is THIS item, not the kind some earlier binding
+		// handed the name (Gap R.358's rule), so the object-reading door answers that name.
+		if _, perItem := g.loopElemTag[nm.Value]; !perItem && g.taggedVars[nm.Value] && g.allocd[nm.Value+"_tag"] {
+			kt := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", kt, nm.Value))
+			return kt, true
+		}
+	}
+	if t, ok := g.elemKindTag(key); ok {
+		return strconv.FormatInt(int64(t), 10), true
+	}
+	return "", false
+}
+
 // keyNotFoundMessage words the KeyError the way the reference does: `KeyError: 'z'`, the key itself
 // as the message — which is what a reader greps for and what makes a traceback actionable. A key the
 // compiler cannot see as a literal at this point (a name whose kind is a run-time fact, a computed
@@ -439,6 +474,32 @@ func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
 	}
 	if repr, ok := literalKeyRepr(keyExpr); ok {
 		return repr
+	}
+	// A key that arrived through a BINDING is nameable too, when the binding wrote one of the two
+	// singletons: the reference prints `KeyError: None` for `k = None` over a dict that has no such entry,
+	// and the generic sentence is the thing that made the traceback unactionable. This is the same record
+	// the read road now asks (Gap R.286), so the message cannot disagree with the lookup that missed.
+	// Every other key keeps the generic sentence: Gap R.189 owns naming a key the compiler cannot see.
+	if nm, isName := keyExpr.(*Name); isName && g != nil {
+		switch {
+		case g.noneVars[nm.Value]:
+			return "None"
+		case g.boolVars[nm.Value]:
+			if v, ok := g.foldConstInt(nm); ok {
+				if v != 0 {
+					return "True"
+				}
+				return "False"
+			}
+		case g.strVals[nm.Value] != "":
+			// The text the binding wrote is the same record the printer asks, so the traceback cannot
+			// disagree with the lookup that missed (Gap R.189's sentence, for the keys ADR 0420 can name).
+			return pyReprString(g.strVals[nm.Value])
+		default:
+			if v, ok := g.foldConstInt(nm); ok {
+				return strconv.FormatInt(v, 10)
+			}
+		}
 	}
 	return "key not found"
 }
@@ -582,17 +643,13 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 					g.dictKeyStr[obj.Value] = true
 				}
 				keyOp = kv
-				if t, ok := g.elemKindTag(n.Idx); ok {
-					keyTag = strconv.FormatInt(int64(t), 10)
+				if t, ok := g.dictKeyNameTag(b, n.Idx); ok {
+					keyTag = t
 				} else if isStr {
 					keyTag = strconv.FormatInt(int64(TagStr), 10)
 				} else {
 					keyTag = strconv.FormatInt(int64(TagInt), 10)
 				}
-			} else if nm, ok := n.Idx.(*Name); ok && g.taggedVars[nm.Value] {
-				kt := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", kt, nm.Value))
-				keyTag = kt
 			} else {
 				// An integer key is a key like any other, and the object answers it with the pair the writer
 				// left beside it. The untagged `rt_dict_has`/`rt_dict_get` pair compares PAYLOADS, and the

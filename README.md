@@ -3075,6 +3075,33 @@ falls back to dynamic dispatch.
   `max` into a call answers `3` for `3.5`, because the fold that would keep it hands a bare `double` to a one-word
   position and `llc` rejects the module).
 
+- **A name that held the void is still the void: the tag a BINDING leaves behind (Gap R.286, ADR 0420)** —
+  `d = {None: 3.5}` / `k = None` / `print(d[k])` died **`KeyError: key not found`** at exit 3 where CPython prints
+  **`3.5`**. The read was fine; the door had two halves, and the second is why the first hid for eight days. The
+  read road had an arm for a key arriving through a binding and it was **unreachable** — it sat in the `else` of a
+  test on `n.Idx.(*IntLit)`, so it could only run for an index that was BOTH an `*IntLit` and a `*Name`. Every name
+  key fell through to `elemKindTag`, the one door that answers *which kind is this value*, and that door has arms
+  for the container, the text, the float and the instance a name holds, literal arms for `*NoneLit`/`*BoolLit`, and
+  **no arm for the name whose binding wrote a singleton** — so its foot answered `TagInt` and the void reached
+  `rt_dict_has_tagged` as `(0, TagInt)` beside an entry the builder had stored as `(0, TagNone)`. The two arms went
+  into **that** door, read from the **ADR 0172** latest-binding records `print`, truthiness, `str` and equality
+  already live by (the key door may not know less about a name at the same point than the printer does), with a
+  loop variable the unroll tagged and a name the container records claim both standing aside. Binding the singletons
+  through the pair road instead was built and **rejected**: `taggedVars` is a fact four other roads consult. The
+  static door got `constKeyView`, which retires a void-named key to its singleton — that is what makes
+  `d = {None: "a"}` / `k = None` / `print(d[k] + "b")` answer `ab` and not merely the plain read — and it retires
+  **only the void**, because `boolVars` records that a name holds a verdict and not *which*; a key that cannot be
+  quoted stays unreadable, which is a refusal rather than a guess. The traceback names what the records can quote
+  (`KeyError: None`, and `KeyError: 'zz'` for a bound text read from `strVals`, the printer's own record). **15**
+  unit rows over two cases and **11** CLI rows against a live `python3`; `tools/recmerge` wrote **13** entries
+  (**9267 → 9280**) and **refused two** whose compiled raise is not the reference's; **four pins deleted**;
+  `integration/programs/bound_dict_keys.gy` joins the corpus as an asserted `match` row; and a **4878**-source sweep
+  of the record corpus against a `git worktree` build of this commit's parent reported **0 regressions / 16
+  improvements**. Two shapes the measurement surfaced are FILED with today's bytes pinned beside the reference's:
+  **Gap R.435** (`k = None` / `print([k])` writes `[0]`, because the list literal records one element kind for all
+  its slots) and **Gap R.436** (the operator road over an entry addressed by a bound **number** key refuses where
+  the const-key twin answers, because the door has no number-in-a-name record to retire).
+
 
 - **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
   ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and

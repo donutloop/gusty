@@ -4440,6 +4440,27 @@
     },
     {
       "case": {
+        "id": "programs/bound_dict_keys",
+        "name": "bound_dict_keys.gy",
+        "source": "# A dict read whose KEY arrived through a binding asks the object with the kind that binding wrote.\n# The builder stores the void's entry as (0, TagNone) and the number 0's as (0, TagInt), so a key\n# that arrives as an untagged word reads the wrong entry — or none at all, which is what this row\n# was filed against (roadmap Gap R.286, ADR 0420). Every line below is what CPython 3.12 printed\n# for this very file, one for one.\nd = {None: 3.5}\nkn = None\nkz = 0\nprint(d[None])\nprint(d[kn])\nprint(d[kn] + 1)\ns = {None: \"a\", 0: \"zero\"}\nprint(s[kn] + \"b\")\nprint(s[kn] * 2)\nprint(s[kn].upper())\nprint(len(s[kn]))\nab = {None: \"ab\"}\nfor ch in ab[kn]:\n    print(ch)\nprint(1 in [d[kn], 2])\ntwo = {None: 1, 0: 2}\nprint(len(two), two[kn], two[kz])\nflag = True\nt = {True: \"one\"}\nprint(t[flag], t[True])\nn = {1: \"one\"}\nprint(n[flag], n[True], n[1])\nprint({None: \"x\", True: 2})\n# A key that names no entry raises, and the record lets the traceback NAME the void and the text.\nz = {0: \"zero\"}\ntry:\n    print(z[kn])\nexcept KeyError as err:\n    print(\"no entry under the void:\", err)\nw = {\"a\": 1}\nmissing = \"zz\"\ntry:\n    print(w[missing])\nexcept KeyError as err:\n    print(\"no entry under the bound text:\", err)\n# The void in a name is still the void on every road that asks the name.\nprint(kn, bool(kn), kn == None, kn is None)\nprint(d[kn] == 3.5, s[kn] == \"a\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "3.5\n3.5\n4.5\nab\naa\nA\n1\na\nb\nFalse\n2 1 2\none one\none one one\n{None: 'x', True: 2}\nno entry under the void: None\nno entry under the bound text: 'zz'\nNone False True True\nTrue True\n",
+      "python_ok": true,
+      "python_stdout": "3.5\n3.5\n4.5\nab\naa\nA\n1\na\nb\nFalse\n2 1 2\none one\none one one\n{None: 'x', True: 2}\nno entry under the void: None\nno entry under the bound text: 'zz'\nNone False True True\nTrue True\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5605,11 +5626,11 @@
       ]
     }
   ],
-  "rows": 237,
+  "rows": 238,
   "skipped": 29,
-  "pass": 208,
+  "pass": 209,
   "fail": 0,
-  "oracle_match": 194,
+  "oracle_match": 195,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

@@ -190,18 +190,18 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 		// code of success — are PAID, and their pins are DELETED rather than edited: the answers live in
 		// `TestAVoidKeyedEntryAnswersEveryOperatorRoadAtTheCLI` in `integration/none_key_label_roads_test.go`,
 		// where the expectation is the bytes CPython printed (roadmap **Gap R.285**, **ADR 0419**).
-		{
-			// The truth of the entry used to sit here, pinned as the wrong arm it took: `d = {None: "hi"}` /
-			// `if d[None]:` branched the interned text's index against zero. It is paid — the condition's head
-			// asks the same (payload, tag) pair print asks and decides it in `@rt_pair_truth` (roadmap Gap R.284,
-			// ADR 0388). The arms, `bool()`, the ternary and the loop head are asserted at the CLI in
-			// `dict_entry_truth_test.go`.
-			name:      "a_name_holding_none_is_read_as_an_untagged_key",
-			src:       "d = {None: 3.5}\nk = None\nprint(d[k])\n",
-			wantErr:   "KeyError",
-			reference: "3.5",
-			row:       "Gap R.286",
-		},
+		// The truth of the entry used to sit here, pinned as the wrong arm it took: `d = {None: "hi"}` /
+		// `if d[None]:` branched the interned text's index against zero. It is paid — the condition's head
+		// asks the same (payload, tag) pair print asks and decides it in `@rt_pair_truth` (roadmap Gap R.284,
+		// ADR 0388). The arms, `bool()`, the ternary and the loop head are asserted at the CLI in
+		// `dict_entry_truth_test.go`.
+		//
+		// The row this table used to pin for **Gap R.286** — a name whose last binding wrote the void, used as
+		// a key, dying `KeyError` where the reference prints `3.5` — is PAID by **ADR 0420** and its pin is
+		// DELETED rather than edited: the answer is asserted in
+		// `TestABoundKeyCarriesTheKindItsBindingWroteAtTheCLI` in `integration/none_key_label_roads_test.go`,
+		// where the expectation is the bytes CPython printed.
+		//
 		// The sibling this table used to pin — a tuple key refusing with `unsupported expression
 		// *lang.Tuple` — is PAID: ADR 0361 gave the tuple a compiled object and the shape now answers `x`,
 		// the reference's own answer, so it moved to TestATupleKeyAnswersWhereTheTupleObjectArrived below.

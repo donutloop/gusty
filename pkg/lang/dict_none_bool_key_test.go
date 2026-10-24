@@ -402,13 +402,6 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// asserted against CPython in `TestTheNoneKeyRoadAnswersWhatTheReferencePrintsInEveryDoorPosition`,
 		// over both key spellings, and `pkg/lang/none_key_label_roads_test.go` and its CLI twin in
 		// `integration/none_key_label_roads_test.go` carry the rest of the row's contract.
-		{
-			name:      "a_name_holding_none_as_the_key",
-			src:       "d = {None: 3.5}\nk = None\nprint(d[k])\n",
-			wantTrap:  "KeyError",
-			reference: "prints 3.5 — the key's tag is lost at the binding, not at the read",
-			row:       "Gap R.286",
-		},
 		// The sign of a float entry used to sit here, printing `3` — the `@float_box` handle — beside
 		// `print(d[None])`'s `3.5`. It is paid: `abs` now asks the subscript the same (payload, tag) pair the
 		// print door asks, and `min`/`max`/`sum` ask the fold door the pair ADR 0316 already knows how to move

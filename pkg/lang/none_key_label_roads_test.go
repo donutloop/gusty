@@ -69,6 +69,120 @@ func noneKeyOperatorFamily() []struct{ name, src, want string } {
 	}
 }
 
+// TestABoundKeyCarriesTheKindItsBindingWrote is roadmap **Gap R.286**'s answering half: the KEY of a read
+// arrived through a NAME, and the door asked the object with the name's payload word and no tag at all —
+// which for the void is the integer 0 wearing the wrong label, and for a verdict the number 1 or 0.
+//
+// The read road had an arm for exactly this and it was unreachable: it sat in the `else` of a test on
+// `n.Idx.(*IntLit)`, so it could only ever run for an index that was BOTH an `*IntLit` and a `*Name`. And
+// the door every other position asks — `elemKindTag` — had arms for the void and the verdict SPELLINGS
+// and none for the name whose binding wrote one, so it fell through to the blanket `TagInt` at its foot.
+// `d = {None: 3.5}` / `k = None` / `print(d[k])` died `KeyError` where the reference prints `3.5`; the IR
+// asked `rt_dict_has_tagged(i32 %h, i32 %_k.ld1, i32 0)` while the builder had stored the entry under
+// (0, TagNone). The tag is the only thing the binding ever failed to carry (**ADR 0420**, beside the
+// **ADR 0419** that gave the integer KEY its tag).
+//
+// Every `want` was read off CPython 3.12 before the case was written, and every source is on the record —
+// ADR 0302's rule, so an answer here is not certified by the backend that earned it.
+func TestABoundKeyCarriesTheKindItsBindingWrote(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"the void key through a name prints its entry", "d = {None: 3.5}\nk = None\nprint(d[k])\n", "3.5\n"},
+		{"the void key through a name concatenates", "d = {None: \"a\"}\nk = None\nprint(d[k] + \"b\")\n", "ab\n"},
+		{"the void key through a name repeats", "d = {None: \"a\"}\nk = None\nprint(d[k] * 2)\n", "aa\n"},
+		{"the void key through a name takes the method road", "d = {None: \"a\"}\nk = None\nprint(d[k].upper())\n", "A\n"},
+		{"the void key through a name loops over the entry", "d = {None: \"ab\"}\nk = None\nfor ch in d[k]:\n    print(ch)\n", "a\nb\n"},
+		{"the void key through a name measures a list entry", "d = {None: [1, 2]}\nk = None\nprint(len(d[k]))\n", "2\n"},
+		{"the void and the number stay two keys through names", "d = {None: 1, 0: 2}\nk = None\nprint(d[k])\n", "1\n"},
+		{"the number key through a name is untouched", "d = {None: 1, 0: 2}\nk = 0\nprint(d[k])\n", "2\n"},
+		{"a verdict reads the verdict key", "d = {True: \"one\"}\nk = True\nprint(d[k])\n", "one\n"},
+		{"a verdict reads the number key it is", "d = {1: \"one\"}\nk = True\nprint(d[k])\n", "one\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := compileAndRun(t, tc.src)
+			if err != nil {
+				t.Fatalf("the compiled leg refused a program the reference prints %q: %v\n%s", tc.want, err, tc.src)
+			}
+			if got != tc.want {
+				t.Fatalf("printed %q, want %q\n%s", got, tc.want, tc.src)
+			}
+			if !HasGoldenAnswer(tc.src) {
+				t.Fatalf("%q is not on the record — record it from the reference with tools/recmerge\n%s", tc.src, tc.src)
+			}
+			recorded, err := runGoldenStdout(t, tc.src)
+			if err != nil {
+				t.Fatalf("the record leg could not answer this source: %v\n%s", err, tc.src)
+			}
+			if recorded != tc.want {
+				t.Fatalf("the record reads %q and the compiled leg printed %q\n%s", recorded, got, tc.src)
+			}
+		})
+	}
+}
+
+// TestTheReadStillDrawsTheLineTheReferenceDraws is the trap half of the same row: a key that names no
+// entry raises, and the void names itself in the traceback the way the reference names it. Where the
+// message cannot name the key the row says so and names the row that owes the sentence, rather than
+// leaving a generic line to look like the reference's.
+func TestTheReadStillDrawsTheLineTheReferenceDraws(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		src      string
+		wantTrap string
+		dossier  string
+	}{
+		{
+			name:     "a void key over a number-keyed dict raises, and names the void",
+			src:      "d = {0: \"zero\"}\nk = None\nprint(d[k])\n",
+			wantTrap: "KeyError: None",
+			dossier:  "the reference raises `KeyError: None`; the key's own repr is the record the read road now carries",
+		},
+		{
+			name:     "a number key over a void-keyed dict raises",
+			src:      "d = {None: \"a\"}\nk = 0\nprint(d[k])\n",
+			wantTrap: "KeyError",
+			dossier:  "the reference raises `KeyError: 0` — the class answers here, the key's NAME is owed by **Gap R.189**",
+		},
+		{
+			name:     "a verdict key over a void-keyed dict raises",
+			src:      "d = {None: 1}\nk = True\nprint(d[k])\n",
+			wantTrap: "KeyError",
+			dossier: "the reference raises `KeyError: True` — the class answers here; the record says a name holds a " +
+				"verdict and not WHICH verdict, so the key's NAME stays owed by **Gap R.189**",
+		},
+		{
+			name:     "a number key the program bound by name raises, and stays unnamed",
+			src:      "d = {0: \"zero\"}\nk = 5\nprint(d[k])\n",
+			wantTrap: "KeyError",
+			dossier: "the reference raises `KeyError: 5`. The miss and its class answer here; the key's NAME is the " +
+				"half **Gap R.189** still owes — a TEXT key through a name names itself and so does the void, so the " +
+				"debt is precisely a number's repr, which no record carries for a bound name",
+		},
+		{
+			name:     "a text key the program bound by name names itself",
+			src:      "d = {\"a\": 1}\nk = \"zz\"\nprint(d[k])\n",
+			wantTrap: "KeyError: 'zz'",
+			dossier:  "the reference raises `KeyError: 'zz'`, and the message reads the same `strVals` record the printer asks",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := JIT(tc.src, 0)
+			if err != nil {
+				t.Fatalf("%s (%s): the compiled leg refused a program the reference runs: %v\n%s", tc.name, tc.dossier, err, tc.src)
+			}
+			if res.Code == 0 || !strings.Contains(res.Stderr+res.Output, tc.wantTrap) {
+				t.Fatalf("%s (%s): exit %d stdout %q stderr %q — expected a trap carrying %q\n%s",
+					tc.name, tc.dossier, res.Code, res.Output, res.Stderr, tc.wantTrap, tc.src)
+			}
+		})
+	}
+}
+
 // TestAVoidKeyedEntryAnswersEveryRoadThatLabelsAnOperand is the row's answer, judged on the compiled
 // leg and the record leg (ADR 0302: a missing record fails the case, so an answer is not certified by
 // the backend that earned it).
@@ -374,7 +488,8 @@ func TestTheNumberKeyRoadIsUntouchedByTheVoidArm(t *testing.T) {
 		{"a text entry over an integer key", "d = {1: \"a\"}\nprint(d[1] + \"b\")\n", "ab\n"},
 		{"a list slot read is still walked", "xs = [[1, 2]]\nfor v in xs[0]:\n    print(v)\n", "1\n2\n"},
 		// The four controls that caught this row's own regression, measured against `gusty.stub` built from
-		// HEAD (7cbffb5): every one of them printed its number there and every one came back REFUSED here,
+		// the pre-row build (7cbffb5) and this row's parent (2b49a2a): every one of them printed its number
+		// there and every one came back REFUSED here,
 		// because `dictLiteralHasNoSuchKey` asked whether the LITERAL's keys were readable and never asked
 		// whether the key being LOOKED UP was. A loop variable matched nothing, so the walk claimed the entry
 		// was absent, the label road believed the read was a text, and `t + d[k]` — two integers — met the
@@ -425,13 +540,6 @@ func TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 				"`TypeError: '<' not supported between instances of 'int' and 'NoneType'`; this door refuses",
 		},
 		{
-			name:     "a name whose last binding was the void, used as a key",
-			src:      "d = {None: 3.5}\nk = None\nprint(d[k])\n",
-			wantExit: 3, wantStderr: "KeyError",
-			dossier: "**Gap R.286** — the read is the pair door's, but the KEY arrives untagged because the " +
-				"binding left no tag behind; the reference prints 3.5",
-		},
-		{
 			// Measured while this row opened the repeat road on a void-keyed slot: the pair arrives with its
 			// tag, the sequence door asks a KIND, and a slot read has no kind the door can name — so the list's
 			// word wins and the brackets are the wrong pair. The int-key twin prints `[1, 1]` on this row's
@@ -477,6 +585,29 @@ func TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			dossier: "**Gap R.433** — the reference prints 3.5; the fold declines a fractional slot read (the " +
 				"alternative is a double in an i32 argument slot and exit 2), and the pair road it falls back to " +
 				"carries one word",
+		},
+		{
+			// Measured while this row opened the read door, and byte-identical on its parent
+			// (`/tmp/gusty.stub` at 7cbffb5 prints `[0]` too): the ENTRY is the void, the read is the pair door's,
+			// and the LIST literal beside it records one element kind for the whole literal, so the void's
+			// payload reaches the screen as the number 0. `ys = [None, 1, "a"]` prints `[None, 1, 'a']`, so the
+			// mixed-list road is sound; it is the single-kind record that outranks the element's own kind.
+			name:     "the void in a name, put into a list literal",
+			src:      "k = None\nprint([k])\n",
+			wantExit: 0, wantOut: "[0]\n",
+			dossier: "**Gap R.435** — the reference prints `[None]`; the literal's recorded element kind outranks " +
+				"the element's own, and the void's payload prints as the number 0",
+		},
+		{
+			// The number twin of the row this commit closes, measured on the pre-row build and on this row's parent too (all three refuse):
+			// the READ answers (`d = {None: 1, 0: 2}` / `k = 0` / `print(d[k])` is `2`) and the CONST-key twin
+			// answers since ADR 0419 (`print(s[0] + "!!")` is `zero!!`), but the operator road over an entry
+			// addressed by a name holding a number asks the static door, which has no number-in-a-name record.
+			name:     "an operator road over an entry addressed by a bound number key",
+			src:      "s = {None: \"a\", 0: \"zero\"}\nk = 0\nprint(s[k] + \"!!\")\n",
+			wantExit: 1, wantStderr: "concatenating a string with a value that is not a string",
+			dossier: "**Gap R.436** — the reference prints `zero!!`; the door can retire a name the VOID record " +
+				"claims (**ADR 0420**) and has no number's value to retire a name the INT binding left behind",
 		},
 	} {
 		tc := tc

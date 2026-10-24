@@ -66,6 +66,48 @@ func TestTheVoidKeyLabelRoadsAnswerWhatCPythonAnswers(t *testing.T) {
 	}
 }
 
+// TestABoundKeyCarriesTheKindItsBindingWroteAtTheCLI is the reference leg of roadmap **Gap R.286**: the
+// key of a dict read arrived through a name, and the read asked the object for the name's payload with no
+// tag beside it — so the void's 0 was looked up as an integer and `d = {None: 3.5}` / `k = None` /
+// `print(d[k])` died `KeyError` where CPython prints `3.5`. Every expectation below is the bytes the live
+// reference printed for the same file, asked in the same test (`oracleTrap`), so the compiled leg cannot
+// certify itself (ADR 0302, ADR 0420).
+func TestABoundKeyCarriesTheKindItsBindingWroteAtTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src string }{
+		{"the_void_key_through_a_name_prints_its_entry", "d = {None: 3.5}\nk = None\nprint(d[k])\n"},
+		{"the_void_key_through_a_name_concatenates", "d = {None: \"a\"}\nk = None\nprint(d[k] + \"b\")\n"},
+		{"the_void_key_through_a_name_repeats", "d = {None: \"a\"}\nk = None\nprint(d[k] * 2)\n"},
+		{"the_void_key_through_a_name_takes_the_method_road", "d = {None: \"a\"}\nk = None\nprint(d[k].upper())\n"},
+		{"the_void_key_through_a_name_loops_over_the_entry", "d = {None: \"ab\"}\nk = None\nfor ch in d[k]:\n    print(ch)\n"},
+		{"the_void_key_through_a_name_measures_a_list_entry", "d = {None: [1, 2]}\nk = None\nprint(len(d[k]))\n"},
+		{"the_void_and_the_number_stay_two_keys_through_names", "d = {None: 1, 0: 2}\nk = None\nprint(d[k])\n"},
+		{"the_number_key_through_a_name_is_untouched", "d = {None: 1, 0: 2}\nk = 0\nprint(d[k])\n"},
+		{"a_verdict_reads_the_verdict_key", "d = {True: \"one\"}\nk = True\nprint(d[k])\n"},
+		{"a_verdict_reads_the_number_key_it_is", "d = {1: \"one\"}\nk = True\nprint(d[k])\n"},
+		{"a_bound_dict_loops_and_adds_its_slots", "d = {1: 2, 3: 4}\nk = 1\nt = 0\nfor key in d:\n    t = t + d[key] + d[k]\nprint(t)\n"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "bound_key.gy", tc.src)
+			refOut, refCode := oracleTrap(t, path)
+			if refCode != 0 {
+				t.Fatalf("the reference exited %d on a program meant to answer:\n%s", refCode, refOut)
+			}
+			for _, engine := range cliEngines {
+				combined := cliRun(t, engine, path)
+				if _, code := cliRunCode(t, engine, path); code != 0 {
+					t.Errorf("%s exited %d on a program the reference answers: %s", engine, code, combined)
+				}
+				if combined != refOut {
+					t.Errorf("%s printed %q, the reference printed %q", engine, combined, refOut)
+				}
+			}
+		})
+	}
+}
+
 // TestTheVoidKeyCrossingsTrapTheWayCPythonTraps is the raising half. The crossings the static key door must
 // NOT make — the void with 0, False, 0.0 and "" — are traps, and the compiled leg's last line is the
 // reference's own last line, one class name and one sentence.
@@ -178,6 +220,8 @@ func TestTheVoidKeyRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 			"Gap R.434 (the same door, the concatenation arm: the slot's tuple is a list by the time the runtime asks)"},
 		{"a_fractional_slot_through_max_into_a_call", "def f(v):\n    return v\nd = {None: 3.5}\nprint(f(max(d[None], 2)))\n", 0, "3\n", "3.5\n",
 			"Gap R.433 (the min/max fold declines a fractional slot read, and the pair road carries one word)"},
+		{"the_void_in_a_name_put_into_a_list_literal", "k = None\nprint([k])\n", 0, "[0]\n", "[None]\n",
+			"Gap R.435 (the list literal's recorded element kind outranks the element's own kind)"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -211,9 +255,12 @@ func TestTheVoidKeyRoadsStillRefuseWhatTheNamedRowsOwe(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, owedBy string }{
 		{"the_sorted_key_road", "print(sorted({None: 1}.keys()))\n", "Gap R.247 (a `sorted` argument neither door can name)"},
-		{"a_slot_reached_through_a_binding", "k = None\nd = {None: \"a\"}\nprint(d[k] + \"b\")\n", "Gap R.286 (a name whose last binding was the void carries no tag)"},
 		{"a_slot_index_reached_through_a_loop", "d = {None: \"a\", 0: \"b\"}\nr = \"\"\nfor k in d:\n    r = r + d[k]\nprint(r)\n", "Gap R.146 (a pair in a one-word index position)"},
 		{"a_key_collection_handed_to_list", "print(list({None: 1}.keys()))\n", "Gap R.247 (the same argument door, the `list` road)"},
+		// The operator road over an entry addressed by a bound NUMBER key — the number twin of the row
+		// ADR 0420 closes, whose READ already answers (`d = {None: 1, 0: 2}` / `k = 0` / `print(d[k])` is `2`).
+		// Byte-identical on this commit's parent.
+		{"an_operator_road_over_an_entry_addressed_by_a_bound_number_key", "s = {None: \"a\", 0: \"zero\"}\nk = 0\nprint(s[k] + \"!!\")\n", "Gap R.436 (the static door has no number-in-a-name record to retire)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

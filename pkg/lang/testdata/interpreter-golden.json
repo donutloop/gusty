@@ -1,5 +1,70 @@
 {
  "entries": {
+"d = {\"a\": 1}\nk = \"zz\"\nprint(d[k])\n": {
+    "err": "KeyError: 'zz'",
+    "exnType": "KeyError",
+    "exnMsg": "'zz'"
+   },
+"d = {0: \"zero\"}\nk = None\nprint(d[k])\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+
+"d = {1: \"one\"}\nk = True\nprint(d[k])\n": {
+    "stdout": "one\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2, 3: 4}\nk = 1\nt = 0\nfor key in d:\n    t = t + d[key] + d[k]\nprint(t)\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nk = None\nprint(d[k] * 2)\n": {
+    "stdout": "aa\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nk = None\nprint(d[k] + \"b\")\n": {
+    "stdout": "ab\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"a\"}\nk = None\nprint(d[k].upper())\n": {
+    "stdout": "A\n",
+    "hasStdout": true
+   },
+
+"d = {None: \"ab\"}\nk = None\nfor ch in d[k]:\n    print(ch)\n": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: 2}\nk = 0\nprint(d[k])\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {None: 1, 0: 2}\nk = None\nprint(d[k])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {None: 3.5}\nk = None\nprint(d[k])\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"d = {None: [1, 2]}\nk = None\nprint(len(d[k]))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {True: \"one\"}\nk = True\nprint(d[k])\n": {
+    "stdout": "one\n",
+    "hasStdout": true
+   },
 "d = {0: \"a\"}\nprint(d[0] * 3)\n": {
     "stdout": "aaa\n",
     "hasStdout": true

@@ -1,0 +1,43 @@
+# A dict read whose KEY arrived through a binding asks the object with the kind that binding wrote.
+# The builder stores the void's entry as (0, TagNone) and the number 0's as (0, TagInt), so a key
+# that arrives as an untagged word reads the wrong entry — or none at all, which is what this row
+# was filed against (roadmap Gap R.286, ADR 0420). Every line below is what CPython 3.12 printed
+# for this very file, one for one.
+d = {None: 3.5}
+kn = None
+kz = 0
+print(d[None])
+print(d[kn])
+print(d[kn] + 1)
+s = {None: "a", 0: "zero"}
+print(s[kn] + "b")
+print(s[kn] * 2)
+print(s[kn].upper())
+print(len(s[kn]))
+ab = {None: "ab"}
+for ch in ab[kn]:
+    print(ch)
+print(1 in [d[kn], 2])
+two = {None: 1, 0: 2}
+print(len(two), two[kn], two[kz])
+flag = True
+t = {True: "one"}
+print(t[flag], t[True])
+n = {1: "one"}
+print(n[flag], n[True], n[1])
+print({None: "x", True: 2})
+# A key that names no entry raises, and the record lets the traceback NAME the void and the text.
+z = {0: "zero"}
+try:
+    print(z[kn])
+except KeyError as err:
+    print("no entry under the void:", err)
+w = {"a": 1}
+missing = "zz"
+try:
+    print(w[missing])
+except KeyError as err:
+    print("no entry under the bound text:", err)
+# The void in a name is still the void on every road that asks the name.
+print(kn, bool(kn), kn == None, kn is None)
+print(d[kn] == 3.5, s[kn] == "a")

@@ -935,6 +935,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// list, dict and text, crosses the void key against the number 0, and catches what the reference
 		// raises for a number it was asked to walk; every line is what CPython prints for it.
 		"void_key_label_roads",
+
+		// A dict read whose KEY arrived through a binding asks the object with the kind that binding wrote:
+		// the builder stores the void's entry as (0, TagNone) and the number 0's as (0, TagInt), so a key that
+		// arrives as an untagged word reads the wrong entry or none at all (**ADR 0420**, roadmap
+		// **Gap R.286**). The program reads the void key, the verdict key and the number key through names,
+		// takes the operator roads out of each entry, and catches the two `KeyError`s whose messages name the
+		// void and the bound text the way the reference names them; every line is what CPython prints for it.
+		"bound_dict_keys",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

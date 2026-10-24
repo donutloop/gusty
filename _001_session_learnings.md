@@ -15070,3 +15070,53 @@ discovery — and it still taught me twice.
     under fifteen fake ones. A baseline binary built from `HEAD` in a detached worktree
     (`git worktree add --detach /tmp/wt-head HEAD`) is the single most useful thing in this cycle's toolkit
     besides `tools/recmerge`.
+
+## ADR 0420 — a name that held the void is still the void: the tag a BINDING leaves behind (Gap R.286 closed, 2026-10-24)
+
+1. **Dead code is a lie a road tells about itself.** The read road had an arm for "the key arrived through a
+   binding": `} else if nm, ok := n.Idx.(*Name); ok && g.taggedVars[nm.Value] { … }` — sitting in the `else` of
+   `if _, isLit := n.Idx.(*IntLit); !isLit`. It could only run for an index that was both an `*IntLit` and a
+   `*Name`, so it never ran, and the eight-day-old filed row read as "the binding leaves no tag" instead of
+   "the door that would have asked is unreachable". Next time: before believing a row's diagnosis, ask which
+   branch would answer and put a probe on it. The IR settled it in one line
+   (`rt_dict_has_tagged(i32 %t10, i32 %_k.ld1, i32 0)` — a literal 0 where a tag belongs), and no reasoning
+   about `taggedVars` came close.
+
+2. **The blanket fallback at a door's foot is where silent-wrong families live.** `elemKindTag` answers
+   "which kind is this value" for the whole backend, and its last line is `return int32(TagInt), true`. It had
+   literal arms for `*NoneLit`/`*BoolLit` and record arms for containers, texts, floats and instances — so a
+   *name* whose binding wrote the void was an integer to the print door, the membership door and the read door
+   alike. Adding the two missing arms fixed the row; the fallback still stands for every other unrecognised
+   name, and that is L11.1 in one line of code. When a door has a permissive default, "add the missing arm" is
+   the fix and "trust the default" is the bug.
+
+3. **Answering a kind from a record is only safe with the records' own guards.** My first cut read
+   `g.noneVars[name]` and nothing else; the correct arm also asks whether the unroll gave that name a per-item
+   tag (**Gap R.358**: an unrolled loop variable is *this item*, not what some earlier binding handed it) and
+   whether the container records claim it (its payload is a handle). Both guards came from other rows' written
+   rules, not from intuition — the value of a tracker whose rows say *why* a guard exists.
+
+4. **Fix the door, not the binder — the blast radius told me so.** The roadmap row's own direction was "bind a
+   `None` the way ADR 0267 binds an arithmetic answer" (payload+tag pair, `taggedVars` set). I tried it
+   mentally against every consumer and stopped: `taggedVars` is a fact that print, truthiness, `str` and
+   equality all consult, so rewriting how a singleton binds re-opens four ADRs' contracts to fix a lookup. The
+   label belongs in the door that asks for labels. A record two roads already share (`noneVars`, `boolVars`) is
+   cheaper than a new fact, and it cannot drift from the printer because it *is* the printer's record.
+
+5. **Only retire what you can quote.** `constKeyView` retires a `boolVars` name to nothing at all, because the
+   record says *a verdict* and not *which* verdict; inventing a `boolVals` map to name one traceback message
+   would have been new generator state in service of a sentence **Gap R.189** owns. The pinned consequence (a
+   bound verdict that misses says `key not found` where CPython says `KeyError: True`) is in the test with its
+   dossier, which is the same discipline as filing a defect instead of quietly refusing it.
+
+6. **`tools/recmerge` refusing to record is the tool doing its job.** Two of my thirteen trap sources came
+   back `the compiled raise is not the reference's` because the message still says `key not found` where
+   CPython names the key. I dropped them from the recording list and pinned them as class-only traps with the
+   owning row named. Had I "fixed" it by loosening the recorder, the record would have started testifying to a
+   sentence the backend invented.
+
+7. **Keep the parent binary alive; it is the cheapest authorship test there is.** Every new filed row
+   (`[k]` → `[0]`, the bound-number-key refusal) was checked against `/tmp/gusty.stub` built from `7cbffb5` in
+   a detached worktree, which is how a commit can file a defect without being accused of writing it. The 4878
+   source sweep — again with a classifier whose ranks had to be right, and again the thing that no targeted
+   run would have caught — finished at **0 regressions / 16 improvements**.

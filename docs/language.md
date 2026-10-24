@@ -1521,6 +1521,35 @@ Rules that the compiled backend implement:
   print({0: "a"}[None])          # KeyError: None — the void is a key of its own kind, not the number 0
   ```
 
+- **A dict key that arrives through a binding carries the kind its binding wrote.** The builder stores every
+  entry of a self-describing dict as a `(payload, tag)` pair, so the void's key is `(0, TagNone)` and the number
+  `0`'s is `(0, TagInt)`; a read that hands the object only the payload is comparing the void as an integer, and
+  `d = {None: 3.5}` / `k = None` / `print(d[k])` died `KeyError` where the reference prints `3.5` (**R.286**,
+  **ADR 0420**). The tag now comes from the same latest-binding records print, truthiness, `str` and equality live
+  by, so the key door cannot know less about a name than the printer does:
+
+  ```gusty
+  d = {None: 3.5}
+  k = None
+  print(d[k])                    # 3.5    (was: KeyError: key not found, exit 3)
+  print(d[k] + 1)                # 4.5
+  s = {None: "a"}
+  print(s[k] + "b")              # ab     (the label road asks the door, the door reads the binding)
+  t = {True: "one"}
+  flag = True
+  print(t[flag], t[True], t[1])  # one one one
+  print({None: 1, 0: 2}[k])      # 1      — and the number 0 is still a different key
+  z = {0: "zero"}
+  print(z[k])                    # KeyError: None — a miss names the void, and a bound text names itself
+  ```
+
+  What it does not reach, each pinned with today's answer beside the reference's: a **list literal** beside a bound
+  void prints the payload (`[k]` is `[0]`, not `[None]`) because the literal records one element kind for all its
+  slots (**R.435**); an operator road over an entry addressed by a bound **number** key refuses, because the door can
+  retire a void and has no number's value to retire (**R.436**, whose other half is **R.189**'s `KeyError: 5`); and a
+  bound **verdict** key that misses says `key not found`, because the record says a name holds a verdict and not which
+  one. The blanket "it is an integer" that `elemKindTag` falls back to for a name no arm recognises is **L11.1**.
+
   A `None` key is therefore not the number `0` to this backend even though the constant fold reads a
   `NoneLit` as `0`: the key door answers the void FIRST, before any number arm can reach it. `1`, `True` and
   `1.0` remain one key, which is the reference's rule, and `print({0: "a"}[False])` still answers `a`. What it does reach: the f-string field of the entry

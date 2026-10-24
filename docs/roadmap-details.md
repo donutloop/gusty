@@ -18101,7 +18101,7 @@ into this file's answered family instead (**ADR 0411**'s precedent for what a pa
 What the row measured beside itself and did not buy is filed, not buried: the callee's printer handed the alias's
 popped slot is **Gap R.417** byte-identical to the non-alias twin, a slot of the alias bound and asked as a condition
 is **Gap R.146**'s one-word position refused exactly as its non-alias twin is, and an alias of a DICT or a SET is the
-same missing record one container over — **Gap R.419**, whose three shapes are byte-identical on the parent build.
+same missing record one container over — **Gap R.419**, whose three shapes are byte-identical on the pre-row build and on this row's parent build.
 
 <a id="gap-r-416"></a>
 ### Gap R.416 — the identity and equality questions asked of a loop item over a LITERAL list (⏳ OPEN, filed by **ADR 0411**)
@@ -18264,7 +18264,7 @@ to say `exhausted=0` with `total_freed` non-zero or its case fails.
 Two rows come out of the same battery and were paid nothing: **Gap R.427** (an object that survives only in another
 container's SLOT is still released — the door asks the root table, and a slot is not a root; byte-identical on the
 tagged parent `f7723b2`) and **Gap R.426** (`sorted` over a dict sorts the entry array's first `len` words rather than
-its keys, also byte-identical on the parent). **Gap R.257**'s pinned program — dead with `KeyError: 1` at exit 3 on the
+its keys, also byte-identical on the pre-row build and on this row's parent). **Gap R.257**'s pinned program — dead with `KeyError: 1` at exit 3 on the
 tagged parent — answers the reference's `7 / 7 / 2` on this door and was promoted with its loop form and its two
 negative controls into `integration/rebind_kind_test.go::TestTheAliasReboundKeepsWhatTheOtherNameHolds` and the corpus.
 
@@ -18402,7 +18402,7 @@ words, eight print their text ahead of `3` in the pinned reference and none does
 `s = {1, "a", None}` / `print(s)` agrees today — `"a"`'s bucket happens to fall after the `1` — which is luck of
 that one word, not evidence for the rule. The fix is a hash, not a guess: intern the reference's string hash beside
 the payload at intern time and let `rt_member_bucket` read it, keeping the rule in the one helper and the salt
-where the reference keeps it. The row is byte-identical on the parent build, so the order this backend lacks for
+where the reference keeps it. The row is byte-identical on the pre-row build and on this row's parent build, so the order this backend lacks for
 texts predates the order it gained for numbers; the difference is that there is now a place to put the answer.
 
 <a id="gap-r-426"></a>
@@ -18535,7 +18535,7 @@ another gets caught. The two forms print the SAME bytes, which is the tell: for 
 of plain integers is the exception that proves the shape of the bug — `print(sorted({3, 1, 2}))` is `[1, 2, 3]` — because
 that shape folds at compile time, so a sorting door exists in the file while being absent for everything else.
 
-Measured byte-identical on the parent of **ADR 0417**, which is what keeps it a row of its own rather than damage this
+Measured byte-identical on the pre-row build and on this row's parent of **ADR 0417**, which is what keeps it a row of its own rather than damage this
 commit did. It is also not the set-order family: **Gap R.421** / **Gap R.424** / **Gap R.425** are about the order a set
 PRINTS its members in, which is a bucket question, and this is a sort that does not run. What it owes is the same first
 question `sortedDict` now asks — ask the argument what it is — and a set arm that builds a fresh heap list of the members
@@ -18649,3 +18649,113 @@ The pair door already hands the slot's `(payload, tag)` to the roads that ask fo
 (`slotPairFromTheObject`, `slotPairWhereStaticLabelCannotWalk`). The direction is therefore not new machinery:
 the sequence door has to *ask that pair* — the same question ADR 0365's own `in`/`==`/`for` roads ask — and
 pass `TagTuple` where the tag says tuple, instead of asking a kind and settling for the list.
+
+<a id="gap-r-286"></a>
+### Gap R.286 — the tag a BINDING leaves behind: a key that arrives through a name asks the object with no kind at all (✅ DONE, closed by **ADR 0420**)
+
+```
+d = {None: 3.5}
+k = None
+print(d[k])          #  3.5  reference   →  KeyError: key not found, exit 3
+```
+
+The read was right. **ADR 0419** had already put a dict read on the tagged doors, and the builder stores an
+entry as a `(payload, tag)` pair, so the void's entry is `(0, TagNone)` and the number 0's is `(0, TagInt)` —
+two keys, exactly as the reference keeps them. What the read handed the object was one word of that pair. The
+IR is the whole confession:
+
+```llvm
+store i32 0, i32* %_k                                              ; k = None — the value, nothing beside it
+%t11 = call i32 @rt_dict_has_tagged(i32 %t10, i32 %_k.ld1, i32 0)  ; ← TagInt for the void
+```
+
+Two defects stood behind that line, and the second is why the first hid for eight days.
+
+**The read road's binding arm was unreachable.** `pkg/lang/codegen_index.go` chose the key's tag with
+`if _, isLit := n.Idx.(*IntLit); !isLit { … } else if nm, ok := n.Idx.(*Name); ok && g.taggedVars[…] { … }` —
+a branch that could only run for an index that was **both** an `*IntLit` and a `*Name`. Every name key fell to
+the first arm, and the first arm asked `elemKindTag`.
+
+**`elemKindTag` answers "which kind is this value", and its foot is a blanket `TagInt`.** It has arms for the
+container a name holds, the text (`strVals`), the float, the instance, the unrolled loop's per-item tag — and
+literal arms for `*NoneLit → TagNone`, `*BoolLit → TagBool`. What it never had was the NAME whose binding
+wrote one of those singletons. So `k = None` was, to every door that asks this one question, an integer whose
+value happens to be 0. That is **L11.1**'s debt appearing somewhere the row had not named: not "the value word
+cannot carry a kind" but "the binding never wrote the kind down beside the value".
+
+The fix went into the door, not the binder. Binding a singleton through the pair road was built and rejected:
+`taggedVars` is a fact that `print`, truthiness, `str` and equality all consult, and rewriting it to fix a
+lookup is the tail wagging the dog for an answer two records already held. So `elemKindTag` got the two arms,
+read from the **ADR 0172** latest-binding records — the same `noneVars`/`boolVars` the printer lives by, which
+is the ADR 0384 rule in its literal form: the key door may not know less about a name at the same point than
+the printer does. A loop variable the unroll tagged stands aside (**Gap R.358**), and a name the container
+records claim stands aside (ADR 0241), so neither an unrolled `for k in [None, 1]` nor a list variable gets its
+kind invented.
+
+`constKeyView` is the same answer for the *static* door, and it is what makes the operator roads agree rather
+than merely the read: `d = {None: "a"}` / `k = None` / `print(d[k] + "b")` is `ab`, because the label road asks
+the door for the entry and the door can now find it. It retires the void only. `boolVars` records that a name
+holds a verdict, not which verdict, and a key the compiler cannot quote is left as a name the door cannot read
+— the refusal, not a guess. (Inventing the missing value record was rejected: new generator state to serve one
+traceback word, when the honest thing is a pin that names the row.)
+
+The traceback got the half the records can quote: `KeyError: None` for the void, `KeyError: 'zz'` for a bound
+text — read from `strVals`, the printer's own record, so a message cannot disagree with the lookup that missed.
+A bound number key keeps the generic sentence and is pinned as such, because naming it needs the number the
+binding never recorded: **Gap R.189**'s sentence, now with a precise subject (`KeyError: 0`, not `key not found`).
+
+What the row did NOT reach, each pinned with today's bytes beside the reference's in both suites and each
+byte-identical on `7cbffb5`: **Gap R.435** (`[k]` printing `[0]` — the list literal's single recorded element
+kind outranks the element's own) and **Gap R.436** (the operator road over an entry addressed by a bound NUMBER
+key refusing where the const-key twin answers). The blanket `TagInt` at `elemKindTag`'s foot is unchanged and
+is still the largest silent-wrong surface left in the tag story: any name no arm recognises is called an
+integer by every door that asks. That is **L11.1** — the destination, not this rung.
+
+<a id="gap-r-435"></a>
+### Gap R.435 — the void in a name, put into a list literal, prints the number its payload happens to be (⏳ OPEN, found by **ADR 0420**)
+
+```
+k = None
+print([k])            #  reference: [None]      this backend: [0]   exit 0
+```
+
+The sibling that already works is the measurement that makes this a door: `ys = [None, 1, "a"]` /
+`print(ys)` writes `[None, 1, 'a']`, because a list whose elements mix kinds is built slot by slot with a tag
+beside each payload (**ADR 0184**'s rule for lists, **ADR 0189**'s for nested containers). A literal whose
+elements the compiler believes all share one kind takes the cheaper road — one recorded element kind for the
+whole literal — and a `NoneLit`-valued *name* among them is read by that record rather than by its own kind.
+
+**ADR 0420** is what made the shape legible: once `elemKindTag` answers TagNone for a name the void record
+claims, the remaining disagreement has nowhere to hide except the literal's recorded kind. The direction is
+therefore one question, asked where the literal decides: an element whose binding wrote a singleton is that
+kind whatever its neighbours say, or the literal falls back to the mixed road the sibling already uses.
+
+Byte-identical on the pre-row build `7cbffb5` and on this row's parent `2b49a2a` (both print `[0]`), which keeps the commit that found it from also
+being its author. Pinned in
+`pkg/lang/none_key_label_roads_test.go::TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed` and
+`integration/none_key_label_roads_test.go::TestTheVoidKeyRoadsAnswerWrongArePinnedBesideTheReference`.
+
+<a id="gap-r-436"></a>
+### Gap R.436 — the operator road over a dict entry addressed by a bound number key refuses where the const-key twin answers (⏳ OPEN, found by **ADR 0420**)
+
+```
+s = {None: "a", 0: "zero"}
+k = 0
+print(s[k] + "!!")    #  reference: zero!!      this backend: refused at exit 1, with a false sentence
+print(s[0] + "!!")    #  zero!!  — answered, since ADR 0419
+```
+
+The refusal reads `concatenating a string with a value that is not a string is not supported in the AOT
+backend; CPython raises TypeError for it`, and both halves of that are false of this program: the operand is a
+text and the reference raises nothing. The label road asks the static key door what the entry holds; the door
+can retire a name the VOID record claims (**ADR 0420**'s `constKeyView`) and has no number's value to retire
+for a name the INT binding left behind — `foldConstInt` reads only `constBindings`, which a plain `k = 0` does
+not write. Unknown, for that road, is a refusal.
+
+The direction is one record, asked by two doors: give the name-reader the number the way `strVals` carries a
+text, consult it from `constKeyView` (this row) and from `keyNotFoundMessage` (**Gap R.189**, which is waiting
+for exactly that record to say `KeyError: 5` instead of `key not found`). One addition pays two rows, which is
+why this one names its sibling rather than growing a private fix.
+
+Measured on the same sweep as **Gap R.435**, byte-identical on `7cbffb5`; pinned in both suites with the
+refusal text itself, so closing the row fails the pin.

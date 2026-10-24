@@ -1662,6 +1662,31 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 			return int32(TagStr), true
 		}
 	}
+	// The two singletons a BINDING leaves behind, read from the same ADR 0172 records print, truthiness,
+	// `str` and equality live by. The tag table has always had a void and a verdict in it (value.go) and
+	// both literal arms answer them; what was missing is the NAME whose binding wrote one, so every door
+	// that asks this question — the mixed-dict pair, the membership test, the tagged read — fell through to
+	// the blanket `TagInt` below and called the void an integer. That is the whole of roadmap Gap R.286:
+	// `d = {None: 3.5}` / `k = None` / `print(d[k])` asked the object for the entry keyed (0, TagInt), the
+	// void's payload IS 0 and its tag is not, and the program died `KeyError` where the reference prints
+	// `3.5`. ADR 0419 gave the integer KEY its tag; this gives the bound VALUE its own.
+	//
+	// Two names stand aside, for the same reason every other arm here does: a loop variable the unroll gave
+	// a per-item tag is THIS item (Gap R.358), and a name the container records claim holds a handle whose
+	// kind the object carries.
+	if nm, isName := e.(*Name); isName && g != nil {
+		if _, perItem := g.loopElemTag[nm.Value]; !perItem && !g.nameIsContainerRecorded(nm) {
+			if g.noneVars[nm.Value] {
+				return int32(TagNone), true
+			}
+			// A verdict is the number the reference says it is, and the tag beside it is what lets the
+			// printer answer `True` rather than `1` — ADR 0259's rule for the literal, taken to the binding
+			// (roadmap Gap R.112's sibling, Gap R.286).
+			if g.boolVars[nm.Value] {
+				return int32(TagBool), true
+			}
+		}
+	}
 	// The same question the storage side asks — `heapElemKind`'s float arm and this line are one
 	// question, asked once: an element whose value is a float goes into the slot as the handle of a
 	// @float_box object, so the label beside it has to say *float* whatever spelled the float. The
@@ -4510,7 +4535,7 @@ func (g *irGen) dictLiteralHasNoSuchKey(container, key Expr) bool {
 // besides, which is a raise the read road words -- and a call, a name or a comprehension is a value the
 // compiler has not seen.
 func (g *irGen) constKeyIsReadable(e Expr) bool {
-	switch e.(type) {
+	switch g.constKeyView(e).(type) {
 	case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit:
 		return true
 	}
@@ -4601,7 +4626,44 @@ func (g *irGen) staticElemExpr(container Expr, key Expr) (Expr, bool) {
 //
 // A verdict key is the number the reference says it is — `{True: "a"}[1]` and `{1: "a"}[True]` are one
 // lookup — but it is never a text, which is why the kind is asked before the number there too.
+// constKeyView retires a KEY that arrived through a BINDING to the singleton its own binding wrote, so
+// the static key door can read an entry the program addresses by name.
+//
+// `constKeysMatch` compares a key the dict literal spells against the key the SOURCE wrote, and a `*Name`
+// had no arm: `d = {None: "a"}` / `k = None` / `print(d[k] + "b")` therefore asked the label road about an
+// entry the door could not find, and the program met a sentence about a `TypeError` the reference does not
+// raise. The ADR 0172 record answers the question — a variable's LAST binding decides what it is, which is
+// the rule print, truthiness, `str` and equality already live by — and the door has no business knowing
+// less about the same name at the same point than the printer does (roadmap Gap R.286, beside ADR 0419).
+//
+// Only the VOID is retired, because only the void is unambiguous: `boolVars` says a name holds a verdict
+// and not WHICH one, and a key that cannot be quoted is left as the name the door cannot read — the
+// refusal, not a guess. A loop variable the unroll gave a per-item tag is THIS item, not the kind some
+// earlier binding handed the name (Gap R.358's rule), and a name the container records claim holds a
+// handle: both stand aside, and the object-reading road answers them.
+func (g *irGen) constKeyView(e Expr) Expr {
+	nm, isName := e.(*Name)
+	if !isName || g == nil {
+		return e
+	}
+	if g.loopElemTag != nil {
+		if _, perItem := g.loopElemTag[nm.Value]; perItem {
+			return e
+		}
+	}
+	if g.nameIsContainerRecorded(nm) {
+		return e
+	}
+	if g.noneVars[nm.Value] {
+		return &NoneLit{Src: nm.Span()}
+	}
+	return e
+}
+
 func (g *irGen) constKeysMatch(a, b Expr) bool {
+	// Both sides are retired through the binding's record first: a key the program holds in a name whose
+	// last binding wrote the void IS the void key (roadmap Gap R.286).
+	a, b = g.constKeyView(a), g.constKeyView(b)
 	// The void is a key of its own kind, equal to nothing but itself: not 0, not False, not 0.0.
 	if _, isNone := a.(*NoneLit); isNone {
 		_, bIsNone := b.(*NoneLit)
