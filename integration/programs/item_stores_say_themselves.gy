@@ -1,0 +1,163 @@
+# The element a container slot is WRITTEN with answers what it is (ADR 0422, roadmap Gap R.441).
+#
+# Three roads write a container slot. `append` has asked the ELEMENT its kind since ADR 0233, and the
+# dict's entry store has since ADR 0232; `xs[i] = v` asked only whether the new word was text or a
+# number. The float reached its slot whole — box handle and tag both — but the container was never told
+# (no `rt_mark_estr …, i32 8`), so the printer read every slot as the kind the container still claimed
+# and printed the float box's handle: `[1]` where the reference prints `[2.5]`, at the exit code of
+# success, beside `xs.append(2.5)`, which printed `2.5` all along.
+#
+# Each scenario below names its own list, because the roads that read a container back keep their
+# answer per NAME: a numeric use of a slot in a list the module has already promoted elsewhere is
+# Gap R.442's, and this program is about the store, not about that.
+#
+# Every line below is what CPython prints for this program.
+
+xs = [1]
+xs[0] = 2.5
+print(xs)
+
+# The kinds whose payload only means something through the tag beside it: a float box's handle, the
+# void's nothing, a verdict's bare 0/1, another container's heap handle.
+ys = [1, 2]
+ys[0] = 2.5
+print(ys)
+ns = [1]
+ns[0] = None
+print(ns)
+bs = [1]
+bs[0] = True
+print(bs)
+fs = [1, 2]
+fs[1] = False
+print(fs)
+ls = [1]
+ls[0] = [2]
+print(ls)
+ds = [1]
+ds[0] = {"a": 1}
+print(ds)
+ss = [1]
+ss[0] = {1, 2}
+print(ss)
+ts = [1]
+ts[0] = (1, 2)
+print(ts)
+ng = [1, 2]
+ng[-1] = None
+print(ng)
+
+# The value arriving through something other than its own spelling: a binding, a body's answer, a
+# container under a name.
+v = 2.5
+fromName = [1]
+fromName[0] = v
+print(fromName)
+
+def half():
+    return 2.5
+
+fromCall = [1]
+fromCall[0] = half()
+print(fromCall)
+
+inner = [2]
+fromList = [1]
+fromList[0] = inner
+print(fromList)
+
+entries = {"a": 1}
+fromDict = [1]
+fromDict[0] = entries
+print(fromDict)
+
+# The roads that read the object back all ask the slot, because the slot now says what it holds.
+rd = [1]
+rd[0] = 2.5
+print(rd[0])
+print(rd[0] + 1)
+print(bool(rd[0]))
+print(str(rd))
+print(repr(rd))
+print(rd == [2.5])
+print(rd + [3])
+print(len(rd))
+print(2.5 in rd)
+
+lp = [1, 2]
+lp[0] = 2.5
+for k in lp:
+    print(k)
+
+rv = [1, 2]
+rv[0] = 2.5
+rv.reverse()
+print(rv)
+
+pp = [1, 2]
+pp[0] = 2.5
+print(pp.pop(0))
+print(pp)
+
+sl = [1, 2, 3]
+sl[0] = 2.5
+print(sl[0:2])
+
+vd = [1]
+vd[0] = None
+print(vd[0] is None)
+print(bool(vd[0]))
+
+# More than one store on one object.
+two = [1, 2, 3]
+two[0] = None
+two[2] = 2.5
+print(two)
+
+comp = [k for k in [1, 2]]
+comp[0] = 2.5
+print(comp)
+
+# The same object under a second name: a promotion is an event on the object, not on the name written
+# (ADR 0412's sharer walk, asked of this store too).
+orig = [1, 2]
+alias = orig
+alias[0] = 2.5
+print(orig)
+print(alias)
+
+# The roads the promotion must not disturb: the same-kind store, the text store the str/int census
+# already promoted, `append` (ADR 0233), the dict's entry store (ADR 0232), and the numeric fold
+# ADR 0239 leaves on a single-kind list.
+same = [1]
+same[0] = 3
+print(same)
+
+txt = [1]
+txt[0] = "s"
+print(txt)
+
+ftxt = ["a"]
+ftxt[0] = 2.5
+print(ftxt)
+
+fl = [1.5]
+fl[0] = None
+print(fl)
+
+twice = [1]
+twice[0] = 2.5
+twice[0] = 3
+print(twice)
+
+ap = [1]
+ap.append(2.5)
+print(ap)
+
+ent = {"a": 1}
+ent["a"] = 2.5
+print(ent)
+
+fold = [1]
+fold[0] = 2.5
+print(sum([fold[0], 1.0]))

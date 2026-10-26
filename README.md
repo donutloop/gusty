@@ -3140,6 +3140,39 @@ falls back to dynamic dispatch.
   item's own kind, which `print(k)` reads from the unroll's record and the literal beside it does not).
 
 
+- **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
+  the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
+  **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all
+  along. Three roads write one kind of slot, and two of them had learned to ask the VALUE its kind —
+  `append` since **ADR 0233**, the dict's entry store since **ADR 0232** — while `xs[i] = v` asked only
+  whether the new word was text or a number. The store was NOT broken where it looked: `%t3 = call i32
+  @rt_float_new(double 2.5)` boxed the float, `rt_put_elem` wrote the handle and `rt_tag_elem(…, i32 1)`
+  labelled the slot — payload AND tag, **ADR 0189** kept. The missing word was the container's: 
+  `rt_mark_estr(…, i32 8)`, *"my slots are the truth, ask them"*, the bit that chooses
+  `rt_print_list_mixed` over `rt_print_list` — without it the printer read slot 0 as the kind the container
+  still claimed and printed the float box's **handle** as the number it is. Ten shapes answered wrong on the
+  parent (a fraction, `None`, `True`, `False`, a list, a dict, a set, the tuple spelling, a container under a
+  NAME, a body's answer) plus the loop over a promoted list, `print(xs[0])`, `str`/`repr`, `xs[0] == None`,
+  `pop`, `reverse`, a slice and `ys = xs` / `ys[0] = 2.5` / `print(xs)`. The arm is the neighbours' predicate,
+  not a fourth list of kinds — `elemKindTag` + `slotTagSelfDescribing` (**ADR 0238**: float, void, verdict,
+  container, instance; never `TagInt`, whose payload *is* the value, never `TagStr`, which the census asks
+  about) — placed in the AGREEMENT branch, where **ADR 0232**'s str/int contradiction had nothing to say, and
+  deliberately NARROWER than its door, with **ADR 0249**'s implication asserted over hand-built elements.
+  **34** answered rows on the compiled leg AND the record leg, **13** controls (`append`, the dict store, the
+  same-kind store, **ADR 0239**'s fold), **4** bounds rows (the out-of-range write still raises the reference's
+  `IndexError: list assignment index out of range`), **14** gate/door property rows, **4** IR rows asserting
+  bit+tag+mixed-printer for the promoted stores and DENYING them for the numeric control, **42** CLI rows
+  against a live `python3`, and `integration/programs/item_stores_say_themselves.gy` joins the corpus as an
+  asserted `match` row (**253 → 254** programs, matrix **239 → 240**, `match` **196 → 197**, fail 0 / drift 0).
+  `tools/recmerge` wrote **69** entries from the reference (**9325 → 9394**) and **refused four** whose compiled
+  leg disagrees, each pinned with the row that owns it. A **9394**-source sweep of the record corpus through a
+  rebuilt parent reports **9352 unchanged / 40 improvements / 0 regressions**. One shape the same measurement
+  surfaced is FILED with today's bytes — and the parent's wrong bytes — pinned beside the reference's:
+  **Gap R.442** (a chained comparison over a promoted slot, and a numeric use of a slot a run-time index
+  wrote, both refuse where the parent answered from the payload the store had left behind — `xs[0] = 5.5` /
+  `print(0 < xs[0] < 3)` said `True` where CPython says `False`, which is why a refusal here is a hole being
+  shown and not a promise broken).
+
 - **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
   ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and
   `print(sorted(d, reverse=True))` wrote **`[1, 'a']`**, both at **exit 0**, where CPython writes `['a', 'b']` and

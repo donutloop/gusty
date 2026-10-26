@@ -3934,6 +3934,33 @@ building a literal, `xs.append(v)`, and `xs[i] = v` — the last of which used t
 and leave the tag alone, so `xs = [1, "a", None]; xs[0] = "z"; print(xs)` answered
 `[1, 'a', None]`: the interned index of `"z"`, printed through the slot's stale `int` tag.
 
+The tag is only half of what a store owes. The container keeps a census of its own — the bit that
+tells the emitter to print each slot by asking it (`rt_mark_estr …, 8`) rather than by assuming one
+kind for the whole list — and a store that writes a value the container's kind cannot render has to
+raise it. Since **ADR 0422** all three writers ask the same question of the value, `elemKindTag`, and
+promote the container when the answer is a kind whose payload only means something through its tag: a
+float, `None`, a verdict, another container, an instance. So the store, `append` (ADR 0233) and the
+dict's entry store (ADR 0232) cannot disagree about what one slot holds:
+
+```gy
+xs = [1]
+xs[0] = 2.5
+print(xs)             # [2.5]   — was [1]: the float box's handle, printed as a number
+xs[0] = None
+print(xs)             # [None]  — was [0]: the void's payload, printed as a number
+xs[0] = [3]
+print(xs)             # [[3]]
+ys = xs               # the promotion is an event on the object, not on the name written (ADR 0412)
+ys[0] = True
+print(xs)             # [True]
+```
+
+A store of a plain number into a numeric list is untouched by this: the container keeps its single
+kind, the plain printer, and the static array `sum`/`min`/`max` fold from (ADR 0239). What the
+promotion does cost is visible at the positions that cannot carry a tag — a chained comparison over a
+slot, or a numeric use of a slot a run-time index wrote — which report instead of answering from the
+payload they cannot read (roadmap Gap R.82, Gap R.441, Gap R.442).
+
 Reading one element out produces the pair as well, and three uses of it are open:
 `print(xs[i])` dispatches on the tag, `xs[i] == [1, 2]` and `2 in xs[i]` compare through
 `rt_container_eq`, and `v = xs[i]` binds a *tagged variable* — the same

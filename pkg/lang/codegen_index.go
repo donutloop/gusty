@@ -247,6 +247,20 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 				}
 			} else {
 				g.replaceElemKind(nm.Value, "list", sIsStr)
+				// The str/int census is TWO questions — is it text, is it a number — and a slot whose payload
+				// cannot speak its own kind is a THIRD. A float's payload is a `@float_box` handle, the void's is
+				// nothing at all, a verdict's is a bare 0/1, a container's and an instance's are heap handles; none
+				// of them is a number, and the container-wide kind is exactly what the printer reads. So this road
+				// — the third one that writes a slot — had to ask what `append` has asked since **ADR 0233** and what
+				// the dict's entry store has asked since **ADR 0232**: the ELEMENT's own tag, and if it describes
+				// itself, the container stops claiming one. Without the arm, `xs = [1]` / `xs[0] = 2.5` /
+				// `print(xs)` wrote `[1]` — the float box's handle, at the exit code of success — beside
+				// `xs.append(2.5)`, which printed `2.5` all along (roadmap Gap R.441).
+				if t, ok := g.elemKindTag(val); ok && slotTagSelfDescribing(t) {
+					if g.promoteMixed(b, h, nm.Value, "list", val) {
+						g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+					}
+				}
 			}
 		}
 		// Bounds are checked so an out-of-range index raises IndexError through the

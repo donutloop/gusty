@@ -18892,3 +18892,125 @@ and that road is the one `sum`/`min`/`max` fold from (**ADR 0239**). The row's o
 halves — the loop above answers `[None]`, `[1.5]`, and `for k in [1, 2]: print(sum([k]))` still answers from
 the static array. Measured byte-identical on **ADR 0421**'s parent.
 
+
+### Gap R.441 — the road that writes one slot asks the container what it holds, and never asks the value it is writing (✅ CLOSED by **ADR 0422**)
+
+```
+xs = [1]
+xs[0] = 2.5
+print(xs)            #  reference:  [2.5]
+                     #  this backend: [1]        at exit 0
+xs.append(2.5)
+print(xs)            #  [1, 2.5]    — and this line was always right
+```
+
+Three roads write one kind of slot. Two of them had long since learned to ask the ELEMENT its kind:
+`xs.append(v)` since **ADR 0233**, and `d[k] = v` since **ADR 0232** (twice — once for the key, once for the
+value, and once more after the put). The third, `xs[i] = v`, asked `heapElemKind`, which answers a different
+and much narrower question: *is the word I am about to store an interned text or a number*. Everything the
+store wrote was correct on its own terms — and that is what makes this row worth a page rather than a clause.
+
+The parent build's IR for the row's own program, store half:
+
+```llvm
+  %t2 = fadd double 0.0, 2.5e+00
+  %t3 = call i32 @rt_float_new(double %t2)                 ; the float is boxed
+  call void @rt_put_elem(i32 %_xs.ld1, i32 %t8, i32 %t3)   ; the HANDLE goes into the slot
+  call void @rt_tag_elem(i32 %_xs.ld1, i32 %t8, i32 1)     ; and the slot is labelled TagFloat
+```
+
+Payload and tag written together, **ADR 0189**'s rule kept. The container, though, carries a census bit of its
+own — `rt_mark_estr(handle, 8)`, *"my slots are the truth; ask them"* — and it is the emitter's decision
+between two printers: with the bit, `rt_print_list_mixed` walks `(payload, tag)` per slot; without it,
+`rt_print_list` reads every slot as the single kind the compiler recorded for the container. `assignIndex`
+reached for the bit only on **ADR 0232**'s CONTRADICTION branch (text against number), so a list that had
+only ever held integers kept the single-kind printer while a float box's handle sat in slot 0 wearing a
+float tag. `[1]` is that handle, printed as the number it is, at the exit code of success.
+
+### Why it was wrong
+
+The per-container kind is a census, not a fact about the object. `recordElemKind`/`replaceElemKind` keep two
+answers per list — *does it hold text*, *does it hold numbers* — and the store road used the new slot to
+overwrite the whole list's claim. A float is neither of those two answers: its payload is a `@float_box`
+handle, the void's is nothing, a verdict's is a bare 0/1, a container's and an instance's are heap handles.
+None of them is a number, and none of them can be read back through the printer that believes the container is
+a list of numbers. **ADR 0232** wrote this finding about the dict's entry store; this row is the same finding
+about the list's.
+
+### What fixed it
+
+Four lines, in the AGREEMENT branch (where the str/int census has nothing to say), asking the neighbours'
+predicate rather than a fourth list of kinds:
+
+```go
+g.replaceElemKind(nm.Value, "list", sIsStr)
+if t, ok := g.elemKindTag(val); ok && slotTagSelfDescribing(t) {
+    if g.promoteMixed(b, h, nm.Value, "list", val) {
+        g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+    }
+}
+```
+
+`elemKindTag` is what `append` asks and what the dict store asks; `slotTagSelfDescribing` is **ADR 0232**'s
+move widened by **ADR 0238** to the tags a compiled word cannot render — float, void, verdict, list, dict,
+set, instance — and it deliberately excludes `TagInt` (whose payload *is* the value, which is what
+**ADR 0239**'s fold reads) and `TagStr` (an interned index, which the str/int census asks about). The arm is
+narrower than its door on purpose: `promoteMixed` will mark a container for any value `elemKindTag` can name,
+and the row only asks it to when the payload cannot speak. The unit file asserts that implication as a
+property over hand-built elements (**ADR 0249** in the direction that matters), so widening one side alone
+fails a test rather than shipping a refusal nobody measured.
+
+The promoted program's IR, same registers:
+
+```llvm
+  call void @rt_mark_estr(i32 %_xs.ld1, i32 8)                   ; the container claims its slots
+  call void @rt_put_elem(i32 %_xs.ld1, i32 %t8, i32 %t3)
+  call void @rt_tag_elem(i32 %_xs.ld1, i32 %t8, i32 1)
+  call void @rt_print_list_mixed(i32 %h2, i32 0)                 ; the printer that asks each slot
+```
+
+and the numeric control (`xs[0] = 3`) emits no bit and keeps `rt_print_list`, which the IR case asserts by
+DENYING the bit and the mixed printer — that denial is **ADR 0239**'s fold surviving this change.
+
+### What the same measurement surfaced
+
+Ten shapes answered wrong on the parent — `2.5`, `None`, `True`, `False`, `[2]`, `{"a": 1}`, `{1, 2}`,
+`(1, 2)`, a container under a name, a body's answer — and the same number of roads that read the object back
+(`str`, `repr`, `in`, `len`, `==`, `is`, a slice, `pop`, `reverse`, a `for`), plus two stores on one object, a
+store whose index only exists at run time, and `ys = xs` / `ys[0] = 2.5` / `print(xs)` — the promotion
+propagates through **ADR 0412**'s sharer walk, so the untouched name prints what the mutated alias wrote.
+A **9394**-source sweep of the record corpus through both builds reports **9352 unchanged / 40 improvements /
+0 regressions**; the only other two differing sources are `llc` rejections whose text carries the per-run temp
+directory. `tools/recmerge` wrote **69** entries (**9325 → 9394**) and REFUSED four whose compiled leg
+disagrees; those four are pinned below with the rows that own them.
+
+### Gap R.442 — the positions a promotion exposes (⏳ OPEN, found by **ADR 0422**)
+
+A promotion is not free, and the honest ledger has to record what it cost. Three programs moved from an
+answer to a refusal:
+
+| program | reference | parent (wrong) | today |
+|---|---|---|---|
+| `xs[0] = 2.5` / `print(0 < xs[0] < 3)` | `True` | `True` | REFUSED — `needs a single static kind` |
+| `xs[0] = 5.5` / `print(0 < xs[0] < 3)` | `False` | `True` | REFUSED |
+| `xs[0] = 2.5` / `print(xs[0] + 1)` / `for i in [0]: xs[i] = None` | `3.5`, `[None]` | `2`, `[0]` | REFUSED |
+| `xs[0] = 2.5` / `print(sorted(xs))` over `[3, 1]` | `[1, 2.5]` | `[2.5, 1]` | REFUSED — **ADR 0191** |
+
+The middle row is the measurement that keeps this honest: the chained comparison agreed with the reference
+only when the stale int payload the store had left behind happened to satisfy the test. It was never green —
+which is why the refusal is the hole being shown rather than a promise broken, and why the pins carry the
+parent's bytes in their dossier. The roads that refuse are **Gap R.82**'s one-word position (a chain lowers
+each operand through an ordinary read and must settle one kind) and the numeric courtesy **ADR 0249** grants a
+slot read, which works from the literal the container was built from — once a store with a run-time index owns
+the slots there is no literal left to consult. The fix is **ADR 0331**'s tagged value word arriving at those
+positions, which is a row of its own.
+
+### What the promotion re-named — the refusals a reader of this row will try next
+
+Pinned beside the answering family with their owners, none of them this row's debt: `sum`/`min` over a
+container the compiler does not hold (**Gap R.71**/**Gap R.107**, `lower.unsupported.builtin-needs-inline-container`),
+`count`/`index`/`remove`/`insert`/`join` over a list the program mutated (**Gap R.174**, **Gap I.2**), the
+store through a subscript rather than a name (**Gap R.381** — the READ side of that position closed as
+**Gap R.214**/**ADR 0334**), the store from inside a body over a module container (**Gap R.35**), a stored
+`lambda` (**Gap R.150**/**Gap R.151**/**ADR 0283**), and a stored `range`, which prints its loop word
+(**Gap R.293**) unchanged on the parent because there was never a tag there to ask.

@@ -15168,3 +15168,69 @@ discovery — and it still taught me twice.
 7. **The recorder's refusal is information.** `bool([k])` came back unrecorded because the compiled leg
    refuses it and **Gap R.131** owns that door. The temptation was to drop the row from the CLI table; instead
    it is pinned as a refusal with its owner named, so the pin retires when R.131 pays rather than when I notice.
+
+## ADR 0422 — the element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks the ELEMENT (Gap R.441 closed; Gap R.442 filed, 2026-10-25)
+
+1. **"Two roads, one right answer" is the cheapest bug-finder in this repo, and I reached for it late.**
+   `xs.append(2.5)` printed `[1, 2.5]` and `xs[0] = 2.5` printed `[1]`, in the same program, at the same exit
+   code — two roads writing one kind of slot, one right and one wrong. I spent the first hour of the
+   investigation in the read road (`genIndex`, `numericSlotUse`, the printer) before I ran that pair. The pair
+   says the bug is in the writer that differs, not in the reader they share. Next cycle: run the sibling form
+   of the failing program *before* reading any code.
+
+2. **A stale binary is a fake measurement, and the repo has no guard against it.** I had `/tmp/gustyc-head`
+   from an earlier cycle in the shell history and re-ran my probes with it, "measuring" defects that the
+   working tree had already fixed — including the exact defect I was hunting, which a previous cycle had
+   closed and left uncommitted in `codegen_index.go`. Both legs of the discovery were fiction until I
+   `git stash`-ed the change, rebuilt, and compared against a build I had made in the same command. Rule
+   adopted: build the parent and the candidate in the SAME command that measures them
+   (`git stash && go build -o /tmp/gustyc-base && git stash pop && go build -o /tmp/gustyc-now`), and name
+   the binaries `base`/`now`, never `head`/`old`.
+
+3. **The IR told me the bug was not where the answer was.** The store road had already written
+   `rt_put_elem` *and* `rt_tag_elem(…, i32 1)` — payload and tag together, **ADR 0189** kept. The wrong
+   answer came from one word the store never wrote: `rt_mark_estr(…, i32 8)`, the container's census bit,
+   which is what picks `rt_print_list_mixed` over `rt_print_list`. Diffing the parent's `@main` against the
+   fixed one showed the two-line difference exactly. Reading IR beats reasoning about it: the diff was the
+   diagnosis, and it took one `diff <(... --emit-llvm ...)`.
+
+4. **A census and a fact about the object are different things, and one slot's evidence may not overwrite
+   the whole container's claim.** The store asked "is this word text or a number?" — a two-question census —
+   and a float is neither answer. **ADR 0232** had already written this sentence about the dict's entry
+   store; the list's item store had simply never been given the same arm. When a defect looks like "road A
+   has a rule road B lacks", go find the third road, because there is nearly always a third.
+
+5. **Refusals a fix exposes need the parent's wrong answer in the dossier, or they read as regressions.**
+   Three programs moved from answer to refusal, and my first instinct was to call that a broken promise
+   (**ADR 0249** says a landing may not break a green promise). Measured on the parent with a different
+   value — `xs[0] = 5.5` / `print(0 < xs[0] < 3)` answered `True` where CPython says `False` — the old answer
+   was the stale payload getting lucky. So the pin carries *three* columns: reference, parent, today, and the
+   filed row (**Gap R.442**) quotes the parent's wrong bytes in its own text. "It refused before it lied" is
+   a claim that needs a measurement, not an argument.
+
+6. **The gate/door case is an implication, not an equality — and writing it as an equality found nothing.**
+   My first property case asserted `arm ⇔ promoteMixed`, and it failed on plain ints and texts: the door is
+   broader than the arm on purpose (`promoteMixed` marks a container for any value `elemKindTag` can name).
+   **ADR 0249**'s rule is the one direction — *whatever the gate sends to the tagged road, the door must be
+   able to build* — and the case now asserts that, plus each element's expected self-describing verdict, so a
+   one-sided widening still fails.
+
+7. **Per-name compile-time records make a program more than the sum of its probes.** Two statements that each
+   answered correctly in isolation refused when they shared the name `xs` in one module (the numeric courtesy
+   **ADR 0249** grants a slot read works from the literal the container was built from, and a run-time-indexed
+   store leaves no literal). The conformance program therefore names its own list per scenario, and the
+   interaction is pinned instead of hidden — a conformance program that "passes" only because of how the
+   statements were ordered is a document, not a witness.
+
+8. **Delta-debugging found in four minutes what I would have hand-traced in an hour.** Shrinking the failing
+   program by deleting lines while the failure signature (`needs a single static kind`) persisted produced the
+   four-line repro that became **Gap R.442**. The predicate has to be the failure *message*, not just
+   "non-zero exit", or the shrink deletes the program's premises and calls the resulting parse error a
+   minimal case.
+
+9. **The artifact guards corrected three numbers again.** I wrote 33 answered rows (34), forgot the two
+   container-under-a-name cases the promotion also pays, and had to re-derive the matrix totals from the
+   regenerated `conformance-matrix.json` rather than from memory (253 → 254 programs, 239 → 240 rows,
+   196 → 197 `match`, pass 210 → 211). The sweep is now the load-bearing number: **9394 sources, 9352
+   unchanged, 40 improvements, 0 regressions**, the two remainders being `llc` rejections whose text embeds the
+   per-run temp path.

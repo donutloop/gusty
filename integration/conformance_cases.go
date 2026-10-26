@@ -954,6 +954,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the void and an in-place mutator, and keeps the three controls the gate must not touch; every
 		// line is what CPython prints for it.
 		"void_slots_say_themselves",
+
+		// A container slot written by `xs[i] = v` carries the KIND of the value stored: the third road that
+		// writes a slot asks the element the way `append` has since ADR 0233 and the dict's entry store has
+		// since ADR 0232, and the container stops claiming a kind it no longer holds (ADR 0232's promotion,
+		// roadmap **Gap R.441**, **ADR 0422**). The program stores a fraction, the void, a verdict, a list,
+		// a dict, a set and the tuple spelling into an int-kind slot, through a binding, a call, a second
+		// name and a negative index; it reads the object back through `str`, `repr`, `in`, `len`, `==`, a
+		// slice, a `pop`, a `reverse` and a loop, and keeps the roads the promotion must not disturb —
+		// `append`, the dict's entry store, and the static-array fold ADR 0239 leaves for `sum`. Every line
+		// is what CPython prints for it.
+		"item_stores_say_themselves",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

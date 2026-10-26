@@ -4482,6 +4482,27 @@
     },
     {
       "case": {
+        "id": "programs/item_stores_say_themselves",
+        "name": "item_stores_say_themselves.gy",
+        "source": "# The element a container slot is WRITTEN with answers what it is (ADR 0422, roadmap Gap R.441).\n#\n# Three roads write a container slot. `append` has asked the ELEMENT its kind since ADR 0233, and the\n# dict's entry store has since ADR 0232; `xs[i] = v` asked only whether the new word was text or a\n# number. The float reached its slot whole — box handle and tag both — but the container was never told\n# (no `rt_mark_estr …, i32 8`), so the printer read every slot as the kind the container still claimed\n# and printed the float box's handle: `[1]` where the reference prints `[2.5]`, at the exit code of\n# success, beside `xs.append(2.5)`, which printed `2.5` all along.\n#\n# Each scenario below names its own list, because the roads that read a container back keep their\n# answer per NAME: a numeric use of a slot in a list the module has already promoted elsewhere is\n# Gap R.442's, and this program is about the store, not about that.\n#\n# Every line below is what CPython prints for this program.\n\nxs = [1]\nxs[0] = 2.5\nprint(xs)\n\n# The kinds whose payload only means something through the tag beside it: a float box's handle, the\n# void's nothing, a verdict's bare 0/1, another container's heap handle.\nys = [1, 2]\nys[0] = 2.5\nprint(ys)\nns = [1]\nns[0] = None\nprint(ns)\nbs = [1]\nbs[0] = True\nprint(bs)\nfs = [1, 2]\nfs[1] = False\nprint(fs)\nls = [1]\nls[0] = [2]\nprint(ls)\nds = [1]\nds[0] = {\"a\": 1}\nprint(ds)\nss = [1]\nss[0] = {1, 2}\nprint(ss)\nts = [1]\nts[0] = (1, 2)\nprint(ts)\nng = [1, 2]\nng[-1] = None\nprint(ng)\n\n# The value arriving through something other than its own spelling: a binding, a body's answer, a\n# container under a name.\nv = 2.5\nfromName = [1]\nfromName[0] = v\nprint(fromName)\n\ndef half():\n    return 2.5\n\nfromCall = [1]\nfromCall[0] = half()\nprint(fromCall)\n\ninner = [2]\nfromList = [1]\nfromList[0] = inner\nprint(fromList)\n\nentries = {\"a\": 1}\nfromDict = [1]\nfromDict[0] = entries\nprint(fromDict)\n\n# The roads that read the object back all ask the slot, because the slot now says what it holds.\nrd = [1]\nrd[0] = 2.5\nprint(rd[0])\nprint(rd[0] + 1)\nprint(bool(rd[0]))\nprint(str(rd))\nprint(repr(rd))\nprint(rd == [2.5])\nprint(rd + [3])\nprint(len(rd))\nprint(2.5 in rd)\n\nlp = [1, 2]\nlp[0] = 2.5\nfor k in lp:\n    print(k)\n\nrv = [1, 2]\nrv[0] = 2.5\nrv.reverse()\nprint(rv)\n\npp = [1, 2]\npp[0] = 2.5\nprint(pp.pop(0))\nprint(pp)\n\nsl = [1, 2, 3]\nsl[0] = 2.5\nprint(sl[0:2])\n\nvd = [1]\nvd[0] = None\nprint(vd[0] is None)\nprint(bool(vd[0]))\n\n# More than one store on one object.\ntwo = [1, 2, 3]\ntwo[0] = None\ntwo[2] = 2.5\nprint(two)\n\ncomp = [k for k in [1, 2]]\ncomp[0] = 2.5\nprint(comp)\n\n# The same object under a second name: a promotion is an event on the object, not on the name written\n# (ADR 0412's sharer walk, asked of this store too).\norig = [1, 2]\nalias = orig\nalias[0] = 2.5\nprint(orig)\nprint(alias)\n\n# The roads the promotion must not disturb: the same-kind store, the text store the str/int census\n# already promoted, `append` (ADR 0233), the dict's entry store (ADR 0232), and the numeric fold\n# ADR 0239 leaves on a single-kind list.\nsame = [1]\nsame[0] = 3\nprint(same)\n\ntxt = [1]\ntxt[0] = \"s\"\nprint(txt)\n\nftxt = [\"a\"]\nftxt[0] = 2.5\nprint(ftxt)\n\nfl = [1.5]\nfl[0] = None\nprint(fl)\n\ntwice = [1]\ntwice[0] = 2.5\ntwice[0] = 3\nprint(twice)\n\nap = [1]\nap.append(2.5)\nprint(ap)\n\nent = {\"a\": 1}\nent[\"a\"] = 2.5\nprint(ent)\n\nfold = [1]\nfold[0] = 2.5\nprint(sum([fold[0], 1.0]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[2.5]\n[2.5, 2]\n[None]\n[True]\n[1, False]\n[[2]]\n[{'a': 1}]\n[{1, 2}]\n[(1, 2)]\n[1, None]\n[2.5]\n[2.5]\n[[2]]\n[{'a': 1}]\n2.5\n3.5\nTrue\n[2.5]\n[2.5]\nTrue\n[2.5, 3]\n1\nTrue\n2.5\n2\n[2, 2.5]\n2.5\n[2]\n[2.5, 2]\nTrue\nFalse\n[None, 2, 2.5]\n[2.5, 2]\n[2.5, 2]\n[2.5, 2]\n[3]\n['s']\n[2.5]\n[None]\n[3]\n[1, 2.5]\n{'a': 2.5}\n3.5\n",
+      "python_ok": true,
+      "python_stdout": "[2.5]\n[2.5, 2]\n[None]\n[True]\n[1, False]\n[[2]]\n[{'a': 1}]\n[{1, 2}]\n[(1, 2)]\n[1, None]\n[2.5]\n[2.5]\n[[2]]\n[{'a': 1}]\n2.5\n3.5\nTrue\n[2.5]\n[2.5]\nTrue\n[2.5, 3]\n1\nTrue\n2.5\n2\n[2, 2.5]\n2.5\n[2]\n[2.5, 2]\nTrue\nFalse\n[None, 2, 2.5]\n[2.5, 2]\n[2.5, 2]\n[2.5, 2]\n[3]\n['s']\n[2.5]\n[None]\n[3]\n[1, 2.5]\n{'a': 2.5}\n3.5\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -5647,11 +5668,11 @@
       ]
     }
   ],
-  "rows": 239,
+  "rows": 240,
   "skipped": 29,
-  "pass": 210,
+  "pass": 211,
   "fail": 0,
-  "oracle_match": 196,
+  "oracle_match": 197,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

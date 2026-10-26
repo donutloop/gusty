@@ -1,5 +1,337 @@
 {
  "entries": {
+"d = {\"a\": 1}\nxs = [1]\nxs[0] = d\nprint(xs)\n": {
+    "stdout": "[{'a': 1}]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = \"a\"\nxs[1] = None\nprint(xs)\n": {
+    "stdout": "['a', None]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs[0] * 2)\n": {
+    "stdout": "5.0\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs[0] \u003e 1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs[0] \u003e 3)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[-5] = [2]\nprint(xs)\n": {
+    "err": "IndexError: list assignment index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list assignment index out of range"
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(sum([xs[0], 1.0]))\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = None\nprint(bool(xs[0]))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = True\nprint(xs[0] + 1)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[5] = None\nprint(xs)\n": {
+    "err": "IndexError: list assignment index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list assignment index out of range"
+   },
+
+"ys = [2]\nxs = [1]\nxs[0] = ys\nprint(xs)\n": {
+    "stdout": "[[2]]\n",
+    "hasStdout": true
+   },
+"d = {\"a\": 1}\nd[\"a\"] = 2.5\nprint(d)\n": {
+    "stdout": "{'a': 2.5}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 2.5\nxs = [1]\nxs[0] = f()\nprint(xs)\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"v = 2.5\nxs = [1]\nxs[0] = v\nprint(xs)\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [\"a\"]\nxs[0] = 2.5\nprint(xs)\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nxs[0] = 2.5\nprint(xs[0:2])\n": {
+    "stdout": "[2.5, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nxs[0] = None\nxs[2] = 2.5\nprint(xs)\n": {
+    "stdout": "[None, 2, 2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nfor i in [0]:\n    xs[i] = None\nprint(xs)\n": {
+    "stdout": "[None, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\ni = 0\nwhile i \u003c 2:\n    xs[i] = None\n    i += 1\nprint(xs)\n": {
+    "stdout": "[None, None]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[-1] = None\nprint(xs)\n": {
+    "stdout": "[1, None]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nfor k in xs:\n    print(k)\n": {
+    "stdout": "2.5\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(2.5 in xs)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(len(xs))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs)\n": {
+    "stdout": "[2.5, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs.pop(0))\nprint(xs)\n": {
+    "stdout": "2.5\n[2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[0] = 2.5\nxs.reverse()\nprint(xs)\n": {
+    "stdout": "[2, 2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nxs[1] = False\nprint(xs)\n": {
+    "stdout": "[1, False]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = xs\nys[0] = 2.5\nprint(xs)\n": {
+    "stdout": "[2.5, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5]\nxs[0] = None\nprint(xs)\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs.append(2.5)\nprint(xs)\n": {
+    "stdout": "[1, 2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = (1, 2)\nprint(xs)\n": {
+    "stdout": "[(1, 2)]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = (1, 2)\nprint(xs[0] == (1, 2))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(bool(xs[0]))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(repr(xs))\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(str(xs))\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(xs + [3])\n": {
+    "stdout": "[2.5, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(xs == [2.5])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(xs)\n": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\n": {
+    "stdout": "3.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nprint(xs[0])\n": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nxs.append(3)\nprint(xs)\n": {
+    "stdout": "[2.5, 3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nxs[0] = 3\nprint(xs)\n": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 2.5\nxs[0] = 3.5\nprint(xs)\n": {
+    "stdout": "[3.5]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = 3\nprint(xs)\n": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = None\nprint(xs)\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = None\nprint(xs[0] == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = None\nprint(xs[0] is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = True\nprint(xs)\n": {
+    "stdout": "[True]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = True\nprint(xs[0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = [2]\nprint(xs)\n": {
+    "stdout": "[[2]]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = {\"a\": 1}\nprint(xs)\n": {
+    "stdout": "[{'a': 1}]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[0] = {1, 2}\nprint(xs)\n": {
+    "stdout": "[{1, 2}]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nxs[5] = 2.5\nprint(xs)\n": {
+    "err": "IndexError: list assignment index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list assignment index out of range"
+   },
+
+"xs = [1]\nys = xs\nys[0] = None\nprint(xs)\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"xs = [k for k in [1, 2]]\nxs[0] = 2.5\nprint(xs)\n": {
+    "stdout": "[2.5, 2]\n",
+    "hasStdout": true
+   },
+"xs = [1, 2]\nxs[-1] = None\nprint(xs)": {
+    "stdout": "[1, None]\n",
+    "hasStdout": true
+   },
+"xs = [1]\nxs[0] = 2.5\nprint(repr(xs))": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+"xs = [1]\nxs[0] = 2.5\nprint(str(xs))": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+"d = {\"a\": 1}\nd[\"a\"] = None\nprint(d)": {
+    "stdout": "{'a': None}\n",
+    "hasStdout": true
+   },
+"d = {\"a\": 1}\nd[\"a\"] = 2.5\nprint(d)": {
+    "stdout": "{'a': 2.5}\n",
+    "hasStdout": true
+   },
+"xs = [1, 2]\nxs[0] = 2.5\nfor k in xs:\n    print(k)": {
+    "stdout": "2.5\n2\n",
+    "hasStdout": true
+   },
+"xs = [1]\nxs[0] = None\nprint(bool(xs[0]))": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+"xs = ['a', 2]\nxs[0] = 5\nprint(xs)": {
+    "stdout": "[5, 2]\n",
+    "hasStdout": true
+   },
+"xs = [1.5, 2.5]\nxs[0] = 1\nprint(xs)": {
+    "stdout": "[1, 2.5]\n",
+    "hasStdout": true
+   },
+"xs = [1]\nxs[0] = 2.5\nxs.append(3)\nprint(xs)": {
+    "stdout": "[2.5, 3]\n",
+    "hasStdout": true
+   },
+"xs = [1, 2]\nxs[0] = 2.5\nprint(2.5 in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs[0] == 2.5)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+"xs = [1, 2]\nxs[0] = 2.5\nprint(xs[1] + 1)": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+"xs = [1]\nxs[0] = 2.5\nprint(xs[0])": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
 "a = \"z\"\nprint([a])\n": {
     "stdout": "['z']\n",
     "hasStdout": true
