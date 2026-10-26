@@ -15120,3 +15120,51 @@ discovery — and it still taught me twice.
    a detached worktree, which is how a commit can file a defect without being accused of writing it. The 4878
    source sweep — again with a classifier whose ranks had to be right, and again the thing that no targeted
    run would have caught — finished at **0 regressions / 16 improvements**.
+
+## ADR 0421 — the void a slot holds is the void its binding wrote: the container literal asks the ELEMENT (Gap R.435 closed, 2026-10-24)
+
+1. **"WRITTEN vs NAMED" is a two-line test for a gate/record split.** `print([None])` was right and
+   `k = None` / `print([k])` was wrong, in one program, at the same exit code. That shape is never a runtime
+   bug — the runtime sees the same object both times — it is a decision taken from the source text in one road
+   and from the object in the road next to it. Once I could say the pair out loud, the file to read was
+   `literalNeedsTags` and not the printer, and the missing arm was one line.
+
+2. **A gate that outruns its door turns a wrong answer into a refusal, and that is a regression.** My first
+   cut was the obvious one-line widening of the gate; `def f(): pass` / `print([f()])` went from `[0]` at exit
+   0 to `a compiled list holds either strings or numbers, not both` at exit 1. A wrong answer can be measured,
+   filed and fixed; a refusal hides the shape and reads like "the language doesn't support this". The gate and
+   the door are therefore one unit of change (**ADR 0249**), and the case that enforces it asks both of
+   hand-built whole literals (`literalNeedsTags` says "tag it", `taggableMixedList` must say "I can") so it
+   fails without needing anyone to compile the program that found it.
+
+3. **A gate's exemptions are part of the arm, and they must come from the door's own maps.** `noneSlotExpr`
+   had to copy `elemKindTag`'s two stand-asides — a name the unroll gave a per-item tag is THIS item, and a
+   name the container records claim holds a handle the object describes — reading the SAME maps
+   (`loopElemTag`, `nameIsContainerRecorded`). Copying the *decision* while reading the door's *storage* is
+   what keeps the two from drifting: the control row `k = None` / `for k in [1, 2]: print([k])` → `[1]`, `[2]`
+   is the symptom of forgetting one, and it was the second thing I measured.
+
+4. **The payload of a tagged slot is a placeholder, and a test should say so in IR.** The row's claim is not
+   "the value is right" — `TagNone`'s payload is a forced `0` — it is "the object says its slots are the truth".
+   So the IR case asserts the tagged build (`rt_tag_elem …, i32 3`, `rt_mark_estr …, i32 8`,
+   `rt_print_list_mixed`) *and* denies `@.lst` plus the single-kind printer, and its twin asserts the numeric
+   literal still gets every slot tagged `TagInt` and the plain printer: the negative half is what stops "make
+   every literal a heap object" from being mistaken for a fix, since that road is **ADR 0239**'s fold.
+
+5. **The artifact guards caught me being optimistic about my own numbers.** `tools/recmerge` wrote 45 entries
+   where I had written 47 in the ADR; the drift ledger row I expected to leave alone went *paid* — the dict
+   miss in a slot now agrees with the record — and the two-way ratchet failed the run until I deleted it
+   (318 → 317). `TestTheArtifactTableCountsAreTheFilesOwn` and `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+   are the cheapest fact-checkers in the house: write the number the file holds, not the number you remember.
+
+6. **Record the sweep, not just the fix.** All **9325** record sources through a `git worktree` build of the
+   parent, compared to this build: **20 changed sources — 18 improvements, 0 regressions**, the two remainders
+   being `llc` failures whose text embeds the per-run temp path. That number is the row's evidence that an arm
+   in a gate moved one road; without it, "nothing else changed" is a hope. It is also what made filing four
+   rows honest rather than convenient: the void through a frame's front door, the fold over a void element, the
+   container the program NAMED and the loop item's own kind were each measured *unchanged* on the parent before
+   they were filed.
+
+7. **The recorder's refusal is information.** `bool([k])` came back unrecorded because the compiled leg
+   refuses it and **Gap R.131** owns that door. The temptation was to drop the row from the CLI table; instead
+   it is pinned as a refusal with its owner named, so the pin retires when R.131 pays rather than when I notice.

@@ -1107,7 +1107,7 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	// way a literal does — `print([set(), list()])` printed the two handles while this list of spellings
 	// stopped at `isContainerLiteral` (roadmap Gap R.360, ADR 0232's self-describing slots).
 	slotsItself := func(x Expr) bool {
-		return g.floatSlotExpr(x) || isNoneLitExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
+		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
 			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x)
 	}
 	switch n := e.(type) {
@@ -1125,7 +1125,7 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if g.floatSlotExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) || g.carriedCallIsPairElem(k) {
+			if g.floatSlotExpr(k) || g.noneSlotExpr(k) || g.boolSlotExpr(k) || g.carriedCallIsPairElem(k) {
 				return true
 			}
 		}
@@ -1398,9 +1398,45 @@ func (g *irGen) boolSlotExpr(e Expr) bool {
 	return g != nil && g.printsAsBool(e)
 }
 
+// noneSlotExpr is the void arm of `literalNeedsTags`, the sibling of `floatSlotExpr` and
+// `boolSlotExpr`, and it asks the ELEMENT rather than the spelling: the written `None`, or whatever
+// the ADR 0172 predicate behind print, `str`, truthiness and equality answers — a name whose latest
+// binding wrote the void, a body that never returns a value, an in-place mutator, a folded dict miss.
+// Its two neighbours in the gate have gone past the spelling for years (`print([verdict(), 0])` is
+// built tagged because `boolSlotExpr` asks what the CALL answers, ADR 0259); this arm had never been
+// widened, so a slot holding the void THROUGH A BINDING was not a void to the gate: the literal stayed
+// on the static `{i32, [N x i32]}` array, whose element reader folds a void-bound name to the payload
+// the void happens to carry, and the screen printed the number — `k = None` / `print([k])` wrote `[0]`
+// at the exit code of success while `print([None])` wrote `[None]` all along (roadmap Gap R.435, ADR 0421;
+// the read-door twin is **ADR 0420**'s `elemKindTag` arm, and the two doors ask this ONE predicate).
+//
+// The two exemptions `elemKindTag` carries are restated here rather than rediscovered downstream
+// (**ADR 0249**'s rule that a gate and a door must test the same thing): a name the unroll gave a
+// per-item tag is THIS item and not the void some earlier binding left behind, and a name the
+// container records claim holds a handle whose kind the object carries. Both are read from the same
+// maps the door reads, so a future widening moves the gate and the door together or neither.
+func (g *irGen) noneSlotExpr(e Expr) bool {
+	if isNoneLitExpr(e) {
+		return true
+	}
+	if g == nil || e == nil {
+		return false
+	}
+	if nm, isName := e.(*Name); isName {
+		if _, perItem := g.loopElemTag[nm.Value]; perItem {
+			return false
+		}
+		if g.nameIsContainerRecorded(nm) {
+			return false
+		}
+	}
+	return g.isNoneExpr(e)
+}
+
 // isFloatLitExpr and isNoneLitExpr are the two elements that make a container literal need the
 // tagged path even when every element is alike: their payloads are a @float_box handle and nothing
 // at all, neither of which a container-wide kind can describe (roadmap L11.1, ADR 0233).
+// `isNoneLitExpr` survives as the spelled-literal half of `noneSlotExpr`; nothing else asks it.
 func isFloatLitExpr(e Expr) bool {
 	_, ok := e.(*FloatLit)
 	return ok
@@ -1686,6 +1722,16 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 				return int32(TagBool), true
 			}
 		}
+	}
+	// The void a CALL answers is the same void the spelled singleton and the bound name answer: a body that
+	// never returns a value, an in-place mutator (`xs.append(2)`), a folded dict miss, an all-None `min`.
+	// The gate (**ADR 0421**'s `noneSlotExpr`) asks this same predicate and sends such a slot to the tagged
+	// road; a door that then labelled it `TagInt` beside a void payload declined the very build the gate
+	// ordered, which is **ADR 0249**'s gate-and-door disagreement measured as a refusal — `def f(): pass` /
+	// `print([f()])` went from `[0]` at exit 0 to `a compiled list holds either strings or numbers, not both`
+	// at exit 1 (roadmap Gap R.435; the print road has asked `isNoneExpr` since **ADR 0172**).
+	if _, isCall := e.(*Call); isCall && g != nil && g.isNoneExpr(e) {
+		return int32(TagNone), true
 	}
 	// The same question the storage side asks — `heapElemKind`'s float arm and this line are one
 	// question, asked once: an element whose value is a float goes into the slot as the handle of a

@@ -1274,12 +1274,6 @@
     "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
-    "source": "print([{\"a\": 1}.get(\"z\")])\n",
-    "reason": "stdout differs from the record",
-    "expected": "[None]\n",
-    "actual": "[0]\n"
-  },
-  {
     "source": "print(abs())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: abs() takes exactly one argument (0 given)",

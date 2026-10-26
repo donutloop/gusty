@@ -943,6 +943,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// takes the operator roads out of each entry, and catches the two `KeyError`s whose messages name the
 		// void and the bound text the way the reference names them; every line is what CPython prints for it.
 		"bound_dict_keys",
+
+		// A container SLOT whose value arrived through a binding, rather than being spelled, is built
+		// self-describing and printed by the mixed printer: the gate that decides whether a slot needs a
+		// tag of its own asks the ELEMENT — the ADR 0172 record behind print, `str`, truthiness and
+		// equality — and not the spelling, and the door that labels the slot asks the same predicate
+		// (**ADR 0421**, roadmap **Gap R.435**). The program puts a void-bound name in a list, a set, a
+		// tuple, a dict key and value and one level down, reads the literal back through `len`, `in`, a
+		// subscript, a concat, an `==` and a `sorted`, walks it in a loop, calls a body that hands back
+		// the void and an in-place mutator, and keeps the three controls the gate must not touch; every
+		// line is what CPython prints for it.
+		"void_slots_say_themselves",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

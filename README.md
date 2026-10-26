@@ -3103,6 +3103,43 @@ falls back to dynamic dispatch.
   the const-key twin answers, because the door has no number-in-a-name record to retire).
 
 
+- **The void a slot holds is the void its binding wrote: the container literal asks the ELEMENT (Gap R.435,
+  **ADR 0421**)** — `k = None` / `print([k])` wrote **`[0]`** at **exit 0** where CPython writes **`[None]`**,
+  while `print([None])` had written `[None]` all along and the mixed sibling `ys = [None, 1, "a"]` / `print(ys)`
+  wrote `[None, 1, 'a']`. Two lines of one program, two answers, and the difference is whether the void was
+  **WRITTEN** or **NAMED** — the signature of a gate that reads the source text next to a road that reads the
+  object. A container literal goes one of two ways: an `i32`-sized slot folds the whole literal into a static
+  module array (**ADR 0239**, what `sum`/`min`/`max` reduce from), and a slot that cannot live in a bare word is
+  built on the heap with a **tag beside each payload** (`rt_print_list_mixed` walks the pair). The gate that
+  chooses is `literalNeedsTags`, and its float arm (`floatSlotExpr`) and verdict arm (`boolSlotExpr`) have asked
+  the ELEMENT for years — **ADR 0259** added `|| g.printsAsBool(e)` for exactly this shape — while its void arm
+  was the bare `isNoneLitExpr`. So a slot holding the void through a binding was not a void to the gate, the
+  literal stayed on the static array, and the array's element reader folds a void-bound name to the payload the
+  void happens to carry. The fix is one arm, but the **pair** is the unit: the first cut widened the gate alone
+  and `def f(): pass` / `print([f()])` went from a wrong answer at exit 0 to a REFUSAL at exit 1, because
+  `elemsTaggable` did not know the void a CALL answers — **ADR 0249**'s gate-and-door rule, run in the direction
+  that matters. So `elemKindTag` grew the arm the gate needed in the same commit, and `noneSlotExpr` restates the
+  door's two exemptions (a name the unroll tagged is THIS item; a name the container records claim holds a handle
+  the object describes) from the SAME maps the door reads. The payload is neither trusted nor printed: a
+  `TagNone` slot is forced to `0`, `rt_mark_estr …, i32 8` says the slots are the truth, and the mixed printer
+  renders the pair, with the static array absent — asserted in both directions, and the numeric control still
+  keeps `rt_print_list` and its fold. **36** answered rows (23 through a binding, 13 through a CALL) on the
+  compiled leg AND the record leg, **9** control rows the gate must not touch, a **gate/door property case** that
+  fails if the gate sends a literal the door declines, an IR row that pins the tagged build and denies the static
+  array, **31** programs through the CLI against a live `python3`; `tools/recmerge` wrote **45** entries from the
+  reference (**9280 → 9325**) and **refused** `bool([k])`, whose compiled leg still owes **Gap R.131**; the drift
+  ledger row `print([{"a": 1}.get("z")])` went **PAID, not edited** (**318 → 317**); and
+  `integration/programs/void_slots_say_themselves.gy` joins the corpus as an asserted `match` row. A sweep of all
+  **9325** record sources through a `git worktree` build of this commit's parent reports **0 regressions over 20
+  changed sources, 18 of them this family**. Four shapes the measurement surfaced are FILED with today's bytes
+  pinned beside the reference's: **Gap R.437** (the void through a frame's front door — a parameter, or the
+  module's name read from inside a body: the gate asks the FRAME's records), **Gap R.438** (`sum([None])` is `0`
+  and `sorted([1, None])` produces an order the reference refuses to compute — the fold and the comparator ask the
+  payload, never the kind), **Gap R.439** (`xs = [1]` / `print([xs, 2])` writes `[0, 2]` — the gate's container arm
+  is a spelling test while the door has had the container-NAME arm since **ADR 0189**) and **Gap R.440** (a loop
+  item's own kind, which `print(k)` reads from the unroll's record and the literal beside it does not).
+
+
 - **A dict is sorted by its keys, and the door that copies it is where the stride is decided (Gap R.426,
   ADR 0417)** — `d = {"a": 1, "b": 2}` / `print(sorted(d))` wrote **`['a', 1]`** and
   `print(sorted(d, reverse=True))` wrote **`[1, 'a']`**, both at **exit 0**, where CPython writes `['a', 'b']` and

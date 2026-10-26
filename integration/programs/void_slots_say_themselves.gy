@@ -1,0 +1,66 @@
+# The void a container slot holds is the void its binding wrote (ADR 0421, roadmap Gap R.435).
+#
+# One question, asked of two neighbours: the container literal's tag gate (`literalNeedsTags`) decides
+# whether a slot needs a word of its own beside the payload, and the print road decides which printer
+# renders the object. The gate's float and verdict arms have always gone past the spelling into the
+# ADR 0172 latest-binding records; its void arm recognized only the spelled `None`, so a slot holding the
+# void THROUGH A BINDING stayed on the static int array and printed the payload the void happens to carry.
+#
+# Every line below is what CPython prints for this program.
+
+k = None
+
+# The literal, in each of its spellings: the answer the payload used to give is gone.
+print([k])
+print([k, 1])
+print([1, k])
+print([k, k])
+print([k, "a"])
+print(str([k]))
+print({k})
+print((k,))
+print({1: k})
+print({k: 1})
+print([[k]])
+print({"a": [k]})
+
+# The roads that read the literal back: the slot says what it holds, so each asks the object.
+print(len([k]))
+print(None in [k])
+print([k][0])
+print([k] + [1])
+print([k] == [None])
+print(sorted([k]))
+for v in [k]:
+    print(v)
+
+xs = [k]
+xs.append(1)
+print(xs)
+
+# The void a CALL answers — a body with no value to give back, and every in-place mutator, which the
+# reference answers the same way. The element's effect is emitted; the tag, not the payload, is printed.
+def nothing():
+    pass
+
+print([nothing()])
+print([nothing(), 1])
+print({1: nothing()})
+print({nothing()})
+print(None in [nothing()])
+print([{"a": 1}.get("z")])
+ys = [1]
+print([ys.append(2)])
+print(ys)
+
+# The gate gained an arm and changed no other answer: the spelled singleton, the single-kind numeric
+# literal, and a name the LAST binding made a number all answer as they did before.
+print([None])
+print([1, 2, 3])
+print([1.5, 2.5])
+mixed = [None, 1, "a"]
+print(mixed)
+k = 5
+print([k])
+for k in [1, 2]:
+    print([k])

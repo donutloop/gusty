@@ -1,5 +1,229 @@
 {
  "entries": {
+"a = \"z\"\nprint([a])\n": {
+    "stdout": "['z']\n",
+    "hasStdout": true
+   },
+
+"a = 1.5\nprint([a])\n": {
+    "stdout": "[1.5]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\ndef g():\n    return [f()]\nprint(g())\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint((f(),))\n": {
+    "stdout": "(None,)\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint(None in [f()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint([[f()]])\n": {
+    "stdout": "[[None]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint([f(), 1])\n": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint([f()])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint(len([f(), f()]))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint({1: f()})\n": {
+    "stdout": "{1: None}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint({f()})\n": {
+    "stdout": "{None}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nxs = [f()]\nprint(xs)\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint([f()])\nprint(len([f()]))\n": {
+    "stdout": "[None]\n1\n",
+    "hasStdout": true
+   },
+
+"k = None\nfor k in [1, 2]:\n    print([k])\n": {
+    "stdout": "[1]\n[2]\n",
+    "hasStdout": true
+   },
+
+"k = None\nfor v in [k]:\n    print(v)\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"k = None\nk = 5\nprint([k])\n": {
+    "stdout": "[5]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint((k,))\n": {
+    "stdout": "(None,)\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint(None in [k])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([1, k])\n": {
+    "stdout": "[1, None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([[k]])\n": {
+    "stdout": "[[None]]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k, \"a\"])\n": {
+    "stdout": "[None, 'a']\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k, 1])\n": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k, 1][1])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k, k])\n": {
+    "stdout": "[None, None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k] + [1])\n": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k] == [None])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k] if k == None else [])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k])\nprint([None])\nprint([1, 2, 3])\n": {
+    "stdout": "[None]\n[None]\n[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint([k][0])\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint(len([k]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint(sorted([k]))\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint(str([k]))\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint({\"a\": [k]})\n": {
+    "stdout": "{'a': [None]}\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint({1: k})\n": {
+    "stdout": "{1: None}\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint({k, 1})\n": {
+    "stdout": "{None, 1}\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint({k: 1})\n": {
+    "stdout": "{None: 1}\n",
+    "hasStdout": true
+   },
+
+"k = None\nprint({k})\n": {
+    "stdout": "{None}\n",
+    "hasStdout": true
+   },
+
+"k = None\nxs = [k]\nxs.append(1)\nprint(xs)\n": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"k = True\nprint([k])\n": {
+    "stdout": "[True]\n",
+    "hasStdout": true
+   },
+
+"print([1, 2, 3])\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"print([None])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"print([set(), list()])\n": {
+    "stdout": "[set(), []]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nprint([xs.append(2)])\nprint(xs)\n": {
+    "stdout": "[None]\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"ys = [None, 1, \"a\"]\nprint(ys)\n": {
+    "stdout": "[None, 1, 'a']\n",
+    "hasStdout": true
+   },
 "d = {\"a\": 1}\nk = \"zz\"\nprint(d[k])\n": {
     "err": "KeyError: 'zz'",
     "exnType": "KeyError",

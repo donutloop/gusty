@@ -18712,7 +18712,7 @@ is still the largest silent-wrong surface left in the tag story: any name no arm
 integer by every door that asks. That is **L11.1** — the destination, not this rung.
 
 <a id="gap-r-435"></a>
-### Gap R.435 — the void in a name, put into a list literal, prints the number its payload happens to be (⏳ OPEN, found by **ADR 0420**)
+### Gap R.435 — the void in a name, put into a list literal, prints the number its payload happens to be (✅ CLOSED by **ADR 0421**, 2026-10-24; found by **ADR 0420**)
 
 ```
 k = None
@@ -18734,6 +18734,41 @@ Byte-identical on the pre-row build `7cbffb5` and on this row's parent `2b49a2a`
 being its author. Pinned in
 `pkg/lang/none_key_label_roads_test.go::TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed` and
 `integration/none_key_label_roads_test.go::TestTheVoidKeyRoadsAnswerWrongArePinnedBesideTheReference`.
+
+**Closed (ADR 0421, 2026-10-24).** The row was one arm in the gate and one arm in the door, and the second was
+not optional: the first cut widened `literalNeedsTags` alone — `isNoneLitExpr(x)` → the new `noneSlotExpr(x)`, the
+spelled `NoneLit` **or** `g.isNoneExpr(e)` — and `def f(): pass` / `print([f()])` went from `[0]` at exit 0 to a
+REFUSAL at exit 1, because `elemsTaggable` asks `elemKindTag` whether the slot can carry a tag and that door had
+no arm for the void a CALL answers. **ADR 0249**'s rule (a gate and a door that test different things ship a
+refusal nobody measured) is the reason the pair is the unit of the change; the gate/door property case in the unit
+file asserts it over hand-built whole literals, so it fails without anyone having to compile the program that
+found it. The exemptions came from the same maps the door reads (`loopElemTag`, `nameIsContainerRecorded`), which
+is what keeps `k = None` / `for k in [1, 2]: print([k])` answering `[1]`, `[2]` instead of joining the void.
+
+The IR is the part that cannot be argued with: the void element now goes to `rt_alloc` + `rt_tag_elem(…, 3)` +
+`rt_set_elem(…, 0)` + `rt_mark_estr(…, 8)` and prints through `rt_print_list_mixed`, with the module's static
+`@.lst` array ABSENT — and the numeric control keeps `rt_print_list`, every slot tagged `TagInt`, and with it the
+fold `sum`/`min`/`max` reduce from (**ADR 0239**). 36 answered rows (23 through a binding, 13 through a CALL) on
+the compiled leg and the record leg, 31 through the CLI against a live `python3`, 9 control rows unmoved,
+`tools/recmerge` writing 45 entries from the reference (9280 → 9325) and REFUSING the 46th (`bool([k])`, whose
+compiled leg still owes **Gap R.131**), the ledger row `print([{"a": 1}.get("z")])` DELETED as paid (318 → 317),
+and `integration/programs/void_slots_say_themselves.gy` joining the corpus as an asserted `match` row.
+
+A sweep of all **9325** record sources through a `git worktree` build of this row's parent reports **20 changed
+sources: 18 of them the row's own family moving from the payload to the object, 0 regressions**, and the two
+remainders byte-identical in their failure — both are `llc` rejections whose text carries the per-run temp path,
+unchanged apart from that path. That is the honest shape of an arm in a gate: one road fixed, nothing else moved.
+
+What the sweep also left standing is the reason for four new rows, each pinned with today's bytes beside the
+reference's in both suites and each byte-identical on this row's parent: **Gap R.437** (the void through a
+parameter, or the module's void read from inside a body — the gate asks the FRAME's records and a body's map never
+received the module's), **Gap R.438** (`sum([None])` is `0` and `sorted([1, None])` produces an order the
+reference refuses to compute — the fold and the comparator ask the payload, not the kind), **Gap R.439** (a
+container the program NAMED, beside a number, prints its heap handle — the gate's container arm is
+`isContainerLiteral`, a spelling test, where the door has had the container-NAME arm since **ADR 0189**), and
+**Gap R.440** (a loop item's per-item kind, which `print(k)` reads from `loopElemTag` and the literal beside it
+does not). The first and the last are the same gate, one arm away; the middle two are **ADR 0239**'s fold, which
+this row deliberately did not touch.
 
 <a id="gap-r-436"></a>
 ### Gap R.436 — the operator road over a dict entry addressed by a bound number key refuses where the const-key twin answers (⏳ OPEN, found by **ADR 0420**)
@@ -18759,3 +18794,101 @@ why this one names its sibling rather than growing a private fix.
 
 Measured on the same sweep as **Gap R.435**, byte-identical on `7cbffb5`; pinned in both suites with the
 refusal text itself, so closing the row fails the pin.
+
+<a id="gap-r-437"></a>
+### Gap R.437 — the void that arrives through a frame's front door never reaches the slot's tag (⏳ OPEN, found by **ADR 0421**)
+
+```
+def g(v):
+    return [v]
+print(g(None))            #  reference: [None]      this backend: [0]  exit 0
+
+k = None
+def g():
+    print([k])
+g()                       #  reference: [None]      this backend: [0]  exit 0
+```
+
+**ADR 0421** answered the module's own `k = None` / `print([k])` by putting the void arm in the gate, and both
+of these shapes are unmoved on that commit's parent and on the commit itself. The reason is one level down
+from the gate: `isNoneExpr` answers a NAME from `g.noneVars`, and the per-body compile (`codegen.go`'s
+save/reset around each function) gives a body a FRESH map — so a parameter, whose value the call site holds,
+and a module name read from inside a body, whose binding the module made, are both invisible to the arm. The
+read road has the same blindness and has had it longer: `def g(v): print(v)` over a void argument prints the
+payload too, which is the shape **ADR 0395** had to solve for the frame's own captures.
+
+The direction is the one **ADR 0273** took for the (payload, tag) pair at the call boundary: the kind of a
+parameter is a fact the caller knows and the callee never learns, so it travels — as an extra IR parameter
+beside the word (**ADR 0395**'s minted-clone shape), or as a record the call site seeds into the body's
+`noneVars`/`boolVars` before the body is walked. Either way the row's own gate is the pair of programs above,
+answered at exit 0 on both legs, and the pins in `pkg/lang/void_slot_literal_test.go` and
+`integration/void_slot_literal_test.go` are DELETED, not edited.
+
+<a id="gap-r-438"></a>
+### Gap R.438 — the fold and the comparator ask the payload and never ask the kind (⏳ OPEN, found by **ADR 0421**)
+
+```
+print(sum([None]))          #  reference: TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'
+                            #  this backend: 0   at exit 0
+print(sorted([1, None]))    #  reference: TypeError: '<' not supported between instances of 'NoneType' and 'int'
+                            #  this backend: [None, 1]   at exit 0
+```
+
+This is the worst shape of the void family, because the program that should DIE answers: the fold reads the
+static array's words and adds them, and the comparator orders by the same words, so `None` sorts below `1`
+in a language where the reference refuses to compare them. Neither door is this row's — the fold is
+**ADR 0239**'s static-array road (whose Definition of done names the runtime reduction it still lacks) and the
+ordering is **ADR 0252**'s comparator; both already know how to raise CPython's own sentence when they are
+told the KIND (`@rt_num_arith` per **ADR 0265**, `@rt_pair_order` per **ADR 0318**), and neither is told here,
+because the fold asks its question of the WHOLE literal, not of the slot it is adding.
+
+Measured unchanged on **ADR 0421**'s parent, which is what keeps filing honest: the commit that gave the
+literal's slot a kind did not, and could not without widening the fold, pay this row. `sorted([None])` — the
+single-element sort, whose answer is `[None]` — already matches the reference and is asserted as an answering
+row, so the row's boundary is the ORDER, not the print.
+
+<a id="gap-r-439"></a>
+### Gap R.439 — a container the program NAMED, put into a literal beside a number, prints its allocator's slot (⏳ OPEN, found by **ADR 0421**)
+
+```
+xs = [1]
+print([xs, 2])       #  reference: [[1], 2]      this backend: [0, 2]   exit 0
+ys = [2]
+print([xs, ys])      #  reference: [[1], [2]]    this backend: [0, 1]   exit 0
+```
+
+The two numbers are heap slots: the allocator's own handles, printed as integers. Two neighbouring shapes
+answer, and they are the measurement that localises the defect — `print([1, [2]])` (the container spelled
+inside the literal) and `print([[xs], 2])` (the container inside a container inside the literal) both print
+the nested object, so the BUILDER writes the handle and the tag and the PRINTER routes it to the container
+printer. What does not work is a literal whose element is a NAME holding a container: `literalNeedsTags`'
+container arm is `isContainerLiteral`, a spelling test, while `elemKindTag` has had the container-NAME arm
+since **ADR 0189** (`taggableNestedElem` plus the `listVars`/`runtimeDicts`/`runtimeSets` census). One door
+knows the object; the gate never asked.
+
+It is the same one line of the gate **ADR 0421** widened for the void, one arm further along, and it is filed
+separately because it is not free: a name the compiler believes holds a container has to stop being an `i32`
+to the fold, and `sum`/`min`/`max` read that fold (**ADR 0239**). The row's own gate is the two programs
+above answered as the reference answers them, plus `len`, `in`, a subscript of the inner list and `==`.
+
+<a id="gap-r-440"></a>
+### Gap R.440 — a loop item's own kind is asked by the print and not by the literal beside it (⏳ OPEN, found by **ADR 0421**)
+
+```
+for k in [None, 1.5]:
+    print([k])       #  reference: [None]  then [1.5]
+                     #  this backend: [0]   then [1]     at exit 0
+```
+
+The unroll already records the item's kind once per iteration — `g.loopElemTag`, written by ADR 0233's
+unrolled-element tagging and read by `elemKindTag` and `elemTagFor` since **Gap R.358** — and `print(k)` uses
+it: the same loop with `print(k)` writes `None`, `1.5`. The literal on the next line asks the name's spelling
+instead, so the two statements in one body disagree about what `k` is, which is the signature this whole
+family keeps showing: two neighbours, one question, asked of the object by only one of them.
+
+Filed apart from **Gap R.435** rather than widened into it because the widening has a cost the sibling did
+not: putting `loopElemTag` into the gate's float arm moves a NUMERIC loop's literal onto the tagged road too,
+and that road is the one `sum`/`min`/`max` fold from (**ADR 0239**). The row's own gate therefore has two
+halves — the loop above answers `[None]`, `[1.5]`, and `for k in [1, 2]: print(sum([k]))` still answers from
+the static array. Measured byte-identical on **ADR 0421**'s parent.
+

@@ -587,18 +587,6 @@ func TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 				"carries one word",
 		},
 		{
-			// Measured while this row opened the read door, and byte-identical on its parent
-			// (`/tmp/gusty.stub` at 7cbffb5 prints `[0]` too): the ENTRY is the void, the read is the pair door's,
-			// and the LIST literal beside it records one element kind for the whole literal, so the void's
-			// payload reaches the screen as the number 0. `ys = [None, 1, "a"]` prints `[None, 1, 'a']`, so the
-			// mixed-list road is sound; it is the single-kind record that outranks the element's own kind.
-			name:     "the void in a name, put into a list literal",
-			src:      "k = None\nprint([k])\n",
-			wantExit: 0, wantOut: "[0]\n",
-			dossier: "**Gap R.435** — the reference prints `[None]`; the literal's recorded element kind outranks " +
-				"the element's own, and the void's payload prints as the number 0",
-		},
-		{
 			// The number twin of the row this commit closes, measured on the pre-row build and on this row's parent too (all three refuse):
 			// the READ answers (`d = {None: 1, 0: 2}` / `k = 0` / `print(d[k])` is `2`) and the CONST-key twin
 			// answers since ADR 0419 (`print(s[0] + "!!")` is `zero!!`), but the operator road over an entry

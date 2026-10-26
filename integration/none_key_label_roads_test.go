@@ -220,8 +220,6 @@ func TestTheVoidKeyRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 			"Gap R.434 (the same door, the concatenation arm: the slot's tuple is a list by the time the runtime asks)"},
 		{"a_fractional_slot_through_max_into_a_call", "def f(v):\n    return v\nd = {None: 3.5}\nprint(f(max(d[None], 2)))\n", 0, "3\n", "3.5\n",
 			"Gap R.433 (the min/max fold declines a fractional slot read, and the pair road carries one word)"},
-		{"the_void_in_a_name_put_into_a_list_literal", "k = None\nprint([k])\n", 0, "[0]\n", "[None]\n",
-			"Gap R.435 (the list literal's recorded element kind outranks the element's own kind)"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

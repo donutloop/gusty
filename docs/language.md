@@ -1494,10 +1494,11 @@ Rules that the compiled backend implement:
   `print(d[(1, 2)])` prints `x`, `print((1, 2) in d)` prints `1`, a tuple key added at run time (`e[(5, 6)] = 7`) reads
   back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
   object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says
-  `'list'`, the reference's left-to-right hashability walk). What the same read still cannot reach is
+  `'list'`, the reference's left-to-right hashability walk). What the same read could not reach was
   two rows, each pinned with today's answer beside the reference's: a **name** whose last binding was `None`,
-  which arrives as an untagged word and raises `KeyError` where the reference prints the entry (**R.286**),
-  and a **set** entry, whose tag the builders never write, so it prints its handle and is truthy (**R.360**).
+  which arrived as an untagged word and raised `KeyError` where the reference prints the entry (paid below by
+  **ADR 0420**), and a **set** entry, whose tag the builders never write, so it prints its handle and is
+  truthy (**R.360**).
   `+`/`*` over the entry are **paid**: `d = {None: "a"}` answers `print(d[None] + "b")` with `ab` and
   `print(d[None] * 2)` with `aa`, as do the method road (`d[None].upper()`), the length road, the
   interpolation field, `str`/`repr`, the equality door, the condition door, a container element, a call
@@ -1543,12 +1544,43 @@ Rules that the compiled backend implement:
   print(z[k])                    # KeyError: None — a miss names the void, and a bound text names itself
   ```
 
-  What it does not reach, each pinned with today's answer beside the reference's: a **list literal** beside a bound
-  void prints the payload (`[k]` is `[0]`, not `[None]`) because the literal records one element kind for all its
-  slots (**R.435**); an operator road over an entry addressed by a bound **number** key refuses, because the door can
+  What it does not reach, each pinned with today's answer beside the reference's: an operator road over an entry
+  addressed by a bound **number** key refuses, because the door can
   retire a void and has no number's value to retire (**R.436**, whose other half is **R.189**'s `KeyError: 5`); and a
   bound **verdict** key that misses says `key not found`, because the record says a name holds a verdict and not which
   one. The blanket "it is an integer" that `elemKindTag` falls back to for a name no arm recognises is **L11.1**.
+
+  **The container literal asks the same question the print road asks** (**R.435**, **ADR 0421**). A slot whose value
+  arrived through a binding, rather than being spelled, used to be built by the cheap road — one recorded element
+  kind for the whole literal, no tag beside the payload — and the screen printed the void's payload, which is the
+  number `0`:
+
+  ```gusty
+  k = None
+  print([k])            # None  (was [0], at the exit code of success; print([None]) had always been right)
+  print([k, 1])         # [None, 1]
+  print({k})            # {None}          print((k,)) → (None,)
+  print({1: k})         # {1: None}       print({k: 1}) → {None: 1}
+  print([k][0])         # None            print(None in [k]) → True     print(len([k])) → 1
+  def nothing():
+      pass
+  print([nothing()])    # [None]          — the void a BODY answers, and every in-place mutator's answer
+  xs = [1]
+  print([xs.append(2)]) # [None]          — the list still GREW; only the element is the void
+  print([None])         # [None]          — the spelled singleton, and the mixed sibling, untouched
+  k = 5
+  print([k])            # [5]             — the LAST binding is the truth (ADR 0172)
+  ```
+
+  The gate that chooses the cheap road and the door that labels the slot now ask **one** predicate, the ADR 0172
+  record print, `str`, truthiness and equality already live by, and they carry the same two exemptions (a name the
+  unroll tagged is THIS item; a name the container records claim holds a handle the object describes). A `None` that
+  reaches a slot is a `TagNone` slot: the builder forces its payload to `0`, the object says its slots are the truth,
+  and the mixed printer walks the pair — the static `int` array the numeric literal still folds from is left alone,
+  so `sum`, `min` and `max` kept **ADR 0239**'s fold. What the arm still cannot see is a void that arrives through a
+  frame's front door, a container the program NAMED sitting beside a number, and a loop item's own kind — **R.437**,
+  **R.439** and **R.440**, each pinned with today's bytes beside the reference's; and the fold that adds a void's
+  payload instead of raising is **R.438**.
 
   A `None` key is therefore not the number `0` to this backend even though the constant fold reads a
   `NoneLit` as `0`: the key door answers the void FIRST, before any number arm can reach it. `1`, `True` and
