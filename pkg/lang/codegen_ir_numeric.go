@@ -24,6 +24,13 @@ package lang
 const numArithRuntimeIRTmpl = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
 @rt.num.negfmt = private constant [46 x i8] c"TypeError: bad operand type for unary -: '%s'\00"
 @rt.num.absfmt = private constant [44 x i8] c"TypeError: bad operand type for abs(): '%s'\00"
+; The third sentence the reference writes for the plus operator, for the three kinds that know how to
+; concatenate: str + int, list + int and tuple + int are not "unsupported operand" at all, they are the
+; concatenation method reporting what it was handed — can only concatenate str (not "int") to str. dict,
+; set, None and an instance have no concat method for a number and DO write the generic sentence, which is
+; why the arm below tests three tags and not "anything that is not a number" (roadmap Gap R.442, ADR 0265's
+; per-kind rule).
+@rt.num.catfmt = private constant [52 x i8] c"TypeError: can only concatenate %s (not \22%s\22) to %s\00"
 @rt.num.ofmt = private constant [121 x i8] c"OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)\00"
 @rt.num.msg = private global [192 x i8] zeroinitializer
 @rt.k.int = private constant [4 x i8] c"int\00"
@@ -106,6 +113,25 @@ neg:
   ret void
 bin:
   %o0 = icmp eq i32 %op, 0
+  ; The plus operator over a text, a list or a tuple is answered by the reference with a DIFFERENT sentence
+  ; from every other operator and every other kind: the concatenation method's own complaint, which names
+  ; the left operand's kind twice and the right operand's once, in double quotes rather than single. Handing
+  ; it to the generic format answered unsupported operand type(s) for +: 'str' and 'int' at the exit code of
+  ; the trap for a program whose own except-TYPE-ERROR prints the sentence (ADR 0271's rule — one trap, one
+  ; wording — and ADR 0166's that the sentence is the program's, not the compiler's).
+  %cs = icmp eq i32 %lt, 4
+  %cl = icmp eq i32 %lt, 5
+  %ct = icmp eq i32 %lt, 8
+  %co1 = or i1 %cs, %cl
+  %co = or i1 %co1, %ct
+  %isconcat = and i1 %o0, %co
+  br i1 %isconcat, label %concat, label %generic
+concat:
+  %ln2 = call i8* @rt_kind_name(i32 %lt)
+  %rn2 = call i8* @rt_kind_name(i32 %rt)
+  %w2 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([52 x i8], [52 x i8]* @rt.num.catfmt, i32 0, i32 0), i8* %ln2, i8* %rn2, i8* %ln2)
+  ret void
+generic:
   %o1 = icmp eq i32 %op, 1
   %o2 = icmp eq i32 %op, 2
   %o4 = icmp eq i32 %op, 4

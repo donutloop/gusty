@@ -18984,7 +18984,7 @@ A **9394**-source sweep of the record corpus through both builds reports **9352 
 directory. `tools/recmerge` wrote **69** entries (**9325 → 9394**) and REFUSED four whose compiled leg
 disagrees; those four are pinned below with the rows that own them.
 
-### Gap R.442 — the positions a promotion exposes (⏳ OPEN, found by **ADR 0422**)
+### Gap R.442 — the positions a promotion exposes (✅ CLOSED by **ADR 0423**, found by **ADR 0422**)
 
 A promotion is not free, and the honest ledger has to record what it cost. Three programs moved from an
 answer to a refusal:
@@ -19005,6 +19005,58 @@ slot read, which works from the literal the container was built from — once a 
 the slots there is no literal left to consult. The fix is **ADR 0331**'s tagged value word arriving at those
 positions, which is a row of its own.
 
+**How it was paid — 2026-10-26, ADR 0423.** The row had already written its own prescription — *“give the
+chained comparison and the numeric-use door the same pair door the print, the binding and the loop already
+ask … which is **ADR 0331**'s tagged value word arriving at the position”* — and this cycle is that plan
+executed, with one finding the filing did not know: the chain is a *value position* exactly like the binding,
+the print, the loop and the argument, and at a dict entry it had not been refusing at all, it was answering
+from an address. The fix is therefore not a comparison road but a question asked of each operand **before**
+anything is lowered — `chainOperandCarriesMoreThanAWord` in the new `pkg/lang/chain_operand.go` — and the three
+doors the neighbouring positions already ask, in the order the binding asks them (`comparePair`,
+`assignPairWords`, the float road). The purity of the gate is not hygiene: the chain's reason for existing is
+that an operand is evaluated once (**ADR 0288**), so a door that lowers into the module and then changes its
+mind has already broken the property it was asked to repair. Every arm therefore builds into a scratch buffer
+and is committed only once it has answered, and the gate itself is asserted pure by running one source through
+`GenerateIR` twice.
+
+The table above's four rows, in the same order, today: `True`, `False`, `3.5` / `[None]`, and the `sorted`
+row unchanged on **Gap R.438** — which is the honest remainder, because that one is the comparator's door, not
+the chain's.
+
+What the sweep added to the row's own account of itself is the pair of shapes it had not looked for:
+
+| program | reference | the row's parent | today |
+|---|---|---|---|
+| `d = {"a": 2.5}` / `print(0 < d["a"] < 3)` | `True` | `False`, exit 0 | `True` |
+| `d = {"a": "x"}` / `print(0 < d["a"] < 3)` | `TypeError: '<' not supported between instances of 'int' and 'str'` | `True`, exit 0 | the raise, exit 3 |
+| `a = 1.0` / `b = 2.0` / `print(0 < a + b < 4)` | `True` | `False`, exit 0 | `True` |
+| `print(0 < abs(-2.5) < 3)`, `print(0 < g() < 3)` of a float-returning `def` | `True` | `store i32 %t1, i32* %_chain1` over a `double` → `llc` rejects → **exit 2** | `True` |
+
+The last row is the one a reader should hold on to: the chain had been spending the exit-code contract's
+"the compiler is broken" code (**ADR 0166**) on the compiler's own module, and it had been doing it quietly,
+because the module that fails `llc` is a compile artifact and no record entry covers it. A wrong answer at
+exit 0 and a rejected module are the same defect wearing two faces, and the sweep that fixed one fixed the
+other because both were the missing second word.
+
+The third leg of the row is the arithmetic door, which the same sweep caught refusing where the reference
+raises: `s + 1`, `xs[0] + 1`, `f() + 1` beside a number the SOURCE spells were compile-time refusals, because
+**ADR 0265**'s gate asked both operands to be proven numeric slots. The guard exists for two shapes —
+`"a" + "b"` and `[1] * 2` — and neither survives an integer literal on the other side of `+`, so the gate now
+opens for exactly that shape and the tags decide the answer. `*` and `%` were left alone on purpose: the
+reference answers `xs[0] * 2` over a list slot *with a list*, which is the shape the proof was written for.
+What the widening refused to buy is recorded in the ADR: a class, an instance and a function stay behind the
+door, because their int half is a heap pointer and the pair road would happily add it to `1` and print the
+sum — which `print(C() + 1)` answering `1` (at the parent, and still today, owned by **Gap R.150**'s family)
+shows is a live trap rather than a hypothetical one.
+
+The sweep's last finding is a wording one, and it belongs to **ADR 0271**: `text + number` and
+`list + number` are not "unsupported operand" to the reference, they are the concatenation method reporting
+what it was handed, so `@rt_num_arith` now writes `can only concatenate %s (not "%s") to %s` for the three
+kinds that have one — left tag only, because CPython's own message for `1 + [1]` really is the generic one.
+
+Two rows the same sweep surfaced are filed rather than fixed (**Gap R.443**, **Gap R.444** below), each pinned
+with today's bytes beside the reference's in `pkg/lang/chain_operand_test.go`.
+
 ### What the promotion re-named — the refusals a reader of this row will try next
 
 Pinned beside the answering family with their owners, none of them this row's debt: `sum`/`min` over a
@@ -19014,3 +19066,51 @@ store through a subscript rather than a name (**Gap R.381** — the READ side of
 **Gap R.214**/**ADR 0334**), the store from inside a body over a module container (**Gap R.35**), a stored
 `lambda` (**Gap R.150**/**Gap R.151**/**ADR 0283**), and a stored `range`, which prints its loop word
 (**Gap R.293**) unchanged on the parent because there was never a tag there to ask.
+
+### Gap R.443 — the loop item is still a one-word chain operand (⏳ OPEN, found by **ADR 0423**)
+
+```
+for v in [None, 2.5]:
+    print(0 < v < 3)      #  TypeError on the FIRST item in the reference
+                          #  False, False at exit 0 here
+```
+
+**ADR 0423** gave the chain a gate, and the gate reads the records a *binding* leaves: `numericPairVar`,
+`taggedVars`, `isFloat`. A `for` item is not bound by the binding road. The loop keeps its own per-item tag
+record — `loopElemTag`, the thing **Gap R.440** was filed for one position over — and this gate does not read
+it. So the loop item walks the ordinary arm, the void's `0` lands in the chain's four bytes, and
+`0 < 0 < 3` is a perfectly good `False`.
+
+Byte-identical on **Gap R.442**'s parent, which is the honest part: the gate is new, and this origin was not
+in it. It is not a promise **ADR 0423** broke; it is the same hole with one more door into it, and the pin
+says so with today's bytes (`TestWhatTheChainStillOwesIsFiledNotFixed`, "the loop item the for road bound").
+
+Two ways out, and the row should pick the cheap one: have the `for` road leave the pair record the ordinary
+binding leaves — which is **Gap R.146**'s standing at a fourth origin, and touches the loop — or have the gate
+also ask `loopElemTag`, which touches only the gate. The second is where **ADR 0423**'s own file says a new
+operand class goes: *"a future operand class (an iterator, a range, a class object) is added to the gate, and
+if the pair doors decline, to the float net — not to a fourth road inside the chain."*
+
+### Gap R.444 — the concatenation sentence blames the list when the operand is a tuple (⏳ OPEN, found by **ADR 0423**)
+
+```
+xs = []
+xs.append((1,))
+print(xs[0] + 1)          #  TypeError: can only concatenate tuple (not "int") to tuple   reference
+                          #  TypeError: can only concatenate list (not "int") to list     here
+```
+
+The trap arrived with **Gap R.442** — the parent refused this program outright — and the sentence arrived with
+**ADR 0423**'s concatenation arm. The class in it is wrong, and a wrong class in a trap message is a wrong
+sentence, not a near-miss: a program that writes `except TypeError` and prints the message, or matches on the
+word `tuple`, sees the wrong program. **ADR 0271**'s rule is one trap, one wording; this is one trap, one
+borrowed noun.
+
+The cause is a naming seam rather than a bug. A tuple *is* a list to this backend's payload (**ADR 0251**'s
+immutable spelling), and the runtime tells them apart from the object — `rt_kind_name` answers `tuple`, which
+is why the `@rt.num.catfmt` arm is right for anything that reaches it. What went wrong is the compile-time
+choice of the sentence for an operand the SOURCE spells: it reads the value **kind**, and the kind says list.
+The print road has the same problem and already solved it — `tupleVars` records the names whose latest binding
+is a tuple literal, and `g.tupleVars[nm.Value]` is how `print(t)` picks the bracketed printer
+(**ADR 0172**'s latest-binding rule, **Gap R.142**'s lesson). The fix is to ask the same question here: the
+AST for a literal `(1, 2)`, `tupleVars` for a name.

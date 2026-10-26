@@ -47,6 +47,16 @@ func TestCLIAgentTheFoldBuiltinsAnswerThePairAgreesWithCPython(t *testing.T) {
 		{"an int slot — the literal on the left", foldCLIIntSlot + "print(min(3, n))\n"},
 		{"an int slot — the slot on the left of a bigger literal", foldCLIIntSlot + "print(max(3, n))\n"},
 		{"an int slot — the slot against itself", foldCLIIntSlot + "print(min(n, n))\n"},
+		{
+			// The row that left the refusal table below with **ADR 0423**: `+` beside a number the SOURCE
+			// spells needs no proof of what the winner is, because the operator can only add or raise.
+			"an int slot — the bound winner beside a spelled number",
+			foldCLIIntSlot + "m = min(n, 3)\nprint(m + 1)\n",
+		},
+		{
+			"a float slot — the bound winner beside a spelled number",
+			foldCLIFloatSlot + "m = max(n, 1)\nprint(m + 1)\n",
+		},
 		{"an int slot — three candidates", foldCLIIntSlot + "print(min(n, 3, 1))\n"},
 		{"an int slot — a double it beats", foldCLIIntSlot + "print(max(n, 2.5))\n"},
 		{"an int slot — a double that beats it", foldCLIIntSlot + "print(min(n, 2.5))\n"},
@@ -208,7 +218,10 @@ func TestCLIAgentWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) 
 	for _, tc := range []struct{ name, src, want string }{
 		{"a fold answer as an arithmetic operand", foldCLIIntSlot + "print(min(n, 3) + 1)\n", "one word"},
 		{"a fold answer as an abs operand", foldCLIIntSlot + "print(abs(min(n, 3)))\n", "one word"},
-		{"a bound fold answer as an arithmetic operand", foldCLIIntSlot + "m = min(n, 3)\nprint(m + 1)\n", "the answer of a fold the built-in chose"},
+		// `m = min(n, 3)` / `print(m + 1)` used to be on this table: a bound fold answer beside a number the
+		// SOURCE spells answers now, because no winner the built-in can choose turns `+` into anything but a
+		// number or a raise (`plusBesideASpelledNumber`, roadmap Gap R.442, **ADR 0423**). The row lives in
+		// the agreement table above; a row that stops refusing moves, it does not disappear.
 		{"a bound fold answer in an ordering", foldCLIIntSlot + "m = min(n, 3)\nprint(m > 1)\n", "the answer of a fold the built-in chose"},
 		{"a fold over a set literal", foldCLIIntSlot + "print(min({n, 3}))\n", "one word"},
 		{"a container literal as a fold operand", foldCLIIntSlot + "print(sum([n, [1]]))\n", "sum adds numbers"},

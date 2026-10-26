@@ -75,6 +75,24 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 	words := make([]string, len(n.Operands))
 	operandName := make([]string, len(n.Operands))
 	for i, o := range n.Operands {
+		// Asked BEFORE any operand is lowered: does this value travel as more than one word? A slot whose
+		// kind the object carries and a double do not fit the `store i32` below, and lowering them through
+		// the ordinary road is what refused the first and silently truncated the second (chain_operand.go;
+		// roadmap L11.1 / Gap R.442, ADR 0331's tagged value word at this position).
+		if g.chainOperandCarriesMoreThanAWord(o) {
+			g.ldN++
+			pairSlot := fmt.Sprintf("chain%d", g.ldN)
+			bound, berr := g.bindChainOperand(b, o, pairSlot)
+			if berr != nil {
+				return "", berr
+			}
+			if bound {
+				// Every link reads the slot's NAME, which is what lets the comparison roads ask it the
+				// tag question they already answer for any other pair-bound local.
+				operandName[i] = pairSlot
+				continue
+			}
+		}
 		if chainOperandIsCheap(o) {
 			// A literal or a plain name reads a value and does nothing else, so it may be lowered
 			// at each use; giving it a slot would add a store, and a store is a chance to be

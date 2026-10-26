@@ -88,6 +88,17 @@ func TestAFoldAnswersWithTheWinnersOwnKind(t *testing.T) {
 		{"a bound min renders through repr", foldFloatSlot + "m = max(n, 1)\nprint(repr(m))\n", "2.5\n"},
 		{"a bound min fills an f-string field", foldFloatSlot + "m = min(n, 3)\nprint(f\"{m}\")\n", "2.5\n"},
 		{"a bound min is folded again by a second fold", foldIntSlot + "m = min(n, 3)\nprint(max(m, 5))\n", "5\n"},
+		{
+			// `m + 1` — the bound fold answer beside a number the source spells. It used to be a refusal row
+			// below; `plusBesideASpelledNumber` opens it, and the raise for a text winner is the reference's
+			// own concatenation sentence (roadmap Gap R.442, ADR 0265's gate widened at one operand kind).
+			"a bound min is added to a spelled number",
+			foldIntSlot + "m = min(n, 3)\nprint(m + 1)\n", "4\n",
+		},
+		{
+			"a bound max keeps the winner's float beside a spelled number",
+			foldFloatSlot + "m = max(n, 1)\nprint(m + 1)\n", "3.5\n",
+		},
 		{"a bound sum of a float slot", foldFloatSlot + "m = sum([n, 1])\nprint(m)\n", "3.5\n"},
 	} {
 		tc := tc
@@ -407,9 +418,10 @@ func TestTheFoldDoorIsAskedOnlyOfTheShapeItOwns(t *testing.T) {
 // door stops. Three classes remain, each naming the origin, the missing half and the row — and none of them
 // allowed to spend the exit-code contract's "the compiler is broken" code (ADR 0166):
 //
-//   - the fold answer used where ONE word is kept (`min(n, 3) + 1`, `abs(min(n, 3))`, `m + 1`, `m > 1`).
+//   - the fold answer used where ONE word is kept (`min(n, 3) + 1`, `abs(min(n, 3))`, `m > 1`).
 //     The arithmetic door is asked of a fold's ARGUMENT and never of the fold, which is the recursion ADR 0309
-//     had to kill and the truncation Gap R.161 measures;
+//     had to kill and the truncation Gap R.161 measures; `m + 1` left this table for the one operand shape
+//     where one word is enough — a number the source spells on the other side of `+` (Gap R.442);
 //   - a fold over a set literal, whose element set and order are the objects' hash fact and not the source's
 //     (Gap R.198) — folding the source order would answer `sum({n, 3})` as 6 where the reference answers 3;
 //   - a container literal as a fold operand (Gap R.198), which the operand lowering will not label.
@@ -423,9 +435,12 @@ func TestWhatTheFoldDoorStillRefusesIsStillRefusedInWords(t *testing.T) {
 			[]string{"(payload, tag) pair", "one word", "roadmap L11.1"}},
 		{"a fold answer as an abs operand", foldIntSlot + "print(abs(min(n, 3)))\n",
 			[]string{"(payload, tag) pair", "one word", "roadmap L11.1"}},
-		{"a bound fold answer as an arithmetic operand", foldIntSlot + "m = min(n, 3)\nprint(m + 1)\n",
-			[]string{"the answer of a fold the built-in chose", "(payload, tag) pair", "roadmap L11.1"}},
-		{"a bound fold answer in an ordering", foldIntSlot + "m = min(n, 3)\nprint(m > 1)\n",
+		{
+			// `m = min(n, 3)` / `print(m + 1)` used to be on this table: a bound fold answer beside a number
+			// the SOURCE spells answers now, because no tag the winner can carry turns `+` into anything but
+			// a number or a raise (`plusBesideASpelledNumber`, roadmap Gap R.442). The row lives in the
+			// answering table of this file; a row that stops refusing moves, it does not disappear.
+			"a bound fold answer in an ordering", foldIntSlot + "m = min(n, 3)\nprint(m > 1)\n",
 			[]string{"the answer of a fold the built-in chose", "roadmap L11.1"}},
 		{"a fold over a set literal", foldIntSlot + "print(min({n, 3}))\n",
 			[]string{"(payload, tag) pair", "one word", "roadmap L11.1"}},

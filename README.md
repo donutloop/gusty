@@ -3140,6 +3140,40 @@ falls back to dynamic dispatch.
   item's own kind, which `print(k)` reads from the unroll's record and the literal beside it does not).
 
 
+- **A comparison chain asks each of its operands what it CARRIES (Gap R.442, **ADR 0423**)** —
+  `xs = [1, 2]` / `xs[0] = 2.5` / `print(0 < xs[0] < 3)` said *"this context needs a single static kind"*
+  where CPython prints **`True`**; `d = {"a": 2.5}` / `print(0 < d["a"] < 3)` printed **`False`** and
+  `d = {"a": "x"}` printed **`True`**, both at the **exit code of success**; and
+  `print(0 < abs(-2.5) < 3)` reached `llc` as `store i32 %t1, i32* %_chain1` over a `double` — the
+  exit-code contract's **exit 2** (ADR 0166), spent on the compiler's own module. One cause: the chain stores
+  each operand once so the middle is evaluated once (**ADR 0288**), and the store it wrote was ONE WORD, while
+  a value in this language is a `(payload, tag)` pair (**ADR 0331**) — the dict entry's payload is a
+  `@float_box` handle, a `@str_tab` index, the void's `0`: numbers for reasons that have nothing to do with
+  the value. The fix is one pure question asked BEFORE lowering (`chainOperandCarriesMoreThanAWord`) and the
+  THREE doors the neighbouring positions already ask, in the binding road's order — `comparePair` (the door
+  the single-comparison form of the SAME program already answers with, **ADR 0232**), `assignPairWords`, then
+  the float road as the net between "a double" and `store i32` over a double — each arm building into scratch
+  and committing only once it answered, because a door that changes its mind halfway has already evaluated the
+  operand twice. The same sweep paid two neighbours: **`+` beside a number the SOURCE spells** (the two shapes
+  **ADR 0265**'s proof exists for — `"a" + "b"`, `[1] * 2` — are unreachable with an integer literal on the
+  other side of `+`, so `*` and `%` keep the proof and `+` asks the two tags; a class, an instance and a
+  function stay behind the door, because an object's int half is a pointer and `print(C() + 1)` answering `1`
+  is the trap that would have shipped), and **the sentence the trap wore**: `text + number` and
+  `list + number` are not "unsupported operand" to CPython, they are the concatenation method reporting what
+  it was handed, so `@rt_num_arith` writes `can only concatenate %s (not "%s") to %s` for the three kinds that
+  have one, LEFT tag only, which is what CPython does. A **25-program sweep** through the rebuilt parent:
+  **10 improved / 0 regressed / 13 already correct / 2 still owed** — 7 refusals became answers, 3 wrong
+  answers at exit 0 became right, 2 were exit-2 module rejections. `pkg/lang/chain_operand_test.go` NEW
+  (**19** answering rows on the compiled leg AND the record leg, **3** trap rows, **5**+**2** IR rows asserting
+  the pair-bound chain slot and the untouched cheap one, **5** gate-purity rows, **1** white-box row asking the
+  double door itself, **2** pins); `tools/recmerge` wrote **27** entries from the reference with the compiled
+  leg cross-checked (**9394 → 9421**), refused none; the pins **ADR 0422** left MOVED rather than disappeared.
+  Two rows the sweep surfaced are FILED with today's bytes: **Gap R.443** (the loop item is still a one-word
+  chain operand — the `for` road keeps its own per-item tag and the gate does not read it, so
+  `for v in [None, 2.5]:` `print(0 < v < 3)` answers `False` `False`) and **Gap R.444** (the concatenation
+  sentence blames the **list** when the operand is a **tuple** — right trap, wrong class, **ADR 0251**'s tuple
+  being a list to the payload).
+
 - **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
   the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
   **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all

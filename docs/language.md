@@ -2618,6 +2618,26 @@ A chain's operands may be anything a comparison accepts, including something com
 operand is a **container** answers on the record and refuses on the compiled leg, where a container is a
 global rather than a word — `Gap R.53` keeps that half open until L11.1's tagged value word lands.
 
+An operand whose kind the **object** carries is not a refusal either (ADR 0423, paying `Gap R.442`). The chain
+asks each operand what it carries before lowering anything, and binds its one evaluation slot with the answer
+— a `(payload, tag)` pair for a slot the container's own census describes, a `double` for a floating value:
+
+```
+xs = [1, 2]
+xs[0] = 2.5
+print(0 < xs[0] < 3)      # True    — and False for 5.5, not for the number the store never wrote
+d = {"a": 2.5}
+print(0 < d["a"] < 3)     # True    — the entry's tag decides, not the handle the entry is stored in
+d = {"a": "x"}
+print(0 < d["a"] < 3)     # TypeError: '<' not supported between instances of 'int' and 'str'
+print(0 < abs(-2.5) < 3)  # True    — this reached `llc` as store i32 over a double, which is exit 2
+```
+
+The links themselves are the ordinary comparison roads, so `0 < v < 3` over a text raises the reference's
+sentence at the trap's exit code rather than answering `False`. What is still owed at this position is the
+**loop item**: `for v in [None, 2.5]:` `print(0 < v < 3)` answers `False` `False`, because the loop keeps its
+per-item tag in a record this gate does not read yet (`Gap R.443`).
+
 `a < b and b < c` is **not** a chain: it is two comparisons joined by `and`, and `and` short-circuits. Before
 ADR 0288 the grammar parsed chains left-associatively as `(a < b) < c`, which compares an int against a
 boolean — a question this front end answers rather than refusing, so `print(1 > 2 < 3)` printed `True` where
@@ -3956,19 +3976,23 @@ print(xs)             # [True]
 ```
 
 A store of a plain number into a numeric list is untouched by this: the container keeps its single
-kind, the plain printer, and the static array `sum`/`min`/`max` fold from (ADR 0239). What the
-promotion does cost is visible at the positions that cannot carry a tag — a chained comparison over a
-slot, or a numeric use of a slot a run-time index wrote — which report instead of answering from the
-payload they cannot read (roadmap Gap R.82, Gap R.441, Gap R.442).
+kind, the plain printer, and the static array `sum`/`min`/`max` fold from (ADR 0239). What the promotion
+used to cost — a chained comparison over a promoted slot, or a numeric use of a slot a run-time index
+wrote, each refusing where the reference answers — is paid: the chain asks its operand what it carries and
+binds the pair (ADR 0423, paying Gap R.442), and `+` beside a number the source spells asks the two tags
+rather than the notebook. What still reports rather than answering from a payload is the **comparator**
+over a promoted list (`sorted(xs)`, Gap R.438 / ADR 0191) and the **loop item** at a chain
+(Gap R.443).
 
 Reading one element out produces the pair as well, and three uses of it are open:
 `print(xs[i])` dispatches on the tag, `xs[i] == [1, 2]` and `2 in xs[i]` compare through
 `rt_container_eq`, and `v = xs[i]` binds a *tagged variable* — the same
 `(value, tag)` binding a loop variable gets, so `print(v)` renders `str()` (`a`) while
 `print(xs)` renders `repr()` (`'a'`), and rebinding `v = 5` retires the tag (ADR 0185, ADR 0187).
-What still reports — rather than computing on a string-table index — is any context that needs
-one static kind: `xs[i] + 1`, `xs[i] > 2`, passing `xs[i]` to a function, `xs[i]` in a format
-spec.
+What still reports — rather than computing on a string-table index — is a context that needs one static
+kind and was given a **text, a container or the void** in the slot: `xs[i] + 1`, `xs[i] > 2`, passing
+`xs[i]` to a function, `xs[i]` in a format spec. A *number* in the slot answers at all four of them
+(ADR 0249, ADR 0423).
 
 **A container inside a container is read back the same way** (ADR 0239, ADR 0241). The slot holds
 the inner object's *handle*, so the second subscript is a load from the object the first one named,

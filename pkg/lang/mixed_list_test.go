@@ -143,7 +143,11 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// `def head(v): print(v)` handed `xs[1]` used to be on this table. It is answered now: an element
 		// handed to a call carries its (payload, tag) pair since roadmap Gap R.220 paid the argument
 		// position, and the callee prints the element — asserted in TestACallArgumentOfAMixedListElementAnswers.
-		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
+		// `xs = [1, "a"]` / `for x in xs:` / `print(x + 1)` used to be on this table beside the row below it.
+		// It is not a refusal any more: `+` beside a number the SOURCE spells asks the two tags, so the
+		// number element adds and the text element raises CPython's own concatenation sentence — which is
+		// what CPython does, so the row lives in `TestALoopItemBesideASpelledNumberAnswersAndRaises`
+		// (roadmap Gap R.442, ADR 0423; the loop's own half of the tagged value word is still Gap R.148).
 		// The loop variable ordered against a number used to be on this table beside the `+ 1` row
 		// above it. It is not a refusal any more: an ordering over a pair-bound loop variable walks the
 		// same tag-selected arms a slot read walks, so the number element compares and the text element
@@ -316,8 +320,9 @@ func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
 
 // A tagged element that reaches a context with no tag to carry refuses, and the refusal names what
 // does work — the message is the interface while the capability grows (ADR 0166). A number the
-// compiler can see in a slot is answered (ADR 0243); text in a slot is not, and neither is a loop
-// variable, whose tag is chosen per iteration.
+// compiler can see in a slot is answered (ADR 0243). The loop-variable sibling that used to be checked
+// here — `for x in xs:` / `print(x + 1)` — answers and raises now, and lives beside the loop-binding
+// witness below (`TestALoopItemBesideASpelledNumberAnswersAndRaises`, roadmap Gap R.442, **ADR 0423**).
 func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
 	t.Parallel()
 	_, err := Compile("xs = [1, \"a\"]\nprint(xs[1] + 1)\n")
@@ -329,12 +334,29 @@ func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
 			t.Errorf("refusal %q should mention %q", err.Error(), want)
 		}
 	}
-	_, err = Compile("xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n")
-	if err == nil {
-		t.Fatal("arithmetic on a loop variable over a mixed list must refuse")
+}
+
+// TestALoopItemBesideASpelledNumberAnswersAndRaises is the row that LEFT the refusal table above: with a
+// number the SOURCE spells on the other side of `+`, no value the loop can bind turns the operator into
+// anything but a number or a raise, so the door asks the two tags instead of refusing the program.
+// `1 + 1` prints `2` and `"a" + 1` spends the reference's own concatenation TypeError — the pair that
+// makes this an answer rather than a payload read as a number (`7` would have come from the string-table
+// index, which is what the ordinary road hands back for a text slot).
+func TestALoopItemBesideASpelledNumberAnswersAndRaises(t *testing.T) {
+	t.Parallel()
+	res, err := JIT("xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", 0)
+	if err != nil {
+		t.Fatalf("the compiled leg refused a program the reference runs to a trap: %v", err)
 	}
-	if !strings.Contains(err.Error(), "tagged value") {
-		t.Errorf("loop-variable refusal should name the tagged value word: %q", err.Error())
+	if !strings.Contains(res.Output, "2") {
+		t.Fatalf("the number element did not add: stdout %q stderr %q", res.Output, res.Stderr)
+	}
+	if res.Code != 3 {
+		t.Fatalf("exited %d with stdout %q — the text element must raise, not print its index plus one",
+			res.Code, res.Output)
+	}
+	if !strings.Contains(res.Stderr+res.Output, `TypeError: can only concatenate str (not "int") to str`) {
+		t.Fatalf("raised %q, not the reference's concatenation sentence", res.Stderr+res.Output)
 	}
 }
 

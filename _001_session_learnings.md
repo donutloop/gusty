@@ -15234,3 +15234,75 @@ discovery — and it still taught me twice.
    196 → 197 `match`, pass 210 → 211). The sweep is now the load-bearing number: **9394 sources, 9352
    unchanged, 40 improvements, 0 regressions**, the two remainders being `llc` rejections whose text embeds the
    per-run temp path.
+
+## ADR 0423 — a comparison chain asks each of its operands what it CARRIES (Gap R.442 closed; Gap R.443, Gap R.444 filed, 2026-10-26)
+
+1. **The sibling form of the failing program is still the fastest locator, and this row proved it twice.**
+   `print(xs[0] < 3)` printed `True` and `print(0 < xs[0] < 3)` refused, in the same program over the same
+   slot — two roads to one comparison, one right and one wrong, which says the bug is in the position the
+   chain adds and not in the read they share. The second time was the same trick one level up: the single
+   comparison's own door (`comparePair`) already had the answer for the very operand the chain could not
+   carry, so the fix was to *ask the neighbour's door* rather than write a fourth road. Both findings cost a
+   minute each and I spent the first ten of them inside `chainValue` reading the link lowering.
+
+2. **A refusal family is never pure: measure the siblings that answer, or you will file a refusal where you
+   shipped a lie.** The row was filed as "three programs moved from an answer to a refusal". Re-running the
+   whole shape family against the parent found two programs in the same family that had never refused at all
+   — `d = {"a": 2.5}` / `print(0 < d["a"] < 3)` printed `False` and `d = {"a": "x"}` printed `True`, both at
+   **exit 0**, because a dict slot read handed the chain the entry's PAYLOAD: a `@float_box` handle and a
+   `@str_tab` index are numbers for reasons that have nothing to do with the value. "It refuses" and "it
+   answers wrong" are different defects wearing one symptom, and only the sweep distinguishes them.
+
+3. **Exit 2 does not live in the record, so it has to be hunted separately.** `print(0 < abs(-2.5) < 3)` had
+   been reaching `llc` as `store i32 %t1, i32* %_chain1` over a `double` — the contract's "the compiler is
+   broken" code (**ADR 0166**) — for as long as the chain existed, and no golden entry complains, because a
+   record entry is a *program's answer*, not the module's validity. Every sweep therefore asks the exit code
+   first and treats `2` as its own class of finding; both of this row's exit-2 programs were invisible to the
+   record leg and visible to `python3` beside them.
+
+4. **A gate in front of a door that lowers must be pure, and that is a correctness rule, not a style rule.**
+   The chain's whole reason for existing is that an operand is evaluated once (**ADR 0288**). A door that
+   emits into the module and *then* declines has evaluated the operand twice, so the "does this need a pair?"
+   question is answered by a pure predicate (`chainOperandCarriesMoreThanAWord`, reading records only) and
+   every arm builds into a `strings.Builder` that is committed only once it has answered. The purity is pinned
+   behaviourally — one source through `GenerateIR` twice must give the same module — because a pure function
+   that silently acquires an `emit` call six months from now is exactly the bug this discipline prevents.
+
+5. **A widened gate needs a bound on the KIND of operand, not just the shape of the expression.** `+` beside a
+   spelled number opened **ADR 0265**'s proof for `s + 1`, `xs[0] + 1`, `f() + 1` — and, unbounded, for
+   `class C: pass` / `print(C() + 1)`, which then answered **`1`**: an instance's int half is a heap pointer,
+   and the pair road adds pointers. The lesson is to measure the *neighbours* of a widening (a class, an
+   instance, a function, a bound method) in the same sweep as its targets; `pairRoadAnswersThisOperand` is
+   that measurement written down. Keeping `*` and `%` behind the old proof was the other half of the same
+   judgement: the reference answers `xs[0] * 2` over a list slot **with a list**, so the proof still owns
+   something.
+
+6. **`git worktree`, not `git stash`, for parent-vs-now measurement.** **ADR 0422**'s entry describes stashing
+   the arm and rebuilding; this cycle the tree is a workspace that other processes may be building at any
+   moment, and `git stash` removes their files mid-run. `git worktree add -f /tmp/basewt HEAD` + a second
+   binary costs one extra build, is read-only with respect to the working tree, and gives both builds side by
+   side for the whole session instead of alternating them.
+
+7. **An unreachable-but-load-bearing arm is kept and pinned white-box, not deleted.** The chain's float door
+   never fires from the surface today: the two pair doors answer for every float the language can write, which
+   is the right outcome and the wrong excuse — the arm is the only thing between "the operand is a double" and
+   `store i32` over a double. Deleting it would trade a real net for a greener coverage report; instead it is
+   asked directly (`TestTheChainsDoubleDoorBindsTheWordTheValueIs`), the way the store's doors are asked in
+   `TestTheStoreGateAndThePromotionDoorAskOnePredicate`, and the ADR says out loud that no program reaches it.
+
+8. **Byte-level, not class-level, is the bar for a trap message — and a wrong noun is a wrong sentence.** The
+   `+` arm now raises the concatenation method's own complaint, `can only concatenate list (not "int") to
+   list`, matching CPython character for character. The tuple sibling raises the same sentence about the wrong
+   class, because the runtime tells a tuple from a list from the object (`rt_kind_name`) while the compile-time
+   arm chooses the noun from the value KIND, and a tuple's kind is the list's (**ADR 0251**). Filed as
+   **Gap R.444**: `except TypeError` catches both, and nothing else in the program will notice — which is
+   precisely why it should not be left.
+
+9. **The artifact guards corrected four numbers again, and the missing-record harvest is a PATH.** The
+   snapshot's `ADRs 412/highest 0422`, `Rows owed 204 of 346`, `Retired-engine record 9396` and
+   `AGENTS.md`/`docs/operations.md`'s "N sources" are recomputed from the files, so 27 `recmerge` entries plus
+   2 new queue rows plus one ADR is four edits, all of them caught by
+   `TestTheRoadmapSnapshotIsMeasuredNotRemembered` and `TestTheArtifactTableCountsAreTheFilesOwn`. Two process
+   notes: `GUSTY_GOLDEN_MISSING` takes a **path** (writing `=1` puts a file called `1` in the repo root), and
+   `tools/recmerge` wants a **bare JSON array**, not the `{"sources": [...]}` shape the docs mention — worth
+   knowing before the recording cycle is spent discovering it.

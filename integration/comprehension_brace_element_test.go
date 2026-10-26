@@ -39,6 +39,14 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 		// comprehension wrote payload and tag together, so `len` asks the object (ADR 0246) — these
 		// two were refusal rows until the read stopped needing a literal.
 		{"len_of_a_slot_of_a_built_comp", "d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n", "2\n"},
+		{
+			// The row that left TestComprehensionShapesStillRefusedHonestly with **ADR 0423**: the number out
+			// of a slot of a comprehension the program built, beside a number the SOURCE spells. The add asks
+			// the two tags the comprehension's builder wrote and answers (roadmap Gap R.442).
+			"number_out_of_a_slot_of_a_built_comp_beside_a_spelled_number",
+			"xs = [[1, 2] for x in [1]]\nprint(xs[0][0] + 1)\n",
+			"2\n",
+		},
 		{"len_of_a_dict_slot_of_a_built_comp", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n", "1\n"},
 		{
 			// Two slots of a comprehension the program built, compared: each side is a (payload, tag)
@@ -123,23 +131,18 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			// (Two `len(...)` rows used to sit here demanding refusals — `len(d[0])` of a comprehension
-			// whose element is a set, and of one whose element is a dict. The object carries its own tags,
-			// so both answer CPython's answer now and are pinned in TestComprehensionElementsMatchCPython;
-			// ADR 0246.)
-			//
-			// (A `membership_in_a_slot_of_a_built_comp` row used to sit here demanding the refusal
-			// "more than one kind". Whether a slot's object has elements, keys, members or characters is
-			// decided by the tag its writer left beside the payload, so the test asks the object now and
-			// prints CPython's answer; pinned in TestComprehensionElementsMatchCPython; ADR 0323.)
-			//
-			// (A `indexing a dict slot of a built comp` row used to sit here demanding the refusal
-			// "index must be a constant". The read below a comprehension's slot is answered by the tag the
-			// comprehension's builder wrote, so it prints CPython's answer now and is pinned in
-			// TestComprehensionElementsMatchCPython; ADR 0251.)
-			"reaching into a built comprehension's slot",
-			"xs = [[1, 2] for x in [1]]\nprint(xs[0][0] + 1)\n",
-			"cannot reach into xs's slots",
+			// Five rows used to sit here demanding refusals, and each moved to
+			// TestComprehensionElementsMatchCPython once the read asked the object instead of a literal:
+			// `len(d[0])` over a set element and over a dict element (ADR 0246), whether a slot's object has
+			// elements, keys, members or characters, decided by the tag its writer left beside the payload
+			// (ADR 0323), `indexing a dict slot of a built comp` through the tag the comprehension's builder
+			// wrote (ADR 0251), and — with **ADR 0423** — the number out of a slot of a comprehension the
+			// program built, beside a number the SOURCE spells: `xs = [[1, 2] for x in [1]]` /
+			// `print(xs[0][0] + 1)` prints CPython's `2` (roadmap Gap R.442). What stays is the road that
+			// still needs a literal the comprehension never gave it.
+			"a comprehension over a slot the program built",
+			"xs = [[1, 2] for x in [1]]\nprint(sum([x for x in xs[0]]))\n",
+			"a comprehension over xs[0] is refused",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

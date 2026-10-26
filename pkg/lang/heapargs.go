@@ -6891,8 +6891,18 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 		if isStringExpr(l) || isStringExpr(r) {
 			return "", "", false, nil
 		}
-		if !g.slotArithmeticIsProven(l) || !g.slotArithmeticIsProven(r) {
-			return "", "", false, nil
+		// `+` beside a number the SOURCE spells needs no proof of what the slots hold, because no value the
+		// slot can hold turns this operator into anything but a number or a raise: `2.5 + 1`, `True + 1` are
+		// numbers and `None + 1`, `"a" + 1`, `[1] + 1` are CPython's TypeError, which `rt_num_arith` raises
+		// with the slot's real kind named. The two shapes the guard exists for — `"a" + "b"` and `[1] * 2`,
+		// which the reference answers with a joined text and a repeated list this backend cannot build
+		// (Gap R.82) — are unreachable from a spelled number on the other side, so the door opens and the
+		// answer's kind is derived from the two tags rather than asserted from one. `*` keeps the proof for
+		// its own reason: `xs[0] * 2` over a slot holding a list IS answered by the reference, with a list.
+		if !(op == 0 && g.plusBesideASpelledNumber(l, r)) {
+			if !g.slotArithmeticIsProven(l) || !g.slotArithmeticIsProven(r) {
+				return "", "", false, nil
+			}
 		}
 	}
 	ap, at, okA, errA := g.arithOperandPair(b, l)
@@ -7451,6 +7461,92 @@ func slotLiteralMayBeNumber(e Expr) bool {
 	default:
 		return true
 	}
+}
+
+// operandIsASpelledNumber reports the narrow fact the `+` gate needs: the operand is a number written in
+// the source, so its kind is not a run-time question at all — and an operator with such a number on one
+// side can answer a number or raise, whatever the other side holds. Literals only: a NAME the notebook
+// calls a number may have been rebound, which is the reason ADR 0243's numeric courtesy keeps to literals
+// too.
+func (g *irGen) operandIsASpelledNumber(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *FloatLit, *BoolLit:
+		return true
+	case *UnOp:
+		return n.Op == "-" && g.operandIsASpelledNumber(n.X)
+	}
+	return false
+}
+
+// plusBesideASpelledNumber is the `+` arm of ADR 0265's gate, widened by one operand kind: exactly one
+// side is the slot read that needs the pair, and the other is a number the source spells. The widening is
+// bounded by what the pair road can ANSWER: the side that is not the number must name a value the tagged
+// road knows a story for — a number, a slot the module never pinned, or a nothing/bool/text/list/dict/set,
+// each of which the road either adds or raises CPython's own sentence for. A class, an instance or a
+// function is not let in: its int half is a pointer, and adding that pointer to a literal and calling the
+// sum an answer is worse than the refusal the door used to give (`C() + 1` answering 1 where the reference
+// raises). roadmap Gap R.442.
+func (g *irGen) plusBesideASpelledNumber(l, r Expr) bool {
+	ln, rn := g.operandMayNeedPair(l), g.operandMayNeedPair(r)
+	if ln == rn {
+		return false
+	}
+	if !(ln && g.operandIsASpelledNumber(r)) && !(rn && g.operandIsASpelledNumber(l)) {
+		return false
+	}
+	// Whichever side is not the spelled number is the one the pair road has to answer for.
+	other := r
+	if ln {
+		other = l
+	}
+	return g.pairRoadAnswersThisOperand(other)
+}
+
+// pairRoadAnswersThisOperand asks, of the operand that is not the spelled number, whether the tagged
+// pair road has an answer for it: an int or float adds, a slot the module never pinned answers from the
+// tag at run time, and a text, list, dict, set or the nothing are the road's own run-time raise. A value
+// with NO number half — a class, an instance, a function — has neither, and the road would add the
+// heap pointer the value keeps in its int half to the literal and call the sum an answer: `class C: pass`
+// / `print(C() + 1)` came out 1 for a reference TypeError. Those three stay behind the door that already
+// refuses them by name (roadmap Gap R.442).
+func (g *irGen) pairRoadAnswersThisOperand(e Expr) bool {
+	switch n := e.(type) {
+	case *Name:
+		if g.declaresTheName(n.Value) {
+			return false // `f` names a function, `C` names a class
+		}
+		if cls := g.varClasses[n.Value]; cls != "" {
+			return false // `i` names an instance of C
+		}
+		return true
+	case *Call:
+		if fn, ok := n.Fn.(*Name); ok && g.declaresTheName(fn.Value) {
+			return false // `C(...)` is an instance being built
+		}
+		return true
+	}
+	return true
+}
+
+// declaresTheName is the top-level declaration fact: the module writes this name with `def` or `class`,
+// so it names a function or a class object rather than a value with a number half.
+func (g *irGen) declaresTheName(name string) bool {
+	if g.program == nil {
+		return false
+	}
+	for _, st := range g.program.Stmts {
+		switch d := st.(type) {
+		case *ClassDef:
+			if d.Name == name {
+				return true
+			}
+		case *FuncDef:
+			if d.Name == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // slotArithmeticIsProven answers the gate's question for one operand of a `+` or a `*`: is this a read

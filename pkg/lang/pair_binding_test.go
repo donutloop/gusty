@@ -306,16 +306,15 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 // TestThePairGateIsTheSameDoorInTheBindingAsInThePrint is ADR 0265's gate asked one statement later:
 // where the reference would answer a joined text or a repeated container rather than a number or a
 // raise, the door stays shut — and the program keeps the refusal it always had instead of a TypeError
-// the reference never raises (Gap R.82).
+// the reference never raises (Gap R.82). `xs[0] + 1` over a text slot left this table for **ADR 0423** —
+// with a number the SOURCE spelled on the other side the operator can only add or raise — and now lives
+// in the catch table below, where the raise is shown reaching `except TypeError`.
 func TestThePairGateIsTheSameDoorInTheBindingAsInThePrint(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"text beside a slot under +",
-			"xs = []\nxs.append(\"hi\")\nn = xs[0] + 1\nprint(n)\n",
-			"concatenating a string with a value that is not a string",
-		},
-		{
+			// `*` keeps its proof: the reference answers a slot holding a text times 2 with a REPEATED
+			// TEXT, which is a value this backend does not build from a slot.
 			"a value with no spelling",
 			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nn = xs[0][0] * 2\nprint(n)\n",
 			"cannot reach into",
@@ -337,6 +336,14 @@ func TestTheRaiseOfABoundAnswerLeavesThroughTheEmittedDoor(t *testing.T) {
 		{
 			"a text slot under the negation",
 			"xs = []\nxs.append(\"hi\")\ntry:\n    n = -xs[0]\n    print(n)\nexcept TypeError:\n    print(\"caught\")\n",
+			"caught\n",
+		},
+		{
+			// The row that left the gate table above with **ADR 0423**: the binding performs the add, the
+			// add raises, and the raise is written at the statement — so the program, not the compiler,
+			// decides what a text beside a number means.
+			"a text slot beside a spelled number, bound",
+			"xs = []\nxs.append(\"hi\")\ntry:\n    n = xs[0] + 1\n    print(n)\nexcept TypeError:\n    print(\"caught\")\n",
 			"caught\n",
 		},
 		{

@@ -36,6 +36,13 @@ func TestCLIAbsAgreesWithCPython(t *testing.T) {
 		{"a zero slot", "xs = []\nxs.append(0)\nn = xs[0]\nprint(abs(n))\n"},
 		{"a negative zero answers zero", "xs = []\nxs.append(-0.0)\nn = xs[0]\nprint(abs(n))\n"},
 		{"the answer is bound and printed", absCLISlot + "y = abs(n)\nprint(y)\n"},
+		{
+			// `abs(n) + 1` was on the refusal table below. `+` beside a number the SOURCE spells asks the two
+			// tags — the signless call's answer adds, and whatever it answered the operator can only add or
+			// raise (roadmap Gap R.442, **ADR 0423**).
+			"the answer beside a spelled number",
+			absCLISlot + "print(abs(n) + 1)\n",
+		},
 		{"the answer is bound and measured", absCLISlot + "y = abs(n)\nprint(len([y]))\n"},
 		{"a slot of the arithmetic over it", "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\n"},
 		{"the sign already gone", "xs = []\nxs.append([7, 8])\nn = xs[0][0] * -2\nprint(abs(n))\n"},
@@ -93,7 +100,9 @@ func TestCLIAbsStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
-		{"an abs operand of a sum", absCLISlot + "print(abs(n) + 1)\n"},
+		// `abs(n) + 1` left for the agreement table above with **ADR 0423**; `*` and `%` keep the proof,
+		// because the reference answers a repeat and a formatted string with values this backend does not
+		// build from a slot (Gap R.82).
 		{"an abs operand of a product", absCLISlot + "print(abs(n) * 2)\n"},
 		{"an abs operand of a modulo", absCLISlot + "print(abs(n) % 3)\n"},
 		{"an abs operand of a true quotient", absCLISlot + "print(round(abs(n) / 2))\n"},

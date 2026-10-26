@@ -133,13 +133,11 @@ func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			"xs = [None, \"a\"]\nprint(xs[0] + 1)\n",
 			"more than one kind",
 		},
-		{
-			// A loop variable over a mixed list takes its tag per iteration; arithmetic on it is the
-			// tagged value word, not this read.
-			"loop variable used as a number",
-			"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n",
-			"needs a tagged value",
-		},
+		// `xs = [1, "a"]` / `for x in xs:` / `print(x + 1)` was on this table as "loop variable used as a
+		// number". A loop item beside a number the SOURCE spells answers now — the number adds and the text
+		// raises the reference's own sentence — so the row lives in mixed_list_test.go's
+		// `TestALoopItemBesideASpelledNumberAnswersAndRaises` (roadmap Gap R.442, **ADR 0423**). What the
+		// loop still owes is the ordering a chain asks of it, which is **Gap R.443**.
 	} {
 		_, err := Compile(tc.src)
 		if err == nil {

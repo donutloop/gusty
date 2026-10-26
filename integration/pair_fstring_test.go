@@ -38,6 +38,13 @@ func TestCLIAFStringFieldAgreesWithCPython(t *testing.T) {
 		{"a dict slot by key", "d = {}\nd[\"k\"] = 9\nn = d[\"k\"]\nprint(f\"{n}\")\n"},
 		{"arithmetic over a slot", "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(f\"{n}\")\n"},
 		{"arithmetic inside the field", fsCLISlot + "print(f\"{n - 1}\")\n"},
+		{
+			// `f"{n + 1}"` was on the refusal table below as "a product the door will not prove". `+` beside
+			// a number the SOURCE spells asks the two tags and the field renders the sum (roadmap Gap R.442,
+			// **ADR 0423**).
+			"a sum beside the slot, inside the field",
+			fsCLISlot + "print(f\"{n + 1}\")\n",
+		},
 		{"a negation inside the field", fsCLISlot + "print(f\"{-n}\")\n"},
 		{"a floored quotient in the field", fsCLISlot + "print(f\"{n // 2}\")\n"},
 		{"a true quotient in the field", fsCLISlot + "print(f\"{n / 2}\")\n"},
@@ -97,7 +104,6 @@ func TestCLIAFStringFieldStillRefusesInWordsThatNameTheOrigin(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
-		{"a product the door will not prove", fsCLISlot + "print(f\"{n + 1}\")\n"},
 		{"a modulo over a slot", fsCLISlot + "print(f\"{n % 3}\")\n"},
 		{"a format spec over a slot", fsCLISlot + "print(f\"{n:>.2f}\")\n"},
 		// The three shapes this file used to pin as refusals — an interpolation bound, concatenated, or

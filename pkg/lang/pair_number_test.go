@@ -36,6 +36,23 @@ func TestASlotBoundNameAnswersThePositionsThatNeedANumber(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{"subtraction", builtIntSlot + "print(n - 1)\n", "6\n"},
+		{
+			// `print(n + 1)` used to be on the refusal table below. It answers now, because `+` beside a
+			// number the SOURCE spells can answer a number or raise whatever the slot holds — the two
+			// shapes the guard existed for, `"a" + "b"` and `[1] * 2`, are unreachable with an integer on
+			// the other side (`plusBesideASpelledNumber`, roadmap Gap R.442, ADR 0265's gate widened at one
+			// operand kind). A row that stops refusing moves, it does not disappear.
+			"addition beside a spelled number",
+			builtIntSlot + "print(n + 1)\n", "8\n",
+		},
+		{
+			"addition beside a spelled number, over a list that also holds a text",
+			"xs = []\nxs.append(7)\nxs.append(\"t\")\nn = xs[0]\nprint(n + 1)\n", "8\n",
+		},
+		{
+			"addition of a fraction beside the slot",
+			builtIntSlot + "print(n + 1.5)\n", "8.5\n",
+		},
 		{"the subtrahend is the slot", "xs = []\nxs.append(7)\nprint(10 - xs[0])\n", "3\n"},
 		{"negation", builtIntSlot + "print(-n)\n", "-7\n"},
 		// abs of a pair-bound name answers now: the arithmetic door's signless call takes the payload and
@@ -227,16 +244,21 @@ func TestTheNumberDoorIsInTheModuleOnlyWhenItIsAsked(t *testing.T) {
 }
 
 // TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue is the half this cycle did NOT open, and
-// the reason is in the sentence: `+`, `*` and `%` are operators CPython can answer with something that is
-// not a number (two texts joined, a list repeated, a formatted string), and this backend builds none of
-// those from a slot — so the door stays behind the number proof, and the refusal says so with the value's
-// real origin (Gap R.38: no blaming a loop a slot binding never stepped through).
+// the reason is in the sentence: `*` and `%` are operators CPython can answer with something that is not a
+// number (a list repeated, a formatted string), and this backend builds none of those from a slot — so the
+// door stays behind the number proof, and the refusal says so with the value's real origin (Gap R.38: no
+// blaming a loop a slot binding never stepped through). `+` left this table for one operand shape: beside
+// a number the source spells, no value in a slot turns it into a join (roadmap Gap R.442).
 func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
-		{"addition", builtIntSlot + "print(n + 1)\n"},
-		{"repetition", builtIntSlot + "print(n * 2)\n"},
+		// `addition` used to be on this table. `+` beside a number the source spells answers now — see
+		// TestASlotBoundNameAnswersThePositionsThatNeedANumber, where the row moved to (roadmap Gap R.442).
+		{"repetition over an unproved container", builtIntSlot + "print(n * 2)\n"},
+		{"repetition with the slot as the multiplier", builtIntSlot + "print(2 * n)\n"},
 		{"modulo", builtIntSlot + "print(n % 3)\n"},
+		{"addition beside a value that is not a spelled number",
+			builtIntSlot + "k = xs[0]\nprint(n + k)\n"},
 		// `print(min(n, 3))` was on this table. It answers now, because a fold is not a position that
 		// keeps one word any more: `min` hands back one of the values it was given, and the door writes
 		// the winner's payload beside the winner's tag (`pairfold.go`, ADR 0316). The row lives in
@@ -273,10 +295,19 @@ func TestTheWiderOperatorsOpenOnlyWhereTheSlotsAreProven(t *testing.T) {
 	if _, err := Compile(proven); err != nil {
 		t.Logf("the literal-proven shape still refuses, which the row allows while the proof stays narrow: %v", err)
 	}
-	mixed := "xs = []\nxs.append(7)\nxs.append(\"text\")\nn = xs[0]\nprint(n + 1)\n"
+	mixed := "xs = []\nxs.append(7)\nxs.append(\"text\")\nn = xs[0]\nprint(n * 2)\n"
 	if res, err := Compile(mixed); err == nil {
 		t.Errorf("the compiler joined a slot that may hold a text, emitting:\n%s", firstLines(res.IR, 20))
 	} else if !strings.Contains(err.Error(), "tagged value") {
-		t.Errorf("the refusal for an unproven `+` does not name the missing half:\n%s", err)
+		t.Errorf("the refusal for an unproven `*` does not name the missing half:\n%s", err)
+	}
+	// `+` over the same container answers, and the answer is the reference's: the gate that closes `*` is
+	// the reference's ability to answer `[1] * 2` with a list, and an integer addend removes that answer
+	// from the table (roadmap Gap R.442).
+	plus := "xs = []\nxs.append(7)\nxs.append(\"text\")\nn = xs[0]\nprint(n + 1)\n"
+	if out, err := JIT(plus, 0); err != nil {
+		t.Errorf("`+` beside a spelled number refused over a container that may hold a text: %v", err)
+	} else if out.Output != "8\n" {
+		t.Errorf("`+` beside a spelled number printed %q, want \"8\n\"", out.Output)
 	}
 }

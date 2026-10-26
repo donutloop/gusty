@@ -51,6 +51,13 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
+			// The row that left the refusal table below with **ADR 0423**: a container the literal no longer
+			// describes, a run-time index, and an integer the SOURCE spells — the two tags decide, and the
+			// float keeps its float (roadmap Gap R.442).
+			"a_container_the_literal_no_longer_describes_beside_a_spelled_number",
+			"xs = []\nxs.append(1.5)\nxs.append(\"a\")\ni = 0\nprint(xs[i] + 1)\n",
+		},
+		{
 			// The program that used to exit 2: an empty operand in the fdiv.
 			"true_division_of_an_int_slot_through_a_computed_index",
 			"xs = [10, 4]\ni = 0\nprint(xs[i] / 4)\n",
@@ -257,10 +264,11 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
-		{
-			"a_container_the_literal_no_longer_describes",
-			"xs = []\nxs.append(1.5)\nxs.append(\"a\")\ni = 0\nprint(xs[i] + 1)\n",
-		},
+		// `xs = []` / `xs.append(1.5)` / `xs.append("a")` / `i = 0` / `print(xs[i] + 1)` is not on this list
+		// any more: it answers 2.5 here and in CPython, and moved to the parity table above. `+` beside a
+		// number the SOURCE spells can answer a number or raise and nothing else, so the door asks the two
+		// tags the append wrote instead of the literal the store left no trace of (roadmap Gap R.442,
+		// **ADR 0423**).
 		// `def half(xs): return xs[0] / 2` / `print(half([1.5]))` is not on this list any more: it
 		// answers 0.75 on the compiled path and in CPython, and moved to the parity table above. The gate
 		// on a literal in a value position asked only literalNeedsHeap — "does a payload not fit an

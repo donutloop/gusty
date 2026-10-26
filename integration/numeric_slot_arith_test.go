@@ -49,6 +49,18 @@ func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T)
 			"xs = []\nxs.append([7.5, 8])\nprint(xs[0][0] * 2)\n", "15.0\n",
 		},
 		{"the negation", "xs = []\nxs.append([7, 8])\nprint(-xs[0][0])\n", "-7\n"},
+		{
+			// The two rows that left the refusal table below with **ADR 0423**. A text stored in the
+			// container the read walks, and a value that arrives from a CALL with no spelling the notebook
+			// can read: with an integer on the other side of `+` the operator can only add or raise, so the
+			// door asks the two tags instead of the literal it no longer has (roadmap Gap R.442).
+			"a text stored where the read does not go, and a number out of the row beside it",
+			"xs = []\nxs.append([7, 8])\nxs.append(\"word\")\nprint(xs[0][0] + 1)\n", "8\n",
+		},
+		{
+			"a value with no spelling, seen through by the pair road",
+			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n", "8\n",
+		},
 		{"subtraction", "xs = []\nxs.append([7, 8])\nprint(xs[0][1] - 3)\n", "5\n"},
 		{"both operands are slots", "xs = []\nxs.append([7, 8])\nprint(xs[0][0] + xs[0][1])\n", "15\n"},
 		{"a bool is a number", "xs = []\nxs.append([True, 2])\nprint(xs[0][0] + 1)\n", "2\n"},
@@ -93,11 +105,22 @@ func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) 
 			"TypeError: bad operand type for unary -: 'str'",
 		},
 		{
-			// The kind inside the quotes is the one the object carries, so the two operands of one
-			// subtraction are named separately — and `sub` really is the symbol in the sentence.
 			"a text under subtraction",
 			"xs = []\nxs.append(\"hi\")\nprint(xs[0] - 1)\n",
 			"TypeError: unsupported operand type(s) for -: 'str' and 'int'",
+		},
+		{
+			// `xs[0] + 1` over a slot holding a text used to be a compile-time refusal. A number the SOURCE
+			// spells on the other side settles what the operator can do with it — add or raise — and the
+			// sentence is the concatenation method's own, not the generic one (ADR 0271, **ADR 0423**).
+			"a text beside a spelled number under +",
+			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
+			`TypeError: can only concatenate str (not "int") to str`,
+		},
+		{
+			"the void beside a spelled number under +",
+			"xs = []\nxs.append(None)\nprint(xs[0] + 1)\n",
+			"TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -164,36 +187,24 @@ func TestTheNumberUseOfARunTimeSlotIsCatchableAtTheCLI(t *testing.T) {
 // reference *answers* these — a joined text, a repeated list — and this backend builds neither from a
 // slot (Gap R.82), so the door must not open: the program keeps the compile-time refusal it always had
 // (exit 1, named) rather than get a TypeError the reference never raises.
+//
+// Three rows left this table with **ADR 0423**, because `+` with a number the SOURCE spells on one side can
+// answer a number or raise and nothing else: `xs[0] + 1` over a slot holding a text raises the reference's
+// concatenation sentence (the raise table above), and a text stored where the read does not go, or a value
+// arriving from a call with no literal to read, print CPython's `8` (the answer table above). What stays is
+// the operator the reference really can answer with a container or a text.
 func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"text stored in a container, used with +",
-			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
-			"concatenating a string with a value that is not a string",
-		},
-		{
-			// The block is keyed by the container the store writes (ADR 0322, roadmap Gap R.191), so the
-			// door stays shut where a text can REACH the container the read walks — which, since a name is
-			// a spelling and not an object, includes every alias of it. The unrelated-container spelling of
-			// this row used to refuse here and now prints CPython's `8`; that half lives in
-			// integration/numeric_slot_door_scope_test.go.
+			// The block is keyed by the container the store writes (ADR 0322, roadmap Gap R.191), so the door
+			// stays shut where a text can REACH the container the read walks — which, since a name is a
+			// spelling and not an object, includes every alias of it. `*` is what keeps this row refused: the
+			// reference answers a slot holding a text times 2 with a REPEATED TEXT, a value this backend does
+			// not build from a slot.
 			"a text reaches the container through an alias",
 			"xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[1] * 2)\n",
 			"single static kind",
-		},
-		{
-			// The same container, the text written by its own name: the ordinary road, the ordinary refusal.
-			"a text stored in the container the read walks",
-			"xs = []\nxs.append([7, 8])\nxs.append(\"word\")\nprint(xs[0][0] + 1)\n",
-			"cannot reach into",
-		},
-		{
-			// A value with no spelling — the result of a call — is not a literal the notebook can read,
-			// and an absent level in the kind tree is refused rather than assumed.
-			"a value the compiler cannot see through",
-			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n",
-			"cannot reach into",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

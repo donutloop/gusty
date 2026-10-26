@@ -31,6 +31,25 @@ func TestCLIArithmeticOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
 		{"subtraction", pairNumberBuiltInt + "print(n - 1)\n"},
+		{
+			// `print(n + 1)` was on the refusal table below. **ADR 0423** opened `+` beside a number the
+			// SOURCE spells — no value the slot can hold turns that operator into anything but a number or a
+			// raise — so the answer comes from the two tags and the row lives here (roadmap Gap R.442).
+			"addition beside a spelled number",
+			pairNumberBuiltInt + "print(n + 1)\n",
+		},
+		{
+			"addition with the spelled number on the left",
+			pairNumberBuiltInt + "print(1 + n)\n",
+		},
+		{
+			"a fraction spelled beside the slot",
+			pairNumberBuiltInt + "print(n + 1.5)\n",
+		},
+		{
+			"a spelled number beside a slot that shares its container with a text",
+			"xs = []\nxs.append(7)\nxs.append(\"t\")\nn = xs[0]\nprint(n + 1)\n",
+		},
 		{"the subtrahend is the slot", "xs = []\nxs.append(7)\nprint(10 - xs[0])\n"},
 		{"negation", pairNumberBuiltInt + "print(-n)\n"},
 		{"floor division", pairNumberBuiltInt + "print(n // 2)\n"},
@@ -90,6 +109,13 @@ func TestCLIArithmeticOfASlotBoundNameRaisesRatherThanAnswersWrongly(t *testing.
 		{"xs = []\nxs.append([1])\nn = xs[0]\nprint(-n)\n", "TypeError: bad operand type for unary -: 'list'"},
 		{"xs = []\nxs.append({\"k\": 1})\nn = xs[0]\nprint(-n)\n", "TypeError: bad operand type for unary -: 'dict'"},
 		{"xs = []\nxs.append({1})\nn = xs[0]\nprint(n - 1)\n", "TypeError: unsupported operand type(s) for -: 'set' and 'int'"},
+		// `n + 1` over a slot holding a text or the void used to be a compile-time refusal. With a number the
+		// SOURCE spells on the other side the door asks the two tags and raises per kind — and the sentence is
+		// the one the reference writes, which for a text is the concatenation method's own complaint
+		// (ADR 0271), not the generic one (roadmap Gap R.442, ADR 0423).
+		{"xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n + 1)\n", "TypeError: can only concatenate str (not \"int\") to str"},
+		{"xs = []\nxs.append(None)\nn = xs[0]\nprint(n + 1)\n", "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"},
+		{"xs = []\nxs.append([1])\nn = xs[0]\nprint(n + 1)\n", "TypeError: can only concatenate list (not \"int\") to list"},
 		{pairNumberBuiltInt + "print(n // 0)\n", "ZeroDivisionError: integer division or modulo by zero"},
 	} {
 		path := writeSrc(t, dir, "pairnum_trap.gy", tc.src)
@@ -191,9 +217,12 @@ func TestTheOneWordPositionsStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	for _, src := range []string{
-		pairNumberBuiltInt + "print(n + 1)\n",
 		pairNumberBuiltInt + "print(n * 2)\n",
 		pairNumberBuiltInt + "print(n % 3)\n",
+		// `print(n + 1)` was on this table beside those two. It lives in the agreement table now (**ADR 0423**:
+		// `+` beside a number the SOURCE spells asks the two tags), leaving the two operators that keep their
+		// proof because the reference really can answer them with something this backend does not build — a
+		// repeated list, a formatted string.
 		// `print(abs(n))` was on this table and answers since ADR 0309: the signless call takes the
 		// operand's kind from the tag. `print([n])` was on this table too and is answered since ADR 0306: a container element is no
 		// longer a position that keeps one word. It lives in pair_container_test.go's answer table.

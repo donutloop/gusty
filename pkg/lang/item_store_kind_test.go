@@ -145,6 +145,23 @@ func TestTheStoreThatNeededNoPromotionIsUntouched(t *testing.T) {
 		{"a number stored over the promoted fraction", "xs = [1]\nxs[0] = 2.5\nxs[0] = 3\nprint(xs)\n", "[3]\n"},
 		{"the fold over a slot the store promoted", "xs = [1]\nxs[0] = 2.5\nprint(sum([xs[0], 1.0]))\n", "3.5\n"},
 		{"the arithmetic over the promoted slot", "xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\n", "3.5\n"},
+		{
+			// The two positions **Gap R.442** was filed for. Each was pinned as a refusal by **ADR 0422**,
+			// with the parent's wrong bytes beside the reference's; both answer now that the chain asks its
+			// operand what it carries and `+` beside a spelled number asks the two tags (**ADR 0423**). The
+			// second is the shape that shows the door is asked of the OBJECT and not of the literal: the
+			// `for` store owns this object's slots, so there is no literal left to consult.
+			"a chained comparison over the promoted slot",
+			"xs = [1, 2]\nxs[0] = 2.5\nprint(0 < xs[0] < 3)\n", "True\n",
+		},
+		{
+			"a chained comparison the stale payload answered the wrong way round",
+			"xs = [1, 2]\nxs[0] = 5.5\nprint(0 < xs[0] < 3)\n", "False\n",
+		},
+		{
+			"a numeric use of a slot a run-time store promoted",
+			"xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\nfor i in [0]:\n    xs[i] = None\nprint(xs)\n", "3.5\n[None]\n",
+		},
 		{"the truth of a stored void", "xs = [1]\nxs[0] = None\nprint(bool(xs[0]))\n", "False\n"},
 		{"the truth of a stored fraction", "xs = [1]\nxs[0] = 2.5\nprint(bool(xs[0]))\n", "True\n"},
 		{"a verdict read as the number the reference says it is", "xs = [1]\nxs[0] = True\nprint(xs[0] + 1)\n", "2\n"},
@@ -374,9 +391,14 @@ func TestTheItemStoreIRMarksTheContainerItsSlotsOwn(t *testing.T) {
 }
 
 // TestWhatTheItemStoreRoadStillCannotReachIsFiledNotFixed pins what this row leaves owed, with today's bytes
-// beside the reference's. Two of these are NOT unchanged from the row's parent — they are the refusals the
-// promotion EXPOSES, each measured against the same program with a value that shows the old answer was the
-// stale payload answering by luck, and each named by the row that owns the fix.
+// beside the reference's. The two positions **Gap R.442** was filed for — the chained comparison over a
+// promoted slot and the numeric use of a slot a run-time store promoted — are NOT on this table: they were
+// pinned here as refusals, with the parent's stale-payload answer written into the dossier, and both moved
+// to `itemStoreFamily` when **ADR 0423** gave the chain and the numeric door the pair (a row that stops
+// refusing moves, it does not disappear).
+//
+// What remains is unchanged from the row's parent: the roads whose own door never asks the object, each
+// named by the row that owns the fix.
 func TestWhatTheItemStoreRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -388,19 +410,6 @@ func TestWhatTheItemStoreRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		dossier    string
 	}{
 		{
-			// The chained comparison cannot settle a static kind once the slot carries a tag, so it
-			// refuses. It is NOT a green promise this row broke: on this row's parent the same program
-			// with `5.5` printed True where the reference prints False, because the comparison read the int
-			// payload the store never wrote. Today it says it cannot answer, which is the honest shape of
-			// the same hole (**Gap R.82**'s one-word position, **Gap R.442**'s census).
-			name:     "a chained comparison over a promoted slot",
-			src:      "xs = [1, 2]\nxs[0] = 2.5\nprint(0 < xs[0] < 3)\n",
-			wantExit: 1, wantStderr: "needs a single static kind",
-			dossier: "**Gap R.442** — the reference prints `True`; the chain lowers each operand through an " +
-				"ordinary read and cannot carry the tag (**Gap R.82**), and on the parent it answered `True` " +
-				"from the stale payload even for `xs[0] = 5.5`, where the reference says `False`",
-		},
-		{
 			// The comparator over a promoted list refuses where it used to PRODUCE an order — a wrong one
 			// (`[2.5, 1]` against the reference's `[1, 2.5]`), which is the worse witness of the two.
 			name:     "a sort over a promoted list",
@@ -408,19 +417,6 @@ func TestWhatTheItemStoreRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			wantExit: 1, wantStderr: "cannot sort a list whose elements are of more than one kind",
 			dossier: "**Gap R.438** / **ADR 0191** — the reference prints `[1, 2.5]`; the sort compares payloads " +
 				"and has no ordering for a slot whose kind is a tag, so it refuses rather than order them",
-		},
-		{
-			// The same hole one position further: a numeric use of a slot in a list that a store with a
-			// RUN-TIME index promoted. ADR 0249's numeric courtesy needs the literal the container was built
-			// from, and this object's slots belong to the loop, so the position refuses. On the parent it
-			// answered `2` and `[0]` — the stale int payload twice, where the reference says `3.5` and
-			// `[None]` — so this refusal is the hole being shown, not a promise lost.
-			name:     "a numeric use of a slot a run-time store promoted",
-			src:      "xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\nfor i in [0]:\n    xs[i] = None\nprint(xs)\n",
-			wantExit: 1, wantStderr: "needs a single static kind",
-			dossier: "**Gap R.442** — the reference prints `3.5`, `[None]`; the numeric door (**ADR 0249**) " +
-				"reads the literal the container was built from and this object's slots are the loop's " +
-				"(**Gap R.82**'s one-word position again)",
 		},
 		{
 			// The reduction that never reached the object at all: `sum`/`min`/`max` fold a literal and this

@@ -133,13 +133,19 @@ func TestThePairBindingWritesBothWords(t *testing.T) {
 }
 
 // TestANumberPositionStillRefusesAndNamesTheTruthIsTheHonestHalf. The pair does not reach a position that
-// keeps one word for its operand (`n + 1`), and that remains Gap R.146's. What this cycle changed is the
-// sentence: it used to say the value "comes from a loop over a mixed list" for a program with no loop in
-// it, which is Gap R.38's defect — a diagnostic describing a program the reader cannot find. The row
-// therefore fails if the refusal either ANSWERS (a payload read as a number) or blames a loop.
+// keeps one word for its operand, and that remains Gap R.146's. What this cycle changed is the sentence:
+// it used to say the value "comes from a loop over a mixed list" for a program with no loop in it, which is
+// Gap R.38's defect — a diagnostic describing a program the reader cannot find. The row therefore fails if
+// the refusal either ANSWERS (a payload read as a number) or blames a loop.
+//
+// The program on this table used to be `print(n + 1)`. **ADR 0423** opened `+` beside a number the SOURCE
+// spells — no value a slot can hold turns that operator into anything but a number or a raise — so `n + 1`
+// prints `4` and lives in `TestABoundSlotBesideASpelledNumberAdds`. What is still one word short is the
+// position with NOTHING on the other side of the operator but another pair-bound read: `n + k`, where both
+// sides need a tag and the position keeps one word.
 func TestANumberPositionStillRefusesAndNamesTheTruth(t *testing.T) {
 	t.Parallel()
-	src := "xs = []\nxs.append(3)\nn = xs[0]\nprint(n + 1)\n"
+	src := "xs = []\nxs.append(3)\nn = xs[0]\nk = xs[0]\nprint(n + k)\n"
 	if res, err := Compile(src); err == nil {
 		t.Fatalf("the compiler answered a position that keeps one word for its operand, emitting:\n%s", firstLines(res.IR, 20))
 	}
@@ -155,6 +161,20 @@ func TestANumberPositionStillRefusesAndNamesTheTruth(t *testing.T) {
 		if !strings.Contains(msg, need) {
 			t.Errorf("the refusal does not name %s: %q", need, msg)
 		}
+	}
+}
+
+// TestABoundSlotBesideASpelledNumberAdds is the row that left the table above: the answer's kind comes from
+// the two tags, not from a record the notebook may not hold, and the pair-bound name is not a reason to
+// refuse a program whose other operand is `1`.
+func TestABoundSlotBesideASpelledNumberAdds(t *testing.T) {
+	t.Parallel()
+	got, err := compileAndRun(t, "xs = []\nxs.append(3)\nn = xs[0]\nprint(n + 1)\n")
+	if err != nil {
+		t.Fatalf("the compiler refused a program the reference answers `4`: %v", err)
+	}
+	if got != "4\n" {
+		t.Fatalf("printed %q, want \"4\\n\"", got)
 	}
 }
 

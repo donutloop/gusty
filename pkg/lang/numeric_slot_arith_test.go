@@ -233,22 +233,13 @@ func TestNumericSlotArithDoesNotRideAlongInOtherModules(t *testing.T) {
 
 // TestNumericSlotArithRefusalsNameTheMissingHalf pins what the door still declines. Each is a program
 // the reference answers, and the answer this backend gives is a compile-time refusal that says which
-// half is missing — never an exit 2, and never a verdict (ADR 0166).
+// half is missing — never an exit 2, and never a verdict (ADR 0166). Two rows left this table for
+// **ADR 0423**: `xs[0] + 1` over a slot holding a text, and `x + 1` over a loop item — with a number the
+// SOURCE spelled on the other side, the door asks the two tags and the raise is the reference's own
+// sentence, so they live in `TestTheSlotBesideASpelledNumberRaisesWhatTheReferenceRaises` below.
 func TestNumericSlotArithRefusalsNameTheMissingHalf(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
-		{
-			"text beside a slot under +",
-			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
-			"concatenating a string with a value that is not a string",
-		},
-		{
-			// A loop variable takes its kind per iteration; that is the tagged value word's job, not this
-			// read's (Gap R.125's loop half, still open).
-			"a loop variable over a mixed list",
-			"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n",
-			"needs a tagged value",
-		},
 		{
 			// `/` has had its own door since ADR 0253 and answers a float whatever arrives; the pair road
 			// must not steal it.
@@ -270,6 +261,58 @@ func TestNumericSlotArithRefusalsNameTheMissingHalf(t *testing.T) {
 				return
 			}
 			slotRefusal(t, tc.src, tc.want)
+		})
+	}
+}
+
+// TestTheSlotBesideASpelledNumberRaisesWhatTheReferenceRaises is the pair of rows that LEFT
+// TestNumericSlotArithRefusalsNameTheMissingHalf with **ADR 0423**. `+` with a number the SOURCE spells on
+// one side can answer a number or raise and nothing else — whatever the slot holds — so the door stopped
+// refusing the program and started asking the two tags. The sentence is CPython's own, character for
+// character: a text beside a number is the concatenation method reporting what it was handed, not
+// "unsupported operand", and the trap leaves through the emitted door, so `except TypeError:` reaches it.
+func TestTheSlotBesideASpelledNumberRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want, wantOut string }{
+		{
+			"text beside a slot under +",
+			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
+			`TypeError: can only concatenate str (not "int") to str`, "",
+		},
+		{
+			"a loop item beside a slot under +",
+			"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n",
+			`TypeError: can only concatenate str (not "int") to str`, "2\n",
+		},
+		{
+			"the void beside a slot under +",
+			"xs = []\nxs.append(None)\nprint(xs[0] + 1)\n",
+			"TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'", "",
+		},
+		{
+			"a container beside a slot under +",
+			"xs = []\nxs.append([1])\nprint(xs[0] + 1)\n",
+			`TypeError: can only concatenate list (not "int") to list`, "",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res, err := JIT(tc.src, 0)
+			if err != nil {
+				t.Fatalf("the compiled leg refused a program the reference raises in: %v\n%s", err, tc.src)
+			}
+			if res.Code != 3 {
+				t.Fatalf("exited %d with stdout %q — the slot must raise, not answer from its payload\n%s",
+					res.Code, res.Output, tc.src)
+			}
+			if !strings.Contains(res.Stderr+res.Output, tc.want) {
+				t.Fatalf("raised %q, not the reference's sentence %q\n%s", res.Stderr+res.Output, tc.want, tc.src)
+			}
+			if tc.wantOut != "" && !strings.Contains(res.Output, tc.wantOut) {
+				t.Fatalf("stdout %q does not carry the answer %q the elements before the trap earn\n%s",
+					res.Output, tc.wantOut, tc.src)
+			}
 		})
 	}
 }

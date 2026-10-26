@@ -107,6 +107,19 @@ func TestTheStoreThatNeededNoPromotionIsUntouchedAtTheCLI(t *testing.T) {
 		{"a_number_stored_over_the_promoted_fraction", "xs = [1]\nxs[0] = 2.5\nxs[0] = 3\nprint(xs)\n"},
 		{"the_fold_over_a_slot_the_store_promoted", "xs = [1]\nxs[0] = 2.5\nprint(sum([xs[0], 1.0]))\n"},
 		{"the_arithmetic_over_the_promoted_slot", "xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\n"},
+		{
+			// The two positions Gap R.442 was filed for, moved out of this file's pin tables by ADR 0423.
+			"the_chained_comparison_over_the_promoted_slot",
+			"xs = [1, 2]\nxs[0] = 2.5\nprint(0 < xs[0] < 3)\n",
+		},
+		{
+			"the_chained_comparison_the_stale_payload_answered_wrongly",
+			"xs = [1, 2]\nxs[0] = 5.5\nprint(0 < xs[0] < 3)\n",
+		},
+		{
+			"the_numeric_use_of_a_slot_a_runtime_store_promoted",
+			"xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\nfor i in [0]:\n    xs[i] = None\nprint(xs)\n",
+		},
 		{"the_truth_of_a_stored_void", "xs = [1]\nxs[0] = None\nprint(bool(xs[0]))\n"},
 		{"the_truth_of_a_stored_fraction", "xs = [1]\nxs[0] = 2.5\nprint(bool(xs[0]))\n"},
 		{"a_verdict_read_as_the_number_it_is", "xs = [1]\nxs[0] = True\nprint(xs[0] + 1)\n"},
@@ -192,17 +205,10 @@ func TestTheItemStoreRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 			owedBy: "Gap R.293 (a range is not a value this backend carries)",
 		},
 		{
-			// The comparison the promotion cannot carry: a chained comparison lowers each operand through
-			// an ordinary read and needs one static kind. On the row's parent it answered `True` from the
-			// payload the store never wrote — which is why the refusal here is not a lost answer.
-			name:      "a_chained_comparison_over_a_promoted_slot",
-			src:       "xs = [1, 2]\nxs[0] = 2.5\nprint(0 < xs[0] < 3)\n",
-			todayExit: 1, todayBytes: "needs a single static kind", reference: "True\n",
-			owedBy: "Gap R.442 (with Gap R.82 / ADR 0331: the one-word position; on the parent `xs[0] = 5.5` answered True where the reference says False)",
-		},
-		{
 			// The sort over a promoted list refuses where it used to PRODUCE an order — `[2.5, 1]` against
 			// the reference's `[1, 2.5]`, the payload order. Refusing is the honest half of the same hole.
+			// (Its neighbour, the chained comparison over the same slot, left this table for the answering
+			// table when **ADR 0423** gave the chain its operand's pair.)
 			name:      "a_sort_over_a_promoted_list",
 			src:       "xs = [3, 1]\nxs[0] = 2.5\nprint(sorted(xs))\n",
 			todayExit: 1, todayBytes: "cannot sort a list whose elements are of more than one kind", reference: "[1, 2.5]\n",
@@ -255,8 +261,9 @@ func TestTheItemStoreRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 func TestTheItemStoreRoadsStillRefuseWhatTheNamedRowsOwe(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, owedBy string }{
-		{"a_numeric_use_of_a_slot_a_runtime_store_promoted", "xs = [1]\nxs[0] = 2.5\nprint(xs[0] + 1)\nfor i in [0]:\n    xs[i] = None\nprint(xs)\n",
-			"Gap R.442 (with Gap R.82: the numeric door reads the literal the container was built from; on the parent this printed `2`, `[0]` where the reference prints `3.5`, `[None]`)"},
+		// The two Gap R.442 refusals this table carried — the chained comparison over a promoted slot and
+		// the numeric use of a slot a run-time store promoted — left for the answering table when ADR 0423
+		// gave the chain and the numeric door the pair they were refusing to carry.
 		{"a_reduction_over_a_container_the_compiler_does_not_hold", "xs = [1]\nxs[0] = 2.5\nprint(sum(xs))\n",
 			"Gap R.71 / Gap R.107 (lower.unsupported.builtin-needs-inline-container: the fold reads a literal it can see)"},
 		{"a_search_over_a_container_the_program_mutated", "xs = [1, 2]\nxs[0] = 2.5\nprint(xs.count(2.5))\n",

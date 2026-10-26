@@ -38,6 +38,18 @@ func TestCLIAgentATextInOneContainerLeavesAnotherNumberDoorOpen(t *testing.T) {
 		{"three levels down", textElsewhere + "outer = []\nouter.append([[7, 8]])\nprint(outer[0][0][0] + 1)\n"},
 		{"two text containers beside one numeric one", "w = []\nw.append(\"a text\")\nxs = []\nxs.append([7, 8])\nys = []\nys.append(\"more\")\nprint(xs[0][0] + 1)\n"},
 		{"the text container is a dict", textElsewhere + "notes = {}\nnotes[\"title\"] = \"a text\"\nxs = []\nxs.append([6])\nprint(xs[0][0] * 7)\n"},
+		{
+			// Two rows left the shut-door table below with **ADR 0423**: a text stored in the container the
+			// read walks, and a value that arrives from a CALL so the notebook has no literal to read. With an
+			// integer on the other side of `+` the operator can only add or raise, so the door asks the two
+			// tags and the answer is the reference's (roadmap Gap R.442).
+			"a text in the same container, and a number out of the row beside it",
+			textElsewhere + "xs = []\nxs.append([7, 8])\nxs.append(\"word\")\nprint(xs[0][0] + 1)\n",
+		},
+		{
+			"a value the compiler has no spelling for",
+			textElsewhere + "def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n",
+		},
 		{"the answer bound, printed, and asked again", textElsewhere + "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\nprint(n + 1)\nprint(f\"{n}\")\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,29 +129,21 @@ func TestCLIAgentTheDoorScopeRowsThatBelongToAnotherRowAreFiledNotFixed(t *testi
 // ordinary road — which refuses it in words, at exit 1, rather than raising a TypeError the reference never
 // raises. Each row is a program the reference answers with a TEXT (a joined string, a repeated container),
 // which is exactly what this backend cannot build from a slot (Gap R.82).
+// TestCLIAgentTheNumberDoorStaysShutWhereAnAliasCanReachTheText is the gate at the CLI: the reference
+// answers these with a joined text or a repeated container, which this backend builds from neither, so the
+// door stays shut and says so (ADR 0166). Three rows left this table with **ADR 0423**: two print
+// CPython's `8` and live in the answer table above, and `xs[0] + 1` over a slot holding a text raises the
+// reference's own concatenation sentence at the trap's exit code, which numeric_slot_arith_test.go's raise
+// table asserts. What stays is the operator the proof was written for.
 func TestCLIAgentTheNumberDoorStaysShutWhereAnAliasCanReachTheText(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"a text stored in the container the read walks",
-			"xs = []\nxs.append([7, 8])\nxs.append(\"word\")\nprint(xs[0][0] + 1)\n",
-			"cannot reach into",
-		},
-		{
+			// `*` keeps its proof: over a slot holding a text the reference answers with a REPEATED TEXT.
 			"a text stored through an alias of it",
 			"xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[1] * 2)\n",
 			"single static kind",
-		},
-		{
-			"a value the compiler cannot see through",
-			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n",
-			"cannot reach into",
-		},
-		{
-			"a text stored where the read goes, one level up",
-			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
-			"concatenating a string with a value that is not a string",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

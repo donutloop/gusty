@@ -46,6 +46,12 @@ func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
 		{"bound and measured", pairContainerBuilt + "y = [n]\nprint(len(y))\n"},
 		{"bound and subscripted", pairContainerBuilt + "y = [n]\nprint(y[0])\n"},
 		{"bound, read back, and used as a number", pairContainerBuilt + "y = [n]\nprint(y[0] + 1)\n"},
+		{
+			// The bound fold answer beside a number the SOURCE spells, which left the refusal table below
+			// with **ADR 0423** (roadmap Gap R.442).
+			"the bound winner of a fold, beside a spelled number",
+			pairContainerBuilt + "m = min(n, 3)\nprint(m + 1)\n",
+		},
 		{"bound and asked for membership", pairContainerBuilt + "y = [n]\nprint(7 in y)\n"},
 		{"bound and appended to", pairContainerBuilt + "y = [n]\ny.append(8)\nprint(y)\n"},
 		{"bound and looped over", pairContainerBuilt + "y = [n]\nfor v in y:\n    print(v)\n"},
@@ -97,7 +103,8 @@ func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *te
 		{"a fold over a set literal", pairContainerBuilt + "print(min({n, 3}))\n", nil},
 		{"a fold answer as an arithmetic operand", pairContainerBuilt + "print(min(n, 3) + 1)\n", nil},
 		{"a fold answer as an abs operand", pairContainerBuilt + "print(abs(min(n, 3)))\n", nil},
-		{"a bound fold answer as an arithmetic operand", pairContainerBuilt + "m = min(n, 3)\nprint(m + 1)\n", nil},
+		// `m = min(n, 3)` / `print(m + 1)` left for the agreement table above with **ADR 0423** — `+` beside a
+		// number the SOURCE spells asks the two tags, so the bound winner answers (roadmap Gap R.442).
 		{"a container literal as a fold operand", pairContainerBuilt + "print(sum([n, [1]]))\n",
 			[]string{"sum adds numbers", "list literal is a container", "Python raises TypeError"}},
 	} {

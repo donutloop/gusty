@@ -197,24 +197,19 @@ func TestTheAliasGuardCanFail(t *testing.T) {
 
 // TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText pins the residue: the door stays shut where the
 // reference would answer a joined text or a repeated container, and it says so in words. Exit 2 is the
-// contract's compiler-bug code and never an answer here (ADR 0166).
+// contract's compiler-bug code and never an answer here (ADR 0166). Two rows left this table with
+// **ADR 0423** — a text beside a spelled `+` raises the reference's concatenation sentence and a value with
+// no spelling adds — and they are asserted by name in
+// `TestTheNumberDoorOpensForWhatASpelledNumberSettles`.
 func TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"text stored in the container the read walks",
-			"xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n",
-			"concatenating a string with a value that is not a string",
-		},
-		{
+			// The shape the proof exists for: `xs[1] * 2` over a slot holding a text IS answered by the
+			// reference, with a repeated container this backend does not build, so `*` keeps its proof.
 			"a text reaches the same container through an alias",
 			"xs = []\nxs.append([7, 8])\nys = xs\nys.append(\"word\")\nprint(xs[1] * 2)\n",
 			"single static kind",
-		},
-		{
-			"a value with no spelling",
-			"def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n",
-			"cannot reach into",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,6 +227,39 @@ func TestTheNumberDoorStillRefusesWhatAnAliasCanFillWithText(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTheNumberDoorOpensForWhatASpelledNumberSettles is the other side of the gate above, and the reason
+// the gate may be narrow: with an `IntLit` on one side of `+`, the two shapes this file used to refuse are
+// answered the reference's way. The container the element arrived in is spelled by a CALL rather than a
+// literal — there is nothing for **ADR 0249**'s courtesy to read — and the answer comes from the two tags,
+// not from a kind the notebook asserted. The text row is a raise, at the trap's exit code, in the
+// reference's own concatenation sentence; the nested row is `8`.
+func TestTheNumberDoorOpensForWhatASpelledNumberSettles(t *testing.T) {
+	t.Parallel()
+	t.Run("a value with no spelling adds", func(t *testing.T) {
+		t.Parallel()
+		got, err := compileAndRun(t, "def f():\n    return [7, 8]\n\nxs = []\nxs.append(f())\nprint(xs[0][0] + 1)\n")
+		if err != nil {
+			t.Fatalf("the door stayed shut on a program the reference answers `8`: %v", err)
+		}
+		if got != "8\n" {
+			t.Fatalf("printed %q, want \"8\\n\"", got)
+		}
+	})
+	t.Run("a text beside the number raises", func(t *testing.T) {
+		t.Parallel()
+		res, err := JIT("xs = []\nxs.append(\"hi\")\nprint(xs[0] + 1)\n", 0)
+		if err != nil {
+			t.Fatalf("the compiled leg refused a program the reference raises in: %v", err)
+		}
+		if res.Code != 3 {
+			t.Fatalf("exited %d with stdout %q — the slot must raise, not print its index plus one", res.Code, res.Output)
+		}
+		if want := `TypeError: can only concatenate str (not "int") to str`; !strings.Contains(res.Stderr+res.Output, want) {
+			t.Fatalf("raised %q, not %q", res.Stderr+res.Output, want)
+		}
+	})
 }
 
 // TestTheNumberDoorIsCarriedOnlyByTheProgramThatAsksIt is the cost half of widening the gate: opening the
