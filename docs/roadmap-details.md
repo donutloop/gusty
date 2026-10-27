@@ -20244,29 +20244,44 @@ Filling a parameter from its default puts a value in a slot the compiler had nev
 that read a *parameter's kind* turn out to be keyed on the arguments a call **wrote**. They are listed here with the
 bytes each answers on this commit, so the next cycle inherits a measurement rather than a guess.
 
-### Gap R.479 — a parameter filled only from its DEFAULT arrives with the right word and the wrong kind (⏳ OPEN, found by **ADR 0434**)
+### Gap R.479 — a parameter filled only from its DEFAULT arrives with the right word and the wrong kind (🟨 PARTIAL — **ADR 0435** pays the text census; found by **ADR 0434**)
 
 | program | this backend (this commit) | reference (CPython 3.12.3) |
 |---|---|---|
-| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m())` — beside the SAME body written as a module `def`, which prints `hi` on this build | exit 0 — `0` | `hi` |
-| `class C():` / `    def greet(self, who="world"):` / `        print(f"hi {who}")` / `C().greet()` | exit 0 — `hi 0` | `hi world` |
-| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m())` — beside the SAME body written as a module `def`, which prints `hi` on this build | exit 0 — `0` | `hi` |
-| `class C():` / `    def greet(self, name="world"):` / `        return "hi " + name` / `print(C().greet())` | exit **1** — `concatenating a string with a value that is not a string is not supported in the AOT backend` | `hi world` |
+| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m())` — beside the SAME body written as a module `def`, which prints `hi` on this build | exit 0 — `hi` **= the reference** (the parent printed `0`) | `hi` |
+| `class C():` / `    def greet(self, who="world"):` / `        print(f"hi {who}")` / `C().greet()` | exit 0 — `hi world` **= the reference** (the parent printed `hi 0`) | `hi world` |
+| `class C():` / `    def greet(self, name="world"):` / `        return "hi " + name` / `print(C().greet())` | exit 0 — `hi world` **= the reference** (the parent refused in words) | `hi world` |
+| `class C():` / `    def m(self, s="hi"):` / `        return s.upper()` / `print(C().m())` | exit 0 — `HI` **= the reference** | `HI` |
+| `class C():` / `    def m(self, s="hi"):` / `        return len(s)` / `print(C().m())` | exit 0 — `2` **= the reference** | `2` |
+| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m(5))` | exit 0 — `5` **= the reference**: the written number argues the slot is not a text | `5` |
 | `class C():` / `    def m(self, xs=[1, 2, 3]):` / `        return len(xs)` / `print(C().m())` | exit **1** — `len of a non-string variable` | `3` |
 | `class C():` / `    def m(self, xs=[1, 2, 3]):` / `        return xs` / `print(C().m())` | exit **2** — `llc-20: … error: global variable reference must have pointer type` on `%t6 = call i32 @gy_C_m(i32 %t4, i32 @.lst1)` | `[1, 2, 3]` |
 | `class C():` / `    def m(self, flag=True):` / `        return flag` / `print(C().m())` | exit 0 — `True` **= the reference** | `True` |
 
-The first four are one cause and one exemption. `strParamOf` (**ADR 0366**), `boolParamOf` (`boolargs.go`,
-`boolmethod.go`) and `declareHeapParams` (`heapargs.go`) each collect their evidence by walking the program's call
-sites and reading `c.Args` shifted by `self`; a parameter that NO call writes appears in none of their tables, so the
-body is emitted as if its parameter were an ordinary int word. The text default therefore prints the `@str_tab`
-position — the artifact **Gap R.315** removed from the written-argument spelling — and the container default is a
-heap handle the loop and `len` roads were never told about. The verdict row is the control that keeps this honest:
-the bool census already answers an unwritten `flag=True` correctly, so the lesion is three censuses, not the fill.
+The first six rows are paid, and they were paid by reading the census's own evidence off the expression **ADR 0434**
+put in the slot. `strParamOf` (**ADR 0366**) collected its evidence by walking the program's call sites and reading
+`c.Args` shifted by `self`; a parameter that NO call writes appeared in none of its tables, so the body was emitted as
+if its parameter were an ordinary int word — and the two suppressions that made that deliberate (`seed()`'s
+`byDefault` skip, `w.attrCall`'s defaulted-tail `negOf`) were written when the slot really was never written, which was
+**Gap R.315**'s SIGSEGV. Once the vector fills the slot the default's word IS there, so the parameter earns the claim
+its shape gives it, seeded exactly as a module `def`'s defaulted parameter has been since **ADR 0166**. The `bool` row
+was the control that kept the filing honest from the start: `boolParamOf` already answered an unwritten `flag=True`
+correctly, so the lesion was never the fill and never every census.
 
-The container-default **exit 2** is not a new door: it is **Gap R.474**'s rejection — a container literal in a
-method's operand list reaches `llc` as `i32 @.lst1` — arrived at through a default because a default's expression now
-goes down the same operand road a written argument does. It is pinned at exit 2 in
+The claim is evidence and not a guess, and the reading rows say so directly —
+`pkg/lang/method_args_test.go::TestTheTextCensusReadsTheDefaultTheVectorFills` asks `strArgKinds` about seven programs:
+the text default (claimed), the module-`def` twin (claimed), a `1` default (not), an undefaulted parameter no call
+names (not), a call writing `5` to the defaulted slot (not — the negative evidence is untouched), a call writing a text
+(claimed), and a method name two classes share (not, the **ADR 0366** ambiguity rule).
+
+The container rows are NOT defaults questions, which is what their control measures: the same body spelled
+`def m(self, xs)` with the argument written — `C().m([1, 2, 3])` — refuses with the SAME
+`len of a non-string variable`, while `def f(xs): return len(xs)` at the module door answers `3`. The missing door is
+that `emitClassMethod` has no `declareHeapParams` call at all (that call lives only in `codegen_func.go`, the module
+`def` road), so a method parameter holding a container is never rooted; filed as **Gap R.480**. The container-default
+**exit 2** is not a new door either: it is **Gap R.474**'s rejection — a container literal in a method's operand list
+reaches `llc` as `i32 @.lst1` — arrived at through a default because a default's expression now goes down the same
+operand road a written argument does. It is pinned at exit 2 in
 `integration/method_args_test.go::TestTheDefaultedContainerArgumentIsStillTheAssemblerRejectionItsParentWas` so the
 row that owns the literal is found rather than rediscovered.
 
@@ -20274,11 +20289,61 @@ The float default (`def m(self, x=2.5): return x * 2` printing `4` for `5.0`) is
 written spelling `C().m(2.5)` prints the same `4`, and the missing half is the method's double return word
 (**Gap R.35** / **L11.6** / **ADR 0196**). It is pinned with today's bytes in both files' owed tables.
 
-The close is the same question each census already asks of a written argument, asked of the default expression for the
-slots no call fills, under **ADR 0366**'s authoritative-not-additive rule: a parameter is a text inside a body only
-if EVERY argument it can ever receive is a text, which for an unwritten slot reduces to one question — is the DEFAULT
-a text? Widening that rule is a decision about the census's soundness and belongs to ADR 0366's own row, which is why
-it is not in this commit.
+### Gap R.480 — a method body has no heap-container parameter door at all (⏳ OPEN, found by **ADR 0435**)
+
+| program | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, xs):` / `        return len(xs)` / `print(C().m([1, 2, 3]))` | exit **1** — `len of a non-string variable` | `3` |
+| the same body with `xs=[1, 2, 3]` defaulted, called `C().m()` | exit **1** — the SAME sentence | `3` |
+| `class C():` / `    def m(self, xs):` / `        return xs[0]` / `print(C().m([7, 8]))` | exit **1** — `index of a non-literal variable` | `7` |
+| the same body summing `xs` with a `for` | reaches `llc`, which rejects the container handle in an `i32` operand | `6` |
+| `def f(xs): return len(xs)` called `f([1, 2, 3])` | exit 0 — `3` **= the reference** | `3` |
+
+The last row is the whole argument: the module `def` road answers, the method road does not, and the difference is not
+the call. `declareHeapParams` — the door that stores the parameter's SSA word into its rooted `%_name` slot and
+registers the name in `g.listVars` / `g.runtimeDicts` / `g.runtimeSets` — is called from exactly one place,
+`pkg/lang/codegen_func.go`, and `emitClassMethod` never calls it. `heapArgKinds` compounds it: its `funcs` table is
+module-level `def`s, and a program with no module `def` gets a nil table, so even the call-site evidence has nowhere to
+be recorded. A fix therefore has two halves — a method-body call to the existing door, and a method road in the census
+— and both belong to the heap-argument machinery (**ADR 0098**, **ADR 0187**) rather than to a defaults row.
+
+### Gap R.481 — one slot, one text claim: the number one call writes un-marks the text another call's default needs (⏳ OPEN, found by **ADR 0435**)
+
+| program | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `def m(self, s="hi"): return s`, then `print(C().m(5))` and `print(C().m())` | exit 0 — `5` then **`0`** | `5` then `hi` |
+| `def m(self, s="hi"): return s * 2`, then `C().m(2)` and `C().m("hi")` | exit **1** — `a text argument to method "m" has no compiled word: … pass texts at every call site` (**ADR 0366**'s sentence) | `hihi` and `4` |
+| either call alone | correct on both rows | — |
+
+`strParamOf` is ONE claim per parameter (`map[string]map[int]bool`, keyed by the method's own name) and it is consulted
+while emitting a BODY, which no single call site owns. **ADR 0366**'s rule is authoritative rather than additive — a
+parameter is a text inside the body only if EVERY argument it can ever receive is a text — so a written number wins the
+slot for every call of that method, including the one that omits the argument and needs the default's text. The refusal
+in the second row is that rule being honest about the case it cannot carry; the `0` in the first is the artifact class
+this contract ranks worst, which is why it is pinned rather than argued about. Reading the claim per call is a
+monomorphisation decision (the method round's), not a census patch, and is where this row is expected to be paid.
+
+### Gap R.482 — a method NAME two classes share drops the whole text claim, printing the intern position at exit 0 (⏳ OPEN, found by **ADR 0435**)
+
+```
+class A():
+    def m(self, s="hi"):
+        return s
+
+class B():
+    def m(self, s="hi"):
+        return s
+
+print(A().m())
+```
+
+prints **`0`** at **exit 0** where the reference prints `hi`; delete `class B` and the same program prints `hi`.
+`textMethods` keeps **ADR 0366**'s ambiguity rule — a name two classes own, or a method and a module `def` sharing a
+name, is two parameter lists, and marking one from the other's call site would dress a number in the string table — so
+the census correctly declines, and **ADR 0435** correctly reads the default, and the program is left with the intern
+position. The table has to be keyed by the (class, method) pair the dispatch resolves, which is the key **ADR 0224**'s
+mangled symbol already carries. `tools/recmerge` REFUSED to record this source — the compiled leg's bytes are not the
+reference's — which is the tool's cross-check doing its job, and the reason this is a row rather than a footnote.
 
 ### The `reference` column that had never been asked
 

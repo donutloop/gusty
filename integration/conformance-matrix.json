@@ -4524,6 +4524,27 @@
     },
     {
       "case": {
+        "id": "programs/method_default_kinds",
+        "name": "method_default_kinds.gy",
+        "source": "# A parameter a method call OMITS still arrives with the KIND its default states. The vector fills the\n# slot from `fd.Params[i].Default` (ADR 0434); what the doors that decide a parameter's kind read used to\n# be the arguments the call WROTE, so a slot nobody wrote had the right word and the wrong kind:\n# `def m(self, s=\"hi\"): return s` called with no argument printed the @str_tab POSITION `0` for `hi`,\n# `print(f\"hi {who}\")` printed `hi 0`, and `return \"hi \" + name` refused as a number — the same artifacts\n# ADR 0366 removed for a WRITTEN text argument, arriving a second way (roadmap Gap R.479, ADR 0435).\n#\n# The text census (`strArgKinds`) claims a parameter from the DEFAULT that fills its slot, exactly as it\n# has always claimed a module `def`'s defaulted parameter. The claim is evidence, not a guess: the word the\n# body reads IS the default's word. The controls at the bottom of this program are the proof it stays\n# evidence — a `1` default earns no text claim, and a call that writes a number to the same slot argues the\n# slot is not a text, which is what the last two lines print.\n#\n# Every line below is what the reference prints, one for one. What this backend still refuses — a container\n# default read by `len`, a float default returned as a double — is pinned beside the reference's own answer\n# in `integration/method_args_test.go` (roadmap Gap R.480 and Gap R.35).\n\nclass G():\n    def echo(self, s=\"hi\"):\n        return s\n\n    def greet(self, who=\"world\"):\n        return f\"hi {who}\"\n\n    def join(self, name=\"world\"):\n        return \"hi \" + name\n\n    def shout(self, s=\"hi\"):\n        return s.upper()\n\n    def size(self, s=\"hi\"):\n        return len(s)\n\n    def same(self, s=\"hi\"):\n        return s == \"hi\"\n\n    def pick(self, s=\"hi\"):\n        return s\n\n\ng = G()\nprint(g.echo())\nprint(g.greet())\nprint(g.join())\nprint(g.shout())\nprint(g.size())\nprint(g.same())\nprint(g.pick(\"yo\"))\nprint(g.pick())\nprint(g.echo(\"ciao\"))\n\n# The control: a default that is not a text earns no text claim, and the body prints the number. What the\n# reference answers and this backend REFUSES — one slot written a number by one call and a text by another,\n# where the text call has no compiled word to travel in — is pinned as a refusal in\n# `integration/method_args_test.go` (roadmap Gap R.481).\nclass N():\n    def num(self, n=1):\n        return n\n\n    def twice(self, n=1):\n        return n + n\n\n\nn = N()\nprint(n.num())\nprint(n.num(7))\nprint(n.twice())\nprint(n.twice(4))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "hi\nhi world\nhi world\nHI\n2\nTrue\nyo\nhi\nciao\n1\n7\n2\n8\n",
+      "python_ok": true,
+      "python_stdout": "hi\nhi world\nhi world\nHI\n2\nTrue\nyo\nhi\nciao\n1\n7\n2\n8\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/void_slots_say_themselves",
         "name": "void_slots_say_themselves.gy",
         "source": "# The void a container slot holds is the void its binding wrote (ADR 0421, roadmap Gap R.435).\n#\n# One question, asked of two neighbours: the container literal's tag gate (`literalNeedsTags`) decides\n# whether a slot needs a word of its own beside the payload, and the print road decides which printer\n# renders the object. The gate's float and verdict arms have always gone past the spelling into the\n# ADR 0172 latest-binding records; its void arm recognized only the spelled `None`, so a slot holding the\n# void THROUGH A BINDING stayed on the static int array and printed the payload the void happens to carry.\n#\n# Every line below is what CPython prints for this program.\n\nk = None\n\n# The literal, in each of its spellings: the answer the payload used to give is gone.\nprint([k])\nprint([k, 1])\nprint([1, k])\nprint([k, k])\nprint([k, \"a\"])\nprint(str([k]))\nprint({k})\nprint((k,))\nprint({1: k})\nprint({k: 1})\nprint([[k]])\nprint({\"a\": [k]})\n\n# The roads that read the literal back: the slot says what it holds, so each asks the object.\nprint(len([k]))\nprint(None in [k])\nprint([k][0])\nprint([k] + [1])\nprint([k] == [None])\nprint(sorted([k]))\nfor v in [k]:\n    print(v)\n\nxs = [k]\nxs.append(1)\nprint(xs)\n\n# The void a CALL answers — a body with no value to give back, and every in-place mutator, which the\n# reference answers the same way. The element's effect is emitted; the tag, not the payload, is printed.\ndef nothing():\n    pass\n\nprint([nothing()])\nprint([nothing(), 1])\nprint({1: nothing()})\nprint({nothing()})\nprint(None in [nothing()])\nprint([{\"a\": 1}.get(\"z\")])\nys = [1]\nprint([ys.append(2)])\nprint(ys)\n\n# The gate gained an arm and changed no other answer: the spelled singleton, the single-kind numeric\n# literal, and a name the LAST binding made a number all answer as they did before.\nprint([None])\nprint([1, 2, 3])\nprint([1.5, 2.5])\nmixed = [None, 1, \"a\"]\nprint(mixed)\nk = 5\nprint([k])\nfor k in [1, 2]:\n    print([k])\n",
@@ -5731,11 +5752,11 @@
       ]
     }
   ],
-  "rows": 243,
+  "rows": 244,
   "skipped": 29,
-  "pass": 214,
+  "pass": 215,
   "fail": 0,
-  "oracle_match": 200,
+  "oracle_match": 201,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

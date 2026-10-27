@@ -432,8 +432,11 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 					// text the census must distrust — and `class C: def upper(self, s): return s.upper()`
 					// is exactly that shape, where the call the walk reports is the TEXT operation on the
 					// receiver and not a call of the user's method at all (Gap R.317's dispatch, seen from
-					// the census side).
-					if fd.Params[i] == nil || fd.Params[i].Default == nil {
+					// the census side). And a defaulted tail whose DEFAULT is a text is evidence FOR: the
+					// vector ADR 0434 fills writes that interned word into the slot, so negating it here
+					// is what left `def m(self, s="hi"): return s` printing `0` (roadmap Gap R.479).
+					p := fd.Params[i]
+					if p == nil || p.Default == nil || isStringExpr(p.Default) {
 						continue
 					}
 					negOf(method, i)
@@ -449,18 +452,18 @@ func strArgKinds(prog *Program) map[string]map[int]bool {
 			if fd == nil {
 				continue
 			}
-			// A method's DEFAULT reaches the body through a call that names no argument: the dispatch
-			// passes only the arguments the source wrote, so a position the defaults fill is never
-			// interned at the call site, and a body told the slot holds a text reads a word nothing
-			// wrote — `print(C().greet())` for `def greet(self, name="world")` died by SIGSEGV. The
-			// seed is withheld from a defaulted method parameter, which leaves that call on the door it
-			// has always used (roadmap Gap R.315, ADR 0366; see w.attrCall's tail rule below).
-			byDefault := methods[fn] != nil
+			// A method's DEFAULT reaches the body through a call that names no argument — but since
+			// ADR 0434 that call WRITES the slot: `callArgBinder` lays the arguments out over the
+			// CALLEE'S `fd.Params` and fills every omitted slot from `fd.Params[i].Default` through the
+			// same `g.value` road a written argument takes. The default's word IS there, so the
+			// parameter earns the claim the default's own shape gives it, exactly as a module `def`'s
+			// defaulted parameter does. Before the vector was filled the seed had to be WITHHELD — a
+			// body told the slot held a text read a word nothing wrote, and
+			// `print(C().greet())` for `def greet(self, name="world")` died by SIGSEGV (Gap R.315,
+			// ADR 0366); withholding it is what left `def m(self, s="hi"): return s` printing the
+			// `@str_tab` POSITION `0` (roadmap Gap R.479).
 			for i, p := range fd.Params {
 				if p == nil {
-					continue
-				}
-				if byDefault && p.Default != nil {
 					continue
 				}
 				if isStringAnnotation(p.Annot) {

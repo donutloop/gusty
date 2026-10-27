@@ -124,6 +124,58 @@ func methodArgAnsweredRowsForTest() []methodArgRow {
 			"a generator method's omitted default yields the default",
 			"class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7):\n    print(v)\n",
 			"7\n3\n",
+		},
+		{
+			// The kind half, and the reason the vector had to be filled first: the body never assigned `s`
+			// and the call never wrote it, so the text census had no argument to read and left the slot a
+			// number — `return s` printed the @str_tab POSITION. Filling the slot from the default and
+			// reading the KIND off that same default is roadmap Gap R.479 (ADR 0435, beside ADR 0366).
+			"an omitted text default prints the text it holds",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n",
+			"hi\n",
+		},
+		{
+			// The interpolation field is the crispest form: it prints the intern POSITION rather than the
+			// text, which is the exact artifact ADR 0366 removed from the WRITTEN-argument spelling.
+			"an omitted text default reaches an f-string field",
+			"class C():\n    def greet(self, who=\"world\"):\n        print(f\"hi {who}\")\nC().greet()\n",
+			"hi world\n",
+		},
+		{
+			// The door that refused rather than printed: `+` asks whether either side is a text, and the
+			// parameter was not registered as one.
+			"an omitted text default concatenates",
+			"class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n",
+			"hi world\n",
+		},
+		{
+			"an omitted text default reaches a char method",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m())\n",
+			"HI\n",
+		},
+		{
+			"an omitted text default answers `len`",
+			"class C():\n    def m(self, s=\"hi\"):\n        return len(s)\nprint(C().m())\n",
+			"2\n",
+		},
+		{
+			"an omitted text default compared to a text",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s == \"hi\"\nprint(C().m())\n",
+			"True\n",
+		},
+		{
+			// Both calls argue FOR the text: the one that writes a text and the one that omits and takes
+			// the text default. The claim is the slot's, and two claims that agree keep it.
+			"a written text and an omitted text default, in one program",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m(\"yo\"))\nprint(C().m())\n",
+			"YO\nHI\n",
+		},
+		{
+			// The control that says the census is still reading evidence and not the spelling: a call that
+			// writes a NUMBER to the defaulted slot argues against the text, and the body prints the number.
+			"a number written to a defaulted parameter prints the number",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\n",
+			"5\n",
 		}}
 }
 
@@ -326,45 +378,120 @@ func TestTheVectorIsTheCalleesDeclarationNotTheCallersCount(t *testing.T) {
 	}
 }
 
+// TestTheTextCensusReadsTheDefaultTheVectorFills is the unit half of the kind claim: it asks the census
+// DIRECTLY, on the table codegen reads (`strParamOf`, ADR 0366), about a defaulted method parameter no
+// call names. The claim used to be WITHHELD on purpose — a defaulted method slot was never written, so
+// telling the body it held a text made it decode a word nothing wrote (Gap R.315's SIGSEGV). The vector
+// fills the slot now, the default's word is in it, and the parameter earns the claim its own shape gives
+// it, exactly as a module `def`'s defaulted parameter always did. The controls are the point: a number
+// default earns nothing, an undefaulted parameter no call names earns nothing, a name two classes share is
+// dropped as ambiguous rather than marked from either, and a call that writes a number still argues
+// against the text — the negative evidence was not loosened, only the withholding was.
+func TestTheTextCensusReadsTheDefaultTheVectorFills(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src, fn string
+		slot          int
+		want          bool
+	}{
+		{
+			"a text default claims its own slot, with no call to name it",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n",
+			"m", 1, true,
+		},
+		{
+			"the module `def` twin, which always answered this way",
+			"def f(s=\"hi\"):\n    return s\nprint(f())\n",
+			"f", 0, true,
+		},
+		{
+			"a number default earns no text claim",
+			"class C():\n    def m(self, n=1):\n        return n\nprint(C().m())\n",
+			"m", 1, false,
+		},
+		{
+			"an undefaulted parameter no call names earns nothing",
+			"class C():\n    def m(self, s):\n        return s\nprint(1)\n",
+			"m", 1, false,
+		},
+		{
+			"a call that writes a number argues against the default's text",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\n",
+			"m", 1, false,
+		},
+		{
+			"a call that writes a text argues for it, with no default in sight",
+			"class C():\n    def m(self, s):\n        return s\nprint(C().m(\"hi\"))\n",
+			"m", 1, true,
+		},
+		{
+			// The name-keyed table's own rule: two classes with a `m` are two parameter lists, and the
+			// census declines to mark either from the other's call site (ADR 0366).
+			"a method name two classes share is dropped, not marked from either",
+			"class A():\n    def m(self, s=\"hi\"):\n        return s\nclass B():\n    def m(self, s=\"hi\"):\n        return s\nprint(A().m())\n",
+			"m", 1, false,
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			prog, err := Parse(tc.src)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			got := strArgKinds(prog)[tc.fn][tc.slot]
+			if got != tc.want {
+				t.Fatalf("the census says parameter %d of %q is a text: %v, want %v\n%s", tc.slot, tc.fn, got, tc.want, tc.src)
+			}
+		})
+	}
+}
+
 // TestWhatAMethodCallStillOwesIsFiledNotFixed pins the shapes this cycle measured and did NOT fix, each
-// with today's compiled answer beside the reference's. They share one cause, and it is not the vector:
-// once the vector fills a slot from a DEFAULT, the doors that read a parameter's KIND — the text census
-// (`strParamOf`, ADR 0366), the verdict census (`boolParamOf`), the heap-container registration
-// (`declareHeapParams`) — are still keyed on the arguments the call WROTE, so a parameter nobody wrote
-// arrives with the right word and the wrong kind. That is roadmap Gap R.479.
+// with today's compiled answer beside the reference's. The text half of what this row filed is paid — the
+// census now reads the DEFAULT the vector fills (ADR 0435) — and what is left here is not the vector's
+// business either: the container pair is the method body's missing heap-parameter door (the written-
+// argument control below refuses too, which is the measurement that moves it off Gap R.479), the float is
+// the method's missing double return word (Gap R.35), and the last is the price of a claim that is kept
+// per PARAMETER rather than per call (Gap R.481).
 func TestWhatAMethodCallStillOwesIsFiledNotFixed(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct {
 		name, src, today, reference, row string
 	}{
 		{
-			// The body never assigned `who`, the call never wrote it, and the census only ever saw a
-			// written argument: the interpolation field reads the @str_tab POSITION.
-			"a defaulted text parameter prints the intern position",
-			"class C():\n    def greet(self, who=\"world\"):\n        print(f\"hi {who}\")\nC().greet()\n",
-			"hi 0\n", "hi world\n", "Gap R.479",
-		},
-		{
-			// The crispest form of the reading: the SAME source at the module door prints the text (the
-			// `def` road's census saw the argument the call wrote), and at the method door it prints the
-			// payload word.
-			"a defaulted text parameter returned by the method prints the payload word",
-			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n",
-			"0\n", "hi\n", "Gap R.479",
-		},
-		{
-			// The same reading, at the door that refuses rather than prints: `+` asks whether either
-			// side is a text, and the parameter is not registered as one.
-			"a defaulted text parameter is not a text to `+`",
-			"class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n",
-			"", "hi world\n", "Gap R.479",
-		},
-		{
-			// A defaulted container reaches the body as a heap handle the loop roads were never told
-			// about, so `len` asks its question of a word it cannot classify.
+			// The container half is NOT a defaults hole, which is what the row below — the same body with
+			// the argument WRITTEN — measures. `emitClassMethod` has no `declareHeapParams` door at all:
+			// that call lives only on the module `def` road (`codegen_func.go`), so a method parameter that
+			// holds a container is never rooted and the body's `len`, index and `for` roads see a word.
 			"a defaulted container parameter is not a container to `len`",
 			"class C():\n    def m(self, xs=[1, 2, 3]):\n        return len(xs)\nprint(C().m())\n",
-			"", "3\n", "Gap R.479",
+			"", "3\n", "Gap R.480",
+		},
+		{
+			// The control that moves the container half off Gap R.479: write the argument instead of
+			// defaulting it, and the compiled leg still refuses. The missing thing is the method body's
+			// heap-parameter door, not the call's vector.
+			"a WRITTEN container argument is still not a container to `len`",
+			"class C():\n    def m(self, xs):\n        return len(xs)\nprint(C().m([1, 2, 3]))\n",
+			"", "3\n", "Gap R.480",
+		},
+		{
+			// One slot, two claims that disagree. The census is one claim per parameter, so the number the
+			// first call writes argues the slot is not a text for the SECOND call too, and the omitted call
+			// prints the word rather than the default's text. The written-number-only program above answers
+			// correctly; this one is the price of a per-parameter claim (filed as Gap R.481).
+			"a number written by one call un-marks the text the other call's default needs",
+			"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\nprint(C().m())\n",
+			"5\n0\n", "5\nhi\n", "Gap R.481",
+		},
+		{
+			// The census's own ambiguity rule (**ADR 0366**): two classes owning the name `m` is two parameter
+			// lists, so the table drops the name — and the default's text, which **ADR 0435** would otherwise
+			// read, goes with it. The intern position, at the exit code of success.
+			"two classes sharing a method name drop the text claim both defaults state",
+			"class A():\n    def m(self, s=\"hi\"):\n        return s\nclass B():\n    def m(self, s=\"hi\"):\n        return s\nprint(A().m())\n",
+			"0\n", "hi\n", "Gap R.482",
 		},
 		{
 			// A float default arrives as one word, which is the method's missing double return word

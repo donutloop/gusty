@@ -1,0 +1,68 @@
+# A parameter a method call OMITS still arrives with the KIND its default states. The vector fills the
+# slot from `fd.Params[i].Default` (ADR 0434); what the doors that decide a parameter's kind read used to
+# be the arguments the call WROTE, so a slot nobody wrote had the right word and the wrong kind:
+# `def m(self, s="hi"): return s` called with no argument printed the @str_tab POSITION `0` for `hi`,
+# `print(f"hi {who}")` printed `hi 0`, and `return "hi " + name` refused as a number — the same artifacts
+# ADR 0366 removed for a WRITTEN text argument, arriving a second way (roadmap Gap R.479, ADR 0435).
+#
+# The text census (`strArgKinds`) claims a parameter from the DEFAULT that fills its slot, exactly as it
+# has always claimed a module `def`'s defaulted parameter. The claim is evidence, not a guess: the word the
+# body reads IS the default's word. The controls at the bottom of this program are the proof it stays
+# evidence — a `1` default earns no text claim, and a call that writes a number to the same slot argues the
+# slot is not a text, which is what the last two lines print.
+#
+# Every line below is what the reference prints, one for one. What this backend still refuses — a container
+# default read by `len`, a float default returned as a double — is pinned beside the reference's own answer
+# in `integration/method_args_test.go` (roadmap Gap R.480 and Gap R.35).
+
+class G():
+    def echo(self, s="hi"):
+        return s
+
+    def greet(self, who="world"):
+        return f"hi {who}"
+
+    def join(self, name="world"):
+        return "hi " + name
+
+    def shout(self, s="hi"):
+        return s.upper()
+
+    def size(self, s="hi"):
+        return len(s)
+
+    def same(self, s="hi"):
+        return s == "hi"
+
+    def pick(self, s="hi"):
+        return s
+
+
+g = G()
+print(g.echo())
+print(g.greet())
+print(g.join())
+print(g.shout())
+print(g.size())
+print(g.same())
+print(g.pick("yo"))
+print(g.pick())
+print(g.echo("ciao"))
+
+# The control: a default that is not a text earns no text claim, and the body prints the number. What the
+# reference answers and this backend REFUSES — one slot written a number by one call and a text by another,
+# where the text call has no compiled word to travel in — is pinned as a refusal in
+# `integration/method_args_test.go` (roadmap Gap R.481).
+class N():
+    def num(self, n=1):
+        return n
+
+    def twice(self, n=1):
+        return n + n
+
+
+n = N()
+print(n.num())
+print(n.num(7))
+print(n.twice())
+print(n.twice(4))

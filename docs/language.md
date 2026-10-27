@@ -3993,10 +3993,21 @@ parameter as omittable and says nothing about the parameters around it: `def m(s
 after a default, which CPython's parser rejects at the `def`). A call the walk cannot lay out is refused in words at
 exit **1**, in the module `def` road's own sentences — `too many arguments for C.m`,
 `missing argument "b" for C.m`, `unknown keyword argument "k" for C.m`, `multiple values for argument "b" of C.m`,
-`positional argument after keyword argument for C.m`, and `self` is not a name a keyword may bind. What the vector
-does not carry is a parameter's KIND: `strParamOf`, `boolParamOf` and the heap-argument registration collect their
-evidence from the arguments a call WROTE, so a defaulted text returned by a method still prints the payload word and
-a defaulted list is not a container to `len` — roadmap **Gap R.479**.
+`positional argument after keyword argument for C.m`, and `self` is not a name a keyword may bind.
+
+What the vector fills, the KIND censuses may now read (**ADR 0435**, roadmap **Gap R.479**). A parameter the call
+omits is filled from its default, and the text census (`strParamOf`, **ADR 0366**) claims that slot from the default's
+own shape — the same seed a module `def`'s defaulted parameter has always been given — so
+`def m(self, s="hi"): return s` called as `C().m()` prints `hi`, `print(f"hi {who}")` prints `hi world`,
+`return "hi " + name` prints `hi world`, and the char-method, `len` and `==` doors are reached as text doors instead of
+being refused as arithmetic on a number. The claim is earned evidence, not a guess about spelling: a `1` default earns
+no text claim, an undefaulted parameter no call names earns nothing, a method name two classes share is dropped as
+ambiguous (**Gap R.482**), and a call that writes `5` to the defaulted slot still argues the slot is not a text — which
+is also why one slot written a number by one call and a text by another refuses rather than printing the intern
+position (**Gap R.481**). What the vector does NOT carry is a CONTAINER's rooted word: `emitClassMethod` has no
+`declareHeapParams` door, so `len(xs)`, `xs[i]` and `for x in xs` over a method parameter still ask their integer roads
+— written or defaulted alike, which is the measurement that makes that **Gap R.480** rather than a defaults bug — and a
+defaulted `float` answers `4` for `5.0` because the method has no double return word (**Gap R.35**, **L11.6**).
 
 Printf-style `%` on a text **formats**, on the compiled path, at the answers the reference gives
 (`Gap R.31`, `L11.1`, ADR 0360):

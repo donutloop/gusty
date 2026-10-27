@@ -972,6 +972,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// every line is what CPython prints for it.
 		"method_arg_defaults",
 
+		// A parameter a method call OMITS arrives with the kind its DEFAULT states: the vector fills the slot
+		// from `fd.Params[i].Default` (ADR 0434) and the text census reads its claim off that same default
+		// (ADR 0366's table), so a defaulted text parameter returned, interpolated, concatenated, sent to a
+		// char method or measured by `len` answers the text rather than the @str_tab POSITION. The program
+		// closes on the controls that keep the claim evidence rather than a guess: a `1` default earns no text
+		// claim, and a call that writes a number to the slot argues it is not a text (roadmap Gap R.479,
+		// ADR 0435).
+		"method_default_kinds",
+
 		// A container SLOT whose value arrived through a binding, rather than being spelled, is built
 		// self-describing and printed by the mixed printer: the gate that decides whether a slot needs a
 		// tag of its own asks the ELEMENT — the ADR 0172 record behind print, `str`, truthiness and

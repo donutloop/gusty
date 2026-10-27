@@ -335,6 +335,14 @@ func TestWhatTheMethodAnswerOnceOwedNowAnswers(t *testing.T) {
 			"class C:\n    def upper(self, s):\n        return s.upper()\n\n\nc = C()\nprint(c.upper(\"hi\"))\n",
 			"HI\n",
 		},
+		{
+			// The default no call names. The vector fills the slot from `name="world"` (**ADR 0434**) and the
+			// text census reads the KIND off that same default (**ADR 0366**), so the body meets the `+` door it
+			// used to refuse (roadmap **Gap R.479**, **ADR 0435**).
+			"a text default no call names",
+			"class C:\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\n\n\nprint(C().greet())\n",
+			"hi world\n",
+		},
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
@@ -387,16 +395,11 @@ func TestWhatTheMethodAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 	}
 	// The shapes below are refused in words rather than answered, and the guard is that they stay refusals —
 	// never the intern position. `self.inner(s)` asks the dispatch for the receiver the body cannot
-	// name, and a defaulted parameter that no call names arrives as a word nothing wrote. The last is the
-	// one the reference refuses too, at the same exit code.
+	// name. The last is the one the reference refuses too, at the same exit code.
 	for _, r := range []struct{ name, src string }{
 		{
 			"a method forwards its parameter to another method",
 			"class C:\n    def outer(self, s):\n        return self.inner(s)\n\n    def inner(self, t):\n        return t + \"!\"\n\n\nprint(C().outer(\"hi\"))\n",
-		},
-		{
-			"a text default no call names",
-			"class C:\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\n\n\nprint(C().greet())\n",
 		},
 		{
 			// A constructor whose required parameter the program never passes. The argument-vector walk

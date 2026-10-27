@@ -168,7 +168,9 @@ gusty ships an indentation-based syntax covering:
   `c.m(b=7, a=3)` into `def m(self, a=1, b=2)` binds by name and answers `37`: every method road (static receiver,
   `super()`, the run-time class-id switch, `mod.fn(...)`, `C(...)`'s constructor) emits one word per parameter the
   METHOD declared, filled from its own default and read from the class that declares it (**ADR 0434**, roadmap
-  Gap R.472). A call that cannot be laid over the signature is refused in words at exit 1, not answered.
+  Gap R.472). A call that cannot be laid over the signature is refused in words at exit 1, not answered. And the word
+  the default wrote carries its KIND: `C().m()` into `def m(self, s="hi"): return s` answers `hi`, not the `@str_tab`
+  position, because the text census reads the default that filled the slot (**ADR 0435**, roadmap Gap R.479).
 - **Async** — `async def` / `await` / `async for` / `async with`, with the await/return
   discipline checked in the shared front end: dropping a coroutine, awaiting one twice, or
   yielding inside an `async def` is a compile error, and each function's effect signature is
@@ -3521,6 +3523,35 @@ falls back to dynamic dispatch.
   cross-checked (**9835 → 9851**, none refused), and the two **ADR 0432** pins that held this row open are DELETED
   rather than edited.
 
+- **A parameter a method call OMITS arrives with the KIND its default states: the text census reads the word the
+  vector wrote (Gap R.479, **ADR 0435**)** — `class C():` / `    def m(self, s="hi"):` / `        return s` /
+  `print(C().m())` printed **`0`**, `print(f"hi {who}")` over `def greet(self, who="world")` printed **`hi 0`**, and
+  `return "hi " + name` refused as arithmetic on a number, where the reference — and the SAME body written as a module
+  `def`, on the same build — print `hi`, `hi world` and `hi world`. `0` and `hi 0` are the `@str_tab` POSITION, the
+  artifact **ADR 0366** was written to remove from the WRITTEN-argument spelling, surviving at the one door **ADR 0434**
+  had just opened: `strArgKinds` collected its evidence by walking call sites and reading the arguments a call WROTE,
+  and it carried two deliberate suppressions for a defaulted method slot — `seed()`'s `byDefault` skip and
+  `w.attrCall`'s defaulted-tail `negOf` — both written when that slot really was never written, which was **Gap R.315**'s
+  SIGSEGV. Once the vector fills it, the default's word IS in the slot, so the parameter earns the claim its shape
+  gives it, seeded exactly as a module `def`'s defaulted parameter has been since **ADR 0166**; the negative-evidence
+  roads were left untouched, which is what keeps the claim evidence rather than a guess about spelling (a `1` default
+  earns nothing, an undefaulted parameter no call names earns nothing, and `C().m(5)` still argues the slot is not a
+  text, printing `5`). Measured beside a `git worktree` build of the parent (`88d7da6`, **ADR 0434**): across **63**
+  deduplicated sources **7 moved, 56 held byte-identical, and all 7 arrived at the reference's bytes exactly**. The
+  row's other two halves turned out not to be defaults questions at all, which is what their controls measured: the
+  container pair (`len(xs)` refusing, `return xs` reaching `llc`) answers the same whether the argument is WRITTEN or
+  defaulted, because `emitClassMethod` has no `declareHeapParams` door — the module `def` road's private privilege —
+  filed **Gap R.480**; and the defaulted float's `4` for `5.0` is the method's missing double return word
+  (**Gap R.35** / **L11.6**). Two more shapes came out of the sweep and are filed, not absorbed: **Gap R.481** (one
+  slot carries ONE claim, so the number one call writes un-marks the text the call that omits needs — `5` then `0` for
+  the reference's `5` then `hi`, and its sibling refusing with **ADR 0366**'s sentence) and **Gap R.482** (a method name
+  two classes share drops the whole claim under **ADR 0366**'s ambiguity rule, printing the intern position at exit 0 —
+  the source `tools/recmerge` REFUSED to record, which is the cross-check working). `pkg/lang/method_args_test.go` grows
+  to **19** answered programs on both legs, **7** rows asking `strArgKinds` DIRECTLY and **5** owed rows;
+  `pkg/lang/method_text_test.go`'s `class C:` concatenation moves from the refusal table to the answered one; the CLI
+  family grows to **22** programs each re-derived from a live `python3` inside the case, with **4** owed rows;
+  `integration/programs/method_default_kinds.gy` NEW answers **14** lines byte-identical to CPython; and
+  `tools/recmerge` wrote **27** entries with the compiled leg cross-checked (**9851 → 9878**, two sources refused).
 - **A generator METHOD is a generator: the reading is the body's own, taken at the class's door (Gap R.455, **ADR 0432**)** —
   `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` died at **exit 1** with
   **`yield outside a generator function`**, while `def g():` / `    yield 1` / `for v in g():` / `    print(v)` printed

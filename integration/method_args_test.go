@@ -67,6 +67,19 @@ func methodArgFamily() []struct{ name, src, want string } {
 		{"a generator method's omitted default yields the default", "class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7):\n    print(v)\n", "7\n3\n"},
 		{"a generator method's written arguments still travel", "class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7, 8):\n    print(v)\n", "7\n8\n"},
 		{"a defaulted buffer summed", "class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nt = 0\nfor v in c.gen(7):\n    t = t + v\nprint(t)\n", "10\n"},
+		// The kind half, which had to wait for the vector: a slot the call omits is filled from the default
+		// (**ADR 0434**), so the text census can read its kind off that default and the body meets the text
+		// doors (**ADR 0366**'s table). Roadmap Gap R.479, **ADR 0435**.
+		{"an omitted text default prints the text it holds", "class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n", "hi\n"},
+		{"an omitted text default reaches an f-string field", "class C():\n    def greet(self, who=\"world\"):\n        print(f\"hi {who}\")\nC().greet()\n", "hi world\n"},
+		{"an omitted text default concatenates", "class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n", "hi world\n"},
+		{"an omitted text default reaches a char method", "class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m())\n", "HI\n"},
+		{"an omitted text default answers `len`", "class C():\n    def m(self, s=\"hi\"):\n        return len(s)\nprint(C().m())\n", "2\n"},
+		// The control that says the census still reads evidence rather than spelling: the call that writes a
+		// number argues the slot is not a text, and the body prints the number.
+		{"a number written to a defaulted parameter prints the number", "class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\n", "5\n"},
+		// And the same slot earning the claim from BOTH calls when both argue for it.
+		{"a written text and an omitted text default, in one program", "class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m(\"yo\"))\nprint(C().m())\n", "YO\nHI\n"},
 	}
 }
 
@@ -222,32 +235,30 @@ func TestWhatTheMethodCallStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, want, today string }{
 		{
-			name:  "a defaulted text parameter prints the intern position",
-			src:   "class C():\n    def greet(self, who=\"world\"):\n        print(f\"hi {who}\")\nC().greet()\n",
-			gap:   "Gap R.479",
-			want:  "hi world\n",
-			today: "hi 0\n",
-		},
-		{
-			name:  "a defaulted text parameter returned by the method prints the payload word",
-			src:   "class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n",
-			gap:   "Gap R.479",
-			want:  "hi\n",
-			today: "0\n",
-		},
-		{
-			name:  "a defaulted text parameter is not a text to `+`",
-			src:   "class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n",
-			gap:   "Gap R.479",
-			want:  "hi world\n",
-			today: "",
-		},
-		{
 			name:  "a defaulted container parameter is not a container to `len`",
 			src:   "class C():\n    def m(self, xs=[1, 2, 3]):\n        return len(xs)\nprint(C().m())\n",
-			gap:   "Gap R.479",
+			gap:   "Gap R.480",
 			want:  "3\n",
 			today: "",
+		},
+		{
+			// The control that moves the container half off the defaults row: write the argument rather than
+			// default it and the CLI still refuses. `emitClassMethod` never calls `declareHeapParams`, which
+			// lives only on the module `def` road, so a method parameter holding a container is never rooted.
+			name:  "a WRITTEN container argument is still not a container to `len`",
+			src:   "class C():\n    def m(self, xs):\n        return len(xs)\nprint(C().m([1, 2, 3]))\n",
+			gap:   "Gap R.480",
+			want:  "3\n",
+			today: "",
+		},
+		{
+			// One slot, one claim: the number one call writes argues the slot is not a text for the call
+			// that omits it too, so the second line prints the word rather than the default's text.
+			name:  "a number written by one call un-marks the text the other call's default needs",
+			src:   "class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\nprint(C().m())\n",
+			gap:   "Gap R.481",
+			want:  "5\nhi\n",
+			today: "5\n0\n",
 		},
 		{
 			name:  "a defaulted float parameter is one word, not a double",

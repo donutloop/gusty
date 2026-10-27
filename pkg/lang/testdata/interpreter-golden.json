@@ -1,5 +1,138 @@
 {
  "entries": {
+"class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n": {
+    "stdout": "hi world\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def greet(self, who=\"world\"):\n        print(f\"hi {who}\")\nC().greet()\n": {
+    "stdout": "hi world\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, n=1):\n        return n\nprint(C().m())\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s):\n        return s\nprint(1)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s):\n        return s\nprint(C().m(\"hi\"))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return len(s)\nprint(C().m())\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m())\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return s\nprint(C().m(5))\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return s == \"hi\"\nprint(C().m())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m(\"yo\"))\nprint(C().m())\n": {
+    "stdout": "YO\nHI\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, s=\"hi\"):\n        return s.upper()\nprint(C().m())\n": {
+    "stdout": "HI\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __init__(self, flag):\n        self.flag = flag\n\n    def held(self):\n        return self.flag\n\n\nprint(C(True).held())\nprint(C(False).held())\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def greet(self, name):\n        return \"hi \" + name\n\n\nprint(C().greet(name=\"ada\"))\n": {
+    "stdout": "hi ada\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\n\n\nprint(C().greet())\n": {
+    "stdout": "hi world\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def has(self, s):\n        return \"h\" in s\n\n\nprint(C().has(\"hi\"))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def join2(self, a, b):\n        return a + b\n\n\nprint(C().join2(\"hi \", \"there\"))\n": {
+    "stdout": "hi there\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def literal(self):\n        return True\n\n    def via_self(self):\n        return self.literal()\n\n\nprint(C().via_self())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s):\n        print(s)\n\n\nC().m(\"hi\")\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s):\n        return \"h\" in s\n\n\nprint(C().m(\"hi\"))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s):\n        return bool(s)\n\n\nprint(C().m(\"hi\"))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s):\n        return s\n\n\nclass D:\n    def m(self, s):\n        return s\n\n\n": {
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s):\n        return s\n\n\nprint(C().m(\"hi\"))\n": {
+    "stdout": "hi\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def m(self, s: str):\n        return s * 2\n\n\nprint(C().m(\"hi\"))\n": {
+    "stdout": "hihi\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def shout(self, s):\n        return s.upper()\n\n\nc = C()\nprint(c.shout(\"hi\"))\n": {
+    "stdout": "HI\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def upper(self, s):\n        return s.upper()\n\n\nc = C()\nprint(c.upper(\"hi\"))\n": {
+    "stdout": "HI\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def yes(self):\n        return 1 == 1\n\n\nprint(C().yes())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def shout(v):\n    return v + \"!\"\n\n\nclass C:\n    def outer(self, s):\n        return shout(s)\n\n\nprint(C().outer(\"hi\"))\n": {
+    "stdout": "hi!\n",
+    "hasStdout": true
+   },
 "class B():\n    def m(self, a, b=3):\n        return a + b\nclass C(B):\n    def m(self, a, b=4):\n        return a + b\nprint(B().m(1))\nprint(C().m(1))\n": {
     "stdout": "4\n5\n",
     "hasStdout": true
