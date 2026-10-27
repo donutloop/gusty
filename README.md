@@ -3308,6 +3308,42 @@ falls back to dynamic dispatch.
   (standing **Gap R.324**) and a container `pop` over a name, refused exactly as it always was
   (**Gap R.174**).
 
+- **A METHOD that answers the void answers it at the class's door: one body reading, asked of a body in a
+  class too (Gap R.452, **ADR 0429**)** — `class C():` / `    def m(self):` / `        return None` /
+  `c = C()` / `print(c.m() is None)` printed **`False`** at **exit 0**, `print(c.m())` printed **`0`**, and
+  `print(c.m() == 0)` printed **`True`**, where the reference prints `True`, `None` and `False` — while the
+  identical body in a module-level `def` had answered all three correctly since **ADR 0427**. One predicate
+  owns this question (`isNoneExpr`: `print`, `str()`/`repr()`, the REPL, the binding road, the container-element
+  door and the fold all ask it) and its `*Call` arm asked two tables, `g.fds` and the answer plan, both keyed by
+  a MODULE-level `def` name; a method's body lives in the class's table, so nobody had ever read it (**ADR
+  0366**'s one-question-two-tables split, one door later). The fix is the row's own prescription and it is a
+  round, not a door: `methodAnswersOnlyTheVoid` asks the SAME `answerBodyPlan` the module road asks — the walk
+  that stops at a nested `def`, the arm reader that declines a body with any un-nameable arm — and
+  `methodBodyOf` resolves the callee the way the DISPATCH does, by the **receiver's class and the name**, walking
+  bases in the order `resolveMethod` walks them (**Gap R.66**: the compiled backend already walks every base, so
+  an inherited method is not an ambiguous one). A name-keyed method table was written, measured and rejected: it
+  declined `class A():` and `class B():` each with their own `__init__`, which is two bodies the compiler can
+  each read (**ADR 0299**'s rule is about one class's body standing in for another's, and a receiver that names
+  its class makes that substitution impossible). Four doors moved on one arm — `None` from the print door,
+  `True` from the fold, `False` from the `== 0` collision (**ADR 0187**), and `print(str(c.m()), repr(c.m()))`,
+  which the parent REFUSED at exit 1, prints `None None`. `pkg/lang/void_method_test.go` NEW (**33** answered
+  programs on the compiled leg AND the record leg, **13** position rows with their own controls, **20** direct
+  predicate rows over a parsed program in both directions plus 3 sub-runs, **4** IR rows, **7** filed-not-fixed
+  pins) and `integration/void_method_test.go` NEW (**47** CLI programs read off a live `python3`, a **13**-row
+  exit-code table, **1** machine-readable refusal, **2** owed pins, **2** pins holding the module `llc` refuses).
+  A **50-program battery** beside a `git worktree` build of the parent (`66c20b2`, **ADR 0428**): **28 moved to
+  the reference, 22 held byte-for-byte, none moved away**; a **9652**-source sweep of the record corpus through
+  both builds reports **0 changed answers**. `tools/recmerge` wrote **54** entries from the reference with the
+  compiled leg cross-checked (**9652 → 9706**, none refused; the parent was right for **15** of them, wrong for
+  **38** and refused **1**). The four `Gap R.452` pins MOVED from the `void_answer`/`void_forward` owed tables
+  into the answered families rather than vanishing, and what the battery left owed is filed with its own bytes:
+  **Gap R.453** (the answer direction has no method round — a mixed-arm method carries no word for which arm ran,
+  and the arm that answers a container hands `llc` the literal's GLOBAL at **exit 2**, the shape **ADR 0333**
+  took off a `def`'s `ret` and never off a class's), **Gap R.454** (a method forwarding a call to another METHOD
+  of its class: `answerArmOf`'s arm reads a `*Name` callee), **Gap R.455** (a generator METHOD refused as
+  `yield outside a generator function`, though the same body in a `def` compiles), **Gap R.456** (a method
+  mutating `self.items` refused by the string-method door) and **Gap R.457** (a nested `def` inside a method
+  re-emits the GC frame prologue and `llc` rejects the module).
 - **A body that FORWARDS the void answers the void (Gap R.451, **ADR 0428**)** — `def f():` /
   `    return None` / `def g():` / `    return f()` / `print(g() is None)` printed **`False`** at **exit 0**
   where the reference prints `True`, and the line that makes it a defect rather than a cosmetic gap printed

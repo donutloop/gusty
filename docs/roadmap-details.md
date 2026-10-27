@@ -19491,7 +19491,7 @@ and its CLI twin in `integration/void_answer_test.go` are DELETED and stand in t
 pinned with bytes beside each other: a mixed-arm callee (**Gap R.324**, standing), a forwarded PARAMETER
 (**Gap R.417**/**Gap R.171**, standing) and a METHOD's body (**Gap R.452**, the sibling below).
 
-### Gap R.452 — a method whose body returns None is not read as answering the void (⏳ OPEN, found by **ADR 0427**)
+### Gap R.452 — a method whose body returns None is not read as answering the void (✅ CLOSED by **ADR 0429**, found by **ADR 0427**)
 
 | program | this backend (`324f5c3` and this commit) | reference (CPython 3.12.3) |
 |---|---|---|
@@ -19508,3 +19508,132 @@ The sibling pinned beside it is a REFUSAL, deliberately not folded into this row
 `print(d.pop("a") is None)` stops the build at **exit 1** with **Gap R.174**'s container-method-over-a-name sentence
 where the reference prints `False`. Pinning a refusal as a refusal (exit 1, exit 2 forbidden, **ADR 0166**) is what
 keeps the row honest about which of its shapes is missing and which is declined.
+
+>
+**Closed 2026-10-28 by ADR 0429**, on the row's own prescription — the answer plan grows a **METHOD round**, and
+the round asks the reading that already exists rather than a second one. Three pieces, one of them the fix:
+
+1. `methodAnswersOnlyTheVoid(fd)` asks `answerBodyPlan(fd, g.answer)` — the SAME reading `answerKindPlanOf` runs
+   for a module `def`, whose walk (`answerBodyReturns`) stops at a nested `def` and whose arm reader
+   (`answerArmOf`) declines a body with any arm it cannot name — and additionally claims the body with no
+   `return` road at all (`def m(self): pass`, `def reset(self): self.x = 0`), which the module road answers with
+   `fdReturnsValue`. The reflection walk behind `fdReturnsValue` reads a NESTED `def`'s `return 7` as the method's
+   own answer and does not read `return None` as an answer; it is the oldest half of the module answer and the
+   least able to carry this question (**Gap R.392** exists because the toolchain had two reflective walks over
+   one AST before this cycle added a third road that had to pick the right one).
+2. `methodBodyOf(recv, name)` answers which FuncDef the DISPATCH runs, keyed by the receiver's CLASS and the
+   name, with the base walk mirroring `resolveMethod` — own declaration first, then bases in declaration order
+   (**Gap R.66** records that the compiled backend already walks every base, so declining an inherited method
+   would have been this door's conservatism rather than the program's problem).
+3. `isNoneExpr`'s `*Call` arm asks (1) through (2). One arm, because `isNoneExpr` is the single predicate `print`,
+   `str()`/`repr()`, the REPL's echo, the binding road, the container-element door and **ADR 0427**'s fold consult
+   — which is what makes the print door, the fold, the `== 0` collision and the container element all move at once.
+
+Measured, not asserted. A **50-program battery** beside a `git worktree` build of the parent (`66c20b2`,
+**ADR 0428**) and the pinned CPython: **28 moved to the reference, 22 held byte-for-byte, none moved away** — and
+the held set is where the five new rows below come from. A **9652**-source sweep of the record corpus through
+both builds changed **0** answers. **54** sources were newly recorded from the reference with the compiled leg
+cross-checked (**9652 → 9706**, none refused); asked of the parent, those 54 printed the reference's bytes for
+**15** (the controls, and the positions whose truth the payload happened to give), answered wrongly for **38**, and
+REFUSED **1** outright — `print(str(c.m()), repr(c.m()))` died on the str/repr door's sentence and now prints
+`None None`, the fourth door to move without being touched.
+
+Three of the moved programs are worth naming because they are the row's claim rather than its arithmetic:
+`print(c.m() == 0, c.m() == False, c.m() == 1)` went `True True False` → `False False False` (the fold had been
+naming the void's payload a number, **ADR 0187**); `print([c.m()], {1: c.m()}, bool(c.m()))` went
+`[0] {1: 0} False` → `[None] {1: None} False` (the container-element door, **ADR 0172**'s pair); and
+`class A():` / `    def __init__(self):` … beside `class B():` / `    def __init__(self):` … went `False False` →
+`True True`, which is the measurement that killed the name-keyed table (**ADR 0299**'s rule is about one class's
+body standing in for another's, and a receiver that names its class makes that substitution impossible).
+
+Four pins moved rather than vanished: the two `Gap R.452` rows in
+`pkg/lang/void_answer_test.go::TestWhatTheVoidAnswerStillOwesIsFiledNotFixed` and
+`pkg/lang/void_forward_test.go::TestWhatTheForwardedVoidAnswerStillOwesIsFiledNotFixed`, with their twins in
+`integration/void_answer_test.go` and `integration/void_forward_test.go`, are DELETED and stand in the answered
+families of `pkg/lang/void_method_test.go` and `integration/void_method_test.go`.
+
+### Gap R.453 — the answer direction has no method round: a mixed-arm method carries no word, and a container arm reaches the assembler (⏳ OPEN, found by **ADR 0429**)
+
+| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, x):` / `        if x:` / `            return 7` / `        return None` / `c = C()` / `print(c.m(1), c.m(0), c.m(0) is None)` | `7 0 False` — exit 0 | `7 None True` |
+| `class C():` / `    def m(self):` / `        return [1, 2]` / `print(c.m())` | **exit 2** — `llc`: *"expected instruction opcode"* at `@.lst1 = private global {i32, [2 x i32]} …` | `[1, 2]` — exit 0 |
+
+**ADR 0429** gave a method's body the plan's VOID verdict, because the void is the one answer whose payload (the
+word `0`, **ADR 0187**) cannot survive going unrecorded. The other half of the plan is still a module-only artifact:
+`answerKindPlanOf` walks `prog.Stmts` for `*FuncDef` and never enters a `ClassDef`, and the word it exists to store
+is stored by `answerReturn` — `storePairTag(word)` on the return road a module `def` takes. A method's body is
+emitted by `emitClassMethod`, which has no equivalent, so:
+
+* a body whose arms answer two kinds has no word for which arm ran, and both positions fall to the payload — the
+  `7`-arm prints `7` (right by luck, an int's payload IS its value) and the `None`-arm prints `0` and compares equal
+  to zero; this is **Gap R.324**'s shape, one class later, and it is the reason `answerBodyPlan` declines rather than
+  guesses: carrying a body without storing its word would print `None` for the arm that answered `7`;
+* a body whose arm answers a CONTAINER has no builder at its `ret`, so the literal's static global goes into an i32
+  return slot and `llc` refuses the module — **exit 2**, which **ADR 0166** reserves for exactly this, the compiler's
+  own mistake in front of a program the reference runs. It is **Gap R.67**'s defect, which **ADR 0333** removed from
+  a `def`'s `ret` by routing it through `containerHandleOf`/`containerOperand`, and never from a class's.
+
+Both faces are pinned, the second as an assembler death in
+`integration/void_method_test.go::TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler` — the same
+treatment **Gap R.274**/**Gap R.275** get, for the same reason: a pin that asserts exit 2 is the only way a
+compiler bug stays visible without being mistaken for a program's fault.
+
+### Gap R.454 — a method that forwards a call to another METHOD of its own class is an arm the plan cannot name (⏳ OPEN, found by **ADR 0429**)
+
+| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        return None` / `    def n(self):` / `        return self.m()` / `c = C()` / `print(c.n() is None, c.n())` | `False 0` — exit 0 | `True None` |
+| the same body forwarding a module `def` (`return f()`) | `True` — exit 0 (paid by **ADR 0428**) | `True` |
+
+`answerArmOf`'s `*Call` case begins `nm, isName := v.Fn.(*Name)`, and `self.m()` is a `*Call` whose `Fn` is an
+`*Attr`. `ok=false` for the arm means `answerBodyPlan` declines the BODY, which means `n` keeps the roads
+**Gap R.452** was filed for — and the fix is not to widen the fold but to give the arm the attribute callee, asked
+through the same class-qualified resolution `methodBodyOf` just grew. The exclusion **ADR 0273** made of a body that
+answers a call to ITSELF has to survive the widening (a method forwarding to itself is the inner frame and the outer
+caller at once), which is why the row says how the arm must be written rather than only what it must answer.
+
+### Gap R.455 — a generator METHOD is refused as `yield outside a generator function` (⏳ OPEN, found by **ADR 0429**)
+
+| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` | exit 1 — `codegen: yield outside a generator function` | `False` — exit 0 |
+| `def g():` / `    yield 1` / `for v in g():` / `    print(v)` / `print(g() is None)` | `1` / `False` — exit 0 | `1` / `False` |
+
+The second row is the control that makes this a defect and not a missing feature: the identical body compiles when
+the front end can see that its function is a generator. The generator reading is a whole-program scan, and the scan
+walks statements — it has the same boundary as **Gap R.35**'s module-container scan and **ADR 0343**'s rule that a
+whole-program fact is decided before any IR exists, and it never enters a `ClassDef`. So the refusal blames the
+program for the POSITION its body was written in, which is the one thing an honest refusal may not do (**ADR 0166**).
+The lower half of the row is **L12.1**'s iterator protocol, which a method generator reaches by the same door a
+module generator does.
+
+### Gap R.456 — a method mutating its own FIELD container is refused by the string-method door (⏳ OPEN, found by **ADR 0429**)
+
+| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def __init__(self):` / `        self.items = []` / `    def add(self, x):` / `        self.items.append(x)` / `c = C()` / `print(c.add(1))` / `print(c.items)` | exit 1 — `string-method append on a receiver that is not a text the compiler can read:` | `None` then `[1]` — exit 0 |
+
+The mutation door knows three receivers: a literal container written at the call, a NAME whose container the binding
+road recorded, and a text. `self.items` is an ATTRIBUTE, so the dispatch landed in the string-method door and wrote a
+sentence about texts for a program that wrote none — the same failure shape **ADR 0166** was written about and
+**Gap R.248**'s row names in a neighbouring door. The field roads exist: **ADR 0418**'s `classInfo.attrs` reads a
+class member through the class name, the verdict census reads `self.<field>` through the class being lowered, and the
+instance slot table reads an attribute off an instance. What nobody has asked is what a field IS when the program
+WANTS to mutate it through `self`. That is this row, and it is **L12.4**'s class object in miniature: until the
+compiler can say what a field is, it must refuse by naming the field and the class.
+
+### Gap R.457 — a nested `def` inside a METHOD re-emits the GC frame prologue and `llc` rejects the module (⏳ OPEN, found by **ADR 0429**)
+
+| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        def inner():` / `            return 7` / `        return None` / `c = C()` / `print(c.m())` | **exit 2** — `llc`: *"multiple definition of local value named 'gc.frame.base'"* | `None` — exit 0 |
+| the same method with the nested `def` deleted | `None` — exit 0 | `None` |
+| the same `def inner()` inside a module-level `def` | compiles | compiles |
+
+Three controls in one row: the nested body is the difference, and the position of the enclosing body is the other
+difference. The frame alloca (**ADR 0151**/**ADR 0273**'s rooted-slot rule, which **ADR 0354**'s shadow stack also
+opens) is minted per EMITTED body, but the nested body is emitted inside the enclosing method's block group, so one
+function ends up carrying two prologues with the same name. The neighbour is **Gap R.274**, an IR name minted from a
+source NAME as if a name were an identity; this is the same class of mistake at the frame's door, and the row's DoD
+is the IR assertion (`one gc.frame.base alloca per function`) rather than the print.

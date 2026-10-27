@@ -15630,3 +15630,59 @@ discovery — and it still taught me twice.
    count 417 → 418 — all recomputed by `golden_artifact_counts_test.go` and `roadmap_snapshot_test.go`, which is
    **Gap R.204** doing its job. The two `Gap R.451` pins were DELETED from their owed tables and RE-CREATED in
    the answered families, on both legs.
+
+## ADR 0429 — a METHOD that answers the void answers it at the class's door: one body reading, asked of a body in a class too (Gap R.452 closed; Gaps R.453–R.457 filed, 2026-10-28)
+
+1. **"One predicate" is a claim about every road, and the road that never asked is the bug.** `isNoneExpr` owns
+   "is this expression the void" for `print`, `str()`/`repr()`, the REPL, the binding road, the container-element
+   door and — since yesterday — the comparison fold. It was the right predicate with a missing arm: its `*Call`
+   case begins with `v.Fn.(*Name)`, and a method call's callee is an `*Attr`, so `c.m()` fell past every table and
+   answered `false`, and four doors fell to the payload with it. The lesson from **ADR 0427** ("find the road that
+   was already right and make the other ask it") generalises one step further: when the fix is one arm in one
+   predicate, count the doors that will move without being touched. Four did — the print, the fold, the `== 0`
+   collision, and `print(str(c.m()), repr(c.m()))`, which the parent refused outright and which nobody had filed
+   because the refusal's sentence was about the str/repr table, not about methods.
+
+2. **Ask what a conservatism protects before you inherit it.** The first draft of the method round keyed the
+   verdict by method NAME through the existing census, whose rule is "a name more than one callable owns is no name
+   at all" (**ADR 0299**). That rule exists because the verdict road resolves a call by name and would hand one
+   class's body to a call on another's. This question does not resolve by name — the receiver already names its
+   class — so the rule bought me two wrong declines: `class A():` and `class B():` each with their own `__init__`,
+   and `class B(A): pass` calling an inherited `m`. Keying by (class, name) plus the base walk `resolveMethod`
+   already does needs no ambiguity rule at all, and the two programs that motivated dropping it are now answered
+   rows. Same shape as **ADR 0428**'s carried-only rule: a rule copied into a case it was never written for is
+   found by measuring, not by reading the rule again.
+
+3. **When two readings of one AST disagree, the control program decides which one you use.** The module road's
+   no-return answer is `fdReturnsValue`, a reflection walk that asks "does a `return` with an expression appear
+   anywhere below". The plan's road is `answerBodyReturns`, a statement walk that stops at a nested `def`. For
+   `def m(self):` / `    def inner():` / `        return 7` / `    return None` they disagree in both directions —
+   reflection says "returns a value", the walk says "its only arm is the void" — and the reference prints `None`.
+   I wrote the reflection half first and the row's own battery caught it. **Gap R.392** already says this toolchain
+   has too many reflective walks over one AST; a new door is the moment to pick the disciplined one, and a control
+   whose body contains a nested `def` is the test that makes you pick it.
+
+4. **A whole-program claim needs the corpus sweep AND the battery, because they answer different questions.** The
+   record corpus (9652 sources, both builds) changed **0** answers — that is the blast-radius claim: nothing that
+   already answered kept answering differently. The 50-program battery is the coverage claim, and the number that
+   matters is the one that reads awkward: of the 54 sources I newly recorded, the parent printed the reference's
+   bytes for only **15**. A corpus with zero changed answers and a family that was 38/54 wrong is not a contradiction
+   — it is the corpus telling you it had never asked about methods answering the void, and a green sweep must never
+   be allowed to read as "this family was already fine".
+
+5. **An exit-2 shape is a row, pinned with the assembler's own words.** The battery turned up `class C():` /
+   `    def m(self):` / `        return [1, 2]` dying in `llc` at **exit 2** — **ADR 0166**'s compiler-bug code, in
+   front of a program CPython prints. Every integration case in this family fatals on exit 2, so the honest place
+   for it is a table that ASSERTS exit 2 and quotes `llc`'s message, following `integration/module_slot_scope_test.go`'s
+   precedent ("the contract reserves 2 for a compiler bug, and `llc` refusing a program the reference runs is exactly
+   that"). It is filed as **Gap R.453** beside its exit-0 sibling (a mixed-arm method that prints `0` for the `None`
+   arm) because they are one missing road seen from two doors — and a pin that hid it behind "the row is about the
+   print door" would have made the crash invisible.
+
+6. **The five refusals a battery finds on the way are five rows, not one paragraph.** Generator methods,
+   `self.items.append(x)`, a nested `def` in a method: each arrived as a held row in the battery table, and each
+   was refused or crashed for a reason belonging to another door (**Gap R.455**, **Gap R.456**, **Gap R.457**). The
+   temptation was to write "the class/method area has other gaps" in the ADR and move on; the tracker's rule is a
+   fresh ID per measured defect, and each of these is one program, its bytes, and the owner it will name when
+   somebody fixes it. Four of the five are pinned in this cycle's own owed tables, so a future fix that leaves a
+   pin behind fails the suite rather than passing quietly.

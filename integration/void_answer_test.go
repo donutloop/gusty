@@ -219,11 +219,12 @@ func TestWhatTheVoidAnswerStillOwesAtTheCLI(t *testing.T) {
 		// `Gap R.451` — the forwarding row that stood here — is PAID by **ADR 0428** and DELETED rather than
 		// edited: the program prints the reference's `True`, and stands in `voidForwardCLIFamily()` in
 		// `integration/void_forward_test.go`, beside a live CPython.
-		{
-			name: "a method whose body returns None", gap: "Gap R.452",
-			src:    "class C():\n    def m(self):\n        return None\nc = C()\nprint(c.m() is None)\n",
-			python: "True\n", compiled: "False\n",
-		},
+		// `Gap R.452` — the method row that stood here (`class C():` / `    def m(self):` /
+		// `        return None` / `c = C()` / `print(c.m() is None)`, pinned at `False` beside the reference's
+		// `True`) — is PAID by **ADR 0429** and DELETED rather than edited: the answer direction now has a
+		// METHOD round, so the fold asks a class's body the one question it asks a module `def`'s. The program
+		// prints the reference's `True`, and stands in `voidMethodCLIFamily()` in
+		// `integration/void_method_test.go`, beside a live CPython.
 		{
 			name: "the arm that answered the void, in a body that also answers a number", gap: "Gap R.324",
 			src:    "def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True) is None)\n",

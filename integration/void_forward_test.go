@@ -15,9 +15,10 @@ package integration
 // Every expectation here is read off a live CPython in the same case rather than remembered, so a stale
 // premise fails as loudly as a wrong answer does. The exit-code table keeps ADR 0166's contract for the
 // shapes this row does NOT own: a refusal stays at exit 1 with its own sentence, a wrong answer never
-// reaches exit 2, and the owed rows — a mixed-arm callee (**Gap R.324**), a parameter handed back
-// (**Gap R.417**), a method's body (**Gap R.452**) — are pinned with the reference's bytes beside this
-// backend's (ADR 0302).
+// reaches exit 2, and the owed rows — a mixed-arm callee (**Gap R.324**) and a parameter handed back
+// (**Gap R.417**) — are pinned with the reference's bytes beside this backend's (ADR 0302). The third row
+// that used to stand here, a method's body (**Gap R.452**), is PAID by **ADR 0429** and lives, answering, in
+// `integration/void_method_test.go`.
 
 import (
 	"strings"
@@ -228,15 +229,16 @@ func TestWhatTheForwardedVoidAnswerStillOwesAtTheCLI(t *testing.T) {
 			src:    "def f(x):\n    if x:\n        return None\n    return 1\ndef g():\n    return f(True)\nprint(g(), g() is None)\n",
 			python: "None True\n", compiled: "None False\n",
 		},
+		// `Gap R.452` — the row that stood here (`def f():` / `    return None` above `class C():` /
+		// `    def m(self):` / `        return f()` / `print(c.m() is None)`) — is PAID by **ADR 0429** and
+		// DELETED rather than edited: the answer direction has a METHOD round now, so a body in a class hears
+		// the void verdict through a call the way **ADR 0428** made a second `def` hear it. The program prints
+		// the reference's `True`, and stands in `voidMethodCLIFamily()` in `integration/void_method_test.go`.
+
 		{
 			name: "a body forwarding a call that hands back a parameter", gap: "Gap R.417",
 			src:    "def f(v):\n    return v\ndef g():\n    return f(None)\nprint(g() is None, g())\n",
 			python: "True None\n", compiled: "False 0\n",
-		},
-		{
-			name: "a method forwarding the void answer", gap: "Gap R.452",
-			src:    "def f():\n    return None\nclass C():\n    def m(self):\n        return f()\nc = C()\nprint(c.m() is None)\n",
-			python: "True\n", compiled: "False\n",
 		},
 	} {
 		r := r

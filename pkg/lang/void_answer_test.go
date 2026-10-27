@@ -358,15 +358,12 @@ func TestWhatTheVoidAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		// edited: **ADR 0428** asks `answerArmOf` whether the callee answers only the void before the
 		// carried-only rule declines the arm, and the program prints `True`. It stands in the answered
 		// family of `pkg/lang/void_forward_test.go`, on the compiled leg AND the record leg.
-		{
-			// The method twin: the predicate answers for a `def` the module holds in `fds`, and a method's
-			// body is reached through the class's own table.
-			name:     "a method whose body returns None",
-			src:      "class C():\n    def m(self):\n        return None\nc = C()\nprint(c.m() is None)\n",
-			wantExit: 0, wantOut: "False\n",
-			dossier: "**Gap R.452** — the reference prints `True`; `isNoneExpr`'s Call arm asks `g.fds` and the " +
-				"answer plan, both keyed by a MODULE-level `def`, and a method's body is in neither",
-		},
+		// The pin that stood here — `class C():` / `    def m(self):` / `        return None` / `c = C()` /
+		// `print(c.m() is None)`, held at `False` beside the reference's `True` — is DELETED rather than
+		// edited: **ADR 0429** gives the answer direction its METHOD round, so the one body reading
+		// (`answerBodyPlan`) answers for a class's body the way it answers for a module `def`'s. The program
+		// prints `True`, and stands in the answered family of `pkg/lang/void_method_test.go`, on the compiled
+		// leg AND the record leg.
 		{
 			// A body whose arms answer None AND a number is a run-time fact, and this door has no word for
 			// one: `comparePair` declines a carried call by design and the fold answers from the source.

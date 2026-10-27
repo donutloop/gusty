@@ -368,6 +368,17 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 				}
 			}
 		}
+		// A METHOD whose body answers nothing but the void answers the void. Every arm above reads a body the
+		// module holds by a `def`'s NAME — `g.fds`, the answer plan, the min/max fold — and a method's body
+		// lives in the class's own table, so the one predicate that renders `None` for `print(f())` had never
+		// heard of `print(c.m())`: the call lowered to the void's payload, the word `0`, and the print door
+		// printed the digit while the fold beside it refused to call the same word the void (**Gap R.452**;
+		// the module half is **Gap R.388** / **ADR 0427**, the forwarding half **ADR 0428**). Asked of the
+		// BODY, class-qualified the way the method tables key it, through the same `answerBodyPlan` the
+		// module road asks — so one program cannot see two answers to "does this body answer anything?".
+		if g.methodCallAnswersOnlyTheVoid(v) {
+			return true
+		}
 	}
 	return false
 }

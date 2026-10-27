@@ -43,7 +43,11 @@ package lang
 //   - a body that is not an ordinary body — a generator answers its accumulator handle, an `async
 //     def` answers a coroutine, a decorated def answers through the decorator's own convention,
 //     and a method answers through `emitClassMethod`, which does not share the return roads this
-//     file drives (the method twin is its own row).
+//     file drives. What a method body DOES get from this file is the one verdict that needs no
+//     return road at all — "every road of it answers the void" — because a body whose payload is
+//     the word `0` is the one body that cannot afford to wait for the tagged answer word
+//     (`methodAnswersOnlyTheVoid`, roadmap **Gap R.452**, **ADR 0429**; the CARIED kind word for a
+//     method is still this file's own row to claim).
 //   - anything the pair road already owns. A body whose every return is arithmetic over a pair the
 //     caller handed in stores a *run-time* tag, which is a better answer than the constant one
 //     written here; those functions stay with `pairFnSpec.returnsPair`.
@@ -101,6 +105,114 @@ func (p *answerKindPlan) carries(fnName string) bool {
 // first (roadmap L11.1, Gap R.228, ADR 0368).
 func (p *answerKindPlan) answersOnlyTheVoid(fnName string) bool {
 	return p != nil && p.void[fnName]
+}
+
+// methodAnswersOnlyTheVoid is the answer direction's METHOD round (roadmap **Gap R.452**, **ADR 0429**):
+// the verdict `answersOnlyTheVoid` gives a module-level `def`, given to a body that lives in a class's own
+// table instead of the module's. The two questions are ONE question — "does every road of this body answer
+// the void?" — and they are answered by the ONE reading `answerBodyPlan`, which is why this lives beside
+// that function rather than in the class file beside the tables that key a body by hand.
+//
+// The reason a method needs its own door and not simply the name-keyed one: `isNoneExpr` asked `g.fds` and
+// the plan, both keyed by a MODULE-level `def`, so `class C():` / `    def m(self):` / `        return None`
+// / `print(c.m() is None)` answered from the payload — the word `0`, which an int slot legally carries
+// (**ADR 0187**) — and printed `False` at exit 0 where the reference prints `True`, while the identical
+// question asked of a module-level `def` has printed `True` since **ADR 0427**.
+//
+// What it will NOT claim, in the same direction as every other census in this package: a body that is not
+// an ordinary one (`async`, decorated, a generator), and a body with ANY road this file cannot name — one
+// `return self.x` makes the whole body un-nameable, and the caller keeps the roads it has always had. A
+// verdict that guesses is how `None` gets printed for a value.
+func (g *irGen) methodAnswersOnlyTheVoid(fd *FuncDef) bool {
+	if fd == nil || fd.Async || len(fd.Decorators) > 0 || containsYield(fd.Body) {
+		return false
+	}
+	if _, voidOnly, planned := answerBodyPlan(fd, g.answer); planned && voidOnly {
+		return true
+	}
+	// A body with no `return` road at all — `def m(self): pass`, `def reset(self): self.x = 0` — answers
+	// the void on every road that can reach it. The module road answers this shape with `fdReturnsValue`,
+	// which asks by REFLECTION and therefore walks into a nested `def`: `def m(self):` /
+	// `    def inner():` / `        return 7` / `    return None` is a method that answers None and a
+	// nested function that answers 7, and only the walk that STOPS at a nested body (**Gap R.392**'s two
+	// roads over one AST) tells them apart.
+	returns, _ := answerBodyReturns(fd.Body)
+	return len(returns) == 0
+}
+
+// methodCallAnswersOnlyTheVoid is the `*Call` arm's question: is this an attribute call whose body the
+// dispatch will run answers nothing but the void? The callee must be an attribute on a receiver the
+// compiler can place — `c.m()`, `C().m()`, `self.m()` — because a call whose receiver the compiler cannot
+// name is a call whose body it has never read.
+func (g *irGen) methodCallAnswersOnlyTheVoid(c *Call) bool {
+	if c == nil {
+		return false
+	}
+	attr, isAttr := c.Fn.(*Attr)
+	if !isAttr || attr.Name == nil || attr.Obj == nil {
+		return false
+	}
+	return g.methodAnswersOnlyTheVoid(g.methodBodyOf(attr.Obj, attr.Name.Value))
+}
+
+// methodBodyOf resolves an attribute call to the FuncDef its dispatch runs, keyed the way the method
+// tables key a body: by the RECEIVER'S CLASS and the name together, not by the name alone. The verdict
+// census keys by name and drops an ambiguous one — the right conservatism when one class's body would
+// stand in for another's (**ADR 0299**). It is the wrong conservatism for this question: the receiver's
+// class is already known — that is what `receiverClass` answers — so two classes each declaring their own
+// `__init__` are two bodies the compiler can each read, and a program with two constructors is not an
+// ambiguous program.
+func (g *irGen) methodBodyOf(recv Expr, name string) *FuncDef {
+	if name == "" || recv == nil {
+		return nil
+	}
+	if nm, isName := recv.(*Name); isName && nm.Value == "self" && g.curClassSrc != "" {
+		// `self.helper()` inside a body: the class being lowered is the only answer, and only the
+		// generator knows it (the same context `methodAnswer` asks for `self`).
+		return g.methodCensus.declaredMethod(g.curClassSrc, name)
+	}
+	cls, ok := g.methodCensus.receiverClass(recv)
+	if !ok {
+		return nil
+	}
+	return g.methodCensus.declaredMethod(cls, name)
+}
+
+// declaredMethod answers WHICH BODY the dispatch runs for `recv.name()`: the class's own declaration, or —
+// exactly as `resolveMethod` walks it at the call site — the first base that declares it (roadmap
+// **Gap R.66**: the compiled backend walks every base and answers correctly, so a verdict that stopped at
+// the class's own body would decline the question for an inherited method whose dispatch was never the
+// problem). A duplicated class name is dropped from the table, so two classes, one name is no class.
+func (c methodCensusT) declaredMethod(class, name string) *FuncDef {
+	return c.declaredMethodAt(class, name, map[string]bool{}, 0)
+}
+
+// declaredMethodAt is the base walk, with the two guards a whole-program reading needs: a class already
+// visited is not visited twice (a cycle in the source must not walk the stack away), and the depth is a
+// bound, not a tuning number — no real hierarchy nests eight deep.
+func (c methodCensusT) declaredMethodAt(class, name string, seen map[string]bool, depth int) *FuncDef {
+	if class == "" || name == "" || depth > 8 || seen[class] {
+		return nil
+	}
+	seen[class] = true
+	cd, ok := c.classes[class]
+	if !ok || cd == nil {
+		return nil
+	}
+	for _, st := range cd.Body {
+		if m, ok := st.(*FuncDef); ok && m != nil && m.Name == name {
+			return m
+		}
+	}
+	for _, b := range cd.Bases {
+		if b == nil {
+			continue
+		}
+		if fd := c.declaredMethodAt(b.Value, name, seen, depth+1); fd != nil {
+			return fd
+		}
+	}
+	return nil
 }
 
 // armOf answers the callee's question: what kind word does this `return` road store?

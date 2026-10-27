@@ -389,15 +389,12 @@ func TestWhatTheForwardedVoidAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 			dossier: "**Gap R.417** / **Gap R.171** (standing) — the reference prints `True None`; a parameter " +
 				"crosses a frame as one word, and this is that collision one body later",
 		},
-		{
-			// A METHOD forwarding the module's void answer: `isNoneExpr` and the plan both key a body by
-			// a module-level `def`, so the forwarding body never hears the verdict either.
-			name:     "a method forwarding the void answer",
-			src:      "def f():\n    return None\nclass C():\n    def m(self):\n        return f()\nc = C()\nprint(c.m() is None)\n",
-			wantExit: 0, wantOut: "False\n",
-			dossier: "**Gap R.452** (standing, this row's sibling) — the reference prints `True`; a method's " +
-				"body is in neither `g.fds` nor the answer plan",
-		},
+		// The pin that stood here — `def f():` / `    return None` above `class C():` /
+		// `    def m(self):` / `        return f()` / `print(c.m() is None)`, held at `False` beside the
+		// reference's `True` — is DELETED rather than edited: **ADR 0429** reads a method's body with the same
+		// `answerBodyPlan` the module road asks, so the forwarding arm reaches through a class the way **ADR
+		// 0428** made it reach through a second `def`. The program prints `True`, and stands in the answered
+		// family of `pkg/lang/void_method_test.go`, on the compiled leg AND the record leg.
 		{
 			// A refusal, pinned AS one: exit 1, exit 2 forbidden (**ADR 0166**). The body reaches for a
 			// module-level container, which is a different door's standing problem.
