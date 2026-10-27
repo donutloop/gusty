@@ -3140,6 +3140,32 @@ falls back to dynamic dispatch.
   item's own kind, which `print(k)` reads from the unroll's record and the literal beside it does not).
 
 
+- **A loop item's kind is kept once per iteration, so ONE predicate answers it — the print door and the
+  four gates beside it (Gap R.440, **ADR 0424**)** — `for k in [None, 1.5]:` printed **`None`**, **`1.5`** for
+  `print(k)` and **`[0]`**, **`[1]`** for `print([k])` on the next line, both at the **exit code of success**:
+  the unrolled `for` road records what each item is (`loopElemTag`, since **ADR 0233**), the print door reads
+  that record (**Gap R.358**), and the four gates that decide whether a container literal needs its slots
+  labelled asked the NAME and its older bindings instead — so one value had two doors, and only one of them
+  had been told. `floatSlotExpr`, `boolSlotExpr`, `noneSlotExpr` and the container arm of `literalNeedsTags`
+  now ask the record before they ask the name, and `elemKindTag`/`elemTagFor` — which had carried a private
+  copy of that reading since **Gap R.358** — ask the same function, so gate and door cannot keep two readings
+  of one map (**ADR 0249**). The half that decides the row is that the answer carries **whether the record
+  speaks for this name at all**, not only whether the item has a kind a word cannot render: for
+  `k = None` / `for k in [1, 2]:` the item's kind IS a plain number, and a gate that hears only "no kind"
+  reads the stale void claim and refuses the literal as mixed — the shape a **9421**-source sweep of the
+  record corpus caught and no probe had thought to try. A **46-shape probe** beside a rebuilt parent:
+  **16 newly answering / 0 regressed**, twelve of them wrong answers at exit 0; the record sweep reports
+  **9421 unchanged / 0 improved / 0 regressed**. `pkg/lang/loop_item_literal_test.go` NEW (**28** answering
+  rows on the compiled leg AND the record leg, **12** controls with **ADR 0239**'s fold asserted intact in the
+  IR, **3** IR rows reading TagNone `3` / TagFloat `1` / TagList `5` off `mainRegion`, **9 × 6** gate-and-door
+  property rows, **7** filed-not-fixed) and `integration/loop_item_literal_test.go` NEW (**34** CLI rows
+  against a live `python3`, **6** pinned wrong answers, **1** refusal row); `tools/recmerge` wrote **33**
+  entries from the reference with the compiled leg cross-checked (**9421 → 9454**) and REFUSED three whose
+  compiled leg disagrees. Three rows FILED from the same probe: **Gap R.445** (the interpolation field of an
+  item — `print(k)` answers `None`, `print(f"{k}")` answers `0`), **Gap R.446** (the fold over a fractional
+  item — `sum([k])` answers `0`, `1`), **Gap R.447** (the `for` road's `store i32` into the `double` slot the
+  float road declared, which `--verify` calls `ok` because opaque pointers make `i32*` and `double*` one type).
+
 - **A comparison chain asks each of its operands what it CARRIES (Gap R.442, **ADR 0423**)** —
   `xs = [1, 2]` / `xs[0] = 2.5` / `print(0 < xs[0] < 3)` said *"this context needs a single static kind"*
   where CPython prints **`True`**; `d = {"a": 2.5}` / `print(0 < d["a"] < 3)` printed **`False`** and

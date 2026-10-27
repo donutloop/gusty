@@ -15306,3 +15306,62 @@ discovery — and it still taught me twice.
    notes: `GUSTY_GOLDEN_MISSING` takes a **path** (writing `=1` puts a file called `1` in the repo root), and
    `tools/recmerge` wants a **bare JSON array**, not the `{"sources": [...]}` shape the docs mention — worth
    knowing before the recording cycle is spent discovering it.
+
+## ADR 0424 — a loop item's kind is kept once per iteration, so ONE predicate answers it (Gap R.440 closed; Gap R.445, Gap R.446, Gap R.447 filed, 2026-10-27)
+
+1. **"The print is right and the literal beside it is wrong" is a whole diagnosis, and it cost me nothing
+   but a second line in the probe.** `for k in [None, 1.5]:` `print(k)` → `None`, `1.5`; `print([k])` →
+   `[0]`, `[1]`. One value, two doors, one informed. Whenever a row is about a VALUE rather than a
+   statement, write the probe as two printings of the same value before reading any code; the pair names the
+   door that never learned the fact, which here was four gate arms in `heapargs.go` I had not thought to
+   grep for. The lesson from **ADR 0423** generalised: ask the neighbour that already answers.
+
+2. **A record read needs two booleans, and the one people skip is the one that breaks the build.**
+   `loopElemTag[name]` answers both "is this name an item of a loop right now?" and "what kind is the item?".
+   My first helper collapsed them — "self-describing kind, else no record" — and `k = None` /
+   `for k in [1, 2]:` `print([k])`, an answer **ADR 0421** had pinned as a control, came back as
+   `a compiled list holds either strings or numbers, not both`. The numeric item has a record; the record is
+   what keeps the stale void claim from being asked. `loopItemIsThis` therefore returns `(answered, yes)`, and
+   the doc comment carries the refusal as the reason, because a future "simplification" to one bool re-breaks
+   a program nobody will think to re-probe.
+
+3. **The record corpus is a regression net with a sense of humour, and it caught what my 46 probes did not.**
+   Every source in `interpreter-golden.json` through the parent binary and this one, answers diffed:
+   9421 sources, 2 lines differing, both `llc` temp paths inside an error string. Zero regressions — but
+   running the SAME harness over my *proposed* record additions is what surfaced the mixed-list refusal, in a
+   shape (`k = None` then a numeric loop) that had been a control row for two cycles and never once appeared
+   in my probe set. Sweep the corpus for the sources you are ABOUT to add, not only the ones you already have.
+
+4. **`--verify` says `ok` to a type error, because opaque pointers removed the thing the verifier could see.**
+   The `k = 1.5` / `for k in [1, 2]` family emits `%_k = alloca double` beside `store i32 1, i32* %_k` and
+   `llc`/`opt -passes=verify` are content: `i32*` and `double*` are both `ptr`. **ADR 0166**'s "the module is
+   the compiler's responsibility" guard has a blind spot exactly where a slot's declared word and the store's
+   word disagree, and the program answers whatever the old box left (`1.5000000000000002`). Filed as
+   **Gap R.447** with the IR quoted, and `recmerge` refusing to record it was the only reason I looked.
+
+5. **A refusal that replaces a wrong answer is not automatically progress, and the parent's bytes are the
+   tiebreaker.** `print([k])` over `k = 1.5` + a numeric loop went from `[1.5000000000000002]` (a float box
+   printed as a float) to `[1]`, `[0]` (a box handle printed as an int). Both wrong; neither better. Because
+   the pin records BOTH builds' bytes, the roadmap row can say "same defect, different symptom" instead of
+   arguing about which garbage is friendlier. When a change moves a wrong answer, pin the parent's bytes in
+   the same commit or the next reader cannot tell a fix-with-a-side-of-regression from a clean change.
+
+6. **The gate/door property case is where the real argument lives.** 9 item kinds × (the four arms + the
+   fold's census + `elemKindTag` agreement) is a table a reviewer can read in ten seconds, and it caught the
+   shape of my own over-claim: I had asserted gate⇔door symmetry, which is false — the door answers the tag
+   question for reasons of its own (a name the container records claim is taggable without needing a tagged
+   literal). **ADR 0249**'s rule is an IMPLICATION, and the case now says so in one direction with the
+   converse explicitly disclaimed. Property rows over every value of an enum are worth more than ten more
+   example programs.
+
+7. **A stale pin is a bug report, and moving it is cheaper than deleting it.** `pkg/lang/void_slot_literal_test.go`
+   and `integration/void_slot_literal_test.go` each held this row's program in a wrong-answer table with the
+   dossier "the print asks the record, the literal does not". Both tables now carry a comment naming the case
+   the row moved to, and the vacated slot says so. Deleting the entry keeps the file tidy and loses the
+   breadcrumb; the AGENTS rule "a row that stops refusing MOVES" is about the reader's trail, not the diff.
+
+8. **Two counters I always forget, and the guards never do.** Adding 33 record entries and 3 queue rows moved
+   `Retired-engine record` (9421→9454), `Rows owed` (205 of 348 → 207 of 351), `ADRs` (413→414 / highest
+   0424) and the two "N sources" sentences in `AGENTS.md` and `docs/operations.md`. All four are recomputed on
+   every uncached run, so the fix is always "edit the sentence, never the test". Worth re-reading before the
+   next cycle's commit, because the failure text is the documentation for it.

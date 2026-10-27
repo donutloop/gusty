@@ -1,5 +1,169 @@
 {
  "entries": {
+"for i in [0, 1]:\n    for k in [None, 1.5]:\n        print([k, i])\n": {
+    "stdout": "[None, 0]\n[1.5, 0]\n[None, 1]\n[1.5, 1]\n",
+    "hasStdout": true
+   },
+
+"for k in [\"a\", \"b\"]:\n    print([k, k])\n": {
+    "stdout": "['a', 'a']\n['b', 'b']\n",
+    "hasStdout": true
+   },
+
+"for k in [(1, 2)]:\n    print([k])\n": {
+    "stdout": "[(1, 2)]\n",
+    "hasStdout": true
+   },
+
+"for k in [1, 2]:\n    print([k, k * 2])\n": {
+    "stdout": "[1, 2]\n[2, 4]\n",
+    "hasStdout": true
+   },
+
+"for k in [1, 2]:\n    print(sum([k]))\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"for k in [1.5, 2.5]:\n    print([k])\n": {
+    "stdout": "[1.5]\n[2.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [3, 4]:\n    print(min([k]), max([k]))\n": {
+    "stdout": "3 3\n4 4\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5, True, \"a\", [1], 7]:\n    print([k])\n": {
+    "stdout": "[None]\n[1.5]\n[True]\n['a']\n[[1]]\n[7]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k, 1, 2])\n": {
+    "stdout": "[None, 1, 2]\n[1.5, 1, 2]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k, k])\n": {
+    "stdout": "[None, None]\n[1.5, 1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k] + [1])\n": {
+    "stdout": "[None, 1]\n[1.5, 1]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k] == [None])\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k] if k == k else [])\n": {
+    "stdout": "[None]\n[1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k])\n": {
+    "stdout": "[None]\n[1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k])\nfor k in [2, 3]:\n    print([k])\n": {
+    "stdout": "[None]\n[1.5]\n[2]\n[3]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print([k][0])\n": {
+    "stdout": "None\n1.5\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k, [k])\n": {
+    "stdout": "None [None]\n1.5 [1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(len([k]))\n": {
+    "stdout": "1\n1\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(str([k]))\n": {
+    "stdout": "[None]\n[1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print({\"v\": [k]})\n": {
+    "stdout": "{'v': [None]}\n{'v': [1.5]}\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    ys = [k]\n    print(ys)\n": {
+    "stdout": "[None]\n[1.5]\n",
+    "hasStdout": true
+   },
+
+"for k in [None, None]:\n    print([k])\n": {
+    "stdout": "[None]\n[None]\n",
+    "hasStdout": true
+   },
+
+"for k in [True, False]:\n    print([k])\n": {
+    "stdout": "[True]\n[False]\n",
+    "hasStdout": true
+   },
+
+"for k in [[1], [2, 3]]:\n    print([k])\n": {
+    "stdout": "[[1]]\n[[2, 3]]\n",
+    "hasStdout": true
+   },
+
+"for k in [[1], [2]]:\n    print([[k]])\n": {
+    "stdout": "[[[1]]]\n[[[2]]]\n",
+    "hasStdout": true
+   },
+
+"for k in [{\"a\": 1}]:\n    print([k])\n": {
+    "stdout": "[{'a': 1}]\n",
+    "hasStdout": true
+   },
+
+"for k in [{1}]:\n    print([k])\n": {
+    "stdout": "[{1}]\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 1.5]:\n    print({v: \"x\"})\n": {
+    "stdout": "{None: 'x'}\n{1.5: 'x'}\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 2.5]:\n    print({\"k\": v})\n": {
+    "stdout": "{'k': None}\n{'k': 2.5}\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 2.5]:\n    print({v})\n": {
+    "stdout": "{None}\n{2.5}\n",
+    "hasStdout": true
+   },
+
+"k = True\nfor k in [1, 2]:\n    print([k])\n": {
+    "stdout": "[1]\n[2]\n",
+    "hasStdout": true
+   },
+
+"xs = [7]\nfor xs in [1, 2]:\n    print([xs])\n": {
+    "stdout": "[1]\n[2]\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1.5]\nfor k in xs:\n    print([k])\n": {
+    "stdout": "[None]\n[1.5]\n",
+    "hasStdout": true
+   },
 "xs = []\nxs.append(7)\nn = xs[0]\nprint(n + 1)\n": {
     "stdout": "8\n",
     "hasStdout": true

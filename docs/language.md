@@ -1578,9 +1578,44 @@ Rules that the compiled backend implement:
   reaches a slot is a `TagNone` slot: the builder forces its payload to `0`, the object says its slots are the truth,
   and the mixed printer walks the pair — the static `int` array the numeric literal still folds from is left alone,
   so `sum`, `min` and `max` kept **ADR 0239**'s fold. What the arm still cannot see is a void that arrives through a
-  frame's front door, a container the program NAMED sitting beside a number, and a loop item's own kind — **R.437**,
-  **R.439** and **R.440**, each pinned with today's bytes beside the reference's; and the fold that adds a void's
+  frame's front door and a container the program NAMED sitting beside a number — **R.437** and **R.439**, each
+  pinned with today's bytes beside the reference's; and the fold that adds a void's
   payload instead of raising is **R.438**.
+
+  **A loop item's own kind is the item's, not the name's** (**R.440**, **ADR 0424**). The unrolled `for` road
+  records what each item is once per iteration (`loopElemTag`, beside the interned-text record **ADR 0233**
+  grew), and the print door has read that record since **R.358**; what did not read it were the four gates that
+  decide whether a container literal needs its slots labelled, so one value was answered twice:
+
+  ```gusty
+  for k in [None, 1.5]:
+      print(k)          # None    1.5     — the read road, which asked the record
+      print([k])        # [None]  [1.5]   — the literal (was [0], [1] at the exit code of success)
+      print([k, k])     # [None, None]    [1.5, 1.5]
+      print({v: "x"})   # {None: 'x'}     {1.5: 'x'}       (v the item, in a dict key)
+  for k in [[1], [2, 3]]:
+      print([k])        # [[1]]   [[2, 3]]                 — an item that is a container
+  for k in [True, False]:
+      print([k])        # [True]  [False]
+  for k in [1, 2]:
+      print(sum([k]))   # 1       2       — the fold's static array, unchanged (ADR 0239)
+  k = None
+  for k in [1, 2]:
+      print([k])        # [1]     [2]     — the item is a number; the older binding is not the truth
+  ```
+
+  One predicate answers the question — `loopItemTag`, `loopItemIsThis` and `loopItemKindTag` in
+  `pkg/lang/heapargs.go` — and both sides ask it: the four gate arms (`floatSlotExpr`, `boolSlotExpr`,
+  `noneSlotExpr`, and the container arm `loopItemIsContainer`) before they ask the NAME, and the builders'
+  own `elemKindTag`/`elemTagFor`, which had carried a private copy of that reading since **R.358**
+  (**ADR 0249**'s rule, one map, one reading). The answer carries whether the record SPEAKS for the name at
+  all, not only whether the item has a kind a compiled word cannot render: an item that is a plain number is
+  still an item, and a gate that hears "no kind" goes on to read the stale void record and refuses the literal
+  as mixed. An item whose kind the fold can spell — a number, an interned text — answers "no kind", which is
+  what keeps a numeric loop folding from the static array. What the same sweep found and did not fix is named
+  rather than absorbed: the item's **identity and membership** (**R.416**), its **interpolation field**
+  (**R.445**), the **fold over a fractional item** (**R.446**), and the **slot the `for` road stores an `i32`
+  into when the float road declared that slot a `double`** (**R.447**).
 
   A `None` key is therefore not the number `0` to this backend even though the constant fold reads a
   `NoneLit` as `0`: the key door answers the void FIRST, before any number arm can reach it. `1`, `True` and

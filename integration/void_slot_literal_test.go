@@ -55,6 +55,10 @@ func TestAVoidSlotSaysWhatItsBindingWroteAtTheCLI(t *testing.T) {
 		{"a_void_bound_name_beside_the_controls", "k = None\nprint([k])\nprint([None])\nprint([1, 2, 3])\n"},
 		{"a_name_rebound_away_from_the_void", "k = None\nk = 5\nprint([k])\n"},
 		{"a_loop_variable_is_this_item", "k = None\nfor k in [1, 2]:\n    print([k])\n"},
+		// The row that used to sit in the wrong-answer table below — `for k in [None, 1.5]:` `print([k])` —
+		// joined this table with **ADR 0424**: the literal beside the item now asks the record the unroll
+		// wrote, which is roadmap **Gap R.440** closed (roadmap **Gap R.440**, `loop_item_literal_test.go`).
+		{"a_loop_items_own_kind_put_into_a_literal", "for k in [None, 1.5]:\n    print([k])\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,8 +108,6 @@ func TestTheVoidSlotRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 			"Gap R.439 (the gate's element census stops at the spelled container and never asks the name)"},
 		{"two_containers_the_program_named_in_one_literal", "xs = [1]\nys = [2]\nprint([xs, ys])\n", 0, "[0, 1]\n", "[[1], [2]]\n",
 			"Gap R.439 (the two heap handles printed as the two numbers the allocator handed out)"},
-		{"a_loop_items_own_kind_put_into_a_literal", "for k in [None, 1.5]:\n    print([k])\n", 0, "[0]\n[1]\n", "[None]\n[1.5]\n",
-			"Gap R.440 (the print of the item asks the per-item record the unroll wrote; the literal beside it does not)"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

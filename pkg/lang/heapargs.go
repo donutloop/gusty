@@ -1108,7 +1108,8 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	// stopped at `isContainerLiteral` (roadmap Gap R.360, ADR 0232's self-describing slots).
 	slotsItself := func(x Expr) bool {
 		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
-			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x)
+			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x) ||
+			g.loopItemIsContainer(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -1383,6 +1384,11 @@ func (g *irGen) floatSlotExpr(e Expr) bool {
 	if isFloatLitExpr(e) {
 		return true
 	}
+	// The item, not the name: `for k in [1.5, 2.5]:` records the kind once per iteration, and a slot
+	// holding this item holds a @float_box handle whatever the name's own records say (roadmap Gap R.440).
+	if answered, yes := g.loopItemIsThis(e, int32(TagFloat)); answered {
+		return yes
+	}
 	return g != nil && g.isFloat(e)
 }
 
@@ -1394,6 +1400,11 @@ func (g *irGen) floatSlotExpr(e Expr) bool {
 func (g *irGen) boolSlotExpr(e Expr) bool {
 	if _, ok := e.(*BoolLit); ok {
 		return true
+	}
+	// The same per-item record: `[True, False]` walked by a `for` hands the body a verdict whose NAME
+	// says nothing, exactly as the written `verdict()` does (roadmap Gap R.440, beside ADR 0259).
+	if answered, yes := g.loopItemIsThis(e, int32(TagBool)); answered {
+		return yes
 	}
 	return g != nil && g.printsAsBool(e)
 }
@@ -1422,15 +1433,82 @@ func (g *irGen) noneSlotExpr(e Expr) bool {
 	if g == nil || e == nil {
 		return false
 	}
+	if answered, yes := g.loopItemIsThis(e, int32(TagNone)); answered {
+		return yes
+	}
 	if nm, isName := e.(*Name); isName {
-		if _, perItem := g.loopElemTag[nm.Value]; perItem {
-			return false
-		}
 		if g.nameIsContainerRecorded(nm) {
 			return false
 		}
 	}
 	return g.isNoneExpr(e)
+}
+
+// loopItemTag is the raw reading of the record the unrolled `for` road keeps (codegen_for.go, written
+// once per iteration beside the interned-text record **ADR 0233** grew): the kind of the item this body
+// is standing in, and whether the record speaks for this name AT ALL. The second answer is the whole
+// of the difference between `k = None` / `for k in [1, 2]: print([k])` answering `[1]`, `[2]` and
+// answering a mixed-list refusal: the name is an item whose kind is a plain number, and a gate that
+// hears "no self-describing kind" and then goes asking the name's stale void record has read the
+// binding that the loop replaced (roadmap Gap R.440, and the exemption **ADR 0421** had to write into
+// `noneSlotExpr` to keep exactly that program answering).
+func (g *irGen) loopItemTag(e Expr) (int32, bool) {
+	if g == nil || e == nil || g.loopElemTag == nil {
+		return 0, false
+	}
+	nm, isName := e.(*Name)
+	if !isName {
+		return 0, false
+	}
+	t, has := g.loopElemTag[nm.Value]
+	return t, has
+}
+
+// loopItemIsThis is the arm of that reading a gate asks: the name is an item of an unrolled loop, and
+// this arm's kind is (or is not) what the item is. An unanswered question hands the name back to its
+// own records; an answered one does not, which is what makes the item and the name agree.
+func (g *irGen) loopItemIsThis(e Expr, tag int32) (answered, yes bool) {
+	t, has := g.loopItemTag(e)
+	if !has {
+		return false, false
+	}
+	return true, t == tag
+}
+
+// loopItemKindTag is the door's half of the same reading: the item's kind, when it is one a compiled
+// word cannot render on its own. A plain number and an interned text answer "unknown" here, which is
+// what keeps **ADR 0239**'s static-array fold — the one `sum`/`min`/`max` read a numeric literal from —
+// reachable by a numeric loop, and the row's Definition of Done asserts it in the same commit as the
+// widening.
+//
+// The record is the ONE reading of the unroll's per-item kind: the print door has read it since **Gap
+// R.358**, the truth door since **ADR 0388**, the builders' own `elemKindTag`/`elemTagFor` since the
+// same row — what never read it were the four GATES beside them, `floatSlotExpr`, `boolSlotExpr`,
+// `noneSlotExpr` and the container arm of `literalNeedsTags`, so `for k in [None, 1.5]:` printed `None`
+// and `1.5` for `print(k)` and `[0]` and `[1]` for `print([k])`: one value, one pair of parentheses
+// apart, answered by two doors of which only one had been told what the item is (**ADR 0249**'s
+// gate-and-door rule, one position over from where **ADR 0421** wrote it; roadmap Gap R.440).
+func (g *irGen) loopItemKindTag(e Expr) (int32, bool) {
+	t, has := g.loopItemTag(e)
+	if !has || !slotTagSelfDescribing(t) {
+		return 0, false
+	}
+	return t, true
+}
+
+// loopItemIsContainer is the container arm of the same reading: a slot holding an ITEM that is a
+// list, a dict, a set or an instance holds a heap handle whose kind the object carries, which is the
+// claim `isContainerLiteral` makes for a spelled literal and cannot make for a name (roadmap Gap R.440).
+func (g *irGen) loopItemIsContainer(e Expr) bool {
+	t, has := g.loopItemTag(e)
+	if !has {
+		return false
+	}
+	switch t {
+	case int32(TagList), int32(TagDict), int32(TagSet), int32(TagInstance):
+		return true
+	}
+	return false
 }
 
 // isFloatLitExpr and isNoneLitExpr are the two elements that make a container literal need the
@@ -1600,13 +1678,10 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 // rt_container_eq instead of a number and an integer compare (roadmap L11.1).
 func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	// Same per-iteration fact `elemTagFor` reads: an unrolled loop variable is this item, not the kind
-	// some earlier binding gave the name (roadmap Gap R.358).
-	if g != nil && g.loopElemTag != nil {
-		if nm, isName := e.(*Name); isName {
-			if t, has := g.loopElemTag[nm.Value]; has && slotTagSelfDescribing(t) {
-				return t, true
-			}
-		}
+	// some earlier binding gave the name (roadmap Gap R.358). Read through the one predicate the gates
+	// beside it ask too, so the two cannot keep two readings of one record (roadmap Gap R.440).
+	if t, ok := g.loopItemKindTag(e); ok {
+		return t, true
 	}
 	// A variable the compiler built as a container holds a handle, and the slot that copies it
 	// needs the container's tag: appending a list variable to another list stored the handle and
@@ -2147,13 +2222,10 @@ func (g *irGen) elemTagFor(e Expr, interned bool) int32 {
 	}
 	// An unrolled loop bound this name to a value whose kind is not spelled by the name. The iteration
 	// recorded that kind once per item; reading it here keeps `[[x] for x in [None, 1.5]]` from boxing
-	// a handle and calling it an integer (roadmap Gap R.358, beside ADR 0233's unrolled loop-element tag).
-	if g != nil && g.loopElemTag != nil {
-		if nm, isName := e.(*Name); isName {
-			if t, has := g.loopElemTag[nm.Value]; has && slotTagSelfDescribing(t) {
-				return t
-			}
-		}
+	// a handle and calling it an integer (roadmap Gap R.358, beside ADR 0233's unrolled loop-element tag,
+	// and the same one reading the container literal's gates now ask — roadmap Gap R.440).
+	if t, ok := g.loopItemKindTag(e); ok {
+		return t
 	}
 	// One question, asked once: what tag does this element's slot carry. The builders used to
 	// answer it locally and drifted from elemKindTag — which is how appending a list variable to

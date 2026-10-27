@@ -18872,7 +18872,7 @@ to the fold, and `sum`/`min`/`max` read that fold (**ADR 0239**). The row's own 
 above answered as the reference answers them, plus `len`, `in`, a subscript of the inner list and `==`.
 
 <a id="gap-r-440"></a>
-### Gap R.440 — a loop item's own kind is asked by the print and not by the literal beside it (⏳ OPEN, found by **ADR 0421**)
+### Gap R.440 — a loop item's own kind is asked by the print and not by the literal beside it (✅ CLOSED by **ADR 0424**, found by **ADR 0421**)
 
 ```
 for k in [None, 1.5]:
@@ -18891,6 +18891,51 @@ not: putting `loopElemTag` into the gate's float arm moves a NUMERIC loop's lite
 and that road is the one `sum`/`min`/`max` fold from (**ADR 0239**). The row's own gate therefore has two
 halves — the loop above answers `[None]`, `[1.5]`, and `for k in [1, 2]: print(sum([k]))` still answers from
 the static array. Measured byte-identical on **ADR 0421**'s parent.
+
+**Closed by ADR 0424 (2026-10-27).** The fix is not a new door. `pkg/lang/heapargs.go` gained one reading of
+the unroll's record — `loopItemTag` (the record, and whether it speaks for this name AT ALL),
+`loopItemIsThis` (the question a gate arm asks) and `loopItemKindTag` (the door's half, the self-describing
+kinds only) — and the four arms that had been asking the name ask that instead: `floatSlotExpr`,
+`boolSlotExpr`, `noneSlotExpr`, and a new container arm `loopItemIsContainer` joined to
+`literalNeedsTags`' `slotsItself` beside `isContainerLiteral`. `elemKindTag` and `elemTagFor`, which had
+carried their own copy of the loop arm since **Gap R.358**, now call the same predicate, so there is one
+reading of one map (**ADR 0249**).
+
+The half that is easy to get wrong is `answered`. A numeric item HAS a record (`TagInt`) and it is not
+self-describing; a helper that answers "no record" for it hands the name back to its own records, and
+`k = None` / `for k in [1, 2]: print([k])` — **ADR 0421**'s own control row — came back as a mixed-list
+refusal on the first cut, because `noneSlotExpr` went on and read the stale void claim. So the reading
+answers "this name IS an item" whatever the item is, and only the door's half filters to the kinds a compiled
+word cannot render. That is **ADR 0421**'s exemption, restated as a reading instead of a special case in one
+arm.
+
+MEASUREMENT, not assumption. A 46-shape probe run beside a `git worktree` build of the parent
+(`git worktree add -f /tmp/basewt HEAD`; the tree is never stashed, because another process may be building
+it) and `python3`: **16 newly answering / 0 regressed / 30 already correct**. Twelve were wrong answers at
+the exit code of success — `[0]`, `[1]` for `[None]`, `[1.5]`; `[0]`, `[2]` for `[[1]]`, `[[2, 3]]`; `[1]`,
+`[0]` for `[True]`, `[False]`; `[0]`, `[1]` for the two box handles of `[1.5]`, `[2.5]` — and four were
+refusals in words. Then all **9421** sources of the record corpus through both builds: **9421 unchanged / 0
+improved / 0 regressed**, the two differing lines being `llc`'s temp path inside an error string. The sweep
+is what caught the mixed-list regression; no probe had thought to try a stale void binding under a numeric
+loop.
+
+EVIDENCE. `pkg/lang/loop_item_literal_test.go` NEW — **28** answering rows on the compiled leg AND the record
+leg, **12** control rows (the fold's census: `sum`, `min`, `max`, `[k, k * 2]`, `len`, and the stale-binding
+shapes), **3** IR rows read off `mainRegion` (TagNone `3`, TagFloat `1`, TagList `5` beside the payload with
+the mixed printer present for the items; both ABSENT for the numeric control — the runtime's own definitions
+call those functions, so a whole-module denial would be a denial of the runtime), **9 × 6** gate-and-door
+property rows over every tag the unroll can record, **7** filed-not-fixed rows.
+`integration/loop_item_literal_test.go` NEW — **34** CLI rows against a live `python3`, **6** pinned wrong
+answers, **1** refusal row (exit 1 naming the missing half, never exit 2). `tools/recmerge` wrote **33**
+entries from the reference with the compiled leg cross-checked (**9421 → 9454**) and REFUSED three whose
+compiled leg disagrees — all three shapes of **Gap R.447**, filed below. Pins MOVED rather than deleted in
+`pkg/lang/void_slot_literal_test.go` and `integration/void_slot_literal_test.go`.
+
+WHAT IT LEAVES OWED, each pinned in both suites with the reference's bytes beside today's. **Gap R.416**
+(`k == None`, `k in [...]` over the item — the compare door still asks the name), **Gap R.445** (the
+interpolation field of an item: `print(k)` answers `None`, `print(f"{k}")` answers `0`), **Gap R.446** (the
+fold over a fractional item: `sum([k])` answers `0`, `1`), **Gap R.447** (the `for` road's `i32` store into
+the `double` slot the float road declared for the name), and **Gap R.131** (`bool([k])`, refused in words).
 
 
 ### Gap R.441 — the road that writes one slot asks the container what it holds, and never asks the value it is writing (✅ CLOSED by **ADR 0422**)
@@ -19114,3 +19159,63 @@ The print road has the same problem and already solved it — `tupleVars` record
 is a tuple literal, and `g.tupleVars[nm.Value]` is how `print(t)` picks the bracketed printer
 (**ADR 0172**'s latest-binding rule, **Gap R.142**'s lesson). The fix is to ask the same question here: the
 AST for a literal `(1, 2)`, `tupleVars` for a name.
+
+
+### Gap R.445 — the interpolation field of a loop item is asked of the name (⏳ OPEN, found by **ADR 0424**)
+
+```
+for k in [None, 1.5]:
+    print(k)         #  None   1.5   ← the print door, which reads loopElemTag (Gap R.358)
+    print(f"{k}")    #  0      0     ← the field's own printer, which reads the name   (exit 0)
+```
+
+The same value, printed two ways in the same body, is the same signature **Gap R.440** closed one pair of
+parentheses away — one question, asked by one door and not the other. **ADR 0403** made the reader that
+decides what a `lambda` is read all three carriers (a `match` arm, an `except` handler, an interpolation's
+field); the field's PRINTER still asks the name. The row's own gate is the one to copy: read `loopItemTag`
+where the field asks its operand, the way `codegen_builtin_print.go` reads it for the print door. Pinned in
+both suites (`pkg/lang/loop_item_literal_test.go::TestWhatTheLoopItemLiteralStillCannotAskIsFiledNotFixed`,
+`integration/loop_item_literal_test.go::TestTheLoopItemLiteralRoadsAnswerWrongArePinnedBesideTheReference`),
+byte-identical on **ADR 0424**'s parent.
+
+### Gap R.446 — the fold reads an item's payload as the constant it is not (⏳ OPEN, found by **ADR 0424**)
+
+```
+for k in [1.5, 2.5]:
+    print(sum([k]))   #  0      1      ← ADR 0239's static array, fed a box handle
+                      #  1.5    2.5    reference
+```
+
+`print(sum([1.5, 2.5]))` at module level answers `4.0` and always did, so the fold's float arm is sound for
+the spelled literal; what has no arm is an item whose payload is a `@float_box` handle, which the fold reads
+as the number the handle happens to be. This is the census **Gap R.440** promised not to disturb and instead
+measured beside it: the numeric item's static array is asserted ABSENT of `rt_tag_elem`/`rt_print_list_mixed`
+in `TestTheNumericLoopItemKeepsTheFoldsStaticArray`, and this row's shape is pinned in the same file's owed
+table. Byte-identical on **ADR 0424**'s parent — widening the gate neither caused nor fixed it. Sibling:
+**Gap R.438** (the fold's other untaggable element, the void).
+
+### Gap R.447 — a name the float road declared `double` is still that slot when the `for` road binds it (⏳ OPEN, found by **ADR 0424**)
+
+```
+k = 1.5
+for k in [1, 2]:
+    print(k)     #  1.5000000000000002   1.5000000000000004   (exit 0)   reference: 1, 2
+    print([k])   #  [1]                  [0]                               reference: [1], [2]
+```
+
+The module answers `--verify` `ok` while it carries:
+
+```
+  %_k = alloca double
+  store double %t1, double* %_k      ; k = 1.5
+  store i32 1, i32* %_k              ; the for road binding item 1
+```
+
+With opaque pointers `i32*` and `double*` are the same type, so LLVM's verifier has nothing to check and the
+program prints whatever the old box left behind (**ADR 0166**'s exit-2 guard depends on the verifier being
+ABLE to see a mismatch like this). `print(k)` is byte-identical on **ADR 0424**'s parent; `print([k])` is not
+— the parent printed the stale box handle, **ADR 0424** prints the int payload — which is one defect wearing
+the closed row's symptom, not a second defect. `tools/recmerge` REFUSED all three spellings, which is how it
+was found: an entry the compiled leg will not agree to is debt, not a record. The fix is the `for` road's
+binding, not a gate: retire the name's stale scalar records the way the road already retires the verdict
+record (`forgetVarBool`), and give the loop's store the word the item's kind asks for.

@@ -426,19 +426,11 @@ func TestWhatTheVoidSlotRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			dossier: "**Gap R.439** — the reference prints `[[1], [2]]`; the two handles are the two heap " +
 				"slots, printed as the numbers the allocator handed out",
 		},
-		{
-			// The per-item kind, which the unroll DOES record (`elemTagFor` reads it for a comprehension's
-			// element since **Gap R.358**) and the literal gate does not read: `for k in [None, 1.5]:
-			// print(k)` answers `None`, `1.5` from the read road, and `[k]` on the next line answers the
-			// payloads. Filed apart from this row because widening the gate to the float arm moves the
-			// numeric literal onto the tagged road too, and that is the fold's road — `sum`, `min` and
-			// `max` read the static array (**ADR 0239**), so it needs its own measurement.
-			name:     "a loop item's own kind, put into a literal",
-			src:      "for k in [None, 1.5]:\n    print([k])\n",
-			wantExit: 0, wantOut: "[0]\n[1]\n",
-			dossier: "**Gap R.440** — the reference prints `[None]`, `[1.5]`; the print of the item asks the " +
-				"per-item record the unroll wrote and the literal beside it does not",
-		},
+		// The row that used to sit at the end of this table — `for k in [None, 1.5]:` `print([k])`, the loop
+		// item whose own kind the print road read and the literal standing beside it did not — MOVED with
+		// **ADR 0424** to `TestALoopItemPutIntoALiteralAnswersWhatTheItemIs` in `loop_item_literal_test.go`,
+		// where it is that family's first row: a row that stops refusing moves, it does not disappear
+		// (roadmap Gap R.440).
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
