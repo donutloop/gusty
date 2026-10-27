@@ -204,11 +204,10 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 			iterKind = "dict"
 		}
 	} else if call, ok := n.Iter.(*Call); ok && g.forIterCallIsGenerator(call) {
-		if fn, ok2 := call.Fn.(*Name); ok2 {
-			if g.genFuncs[fn.Value] {
-				iterKind = "list"
-			}
-		}
+		// `for v in g():` and `for v in c.m():` both walk a buffer the runtime owns; the kind is the same
+		// list either way, and the arm used to set it only for the spelling whose name the module walk had
+		// registered (roadmap **Gap R.455**, **ADR 0432**).
+		iterKind = "list"
 	} else if sl, ok := n.Iter.(*SetLit); ok {
 		// `for v in {1, 2}` is a container the program wrote where a variable would stand: it is
 		// built as an object and walked by the runtime, exactly like the variable form. Falling

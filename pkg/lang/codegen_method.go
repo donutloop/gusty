@@ -101,6 +101,11 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				base = ci.bases[0]
 			}
 			if fn, ok := g.resolveMethod(base, mname); ok {
+				// A generator body that walks its own parameter is refused here, before an operand is emitted
+				// (roadmap **Gap R.475**, **ADR 0432**).
+				if err := g.refuseGeneratorMethodParameterWalk(fn, mname); err != nil {
+					return "", err
+				}
 				// Every argument is emitted BEFORE the call line is started: a value that
 				// needs an instruction of its own (interning a string literal does) would
 				// otherwise be written into the middle of the operand list (Gap R.42).
@@ -114,6 +119,12 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				}
 				ret := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self%s)\n", ret, fn, strings.Join(argRegs, "")))
+				// A generator method answers its buffer, so the register the call leaves the value in IS a
+				// heap list: the print road and the `in` road ask `listOperands` of it, exactly as the `def`
+				// road's call site does for a module generator (roadmap **Gap R.455**, **ADR 0432**).
+				if g.genFuncs[fn] {
+					g.listOperands[ret] = true
+				}
 				// A method is program code, and program code raises: without the
 				// call-site check the exception stayed in flight, the method returned
 				// its unwind value, and the caller carried on printing (Gap R.41, ADR 0223).
@@ -135,6 +146,12 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 	// Class method dispatch: `recv.m(args)` where recv's class is known.
 	if className := g.receiverClass(attr.Obj); className != "" && !textReceiver {
 		if fn, ok := g.resolveMethod(className, mname); ok {
+			// Read before an operand is written: a refusal that arrives after `g.value` emitted the receiver
+			// and the arguments has already left instructions in the block it abandons (roadmap **Gap R.475**,
+			// **ADR 0432**).
+			if err := g.refuseGeneratorMethodParameterWalk(fn, mname); err != nil {
+				return "", err
+			}
 			// A text into a parameter the call sites never agreed is a text is the shape the function road
 			// has refused in words since Gap J.5 (`strArgCheck`); the method road had no such check and
 			// handed the @str_tab POSITION to a body that reads an i32 — `print(C().m("hi"))` answered the
@@ -156,6 +173,12 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			}
 			ret := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s%s)\n", ret, fn, recvHandle, strings.Join(argRegs, "")))
+			// The generator's buffer travels out of the call in this one register: say so, or the print road
+			// renders a heap slot number where the module twin prints `[1, 2]` and the `for` road reads the
+			// handle as a count (roadmap **Gap R.455**, **ADR 0432**).
+			if g.genFuncs[fn] {
+				g.listOperands[ret] = true
+			}
 			g.checkExn(b) // a method call propagates like any other call (Gap R.41, ADR 0223)
 			return ret, nil
 		}
@@ -165,6 +188,25 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 	// class is unknown at compile time. Dispatch on the runtime class-id
 	// stored in instance slot 0 (set at instantiation).
 	if mname := attr.Name.Value; g.hasMethod(mname) && !textReceiver {
+		// A generator method reached through a receiver whose class is a run-time fact is answered by the
+		// dispatch below only when EVERY class that declares the name yields. A split census means the joined
+		// register is a buffer on one arm and a plain value on another, and the road that receives it picks
+		// its helper by a kind the line does not state — so the door refuses naming the row that owns the
+		// kind word beside the joined register (roadmap **Gap R.467**, **ADR 0432**), instead of the `for`
+		// road walking a counter and printing `0` for the reference's `3` and `4` at the exit code of success.
+		if g.methodCallYieldIsSplit(mname) {
+			return "", fmt.Errorf("codegen: %q is a generator in some classes this program declares and not in others, and the receiver's class is only known at run time: the register the class-id switch joins would be the yielded buffer on one arm and a plain value on the other, and no road can ask a word which it is — give the classes a common base that declares %q, or wait for the tag beside a dynamically dispatched answer (roadmap Gap R.467, ADR 0432; ADR 0166 why nothing is answered rather than guessed)", mname, mname)
+		}
+		// The dynamic road joins one register out of every class that declares the name, so the parameter walk
+		// is refused if ANY of those bodies walks one: the arm that runs is not written in the line (roadmap
+		// **Gap R.475**, **ADR 0432**).
+		for _, cls := range g.classOrder {
+			if sym, ok := g.resolveMethod(cls, mname); ok {
+				if err := g.refuseGeneratorMethodParameterWalk(sym, mname); err != nil {
+					return "", err
+				}
+			}
+		}
 		// The receiver is read BEFORE it is wrapped: an operand the function body cannot read — a
 		// module instance reached from inside a `def` — used to come back as an empty word with its
 		// error thrown away, and the dispatch went on to emit `rt_mkobj(i32 3, i32 )`, which is not IR.
@@ -241,6 +283,12 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			b.WriteString(fmt.Sprintf(", [ %s, %%%s ]", dc.ret, dc.cont))
 		}
 		b.WriteString("\n")
+		// The dynamic road joins every class that can answer the call in one register, so the register is a
+		// buffer only when every case yields; a class whose same-named method is a plain procedure keeps the
+		// value reading it always had (roadmap **Gap R.455**, **ADR 0432**).
+		if g.methodCallCasesAreGenerator(mname) {
+			g.listOperands[phi] = true
+		}
 		return phi, nil
 	}
 	if nm, ok := attr.Obj.(*Name); ok && g.runtimeSets[nm.Value] {

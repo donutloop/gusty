@@ -3422,6 +3422,47 @@ falls back to dynamic dispatch.
   on the parent, and **ADR 0166**'s exit 2 rather than a refusal), and **Gap R.466** (a method answering ONE float
   answers the double's low word — found by going to pin the forwarded spelling and finding the DIRECT call already
   wrong, which is the measurement that split it out of **Gap R.462**).
+- **A generator METHOD is a generator: the reading is the body's own, taken at the class's door (Gap R.455, **ADR 0432**)** —
+  `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` died at **exit 1** with
+  **`yield outside a generator function`**, while `def g():` / `    yield 1` / `for v in g():` / `    print(v)` printed
+  `1` on the same build: the generator reading was a whole-program scan over `prog.Stmts` that never entered a
+  `ClassDef`, so a `def` written inside a class body was a method by POSITION only, and the refusal blamed the program
+  for the position its body was written in — the one thing an honest refusal may not do (**ADR 0166**). The reading now
+  lives where a class's methods are registered: `registerClass` asks `containsYield` — the ONE question `funcDef` asks
+  a module `def` (**ADR 0232**) — and records the verdict under the MANGLED symbol `resolveMethod` hands a call site
+  (**Gap R.42**/**ADR 0224**'s key), and `emitClassMethod` allocates the buffer in the callee's frame, rooted like the
+  `def` road's (**ADR 0181**), answering it at the ordinary exit AND the unwind edge. The widening that actually cost
+  something was the set of positions that RECEIVE the answer: the print door, the `in` door, a binding and the `for`
+  road each asked "is this register a list?" through a road that knew only the module spelling (`call.Fn.(*Name)`), so
+  a method generator fell through the `for` road's dispatch to the numeric-range arm and walked a counter while
+  printing the loop variable — `for v in c.m():` printed `0 1` for `1 2` at the exit code of success. One predicate
+  (`callIsGeneratorCall`) now answers both spellings, and the doors ask it. Two shapes REFUSE rather than answer, each
+  a registered capability code: a dynamically dispatched SPLIT yield census (**Gap R.467**) and a generator body that
+  walks its own parameter (**Gap R.475**, where the module twin answers `[1, 2]` and the method arm would otherwise
+  have answered the empty buffer). `pkg/lang/generator_method_test.go` (**26** answered programs on the compiled and
+  record legs, **10** direct reading rows beside `containsYield` with their own controls, **4** IR rows asserting the
+  buffer allocated, appended to twice and answered at both exits — and asserted ABSENT from a method that does not
+  yield, **13** owed rows) and `integration/generator_method_test.go` (**24** CLI programs re-derived from a live
+  `python3`, **1** record audit, **2** machine-readable JSON refusals, **3** exit-2 pins, **8** owed rows) are NEW, and
+  so is `integration/programs/generator_method.gy`, `match` on all three legs across 23 lines byte-identical to
+  CPython. Two void-method pins stood in the way and are **DELETED rather than edited** into the answered families.
+  Measured beside a `git worktree` build of the parent (`d729564`, **ADR 0431**): across **22** deduplicated sources
+  **18** moved and every one of them moved OFF the `yield outside a generator function` refusal, **4** held (the two
+  programs **ADR 0429**/**ADR 0431** answered print byte-identical bytes; `len` of a generator and `bool` of a
+  container refuse with the same sentences), and NOTHING that ran on the parent now refuses; `tools/recmerge` wrote
+  **28** entries from the reference with the compiled leg cross-checked (**9786 → 9814**, none refused). What the round
+  leaves owed is filed with its bytes: **Gap R.467** (a split yield census at the dynamic door), **Gap R.468** (a
+  yielded text, float and `None` keep no kind — `rt_append` where the mutation road asks `rt_append_tagged`, and the
+  module twin prints the same four bytes), **Gap R.469** (`return` after the yields answers the void, and the walk runs
+  nothing), **Gap R.470** (a `yield` that lives ONLY in a `try`/`except`/`finally` handler is not read — while the same
+  handler `yield` lowers fine once any other statement makes the body a generator), **Gap R.471** (a dynamically
+  dispatched container-returning method walks a counter, no `yield` anywhere, byte-identical on the parent),
+  **Gap R.472** (a method parameter the call omits answers `0`, not its default), **Gap R.473** (the truth of a
+  generator's answer is the heap word the buffer arrived in, so the module door answers `no` and the instance door
+  `True` for the same program), **Gap R.474** (a container literal handed to a method — or stored in an `__init__` —
+  has its global emitted inside the `define`, `llc` rejects it, **exit 2**, byte-identical on the parent's yieldless
+  twin), and **Gap R.476** (a method that FORWARDS a generator call answers a word that is not the buffer, because
+  **ADR 0431**'s forwarding arm reads two tables that have no generator row).
 
 - **A body that FORWARDS the void answers the void (Gap R.451, **ADR 0428**)** — `def f():` /
   `    return None` / `def g():` / `    return f()` / `print(g() is None)` printed **`False`** at **exit 0**

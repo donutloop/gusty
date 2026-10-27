@@ -86,6 +86,22 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
 		g.markStringAttrs(cd.Name, fd)
+		// The generator reading is taken here, at the class's door, and not in the module walk that the
+		// `yield` statement consults: a `def` written inside a `ClassDef` body is a method by POSITION, and
+		// the whole-program statement walk that decides "is this body a generator" never steps into a class,
+		// so the answer it gave was "no" and the body's own `yield` died with `yield outside a generator
+		// function` — a sentence that blamed the program for the position its body was written in (roadmap
+		// **Gap R.455**, **ADR 0432**). The flag is recorded under the MANGLED symbol, which is what
+		// `resolveMethod` hands a call site, for the same reason `strFuncs` is (Gap R.42, ADR 0224).
+		if methodIsGenerator(fd) {
+			g.genFuncs[funcName] = true
+			if param := generatorMethodParameterWalk(fd); param != "" {
+				if g.genMethodParamWalk == nil {
+					g.genMethodParamWalk = map[string]string{}
+				}
+				g.genMethodParamWalk[funcName] = param
+			}
+		}
 		if !g.answerOwnsMethod(funcName) && (g.methodReturnsStr(fd) || g.strMethodFuncs[fd.Name]) {
 			// Registered under the mangled symbol, which is what a call site resolves to
 			// (Gap R.42, ADR 0224). The shape question sees a literal or a formatting; the census half sees
@@ -96,6 +112,245 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		g.collectAttrs(fd.Body)
 		g.emitClassMethod(cd.Name, funcName, fd)
 	}
+}
+
+// methodIsGenerator is the ONE reading of "does this method body yield", asked with the same question
+// `funcDef` asks of a module `def` (`containsYield`, roadmap **Gap R.455**) so a body cannot be a generator
+// at its own `yield` and a plain procedure at its caller's door. An `async def` is not included: the checker
+// (`effects.go`) stops an async generator before codegen, on both doors.
+func methodIsGenerator(fd *FuncDef) bool {
+	return fd != nil && !fd.Async && containsYield(fd.Body)
+}
+
+// generatorMethodParameterWalk names the ONE generator body this row REFUSES rather than answers: a `for`
+// whose iterable is one of the method's OWN parameters. The loop road classifies a Name iterable out of the
+// tables the module walk fills (`listVars`, `mixedLists`, the runtime container sets) and a method parameter
+// is in none of them — the keyed-call machinery that hands a module `def` its parameter's kind
+// (`call_key.go`) is not reached by a method body. So the walk runs zero iterations and the caller of such a
+// body gets the EMPTY buffer at the exit code of success where the reference walks the list: `class C():` /
+// `    def m(self, xs):` / `        for v in xs:` / `            yield v` / `xs = [1, 2]` /
+// `print(C().m(xs))` answered `[]` for `[1, 2]`. The module twin (`def m(xs):` with the same four lines)
+// answers `[1, 2]`, which is what makes the shape a method-door hole rather than a loop-door one, and the
+// row that owns it is **Gap R.475**; the identical body with no `yield` in it prints `1` for the reference's
+// `1 2 1` on this row's PARENT, byte for byte, which is what makes it a hole this row surfaced rather than
+// dug. A row's parent refused the program outright (`yield outside a generator function`), so the choice in
+// front of this commit was the refusal in words or a wrong answer, and the language's rule is the refusal.
+func generatorMethodParameterWalk(fd *FuncDef) string {
+	if fd == nil {
+		return ""
+	}
+	params := map[string]bool{}
+	for i, p := range fd.Params {
+		// Slot 0 is `self`, which is never a container the body walks.
+		if i > 0 && p != nil && p.Name != "" {
+			params[p.Name] = true
+		}
+	}
+	if len(params) == 0 {
+		return ""
+	}
+	// A parameter the body itself fills with a container literal is one the loop road CAN classify, because
+	// the assignment records the kind — such a body is not the shape this refuses.
+	claimed := map[string]bool{}
+	var scanClaims func([]Stmt)
+	scanClaims = func(ss []Stmt) {
+		for _, st := range ss {
+			switch s := st.(type) {
+			case *AssignStmt:
+				if nm, ok := s.Target.(*Name); ok && containerLiteralValue(s.Value) {
+					claimed[nm.Value] = true
+				}
+			case *IfStmt:
+				scanClaims(s.Then)
+				for _, e := range s.Elifs {
+					if e != nil {
+						scanClaims(e.Then)
+					}
+				}
+				scanClaims(s.Else)
+			case *WhileStmt:
+				scanClaims(s.Body)
+				scanClaims(s.Else)
+			case *ForStmt:
+				scanClaims(s.Body)
+				scanClaims(s.Else)
+			case *TryStmt:
+				scanClaims(s.Body)
+				for _, e := range s.Excepts {
+					if e != nil {
+						scanClaims(e.Body)
+					}
+				}
+				scanClaims(s.Finally)
+			case *WithStmt:
+				scanClaims(s.Body)
+			case *MatchStmt:
+				for _, c := range s.Cases {
+					if c != nil {
+						scanClaims(c.Body)
+					}
+				}
+			}
+		}
+	}
+	scanClaims(fd.Body)
+
+	var find func([]Stmt) string
+	find = func(ss []Stmt) string {
+		for _, st := range ss {
+			switch s := st.(type) {
+			case *ForStmt:
+				if nm, ok := s.Iter.(*Name); ok && params[nm.Value] && !claimed[nm.Value] {
+					return nm.Value
+				}
+				if at := find(s.Body); at != "" {
+					return at
+				}
+				if at := find(s.Else); at != "" {
+					return at
+				}
+			case *IfStmt:
+				if at := find(s.Then); at != "" {
+					return at
+				}
+				for _, e := range s.Elifs {
+					if e != nil {
+						if at := find(e.Then); at != "" {
+							return at
+						}
+					}
+				}
+				if at := find(s.Else); at != "" {
+					return at
+				}
+			case *WhileStmt:
+				if at := find(s.Body); at != "" {
+					return at
+				}
+				if at := find(s.Else); at != "" {
+					return at
+				}
+			case *TryStmt:
+				if at := find(s.Body); at != "" {
+					return at
+				}
+				for _, e := range s.Excepts {
+					if e != nil {
+						if at := find(e.Body); at != "" {
+							return at
+						}
+					}
+				}
+				if at := find(s.Finally); at != "" {
+					return at
+				}
+			case *WithStmt:
+				if at := find(s.Body); at != "" {
+					return at
+				}
+			case *MatchStmt:
+				for _, c := range s.Cases {
+					if c != nil {
+						if at := find(c.Body); at != "" {
+							return at
+						}
+					}
+				}
+			case *FuncDef:
+				// A nested `def` is its own frame with its own parameters: its loops are not this body's.
+			}
+		}
+		return ""
+	}
+	return find(fd.Body)
+}
+
+// containerLiteralValue is a value whose kind the assignment road records: a list, dict or set the program
+// wrote where a name would stand.
+func containerLiteralValue(e Expr) bool {
+	switch e.(type) {
+	case *ListLit, *DictLit, *SetLit:
+		return true
+	}
+	return false
+}
+
+// callIsGeneratorCall answers, for ANY call the program can write, the question every position that receives
+// a call's answer has to ask: does this call hand back a generator's buffer rather than a value? The `def`
+// road asked it of a plain name and the answer was registered under the source name; a method call is spelled
+// `recv.m(...)`, its symbol is minted by `registerClass` and handed out by `resolveMethod`, so the same
+// question needs the method door too — otherwise the position falls back to treating the handle as a number
+// and a `for` over a generator method walks a counter (roadmap **Gap R.455**, **ADR 0432**).
+func (g *irGen) callIsGeneratorCall(c *Call) bool {
+	if c == nil {
+		return false
+	}
+	switch fn := c.Fn.(type) {
+	case *Name:
+		return g.genFuncs[fn.Value]
+	case *Attr:
+		if fn.Name == nil {
+			return false
+		}
+		if cls := g.receiverClass(fn.Obj); cls != "" {
+			if sym, ok := g.resolveMethod(cls, fn.Name.Value); ok {
+				return g.genFuncs[sym]
+			}
+			return false
+		}
+		// The receiver's class is a run-time fact, so the arm that runs is not written in the line: the
+		// register the dispatch joins is a buffer only where EVERY class that declares the name yields.
+		// The split census is refused by the dispatch road itself, not answered here (see
+		// `methodCallYieldIsSplit`).
+		return g.methodCallCasesAreGenerator(fn.Name.Value)
+	}
+	return false
+}
+
+// refuseGeneratorMethodParameterWalk turns the reading `generatorMethodParameterWalk` took at the class's
+// door into the program's refusal, at the call site and before a single instruction of the call is emitted.
+// The alternative was the empty buffer at the exit code of success — `print(C().m(xs))` answering `[]` for
+// the reference's `[1, 2]` — which is the artifact **ADR 0166** forbids and the reason this row refuses
+// (roadmap **Gap R.475**, **ADR 0432**).
+func (g *irGen) refuseGeneratorMethodParameterWalk(sym, mname string) error {
+	param, ok := g.genMethodParamWalk[sym]
+	if !ok {
+		return nil
+	}
+	return fmt.Errorf("codegen: %q is a generator whose body walks its own parameter %q, and a method body has no word for what that parameter carries: the loop would run zero times and the call would answer the empty buffer where the reference walks the list — the same body in a module `def` answers it, because the keyed-call pass records a `def`'s parameter kind and never reaches a method body (roadmap Gap R.475, ADR 0432; ADR 0166 why nothing is answered rather than guessed)", mname, param)
+}
+
+// methodCallCensus counts the classes that declare a method name, and how many of them yield.
+func (g *irGen) methodCallCensus(mname string) (declared, yielding int) {
+	for _, cls := range g.classOrder {
+		if sym, ok := g.resolveMethod(cls, mname); ok {
+			declared++
+			if g.genFuncs[sym] {
+				yielding++
+			}
+		}
+	}
+	return declared, yielding
+}
+
+// methodCallCasesAreGenerator is the dynamic-dispatch form of the same question: the receiver's class is a
+// run-time fact, so the answer is a list only when EVERY class that can answer the call yields — one
+// non-generator arm and the shared register is a value on that road and a buffer on this one.
+func (g *irGen) methodCallCasesAreGenerator(mname string) bool {
+	declared, yielding := g.methodCallCensus(mname)
+	return declared > 0 && declared == yielding
+}
+
+// methodCallYieldIsSplit names the shape the dynamic door cannot answer: some classes that declare this
+// method yield and some do not, so the register the class-id `switch` joins carries a buffer on one arm and
+// a plain value on another. The roads that receive it (the `for` loop, the print door, a binding) choose
+// their helper from a kind the line does not state, and a `for` over such a call walks the counter while
+// printing the loop variable — the answer the program never wrote, at the exit code of success. The door
+// refuses it in words instead, and the row that owns the run-time tag beside the joined register is named
+// in the sentence (roadmap **Gap R.467**, **ADR 0432**).
+func (g *irGen) methodCallYieldIsSplit(mname string) bool {
+	declared, yielding := g.methodCallCensus(mname)
+	return yielding > 0 && yielding < declared
 }
 
 // copyInReboundParams gives every parameter the body rebinds a stack slot of its own
@@ -283,7 +538,37 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// locals) piled up on the root stack one frame per call, so a loop that made
 	// thousands of instances ran the stack out (ADR 0181).
 	savedFrame := g.frameOpen
+	prevGenHandle := g.genHandle
 	g.gcOpenFrame(&g.globals)
+	// A generator METHOD gets the buffer its body yields into, exactly as the `def` road gives a module
+	// generator: one list allocated in this frame, rooted so the first body statement cannot collect it, and
+	// handed back as the answer. The reading is the body's own — `containsYield`, the same question `funcDef`
+	// asks — because a `def` in a class body is a method by POSITION and its body never asked to be read any
+	// other way; the refusal this replaces blamed the program for the position its body was written in
+	// (roadmap **Gap R.455**, **ADR 0432**).
+	isGen := methodIsGenerator(fd)
+	if isGen {
+		if param := generatorMethodParameterWalk(fd); param != "" {
+			if g.genMethodParamWalk == nil {
+				g.genMethodParamWalk = map[string]string{}
+			}
+			g.genMethodParamWalk[funcName] = param
+		}
+	}
+	if isGen {
+		g.genIdx++
+		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
+		g.genFuncs[funcName] = true
+		g.heapUsed = true
+		g.emitRtAllocKind(&g.globals, g.genHandle, HeapKindList, Span{})
+		// Rooted like the module road's: the first `yield` emits a GC safe point, and an unrooted handle is
+		// one collection away from appending into a freed slot (ADR 0181).
+		ghslot := g.newTmp()
+		ghslotName := strings.TrimPrefix(ghslot, "%")
+		fmt.Fprintf(&g.globals, "  %%_%s = alloca i32\n", ghslotName)
+		fmt.Fprintf(&g.globals, "  store i32 %s, i32* %%_%s\n", g.genHandle, ghslotName)
+		g.gcReg(&g.globals, ghslotName)
+	}
 	// A method that assigns to one of its parameters gets a slot for it, like any
 	// other rebinding body (Gap R.3).
 	g.copyInReboundParams(&g.globals, fd, false)
@@ -315,19 +600,38 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// carried to a class's door by **Gap R.453** / **ADR 0430**). Guarded on the round's own state rather
 	// than left to `storePairTag`'s name-keyed fallback: a method that is NOT carried declared no word, and
 	// a store to a global that was never emitted is the module `llc` refuses (**ADR 0166**'s exit 2).
-	if g.curMethodAnswer != "" {
-		g.storePairTag(&g.globals, answerWordNone)
+	if isGen {
+		// The answer a generator gives is its buffer, whatever the body's own `return` roads said on the way:
+		// the same choice the `def` road makes for a module generator (ADR 0140, Gap D).
+		g.gcCloseFrame(&g.globals)
+		fmt.Fprintf(&g.globals, "  ret i32 %s\n", g.genHandle)
+	} else {
+		if g.curMethodAnswer != "" {
+			g.storePairTag(&g.globals, answerWordNone)
+		}
+		g.gcCloseFrame(&g.globals)
+		g.globals.WriteString("  ret i32 0\n")
 	}
-	g.gcCloseFrame(&g.globals)
-	g.globals.WriteString("  ret i32 0\n")
 	// The method's own unwind target: it closes the frame it opened and returns; the caller's
 	// call-site check (ADR 0218) is what turns the flag into a propagation.
 	fmt.Fprintf(&g.globals, "%s:\n", g.funcRaiseExit)
-	if g.curMethodAnswer != "" {
-		g.storePairTag(&g.globals, answerWordNone) // the unwinding answer: no value, and the word says so
+	if isGen {
+		// An unwinding generator hands back what it collected up to the raise — the `def` road's arm
+		// (roadmap **Gap R.455**); the caller's check turns the flag into a propagation either way.
+		g.gcCloseFrame(&g.globals)
+		fmt.Fprintf(&g.globals, "  ret i32 %s\n", g.genHandle)
+	} else {
+		if g.curMethodAnswer != "" {
+			g.storePairTag(&g.globals, answerWordNone) // the unwinding answer: no value, and the word says so
+		}
+		g.gcCloseFrame(&g.globals)
+		g.globals.WriteString("  ret i32 0\n")
 	}
-	g.gcCloseFrame(&g.globals)
-	g.globals.WriteString("  ret i32 0\n}\n")
+	g.globals.WriteString("}\n")
+	// The handle is this body's, not the next body's: a class registered while an enclosing generator was
+	// in flight (`class` inside a `def`, handled at `codegen_stmt.go`) must not find its buffer's register
+	// name installed, and a method that is not a generator must not inherit one.
+	g.genHandle = prevGenHandle
 	g.inFunc = savedInFunc
 	g.curFD = savedFD
 	g.emittingMethod = savedMethod

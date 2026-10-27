@@ -997,7 +997,13 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			// `ys = sorted(xs)` assigned a handle to a plain int variable and
 			// print(ys) printed the slot number (roadmap L11.7, ADR 0191).
 			if call, ok := n.Value.(*Call); ok {
-				if fn, ok2 := call.Fn.(*Name); ok2 {
+				if g.callIsGeneratorCall(call) {
+					// Both spellings of a generator call — the module `def`'s name and a method read off a
+					// receiver — hand back the buffer, so both bind the name as a list (roadmap **Gap R.455**,
+					// **ADR 0432**). The `for` road and the print road ask this name's kind, and an unclaimed
+					// name prints the heap slot it was handed.
+					g.settleContainerKind(nm.Value, containerKindList)
+				} else if fn, ok2 := call.Fn.(*Name); ok2 {
 					if g.genFuncs[fn.Value] {
 						g.settleContainerKind(nm.Value, containerKindList)
 					} else if fn.Value == "sorted" || fn.Value == "reversed" || fn.Value == "list" {

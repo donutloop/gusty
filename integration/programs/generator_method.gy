@@ -1,0 +1,55 @@
+# A generator METHOD is a generator: the reading is the body's own, taken at the class's door where every
+# other per-method fact is taken, and the doors that receive the answer — the walk, the binding, the print
+# door, the membership test, `is None` — ask the same question the class asked (roadmap Gap R.455, ADR 0432).
+# Before this row the same body in a module `def` compiled and the same body in a `class` died with
+# `yield outside a generator function`. Every line below is what the reference prints, one for one.
+class Counter():
+    def count(self, n):
+        for i in range(n):
+            yield i * 2
+    def counted(self):
+        yield 1
+        yield 2
+        yield 3
+    def via_self(self):
+        for v in self.counted():
+            print(v)
+        return None
+
+class Base():
+    def gen(self):
+        yield 7
+        yield 8
+
+class Child(Base):
+    def drain(self):
+        for v in super().gen():
+            print(v)
+        return None
+
+c = Counter()
+print(c.counted() is None)
+for v in c.counted():
+    print(v)
+ys = c.counted()
+print(ys is None)
+for v in ys:
+    print(v)
+print(1 in c.counted())
+print(9 in c.counted())
+s = 0
+for v in c.counted():
+    s = s + v
+print(s)
+for v in c.count(3):
+    print(v)
+print(c.via_self())
+d = Child()
+print(d.drain())
+for v in d.gen():
+    print(v)
+total = 0
+for k in range(3):
+    for v in c.count(k):
+        total = total + v
+print(total)

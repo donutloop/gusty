@@ -4461,6 +4461,27 @@
     },
     {
       "case": {
+        "id": "programs/generator_method",
+        "name": "generator_method.gy",
+        "source": "# A generator METHOD is a generator: the reading is the body's own, taken at the class's door where every\n# other per-method fact is taken, and the doors that receive the answer — the walk, the binding, the print\n# door, the membership test, `is None` — ask the same question the class asked (roadmap Gap R.455, ADR 0432).\n# Before this row the same body in a module `def` compiled and the same body in a `class` died with\n# `yield outside a generator function`. Every line below is what the reference prints, one for one.\nclass Counter():\n    def count(self, n):\n        for i in range(n):\n            yield i * 2\n    def counted(self):\n        yield 1\n        yield 2\n        yield 3\n    def via_self(self):\n        for v in self.counted():\n            print(v)\n        return None\n\nclass Base():\n    def gen(self):\n        yield 7\n        yield 8\n\nclass Child(Base):\n    def drain(self):\n        for v in super().gen():\n            print(v)\n        return None\n\nc = Counter()\nprint(c.counted() is None)\nfor v in c.counted():\n    print(v)\nys = c.counted()\nprint(ys is None)\nfor v in ys:\n    print(v)\nprint(1 in c.counted())\nprint(9 in c.counted())\ns = 0\nfor v in c.counted():\n    s = s + v\nprint(s)\nfor v in c.count(3):\n    print(v)\nprint(c.via_self())\nd = Child()\nprint(d.drain())\nfor v in d.gen():\n    print(v)\ntotal = 0\nfor k in range(3):\n    for v in c.count(k):\n        total = total + v\nprint(total)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "False\n1\n2\n3\nFalse\n1\n2\n3\nTrue\nFalse\n6\n0\n2\n4\n1\n2\n3\nNone\n7\n8\nNone\n7\n8\n2\n",
+      "python_ok": true,
+      "python_stdout": "False\n1\n2\n3\nFalse\n1\n2\n3\nTrue\nFalse\n6\n0\n2\n4\n1\n2\n3\nNone\n7\n8\nNone\n7\n8\n2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/void_slots_say_themselves",
         "name": "void_slots_say_themselves.gy",
         "source": "# The void a container slot holds is the void its binding wrote (ADR 0421, roadmap Gap R.435).\n#\n# One question, asked of two neighbours: the container literal's tag gate (`literalNeedsTags`) decides\n# whether a slot needs a word of its own beside the payload, and the print road decides which printer\n# renders the object. The gate's float and verdict arms have always gone past the spelling into the\n# ADR 0172 latest-binding records; its void arm recognized only the spelled `None`, so a slot holding the\n# void THROUGH A BINDING stayed on the static int array and printed the payload the void happens to carry.\n#\n# Every line below is what CPython prints for this program.\n\nk = None\n\n# The literal, in each of its spellings: the answer the payload used to give is gone.\nprint([k])\nprint([k, 1])\nprint([1, k])\nprint([k, k])\nprint([k, \"a\"])\nprint(str([k]))\nprint({k})\nprint((k,))\nprint({1: k})\nprint({k: 1})\nprint([[k]])\nprint({\"a\": [k]})\n\n# The roads that read the literal back: the slot says what it holds, so each asks the object.\nprint(len([k]))\nprint(None in [k])\nprint([k][0])\nprint([k] + [1])\nprint([k] == [None])\nprint(sorted([k]))\nfor v in [k]:\n    print(v)\n\nxs = [k]\nxs.append(1)\nprint(xs)\n\n# The void a CALL answers — a body with no value to give back, and every in-place mutator, which the\n# reference answers the same way. The element's effect is emitted; the tag, not the payload, is printed.\ndef nothing():\n    pass\n\nprint([nothing()])\nprint([nothing(), 1])\nprint({1: nothing()})\nprint({nothing()})\nprint(None in [nothing()])\nprint([{\"a\": 1}.get(\"z\")])\nys = [1]\nprint([ys.append(2)])\nprint(ys)\n\n# The gate gained an arm and changed no other answer: the spelled singleton, the single-kind numeric\n# literal, and a name the LAST binding made a number all answer as they did before.\nprint([None])\nprint([1, 2, 3])\nprint([1.5, 2.5])\nmixed = [None, 1, \"a\"]\nprint(mixed)\nk = 5\nprint([k])\nfor k in [1, 2]:\n    print([k])\n",
@@ -5668,11 +5689,11 @@
       ]
     }
   ],
-  "rows": 240,
+  "rows": 241,
   "skipped": 29,
-  "pass": 211,
+  "pass": 212,
   "fail": 0,
-  "oracle_match": 197,
+  "oracle_match": 198,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

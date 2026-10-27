@@ -194,14 +194,7 @@ func TestTheVoidAnsweringMethodExitCodesAreTheContractsTheyClaimToBe(t *testing.
 			wantStderr: "the compiled backend folds container methods only over a literal written at the call",
 		},
 		{
-			// A generator METHOD is refused before any answer is asked (**Gap R.455**).
-			name:     "a generator method is refused in words",
-			src:      "class C():\n    def m(self):\n        yield 1\nc = C()\nprint(c.m() is None)\n",
-			wantExit: 1, wantStdout: "",
-			wantStderr: "yield outside a generator function",
-		},
-		{
-			// A method appending to a FIELD container is refused by the string-method door (**Gap R.456**).
+			// A method appending to its own class's FIELD container is refused by the string-method door (**Gap R.456**).
 			name:     "a method appending to a field container is refused in words",
 			src:      "class C():\n    def __init__(self):\n        self.items = []\n    def add(self, x):\n        self.items.append(x)\nc = C()\nprint(c.add(1))\n",
 			wantExit: 1, wantStdout: "",

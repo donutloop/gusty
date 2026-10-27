@@ -465,8 +465,12 @@ func (g *irGen) materializeSortedReversedForLoop(b *strings.Builder, e Expr) (Ex
 // pair below could be asked — the three shapes that answered `0`, nothing and nothing at the exit
 // code of success (roadmap Gap R.246, ADR 0339).
 func (g *irGen) forIterCallIsGenerator(c *Call) bool {
-	fn, ok := c.Fn.(*Name)
-	return ok && g.genFuncs[fn.Value]
+	// Two spellings hand back a generator's buffer: `g()`, whose body the module walk registered, and
+	// `recv.m(...)`, whose body the CLASS door registered (roadmap **Gap R.455**, **ADR 0432**). The arm used
+	// to ask only the first, so a method generator fell through the dispatch to the numeric-range road and
+	// walked a counter while printing the loop variable — `for v in c.m():` printed `0 1` for `1 2`, at the
+	// exit code of success.
+	return g.callIsGeneratorCall(c)
 }
 
 // forIterableIsUnwalkableContainer is the loop's last question before it falls to the

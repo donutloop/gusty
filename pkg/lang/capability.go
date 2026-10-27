@@ -519,6 +519,24 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		// (the half Gap R.323 still owes).
 		Sample: "xs = []\nxs.append([1.5, 2])\nprint(xs[0][0] < xs[0][1])",
 	},
+	{
+		Code: "lower.unsupported.split-generator-method-dispatch",
+		Shape: "a method that yields in some classes the program declares and not in others, called through a " +
+			"receiver whose class is only a run-time fact",
+		Suggestion: "call the generator on a receiver the compiler can see (`c = C()` and then `c.m()`), or give the classes a common base that declares the method once — the class-id switch joins one register out of arms that answer different kinds, and the register would be the yielded buffer on one arm and a plain value on another",
+		Rows:       []string{"Gap R.467", "L11.1"},
+		Markers:    []string{"is a generator in some classes this program declares and not in others"},
+		Sample:     "class B():\n    def m(self):\n        return 0\nclass D(B):\n    def m(self):\n        yield 3\ndef show(o):\n    for v in o.m():\n        print(v)\nshow(D())",
+	},
+	{
+		Code: "lower.unsupported.generator-method-parameter-walk",
+		Shape: "a generator method whose body walks one of its own parameters with a `for`, so the loop's " +
+			"iterable is a name the method body has no kind word for",
+		Suggestion: "walk a container the body can see (`self.xs`, a list literal, a module-level name), or write the body as a module `def` — the keyed-call pass records a `def`'s parameter kind and never reaches a method body, so the module twin of the same four lines answers",
+		Rows:       []string{"Gap R.475", "Gap R.471", "L11.1"},
+		Markers:    []string{"is a generator whose body walks its own parameter"},
+		Sample:     "class C():\n    def m(self, xs):\n        for v in xs:\n            yield v\n\nxs = [1, 2]\nprint(C().m(xs))",
+	},
 }
 
 // capabilityByCode is the lookup the schema and the docs table build on; the registry slice is the

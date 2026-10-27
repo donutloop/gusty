@@ -19725,20 +19725,46 @@ and record legs, **20** direct predicate rows, **4** IR rows, **7** pins) and `i
 (**39** CLI programs re-derived from a live `python3`, **1** JSON refusal, **7** pins). What this row leaves owed is
 filed as **Gap R.462**, **Gap R.463**, **Gap R.464** and **Gap R.465**.
 
-### Gap R.455 — a generator METHOD is refused as `yield outside a generator function` (⏳ OPEN, found by **ADR 0429**)
+### Gap R.455 — a generator METHOD is refused as `yield outside a generator function` (✅ CLOSED by **ADR 0432**, found by **ADR 0429**)
 
-| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
-|---|---|---|
-| `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` | exit 1 — `codegen: yield outside a generator function` | `False` — exit 0 |
-| `def g():` / `    yield 1` / `for v in g():` / `    print(v)` / `print(g() is None)` | `1` / `False` — exit 0 | `1` / `False` |
+| program | this backend (`d729564`, the row's parent) | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|---|
+| `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` | exit 1 — `codegen: yield outside a generator function` | `False` — exit 0 | `False` — exit 0 |
+| `class C():` / `    def m(self):` / `        yield 1` / `        yield 2` / `c = C()` / `for v in c.m():` / `    print(v)` | exit 1 — the same sentence | `1` / `2` — exit 0 | `1` / `2` |
+| `def g():` / `    yield 1` / `for v in g():` / `    print(v)` / `print(g() is None)` | `1` / `False` — exit 0 | `1` / `False` — exit 0 | `1` / `False` |
 
-The second row is the control that makes this a defect and not a missing feature: the identical body compiles when
-the front end can see that its function is a generator. The generator reading is a whole-program scan, and the scan
+The second row was the control that made this a defect and not a missing feature: the identical body compiled when
+the front end could see that its function is a generator. The generator reading is a whole-program scan, and the scan
 walks statements — it has the same boundary as **Gap R.35**'s module-container scan and **ADR 0343**'s rule that a
-whole-program fact is decided before any IR exists, and it never enters a `ClassDef`. So the refusal blames the
+whole-program fact is decided before any IR exists, and it never entered a `ClassDef`. So the refusal blamed the
 program for the POSITION its body was written in, which is the one thing an honest refusal may not do (**ADR 0166**).
+
+The close takes the reading to the door that already owns a method's other facts: `registerClass` walks `cd.Body`
+to mint each method symbol, and the same walk now asks `containsYield` — the ONE question `funcDef` asks a module
+`def` — and records the verdict under the MANGLED symbol (`gy_C_m`), because that is what `resolveMethod` hands a
+call site and what `strFuncs` is already keyed by (**Gap R.42** / **ADR 0224**'s rule: a per-method fact is keyed by
+the symbol the dispatch speaks). `emitClassMethod` then allocates the buffer in the callee's own frame with the same
+rooting the `def` road uses (**ADR 0181**: an unrooted handle is one collection away from appending into a freed
+slot) and answers it at BOTH exits — the ordinary one and the raise edge, because a generator that trapped on the way
+hands back what it collected, which is the `def` road's arm and not this row's invention.
+
+What the close had to widen is the set of positions that RECEIVE the answer, and that is where the four new rows
+come from: the print door, the `in` door, a binding and the `for` road all ask "is this register a list?", and each
+of them asked it through a road that only knew the module spelling (`call.Fn.(*Name)`). One predicate —
+`callIsGeneratorCall` — now answers both spellings, and the `for` road's generator arm (which used to match a `*Name`
+callee alone and otherwise fell through to the numeric-range road, printing the loop variable while counting to the
+heap handle it had been handed) asks that one question. The measurement that says the widening is a decision and not
+an accident: **18** of the 22 deduplicated sources of the never-worse harness moved, every one of them off the
+`yield outside a generator function` refusal, and **0** of the **4** that already ran moved away — the two void-method
+programs **ADR 0429**/**ADR 0431** answered print byte-identical bytes, and the two refusals that held (`len` of a
+generator, `bool` of a container) hold with the same sentences. **14** sources moved to the reference's own bytes;
+**1** moved from that refusal to this row's own refusal (**Gap R.475**); **3** moved from refusal to an answer that is
+not the reference's and are pinned as **Gap R.468**, **Gap R.472**, **Gap R.473**.
+
 The lower half of the row is **L12.1**'s iterator protocol, which a method generator reaches by the same door a
-module generator does.
+module generator does — and which this row did NOT land: `next()`, a partially-consumed buffer and a lazy generator
+are still **L12.1**'s, because this backend's generator is the eager buffer the record has always held
+(**ADR 0081**), not an iterator.
 
 ### Gap R.456 — a method mutating its own FIELD container is refused by the string-method door (⏳ OPEN, found by **ADR 0429**)
 
@@ -19929,3 +19955,182 @@ depth bound (so no hierarchy can kill the process), AND make the front end refus
 module has not declared (so the program is refused with the reference's own `NameError`-shaped message rather than
 compiled into a body that can never be instantiated). The case cannot be pinned in-process — a Go stack overflow
 takes the test binary with it — so the plan-side half is pinned and this section carries the crash's bytes.
+
+---
+
+## What **ADR 0432** (the generator METHOD, **Gap R.455**) found on the way
+
+Ten rows. Each was measured twice — once on this commit and once on a `git worktree` build of its parent
+(`d729564`, **ADR 0431**) — and each says which of the two it is identical to. Seven are holes the class round walked
+into and are byte-identical on the parent, which is the sentence that makes them other rows' lesions rather than this
+commit's damage; two are decisions this row took (a refusal this row wrote, and a table this row did not fill); one
+is a crash-shaped `llc` rejection that the parent already gave.
+
+### Gap R.467 — a generator method whose census is SPLIT is refused at the dynamic door (🟨 PARTIAL — refused in words by **ADR 0432**, found by **ADR 0432**)
+
+| program | this backend (`d729564`, the row's parent) | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|---|
+| `class B():` / `    def m(self):` / `        return 0` / `class D(B):` / `    def m(self):` / `        yield 3` / `        yield 4` / `def show(o):` / `    for v in o.m():` / `    print(v)` / `show(D())` | exit 1 — `yield outside a generator function` | exit 1 — `codegen: "m" is a generator in some classes this program declares and not in others, and the receiver's class is only known at run time: …` | `3` / `4` — exit 0 |
+| the same program with `yield` in NO arm (`def m(self):` / `    return [9, 9]` and `return [3, 4]`) | exit 0 — `0` | exit 0 — `0` (byte-identical) | `3` / `4` |
+
+The dynamic road emits a class-id `switch` and joins every arm's answer into ONE `phi`. That register is a buffer on
+the yielding arm and a plain value on the other, and the road that receives it — the `for` loop, the print door, a
+binding — chooses its helper from a kind the LINE does not state. The second row is the control that makes this a
+decision rather than an oversight: the identical shape with no generator anywhere in it already answered `0` at the
+exit code of success on the parent, and still does, because that arm's register was never a container either. This row
+refuses the split census in words (**Gap R.471** is the same door's older, unanswered half) rather than widen the
+wrong answer to a second family.
+
+The fix is the missing word, not a second dispatch: a tag beside a dynamically dispatched answer — **L11.1**'s tagged
+value word, asked at the one place the dispatch joins its arms. `receiverClass` and **ADR 0366**'s census give the row
+everything it needs to KNOW the arms; what it cannot do is carry a second word out of a `switch` that returns an `i32`.
+
+### Gap R.468 — a yielded text, float and void keep no kind on their way out of the buffer (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (this commit AND its parent's module twin, byte for byte) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        yield "a"` / `        yield 2` / `        yield None` / `        yield 1.5` / `c = C()` / `for v in c.m():` / `    print(v)` | `0` / `2` / `0` / `1` — exit 0 | `a` / `2` / `None` / `1.5` |
+| `def m():` with the same four yields, same walk | `0` / `2` / `0` / `1` — exit 0 (the SAME bytes) | `a` / `2` / `None` / `1.5` |
+
+The generator's buffer is filled by `rt_append`, which takes a payload and no kind. The mutation road already owns the
+door that takes both — `rt_append_tagged`, what `xs.append(...)` asks (**ADR 0311**) — and the tagged print door
+(`@rt_str_of_value` → `@rt_print_mixed_value`, **ADR 0303**) is what renders a tagged slot today. The module twin is
+included because it prints the same four bytes: this is the append door's hole, not the class round's, and the second
+row is what stops the first from being read as a method bug. The values are not lost — the buffer holds them — they
+arrive with no word saying which arm of the printer they belong to, so a text answers its intern-table index and
+`None` and a float answer the low half of a handle.
+
+### Gap R.469 — a `return` after the yields answers the void, and the caller walks nothing (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (this commit; the module twin prints the same nothing) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        yield 1` / `        return` / `c = C()` / `xs = c.m()` / `for v in xs:` / `    print(v)` | exit 0 — prints nothing | `1` |
+| `def m():` with the same two statements, same binding and walk | exit 0 — prints nothing | `1` |
+
+A `return` in a generator body is the language's "stop producing" (`list(g())` after it holds every value yielded so
+far), and the eager model already owns that meaning: the buffer exists and the yields already filled it. What decides
+the answer here is `stmtReturn`'s road, which answers the void's word and does not look at the frame it is leaving;
+the walk over the binding then finds an answer with no container behind it and runs zero iterations. This is the
+`def` road's own hole — the module twin in the second row prints the same nothing on the parent and here — and closing
+it is one condition beside the generator frame's answer: a body read as a generator returns its BUFFER, not its word.
+**ADR 0432** took that choice for the two exits a method body has (`emitClassMethod`'s tail and its unwind edge both
+`ret` the handle); this row is the same choice at the third exit, the one a `return` statement writes.
+
+### Gap R.470 — a `yield` that lives ONLY in a `try`/`except`/`finally` handler is not read as making a generator (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (this commit; the module door refuses identically) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        try:` / `            yield 1` / `        except ValueError:` / `            yield 2` / `c = C()` / `for v in c.m():` / `    print(v)` | exit 1 — `yield outside a generator function` | `1` |
+| the same body with one `yield` ADDED above the `try` | exit 0 — `1` / `2`, the reference's bytes | `1` / `2` |
+
+The reading and the lowering are two questions, and only the first is broken. `containsYield` walks `if`/`elif`/`else`,
+`while`, `for`, `match` and a nested `def`, and never enters a `TryStmt`'s body, its handlers or its `finally` (nor a
+`WithStmt`'s body), so a body whose ONLY yield stands in a handler is not read as a generator and its `yield` is
+refused. The second row is the proof: put one `yield` above the `try` and the very same handler `yield` lowers and
+appends correctly, because once the frame exists the append road does not care where the `yield` was written. The fix
+is four lines in `fold.go`'s walk — visit `TryStmt.Body`, every `ExceptClause.Body`, `TryStmt.Finally` and
+`WithStmt.Body` — and the four lines cannot be written without asking what a `yield` in a `finally` means when the
+`try` is unwinding an exception, which is **L12.1**'s iterator semantics and not a walk bug. That is why this is a row
+and not a drive-by.
+
+### Gap R.471 — a dynamically dispatched method that returns a CONTAINER walks a counter (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (`d729564` and this commit, byte-identical) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class B():` / `    def m(self):` / `        return [9, 9]` / `class D(B):` / `    def m(self):` / `        return [3, 4]` / `def show(o):` / `    for v in o.m():` / `    print(v)` / `show(D())` | exit 0 — `0` | `3` / `4` |
+
+No `yield` anywhere in this program: it is the dynamic door's own missing word, found while writing the refusal above
+and pinned beside it for that reason. The dispatch's `phi` is an `i32`, the `for` road asks the iterable's kind, gets
+no answer, falls to the numeric-range road, and counts to the handle it was handed — printing the loop variable, which
+is the artifact **ADR 0166** forbids at the exit code of success. **ADR 0430** gave a STATICALLY resolved carried
+method answer its container kind (`answerArm.fwdKind`, the reason `len(c.g())` and `1 in c.g()` answer); the dynamic
+door has the same join and no such word, because the arm that runs is a run-time fact. Same missing tag as
+**Gap R.467**; the two rows are one fix at two call sites of one function.
+
+### Gap R.472 — a method parameter the call omits answers `0`, not its default (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (`d729564` and this commit, byte-identical) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, a, b=2):` / `        return b` / `c = C()` / `print(c.m(5))` | exit 0 — `0` | `2` |
+| `class C():` / `    def m(self, n=3):` / `        yield n` / `print(C().m())` | exit 0 — `[5]` | `[3]` under this backend's eager model |
+
+The call road for a module `def` fills an omitted parameter from `fd.Params[i].Default` (`codegen_func.go` refuses a
+missing REQUIRED argument and emits the DEFAULT for an omitted optional one). The method call roads — the class-name
+form, the receiver form and the dispatch — emit one operand per argument the call WROTE and nothing for the rest, so
+the parameter reads whatever the frame's slot held: `0` for a plain body, and for the generator body a register number
+that has nothing to do with the program (`[5]` above is the fifth temporary, not a value). Byte-identical on the
+parent, including the generator spelling's nonsense, which the parent refused for a different reason entirely. The fix
+is the module road's default fill, hoisted to a helper all four call roads ask — and it is the reason this row is a
+dependency of any work that wants a method's generator to be parameterised.
+
+### Gap R.473 — the truth of a generator's answer is the handle word, not the buffer (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (this commit; the module twin, byte-identical on the parent) | reference (CPython 3.12.3) |
+|---|---|---|
+| `def g():` / `    yield 1` / `    yield 2` / `if g():` / `    print("yes")` / `else:` / `    print("no")` | exit 0 — `no` | `yes` |
+| `class C():` / `    def m(self):` / `        yield 1` / `print(bool(C.m(None)))` | exit 0 — `False` | `True` |
+| the same method called through an INSTANCE (`bool(c.m())`) | exit 0 — `True` (the right answer, by accident) | `True` |
+
+A container's truth is its length, and the door that knows that (`truthOperandErr`) refuses a container it cannot ask
+(**Gap R.131**, `lower.unsupported.container-truth`) — but a generator's register is not registered as a container on
+every road, and where it is not, the truth is taken from the WORD the buffer arrived in. That word is a heap slot
+number, and handle 0 is a legal slot (**Gap K.1**'s standing rule), so the same question asked of two doors is decided
+by which number the allocator happened to hand out: the module door's first allocation IS slot 0 and prints `no`, and
+the method door's buffer lands in a non-zero slot and prints `True` — for the right answer by the wrong route, which is
+the third row above and the reason this row cannot be closed by "it prints `True` for methods". The close is the
+`@rt_pair_truth`/length question the tagged roads already ask, asked of a register the generator roads claim.
+
+### Gap R.474 — a container LITERAL written into a METHOD body has its global emitted inside the `define`, and `llc` rejects the module (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (`d729564` and this commit, byte-identical) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, xs):` / `        return 1` / `print(C().m([1, 2]))` | exit 2 — `llc-20: … error: global variable reference must have pointer type` on `%t6 = call i32 @gy_C_m(i32 %t4, i32 @.lst1)` | `1` |
+| `class C():` / `    def __init__(self):` / `        self.xs = [1, 2]` / `    def m(self):` / `        for v in self.xs:` / `            print(v)` / `        return 1` / `C().m()` | exit 2 — `llc-20: … error: expected instruction opcode` on `@.lst1 = private global {i32, [2 x i32]} …` printed INSIDE the define | `1` / `2` then `1` |
+| `def f(xs):` / `    return 1` / `print(f([1, 2]))` | exit 0 — `1` | `1` |
+
+Neither row is this commit's doing — the plain, yieldless method in the first row is rejected byte-for-byte on the
+parent, and the third row is the control that shows the module call road already does the job: it copies a compile-time
+literal into the runtime heap through `staticLists` and the `heapargs` doors, and the METHOD call roads never knock.
+So the operands they emit are the literal's own global, in a slot whose type the emitter wrote as `i32`, and `llc`
+rightly refuses (`global variable reference must have pointer type`); the second row is the sibling failure where the
+global is emitted at all and lands in the middle of a function body (`expected instruction opcode`). **ADR 0166**
+reserves **exit 2** for exactly this class of artifact, which is what makes it a bug rather than a limitation: a
+refused program exits 1 with a capability code, a phase and a suggestion, and these exit 2 with a message about a
+global's type from a tool the program never named. The close is one call — hand a container argument to the same
+materialise-the-literal door the module road asks — at each of the three method call roads, plus the field-store road
+in `__init__`.
+
+### Gap R.475 — a generator method whose body walks its OWN parameter refuses, where the module twin answers (⏳ OPEN — refused in words by **ADR 0432**, found by **ADR 0432**)
+
+| program | this backend (`d729564`, the row's parent) | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|---|
+| `class C():` / `    def m(self, xs):` / `        for v in xs:` / `            yield v` / `xs = [1, 2]` / `print(C().m(xs))` | exit 1 — `yield outside a generator function` | exit 1 — `codegen: "m" is a generator whose body walks its own parameter "xs", and a method body has no word for what that parameter carries: …` | `[1, 2]` (eager model; reference prints a generator object) |
+| the same body with the `yield` replaced by `print(v)` | exit 0 — prints `1` and then the answer | exit 0 — prints `1` and then the answer (byte-identical) | `1` / `2` then `1` |
+| `def m(xs):` / `    for v in xs:` / `        yield v` / `xs = [1, 2]` / `print(m(xs))` | exit 0 — `[1, 2]` | exit 0 — `[1, 2]` | `1`/`2`-shaped buffer under the eager model |
+
+The loop classifies a Name iterable out of the tables the module walk fills (`listVars`, `mixedLists`, the runtime
+container sets), and a method's PARAMETER is in none of them — the keyed-call machinery that gives a module `def` its
+parameter's kind (`call_key.go`, **ADR 0345**'s neighbourhood) is not reached by a method body. Before this commit the
+shape could not be reached at all: the generator reading refused the whole program. Left alone it would have answered
+the EMPTY buffer — `[]` for `[1, 2]`, at the exit code of success — which is the artifact **ADR 0166** forbids, so this
+row wrote a refusal instead and registered it as `lower.unsupported.generator-method-parameter-walk`. The second row is
+the hole's true size: a yieldless method body over the same parameter already prints the reference's `1` and stops,
+silently, on the parent — so the walk itself, not the generator, is the missing road, and the row that owns it is
+**Gap R.471**'s neighbour: give a method body's parameters the kinds its call sites agree on.
+
+### Gap R.476 — a method that FORWARDS a generator call answers a word that is not the buffer (⏳ OPEN, found by **ADR 0432**)
+
+| program | this backend (`d729564`, the row's parent) | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|---|
+| `class C():` / `    def m(self):` / `        yield 1` / `        yield 2` / `    def n(self):` / `        return self.m()` / `c = C()` / `print(c.n())` | exit 1 — `yield outside a generator function` | exit 0 — `1` | `<generator object C.m at 0x…>` |
+| the same class, `for v in c.n():` / `    print(v)` / `print("done")` | exit 1 — the same sentence | exit 0 — `0` then `done` | `1` / `2` / `done` |
+
+**ADR 0431** taught the answer plan's `*Call` arm to read an ATTRIBUTE callee, and it reads the callee's WORD out of
+the two tables the method round keeps — `methodVoid` and `methodCarry`. Neither table has a generator row, so a
+forwarded generator call is classified as neither and answers the word a void answers. The `for` row shows what that
+word then does downstream: the loop road is handed a number, takes the numeric-range arm, and prints `0` for the
+reference's `1` and `2` at the exit code of success. The close is small and it is not free: the round that fills the two
+tables must record the third verdict — a method that yields — and `answerForwardedMethodArm` must ask it before
+`methodVoid`, exactly as **ADR 0428** taught the forwarding arm to ask the carried-only rule first. Until then the
+forwarding road is a wrong answer for a body the direct call answers correctly, which is the pair of rows this one
+exists to end.

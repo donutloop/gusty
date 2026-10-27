@@ -5312,8 +5312,37 @@ not offered in completions.
 ## Generators & lists
 - `def g(): yield a; yield b` is a generator: calling `g()` runs the body and
   returns a list of all yielded values.
+- **A method is a generator by its own body** (roadmap Gap R.455, ADR 0432): a `def` written
+  inside a `class` body that contains a `yield` — at any depth the reading walks (`if`/`elif`/`else`,
+  `while`, `for`, a `match` arm, or after an unconditional `return`) — is read as a generator by the
+  same question a module `def` is read by, and calling it runs the body and returns the list of all
+  yielded values:
+
+      class Counter():
+          def counted(self):
+              yield 1
+              yield 2
+              yield 3
+
+      c = Counter()
+      print(c.counted() is None)     # False
+      for v in c.counted():          # 1 2 3
+          print(v)
+
+  The answer is one list, eagerly, whichever door the call came through: a call written on the class
+  (`C.m(None)`), on an instance (`c.m()`), through `self.` inside another method, through `super()`, an
+  inherited generator a subclass never re-declares, and a dynamically dispatched call where **every**
+  class that declares the name yields. `yield from` delegates inside a method body too. What is
+  refused, in words with a capability code rather than answered, is a call whose arm the compiler cannot
+  pick: the same method name yielding in some classes and not in others reached through a receiver whose
+  class is only a run-time fact (`lower.unsupported.split-generator-method-dispatch`, Gap R.467), and a
+  generator body that walks its own parameter, whose kind no method body can state
+  (`lower.unsupported.generator-method-parameter-walk`, Gap R.475) — the module `def` twin of that body
+  answers. Generators are still EAGER buffers, not iterators: `print(g())` prints the list (ADR 0081),
+  and `next()`, a partially consumed buffer and a lazy `yield` remain Gap L12.1's.
 - `[1, 2, 3]` is a list literal.
-- `for x in g():` and `for x in [1,2,3]:` iterate the elements.
+- `for x in g():` and `for x in [1,2,3]:` iterate the elements, and so does `for x in c.m():` over a
+  generator method — the loop walks the buffer rather than counting to the handle it was handed.
 
 - `len(list)` returns the number of elements in a list.
 

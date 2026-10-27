@@ -943,6 +943,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// takes the operator roads out of each entry, and catches the two `KeyError`s whose messages name the
 		// void and the bound text the way the reference names them; every line is what CPython prints for it.
 		"bound_dict_keys",
+		// A generator METHOD is a generator: the reading is the body's own, taken at the class's door rather than
+		// only in the module walk the `yield` statement consulted, and the call roads, the binding road, the print
+		// door, the membership test and the `for` road all ask the same question the class asked (**ADR 0432**,
+		// roadmap **Gap R.455**). The program walks a generator called twice, binds one under a name and walks it
+		// there, asks the membership test and the sum, calls a generator through `self` and through `super()`, walks
+		// an inherited one, and dispatches one dynamically; every line is what CPython prints for it.
+		"generator_method",
 
 		// A container SLOT whose value arrived through a binding, rather than being spelled, is built
 		// self-describing and printed by the mixed printer: the gate that decides whether a slot needs a

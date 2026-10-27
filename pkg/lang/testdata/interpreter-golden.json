@@ -1,5 +1,143 @@
 {
  "entries": {
+"class C():\n    def m(self):\n        yield 1\n        try:\n            x = 1 // 0\n        except ZeroDivisionError:\n            yield 2\nc = C()\nfor v in c.m():\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+"class B():\n    def m(self):\n        yield 1\n        yield 2\nclass D(B):\n    def m(self):\n        yield 3\n        yield 4\ndef show(o):\n    for v in o.m():\n        print(v)\nshow(D())\n": {
+    "stdout": "3\n4\n",
+    "hasStdout": true
+   },
+
+"class B():\n    def m(self):\n        yield 7\n        yield 8\nclass D(B):\n    pass\nd = D()\nfor v in d.m():\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
+
+"class Base():\n    def gen(self):\n        yield 1\n        yield 2\nclass Child(Base):\n    def drain(self):\n        for v in super().gen():\n            print(v)\n        return None\nc = Child()\nprint(c.drain())\n": {
+    "stdout": "1\n2\nNone\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def __init__(self):\n        self.n = 0\n    def m(self):\n        self.n = self.n + 1\n        yield self.n\n        self.n = self.n + 1\n        yield self.n\nc = C()\nfor v in c.m():\n    print(v)\nprint(c.n)\n": {
+    "stdout": "1\n2\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7, 8):\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        i = 0\n        while i \u003c 3:\n            yield i\n            i = i + 1\nc = C()\nt = 0\nfor v in c.m():\n    t = t + v\nprint(t)\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\n        yield 3\nc = C()\nfor v in c.m():\n    print(v)\n": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\n        yield 3\nc = C()\ns = 0\nfor v in c.m():\n    s = s + v\nprint(s)\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\n    def n(self):\n        for v in self.m():\n            print(v)\n        return None\nc = C()\nprint(c.n())\n": {
+    "stdout": "1\n2\nNone\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\na = c.m()\nb = c.m()\nfor v in a:\n    print(v)\nfor v in b:\n    print(v)\n": {
+    "stdout": "1\n2\n1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nfor v in c.m():\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nif c.m():\n    print(\"yes\")\nelse:\n    print(\"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nprint(1 in c.m())\nprint(9 in c.m())\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nprint(bool(c.m()))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nprint(c.m() == c.m())\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nys = c.m()\nfor v in ys:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nys = c.m()\nprint([v for v in ys])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\n        yield 2\nc = C()\nys = c.m()\nprint(ys is None)\nfor v in ys:\n    print(v)\n": {
+    "stdout": "False\n1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\nc = C()\nprint(c.m() is None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        yield 1\nc = C()\nprint(c.m() is not None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, flag):\n        if flag:\n            yield 1\n        else:\n            yield 2\nc = C()\nfor v in c.m(True):\n    print(v)\nfor v in c.m(False):\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, k):\n        if k:\n            yield 1\nc = C()\nfor v in c.m(0):\n    print(v)\nprint(\"done\")\n": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, k):\n        yield k\n        yield k\nc = C()\na = c.m(1)\nb = c.m(2)\nfor v in a:\n    print(v)\nfor v in b:\n    print(v)\n": {
+    "stdout": "1\n1\n2\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, k):\n        yield k\n        yield k + 1\nc = C()\nt = 0\nfor k in range(3):\n    for v in c.m(k):\n        t = t + v\nprint(t)\n": {
+    "stdout": "9\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, n):\n        for i in range(n):\n            yield i * 2\nc = C()\nfor v in c.m(3):\n    print(v)\n": {
+    "stdout": "0\n2\n4\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, n):\n        match n:\n            case 1:\n                yield 10\n            case _:\n                yield 20\nc = C()\nfor v in c.m(1):\n    print(v)\nfor v in c.m(5):\n    print(v)\n": {
+    "stdout": "10\n20\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def src(self):\n        return [1, 2, 3]\n    def m(self):\n        yield from self.src()\nc = C()\nfor v in c.m():\n    print(v)\n": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
 "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\n    def n(self, x):\n        return self.m(x)\nc = C()\nprint(c.n(1) == c.n(0))\n": {
     "stdout": "False\n",
     "hasStdout": true

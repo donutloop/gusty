@@ -1245,6 +1245,11 @@ type irGen struct {
 	// genFuncs records generator function names; calling one yields a runtime
 	// heap list handle (mirroring the record's eager yield semantics).
 	genFuncs map[string]bool
+	// genMethodParamWalk records, per generator-METHOD symbol, the name of a parameter whose container the
+	// body walks with a `for` and which the loop road cannot classify — the one generator-method shape this
+	// backend REFUSES instead of answering with the empty buffer (roadmap Gap R.475, ADR 0432). Recorded by
+	// `registerClass` beside the `genFuncs` mark, so the reading is taken once, at the class's door.
+	genMethodParamWalk map[string]string
 	// staticLists maps a compile-time list global name (@.lstN) to its literal,
 	// so a call site can copy it into the runtime heap when the callee expects a
 	// container handle.

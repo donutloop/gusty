@@ -527,15 +527,13 @@ func TestWhatTheVoidAnsweringMethodStillOwesIsFiledNotFixed(t *testing.T) {
 		// or the carried body's run-time tag — and the program now prints the reference's bytes. It stands in
 		// the answered family of `pkg/lang/method_forward_test.go` and `integration/method_forward_test.go`,
 		// on the compiled leg, the record leg and the reference leg.
-		{
-			// A generator METHOD: the body is a generator the front end never recognised because it lives
-			// in a class, so `yield` is refused as being outside a generator function.
-			name:       "a generator method",
-			src:        "class C():\n    def m(self):\n        yield 1\nc = C()\nprint(c.m() is None)\n",
-			wantExit:   1,
-			wantStderr: "yield outside a generator function",
-			dossier:    "**Gap R.455** — the reference prints `False`; a `def` in a class body is a method by position and never gets the generator reading a module `def` gets",
-		},
+		// The pin that stood here is DELETED rather than edited. `class C():` /
+		// `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)`, held at exit 1 with
+		// `yield outside a generator function` beside the reference's `False`, is closed by **ADR 0432**, which
+		// reads the generator flag where a class body's methods are registered and lowers a method generator on
+		// the roads a module generator has always used. The program prints the reference's bytes and stands in
+		// the answered family of `pkg/lang/generator_method_test.go` and `integration/generator_method_test.go`,
+		// on the compiled leg, the record leg and the reference leg.
 		{
 			// A method writing into its own class's FIELD container: the mutation door reads a receiver it
 			// cannot name as a text and refuses, long before any answer is asked.
