@@ -361,11 +361,6 @@ func TestWhatTheMethodAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		name, src, today, reference, row string
 	}{
 		{
-			"a text held in a field, read out by a getter",
-			"class C:\n    def __init__(self, v):\n        self.v = \"hi\"\n\n    def get(self):\n        return self.v\n\n\nprint(C().get())\n",
-			"0\n", "hi\n", "Gap R.319",
-		},
-		{
 			"a text a constructor hands a field, read out by a getter",
 			"class D:\n    def __init__(self, v):\n        self.v = v\n\n    def get(self):\n        return self.v\n\n\nprint(D(\"hi\").get())\n",
 			"0\n", "hi\n", "Gap R.319",
@@ -390,9 +385,10 @@ func TestWhatTheMethodAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 			}
 		})
 	}
-	// Two shapes are refused in words rather than answered, and the guard is that they stay refusals —
+	// The shapes below are refused in words rather than answered, and the guard is that they stay refusals —
 	// never the intern position. `self.inner(s)` asks the dispatch for the receiver the body cannot
-	// name, and a defaulted parameter that no call names arrives as a word nothing wrote.
+	// name, and a defaulted parameter that no call names arrives as a word nothing wrote. The last is the
+	// one the reference refuses too, at the same exit code.
 	for _, r := range []struct{ name, src string }{
 		{
 			"a method forwards its parameter to another method",
@@ -401,6 +397,18 @@ func TestWhatTheMethodAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		{
 			"a text default no call names",
 			"class C:\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\n\n\nprint(C().greet())\n",
+		},
+		{
+			// A constructor whose required parameter the program never passes. The argument-vector walk
+			// (**ADR 0434**) reads the signature and refuses rather than hand the body a word nobody wrote,
+			// and the reference agrees about the exit code: it raises
+			// `TypeError: C.__init__() missing 1 required positional argument: 'v'`. This shape used to sit in
+			// the table above claiming the reference prints `hi` — it does not. That claim was the retired
+			// engine's answer, which allowed the call with the parameter unbound; where the record and the
+			// reference disagree, the reference is right and the record is the debt (**ADR 0302**), and a row
+			// may not pin a reference it never asked.
+			"a constructor whose required parameter the program never passes",
+			"class C:\n    def __init__(self, v):\n        self.v = \"hi\"\n\n    def get(self):\n        return self.v\n\n\nprint(C().get())\n",
 		},
 	} {
 		r := r

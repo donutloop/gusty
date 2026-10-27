@@ -959,6 +959,19 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// FORWARDS another generator's buffer; every line is what CPython prints for it.
 		"generator_buffer_kind",
 
+		// A method call fills the CALLEE's parameter vector — one word per parameter the method declared, in
+		// declaration order, each omitted argument filled from its own default expression and each `name=`
+		// bound by name. Four method roads had emitted one word per argument the SOURCE wrote, so an omitted
+		// default read whatever the register allocator left in the slot (`c.m(5)` into `def m(self, a, b=2)`
+		// answered `0` for the reference's `2`) and a keyword read as a positional (`c.m(b=7, a=3)` answered
+		// `73` for the reference's `37`) — roadmap **Gap R.472**, **ADR 0434**; the module-`def` road had done
+		// this walk since ADR 0166. The program calls a defaulted method at the class's door and the
+		// constructor's, binds keywords out of order, inherits a default, overrides one, reaches a base's
+		// through `super()`, dispatches one dynamically with a DIFFERENT default per arm, and keeps a summed
+		// generator buffer as the control that the vector is the same one a generator's slots come from;
+		// every line is what CPython prints for it.
+		"method_arg_defaults",
+
 		// A container SLOT whose value arrived through a binding, rather than being spelled, is built
 		// self-describing and printed by the mixed printer: the gate that decides whether a slot needs a
 		// tag of its own asks the ELEMENT — the ADR 0172 record behind print, `str`, truthiness and

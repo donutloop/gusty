@@ -170,22 +170,17 @@ func (g *irGen) callInstantiate(b *strings.Builder, c *Call, fnName string) (str
 	b.WriteString(fmt.Sprintf("  call void @rt_inst_clear(i32 %s, i32 %d)\n", h, g.nextSlot))
 	b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 	if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
-		// Compute each argument value first (each emits its own load
-		// statement on a fresh line), then emit the call using the
-		// computed temporaries so the IR stays well-formed.
-		argTmp := make([]string, len(c.Args))
-		for i, arg := range c.Args {
-			av, err := g.value(b, arg)
-			if err != nil {
-				return "", err
-			}
-			argTmp[i] = av
+		// Each parameter of the constructor gets one word, in the order the constructor declared them, and a
+		// parameter the call omitted is filled from its OWN default expression (each value emits its own load
+		// statement on a fresh line, which is why the vector is built before the call line is started).
+		// `class C():` / `    def __init__(self, a, b=2):` / `        self.b = b` / `c = C(5)` / `print(c.b)`
+		// read `0` for the reference's `2` while this walk ran `for i, arg := range c.Args` and left the body's
+		// `b` slot unfilled (roadmap Gap R.472, ADR 0434).
+		argWords, aerr := g.newCallArgBinder(b).methodCallArgs(c.Args, g.resolveMethodDef(fnName, "__init__"), fnName+".__init__")
+		if aerr != nil {
+			return "", aerr
 		}
-		b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
-		for _, av := range argTmp {
-			b.WriteString(", i32 " + av)
-		}
-		b.WriteString(")\n")
+		b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s%s)\n", fn, h, operandWords(argWords)))
 		// A constructor that raises has failed to construct: the exception propagates
 		// before the instance is ever used (Gap R.41, ADR 0223).
 		g.checkExn(b)

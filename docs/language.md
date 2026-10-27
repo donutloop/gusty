@@ -3978,6 +3978,26 @@ default the *caller supplies* answers, which is what localises it to the omitted
 the same on both `def` and `lambda`). Bewise `len(xs)` on an `xs=[]` default: it prints `0`, which is what
 CPython prints, for entirely the wrong reason.
 
+**A method call fills the parameter vector the METHOD declared** (**ADR 0434**, roadmap **Gap R.472**). A call to a
+`def` has laid its arguments out over the callee's declared parameters since **ADR 0166**; the five roads that emit a
+method call — the static-receiver dispatch, `super()`, the run-time class-id switch, `mod.fn(...)` and `C(...)`'s
+constructor call — each emitted one word per argument the source WROTE, while the body reads its parameters by
+position. So an omitted default read whatever the register allocator left in the slot and a `name=` keyword was a
+positional with a label on it: `def m(self, a, b=2): return b` called as `c.m(5)` printed `0` for `2`, and
+`def m(self, a=1, b=2): return a * 10 + b` called as `c.m(b=7, a=3)` printed `73` for `37`. Now every one of those
+roads asks one walk: positionals in declaration order after the receiver word, `name=` bound by name, each omitted
+slot filled from that parameter's own default expression, and the defaults coming from the class that DECLARES the
+method — so an inherited method keeps its base's defaults and an override brings its own. A default marks ONE
+parameter as omittable and says nothing about the parameters around it: `def m(self, a, b=1, c)` called as
+`C().m(1, 2, 3)` is `6`, the positional list keeping count past the defaulted slot (this language allows a parameter
+after a default, which CPython's parser rejects at the `def`). A call the walk cannot lay out is refused in words at
+exit **1**, in the module `def` road's own sentences — `too many arguments for C.m`,
+`missing argument "b" for C.m`, `unknown keyword argument "k" for C.m`, `multiple values for argument "b" of C.m`,
+`positional argument after keyword argument for C.m`, and `self` is not a name a keyword may bind. What the vector
+does not carry is a parameter's KIND: `strParamOf`, `boolParamOf` and the heap-argument registration collect their
+evidence from the arguments a call WROTE, so a defaulted text returned by a method still prints the payload word and
+a defaulted list is not a container to `len` — roadmap **Gap R.479**.
+
 Printf-style `%` on a text **formats**, on the compiled path, at the answers the reference gives
 (`Gap R.31`, `L11.1`, ADR 0360):
 

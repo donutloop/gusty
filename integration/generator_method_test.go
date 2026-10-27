@@ -236,11 +236,6 @@ func TestWhatTheGeneratorMethodStillOwesAtTheCLI(t *testing.T) {
 			python: "3\n4\n", compiled: "0\n",
 		},
 		{
-			name: "a method parameter the call omits answers 0", gap: "Gap R.472",
-			src:    "class C():\n    def m(self, a, b=2):\n        return b\nc = C()\nprint(c.m(5))\n",
-			python: "2\n", compiled: "0\n",
-		},
-		{
 			// ADR 0431's forwarding arm reads the callee's WORD out of the plan's two method tables, and the
 			// round that filled them has no generator verdict to give it — so a forwarded generator call answers
 			// the void's word. The reference does not answer at all here (`None.m()` traps), which is what makes

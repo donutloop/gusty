@@ -12,7 +12,12 @@ type classInfo struct {
 	name    string
 	bases   []string
 	methods map[string]string // method name -> LLVM function name
-	doc     string
+	// methodDefs is the same table seen as DECLARATIONS rather than symbols: the arity a call site has to
+	// fill, the parameter names a `name=` keyword binds against and the default expression a written-out
+	// argument left empty all live on the `*FuncDef`, and only the walk that mints the symbol ever holds it
+	// (roadmap Gap R.472, ADR 0434). Filled by `registerClass`, read by `resolveMethodDef`.
+	methodDefs map[string]*FuncDef
+	doc        string
 	// attrs is the class's OWN members: the names the class body binds (`class C:` / `first = xs[0]`),
 	// which are attributes of the CLASS and are read through the class name (`C.first`) — a different
 	// road from the instance attributes below, which live in the object's slot table and are read through
@@ -40,7 +45,7 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		g.classIDs[cd.Name] = len(g.classOrder)
 		g.classOrder = append(g.classOrder, cd.Name)
 	}
-	ci := &classInfo{bases: []string{}, methods: map[string]string{}, doc: cd.Doc}
+	ci := &classInfo{bases: []string{}, methods: map[string]string{}, methodDefs: map[string]*FuncDef{}, doc: cd.Doc}
 	for _, b := range cd.Bases {
 		if b != nil {
 			ci.bases = append(ci.bases, b.Value)
@@ -85,6 +90,10 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		// call sites together.
 		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
+		// The declaration travels beside the symbol for the same reason the symbol is minted once: a call
+		// site that has to fill the callee's parameter vector asks the walk that minted it, and the arity,
+		// the names and the defaults exist only on the `*FuncDef` (roadmap Gap R.472, ADR 0434).
+		ci.methodDefs[mname] = fd
 		g.markStringAttrs(cd.Name, fd)
 		// The generator reading is taken here, at the class's door, and not in the module walk that the
 		// `yield` statement consults: a `def` written inside a `ClassDef` body is a method by POSITION, and

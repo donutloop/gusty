@@ -20070,21 +20070,44 @@ method answer its container kind (`answerArm.fwdKind`, the reason `len(c.g())` a
 door has the same join and no such word, because the arm that runs is a run-time fact. Same missing tag as
 **Gap R.467**; the two rows are one fix at two call sites of one function.
 
-### Gap R.472 — a method parameter the call omits answers `0`, not its default (⏳ OPEN, found by **ADR 0432**)
+### Gap R.472 — a method parameter the call omits answers `0`, not its default (✅ CLOSED by **ADR 0434**, found by **ADR 0432**)
 
-| program | this backend (`d729564` and this commit, byte-identical) | reference (CPython 3.12.3) |
-|---|---|---|
-| `class C():` / `    def m(self, a, b=2):` / `        return b` / `c = C()` / `print(c.m(5))` | exit 0 — `0` | `2` |
-| `class C():` / `    def m(self, n=3):` / `        yield n` / `print(C().m())` | exit 0 — `[5]` | `[3]` under this backend's eager model |
+| program | this backend (`d729564`/`bf03c37`, byte-identical across the two parents) | reference (CPython 3.12.3) | this commit |
+|---|---|---|---|
+| `class C():` / `    def m(self, a, b=2):` / `        return b` / `c = C()` / `print(c.m(5))` | exit 0 — `0` | `2` | `2` |
+| `class C():` / `    def m(self, n=3):` / `        yield n` / `print(C().m())` | exit 0 — `[5]` | `[3]` under this backend's eager model | the buffer's slot holds `3` |
+| `class C():` / `    def m(self, a=1, b=2):` / `        return a * 10 + b` / `print(C().m(b=7, a=3))` | exit 0 — `73` | `37` | `37` |
+| `class C():` / `    def m(self, a, b=10, c=100):` / `        return a + b + c` / `print(C().m(1))` | exit 0 — a register number (`9257725` on one run, `1896104701` on another — the tell that the word is the frame's, not the program's) | `111` | `111` |
+| `class C():` / `    def __init__(self, a, b=2):` / `        self.b = b` / `c = C(5)` / `print(c.b)` | exit 0 — `0` | `2` | `2` |
+| `class C():` / `    def m(self, a):` / `        return a` / `print(C().m(1, 2, 3))` | exit 0 — `1` | raises `TypeError: C.m() takes 2 positional arguments but 4 were given` | refuses: `too many arguments for C.m`, exit **1** |
 
 The call road for a module `def` fills an omitted parameter from `fd.Params[i].Default` (`codegen_func.go` refuses a
-missing REQUIRED argument and emits the DEFAULT for an omitted optional one). The method call roads — the class-name
-form, the receiver form and the dispatch — emit one operand per argument the call WROTE and nothing for the rest, so
-the parameter reads whatever the frame's slot held: `0` for a plain body, and for the generator body a register number
-that has nothing to do with the program (`[5]` above is the fifth temporary, not a value). Byte-identical on the
-parent, including the generator spelling's nonsense, which the parent refused for a different reason entirely. The fix
-is the module road's default fill, hoisted to a helper all four call roads ask — and it is the reason this row is a
-dependency of any work that wants a method's generator to be parameterised.
+missing REQUIRED argument and emits the DEFAULT for an omitted optional one, in the sentences `too many arguments
+for`, `unknown keyword argument`, `multiple values for argument`, `positional argument after keyword argument for`,
+`missing argument`). **Five** method roads — the `mod.fn(...)` road, the `super()` road, the static-receiver road and
+the run-time class-id switch in `codegen_method.go`, and `callInstantiate`'s constructor call in
+`codegen_instance.go` — emitted one operand per argument the call WROTE (`for i, arg := range c.Args`) and nothing
+for the rest, while `emitClassMethod` declares `i32 %self` plus one word per `fd.Params` entry and binds
+`fd.Params[i].Name` to `%p<i>`: the callee reads its parameters by position, so the omitted one read whatever the
+register allocator left in the slot, and a `name=` keyword was a positional with a label on it.
+
+**What `llc` accepts, and why nobody warned.** The row's own program emits `%t7 = call i32 @gy_C_m(i32 %_c.ld1, i32 5)`
+against a `define` of four parameters, and BOTH `llc-20` and `opt -passes=verify` accept it —
+`gustyc --verify-llvm` prints `module verified` over the whole family. An under-filled operand list is not malformed
+IR, so there is no exit 2 to wait for and no diagnostic to read; the only witness that a call disagreed with its
+callee was ever the program's own output. That is the reason the answered rows in this cycle's two test files ask a
+live `python3` inside the case rather than a remembered string.
+
+**The close.** `pkg/lang/codegen_args.go` NEW: `callArgBinder` lays one call site's arguments out over the callee's
+`fd.Params` — positionals after the caller's own receiver slot, `name=` by name, every omitted slot filled from
+`fd.Params[i].Default` through the SAME `g.value` road a written argument takes, so a default can only ever travel a
+word the road was already able to emit. The refusal sentences are the `def` road's, reused verbatim. The declaration
+is read by `resolveMethodDef`, the same base chain `resolveMethod` walks (**ADR 0224**), so an inherited method's
+defaults come from the class that declares it. The dispatch builds every arm's vector before it writes the `switch`,
+from one binder, so no operand is defined in the arm that did not run (**ADR 0227**, **Gap R.318**). Measured against
+a `git worktree` build of the parent (`bf03c37`): **25** deduplicated sources, **20 moved** / **5 held**, **17** of
+the moves landing on the reference's exact bytes — including the two dynamic arms printing `4` and `6`, which is the
+evidence the vector is per-arm.
 
 ### Gap R.473 — the truth of a generator's answer is the handle word, not the buffer (⏳ OPEN, found by **ADR 0432**)
 
@@ -20212,3 +20235,72 @@ owns both shapes and why the fix is the door's and not the buffer's. **ADR 0247*
 equality the container roads already ask with the tag beside the payload; **ADR 0324**/**Gap R.211** is the paid twin
 ("the needle read the way the haystack is") for a slot read out of another container. The cross-kind answer is
 `False`, and a coincidence between an intern index and an integer is not a match.
+
+---
+
+## What **ADR 0434** (the argument vector a method call fills, **Gap R.472**) found on the way
+
+Filling a parameter from its default puts a value in a slot the compiler had never looked at, and several doors
+that read a *parameter's kind* turn out to be keyed on the arguments a call **wrote**. They are listed here with the
+bytes each answers on this commit, so the next cycle inherits a measurement rather than a guess.
+
+### Gap R.479 — a parameter filled only from its DEFAULT arrives with the right word and the wrong kind (⏳ OPEN, found by **ADR 0434**)
+
+| program | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m())` — beside the SAME body written as a module `def`, which prints `hi` on this build | exit 0 — `0` | `hi` |
+| `class C():` / `    def greet(self, who="world"):` / `        print(f"hi {who}")` / `C().greet()` | exit 0 — `hi 0` | `hi world` |
+| `class C():` / `    def m(self, s="hi"):` / `        return s` / `print(C().m())` — beside the SAME body written as a module `def`, which prints `hi` on this build | exit 0 — `0` | `hi` |
+| `class C():` / `    def greet(self, name="world"):` / `        return "hi " + name` / `print(C().greet())` | exit **1** — `concatenating a string with a value that is not a string is not supported in the AOT backend` | `hi world` |
+| `class C():` / `    def m(self, xs=[1, 2, 3]):` / `        return len(xs)` / `print(C().m())` | exit **1** — `len of a non-string variable` | `3` |
+| `class C():` / `    def m(self, xs=[1, 2, 3]):` / `        return xs` / `print(C().m())` | exit **2** — `llc-20: … error: global variable reference must have pointer type` on `%t6 = call i32 @gy_C_m(i32 %t4, i32 @.lst1)` | `[1, 2, 3]` |
+| `class C():` / `    def m(self, flag=True):` / `        return flag` / `print(C().m())` | exit 0 — `True` **= the reference** | `True` |
+
+The first four are one cause and one exemption. `strParamOf` (**ADR 0366**), `boolParamOf` (`boolargs.go`,
+`boolmethod.go`) and `declareHeapParams` (`heapargs.go`) each collect their evidence by walking the program's call
+sites and reading `c.Args` shifted by `self`; a parameter that NO call writes appears in none of their tables, so the
+body is emitted as if its parameter were an ordinary int word. The text default therefore prints the `@str_tab`
+position — the artifact **Gap R.315** removed from the written-argument spelling — and the container default is a
+heap handle the loop and `len` roads were never told about. The verdict row is the control that keeps this honest:
+the bool census already answers an unwritten `flag=True` correctly, so the lesion is three censuses, not the fill.
+
+The container-default **exit 2** is not a new door: it is **Gap R.474**'s rejection — a container literal in a
+method's operand list reaches `llc` as `i32 @.lst1` — arrived at through a default because a default's expression now
+goes down the same operand road a written argument does. It is pinned at exit 2 in
+`integration/method_args_test.go::TestTheDefaultedContainerArgumentIsStillTheAssemblerRejectionItsParentWas` so the
+row that owns the literal is found rather than rediscovered.
+
+The float default (`def m(self, x=2.5): return x * 2` printing `4` for `5.0`) is **not** this row's either: the
+written spelling `C().m(2.5)` prints the same `4`, and the missing half is the method's double return word
+(**Gap R.35** / **L11.6** / **ADR 0196**). It is pinned with today's bytes in both files' owed tables.
+
+The close is the same question each census already asks of a written argument, asked of the default expression for the
+slots no call fills, under **ADR 0366**'s authoritative-not-additive rule: a parameter is a text inside a body only
+if EVERY argument it can ever receive is a text, which for an unwritten slot reduces to one question — is the DEFAULT
+a text? Widening that rule is a decision about the census's soundness and belongs to ADR 0366's own row, which is why
+it is not in this commit.
+
+### The `reference` column that had never been asked
+
+`pkg/lang/method_text_test.go` pinned, in its filed-not-fixed table, the program
+
+```
+class C:
+    def __init__(self, v):
+        self.v = "hi"
+
+    def get(self):
+        return self.v
+
+
+print(C().get())
+```
+
+as `today = "0"`, `reference = "hi"`. CPython prints neither: it raises
+`TypeError: C.__init__() missing 1 required positional argument: 'v'` and exits **1**. The `0` was this backend's
+(the constructor call handed the body no word for `v` and the field read the frame's garbage) and the `hi` was the
+retired engine's, from a record that allowed the call with the parameter unbound — the two columns were both engine
+answers, and neither was the reference's. **ADR 0302**'s rule is that where the record and the reference disagree the
+reference is right and the record is the debt; the row has moved to that file's refusal table, where the guard is that
+the compiled leg *stays* a refusal, and the compiled leg now refuses at exit **1** beside the reference's exit **1**.
+A pinned `reference` cell has to have been asked of the reference.

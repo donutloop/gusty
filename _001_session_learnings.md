@@ -15900,3 +15900,79 @@ then every base in the order the dispatch walks them) and answer the callee's OW
    whose refusal behaviour this row had no business settling (**Gap R.76** makes a mixed-kind literal comprehension
    refuse, and the day a buffer becomes classifiable, that road must not start answering by accident). They leave as
    **Gap R.477** and **Gap R.478** with their bytes, their controls and their definitions of done.
+
+## ADR 0434 — a method call fills the parameter vector the method declared: one word per declared parameter, defaults and names read from the declaration (Gap R.472 closed; Gap R.479 filed, 2026-10-27)
+
+1. **Five roads shared one idiom, and the verifier will never tell you.** Every method call road had
+   `for i, arg := range c.Args` — the module-function road, `super()`, the static receiver, the run-time class-id
+   switch, and `callInstantiate`'s constructor call — while `emitClassMethod` declares `i32 %self` plus one word per
+   `fd.Params` entry and binds `fd.Params[i].Name` to `%p<i>`. The callee reads by position; the caller counted what
+   the source wrote. What made five programs answer at exit **0** is that **`llc-20` and `opt -passes=verify` both
+   accept a call with fewer operands than the callee declares**: `gustyc --verify-llvm` prints `module verified` over
+   the whole family, including `call i32 @gy_C_m(i32 %_c.ld1, i32 5)` against a four-parameter `define`. There is no
+   exit 2 to wait for in this class of bug and no diagnostic to read — the only witness is asking the program, which
+   is why every answered row in this cycle asks a live `python3` inside the case instead of trusting a string I typed
+   once.
+
+2. **The one decision that kept the row narrow: a default travels the identical word a written argument would have
+   travelled.** The temptation was to reuse `callUserFunc`'s float/pair argument machinery, which would have dragged
+   the pair door and the double-return road into a commit about arity. Instead each filled slot goes through the same
+   `g.value` the road already uses for its operands, so a text default interns exactly as a written text does, a float
+   default boxes exactly as a written float does, and *a default the road could not have written is a default it
+   cannot fill* — which is a refusal, not a second guess. The cost is honest and filed: a container default inherits
+   **Gap R.474**'s `i32 @.lst1`-in-an-operand-position rejection at exit **2**, because it is the same operand road,
+   and the pin says so instead of pretending to a new bug.
+
+3. **A call site asks the walk that minted the symbol.** `resolveMethod` hands out the mangled name; a call that has
+   to fill a parameter vector needs the `*FuncDef`, so `classInfo` now carries `methodDefs` beside `methods` and
+   `resolveMethodDef` walks the same base chain in the same order (**ADR 0224**). That is what makes the two answered
+   rows about inheritance mean something: an inherited method's default comes from the class that DECLARES it, and an
+   override's comes from the subclass. A call site reading the subclass's (empty) signature would have filled the base
+   body's slots with the wrong values and no test would have caught it, because the two cases differ only in which
+   class the source named.
+
+4. **The dynamic dispatch's vectors are built before the `switch`, from one binder — a dominance argument I got to
+   only after writing the naive version.** Each arm needs its OWN method's defaults (`def m(self,a,b=3)` in `B`,
+   `b=5` in `C`), so the plan is per-arm; but two classes inheriting `m` from one base resolve to the same
+   declaration, and an operand emitted in one arm and named in another is a use of a register whose block did not run,
+   which the verifier *does* reject. So `callArgBinder` memoises per call site and all emission happens before the
+   `switch` line. The answered row that proves the shape is the one where the two arms print different numbers: `4`
+   and `6`, both right, in one program.
+
+5. **Refusals go where the neighbour's refusals go, in the neighbour's words.** I reused the `def` road's five
+   sentences verbatim instead of paraphrasing (a second copy of a rule is a second rule — **ADR 0232**), returned them
+   as compile-time errors rather than the `unreachable` + `unsupported:` runtime traps the roads use for an
+   unresolvable callee, and got `self=` refused for free because slot 0 is the caller's and outside the name space a
+   keyword may bind. The five shapes that had been answering at exit 0 now exit **1** — the same exit code the
+   reference's `TypeError` exits with, which is the ladder's point: the legs then disagree only about who says the
+   words. And they are not capabilities: `--capabilities` lists neither the `def` road's `missing argument` nor mine,
+   because an arity error is a call that does not match its callee, not a shape the backend declines by design.
+
+6. **A pinned `reference` column has to have been asked.** `pkg/lang/method_text_test.go` held
+   `today = "0"`, `reference = "hi"` for a constructor whose required parameter the program never passes. CPython
+   raises `TypeError: C.__init__() missing 1 required positional argument: 'v'` and exits **1**. The `0` was this
+   backend's and the `hi` was the retired engine's, and neither was the reference's — the row had been carrying an
+   engine answer in the column reserved for the oracle. My commit's own road walked past it and the case failed; the
+   fix was not to bend the row to the new answer but to move it to that file's refusal table, where the guard is that
+   it *stays* a refusal. **ADR 0302** says where the record and the reference disagree the record is the debt; this is
+   the same fault one file further up, in a test's own table.
+
+7. **The second door behind the first, again.** Filling a slot from a default puts a value in a parameter the kind
+   censuses never saw: `strParamOf` (**ADR 0366**), `boolParamOf` and `declareHeapParams` collect evidence by walking
+   call sites and reading `c.Args` shifted by `self`, so a parameter no call writes arrives with the right word and
+   the wrong kind — `def m(self, s="hi"): return s` prints `0` at the method's door while the same body as a module
+   `def` prints `hi` on this build. The `bool` census already answers an unwritten `flag=True` correctly, which is the
+   control that localises the lesion to three censuses rather than the fill. Filed as **Gap R.479** with five rows in
+   each file, not fixed here: widening **ADR 0366**'s authoritative-not-additive rule to trust a default is a decision
+   about that census's soundness and belongs to its own row.
+
+8. **The sweep caught me, and the first run of it was the lie.** My notes said "16 moved / 21 held" from a sweep that
+   reported exactly that — against a **stale `/tmp/gustyc`** left over from the previous cycle, which the parent build
+   also agreed with on several rows. Rebuilding both binaries and re-running gave the truth: **25 deduplicated sources,
+   20 moved, 5 held**, **17 landing on the reference's exact bytes**, **3 moving and not arriving** (the defaulted
+   text, the defaulted float, the container default — each named for its row). The check I will keep: a sweep whose
+   "moved" count is small must be tested by asking one row this commit is CERTAIN it changed. `tools/recmerge` added
+   **16** of the **43** sources I fed it — 27 were already on the record — and the artifact counts moved
+   **9835 → 9851**, programs **256 → 257**, matrix rows **242 → 243** (`pass` 214, oracle `match` 200), ADRs to **424**
+   with highest **0434**; every one of those numbers is the file's, recomputed by the count guards (**Gap R.204**),
+   including the ones I wrote in my own ADR.

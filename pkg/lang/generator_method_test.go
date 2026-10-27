@@ -395,15 +395,6 @@ func TestWhatAGeneratorMethodStillCannotReachIsFiledNotFixed(t *testing.T) {
 			dossier:  "**Gap R.471** — the reference prints `3 4`, byte-identical on this row's parent: no generator anywhere in the program, and the row that owns it is the dynamic door's kind word",
 		},
 		{
-			// A parameter the call leaves out is filled by the caller-side default road, which the method
-			// door does not take; a generator body reads the same zero.
-			name:     "a method parameter the call omits answers 0, not its default",
-			src:      "class C():\n    def m(self, a, b=2):\n        return b\nc = C()\nprint(c.m(5))\n",
-			wantExit: 0,
-			wantOut:  "0\n",
-			dossier:  "**Gap R.472** — the reference prints `2`; plain method, no `yield` in it, and byte-identical on this row's parent",
-		},
-		{
 			// The truth of a generator's answer is taken from the WORD the buffer arrived in, not from the
 			// buffer: handle 0 is a legal slot (Gap K.1's standing rule), and the module door's first
 			// allocation IS that slot, so the same question asked of the two doors is decided by which

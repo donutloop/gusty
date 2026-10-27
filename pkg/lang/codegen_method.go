@@ -75,18 +75,14 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			if fd, ok := modFuncs[attr.Name.Value]; ok && fd != nil {
 				mangle := modName.Value + "$" + attr.Name.Value
 				ret := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, irSymbol(mangle)))
-				for i, arg := range c.Args {
-					if i > 0 {
-						b.WriteString(", ")
-					}
-					av, err := g.value(b, arg)
-					if err != nil {
-						return "", err
-					}
-					b.WriteString("i32 " + av)
+				// The vector is the CALLEE's parameter list, defaults and all: this road wrote one operand per
+				// written argument too, so `mod.fn(x)` reached a body that reads `y` from a slot nobody filled
+				// (roadmap Gap R.472, ADR 0434).
+				argWords, aerr := g.newCallArgBinder(b).plainCallArgs(c.Args, fd, modName.Value+"."+attr.Name.Value)
+				if aerr != nil {
+					return "", aerr
 				}
-				b.WriteString(")\n")
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", ret, irSymbol(mangle), strings.TrimPrefix(operandWords(argWords), ", ")))
 				return ret, nil
 			}
 		}
@@ -109,16 +105,17 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				// Every argument is emitted BEFORE the call line is started: a value that
 				// needs an instruction of its own (interning a string literal does) would
 				// otherwise be written into the middle of the operand list (Gap R.42).
-				argRegs := make([]string, len(c.Args))
-				for i, arg := range c.Args {
-					av, err := g.value(b, arg)
-					if err != nil {
-						return "", err
-					}
-					argRegs[i] = ", i32 " + av
+				//
+				// The vector is the base method's own parameter list, not the number of arguments the source
+				// wrote: `super().m(5)` into `def m(self, a, b=2)` filled two slots and left the body to read a
+				// third nobody wrote (roadmap Gap R.472, ADR 0434). The declaration is read by the SAME base walk
+				// that resolved the symbol, so an inherited method's defaults come from the class that declares it.
+				superArgWords, aerr := g.newCallArgBinder(b).methodCallArgs(c.Args, g.resolveMethodDef(base, mname), base+"."+mname)
+				if aerr != nil {
+					return "", aerr
 				}
 				ret := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self%s)\n", ret, fn, strings.Join(argRegs, "")))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self%s)\n", ret, fn, operandWords(superArgWords)))
 				// A generator method answers its buffer, so the register the call leaves the value in IS a
 				// heap list: the print road and the `in` road ask `listOperands` of it, exactly as the `def`
 				// road's call site does for a module generator (roadmap **Gap R.455**, **ADR 0432**).
@@ -164,16 +161,17 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			if err != nil {
 				return "", err
 			}
-			argRegs := make([]string, len(c.Args))
-			for i, arg := range c.Args {
-				av, err := g.value(b, arg)
-				if err != nil {
-					return "", err
-				}
-				argRegs[i] = ", i32 " + av
+			// One word per parameter the METHOD declared, in the order it declared them, each omitted
+			// argument filled from its own default expression and each `name=` bound by name: this road had
+			// read `c.Args` as the vector, so `c.m(5)` into `def m(self, a, b=2)` answered `0` where the
+			// reference answers `2`, and `c.m(b=7, a=3)` answered `73` where the reference answers `37`
+			// (roadmap Gap R.472, ADR 0434).
+			argWords, aerr := g.newCallArgBinder(b).methodCallArgs(c.Args, g.resolveMethodDef(className, mname), className+"."+mname)
+			if aerr != nil {
+				return "", aerr
 			}
 			ret := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s%s)\n", ret, fn, recvHandle, strings.Join(argRegs, "")))
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s%s)\n", ret, fn, recvHandle, operandWords(argWords)))
 			// The generator's buffer travels out of the call in this one register: say so, or the print road
 			// renders a heap slot number where the module twin prints `[1, 2]` and the `for` road reads the
 			// handle as a count (roadmap **Gap R.455**, **ADR 0432**).
@@ -232,24 +230,29 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_obj_payload(%%obj %s)\n", h2, recv))
 		cid := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, h2))
-		argvals := make([]string, len(c.Args))
-		for i, a := range c.Args {
-			v, verr := g.value(b, a)
-			if verr != nil {
-				return "", verr
-			}
-			argvals[i] = v
-		}
 		type dynCase struct {
 			id int
 			// cont is the block the exception check branches into; the join below has to be
 			// entered from there, not from the call's own arm, once the call can raise (ADR 0223).
 			fn, lab, ret, cont string
+			// words is this arm's argument vector: the arm's OWN method declared the parameters, so the
+			// defaults that fill the slots the call left empty are that method's own defaults.
+			words []string
 		}
+		// The vectors are built BEFORE the switch is written, not inside the arms. An operand emitted in one
+		// arm and reused in another — which is what two classes inheriting `m` from one base do, because they
+		// resolve to the same declaration and so to the same default expressions — would be a register defined
+		// in the block that did not run, and the verifier rejects the use (Gap R.318's rule that no path emits
+		// IR it cannot name). One binder serves the whole dispatch, so a shared default is emitted once.
+		binder := g.newCallArgBinder(b)
 		var cases []dynCase
 		for _, cls := range g.classOrder {
 			if fn, ok := g.resolveMethod(cls, mname); ok {
-				cases = append(cases, dynCase{id: g.classIDs[cls], fn: fn, lab: g.newLabel("dyn.c"), ret: g.newTmp()})
+				words, aerr := binder.methodCallArgs(c.Args, g.resolveMethodDef(cls, mname), cls+"."+mname)
+				if aerr != nil {
+					return "", aerr
+				}
+				cases = append(cases, dynCase{id: g.classIDs[cls], fn: fn, lab: g.newLabel("dyn.c"), ret: g.newTmp(), words: words})
 			}
 		}
 		done := g.newLabel("dyn.done")
@@ -262,11 +265,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		for i := range cases {
 			dc := &cases[i]
 			b.WriteString(fmt.Sprintf("%s:\n", dc.lab))
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s", dc.ret, dc.fn, h))
-			for _, av := range argvals {
-				b.WriteString(fmt.Sprintf(", i32 %s", av))
-			}
-			b.WriteString(")\n")
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s%s)\n", dc.ret, dc.fn, h, operandWords(dc.words)))
 			// The check has to happen inside the arm, and the arm's `phi` incoming label
 			// becomes the check's continuation -- a call site that raises cannot also be a
 			// value producer for the join (Gap R.41, ADR 0223).

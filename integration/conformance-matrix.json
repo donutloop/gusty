@@ -4503,6 +4503,27 @@
     },
     {
       "case": {
+        "id": "programs/method_arg_defaults",
+        "name": "method_arg_defaults.gy",
+        "source": "# A method call fills the CALLEE's parameter vector: one word per parameter the method declared, in the\n# order it declared them, every argument the call left empty filled from its own default expression and\n# every `name=` bound by name. Four call roads each used to emit one word per argument the SOURCE wrote,\n# so an omitted default read whatever the register allocator left in the slot and a keyword read as a\n# positional: `def m(self, a, b=2)` called as `c.m(5)` answered `0` for the reference's `2`, and\n# `def m(self, a=1, b=2)` called as `c.m(b=7, a=3)` answered `73` for the reference's `37` — a wrong number\n# wearing the program's own digits, at the exit code of success (roadmap Gap R.472, ADR 0434).\n#\n# The module `def` road had laid the vector out over the declared parameters since ADR 0166; the method\n# roads — the static receiver, `super()`, the run-time class-id switch and `C(...)`'s constructor call —\n# are separate roads and had never been asked. A default marks ONE parameter as omittable and says nothing\n# about the parameters around it: the positional list keeps counting past a defaulted slot.\n#\n# Every line below is what the reference prints, one for one. The shapes this backend still refuses — an\n# argument past the declared list, a required parameter left empty, a keyword no parameter answers to — are\n# pinned in `integration/method_args_test.go` beside the reference's own `TypeError`.\n\nclass Mixed():\n    def one_default(self, a, b=2):\n        return b\n\n    def defaults_around_a_written(self, a, b=10, c=100):\n        return a + b + c\n\n    def keywords_by_name(self, a=1, b=2):\n        return a * 10 + b\n\n    def verdict(self, flag=True):\n        return flag\n\n    def gen(self, a, b=3):\n        yield a\n        yield b\n\nclass WithCtor():\n    def __init__(self, a, b=2):\n        self.a = a\n        self.b = b\n\nclass Base():\n    def add(self, a, b=3):\n        return a + b\n\nclass Child(Base):\n    pass\n\nclass Override(Base):\n    def add(self, a, b=5):\n        return a + b\n\nclass UsesSuper(Base):\n    def add(self, a, b=100):\n        return super().add(a) * 10\n\ndef pick(n):\n    if n == 0:\n        return Base()\n    return Override()\n\nm = Mixed()\nprint(m.one_default(5))\nprint(m.defaults_around_a_written(1))\nprint(m.defaults_around_a_written(1, 20))\nprint(m.keywords_by_name())\nprint(m.keywords_by_name(b=7, a=3))\nprint(m.keywords_by_name(a=3))\nprint(m.verdict())\nprint(m.verdict(False))\nfor v in m.gen(7):\n    print(v)\nfor v in m.gen(7, 8):\n    print(v)\nc = WithCtor(5)\nprint(c.a)\nprint(c.b)\nprint(Child().add(1))\nprint(Override().add(1))\nprint(UsesSuper().add(1))\ntotal = 0\nfor v in m.gen(7):\n    total = total + v\nprint(total)\nx = pick(0)\nprint(x.add(1))\nx = pick(1)\nprint(x.add(1))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "2\n111\n121\n12\n37\n32\nTrue\nFalse\n7\n3\n7\n8\n5\n2\n4\n6\n40\n10\n4\n6\n",
+      "python_ok": true,
+      "python_stdout": "2\n111\n121\n12\n37\n32\nTrue\nFalse\n7\n3\n7\n8\n5\n2\n4\n6\n40\n10\n4\n6\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/void_slots_say_themselves",
         "name": "void_slots_say_themselves.gy",
         "source": "# The void a container slot holds is the void its binding wrote (ADR 0421, roadmap Gap R.435).\n#\n# One question, asked of two neighbours: the container literal's tag gate (`literalNeedsTags`) decides\n# whether a slot needs a word of its own beside the payload, and the print road decides which printer\n# renders the object. The gate's float and verdict arms have always gone past the spelling into the\n# ADR 0172 latest-binding records; its void arm recognized only the spelled `None`, so a slot holding the\n# void THROUGH A BINDING stayed on the static int array and printed the payload the void happens to carry.\n#\n# Every line below is what CPython prints for this program.\n\nk = None\n\n# The literal, in each of its spellings: the answer the payload used to give is gone.\nprint([k])\nprint([k, 1])\nprint([1, k])\nprint([k, k])\nprint([k, \"a\"])\nprint(str([k]))\nprint({k})\nprint((k,))\nprint({1: k})\nprint({k: 1})\nprint([[k]])\nprint({\"a\": [k]})\n\n# The roads that read the literal back: the slot says what it holds, so each asks the object.\nprint(len([k]))\nprint(None in [k])\nprint([k][0])\nprint([k] + [1])\nprint([k] == [None])\nprint(sorted([k]))\nfor v in [k]:\n    print(v)\n\nxs = [k]\nxs.append(1)\nprint(xs)\n\n# The void a CALL answers — a body with no value to give back, and every in-place mutator, which the\n# reference answers the same way. The element's effect is emitted; the tag, not the payload, is printed.\ndef nothing():\n    pass\n\nprint([nothing()])\nprint([nothing(), 1])\nprint({1: nothing()})\nprint({nothing()})\nprint(None in [nothing()])\nprint([{\"a\": 1}.get(\"z\")])\nys = [1]\nprint([ys.append(2)])\nprint(ys)\n\n# The gate gained an arm and changed no other answer: the spelled singleton, the single-kind numeric\n# literal, and a name the LAST binding made a number all answer as they did before.\nprint([None])\nprint([1, 2, 3])\nprint([1.5, 2.5])\nmixed = [None, 1, \"a\"]\nprint(mixed)\nk = 5\nprint([k])\nfor k in [1, 2]:\n    print([k])\n",
@@ -5710,11 +5731,11 @@
       ]
     }
   ],
-  "rows": 242,
+  "rows": 243,
   "skipped": 29,
-  "pass": 213,
+  "pass": 214,
   "fail": 0,
-  "oracle_match": 199,
+  "oracle_match": 200,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

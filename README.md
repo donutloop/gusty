@@ -164,6 +164,11 @@ gusty ships an indentation-based syntax covering:
 - **Generators** — `def g(): yield a; yield b` collects yielded values, and **each yielded value keeps its kind**:
   a buffer that yields a text, an integer, the void and a float walks as `a` / `2` / `None` / `1.5` and prints
   `['a', 2, None, 1.5]`, at the module door and through a generator METHOD alike (**ADR 0433**, roadmap Gap R.468).
+- **Method calls fill the callee's parameter vector** — `c.m(5)` into `def m(self, a, b=2)` answers `2`, and
+  `c.m(b=7, a=3)` into `def m(self, a=1, b=2)` binds by name and answers `37`: every method road (static receiver,
+  `super()`, the run-time class-id switch, `mod.fn(...)`, `C(...)`'s constructor) emits one word per parameter the
+  METHOD declared, filled from its own default and read from the class that declares it (**ADR 0434**, roadmap
+  Gap R.472). A call that cannot be laid over the signature is refused in words at exit 1, not answered.
 - **Async** — `async def` / `await` / `async for` / `async with`, with the await/return
   discipline checked in the shared front end: dropping a coroutine, awaiting one twice, or
   yielding inside an `async def` is a compile error, and each function's effect signature is
@@ -3470,6 +3475,51 @@ falls back to dynamic dispatch.
   is what makes the door the owner and not the generator), plus the rows **ADR 0432** filed and this one did not reach:
   **Gap R.467**/**Gap R.471** (a dynamic join whose arms disagree about kinds), **Gap R.475** (a `yield from` of a
   parameter's list copies words) and **Gap R.474** (a container literal in a method's operand list, `llc` at exit 2).
+
+- **A method call fills the parameter vector the METHOD declared: one word per parameter, defaults and names read
+  from the declaration (Gap R.472, **ADR 0434**)** — `class C():` / `    def m(self, a, b=2):` / `        return b` /
+  `print(c.m(5))` printed **`0`** and `class D():` / `    def m(self, a=1, b=2):` / `        return a * 10 + b` called
+  as `D().m(b=7, a=3)` printed **`73`**, both at the exit code of success, where the reference prints `2` and `37`. The
+  callee reads its parameters by position (`emitClassMethod` declares `i32 %self` plus one word per `fd.Params` entry
+  and binds `fd.Params[i].Name` to `%p<i>`), and five roads built their operand list from `for i, arg := range c.Args`
+  — the static-receiver dispatch, `super()`, the run-time class-id switch, `mod.fn(...)` and `C(...)`'s constructor
+  call — so an omitted default read whatever the allocator left in the slot and a keyword was a positional with a
+  label on it. `llc-20` and `opt -passes=verify` both ACCEPT the under-filled call (`--verify-llvm` says `module
+  verified` over the whole family), which is why the only witness any of these had was the program's own output. The
+  module-`def` road had done the walk over the declared parameters since **ADR 0166**; the method roads are separate
+  roads and had never been asked. One binder (`pkg/lang/codegen_args.go`) now answers the one question — positionals
+  after the caller's own receiver slot, `name=` bound by name against the callee's parameters, every omitted slot
+  filled from `fd.Params[i].Default` through the SAME `g.value` road a written argument takes, so a default can only
+  ever travel a word the road was already able to emit — and it is asked at all five doors. The refusal sentences are
+  the `def` road's reused verbatim (`too many arguments for C.m`, `missing argument "b" for C.m`, `unknown keyword
+  argument "k" for C.m`, `multiple values for argument "b" of C.m`, `positional argument after keyword argument for
+  C.m`; `self=` is refused for free, slot 0 being the caller's), so one mis-shaped call says the same thing about
+  itself whichever door it came to, at exit **1** beside the reference's own `TypeError`. The declaration is read by
+  the walk that minted the symbol (`classInfo.methodDefs` + `resolveMethodDef`, the same base chain `resolveMethod`
+  walks per **ADR 0224**), so an inherited method keeps its base's defaults and an override brings its own; the
+  run-time class-id switch builds EVERY arm's vector before it writes the `switch`, from one binder, which is how
+  `4`/`6` from two arms with two different defaults became an answered row instead of a register defined in the block
+  that did not run (**ADR 0227**, **Gap R.318**). Measured beside a `git worktree` build of the parent (`bf03c37`,
+  **ADR 0432**): across **25** deduplicated sources **20 moved** and **5 held** byte-for-byte, and **17** of the moves
+  landed on the reference's exact bytes — eleven value programs, the corpus program, and five shapes that moved off a
+  wrong answer at exit **0** onto a refusal at exit **1**. Three moved and did not arrive, each named for its row:
+  **Gap R.479** (the defaulted text: `def m(self, s="hi"): return s` prints `0` where the SAME body as a module `def`
+  prints `hi` — the kind censuses are keyed on the arguments a call WROTE, which is the second door behind this
+  first one), **Gap R.35** (the defaulted float, which is the method's missing double return word — the written
+  spelling prints the same `4`), and **Gap R.474** (the container default, whose `i32 @.lst1` in an operand position
+  is that row's `llc` rejection reached a second way). One pin that belonged to another row went paid and MOVED rather
+  than vanished: `pkg/lang/method_text_test.go` claimed the reference prints `hi` for a constructor whose required
+  parameter the program never passes — CPython raises `TypeError: C.__init__() missing 1 required positional
+  argument: 'v'` and exits **1**; that `hi` was the retired engine's record, and the row moved to the refusal table
+  (**ADR 0302**'s rule, asked of a column that had never been asked). `pkg/lang/method_args_test.go` NEW (**11**
+  answered programs on the compiled leg AND a live `python3` in the same case, **1** record-leg row for the shape
+  CPython's own parser refuses, **9** reading rows asking `callArgs` DIRECTLY over hand-built `[]*Param`/`[]Expr`, **5**
+  owed rows, **5** refusal rows) and `integration/method_args_test.go` NEW (**15** CLI programs re-derived from a live
+  `python3`, **1** record audit, **6** exit-code rows with exit **2** forbidden, **1** assembler-rejection pin, **5**
+  owed rows, **1** corpus check), with `integration/programs/method_arg_defaults.gy` NEW (matrix `match`, 20 lines
+  byte-identical to CPython); `tools/recmerge` wrote **16** entries from the reference with the compiled leg
+  cross-checked (**9835 → 9851**, none refused), and the two **ADR 0432** pins that held this row open are DELETED
+  rather than edited.
 
 - **A generator METHOD is a generator: the reading is the body's own, taken at the class's door (Gap R.455, **ADR 0432**)** —
   `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` died at **exit 1** with

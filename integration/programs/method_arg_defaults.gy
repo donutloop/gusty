@@ -1,0 +1,86 @@
+# A method call fills the CALLEE's parameter vector: one word per parameter the method declared, in the
+# order it declared them, every argument the call left empty filled from its own default expression and
+# every `name=` bound by name. Four call roads each used to emit one word per argument the SOURCE wrote,
+# so an omitted default read whatever the register allocator left in the slot and a keyword read as a
+# positional: `def m(self, a, b=2)` called as `c.m(5)` answered `0` for the reference's `2`, and
+# `def m(self, a=1, b=2)` called as `c.m(b=7, a=3)` answered `73` for the reference's `37` — a wrong number
+# wearing the program's own digits, at the exit code of success (roadmap Gap R.472, ADR 0434).
+#
+# The module `def` road had laid the vector out over the declared parameters since ADR 0166; the method
+# roads — the static receiver, `super()`, the run-time class-id switch and `C(...)`'s constructor call —
+# are separate roads and had never been asked. A default marks ONE parameter as omittable and says nothing
+# about the parameters around it: the positional list keeps counting past a defaulted slot.
+#
+# Every line below is what the reference prints, one for one. The shapes this backend still refuses — an
+# argument past the declared list, a required parameter left empty, a keyword no parameter answers to — are
+# pinned in `integration/method_args_test.go` beside the reference's own `TypeError`.
+
+class Mixed():
+    def one_default(self, a, b=2):
+        return b
+
+    def defaults_around_a_written(self, a, b=10, c=100):
+        return a + b + c
+
+    def keywords_by_name(self, a=1, b=2):
+        return a * 10 + b
+
+    def verdict(self, flag=True):
+        return flag
+
+    def gen(self, a, b=3):
+        yield a
+        yield b
+
+class WithCtor():
+    def __init__(self, a, b=2):
+        self.a = a
+        self.b = b
+
+class Base():
+    def add(self, a, b=3):
+        return a + b
+
+class Child(Base):
+    pass
+
+class Override(Base):
+    def add(self, a, b=5):
+        return a + b
+
+class UsesSuper(Base):
+    def add(self, a, b=100):
+        return super().add(a) * 10
+
+def pick(n):
+    if n == 0:
+        return Base()
+    return Override()
+
+m = Mixed()
+print(m.one_default(5))
+print(m.defaults_around_a_written(1))
+print(m.defaults_around_a_written(1, 20))
+print(m.keywords_by_name())
+print(m.keywords_by_name(b=7, a=3))
+print(m.keywords_by_name(a=3))
+print(m.verdict())
+print(m.verdict(False))
+for v in m.gen(7):
+    print(v)
+for v in m.gen(7, 8):
+    print(v)
+c = WithCtor(5)
+print(c.a)
+print(c.b)
+print(Child().add(1))
+print(Override().add(1))
+print(UsesSuper().add(1))
+total = 0
+for v in m.gen(7):
+    total = total + v
+print(total)
+x = pick(0)
+print(x.add(1))
+x = pick(1)
+print(x.add(1))

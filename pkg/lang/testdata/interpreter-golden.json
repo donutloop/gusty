@@ -1,5 +1,84 @@
 {
  "entries": {
+"class B():\n    def m(self, a, b=3):\n        return a + b\nclass C(B):\n    def m(self, a, b=4):\n        return a + b\nprint(B().m(1))\nprint(C().m(1))\n": {
+    "stdout": "4\n5\n",
+    "hasStdout": true
+   },
+
+"class B():\n    def m(self, a, b=3):\n        return a + b\nclass C(B):\n    def m(self, a, b=4):\n        return super().m(a) * 10\nprint(C().m(1))\n": {
+    "stdout": "40\n",
+    "hasStdout": true
+   },
+
+"class B():\n    def m(self, a, b=3):\n        return a + b\nclass C(B):\n    def m(self, a, b=5):\n        return a + b\ndef pick(n):\n    if n == 0:\n        return B()\n    return C()\nx = pick(0)\nprint(x.m(1))\nx = pick(1)\nprint(x.m(1))\n": {
+    "stdout": "4\n6\n",
+    "hasStdout": true
+   },
+
+"class B():\n    def m(self, a, b=3):\n        return a + b\nclass C(B):\n    pass\nprint(C().m(1))\n": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def __init__(self, a, b=2):\n        self.b = b\n        self.a = a\nc = C(5)\nprint(c.a)\nprint(c.b)\n": {
+    "stdout": "5\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def __init__(self, a, b=2):\n        self.b = b\n        self.a = a\nc = C(5)\nprint(c.b)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7):\n    print(v)\n": {
+    "stdout": "7\n3\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nt = 0\nfor v in c.gen(7):\n    t = t + v\nprint(t)\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a, b=10, c=100):\n        return a + b + c\nprint(C().m(1))\n": {
+    "stdout": "111\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a, b=10, c=100):\n        return a + b + c\nprint(C().m(1, 20))\n": {
+    "stdout": "121\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a, b=10, c=100):\n        return a + b + c\nprint(C().m(1, c=5))\n": {
+    "stdout": "16\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a, b=2):\n        return b\nc = C()\nprint(c.m(5))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a=1, b=2):\n        return a * 10 + b\nprint(C().m(a=3))\n": {
+    "stdout": "32\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, a=1, b=2):\n        return a * 10 + b\nprint(C().m(b=7, a=3))\n": {
+    "stdout": "37\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, flag=True):\n        return flag\nprint(C().m())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, flag=True):\n        return flag\nprint(C().m())\nprint(C().m(False))\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
 "class C():\n    def gen(self):\n        yield \"a\"\n        yield 2\n    def outer(self):\n        yield from self.gen()\n        yield None\nc = C()\nfor v in c.outer():\n    print(v)\n": {
     "stdout": "a\n2\nNone\n",
     "hasStdout": true
