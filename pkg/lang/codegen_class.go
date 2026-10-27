@@ -86,7 +86,7 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
 		g.markStringAttrs(cd.Name, fd)
-		if g.methodReturnsStr(fd) || g.strMethodFuncs[fd.Name] {
+		if !g.answerOwnsMethod(funcName) && (g.methodReturnsStr(fd) || g.strMethodFuncs[fd.Name]) {
 			// Registered under the mangled symbol, which is what a call site resolves to
 			// (Gap R.42, ADR 0224). The shape question sees a literal or a formatting; the census half sees
 			// `return s` where the call sites are what made `s` a text, and `return s.upper()`, which is the
@@ -251,6 +251,25 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// same one helper now takes: `enterBody` above, `frame_slots.go` the rule).
 	doneMethodFlags := g.enterBoundFlags(fd, fd.Body)
 	defer doneMethodFlags()
+	// The answer direction's METHOD round (roadmap **Gap R.453**, **ADR 0430**). A method is emitted i32
+	// returning whatever its body computes, and until this line the only reading of "what kind is its answer"
+	// that a method got was the one the name-keyed tables could state: a body whose arms answer `7` and the
+	// void printed `7 0 False` for CPython's `7 None True`, because which arm ran is a run-time fact and no
+	// word said so; and a body that answers a container handed `llc` the literal's GLOBAL in the return slot
+	// — `ret i32 @.lst1`, refused at **exit 2** (**ADR 0166**'s compiler-bug code) on a program the reference
+	// prints `[1, 2]`. A module `def` has the table **ADR 0333** built for the second shape and the plan for
+	// the first; a method had neither, so both are answered here, with the ONE word the pair road already
+	// uses for an answer's kind. A body that answers one immediate kind — a number, a verdict, a text —
+	// keeps the roads it has always had, unchanged, exactly as the module round's rule reads.
+	prevMethodAnswer := g.curMethodAnswer
+	g.curMethodAnswer = ""
+	defer func() { g.curMethodAnswer = prevMethodAnswer }()
+	if _, _, _, _, carried := methodAnswerBodyPlan(fd, g.answer); carried {
+		// Which arms answer an OBJECT is asked by the caller, not the emitter: the root that keeps a payload
+		// the callee allocated alive is taken at the call, where the pair is read (ADR 0280).
+		g.curMethodAnswer = funcName
+		g.answerDeclareMethod(funcName)
+	}
 	// A method is program source, so it gets a DISubprogram of its own; the pass only ever puts
 	// locations inside a function that registered one, which is what keeps the compiler's own
 	// runtime blocks out of the line table (ADR 0231).
@@ -290,11 +309,23 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 			break
 		}
 	}
+	// The road that falls off the end of a carried body answers the void, and says so: the same store the
+	// `def` road's epilogue makes, so a caller that reads the kind word after a call that never reached a
+	// `return` reads the void rather than whatever the last call left there (roadmap Gap R.228, ADR 0368,
+	// carried to a class's door by **Gap R.453** / **ADR 0430**). Guarded on the round's own state rather
+	// than left to `storePairTag`'s name-keyed fallback: a method that is NOT carried declared no word, and
+	// a store to a global that was never emitted is the module `llc` refuses (**ADR 0166**'s exit 2).
+	if g.curMethodAnswer != "" {
+		g.storePairTag(&g.globals, answerWordNone)
+	}
 	g.gcCloseFrame(&g.globals)
 	g.globals.WriteString("  ret i32 0\n")
 	// The method's own unwind target: it closes the frame it opened and returns; the caller's
 	// call-site check (ADR 0218) is what turns the flag into a propagation.
 	fmt.Fprintf(&g.globals, "%s:\n", g.funcRaiseExit)
+	if g.curMethodAnswer != "" {
+		g.storePairTag(&g.globals, answerWordNone) // the unwinding answer: no value, and the word says so
+	}
 	g.gcCloseFrame(&g.globals)
 	g.globals.WriteString("  ret i32 0\n}\n")
 	g.inFunc = savedInFunc

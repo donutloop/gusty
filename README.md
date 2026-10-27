@@ -3339,11 +3339,55 @@ falls back to dynamic dispatch.
   into the answered families rather than vanishing, and what the battery left owed is filed with its own bytes:
   **Gap R.453** (the answer direction has no method round — a mixed-arm method carries no word for which arm ran,
   and the arm that answers a container hands `llc` the literal's GLOBAL at **exit 2**, the shape **ADR 0333**
-  took off a `def`'s `ret` and never off a class's), **Gap R.454** (a method forwarding a call to another METHOD
+  took off a `def`'s `ret` and never off a class's — **closed by ADR 0430 below**), **Gap R.454** (a method forwarding a call to another METHOD
   of its class: `answerArmOf`'s arm reads a `*Name` callee), **Gap R.455** (a generator METHOD refused as
   `yield outside a generator function`, though the same body in a `def` compiles), **Gap R.456** (a method
   mutating `self.items` refused by the string-method door) and **Gap R.457** (a nested `def` inside a method
   re-emits the GC frame prologue and `llc` rejects the module).
+
+- **The answer direction gets its METHOD round: a carried method keeps the arm that ran, and a container answer
+  is built before it answers (Gap R.453, **ADR 0430**)** — `class C():` / `    def m(self, x):` /
+  `        if x:` / `            return 7` / `        return None` / `c = C()` /
+  `print(c.m(1), c.m(0), c.m(0) is None)` printed **`7 0 False`** at **exit 0** where the reference prints
+  `7 None True`: which arm ran is a run-time fact, and the word that says it is stored by `answerReturn`
+  (**ADR 0368**) on the return roads a module `def` takes, which `emitClassMethod` does not share. The louder
+  face was a body answering a container — `    def m(self):` / `        return [1, 2]` above `print(c.m())`
+  stopped `llc` with *"expected instruction opcode"* at **exit 2** (**ADR 0166**'s compiler-bug code): a module
+  `def` that answers a container is handed to `containerRet` and its call site lowers a HANDLE (**Gap R.67**,
+  **ADR 0333**), and a method has no such table, so the literal's GLOBAL went into an `i32` return slot — the
+  shape **ADR 0188**/**ADR 0189** forbid. The plan now walks a `ClassDef` beside its `def`s and keys each carried
+  method by the **emitted symbol** (`gy_C_m` — the name `resolveMethod` mints, so the call site and the `define`
+  read ONE word, and two classes sharing a method name are keyed apart); `methodAnswerBodyPlan` asks the ONE body
+  reading (`answerBodyArms`, split out so neither caller re-implements the walk that stops at a nested `def`), and
+  a carried method returns through the same `answerReturn` a `def` takes — stores `(payload, kind)` beside its
+  `ret`, and builds a container arm through `containerHandleOf`/`containerOperand` so the `ret` carries a handle.
+  The reading roads then ask the PLAN, not a name: `pairCallPair`, `containerHandleOf`, `containerOperand`,
+  `isContainerExpr`, the print/`str`/`repr`/f-string/condition/loop doors, the binding road's
+  `recordContainerAnswer` and a literal element's `carriedCallIsPairElem` each grew the method arm beside the
+  name arm, so `print(c.m())` prints `[1, 2]` and `{'a': 1}`, `len(c.m())` prints `2`, `c.m()[0]` and
+  `c.m()["k"]` index, `1 in c.m()` answers, `c.m() == [1, 2]` compares and `for v in c.m():` walks — all of which
+  the parent refused or answered with a bare handle. The None/number comparison asks the WORD rather than the
+  payload, which also closed the module `def` twin `print(f(True) == 0)` (**Gap R.324**'s void half, standing
+  since **ADR 0427**). Three shapes are declined rather than widened: a void-only body stays **ADR 0429**'s
+  static fold, a one-kind method declares no word and keeps every road it had (asserted from the IR), and an
+  answer compared against ANOTHER answer is declined by the new door and left to `comparePair` — which answers
+  `f(1) == g(1)` across two bodies with the reference's bytes, and gets wrong the one shape this round's
+  word-sharing exposes: TWO calls of the SAME carried body in one expression, where one kind word says whichever
+  ran last (**Gap R.460**). `pkg/lang/method_answer_test.go` NEW (**31** answered programs on the compiled leg AND
+  the record leg, **9** direct plan rows in both directions, **5** IR rows, **6** owed rows) and
+  `integration/method_answer_test.go` NEW (**30** CLI programs re-derived from a live `python3` in the case,
+  **1** machine-readable JSON refusal, **6** owed rows). A **31**-program battery beside a `git worktree` build of
+  the parent (`d493ce8`, **ADR 0429**) moved **26** to the reference and held **5** byte-for-byte; across both
+  suites' **46** deduplicated sources — the answered families AND both owed tables — **34** moved, **6** held, the
+  **6** owed rows were wrong or refused identically on both builds, and NOTHING moved away.
+  `tools/recmerge` wrote **40** entries from the reference with the compiled leg cross-checked
+  (**9706 → 9747**, none refused). Three pins that stood in the way are **DELETED rather than edited** and stand
+  in the answered families, and what the round leaves owed is filed with its bytes: **Gap R.458**
+  (`sum`/`max`/`min` over a container the answer hands back — refused for a module `def` too, so one door and one
+  row), **Gap R.459** (a BOUND method answer, `ys = c.m()`, cannot be measured or subscripted the way
+  `ys = build()` can), **Gap R.460** (the kind word is ONE per carried body, not per call — `print(f(1) == f(0))`
+  prints `True` where the reference prints `False`), and **Gap R.461** (a mixed container arm compared with a
+  container literal refuses, in a sentence that also names `*lang.Call` to the program — **Gap R.116**'s class).
 - **A body that FORWARDS the void answers the void (Gap R.451, **ADR 0428**)** — `def f():` /
   `    return None` / `def g():` / `    return f()` / `print(g() is None)` printed **`False`** at **exit 0**
   where the reference prints `True`, and the line that makes it a defect rather than a cosmetic gap printed

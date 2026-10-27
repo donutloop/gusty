@@ -364,15 +364,12 @@ func TestWhatTheVoidAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		// (`answerBodyPlan`) answers for a class's body the way it answers for a module `def`'s. The program
 		// prints `True`, and stands in the answered family of `pkg/lang/void_method_test.go`, on the compiled
 		// leg AND the record leg.
-		{
-			// A body whose arms answer None AND a number is a run-time fact, and this door has no word for
-			// one: `comparePair` declines a carried call by design and the fold answers from the source.
-			name:     "the arm that answered the void, in a body that also answers a number",
-			src:      "def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True) is None)\n",
-			wantExit: 0, wantOut: "False\n",
-			dossier: "**Gap R.324** (standing, named in `comparePair`'s own comment) — the reference prints `True`; " +
-				"which arm ran is a run-time word and the comparison road still has no tagged answer word",
-		},
+		// The pin that stood here — `def f(x):` / `    if x:` / `        return None` / `    return 1` /
+		// `print(f(True) is None)`, held at `False` beside the reference's `True` — is DELETED rather than
+		// edited: **ADR 0430** gives the comparison road the run-time word it was owed, so asking whether a
+		// CARRIED answer is the void asks the arm that ran rather than the payload. **Gap R.324**'s other half
+		// — comparing two carried answers, or carrying one into a parameter — is still standing and still
+		// filed, with the reference's bytes beside it, in `integration/mixed_answer_kind_test.go`.
 		{
 			// A refusal, pinned AS one: exit 1, exit 2 forbidden (**ADR 0166**). The reference answers
 			// `False`; the compiled leg declines a container `pop` over a NAME (**Gap R.174**'s standing).

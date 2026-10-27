@@ -224,11 +224,12 @@ func TestTheForwardedVoidAnswerRefusalIsMachineReadable(t *testing.T) {
 func TestWhatTheForwardedVoidAnswerStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name: "a body forwarding a call whose answer is one arm of a mixed body", gap: "Gap R.324",
-			src:    "def f(x):\n    if x:\n        return None\n    return 1\ndef g():\n    return f(True)\nprint(g(), g() is None)\n",
-			python: "None True\n", compiled: "None False\n",
-		},
+		// `Gap R.324` — the row that stood here (`def f(x):` / `    if x:` / `        return None` /
+		// `    return 1` / `def g():` / `    return f(True)` / `print(g(), g() is None)`, pinned at `None False`
+		// beside the reference's `None True`) — is PAID by **ADR 0430** and DELETED rather than edited: the
+		// forwarded word IS whichever arm of `f` ran, because the comparison asks the word the callee stored
+		// beside its `ret`. The program prints the reference's bytes, and stands in `voidForwardCLIFamily()`
+		// above, beside a live CPython.
 		// `Gap R.452` — the row that stood here (`def f():` / `    return None` above `class C():` /
 		// `    def m(self):` / `        return f()` / `print(c.m() is None)`) — is PAID by **ADR 0429** and
 		// DELETED rather than edited: the answer direction has a METHOD round now, so a body in a class hears

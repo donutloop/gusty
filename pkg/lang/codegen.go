@@ -985,6 +985,12 @@ type irGen struct {
 	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
 	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
 	pairCallAsked map[string]bool
+	// curMethodAnswer is the answer direction's METHOD round in emission form: the symbol of the method
+	// body being lowered, when that body answers more than one kind — or answers a container, which a `def`
+	// hands to `containerRet` and a method has no table for. It is the word `storePairTag` writes the arm's
+	// kind into and the word the caller's pair door reads back; "" for every body that keeps the roads it
+	// has always had, including a method that answers one immediate kind (roadmap Gap R.453, ADR 0430).
+	curMethodAnswer string
 	// popPairMemo is the popped slot's door, remembered per call node: a position that asks the pair and
 	// then asks it again must not remove the element twice, so the second ask answers the registers the
 	// first emitted (roadmap L11.1, ADR 0410).

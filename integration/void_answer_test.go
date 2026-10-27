@@ -48,6 +48,10 @@ func voidAnswerCLIFamily() []struct {
 		// The void written on either side of the question.
 		{"the void written first (equality)", "def f():\n    return None\nprint(None == f())\n", "True\n"},
 		{"the void written first (identity)", "def f():\n    return None\nprint(None is f())\n", "True\n"},
+		// The arm that ran, kept in a word (**ADR 0430**, **Gap R.324**'s void half): the body answers the void
+		// on one road and a number on the other, and the comparison asks the word the arm stored.
+		{"the arm that answered the void, in a body that also answers a number", "def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True) is None)\n", "True\n"},
+		{"and the arm that answered the number, against the void's word", "def f(x):\n    if x:\n        return None\n    return 0\nprint(f(True) == 0, f(False) == 0)\n", "False True\n"},
 		// The applied-`lambda` and name-bound-`lambda` twins: the same body, hoisted.
 		{"the applied lambda's identity", "print((lambda: None)() is None)\n", "True\n"},
 		{"the applied lambda's equality", "print((lambda: None)() == None)\n", "True\n"},
@@ -225,11 +229,11 @@ func TestWhatTheVoidAnswerStillOwesAtTheCLI(t *testing.T) {
 		// METHOD round, so the fold asks a class's body the one question it asks a module `def`'s. The program
 		// prints the reference's `True`, and stands in `voidMethodCLIFamily()` in
 		// `integration/void_method_test.go`, beside a live CPython.
-		{
-			name: "the arm that answered the void, in a body that also answers a number", gap: "Gap R.324",
-			src:    "def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True) is None)\n",
-			python: "True\n", compiled: "False\n",
-		},
+		// `Gap R.324` — the row that stood here (`def f(x):` / `    if x:` / `        return None` /
+		// `    return 1` / `print(f(True) is None)`, pinned at `False` beside the reference's `True`) — is PAID
+		// by **ADR 0430** and DELETED rather than edited: the comparison road asks the word the callee stored
+		// beside its `ret` instead of reading the void's payload as a number. The program prints the
+		// reference's `True`, and stands in `voidAnswerCLIFamily()` above, beside a live CPython.
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {

@@ -372,15 +372,12 @@ func TestWhatTheForwardedVoidAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			// The callee's own arm is the run-time fact: which of f's roads ran decides whether the
-			// forwarded answer is the void, and the comparison road has no tagged answer word to ask.
-			name:     "a body forwarding a call whose answer is one arm of a mixed body",
-			src:      "def f(x):\n    if x:\n        return None\n    return 1\ndef g():\n    return f(True)\nprint(g(), g() is None)\n",
-			wantExit: 0, wantOut: "None False\n",
-			dossier: "**Gap R.324** (standing, named in `comparePair`'s own comment) — the reference prints " +
-				"`None True`; the forwarded word is whichever arm of `f` ran",
-		},
+		// The pin that stood here — `def f(x):` / `    if x:` / `        return None` / `    return 1` /
+		// `def g():` / `    return f(True)` / `print(g(), g() is None)`, held at `None False` beside the
+		// reference's `None True` — is DELETED rather than edited: **ADR 0430** gives the comparison road the
+		// run-time word **Gap R.324** was owed for it, so the forwarded word IS whichever arm of `f` ran. The
+		// program prints the reference's bytes and stands in the answered family above, on the compiled leg,
+		// the record leg AND the reference.
 		{
 			// The callee forwards its own PARAMETER, whose kind is the caller's, not the source's.
 			name:     "a body forwarding a call that hands back a parameter",

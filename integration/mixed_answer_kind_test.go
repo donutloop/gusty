@@ -248,13 +248,6 @@ func TestWhatTheAnswerDirectionStillCannotReachIsFiledNotFixed(t *testing.T) {
 			why:      "the argument position keeps one word (Gap R.146, Gap R.220's twin) — Gap R.324",
 		},
 		{
-			name:     "a method's mixed arms",
-			src:      "class C:\n    def m(self, x):\n        if x:\n            return \"x\"\n        return 0\n\nc = C()\nprint(c.m(1))\nprint(c.m(0))\n",
-			python:   "x\n0\n",
-			compiled: "x\nx\n",
-			why:      "a method answers through emitClassMethod, which shares none of the return roads stmtReturn walks — Gap R.324",
-		},
-		{
 			name:     "a float arm beside an int arm",
 			src:      "def f(x):\n    if x:\n        return 1.5\n    return 2\n\nprint(f(1))\nprint(f(0))\n",
 			python:   "1.5\n2\n",

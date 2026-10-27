@@ -102,6 +102,11 @@ func voidMethodCLIFamily() []struct {
 		{"a method answering a verdict keeps it", "class C():\n    def m(self):\n        return True\nc = C()\nprint(c.m(), c.m() is None, bool(c.m()))\n", "True False True\n"},
 		{"a void method beside a number method", "class C():\n    def m(self):\n        return None\n    def n(self):\n        return 7\nc = C()\nprint(c.m(), c.n(), c.m() is None, c.n() is None)\n", "None 7 True False\n"},
 		{"a void method beside a module function", voidMethodRowCLIClass + "def f():\n    return None\nprint(f() is None, c.m() is None)\n", "True True\n"},
+		// The arm that ran, kept in a word (**ADR 0430**, **Gap R.453**). These three programs are the rows that
+		// used to stand in `TestWhatTheVoidAnsweringMethodStillOwesAtTheCLI` and in the exit-2 pin below them.
+		{"a method with one void arm and one number arm", "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n", "7 None True\n"},
+		{"a method whose body answers a container list", "class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m())\n", "[1, 2]\n"},
+		{"a method whose body answers a dict", "class C():\n    def m(self):\n        return {\"a\": 1}\nc = C()\nprint(c.m())\n", "{'a': 1}\n"},
 	}
 }
 
@@ -251,11 +256,12 @@ func TestTheVoidAnsweringMethodRefusalIsMachineReadable(t *testing.T) {
 func TestWhatTheVoidAnsweringMethodStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name: "a method with one void arm and one number arm", gap: "Gap R.453",
-			src:    "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n",
-			python: "7 None True\n", compiled: "7 0 False\n",
-		},
+		// `Gap R.453` — the row that stood here (`class C():` / `    def m(self, x):` / `        if x:` /
+		// `            return 7` / `        return None` / `c = C()` / `print(c.m(1), c.m(0), c.m(0) is None)`,
+		// pinned at `7 0 False` beside the reference's `7 None True`) — is PAID by **ADR 0430** and DELETED
+		// rather than edited: the answer direction has a METHOD round now, so a body in a class keeps the arm
+		// that ran in a word of its own. The program prints the reference's bytes, and stands in
+		// `voidMethodCLIFamily()` above, beside a live CPython.
 		{
 			name: "a method forwarding a call to another method of its class", gap: "Gap R.454",
 			src:    "class C():\n    def m(self):\n        return None\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n() is None, c.n())\n",
@@ -295,10 +301,11 @@ func TestWhatTheVoidAnsweringMethodStillOwesAtTheCLI(t *testing.T) {
 	}
 }
 
-// TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler pins the two shapes whose module `llc`
-// refuses. Both are ordinary programs the reference prints, and both are the same missing road — the answer
-// direction has no method round — seen from the side that reaches the `ret`. ADR 0166 reserves exit 2 for a
-// compiler bug; this is one, filed rather than hidden, and a row that starts assembling must be DELETED.
+// TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler pins the shape whose module `llc` refuses.
+// It is an ordinary program the reference prints, and a missing road seen from the side that reaches the
+// `ret`. ADR 0166 reserves exit 2 for a compiler bug; this is one, filed rather than hidden, and a row that
+// starts assembling must be DELETED — which is what happened to its twin, the body that answers a container,
+// when **ADR 0430** gave the answer direction its METHOD round.
 func TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -308,11 +315,10 @@ func TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler(t *testing.T)
 		contains string
 	}{
 		{
-			"a method whose body answers a container list",
-			"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m())\n",
-			"Gap R.453", "error:",
-		},
-		{
+			// The nested `def` inside a method still emits the GC frame prologue twice, and `llc` is the one
+			// that says so. The shape beside it — a body answering a container, which reached this same
+			// assembler with `ret i32 @.lst1` — is PAID by **ADR 0430** and DELETED: it builds the object before
+			// it answers, and stands in `voidMethodCLIFamily()` above.
 			"a method containing a nested def",
 			"class C():\n    def m(self):\n        def inner():\n            return 7\n        return None\nc = C()\nprint(c.m())\n",
 			"Gap R.457", "multiple definition of local value named 'gc.frame.base'",

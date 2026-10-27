@@ -401,6 +401,12 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				if a, okA := g.containerAnswerOf(nm.Value); okA && boundKind == "" {
 					boundKind = a.kind.String()
 				}
+			} else if a, okA := g.methodContainerAnswerOf(c); okA {
+				// The METHOD round (**Gap R.453**, **ADR 0430**): a body in a class that answers one container
+				// hands back the same object a `def`'s answer hands back, and the name that receives it needs the
+				// same record — without it `ys = c.m()` printed right and `len(ys)` refused, which is **Gap R.67**'s
+				// asymmetry one class later. Only a body whose EVERY road answers that one kind is taken.
+				boundKind = a.kind.String()
 			}
 		}
 		// A comprehension says what it binds better than an inferred type can: the kind is written
@@ -474,6 +480,12 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				if a, okA := g.containerAnswerOf(cn.Value); okA {
 					g.recordContainerAnswer(nm.Value, a)
 				}
+			} else if a, okA := g.methodContainerAnswerOf(c); okA {
+				// The METHOD round (**Gap R.453**, **ADR 0430**): the three facts a binding of a container the
+				// callee built records — which kind, whether the slots describe themselves, that no static literal
+				// stands behind it — are the same three questions asked of a body in a class (**ADR 0232**'s one
+				// question, **Gap R.67**'s record, read at a class's door).
+				g.recordContainerAnswer(nm.Value, a)
 			}
 		}
 		// The sliced binding's facts are the same three questions — which kind, do the slots describe

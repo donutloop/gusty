@@ -2455,7 +2455,36 @@ func (g *irGen) pairCallPair(b *strings.Builder, e Expr) (payload, tag string, o
 		return p, t, true, nil
 	}
 	nm, isName := c.Fn.(*Name)
-	if !isName || !g.pairRetDone[nm.Value] {
+	if !isName {
+		// The METHOD round of the answer direction (roadmap **Gap R.453**, **ADR 0430**): a call through an
+		// attribute whose body the plan carries stores its kind word beside the method's `ret`, and the word
+		// is read back here — the same two words a module `def`'s answer is read by, from the same door, so
+		// `print(c.m(0))`, `bool(c.m(0))`, `str(c.m(0))`, an element `[..., c.m(0)]` and a binding of it
+		// cannot keep five answers to one value. Which arm ran is a run-time fact, so no table keyed by a
+		// name can say what the payload means: `7 0 False` for CPython's `7 None True` is what reading the
+		// payload alone answered, and the container arm of the same body reached `llc` as `ret i32 @.lst1`.
+		if fn, isCarried := g.carriedMethodCall(c); isCarried {
+			v, cerr := g.value(b, c)
+			if cerr != nil {
+				return "", "", false, cerr
+			}
+			if g.answer.methodAnswerMayBeAnObject(fn) {
+				// The object was built inside the callee's frame, which the `ret` just closed. Without a root
+				// the next allocation recycles it and the pair carries a handle to somebody else's bits
+				// (**ADR 0181**, **ADR 0280** — the same root the pair road takes at its own call).
+				pay := g.newTmp()
+				fmt.Fprintf(b, "  %s = alloca i32\n", pay)
+				fmt.Fprintf(b, "  store i32 %s, i32* %s\n", v, pay)
+				fmt.Fprintf(b, "  call void @rt_root_put(i32* %s)\n", pay)
+				g.rooted = true
+			}
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = load i32, i32* @%s\n", t, pairTagSlot(fn))
+			return v, t, true, nil
+		}
+		return "", "", false, nil
+	}
+	if !g.pairRetDone[nm.Value] {
 		return "", "", false, nil
 	}
 	// The ordinary numeric road refuses a call whose answer is a pair (it would use the payload as
@@ -2654,6 +2683,12 @@ func (g *irGen) bindPairParams(b *strings.Builder, fd *FuncDef, spec *pairFnSpec
 // as a pair. For any other function it emits nothing at all — the module carries the word only where a
 // call site reads it back (ADR 0273).
 func (g *irGen) storePairTag(b *strings.Builder, tag string) {
+	if g.curMethodAnswer != "" {
+		// A carried METHOD body: the word is the method's own, named after its `define` (roadmap
+		// **Gap R.453**, **ADR 0430**).
+		fmt.Fprintf(b, "  store i32 %s, i32* @%s\n", tag, pairTagSlot(g.curMethodAnswer))
+		return
+	}
 	if !g.pairRetDone[g.curFunc] {
 		return
 	}

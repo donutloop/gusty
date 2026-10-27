@@ -2977,6 +2977,12 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 			_, ok := g.containerAnswerOf(nm.Value)
 			return ok && g.containerAnswerCallIsCarriable(n)
 		}
+		// The METHOD round (**Gap R.453**, **ADR 0430**): a body in a class answers the same object a `def`
+		// answers, and the two doors that ask this question before they build must give the same answer for
+		// both spellings (**ADR 0232**'s one question). One kind, proved by the scan of the whole body.
+		if _, ok := g.methodContainerAnswerOf(n); ok {
+			return true
+		}
 		return false
 	case *CondExpr:
 		// A ternary IS a container when both of its arms are: the test chooses between two objects, and
@@ -3241,6 +3247,18 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 				}
 				return h, a.kind.String(), true
 			}
+		}
+		// The METHOD round (**Gap R.453**, **ADR 0430**): a body in a class that answers one container builds
+		// the same object inside its own frame, and the pair the carried method stores beside its `ret` names
+		// it. The scan, exactly as for a `def`, is what proves the answer is a container; a method the scan
+		// cannot name declines and the caller's own refusal stands.
+		if ans, okAns := g.methodContainerAnswerOf(n); okAns && g.containerAnswerCallIsCarriable(n) {
+			h, _, okPair, perr := g.pairCallPair(b, e)
+			if perr != nil || !okPair {
+				return "", "", false
+			}
+			g.heapUsed = true
+			return h, ans.kind.String(), true
 		}
 	}
 	return "", "", false
@@ -5001,6 +5019,21 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 			h, err := g.value(b, e)
 			delete(g.containerAsked, calleeName)
 			return h, err
+		}
+		// The METHOD round (**Gap R.453**, **ADR 0430**): the object a body in a class builds lives in the
+		// callee's frame, so the handle is the payload the carried method stored beside its `ret` — the same
+		// word the print door, the loop road and `len` already read, read here (`containerHandleOf`'s twin).
+		if _, okAns := g.methodContainerAnswerOf(n); okAns {
+			h, _, okPair, perr := g.pairCallPair(b, e)
+			if perr != nil {
+				return "", perr
+			}
+			if !okPair {
+				// The pair door declined — better its sentence than a word invented for the answer.
+				return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; a call answers a container only where the scan can see every arm of the callee answer one (roadmap Gap R.67, ADR 0333)", exprSnippet(e))
+			}
+			g.heapUsed = true
+			return h, nil
 		}
 		return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; a call answers a container only where the scan can see every arm of the callee answer one (roadmap Gap R.67, ADR 0333)", exprSnippet(e))
 	case *Comp:

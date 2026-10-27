@@ -1,5 +1,89 @@
 # Session Learnings
 
+## Round 17 — the answer direction gets its METHOD round: a carried method keeps the arm that ran, and a container answer is built before it answers (roadmap Gap R.453 closed; ADR 0430; Gaps R.458, R.459 filed)
+
+**Change (the plan's second round)**: `answerKindPlanOf` walked `prog.Stmts` for `*FuncDef` and never entered a
+`ClassDef`, so the `(payload, kind)` word **ADR 0368** invented existed only for module `def`s. A method whose arms
+answered two kinds therefore had no word for which arm ran — `print(c.m(1), c.m(0), c.m(0) is None)` printed
+`7 0 False` where CPython prints `7 None True` — and a method whose arm answered a CONTAINER had no builder at its
+`ret`, so `print(c.m())` of `return [1, 2]` handed `llc` `ret i32 @.lst1` and died at **exit 2** (**ADR 0166**'s
+compiler-bug code, spent on a program the reference prints). The plan now walks a class's methods beside the
+module's `def`s, `stmtReturn`'s carried arm — the same `answerReturn` — stores the word and builds the container, and
+the doors that read a container (`pairCallPair`, `containerHandleOf`, `containerOperand`, `isContainerExpr`, the
+binding's `recordContainerAnswer`, a literal element's `carriedCallIsPairElem`) grew the method arm beside the name
+arm.
+
+1. **A run-time fact cannot be folded from the source, and `0` is the worst shape of that.** The void's payload is
+   the word `0` (**ADR 0187**), which an `int` slot legally carries, so `c.m(0) == 0` printed `True` and
+   `print(f(True) == 0)` — the module `def` twin, standing since **ADR 0427** — printed `True` beside CPython's
+   `False`. No amount of source-side cleverness separates them, because WHICH ARM RAN is not in the source. Both
+   doors now ask the same word, and the pair of them is the clearest evidence I have seen for **ADR 0232**: one
+   question, two spellings, and the fix is one reading asked twice (`answerBodyArms`), not two guesses.
+
+2. **Carrying everything is the easy wrong answer, and an IR assertion is what keeps it wrong.** The tempting diff
+   was "every method gets a kind word", which taxes `return 7` and `return "s"` for a word no road reads and
+   inverts **ADR 0429**'s static fold into a run-time question that answers the same thing. The plan now carries a
+   method only when its arms VARY, plus container bodies (a method has no `containerRet` to hand its answer to), and
+   the guard is not a comment: `TestWhatTheMethodAnswerEmitsIsTheTagWordAndNotAGlobal` asserts a one-kind method
+   declares no `@gy_C_m.anst` at all, a void-only method declares none either, and a carried one stores both arm
+   words. A print assertion would have passed with the tax in place.
+
+3. **Key a table by the artifact it describes, not by the name a program typed.** The method round is keyed by the
+   EMITTED symbol (`gy_C_m`, the name `resolveMethod` mints), because the word is a property of a `define` and its
+   call site. `containerRet`'s bare-name key was the first thing I tried — every container door starts working at
+   once — and it is unsound: `class C(): def m(self): return [1,2]` beside a module-level `def m(): return 3` would
+   share one answer. "Two classes, one method name, different bodies" is now a control in the plan test, and it is
+   **ADR 0299**'s rule (the name-keyed verdict table measured and rejected) applied one level down.
+
+4. **A read that emits and then declines is a compiler bug wearing the program's clothes.** `voidAgainstACarriedAnswer`
+   asks both sides for their `(payload, tag)`; the first attempt committed IR as it went, and when the second side
+   declined the module kept the first side's bounds check after a terminator — `llc` refused it, **exit 2**, blamed
+   on `print(c.m(1) == 1.5)`. The road now builds into a scratch buffer and commits only on success. This is the
+   same rule **ADR 0166** states from the other end (exit 2 is the compiler's own mistake) and I re-learned it the
+   expensive way: any "ask, then maybe refuse" road that emits must be scratch-buffered, and any such road already
+   in the tree deserves an audit.
+
+5. **Declining two unread tags beat comparing them — and measuring what the door I left alone actually answers.**
+   The natural extension of the comparison door was `f(1) == g(1)`: both sides have a word, so reading both looks
+   free. The door declines when BOTH sides are carried, and I wrote that up as "`comparePair` declines it on
+   purpose" from memory. It does not: `f(1) == g(1)` across two bodies prints the reference's `True True False`,
+   while `f(1) == f(0)` — two calls of the SAME body, sharing one kind word — prints `True` where the reference
+   prints `False`. The claim I would have shipped was a sentence about a road I had never probed, and the shape
+   that actually breaks is the one my own design created: one word per carried BODY, not per call. Both are now
+   pinned with the reference's bytes and the parent's beside them, and the row is **Gap R.460**. The lesson is
+   the one this repo keeps teaching: a claim about a road is worth exactly what its probe cost.
+
+6. **A battery that reports "moved NONE away" is only honest about the programs it contains.** `print(bool(c.m(1)),
+   bool(c.m(0)))` of a body answering `"s"` and `None` was not in the 46-program battery, and it DID move away on
+   one item: the parent printed `True True` (reference `True False`) and this build prints `False False`. The
+   parent's right half came from `strMethodFuncs` claiming a carried body — **ADR 0368**'s one guess, which
+   `answerOwnsMethod` correctly refuses — so removing the guess exposed the word-sharing instead of hiding it. I
+   found it by probing a shape the battery had not asked about, and the fix is the same: when a battery says zero
+   regressions, go ask three programs the battery never contained before quoting the number.
+
+7. **The binding recording a fact is not the reads asking it.** `ys = c.m()` writes the container record
+   (`recordContainerAnswer`, the three facts **Gap R.67** writes for `ys = build()`), and `print(ys)` proves it:
+   `[1, 2, 3]`. `print(len(ys))` refuses (`len of a non-string variable`), `print(ys[0])` refuses, `for v in ys:`
+   refuses, `1 in ys` refuses — while the module twin answers all four. One object, one record, five readers, four
+   of them still resolving through the name-keyed `def` scan. Filed as **Gap R.459** with those six bytes and the
+   twin beside them, because "the print works" is exactly the green that hides the four that do not.
+
+8. **The fold is the last door standing.** `len(c.m())`, an index, membership, a loop and a container equality all
+   learned to ask the object the answer built; `sum(c.m())`, `max(c.m())`, `min(c.m())` still demand an inline
+   literal — and `sum(build())` refuses the identical sentence, which is the measurement that made it ONE row
+   (**Gap R.458**) instead of a method row and a `def` row. When a family fix stops at a door, ask whether the door
+   is per-callee or per-call-site before filing; the answer decides how many IDs the defect gets.
+
+9. **Stale pins are deleted, and the artifact counters are the reason that is safe.** Six "filed not fixed" rows
+   became answers this cycle (mixed-arm method, container method, the two **Gap R.324** void-comparison pins, the
+   CLI owed rows, the assembler-death row whose nested-`def` twin — **Gap R.457** — still dies). Each was DELETED
+   into its suite's answered family rather than edited, and each family has a case that fails if the program stops
+   printing the reference. The suite then failed on the bookkeeping instead of the code: `TestTheArtifactTableCounts
+   AreTheFilesOwn`, `TestTheRecordedSourceCountInTheAgentFacingDocsIsTheFilesOwn` and
+   `TestTheRoadmapSnapshotIsMeasuredNotRemembered` caught `9706 → 9747`, `419/0429 → 420/0430` and
+   `212/361 → 213/363` — three numbers the docs had carried and the files had outgrown. A gate that reads the docs is
+   the difference between a tracker that decays and one that cannot.
+
 ## Round 16 - A `key=` is asked what the ordinary call road answers (roadmap Gap R.255's builtin clause closed; ADR 0390; Gap R.363 filed)
 
 **Change (the key door's table)**: `builtinKey` kept a list of which builtins were allowed to be keys, and the

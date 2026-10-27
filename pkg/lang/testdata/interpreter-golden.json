@@ -1,5 +1,207 @@
 {
  "entries": {
+"class C():\n    def m(self):\n        return 7\nc = C()\nprint(c.m(), c.m() is None, c.m() == 7)\n": {
+    "stdout": "7 False True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m(), len(c.m()), c.m()[1])\n": {
+    "stdout": "[1, 2] 2 2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(len(c.m()), c.m()[0])\n": {
+    "stdout": "2 1\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nfor v in C().m():\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return {\"k\": [1, 2]}\nc = C()\nprint(c.m(), c.m()[\"k\"])\n": {
+    "stdout": "{'k': [1, 2]} [1, 2]\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        print(\"fall\")\nc = C()\nprint(c.m(1), c.m(0))\n": {
+    "stdout": "fall\n7 None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(0))\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(str(c.m(1)), str(c.m(0)), repr(c.m(0)))\n": {
+    "stdout": "7 None None\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return None\n    return 0\nprint(f(True) == 0, f(False) == 0)\n": {
+    "stdout": "False True\n",
+    "hasStdout": true
+   },
+"class C():\n    def m(self, x):\n        if x == 1:\n            return 1\n        elif x == 2:\n            return \"a\"\n        return None\nc = C()\nprint(c.m(1), c.m(2), c.m(3))\n": {
+    "stdout": "1 a None\n",
+    "hasStdout": true
+   },
+"class A():\n    def m(self, x):\n        if x:\n            return 1\n        return None\nclass B():\n    def m(self, x):\n        if x:\n            return 2\n        return None\nprint(A().m(1), A().m(0), B().m(1), B().m(0))\n": {
+    "stdout": "1 None 2 None\n",
+    "hasStdout": true
+   },
+
+"class Base():\n    def m(self, x):\n        if x:\n            return 5\n        return None\nclass Child(Base):\n    pass\nprint(Child().m(1), Child().m(0), Child().m(0) is None)\n": {
+    "stdout": "5 None True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return \"s\"\nc = C()\nprint(c.m(), c.m() == None)\n": {
+    "stdout": "s False\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return 7\nc = C()\nprint(c.m(), c.m() is None)\n": {
+    "stdout": "7 False\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m() == [1, 2])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(len(c.m()), c.m()[0])\nfor v in c.m():\n    print(v)\n": {
+    "stdout": "2 1\n1\n2\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [1, 2]\nprint(len(C().m()), C().m()[0])\n": {
+    "stdout": "2 1\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return [[1, 2], [3]]\nc = C()\nprint(c.m())\n": {
+    "stdout": "[[1, 2], [3]]\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return {\"a\": 1}\nc = C()\nprint(c.m())\n": {
+    "stdout": "{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return {\"a\": 1}\nc = C()\nprint(len(c.m()), c.m()[\"a\"], \"a\" in c.m())\n": {
+    "stdout": "1 1 True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self):\n        return {\"k\": [1, 2]}\nc = C()\nprint(c.m())\n": {
+    "stdout": "{'k': [1, 2]}\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return \"s\"\n        return 1\nc = C()\nprint(c.m(1) == \"s\", c.m(0) == \"s\", c.m(1) == 1, c.m(0) == 1)\n": {
+    "stdout": "True False False True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return \"x\"\n        return 0\nc = C()\nprint(c.m(1))\nprint(c.m(0))\n": {
+    "stdout": "x\n0\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 1\n        elif x == 0:\n            return \"a\"\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(2))\n": {
+    "stdout": "1 a 1\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        print(\"fall\")\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n": {
+    "stdout": "fall\nfall\n7 None True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nif c.m(0):\n    print(\"t\")\nelse:\n    print(\"f\")\n": {
+    "stdout": "f\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint([c.m(1), c.m(0)])\n": {
+    "stdout": "[7, None]\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(bool(c.m(1)), bool(c.m(0)))\n": {
+    "stdout": "True False\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(0) is not None, c.m(1) is not None)\n": {
+    "stdout": "False True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1) == 7, c.m(0) == None)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n": {
+    "stdout": "7 None True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(f\"{c.m(1)}|{c.m(0)}\")\n": {
+    "stdout": "7|None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(str(c.m(1)), str(c.m(0)))\n": {
+    "stdout": "7 None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nr = c.m(0)\nprint(r is None, r)\n": {
+    "stdout": "True None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return None\n        return 0\nc = C()\nprint(c.m(1) == None, c.m(0) == None, c.m(1) == 0, c.m(0) == 0)\n": {
+    "stdout": "True False False True\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return [1, 2]\n        return None\nc = C()\nprint(c.m(1), c.m(0))\n": {
+    "stdout": "[1, 2] None\n",
+    "hasStdout": true
+   },
+
+"class C():\n    def m(self, x):\n        if x:\n            return [1, 2]\n        return {\"a\": 1}\nc = C()\nprint(c.m(1), c.m(0))\n": {
+    "stdout": "[1, 2] {'a': 1}\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n            return None\n    return 0\nprint(f(True) == 0)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return None\n    return 1\ndef g():\n    return f(True)\nprint(g(), g() is None)\n": {
+    "stdout": "None True\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "class A():\n    def __init__(self):\n        self.x = 1\nclass B():\n    def __init__(self):\n        self.y = 2\na = A()\nb = B()\nprint(a.__init__() is None, b.__init__() is None)\n": {
     "stdout": "True True\n",
     "hasStdout": true

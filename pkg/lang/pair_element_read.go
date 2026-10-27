@@ -107,6 +107,13 @@ func (g *irGen) carriedCallIsPairElem(x Expr) bool {
 	if !isCall {
 		return false
 	}
-	nm, isName := c.Fn.(*Name)
-	return isName && g.answer.carries(nm.Value)
+	if nm, isName := c.Fn.(*Name); isName {
+		return g.answer.carries(nm.Value)
+	}
+	// The same answer at a class's door: a method whose arms answer more than one kind — or which answers a
+	// container, the shape a `def` hands to `containerRet` and a method has no table for — stores the kind of
+	// the arm that ran beside its `ret`, so the position travels as two words here too (roadmap **Gap R.453**,
+	// **ADR 0430**).
+	_, isCarried := g.carriedMethodCall(c)
+	return isCarried
 }

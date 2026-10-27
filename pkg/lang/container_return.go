@@ -735,6 +735,69 @@ func containerBodyIsOpaque(fd *FuncDef) bool {
 
 // ---- the caller's door ---------------------------------------------------------------------------
 
+// methodContainerAnswerOf is the scan's question, asked of a body in a class: does every road of this
+// carried method answer the SAME container, and are its slots values the compiler can write down? The one
+// reading `containerAnswerScan` runs for a `def` answers both halves — the body and its arm expressions are
+// the ones the plan judged, and the slot question is the one the scan asks — so a method's answer and a
+// function's answer are described by the same record and read by the same doors (roadmap **Gap R.453**,
+// **ADR 0430**; **ADR 0232**'s one question, **ADR 0344**'s described/undescribed line).
+func (g *irGen) methodContainerAnswerOf(c *Call) (containerAnswer, bool) {
+	fn, isCarried := g.carriedMethodCall(c)
+	if !isCarried {
+		return containerAnswer{}, false
+	}
+	kind, isOne := g.answer.methodContainerKind(fn)
+	if !isOne {
+		return containerAnswer{}, false
+	}
+	fd, armExprs, okReading := g.answer.methodReading(fn)
+	if !okReading {
+		return containerAnswer{}, false
+	}
+	defines := map[string]bool{}
+	for nm := range g.funcs {
+		defines[nm] = true
+	}
+	return containerAnswer{
+		kind:           kind,
+		arms:           armExprs,
+		fullyDescribed: containerAnswerDescribesItsSlots(fd, armExprs, g.containerRet, defines),
+	}, true
+}
+
+// methodContainerAnswerOperand is this door's METHOD round (roadmap **Gap R.453**, **ADR 0430**). The roads
+// that walk, measure or index a container read it BY NAME, which is the one thing an answer built inside a
+// method's own frame is not — so the pair the method stored beside its `ret` is read, its handle is stored
+// into a fresh rooted slot, and that slot is recorded under the kind every arm of the body answers. Only a
+// body with ONE such kind is taken: a method whose arms answer a list and the number 3 has no container
+// kind to record, and a loop over it must not be handed the payload of whichever arm ran.
+//
+// It declines for everything else, exactly as the door below does, and the caller continues on the road it
+// has always taken (ADR 0273's rule beside the pair door).
+func (g *irGen) methodContainerAnswerOperand(b *strings.Builder, c *Call, read containerAnswerRead) (Expr, containerAnswerKind, bool) {
+	ans, okAnswer := g.methodContainerAnswerOf(c)
+	if !okAnswer || !ans.takesRead(read) || !g.containerAnswerCallIsCarriable(c) {
+		return nil, notAContainerAnswer, false
+	}
+	p, _, okPair, err := g.pairCallPair(b, c)
+	if err != nil || !okPair {
+		return nil, notAContainerAnswer, false
+	}
+	g.tmp++
+	name := fmt.Sprintf("__mans%d", g.tmp)
+	g.allocd[name] = true
+	g.heapUsed = true
+	b.WriteString(fmt.Sprintf("  %s = alloca i32\n", "%_"+name))
+	g.gcReg(b, name)
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %s\n", p, "%_"+name))
+	// The same record a binding of a container answer writes — the kind, and whether the object's slots carry
+	// tags — because the read below this door asks exactly the questions `recordContainerAnswer` answers:
+	// a dict whose slot holds a list is a MIXED dict, and reading it through the untagged get hands back the
+	// raw handle (`c.m()["k"]` printed the object's number where the reference prints `[1, 2]`).
+	g.recordContainerAnswer(name, ans)
+	return &Name{Value: name, Src: c.Span()}, ans.kind, true
+}
+
 // containerAnswerOperand lowers a call to a container-returning function and hands the answer back as the
 // thing every container road already knows how to read: a name. The call is emitted, its handle is stored
 // into a fresh slot that is rooted for the collector (ADR 0181's rule for every handle-carrying store),
@@ -762,7 +825,7 @@ func (g *irGen) containerAnswerOperandRead(b *strings.Builder, e Expr, read cont
 	}
 	nm, isName := c.Fn.(*Name)
 	if !isName {
-		return nil, notAContainerAnswer, false
+		return g.methodContainerAnswerOperand(b, c, read)
 	}
 	ans, ok := g.containerAnswerOf(nm.Value)
 	if !ok || !g.containerAnswerCallIsCarriable(c) {

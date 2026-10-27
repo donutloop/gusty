@@ -678,6 +678,13 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.paramSlot = nil
 	g.curFunc = g.fnName(fd)
 	g.curFD = fd
+	// A `def` written inside a method body is that `def`'s body, not the method's: it stores its own answer
+	// word, or none at all. Left inherited, the nested body's `ret` would write into the METHOD's word and
+	// the caller that reads the method's answer would read whichever frame stored last (roadmap **Gap R.453**,
+	// **ADR 0430**; **Gap R.342**/**ADR 0378** is the same inheritance caught one frame earlier).
+	prevMethodAnswer := g.curMethodAnswer
+	g.curMethodAnswer = ""
+	defer func() { g.curMethodAnswer = prevMethodAnswer }()
 	// The word a function returns is a fact about its body, not about its last line. `floatRet` below
 	// asks `isFloat` of each `return` *expression*, which is enough for `return x + 0.0` and nothing at
 	// all for `return x` — and a body that has just stored a double into its parameter's slot then has no
@@ -1045,16 +1052,18 @@ func (g *irGen) stmtReturn(b *strings.Builder, st Stmt, n *ReturnStmt) error {
 	if dl, key, isLit := literalDictReadOf(n.Expr); isLit && !g.dictLiteralFoldAnswers(dl, key) && !g.dictLiteralEntryIsPlainInt(dl, key) {
 		return literalDictOneWordErr(key)
 	}
-	if g.answer.carries(g.curFunc) {
+	if g.answer.carries(g.curFunc) || g.curMethodAnswer != "" {
 		// This body answers more than one kind, so the arm that ran says which: the payload comes from the
 		// road that has always produced it and the kind is the constant this spelling carries, stored in
-		// the same word the pair road uses (roadmap Gap R.219, Gap R.228, ADR 0368).
+		// the same word the pair road uses (roadmap Gap R.219, Gap R.228, ADR 0368). A METHOD reaches the same
+		// road through its own key — the body below `emitClassMethod` is a body like any other, and the one
+		// thing it never had was the word that says what its answer means (roadmap **Gap R.453**, **ADR 0430**).
 		if arm, ok := g.answer.armOf(n); ok {
 			return g.answerReturn(b, n, arm)
 		}
 		// A `return` the scan never saw: the body is carried, so every road owes a word, and inventing one
 		// here is how a value walks around wearing another kind's bits (ADR 0187's rule).
-		return fmt.Errorf("codegen: %q answers %s, a road the answer direction never saw, so the kind its payload means has no source (roadmap L11.1, Gap R.219, ADR 0368)", g.curFunc, exprSurface(n.Expr))
+		return fmt.Errorf("codegen: %q answers %s, a road the answer direction never saw, so the kind its payload means has no source (roadmap L11.1, Gap R.219, ADR 0368)", g.answerName(), exprSurface(n.Expr))
 	}
 	if g.floatFuncs[g.curFunc] {
 		// A pair-returning callee under a double return: the callee answered (payload, tag) beside its

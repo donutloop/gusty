@@ -675,6 +675,16 @@ func (g *irGen) mixedTaggedCompare(b *strings.Builder, n *BinOp) (string, bool, 
 	default:
 		return "", false, nil
 	}
+	// The void against an answer whose kind is a run-time fact: which arm of a mixed body ran is not written
+	// in the spelling, and the word the callee stored beside its own `ret` is the only thing that says whether
+	// the payload is the void's `0` or the number that word can also mean. Asked here, of the same pair door
+	// the print road asks, so `print(c.m(0))` and `c.m(0) is None` cannot keep two answers to one value
+	// (roadmap **Gap R.453**, **ADR 0430**; **ADR 0411**'s popped-slot twin of the same question).
+	if res, okAnswer, aerr := g.voidAgainstACarriedAnswer(b, n); aerr != nil {
+		return "", true, aerr
+	} else if okAnswer {
+		return res, true, nil
+	}
 	if !g.isTaggedCompareSide(n.L) && !g.isTaggedCompareSide(n.R) {
 		return "", false, nil
 	}

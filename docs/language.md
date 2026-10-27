@@ -1312,7 +1312,22 @@ else:
   resolved the way the dispatch resolves it — by the receiver's class and the name, walking bases in
   the order the method table walks them (**Gap R.452**, **ADR 0429**). A method that answers a number,
   a text or a verdict keeps that answer; a body with any arm the plan cannot name (`return self.x`) is
-  not read as the void; a receiver whose class the compiler cannot place is no receiver at all. The fold keeps the call: `r = f() == None` still runs `f`, and `@gy_g` still calls
+  not read as the void; a receiver whose class the compiler cannot place is no receiver at all.
+  A method whose arms answer MORE THAN ONE immediate kind — `        if x:` / `            return 7` /
+  `        return None` — is not answered from the source at all: which arm ran is a run-time fact, so the
+  method is carried, stores the kind beside its own `ret`, and the doors that read the answer read that word,
+  so `print(c.m(1), c.m(0), c.m(0) is None)` prints `7 None True` (**Gap R.453**, **ADR 0430**). A method that
+  answers a CONTAINER is carried for the same reason and builds it before it answers — `print(c.m())` of
+  `        return [1, 2]` prints `[1, 2]`, and `len(c.m())`, `c.m()[0]`, `c.m()["k"]`, `1 in c.m()`,
+  `c.m() == [1, 2]` and `for v in c.m():` all ask the object rather than refusing (**Gap R.67**, **ADR 0333**,
+  taken off a class's return for the first time). Two shapes stay declined, at exit 1 and in words:
+  `sum(c.m())`/`max(c.m())`/`min(c.m())` (`sum requires an inline list/set/dict literal` — the module `def`
+  twin refuses the same sentence, **Gap R.458**), a BOUND answer measured or subscripted
+  (`ys = c.m()` / `print(len(ys))` / `print(ys[0])`, where `ys = build()` answers — **Gap R.459**), a mixed
+  container arm compared with a container literal (`print(c.m(1) == [1, 2])`, **Gap R.461**), and TWO calls of one
+  carried body inside one expression — the kind word is one per body, not per call, so `print(f(1) == f(0))` reads
+  whichever arm ran LAST and prints `True` where the reference prints `False` (**Gap R.460**; two different
+  bodies, `f(1) == g(1)`, and two bound names are answered correctly). The fold keeps the call: `r = f() == None` still runs `f`, and `@gy_g` still calls
   `@gy_f`, so a body that prints prints (**ADR 0172**); and a body that answers `None` in one arm
   and a number in another is NOT read as the void — which arm ran is a run-time word — nor may a
   body forwarding a number, a text, a verdict or a container borrow the answer.
@@ -1326,10 +1341,13 @@ else:
   and the REPL ask (`isNoneExpr`, which reads `answerKindPlan`'s void verdict — `Gap R.388`,
   **ADR 0427**), through as many forwarding bodies as the program writes (**Gap R.451**, **ADR 0428**).
   A METHOD's body now answers the same way (`class C():` / `    def m(self):` / `        return None` above
-  `print(c.m() is None)` prints `True`, **Gap R.452**, **ADR 0429**) — and what is owed there is the answer's
-  KIND rather than its voidness: a method whose two arms answer `7` and `None` still prints `0` for the
-  `None` arm (**Gap R.453**), and a method that forwards a call to another METHOD of its own class
-  (`return self.m()`) is still an arm the plan cannot name (**Gap R.454**). Asked of a CONTAINER POP — the same
+  `print(c.m() is None)` prints `True`, **Gap R.452**, **ADR 0429**) — and so does the answer's
+  KIND: a method whose arms answer `7` and `None` prints `7`, `None` and answers `c.m(0) is None` → `True`,
+  because a method whose arms do not all answer one kind is CARRIED — it keeps the arm that ran in a word of
+  its own (`@gy_C_m.anst`, written by the same `answerReturn` a module `def` takes, read by the caller that just
+  called it), exactly as a module `def` has since **ADR 0368** (**Gap R.453**, **ADR 0430**). What is still owed
+  there is a method that forwards a call to another METHOD of its own class (`return self.m()`), which is an arm
+  the plan cannot name (**Gap R.454**). Asked of a CONTAINER POP — the same
   list under a **second name** — the fold's answer no longer holds either: `ys = xs` /
   `print(ys.pop(0) is None)` asks the tag, because the record of an object's slots now travels with
   the handle the two names share (`Gap R.415`, **ADR 0412**). Nor is it answered by the fold for the

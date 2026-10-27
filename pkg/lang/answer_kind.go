@@ -92,6 +92,27 @@ type answerKindPlan struct {
 	// all, and the print road and the prompt have always been allowed to say `None` without asking.
 	void map[string]bool
 	arms map[*ReturnStmt]answerArm
+	// methodCarry is the METHOD round's `carry` (roadmap **Gap R.453**, **ADR 0430**): the method bodies,
+	// keyed by the symbol their `define` is emitted under, whose answer needs a kind word beside it. A
+	// separate table rather than one more name in `carry`, because a method and a module `def` can share a
+	// spelling — `def m():` and `class C(): def m(self):` are two bodies, and the dispatch runs the one the
+	// RECEIVER names (the same reason `methodBodyOf` keys a body by its class).
+	methodCarry map[string]bool
+	// methodObject records, for a carried method, that some arm answers an OBJECT — a container the callee
+	// builds in its own frame, or a call that answers one — so the caller must root the payload the way the
+	// pair road roots a pair whose payload may be a float box (ADR 0181, ADR 0280).
+	methodObject map[string]bool
+	// methodKind is the body in a class that the container table `containerRet` describes for a `def` and
+	// never could for a method: the ONE container kind every road of it answers. The loop road, the membership
+	// road and the binding road read a container by name, so this is the word that lets them read the object a
+	// method built (roadmap Gap R.453, ADR 0430 — the door `containerAnswerOperandRead` opens).
+	methodKind map[string]containerAnswerKind
+	// methodBodies and methodArmExprs keep the carried method's own reading — the body and the expressions
+	// its `return` roads answer — so the door that hands the object to a road which WALKS it can ask the
+	// same slot question the `def` scan asks, rather than a weaker one written beside it (roadmap
+	// Gap R.453, ADR 0430; ADR 0232's one question).
+	methodBodies   map[string]*FuncDef
+	methodArmExprs map[string][]Expr
 }
 
 // carries answers the caller's question: does a call to this name answer a value that needs its
@@ -215,6 +236,79 @@ func (c methodCensusT) declaredMethodAt(class, name string, seen map[string]bool
 	return nil
 }
 
+// methodAnswerKey is the answer direction's key for a method body: the symbol its `define` is emitted
+// under — the same name `registerClass` mints and `resolveMethod` hands back at the call site, so the
+// body that stores a kind word and the caller that reads one are given no way to disagree about which
+// word it is (roadmap **Gap R.453**, **ADR 0430**; ADR 0273's rule that a call and its `define` answer to
+// one scan).
+func methodAnswerKey(className, methodName string) string {
+	return irSymbol(className + "_" + methodName)
+}
+
+// carriesMethod is the caller's question about a body that lives in a class: does a call to this method
+// answer a value whose payload cannot say what it is?
+func (p *answerKindPlan) carriesMethod(fnSymbol string) bool {
+	return p != nil && p.methodCarry[fnSymbol]
+}
+
+// methodAnswerMayBeAnObject is the root's question: can any arm of this carried body answer an object
+// rather than an immediate word? A container arm builds its object inside the callee's frame, which is
+// closed the moment the call returns, so a payload read without a root is a handle to somebody else's
+// bits the next allocation round (ADR 0181, ADR 0280, ADR 0430).
+func (p *answerKindPlan) methodAnswerMayBeAnObject(fnSymbol string) bool {
+	return p != nil && p.methodObject[fnSymbol]
+}
+
+// methodContainerKind is the answer "every road of this carried method body answers the SAME container",
+// which is the claim the roads that read a container by name need in order to read the object a method
+// built at all (roadmap **Gap R.453**, **ADR 0430**).
+func (p *answerKindPlan) methodContainerKind(fnSymbol string) (containerAnswerKind, bool) {
+	if p == nil {
+		return notAContainerAnswer, false
+	}
+	k, ok := p.methodKind[fnSymbol]
+	return k, ok && k != notAContainerAnswer
+}
+
+// methodReading hands the container door the body and the arm expressions it judged, so the question "are
+// this answer's slots values the compiler can write down?" is asked of the ONE scan that answers it for a
+// `def`'s answer too (roadmap Gap R.453, ADR 0430).
+func (p *answerKindPlan) methodReading(fnSymbol string) (*FuncDef, []Expr, bool) {
+	if p == nil {
+		return nil, nil, false
+	}
+	fd, okBody := p.methodBodies[fnSymbol]
+	exprs, okArms := p.methodArmExprs[fnSymbol]
+	if !okBody || !okArms || fd == nil || len(exprs) == 0 {
+		return nil, nil, false
+	}
+	return fd, exprs, true
+}
+
+// carriedMethodCall answers the doors' question — is this an attribute call whose body the answer
+// direction carries — and hands back the symbol that body is emitted under. The receiver must be a class
+// the compiler can place, because a call whose dispatch the compiler cannot name is a call that may run
+// any body: the word it stores would be one of several, and the caller would read whichever the last call
+// happened to leave there (**ADR 0232**'s collision, at a call boundary).
+func (g *irGen) carriedMethodCall(c *Call) (string, bool) {
+	if c == nil || g == nil {
+		return "", false
+	}
+	attr, isAttr := c.Fn.(*Attr)
+	if !isAttr || attr.Name == nil || attr.Obj == nil {
+		return "", false
+	}
+	cls := g.receiverClass(attr.Obj)
+	if cls == "" {
+		return "", false
+	}
+	fn, ok := g.resolveMethod(cls, attr.Name.Value)
+	if !ok || !g.answer.carriesMethod(fn) {
+		return "", false
+	}
+	return fn, true
+}
+
 // armOf answers the callee's question: what kind word does this `return` road store?
 func (p *answerKindPlan) armOf(n *ReturnStmt) (answerArm, bool) {
 	if p == nil {
@@ -228,7 +322,16 @@ func (p *answerKindPlan) armOf(n *ReturnStmt) (answerArm, bool) {
 // module-level functions. `pairReturns` names the functions the pair road already serves; they
 // keep it.
 func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPlan {
-	p := &answerKindPlan{carry: map[string]bool{}, void: map[string]bool{}, arms: map[*ReturnStmt]answerArm{}}
+	p := &answerKindPlan{
+		carry:          map[string]bool{},
+		void:           map[string]bool{},
+		arms:           map[*ReturnStmt]answerArm{},
+		methodCarry:    map[string]bool{},
+		methodObject:   map[string]bool{},
+		methodKind:     map[string]containerAnswerKind{},
+		methodBodies:   map[string]*FuncDef{},
+		methodArmExprs: map[string][]Expr{},
+	}
 	if prog == nil {
 		return p
 	}
@@ -243,6 +346,31 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 		}
 	}
 	sort.Strings(order)
+	// The class side of the same walk: the methods, keyed by the symbol each body is emitted under. Read
+	// once here, before any IR, because the `define` of a method and the calls to it are written by two
+	// different roads — `registerClass` and the attribute-call door — and a kind word one of them forgot is
+	// the wrong answer at the exit code of success (roadmap **Gap R.453**, **ADR 0430**).
+	methods := map[string]*FuncDef{}
+	methodOrder := []string{}
+	for _, st := range prog.Stmts {
+		cd, ok := st.(*ClassDef)
+		if !ok || cd == nil {
+			continue
+		}
+		for _, ms := range cd.Body {
+			fd, ok := ms.(*FuncDef)
+			if !ok || fd == nil || fd.Name == "" {
+				continue
+			}
+			key := methodAnswerKey(cd.Name, fd.Name)
+			if _, seen := methods[key]; seen {
+				continue
+			}
+			methodOrder = append(methodOrder, key)
+			methods[key] = fd
+		}
+	}
+	sort.Strings(methodOrder)
 	// Rounds, not one pass: an arm that is `return other(...)` is answerable only once OTHER is
 	// itself carrying a kind word, and other's own verdict may depend on a third body. Every round
 	// only ever adds an entry (nothing here takes one away), so the marking grows monotonically and
@@ -278,6 +406,27 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 			}
 			grew = true
 		}
+		// The METHOD round, in the same rounds: a body that forwards a module `def`'s answer (`def m(self):
+		//     return f()`) is nameable only once `f` is, and `f` may itself be a forwarding body written
+		// below the class (**ADR 0368**'s fixed point, read a second time by **ADR 0430**).
+		for _, key := range methodOrder {
+			if p.methodCarry[key] {
+				continue
+			}
+			arms, kind, mayBeObject, armExprs, ok := methodAnswerBodyPlan(methods[key], p)
+			if !ok {
+				continue
+			}
+			p.methodCarry[key] = true
+			p.methodObject[key] = mayBeObject
+			p.methodKind[key] = kind
+			p.methodBodies[key] = methods[key]
+			p.methodArmExprs[key] = armExprs
+			for st, a := range arms {
+				p.arms[st] = a
+			}
+			grew = true
+		}
 		if !grew {
 			break
 		}
@@ -290,6 +439,15 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 // entry, because the entry is what made its caller render the arm this table never saw through the
 // printer of the arm it did (roadmap Gap R.219, ADR 0368).
 func (g *irGen) answerOwns(fnName string) bool { return g.answer.carries(fnName) }
+
+// answerOwnsMethod is the same gate at the class's door. `registerClass` registered a method as
+// text-returning on the evidence of `methodReturnsStr` — which asks whether ANY road of the body hands
+// back a text — so the body whose arms answer `"a"` and `0` was registered as a text and every caller
+// rendered both arms with `rt_print_str`: `print(c.m(1))` / `print(c.m(0))` printed `a` / `a` where the
+// reference prints `a` / `0`, at the exit code of success (roadmap **Gap R.453**, **ADR 0430**; the module
+// half of this one guess is **Gap R.219** / **ADR 0368**, and `textReturningCallables` already asks the
+// plan for a `def`).
+func (g *irGen) answerOwnsMethod(fnSymbol string) bool { return g.answer.carriesMethod(fnSymbol) }
 
 // answerDeclare emits the module's description of a carried answer: the one word per function that
 // says which kind its last answer was. It is the same word the pair road uses, and a function is
@@ -304,6 +462,27 @@ func (g *irGen) answerDeclare(fnName string) {
 		g.pairTagDeclared[fnName] = true
 		g.globals.WriteString(pairTagGlobalIR(fnName))
 	}
+}
+
+// answerDeclareMethod is the same description for a body that lives in a class: one word, named after the
+// method's own `define`, declared where that `define` is written and read back by whichever caller was
+// emitted first (**ADR 0276**'s rule that the call boundary is asked of the program, not of the emission
+// order; roadmap **Gap R.453**, **ADR 0430**).
+//
+// It does NOT mark `pairRetDone`. That flag is the pair road's permission for the positions it serves and
+// the gate that REFUSES every other position; seeding it for a method would turn `while c.m():`,
+// `c.m() + 1` and `len(c.m())` into compile errors at exit 0 on programs the reference runs. The answer
+// road stays an opt-in the tag-reading doors ask for themselves (the same distinction codegen.go draws for
+// a module `def`, ADR 0273, ADR 0368).
+func (g *irGen) answerDeclareMethod(fnSymbol string) {
+	if g.pairTagDeclared == nil {
+		g.pairTagDeclared = map[string]bool{}
+	}
+	if g.pairTagDeclared[fnSymbol] {
+		return
+	}
+	g.pairTagDeclared[fnSymbol] = true
+	g.globals.WriteString(pairTagGlobalIR(fnSymbol))
 }
 
 // answerReturn is the callee's side: the payload of one `return` road, produced by the same roads the
@@ -322,7 +501,7 @@ func (g *irGen) answerReturn(b *strings.Builder, n *ReturnStmt, arm answerArm) e
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("codegen: %q answers %s, whose own answer carries a kind word this door declined: the answer direction cannot store a kind it was promised (roadmap L11.1, Gap R.219, ADR 0368)", g.curFunc, exprSurface(n.Expr))
+			return fmt.Errorf("codegen: %q answers %s, whose own answer carries a kind word this door declined: the answer direction cannot store a kind it was promised (roadmap L11.1, Gap R.219, ADR 0368)", g.answerName(), exprSurface(n.Expr))
 		}
 		payload, word = p, t
 	case word == answerWordList || word == answerWordDict || word == answerWordSet:
@@ -338,7 +517,7 @@ func (g *irGen) answerReturn(b *strings.Builder, n *ReturnStmt, arm answerArm) e
 				return cerr
 			}
 			if h2 == "" {
-				return fmt.Errorf("codegen: %q answers a container this backend cannot build at the return; the arm's kind is a list, a dict or a set, and the builder that would have made it declined (roadmap Gap R.67, ADR 0333)", g.curFunc)
+				return fmt.Errorf("codegen: %q answers a container this backend cannot build at the return; the arm's kind is a list, a dict or a set, and the builder that would have made it declined (roadmap Gap R.67, ADR 0333)", g.answerName())
 			}
 			h = h2
 		}
@@ -397,10 +576,147 @@ func (g *irGen) answerCallPair(b *strings.Builder, e Expr) (payload, tag string,
 		return p, t, true, nil
 	}
 	nm, isName := c.Fn.(*Name)
-	if !isName || !g.answer.carries(nm.Value) {
+	if !isName {
+		// The same answer, asked at a class's door: a carried method's answer is the pair the print, truth,
+		// `str`/`repr`, f-string and container-element roads already read (roadmap **Gap R.453**, **ADR 0430**).
+		if _, isCarried := g.carriedMethodCall(c); isCarried {
+			return g.pairCallPair(b, e)
+		}
+		return "", "", false, nil
+	}
+	if !g.answer.carries(nm.Value) {
 		return "", "", false, nil
 	}
 	return g.pairCallPair(b, e)
+}
+
+// answerName names the body whose answer the direction is describing, for the sentences a refusal emits:
+// a module `def` by its own name, a METHOD by the symbol its `define` carries, which is the name a reader
+// of the module finds (roadmap **Gap R.453**, **ADR 0430**).
+func (g *irGen) answerName() string {
+	if g.curMethodAnswer != "" {
+		return g.curMethodAnswer
+	}
+	return g.curFunc
+}
+
+// isCarriedAnswerCall is the one question the doors that read an ANSWER ask: is this expression a call
+// whose body the answer direction carries, in the module or in a class? A body that answers nothing but the
+// void is not one of them — its answer is a constant the fold already knows (**ADR 0427**, **ADR 0429**) —
+// and an ordinary one-word call is not either, because it has no kind word and this door would be guessing
+// one (roadmap **Gap R.453**, **ADR 0430**).
+func (g *irGen) isCarriedAnswerCall(e Expr) bool {
+	c, isCall := e.(*Call)
+	if !isCall || g == nil {
+		return false
+	}
+	if nm, isName := c.Fn.(*Name); isName {
+		return g.answer.carries(nm.Value) && !g.answer.answersOnlyTheVoid(nm.Value)
+	}
+	_, ok := g.carriedMethodCall(c)
+	return ok
+}
+
+// pairRoadStatesScalarLiteral is the short list of what the other side of `voidAgainstACarriedAnswer` may
+// be: a written number, verdict or text, whose (payload, tag) pair `taggedOperand` states without walking
+// anywhere. A float is NOT in the list: a carried float arm's payload is the word the float table left, and
+// comparing it with a boxed literal is a different door's unshipped work (**Gap R.324**'s float half, named
+// in `integration/mixed_answer_kind_test.go`).
+func pairRoadStatesScalarLiteral(e Expr) bool {
+	switch v := e.(type) {
+	case *IntLit, *BoolLit, *StrLit:
+		return true
+	case *Name:
+		return v.Value == "None" || v.Value == "True" || v.Value == "False"
+	}
+	return false
+}
+
+// voidAgainstACarriedAnswer is the identity question asked of an answer whose kind is a run-time fact:
+//
+//	class C():
+//	    def m(self, x):
+//	        if x:
+//	            return 7
+//	        return None
+//
+//	c = C()
+//	print(c.m(0) is None)   # the reference: True — this backend, before: False, at exit 0
+//
+// The None-equality fold decides from what the SOURCE says each side is, and the source says a call is not
+// a written `None`; which arm ran is not written anywhere the compiler can read, and the payload a void
+// leaves behind is the word `0` — the same word an int slot legally carries (**ADR 0187**). So the question
+// goes to the word the callee stored beside its own `ret`, through `rt_payload_eq`, which is the one
+// equality that knows what a payload means and the only door that admits the void on either side: identity
+// between two objects is not content equality, and a side whose kind the compiler can state already has the
+// source-side fold (**ADR 0411**'s rule, read at the call boundary by roadmap **Gap R.453** / **ADR 0430**).
+//
+// The same door answers the module `def` twin — `def f(x):` / `    if x:` / `        return 7` /
+// `    return None` / `print(f(0) is None)` — because "is this answer the void?" is one question about one
+// value, and a fold that answers it for a `def` and not for a method is the two answers **ADR 0232** exists
+// to forbid.
+func (g *irGen) voidAgainstACarriedAnswer(b *strings.Builder, n *BinOp) (payload string, handled bool, err error) {
+	switch n.Op {
+	case "==", "!=", "is", "is not":
+	default:
+		return "", false, nil
+	}
+	answer, other := n.L, n.R
+	if !g.isCarriedAnswerCall(answer) {
+		answer, other = other, answer
+		if !g.isCarriedAnswerCall(answer) {
+			return "", false, nil
+		}
+	}
+	if g.isCarriedAnswerCall(other) {
+		// Two answers, two run-time words. This door leaves that equality to the door that has always asked
+		// pairs: `comparePair` answers `f(1) == g(1)` across two BODIES with the reference's bytes, and this
+		// road has no business re-deciding it. What it gets wrong is the collision this round's own design
+		// creates — TWO calls of the SAME carried body, which share one kind word, so one arm's word answers
+		// for both (`f(1) == f(0)` prints `True` where the reference prints `False`), pinned beside
+		// **Gap R.460** in both suites rather than folded into a claim that the door declined.
+		return "", false, nil
+	}
+	if !g.isNoneExpr(other) && !pairRoadStatesScalarLiteral(other) {
+		return "", false, nil
+	}
+	// The other side must be a value rather than an expression with effects of its own: this door evaluates
+	// only the answer, and a side that prints or allocates would lose those effects.
+	switch other.(type) {
+	case *NoneLit, *Name, *IntLit, *BoolLit, *StrLit:
+	default:
+		return "", false, nil
+	}
+	// The whole door is built in a scratch buffer and committed only once both sides answer: a read that
+	// emitted its own bounds check and then changed its mind would leave instructions after a terminator,
+	// which is the compiler's mistake reported as the program's (**ADR 0166**, the rule this file follows).
+	var scratch strings.Builder
+	p, t, okPair, perr := g.answerCallPair(&scratch, answer)
+	if perr != nil {
+		return "", true, perr
+	}
+	if !okPair {
+		return "", false, nil
+	}
+	vp, vt, okVoid := g.taggedOperand(&scratch, other)
+	if !okVoid {
+		return "", false, nil
+	}
+	cmp := g.newTmp()
+	fmt.Fprintf(&scratch, "  %s = call i32 @rt_payload_eq(i32 %s, i32 %s, i32 %s, i32 %s)\n", cmp, p, t, vp, vt)
+	res := g.newTmp()
+	fmt.Fprintf(&scratch, "  %s = icmp ne i32 %s, 0\n", res, cmp)
+	g.markI1(res)
+	if n.Op == "!=" || n.Op == "is not" {
+		inv := g.newTmp()
+		fmt.Fprintf(&scratch, "  %s = xor i1 %s, true\n", inv, res)
+		g.markI1(inv)
+		res = inv
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	b.WriteString(scratch.String())
+	return g.asBoolI32(b, res), true, nil
 }
 
 // grantDiscardedCallAnswer is the statement position's permission. An expression statement keeps no
@@ -439,24 +755,103 @@ func (g *irGen) answerTruthOf(b *strings.Builder, e Expr) (string, bool, error) 
 // answerBodyPlan decides one body. It returns the kind word of every `return` road, and whether
 // the body needs them at all.
 func answerBodyPlan(fd *FuncDef, p *answerKindPlan) (map[*ReturnStmt]answerArm, bool, bool) {
-	if fd == nil || fd.Async || len(fd.Decorators) > 0 || containsYield(fd.Body) {
+	arms, kinds, varied, voidOnly, _, ok := answerBodyArms(fd, p)
+	if !ok {
 		return nil, false, false
+	}
+	if !varied && len(kinds) <= 1 && !voidOnly {
+		// Every arm answers the same kind: the name-keyed table the module already keeps says it, and a
+		// second opinion here could only take an answer away. The void is the exception — its payload is
+		// the word 0, and the printer that reads a word prints `0` where the reference prints `None`
+		// (roadmap Gap R.228, ADR 0368).
+		return nil, false, false
+	}
+	return arms, voidOnly, true
+}
+
+// methodAnswerBodyPlan is the same reading of a body that lives in a class, decided under one different
+// rule (**Gap R.453**, **ADR 0430**). A `def` whose one answer kind is a container keeps the table
+// **ADR 0333** built for it — `containerRet` names the kind, and the print road asks that table. A METHOD
+// has no such table: `class C():` / `    def m(self):` / `        return [1, 2]` lowered the literal to its
+// compile-time array and wrote `ret i32 @.lst1` into the method's return slot, which `llc` rejected at
+// **exit 2** (**ADR 0166**'s compiler-bug code) on a program the reference prints `[1, 2]`, and
+// `return {"a": 1}` printed the `@str_tab` position of `"a"` at the exit code of success. So the kind word
+// is the only road a container answer has on this side of the class boundary, and a body that answers one
+// is carried here even though it answers ONE kind — which is the one place the method round and the module
+// round part company, and it is the difference between the two tables, not between two questions. The
+// void-only body stays OUT of this round: **ADR 0429**'s fold already answers it statically, and a stored
+// word no one reads would only add a global to the module.
+func methodAnswerBodyPlan(fd *FuncDef, p *answerKindPlan) (map[*ReturnStmt]answerArm, containerAnswerKind, bool, []Expr, bool) {
+	arms, kinds, varied, voidOnly, armExprs, ok := answerBodyArms(fd, p)
+	if !ok || voidOnly {
+		return nil, notAContainerAnswer, false, nil, false
+	}
+	if !varied && !answerKindsNeedAWord(kinds) {
+		return nil, notAContainerAnswer, false, nil, false
+	}
+	mayBeObject := false
+	for _, a := range arms {
+		if a.dyn != "" || a.word == answerWordList || a.word == answerWordDict || a.word == answerWordSet {
+			mayBeObject = true
+		}
+	}
+	kind, isOne := containerAnswerKind(notAContainerAnswer), true
+	for w := range kinds {
+		switch w {
+		case answerWordList:
+			kind = listAnswer
+		case answerWordDict:
+			kind = dictAnswer
+		case answerWordSet:
+			kind = setAnswer
+		default:
+			isOne = false
+		}
+	}
+	if !isOne {
+		kind = notAContainerAnswer
+	}
+	return arms, kind, mayBeObject, armExprs, true
+}
+
+// answerKindsNeedAWord is the method round's version of the one-kind exemption: a body whose every arm
+// answers an immediate word — a number, a verdict, a text — is described by the tables keyed by name and
+// keeps them, while a body that answers an OBJECT needs the word that says which object printer to call.
+func answerKindsNeedAWord(kinds map[string]bool) bool {
+	if len(kinds) > 1 {
+		return true
+	}
+	for w := range kinds {
+		return w == answerWordList || w == answerWordDict || w == answerWordSet
+	}
+	return false
+}
+
+// answerBodyArms reads one body once and reports what its `return` roads answer: the kind word of each
+// road, the set of kinds they cover, whether any of them forwards a call whose own kind is a run-time
+// word, and whether the body answers NOTHING but the void. ok=false is the answer "some road's kind is not
+// written in its spelling", and it retires the whole body — a plan that names four arms and misses the fifth
+// is a plan that prints a payload wearing the fourth's bits (**ADR 0187**'s rule, **ADR 0368**'s reading).
+func answerBodyArms(fd *FuncDef, p *answerKindPlan) (arms map[*ReturnStmt]answerArm, kinds map[string]bool, varied, voidOnly bool, exprs []Expr, ok bool) {
+	if fd == nil || fd.Async || len(fd.Decorators) > 0 || containsYield(fd.Body) {
+		return nil, nil, false, false, nil, false
 	}
 	returns, fallsOff := answerBodyReturns(fd.Body)
 	if len(returns) == 0 {
 		// A body with no `return` at all answers the void, which the print road has always been able
 		// to say (`isNoneExpr` asks `fdReturnsValue`); nothing here can improve on it.
-		return nil, false, false
+		return nil, nil, false, false, nil, false
 	}
-	arms := map[*ReturnStmt]answerArm{}
-	kinds := map[string]bool{}
-	varied := false
+	arms = map[*ReturnStmt]answerArm{}
+	kinds = map[string]bool{}
+	exprs = make([]Expr, 0, len(returns))
 	for _, n := range returns {
-		a, ok := answerArmOf(fd, n.Expr, p)
-		if !ok {
-			return nil, false, false // one arm the compiler cannot name: the body keeps its old roads
+		a, armOk := answerArmOf(fd, n.Expr, p)
+		if !armOk {
+			return nil, nil, false, false, nil, false // one arm the compiler cannot name: the body keeps its old roads
 		}
 		arms[n] = a
+		exprs = append(exprs, n.Expr)
 		if a.dyn != "" {
 			varied = true
 			continue
@@ -469,15 +864,8 @@ func answerBodyPlan(fd *FuncDef, p *answerKindPlan) (map[*ReturnStmt]answerArm, 
 		// `7`/`None` rather than `7`/`0` (roadmap Gap R.228).
 		kinds[answerWordNone] = true
 	}
-	voidOnly := !varied && len(kinds) == 1 && kinds[answerWordNone]
-	if !varied && len(kinds) <= 1 && !voidOnly {
-		// Every arm answers the same kind: the name-keyed table the module already keeps says it, and a
-		// second opinion here could only take an answer away. The void is the exception — its payload is
-		// the word 0, and the printer that reads a word prints `0` where the reference prints `None`
-		// (roadmap Gap R.228, ADR 0368).
-		return nil, false, false
-	}
-	return arms, voidOnly, true
+	voidOnly = !varied && len(kinds) == 1 && kinds[answerWordNone]
+	return arms, kinds, varied, voidOnly, exprs, true
 }
 
 // answerArmOf asks the one question this file exists to ask: which kind does this `return`

@@ -496,24 +496,16 @@ func TestWhatTheVoidAnsweringMethodStillOwesIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			// The answer direction has no method round: a body whose two arms answer two kinds is a
-			// run-time fact nothing in a method's lowering carries a word for.
-			name:     "a method with one void arm and one number arm",
-			src:      "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n",
-			wantExit: 0, wantOut: "7 0 False\n",
-			dossier: "**Gap R.453** — the reference prints `7 None True`; `answerKindPlanOf` walks `prog.Stmts` and " +
-				"never a class body, so a method's answer carries no kind word at all",
-		},
-		{
-			// The same missing round's other face: the arm that answers a container has no builder at the
-			// method return, and `llc` is the one that says so.
-			name:     "a method whose body answers a container list",
-			src:      "class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m())\n",
-			wantExit: 2, wantStderr: "error:",
-			dossier: "**Gap R.453** — the reference prints `[1, 2]`; the container's GLOBAL reaches a word slot at " +
-				"the method return and `llc` refuses the module (**ADR 0166**'s compiler-bug exit code)",
-		},
+		// The two pins that stood here are DELETED rather than edited. `class C():` /
+		// `    def m(self, x):` / `        if x:` / `            return 7` / `        return None` /
+		// `c = C()` / `print(c.m(1), c.m(0), c.m(0) is None)`, held at `7 0 False` beside the reference's
+		// `7 None True`, and `class C():` / `    def m(self):` / `        return [1, 2]` / `c = C()` /
+		// `print(c.m())`, held at a module `llc` REFUSES (**ADR 0166**'s compiler-bug exit code) — both are
+		// closed by **ADR 0430**, which gives the answer direction the METHOD round it never had: the plan
+		// walks a class body, a carried method keeps the arm that ran in its own word, and a body answering
+		// a container builds it before the word is written. The programs print the reference's bytes and
+		// stand in the answered family of `pkg/lang/method_answer_test.go` and
+		// `integration/method_answer_test.go`, on the compiled leg, the record leg AND the reference.
 		{
 			// The forwarding arm's method twin: `answerArmOf`'s Call arm reads a `*Name` callee, so a body
 			// that forwards a call to ANOTHER METHOD of its own class is an arm it cannot name.

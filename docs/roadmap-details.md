@@ -19552,7 +19552,7 @@ Four pins moved rather than vanished: the two `Gap R.452` rows in
 `integration/void_answer_test.go` and `integration/void_forward_test.go`, are DELETED and stand in the answered
 families of `pkg/lang/void_method_test.go` and `integration/void_method_test.go`.
 
-### Gap R.453 — the answer direction has no method round: a mixed-arm method carries no word, and a container arm reaches the assembler (⏳ OPEN, found by **ADR 0429**)
+### Gap R.453 — the answer direction has no method round: a mixed-arm method carries no word, and a container arm reaches the assembler (✅ CLOSED by **ADR 0430**, found by **ADR 0429**)
 
 | program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
 |---|---|---|
@@ -19578,6 +19578,103 @@ Both faces are pinned, the second as an assembler death in
 `integration/void_method_test.go::TestWhatTheVoidAnsweringMethodFiledNextDoorDiesInTheAssembler` — the same
 treatment **Gap R.274**/**Gap R.275** get, for the same reason: a pin that asserts exit 2 is the only way a
 compiler bug stays visible without being mistaken for a program's fault.
+
+**Closed 2026-10-28 by ADR 0430**, on the row's own prescription — the plan grows the CARRIED method round.
+`answerKindPlanOf` walks a `ClassDef` beside its `def`s and keys each carried method by the **emitted symbol**
+(`gy_C_m`, the name `resolveMethod` mints), so the call site and the `define` read one word and an inherited or
+shadowed body reads the one the dispatch would have run. `methodAnswerBodyPlan` asks the ONE reading
+(`answerBodyArms`, split out of `answerBodyPlan` so neither caller re-implements the walk that stops at a
+nested `def`), and `stmtReturn`'s carried arm — the same `answerReturn` a module `def` takes — stores the word
+beside the method's `ret`; the epilogue and the unwind target store the void's word, so falling off the end
+cannot be read as a number. A body answering a CONTAINER is carried for the same reason it has no
+`containerRet` to hand its answer to: `answerReturn` builds it through `containerHandleOf`/`containerOperand`
+and the `ret` carries a HANDLE (**Gap R.67**/**ADR 0333**'s rule, applied to a class's return for the first
+time). The reading roads grew the method arm beside the name arm — `pairCallPair`, `containerHandleOf`,
+`containerOperand`, `isContainerExpr`, `containerAnswerOperandRead`, `recordContainerAnswer` at the binding,
+`carriedCallIsPairElem` in a literal element — and the None-comparison fold asks the word rather than the
+payload, which also closes the module `def` twin `print(f(True) == 0)` (**Gap R.324**'s void half).
+
+| program | this backend, before (`d493ce8`) | this backend (`ADR 0430`) | reference (CPython 3.12.3) |
+|---|---|---|---|
+| `print(c.m(1), c.m(0), c.m(0) is None)` of the mixed body | `7 0 False` — exit 0 | `7 None True` | `7 None True` |
+| `print(c.m())` of `return [1, 2]` | **exit 2** — `llc`: *expected instruction opcode* | `[1, 2]` — exit 0 | `[1, 2]` |
+| `print(c.m())` of `return {"a": 1}` | `1` (a bare handle) | `{'a': 1}` | `{'a': 1}` |
+| `print(c.m()[0])`, `print(c.m()["k"])` of a container body | refused (`index requires an inline list/dict/set literal`, `index must be a constant`) | `1`, `[1, 2]` | `1`, `[1, 2]` |
+| `print(len(c.m()), c.m() == [1, 2], bool(c.m()))` | refused / refused | `2 True True` | `2 True True` |
+| `for v in c.m(): print(v)` | refused | `1`, `2` | `1`, `2` |
+| `def f(x):` mixed / `print(f(True) == 0)` | `True` | `False` | `False` |
+
+Measured beside a `git worktree` build of the parent (`d493ce8`): the **31**-program unit battery moved **26**
+to the reference and held **5** byte-for-byte (the five are the controls whose parent already answered right), and
+across both suites' **46** deduplicated sources — the answered families AND both owed tables — the move is **34**
+with **6** held, the **6** owed rows wrong or refused identically on both builds, and none moved away; **40** sources newly recorded from the reference with the compiled leg cross-checked
+(`9706 → 9747`). Answered rows live in `pkg/lang/method_answer_test.go` (**31** compiled+record rows, **9**
+direct plan rows, **5** IR rows) and `integration/method_answer_test.go` (**30** CLI rows re-derived from a live
+`python3`); the pins this row owned are DELETED rather than edited and stand in the answered families.
+
+What the round leaves owed, six rows pinned with the reference's bytes (and the parent's) beside this
+backend's: three refusals at exit 1 — **Gap R.458** (`sum`/`max`/`min` over a container the answer hands back;
+the module `def` twin refuses the same sentence, so it is one door and one row), **Gap R.459** (a BOUND method
+answer, `ys = c.m()`, cannot be measured or subscripted the way `ys = build()` can) and **Gap R.461** (a mixed
+container arm compared with the literal one arm answers) — and three wrong answers at the exit code of success,
+**Gap R.460**: two calls of ONE carried body in one expression share a single kind word, so `print(f(1) == f(0))`
+reads whichever arm ran last. An answer compared against an answer from a DIFFERENT body (`f(1) == g(1)`) is
+answered correctly by `comparePair` and is not this round's to claim.
+
+### Gap R.460 — the answer direction's kind word is ONE per carried body, not per call (⏳ OPEN, found by **ADR 0430**)
+
+| program | this backend (`d493ce8` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `def f(x):` / `    if x:` / `        return "s"` / `    return None` / `print(f(1) == f(0))` | `True` — exit 0 | `False` |
+| the same body, `print(bool(f(1)), bool(f(0)))` | `False False` — exit 0 | `True False` |
+| the same, at a class's door: `print(bool(c.m(1)), bool(c.m(0)))` | parent `True True`, this commit `False False` | `True False` |
+| control — two bodies: `f(1) == g(1)`, `f(0) == g(0)`, `f(1) == g(0)` | `True True False` — exit 0 | `True True False` |
+| control — bound names: `a = f(1)` / `b = f(0)` / `print(a == b)` | `False` — exit 0 | `False` |
+| control — `print(f(1), f(0))` | `s None` — exit 0 | `s None` |
+
+**ADR 0368** put the answer's kind in ONE module word per function — `@gy_f.anst`, written by the callee's
+`ret` and read by the caller that just called it — and **ADR 0430** inherited that shape for a method body
+(`@gy_C_m.anst`). It is right for every position the round serves, because each of them asks the pair
+immediately after its own call. It is one shared cell for everything else: two calls of the SAME body inside one
+expression both load the cell after the second call returned, so the tag says whichever arm ran LAST and
+`rt_payload_eq` is handed two payloads and one kind. The controls are the row's evidence — two bodies (two
+cells) answer right, two bindings (two reads, each after its own call) answer right, and the printer answers
+right because it takes the pair per argument.
+
+The third line is the one this cycle moved AWAY, and it is named rather than buried: the parent printed `True`
+for `bool(c.m(1))` because `strMethodFuncs` had claimed the carried body (**ADR 0368**'s one guess, the
+**Gap R.219** class), which **ADR 0430**'s `answerOwnsMethod` gate refuses; with the guess gone, both arms read
+one word and both come out the void. Removing a wrong road is still the right call — the parent's second half
+(`bool(c.m(0))` → `True`) was the void rendered as a text — but the row that owns the fix is this one, and its
+program is pinned in both suites so nobody re-masks it.
+
+**Next concrete action:** key the answer by the CALL, the way **ADR 0410** keys the popped-slot memo by call
+node rather than by name — `pairCallPair` already mints a temporary per call site, so the pair the caller reads
+can be a pair of temporaries written by the call that produced them. **Definition of done:** the three wrong
+rows above print the reference's bytes, the three controls stay, and the owed rows in
+`pkg/lang/method_answer_test.go::TestWhatTheMethodAnswerRoundStillOwesIsFiledNotFixed` and
+`integration/method_answer_test.go::TestWhatTheMethodAnswerStillOwesAtTheCLI` are DELETED rather than edited.
+
+### Gap R.461 — a container compared with a call whose arms answer a container and something else refuses, naming an AST node (⏳ OPEN, found by **ADR 0430**)
+
+| program | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self, x):` / `        if x:` / `            return [1, 2]` / `        return None` / `c = C()` / `print(c.m(1) == [1, 2])` | exit 1 — `comparing a container with *lang.Call needs a tagged value: …` | `True` |
+| `print(c.m() == [1, 2])` of a body answering ONE container | `True` — exit 0 (paid by **ADR 0430**) | `True` |
+| `print([1] == [1])`, `print(xs == [1, 2])` | answered | same |
+
+The comparison door asks whether BOTH sides are containers, and a call is neither a literal nor a name it can
+place when its arms answer more than one kind. **ADR 0430** opened the one-kind case (the plan states the kind,
+`isContainerExpr` accepts the call, `rt_payload_eq` compares the objects); the mixed case is the same door with
+the arm the plan cannot name, so it declines — at exit 1, which is the honest half. The sentence is not: it
+prints `*lang.Call`, a node type the program never mentions, which is **Gap R.116**'s class and
+**ADR 0400**'s `nodeSurface` fix. It is filed apart from **Gap R.450** (whose subject is a loop ITEM compared
+with a container literal) because the missing half here is the plan's statement about a body, not a position's
+tag.
+
+**Next concrete action:** ask `methodContainerKind`/`containerAnswerDescribesItsSlots` of the arm that ran
+rather than of the body as written, compare through `rt_payload_eq`, and re-word the refusal through
+`nodeSurface` in the same commit — the old string appears in two owed pins, which are DELETED, not re-worded.
 
 ### Gap R.454 — a method that forwards a call to another METHOD of its own class is an arm the plan cannot name (⏳ OPEN, found by **ADR 0429**)
 
@@ -19637,3 +19734,50 @@ opens) is minted per EMITTED body, but the nested body is emitted inside the enc
 function ends up carrying two prologues with the same name. The neighbour is **Gap R.274**, an IR name minted from a
 source NAME as if a name were an identity; this is the same class of mistake at the frame's door, and the row's DoD
 is the IR assertion (`one gc.frame.base alloca per function`) rather than the print.
+
+### Gap R.458 — the fold over a container the answer hands back asks a LITERAL and never asks the object (⏳ OPEN, found by **ADR 0430**)
+
+| program | this backend (`d493ce8` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        return [1, 2, 3]` / `c = C()` / `print(sum(c.m()))` | exit 1 — `sum requires an inline list/set/dict literal` | `6` — exit 0 |
+| `def build():` / `    return [1, 2, 3]` / `print(sum(build()))` | exit 1 — the same sentence | `6` |
+| `print(max(c.m()))` / `print(min(c.m()))` over the same body | exit 1 — `max requires … ` / `min requires …` | `3` / `1` |
+| `print(sum([1, 2, 3]))`, `print(max([1, 2, 3]))` | `6` / `3` — exit 0 | `6` / `3` |
+
+**ADR 0430** taught the doors that READ a container — `print`, `str`/`repr`, an f-string, `bool`, a condition, a
+binding, a literal element, `len`, an index, `in`, a `for` iterable, a container equality — to ask the answer plan
+for a class's body. The reductions were not in that list and were not in the list of doors the row measured: they
+resolve their argument in `containerOperand`-shaped code that demands a LITERAL the compiler can spell, so a
+container that arrives from a callee is refused where it is walked, measured and indexed. The row is deliberately
+NOT method-only: `print(sum(build()))` over a module `def` answering `[1, 2, 3]` is refused with the identical
+sentence, which is the measurement that says this is one door and not two — **Gap R.67**/**ADR 0333**'s container
+answer reaches the fold the way it reaches `len`, and `len` learned to ask the object while the number roads never
+did (**Gap R.296**, an adjacent face: a generator argument refuses at the same door). The refusal is honest — exit
+1, the capability document, no exit 2 — and the reference's bytes sit beside it in
+`pkg/lang/method_answer_test.go::TestWhatTheMethodAnswerRoundStillOwesIsFiledNotFixed` and
+`integration/method_answer_test.go::TestWhatTheMethodAnswerStillOwesAtTheCLI`, so the day the fold asks the object
+the pin fails and moves into the answered family.
+
+### Gap R.459 — a BOUND method answer prints and cannot be measured: the record the binding wrote is a name the container doors do not answer (⏳ OPEN, found by **ADR 0430**)
+
+| program | this backend (this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `ys = c.m()` / `print(ys)` of a container-answering method | `[1, 2, 3]` — exit 0 | `[1, 2, 3]` |
+| `ys = c.m()` / `print(len(ys))` | exit 1 — `len of a non-string variable` | `3` |
+| `ys = c.m()` / `print(ys[0])` | exit 1 — `index of a non-literal variable` | `1` |
+| `ys = c.m()` / `for v in ys:` / `    print(v)` | exit 1 — **Gap R.146**'s one-word-position sentence | `1` `2` `3` |
+| `ys = c.m()` / `print(1 in ys)` | exit 1 — the same sentence | `True` |
+| `ys = c.m()` / `print(ys["k"])` over `return {"k": [1, 2]}` | exit 1 — `index must be a constant` | `[1, 2]` |
+| the module twin — `ys = build()` / `print(len(ys))`, `print(ys[0])`, `for v in ys:`, `1 in ys` | `3`, `1`, `1 2 3`, `True` — exit 0 | `3`, `1`, `1 2 3`, `True` |
+
+The same object, answered twice, refused twice. `ys = c.m()` goes through the binding road, which now calls
+`recordContainerAnswer` with the kind the plan states (**Gap R.67**'s three facts, recorded for a class's answer as
+they are for a module `def`'s), and `print(ys)` proves the record exists — the print asks the NAME and finds the
+container. The measurement asks the same NAME and does not find it: `len`, an index, a `for` iterable and
+membership resolve a bound variable through the roads that read `containerRet`/the per-variable container facts
+written by the NAME-keyed `def` scan, and a method's answer was recorded by a different road than the one those
+doors consult — so the answer is refused with the sentence reserved for a variable holding a number. That the
+module twin answers all four positions is the control that locates the hole in the RECORD the method binding
+writes, not in the doors. The fix is the same arm the direct-call positions grew in **ADR 0430**, taken at the
+binding rather than at the read: `methodContainerAnswerOf`'s verdict has to reach the variable, which is what
+`recordContainerAnswer` was written to do and does not do for this shape.
