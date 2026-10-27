@@ -1299,12 +1299,18 @@ else:
 - **What the identity question still gets wrong**: `is` asked of a *container* literal is not
   answered by the content door — content equality is the wrong answer for two containers holding
   the same elements — and the shape dies in the assembler instead (`print([1] is [1])`,
-  `Gap R.418`). The same question asked of a loop item over a **literal** list (`Gap R.416`), of
-  a callee's own parameter (`Gap R.417`) and of a call that answers the void (`Gap R.388`) is still
-  answered by the fold, and prints `False` where the reference prints `True`. Asked of the same list
-  under a **second name** it no longer is: `ys = xs` / `print(ys.pop(0) is None)` asks the tag, because
-  the record of an object's slots now travels with the handle the two names share (`Gap R.415`,
-  **ADR 0412**).
+  `Gap R.418`). Of a callee's own parameter (`Gap R.417`) and of a call that answers the void
+  (`Gap R.388`) the question is still answered by the fold, and prints `False` where the reference
+  prints `True`. Asked of the same list under a **second name** it no longer is: `ys = xs` /
+  `print(ys.pop(0) is None)` asks the tag, because the record of an object's slots now travels with
+  the handle the two names share (`Gap R.415`, **ADR 0412**). Nor is it answered by the fold for the
+  item of a `for` **unrolled over a literal list**: `for v in [None, "a"]:` / `print(v is None)` /
+  `print(v == None)` / `print(v in [None, "a"])` each ask the item's own `(payload, tag)` pair — the
+  payload loaded out of the loop variable's slot, the tag the unroll records per body copy
+  (`Gap R.416`, **ADR 0426**; the same record the printer reads, `Gap R.358`, and the reason
+  `print(v)` and `v == None` cannot disagree inside one body copy). Ordering is the one compare
+  family that has not joined: `print(v < 2)` over `[1.5, 2.5]` still compares the box handle
+  (`Gap R.448`).
 - `type(x) == "None"` is not how you ask: `type` is a reserved word here (annotations), so
   `type(x)` is not a call in this grammar. Use `x == None`.
 
@@ -1616,6 +1622,16 @@ Rules that the compiled backend implement:
   rather than absorbed: the item's **identity and membership** (**R.416**), its **interpolation field**
   (**R.445**), the **fold over a fractional item** (**R.446**), and the **slot the `for` road stores an `i32`
   into when the float road declared that slot a `double`** (**R.447**).
+
+  The identity and membership half has since been paid (**R.416**, **ADR 0426**): `isTaggedCompareSide` admits
+  the item to the pair door and the literal-haystack membership scan asks `@rt_contains_tagged`, both reading
+  this same record, so `for v in [None, "a"]:` answers `print(v)`, `v is None`, `v == None` and `v in [...]`
+  from one `(payload, tag)` pair. The payload is always the LOAD of the item's own slot — never re-derived by
+  asking the float or container road for the name, which would mint a second object out of whichever number the
+  slot holds (**ADR 0233**). What that probe found and left owed is filed the same way: the **ordering** door
+  still never asks the item (**R.448**), the **condition** road folds `x == None` by the payload words while the
+  value road folds it by the source kinds (**R.449**), and an item whose kind is a container, compared with a
+  container literal, is **refused** where the reference answers (**R.450**).
 
   A `None` key is therefore not the number `0` to this backend even though the constant fold reads a
   `NoneLit` as `0`: the key door answers the void FIRST, before any number arm can reach it. `1`, `True` and

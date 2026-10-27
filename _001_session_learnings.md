@@ -15475,3 +15475,60 @@ discovery — and it still taught me twice.
    `guardRemovableMemberTag`) are also asserted directly over `*SetLit`/`*Name`/`*ListLit`/an unknown name,
    beside the end-to-end rows. The exemption list is the row's claim about CPython; a claim about a list of
    kinds deserves a case per kind, not one program per kind through the whole pipeline.
+
+## ADR 0426 — the comparison asked of an unrolled loop item asks the ITEM: one (payload, tag) pair, loaded not rebuilt, asked by the equality door and the membership scan alike (Gap R.416 closed; Gap R.448, Gap R.449, Gap R.450 filed, 2026-10-28)
+
+1. **A record is only as good as the number of doors that were told it exists.** The unrolled `for` has kept
+   each element's kind per body copy since **ADR 0233**, four doors read it (print, truth, the four container
+   literals — twice over), and the compare family read a *different* notebook (`taggedVars`, written by the
+   pair road a literal unroll never walks). The result was one item answering five questions three ways inside
+   one body copy: `print(v)` said `None`, `v == None` said `False`, `v in [v]` said `False`, all at exit 0. The
+   general lesson is the shape of the bug, not the bug: when a cycle adds a fact, the DoD is "every door that
+   asks this question now asks the fact", and the way to find the doors is to grep for the *question*
+   (`isTaggedCompareSide`, `heapOperandPairOk`, `containerEquality`) rather than for the fact's name.
+
+2. **"Give it a tag" is never the whole fix — the payload has to come out of the same place the printer
+   reads.** My first `taggedOperand` arm asked the existing roads for the item's value: `floatValue(name)` if
+   the float road declared it, else `containerOperand(name)` if a container notebook named it, else the slot
+   load. That made `for k in [1.5, 2.5]: print(v == 1.5, v == 2.5)` print `1.5000000000000002` and
+   `1.5000000000000004` — the float road boxes a *literal*, so asking it of a name whose slot holds a box
+   HANDLE re-boxed the handle as a double. The arm now loads the slot and never re-derives, and the row that
+   pins it is an IR row that reads back which register `@rt_payload_eq` was handed and requires it to be the one
+   loaded from `%_v`. Behavioural cases cannot tell those two implementations apart; the module can.
+
+3. **A fold in one road and a door in another is two answers, and the pair road makes the disagreement
+   reachable.** Opening `mixedTaggedCompare` for the item made the *condition* road answer the same program the
+   *value* road answers differently: `if v == None:` and `print(v == None)` disagree, because `truthOperandErr`
+   asks the pair door but never the None-equality fold the value road applies. That is **ADR 0232**'s "one
+   question, asked once" violated by omission rather than by duplication. The honest move was to file it
+   (**Gap R.449**) with a module-level row beside the loop row — `s = "a"` / `if s == None:` prints `void` with
+   no loop anywhere in the program — because "found while closing X" is not a reason to absorb a defect into
+   X's commit.
+
+4. **A sweep over the corpus is evidence about the blast radius, never about coverage.** All 9526 record
+   sources through a `git worktree` build of the parent and this one: **0 changed answers**. Read carelessly
+   that is a green light; read correctly it says the corpus had *no case for this family at all*, which is why
+   the 48 new reference-recorded entries are the coverage and the sweep is only the safety claim. Two of the
+   "changed" lines were the `llc` temp path inside an unchanged error string — normalize paths before counting,
+   or a sweep reports 2 regressions that are nothing.
+
+5. **`tools/recmerge` refusing a source is information, not friction.** It refused `def f(v): return v == None`
+   called with `None` because the compiled leg prints `False False` where the reference prints `True False`. The
+   temptation is to hand-write the entry ("the reference is right, that's what the record is for"); the rule is
+   the opposite, because a record the backend cannot reproduce is a case that will fail the next cycle for the
+   wrong reason. It became a pinned owed row, and it is **Gap R.417**'s parameter standing one row over — which
+   the pin now says out loud.
+
+6. **Records are counted, so adding them is a documentation change.** 47 entries turned `AGENTS.md`, the
+   `docs/operations.md` artifact table and the `roadmap.md` counter row all red under
+   `golden_artifact_counts_test.go`, which is Gap R.204 working exactly as designed: the count is the file's
+   own and the docs quote it. Same for three new roadmap rows → `Rows owed 206 → 208`, ADR count 415 → 416. If
+   a cycle writes records it must bump the counts in the same commit, and if it *deletes* a pin it must move it
+   (the two `theVoidOwed()` rows and the two `loop_item_literal` rows this row paid are deleted-and-moved, and
+   the answered tables would fail if they had merely vanished).
+
+7. **A wrong verdict where the reference spends a trap is still a wrong verdict.** Two of the three shapes the
+   probe found and did not fix print `True` where CPython raises `TypeError: '<' not supported between
+   instances of 'NoneType' and 'int'`. They are pinned at exit 0 with the reference's raise beside them, naming
+   **Gap R.448**, because the alternative — pinning the raise we do not produce — would make the next cycle's
+   green look like the reference's green (**ADR 0166**'s discipline, **ADR 0382**'s message).

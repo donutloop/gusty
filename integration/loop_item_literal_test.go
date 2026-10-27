@@ -40,6 +40,11 @@ func TestALoopItemPutIntoALiteralAtTheCLI(t *testing.T) {
 		{"the_item_read_back_out_of_the_slot", "for k in [None, 1.5]:\n    print([k][0])\n"},
 		{"the_item_concatenated", "for k in [None, 1.5]:\n    print([k] + [1])\n"},
 		{"the_item_compiled_as_a_list", "for k in [None, 1.5]:\n    print([k] == [None])\n"},
+		// The two **Gap R.416** programs, moved here from this file's owed table by **ADR 0426**: the item's
+		// (payload, tag) pair is now asked by the equality door and the membership scan as well as by the
+		// print and the literal.
+		{"the_item_compared_to_the_void", "for k in [None, 1.5]:\n    print(k == None)\n"},
+		{"the_item_tested_for_membership_in_its_own_iterable", "for k in [None, 1.5]:\n    print(k in [None, 1.5])\n"},
 		{"the_item_measured", "for k in [None, 1.5]:\n    print(len([k]))\n"},
 		{"the_item_behind_str", "for k in [None, 1.5]:\n    print(str([k]))\n"},
 		{"the_item_printed_and_put_in_a_literal_at_once", "for k in [None, 1.5]:\n    print(k, [k])\n"},
@@ -99,12 +104,6 @@ func TestTheLoopItemLiteralRoadsAnswerWrongArePinnedBesideTheReference(t *testin
 		reference  string
 		owedBy     string
 	}{
-		{"the_item_compiled_to_the_void", "for k in [None, 1.5]:\n    print(k == None)\n", 0, "False\nFalse\n",
-			"True\nFalse\n",
-			"Gap R.416 (the compare door asks the name's records; the print road and the literal ask the item's)"},
-		{"the_item_tested_for_membership_in_its_own_iterable", "for k in [None, 1.5]:\n    print(k in [None, 1.5])\n", 0,
-			"True\nFalse\n", "True\nTrue\n",
-			"Gap R.416 (the compare door's third spelling: membership walks the same road the equality question does)"},
 		{"the_item_interpolated_rather_than_printed", "for k in [None, 1.5]:\n    print(f\"{k}\")\n", 0, "0\n0\n",
 			"None\n1.5\n",
 			"Gap R.445 (the interpolation field asks the name's records; the print door reads the item's)"},

@@ -2155,6 +2155,28 @@ func (g *irGen) elemsTaggable(elems []Expr) bool {
 // neither holds — the caller refuses rather than guessing a tag, because a wrong tag prints and
 // compares as the wrong kind (ADR 0232).
 func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	// The item of an unrolled `for` carries its pair in the two places the unroll writes them: the
+	// payload in the name's own i32 slot, the kind in this pass's per-item record. The print door has read
+	// that pair since **Gap R.358** and the truth door since **ADR 0388**; this is the same two words asked
+	// by the compare door (roadmap **Gap R.416**). The payload is NOT re-derived here: a float item's slot
+	// holds the handle of its `@float_box`, a container item's the handle of the object the element built,
+	// the void's nothing at all — asking `floatValue` or `containerOperand` of the name would mint a second
+	// object out of whichever number the slot happens to hold, which is the ADR 0233 rule read from the
+	// other side. Only the kinds a compiled word cannot render on their own come here; an int or interned
+	// text item keeps the fold below, which is what keeps `for v in [1, 2]: print(v == 1)` emitting no pair
+	// call at all (the row's Definition of Done).
+	if t, selfDescribing := g.loopItemKindTag(e); selfDescribing {
+		nm := e.(*Name)
+		g.checkBound(b, nm.Value, nm.Span())
+		v := g.newTmp()
+		fmt.Fprintf(b, "\t%s = load i32, i32* %%_%s\n", v, nm.Value)
+		if t == int32(TagFloat) {
+			// rt_payload_eq unboxes, and the unboxer lives in the float block (ADR 0209's gate rule).
+			g.floatFmtUsed = true
+		}
+		g.heapUsed = true
+		return v, strconv.FormatInt(int64(t), 10), true
+	}
 	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
 		g.checkBound(b, nm.Value, nm.Span()) // the pair may not have been written (Gap R.68, ADR 0228)
 		v := g.newTmp()
@@ -3433,6 +3455,16 @@ func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok boo
 // has to describe? Neither side answering is the ordinary, statically-typed comparison.
 func (g *irGen) isTaggedCompareSide(e Expr) bool {
 	if nm, ok := e.(*Name); ok && g.taggedVars[nm.Value] {
+		return true
+	}
+	// The item of an unrolled `for` over a literal list is a third shape of the same thing: its kind is
+	// known to this pass and to no notebook the compare road reads, because the unroll records it per
+	// iteration (`loopElemTag`, **Gap R.358**/**ADR 0388**) instead of binding a `_tag` slot. Asked here, and
+	// the pair comes out of `taggedOperand`'s new arm — the door the printer and the truth road already ask,
+	// so one item cannot be the void to `print(v)` and a number to `v == None` (roadmap **Gap R.416**,
+	// **ADR 0232**'s one question). An int or interned-text item answers false here, as it does everywhere
+	// else, and keeps the source-side fold it has always had.
+	if _, selfDescribing := g.loopItemKindTag(e); selfDescribing {
 		return true
 	}
 	if c, isCall := e.(*Call); isCall {

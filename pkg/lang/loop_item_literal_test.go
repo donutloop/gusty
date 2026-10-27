@@ -330,23 +330,10 @@ func TestWhatTheLoopItemLiteralStillCannotAskIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			// The same item, asked the identity question: the compare door reads the name's records, not
-			// the unroll's, so the void item is not equal to the void.
-			name:     "the item compared to the void",
-			src:      "for k in [None, 1.5]:\n    print(k == None)\n",
-			wantExit: 0, wantOut: "False\nFalse\n",
-			dossier: "**Gap R.416** — the reference prints `True`, `False`; the print and the literal now ask " +
-				"the item's record and the compare door still does not",
-		},
-		{
-			// The compare door's third spelling, measured beside its own: membership asks the same door
-			// the identity and the equality question go through.
-			name:     "the item tested for membership in its own iterable",
-			src:      "for k in [None, 1.5]:\n    print(k in [None, 1.5])\n",
-			wantExit: 0, wantOut: "True\nFalse\n",
-			dossier: "**Gap R.416** (the compare door's third spelling) — the reference prints `True`, `True`",
-		},
+		// The two **Gap R.416** rows this table used to hold — `print(k == None)` and
+		// `print(k in [None, 1.5])` — are DELETED, not edited: **ADR 0426** pays them, and they now live in
+		// `loopItemCompareFamily()` in `pkg/lang/loop_item_compare_test.go` with the reference's bytes. What
+		// the compare family still owes is pinned there, and the item's interpolation and fold stay below.
 		{
 			// The interpolation field: the print door asks the record and the field's own printer does not,
 			// so `print(k)` answers `None` while `print(f"{k}")` answers the payload.

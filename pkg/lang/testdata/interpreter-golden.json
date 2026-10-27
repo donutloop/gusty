@@ -1,5 +1,242 @@
 {
  "entries": {
+"s = {1, 2}\nfor k in [1.5]:\n    s.discard(k)\nprint(len(s))\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+"b = True\nfor v in [1, \"s\"]:\n    print(v == b)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for i in range(3):\n    print(i == 1, i != 1, i is 1)": {
+    "stdout": "False True False\nTrue False True\nFalse True False\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k in [1, 2])": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k in [None, 1.5])": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k not in [None, 1.5])": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for s in [\"a\", \"b\"]:\n    print(s == \"a\")": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [\"a\", \"b\"]:\n    print(v == \"a\")": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [\"a\", None, 1, 1.5, True, [1], {\"k\":1}]:\n    print(v in [\"a\", None, 1, 1.5, True, [1], {\"k\":1}])": {
+    "stdout": "True\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [\"a\", None]:\n    print(v in [\"a\"])": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [0, None]:\n    print(v == None)": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2]:\n    print(v == 1)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2.5]:\n    print(v == 1.5)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2.5]:\n    print(v in [2.5])": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2]:\n    print(v == 2)": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v != None)": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v == None)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v == None, v is None)": {
+    "stdout": "True True\nFalse False\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v is None)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v is not None)": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 1.5]:\n    print(v == v)": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 2]:\n    print(v == 0)": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, True, 1.5, \"s\"]:\n    print(v == None, v == True, v == 1.5, v == \"s\")": {
+    "stdout": "True False False False\nFalse True False False\nFalse False True False\nFalse False False True\n",
+    "hasStdout": true
+   },
+
+"for v in [True, 1]:\n    print(v == True)": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [[1, 2], 3]:\n    print(v in [[1, 2], 3])": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [None, \"a\"]\nfor v in xs:\n    print(v is None)": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"xs = [None, 1, \"a\"]\nprint(xs[0] == None, xs[1] == None, xs[2] == None)": {
+    "stdout": "True False False\n",
+    "hasStdout": true
+   },
+"for k in [None, 1.5]:\n    print(k == None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k in [1, 2])\n": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k in [None, 1.5])\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for k in [None, 1.5]:\n    print(k not in [None, 1.5])\n": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [\"a\", \"b\"]:\n    print(v == \"a\")\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [\"a\", None]:\n    print(v in [\"a\"])\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [0, None]:\n    print(v == None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [1, 2]:\n    print(v == 1)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2.5]:\n    print(v == 1.5)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2.5]:\n    print(v in [2.5])\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [1.5, 2]:\n    print(v == 2)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v != None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v == None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v == None, v is None)\n": {
+    "stdout": "True True\nFalse False\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v is None)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, \"a\"]:\n    print(v is not None)\n": {
+    "stdout": "False\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 1.5]:\n    print(v == v)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [None, 2]:\n    print(v == 0)\n": {
+    "stdout": "False\nFalse\n",
+    "hasStdout": true
+   },
+
+"for v in [None, True, 1.5, \"s\"]:\n    print(v == None, v == True, v == 1.5, v == \"s\")\n": {
+    "stdout": "True False False False\nFalse True False False\nFalse False True False\nFalse False False True\n",
+    "hasStdout": true
+   },
+
+"for v in [True, 1]:\n    print(v == True)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"for v in [[1, 2], 3]:\n    print(v in [[1, 2], 3])\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
 "s = {\"0\", \"1\"}\nt = s\nt.discard(0)\nprint(len(t))\nprint(0 in t)\nprint(\"0\" in t)\n": {
     "stdout": "2\nFalse\nTrue\n",
     "hasStdout": true

@@ -18932,7 +18932,11 @@ compiled leg disagrees — all three shapes of **Gap R.447**, filed below. Pins 
 `pkg/lang/void_slot_literal_test.go` and `integration/void_slot_literal_test.go`.
 
 WHAT IT LEAVES OWED, each pinned in both suites with the reference's bytes beside today's. **Gap R.416**
-(`k == None`, `k in [...]` over the item — the compare door still asks the name), **Gap R.445** (the
+(`k == None`, `k in [...]` over the item — the compare door still asks the name) — **since paid by** **ADR
+0426**, whose section follows: the item's (payload, tag) is now loaded, not re-derived, and the equality,
+identity and membership doors ask the record this row's predicate owns; the two pins this table held moved to
+`pkg/lang/loop_item_compare_test.go` and the reference's bytes. The three below are unchanged and still pinned
+where they were. **Gap R.445** (the
 interpolation field of an item: `print(k)` answers `None`, `print(f"{k}")` answers `0`), **Gap R.446** (the
 fold over a fractional item: `sum([k])` answers `0`, `1`), **Gap R.447** (the `for` road's `i32` store into
 the `double` slot the float road declared for the name), and **Gap R.131** (`bool([k])`, refused in words).
@@ -19288,3 +19292,109 @@ pinned with the row that owes them: the printed order of a mixed-kind set (**Gap
 0415**'s bucket work has not reached), the unquotable member (**Gap R.189**), and the loop item whose slot
 word is **Gap R.447**'s — a float whose box handle was stored into an `i32` by the unroll and re-materialised
 as `1.0`, which the pair door then correctly removed. Same verb, different owner.
+
+### Gap R.416 — the identity and equality questions asked of an unrolled loop item were asked of the payload (✅ CLOSED by **ADR 0426**, found by **ADR 0411**)
+
+The row was filed by **ADR 0411** as the shape that loop over a NAMED list answered and loop over a LITERAL
+list did not. Three questions, one value, five answers:
+
+| program | this backend (parent `28a0a7c`) | reference (CPython 3.12.3) |
+|---|---|---|
+| `for v in [None, "a"]:` / `print(v)` | `None`, `a` — exit 0 | `None`, `a` |
+| `for v in [None, "a"]:` / `print(v is None)` | `False`, `False` — exit 0 | `True`, `False` |
+| `for v in [None, "a"]:` / `print(v == None)` | `False`, `False` — exit 0 | `True`, `False` |
+| `for v in [None, "a"]:` / `print(v != None)` | `True`, `True` — exit 0 | `False`, `True` |
+| `for k in [None, 1.5]:` / `print(k in [None, 1.5])` | `False`, `False` — exit 0 | `True`, `True` |
+| `for v in [1.5, 2.5]:` / `print(v == 1.5)` | `False`, `False` — exit 0 | `True`, `False` |
+| `xs = [None, "a"]` / `for v in xs:` / `print(v is None)` | `True`, `False` — exit 0 | `True`, `False` |
+
+**Why one line was right and the next was wrong.** The unrolled `for` (**ADR 0233**) emits one body copy per
+element and, before each copy, stores that element's payload into the loop variable's slot and records its
+KIND in `loopElemTag` — a compile-time fact about the copy, not a run-time word. Four doors had been told to
+read that record: the printer (**Gap R.358**), the truth door (**ADR 0388**), and the four container-literal
+gates (**ADR 0424**). The compare family reads a different notebook — `taggedVars`, written by the pair road
+that a literal unroll never walks — so `isTaggedCompareSide` answered "no pair" and the fold answered from the
+payload word. The void stores nothing (its payload is `0`), an interned text stores its index into `@str_tab`
+(`0` for the first string a program interns), a float stores the handle of a `@float_box`; a literal `None`
+compares against the operand's payload, so all three of those became "equal to the void". Membership took the
+same word alone through `rt_contains`, which is why the void turned out to be a member of a text list whose
+first string interned to 0.
+
+**The measurement that decided the shape.** Three candidates, asked of the corpus before any code changed:
+binding a `_tag` slot per iteration (rejected — it makes one iteration's kind outlive it, which is **ADR
+0172**/**Gap R.142**/**Gap R.447**'s stale-kind class); teaching the fold to trust the unroll's shape while
+keeping the pair door closed (rejected — the fold has no shape for a float and the pair door is where
+**ADR 0410**/**ADR 0271**'s numeric family lives, so it would have paid `==` and not `is` and would have
+agreed with `print` by luck); and asking the existing `taggedOperand` with the item's own record. The last is
+one predicate read in three places, and it is the one that keeps `print`, `bool` and `==` from disagreeing —
+because they cannot: `taggedOperand`'s payload is the `load i32` of the same slot the printer prints. The
+second candidate's failure was caught by the table that puts `print(v)` and `v == None` on one line, which is
+in the suite for exactly that reason.
+
+**The sweep is the witness for the gate.** All **9526** record sources through a `git worktree` build of the
+parent and this commit, 24 workers, both in-process: **0 changed answers**, the only two differing lines being
+the `llc` temp path inside an unchanged error string. The corpus had no case for this family at all — which is
+why the **48** entries `tools/recmerge` wrote from the reference (**9526 → 9574**, one refused — a
+parameter's kind, **Gap R.417**'s standing, pinned rather than recorded) are the
+coverage, and not the sweep. The pins this row owned were moved, not deleted: two from `theVoidOwed()` into `theVoidAnswered()`, their two
+CLI twins from `TestWhatTheVoidQuestionStillOwesAtTheCLI` into `voidQuestionFamily()`, and one from each of the
+`loop_item_literal` owed tables into the answered family. One pin that belonged to another row went paid on the
+way through: **ADR 0425**'s `the_loop_item_whose_slot_word_is_wrong` — `s.discard(k)` over `for k in [1.5]:`,
+pinned at `1` where the reference prints `2` because the removal was handed the number a box handle looks like
+— answers `2` once the removal asks the same arm, and moved to `TestRemovingASetMemberAtTheCLI`.
+
+### Gap R.448 — the ordering door never asks the item what it carries (⏳ OPEN, found by **ADR 0426**)
+
+`==`, `!=`, `is`, `is not` and the membership scan ask the unrolled item's recorded kind as of **ADR 0426**.
+`<`, `<=`, `>`, `>=` do not: they go through `taggedOrderApplies`/`orderShapeOf`, which read the name's own
+notebooks, where a loop item has no entry. Two wrong verdicts at the exit code of success, one of them where
+the reference spends a trap:
+
+| program | this backend (`28a0a7c`) | reference (CPython 3.12.3) |
+|---|---|---|
+| `for v in [1.5, 2.5]:` / `print(v < 2)` | `True`, `True` — exit 0 | `True`, `False` |
+| `for v in [None, 2.5]:` / `print(v < 3)` | `True`, `True` — exit 0 | `TypeError: '<' not supported between instances of 'NoneType' and 'int'` |
+| `for v in [1, None]:` / `print(v <= None)` | `False`, `True` — exit 0 | `TypeError: '<=' not supported between instances of 'int' and 'NoneType'` |
+
+The float item is compared by its box handle and the void item by its `0`, while `print(v)` beside them prints
+`1.5` and `None` correctly — the same signature as **Gap R.440** (one value, two readers) in the ordering
+position. **ADR 0382**'s cross-kind raise is the answer for the second and third rows: a wrong verdict where
+the reference raises is the same class of defect as a wrong answer (**ADR 0166**), and pinning it at exit 0 is
+pinning the bug. Pinned with today's bytes beside the reference's in both suites
+(`pkg/lang/loop_item_compare_test.go::TestWhatTheComparedItemStillOwesIsFiledNotFixed`,
+`integration/loop_item_compare_test.go::TestTheComparedLoopItemRoadsAnswerWrongArePinnedBesideTheReference`),
+byte-identical on the row's parent — the gate **ADR 0426** widened is not the door this needs.
+
+### Gap R.449 — the condition road answers `x == None` from the payload words while the value road folds it (⏳ OPEN, found by **ADR 0426**)
+
+One question, two roads, two answers, both at the exit code of success:
+
+| program | this backend (`28a0a7c`) | reference (CPython 3.12.3) |
+|---|---|---|
+| `s = "a"` / `if s == None:` / `print("void")` / `else:` / `print("other")` | `void` — exit 0 | `other` |
+| `print(s == None)` on the line after it | `False` — exit 0 | `False` |
+| `for v in [None, "a"]:` / `if v == None:` / both prints | `void`, `void` — exit 0 | `void`, `other` |
+
+The value road folds `x == None` from "what the SOURCE says each side is", which is sound for an operand whose
+kind the compiler can state. `truthOperandErr` asks `mixedTaggedCompare` — which is how `is`/`is not` reach the
+pair door (**ADR 0411**) — but never that fold, and falls to the generic `icmp eq i32 %_s, 0`. The payload a
+text leaves in its slot is an intern index, and 0 is a legal one (**ADR 0187**). The loop-item row is in this
+table because **ADR 0426**'s item door and this fold now disagree inside ONE body copy; the module-level rows
+are why it is a row and not that row's fallout — no loop is involved at all. **ADR 0232**'s shape is the fix:
+one predicate for the fold, asked by both roads. Pinned in the same two tables as **Gap R.448**.
+
+### Gap R.450 — an item whose kind is a container, compared with a container LITERAL, is refused (⏳ OPEN, found by **ADR 0426**)
+
+| program | this backend (`28a0a7c`) | reference (CPython 3.12.3) |
+|---|---|---|
+| `for v in [[1, 2], 3]:` / `print(v == [1, 2])` | refused at exit 1 | `True`, `False` |
+| `for v in [[1, 2], 3]:` / `print(v in [[1, 2], 3])` | `True`, `True` — exit 0 | `True`, `True` |
+
+An honest refusal — exit 1, exit 2 forbidden (**ADR 0166**), pinned AS a refusal — and therefore a ledger row
+rather than a defect in **Gap R.416**'s DoD. `containerEquality` decides the side that is not a container with
+`isProvenScalarExpr`, whose list of places a kind is legible is `IntLit`/`BoolLit`/`NoneLit`/a spelled text/a
+name the intern or float road declared/`isFloat`; the unroll's per-item record is not among them, so an item
+the compiler has described to itself all the way to the printer is un-described one door later. The sibling
+that ASKS the object has answered since **ADR 0426** opened the membership scan, which localises this to the
+equality door. **ADR 0189** is the door to reach: an item whose recorded kind is list/dict/set/instance is a
+CONTAINER side, its payload is already a handle, and the literal goes through `containerOperand` beside it.

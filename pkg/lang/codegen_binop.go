@@ -687,12 +687,40 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 		// whose layout is a length plus an array: `rt_contains(i32 @.set1, i32 2)` is a global
 		// in an i32 slot, the module llc refuses, so it is materialised into the heap first
 		// (ADR 0166's rule one construct on; roadmap Gap J.2, ADR 0234).
+		haystackIsHeap := false
 		if _, isComp := n.R.(*Comp); isComp || g.isContainerExpr(n.R) {
 			ch, chErr := g.containerOperand(b, n.R)
 			if chErr != nil {
 				return "", chErr
 			}
 			r = ch
+			haystackIsHeap = true
+		}
+		// The needle is the item of an unrolled `for`: its payload is a @str_tab index, a @float_box
+		// handle or the void's nothing, and the haystack the builder above materialised carries a kind
+		// beside every slot (**ADR 0187**'s rule that no builder writes a payload without its tag). The
+		// untagged scan below compares payloads alone, which is how the void became a member of a text
+		// list whose first string happened to intern to 0, and a float item stopped being a member of the
+		// very list it was unrolled from (roadmap **Gap R.416**, **ADR 0232**'s soundness rule; the same
+		// pair `taggedOperand` hands the equality door, asked here because a membership test is the third
+		// spelling of the same question).
+		if _, itemNeedle := g.loopItemKindTag(n.L); itemNeedle && haystackIsHeap {
+			np, nt, okNeedle := g.taggedOperand(b, n.L)
+			if okNeedle && np != "" && nt != "" {
+				g.heapUsed = true
+				t := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains_tagged(i32 %s, i32 %s, i32 %s)\n", t, r, np, nt))
+				bt := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, t))
+				g.markI1(bt)
+				if n.Op == "not in" {
+					inv := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", inv, bt))
+					g.markI1(inv)
+					return g.asBoolI32(b, inv), nil
+				}
+				return g.asBoolI32(b, bt), nil
+			}
 		}
 		// A needle that is itself a container is built as an object and matched by the tagged
 		// slot rule. Two reasons, both measured: the constant path hands back a folded global

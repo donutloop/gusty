@@ -45,9 +45,11 @@ import (
 // `af8b847` run beside a build of this one and every program asked of the pinned CPython: **17 moved to the
 // reference's answer, 11 controls held, 6 still differ, none moved away from the reference**. Five of the six
 // that differ are identical on the parent build, which is what makes them rows rather than regressions: a call
-// that answers the void and is then compared with it is **Gap R.388**'s standing row; an unrolled loop item over
-// a literal list (**Gap R.416**) and a callee's own parameter (**Gap R.417**) are the two doors this one did not
-// reach. The sixth is `is` asked of a popped CONTAINER against a container literal, which hands `llc` a
+// that answers the void and is then compared with it is **Gap R.388**'s standing row; a callee's own parameter
+// (**Gap R.417**) is a door this one did not reach. The unrolled loop item over a literal list — the third of
+// those six, filed against this row as **Gap R.416** — has since been PAID: **ADR 0426** reads the unroll's
+// per-item record at `isTaggedCompareSide`/`taggedOperand`, and its two programs stand in the family below.
+// The sixth is `is` asked of a popped CONTAINER against a container literal, which hands `llc` a
 // module-level global in a word position and dies at **exit 2** — **Gap R.418**, the asking-door half of the
 // **Gap R.393**/**Gap R.253** family, and the reason this row admits the void and nothing else.
 //
@@ -96,6 +98,12 @@ func theVoidAnswered() []struct {
 		{"a slot read of a mixed list", "xs = [None, 1]\nprint(xs[0] is None)\nprint(xs[1] is None)\n", "True\nFalse\n"},
 		{"a slot read of a tuple", "ys = (1, None)\nprint(ys[0] is None)\nprint(ys[1] is None)\n", "False\nTrue\n"},
 		{"a loop element over a named list", "xs = [None, \"a\"]\nfor v in xs:\n    print(v is None)\n", "True\nFalse\n"},
+		// The same two questions asked of an item of an unrolled `for` over a LITERAL list — the shape
+		// **Gap R.416** filed against this row and **ADR 0426** paid: the unroll records the item's kind per
+		// iteration (`loopElemTag`) and the compare door now reads it, the way the print and the truth doors
+		// have since **Gap R.358**/**ADR 0388**.
+		{"an item of an unrolled literal list", "for v in [None, \"a\"]:\n    print(v is None)\n", "True\nFalse\n"},
+		{"the same item's equality", "for v in [None, \"a\"]:\n    print(v == None)\n", "True\nFalse\n"},
 		{"a name the pair road bound", "xs = [None, \"a\"]\nn = xs[0]\nprint(n is None)\nif n is None:\n    print(\"y\")\n", "True\ny\n"},
 		// Controls: what the fold still decides statically, with no call emitted.
 		{"a written void", "print(None is None)\nprint(None is not None)\n", "True\nFalse\n"},
@@ -267,26 +275,10 @@ func theVoidOwed() []struct {
 				"it the moment the callee's answer is read as a (payload, tag) pair",
 		},
 		{
-			name:     "a loop item over a LITERAL list",
-			src:      "for v in [None, \"a\"]:\n    print(v is None)\n",
-			gap:      "Gap R.416",
-			compiled: "False\nFalse\n",
-			python:   "True\nFalse\n",
-			why: "the unrolled item's kind is recorded for the PRINTER and the TRUTH road (ADR 0232/ADR 0388's " +
-				"`loopElemTag`) and for nothing else, so the identity question falls to the fold; `for v in xs` over " +
-				"a NAMED list answers — that pair is bound by the pair road and this row pays it",
-		},
-		{
-			name:     "equality, of the same loop item",
-			src:      "for v in [None, \"a\"]:\n    print(v == None)\n",
-			gap:      "Gap R.416",
-			compiled: "False\nFalse\n",
-			python:   "True\nFalse\n",
-			why: "the `==` door was open before this row and is closed to the unrolled item for the same reason: " +
-				"the item's tag is not in the notebook `isTaggedCompareSide` consults — filed beside the identity half " +
-				"so the two cannot be paid separately and disagree",
-		},
-		{
+			// The two **Gap R.416** rows that stood here are DELETED, not edited: **ADR 0426** reads the
+			// unroll's per-item record at the compare door, and both programs now print the reference's bytes
+			// from the family above. What the unrolled item still owes — its ordering, and the `if` head's
+			// None-equality fold — is pinned in `pkg/lang/loop_item_compare_test.go`.
 			name:     "a callee's own parameter, given the void",
 			src:      "def f(v):\n    return v is None\nprint(f(None))\nprint(f(1))\n",
 			gap:      "Gap R.417",

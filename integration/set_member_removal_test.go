@@ -58,6 +58,12 @@ func TestRemovingASetMemberAtTheCLI(t *testing.T) {
 		{"remove_takes_a_loop_item_out", "s = {1, 2, 3}\nfor k in [1, 3]:\n    s.remove(k)\nprint(s)\n"},
 		{"a_loop_of_texts_removes_only_what_it_names", "s = {1, 2}\nfor k in [\"a\", \"b\"]:\n    s.discard(k)\nprint(s)\n"},
 		{"the_item_of_a_run_time_list", "s = {\"a\", \"b\"}\nks = [\"a\"]\nfor k in ks:\n    s.discard(k)\nprint(s)\n"},
+		// The item's KIND, not its slot word, decides the removal. A fractional item is not the number its
+		// payload looked like once the unroll stored it: this program is **ADR 0425**'s owed pin, which printed
+		// `1` (the pair door was handed a 1.0 and removed a member the reference leaves alone) where the
+		// reference prints `2`, and it answers `2` from the moment the removal asks the unroll's per-item tag
+		// (**Gap R.416**, **ADR 0426**).
+		{"a_fractional_item_is_not_the_number_its_slot_looked_like", "s = {1, 2}\nfor k in [1.5]:\n    s.discard(k)\nprint(len(s))\n"},
 		// The exemption the reference grants this door and the dict door does not have.
 		{"discard_says_nothing_about_a_set", "s = {1, 2}\ns.discard({1})\nprint(s)\n"},
 		{"discard_of_the_empty_spelling", "s = {1, 2}\ns.discard(set())\nprint(s)\n"},
@@ -197,14 +203,10 @@ func TestTheSetMemberRemovalRoadsAnswerWrongArePinnedBesideTheReference(t *testi
 			todayExit: 3, todayBytes: "KeyError: key not found", reference: "KeyError: (3, 4)",
 			owedBy: "Gap R.189 (naming a key the compiler cannot see: the same sentence at the dict door)",
 		},
-		{
-			// The loop item whose payload is a box handle: the `for` road stored an i32 into the word the
-			// float road declared for the name, so by the time the pair door asks, 1.5 has become 1.0 —
-			// and 1.0 IS a member. The removal answered correctly for the pair it was handed.
-			name: "the_loop_item_whose_slot_word_is_wrong", src: "s = {1, 2}\nfor k in [1.5]:\n    s.discard(k)\nprint(len(s))\n",
-			todayExit: 0, todayBytes: "1\n", reference: "2\n",
-			owedBy: "Gap R.447 (the unroll stores an i32 into the double slot the float road declared; the pair door only sees the result)",
-		},
+		// The loop item whose payload was a box handle is answered by the item's own kind as of **ADR 0426** and
+		// has MOVED to `TestRemovingASetMemberAtTheCLI` with the reference's bytes; what the same loop item
+		// still owes — an ordering, a container comparison, an interpolation — is **Gap R.448**, **Gap R.450**
+		// and **Gap R.445**, each pinned in the loop-item suite that owns it.
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

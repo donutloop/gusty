@@ -60,6 +60,12 @@ func voidQuestionFamily() []struct {
 		{"a slot read of a mixed list", "xs = [None, 1]\nprint(xs[0] is None)\nprint(xs[1] is None)\n", "True\nFalse\n"},
 		{"a slot read of a tuple", "ys = (1, None)\nprint(ys[0] is None)\nprint(ys[1] is None)\n", "False\nTrue\n"},
 		{"a loop element over a named list", "xs = [None, \"a\"]\nfor v in xs:\n    print(v is None)\n", "True\nFalse\n"},
+		// The same three questions asked of the item of a loop over a LITERAL list, which the unroll now
+		// answers from the kind it records per body copy (**Gap R.416**, **ADR 0426**). They stand here, and in
+		// the record, because until this row they were the owed table's rows.
+		{"a loop element over a literal list", "for v in [None, \"a\"]:\n    print(v is None)\n", "True\nFalse\n"},
+		{"its equality twin", "for v in [None, \"a\"]:\n    print(v == None)\n", "True\nFalse\n"},
+		{"the item in the literal it unrolls from", "for k in [None, 1.5]:\n    print(k in [None, 1.5])\n", "True\nTrue\n"},
 		{"a name the pair road bound", "xs = [None, \"a\"]\nn = xs[0]\nprint(n is None)\nif n is None:\n    print(\"y\")\n", "True\ny\n"},
 		{"a written void", "print(None is None)\nprint(None is not None)\n", "True\nFalse\n"},
 		{"a void bound to a name", "x = None\nprint(x is None)\n", "True\n"},
@@ -215,11 +221,6 @@ func TestWhatTheVoidQuestionStillOwesAtTheCLI(t *testing.T) {
 			name: "a call that answers the void", gap: "Gap R.388",
 			src:    "def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n",
 			python: "True\nTrue\n", compiled: "False\nFalse\n",
-		},
-		{
-			name: "a loop item over a literal list", gap: "Gap R.416",
-			src:    "for v in [None, \"a\"]:\n    print(v is None)\n",
-			python: "True\nFalse\n", compiled: "False\nFalse\n",
 		},
 		{
 			name: "a callee's own parameter", gap: "Gap R.417",

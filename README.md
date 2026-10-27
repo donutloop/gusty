@@ -3231,6 +3231,43 @@ falls back to dynamic dispatch.
   (**9454 → 9526**) and refused the sources whose compiled leg disagrees, which are the pinned rows and not
   records.
 
+- **The comparison asked of an unrolled loop ITEM asks the ITEM (Gap R.416, **ADR 0426**)** —
+  `for v in [None, "a"]:` / `print(v)` printed **`None`**, **`a`** and the line beside it printed
+  **`False`**, **`False`** for `v is None` and the same for `v == None` and `v != None` said `True` twice,
+  while `for k in [None, 1.5]:` / `print(k in [None, 1.5])` said **`False`** twice and `print(v == 1.5)` over
+  `[1.5, 2.5]` said `False` twice — every one of them at the **exit code of success**, where the reference
+  prints `True`/`False`, `True`/`True` and `True`/`False`. The same item over a NAMED list answered correctly,
+  which is what localised it: the unrolled `for` records each element's KIND per body copy (**ADR 0233**) and
+  the print door (**Gap R.358**), the truth door (**ADR 0388**) and the container-literal gates (**ADR 0424**)
+  read that record, while the compare family reads the notebook the pair road writes — which a literal unroll
+  never visits. So the fold compared payload WORDS, and a text's payload is an index into `@str_tab` (`0` for
+  the first string a program interns), a float's is a `@float_box` handle, the void's is `0`, and an integer
+  item's slot can carry `0` too (**ADR 0187**): three kinds and a number all compared equal to `None`, and the
+  void turned out to be a member of a text list. One predicate read in three doors — `taggedOperand` answers the
+  item with a LOAD of its own slot plus the recorded tag (**it re-derives nothing**: asking `floatValue` or
+  `containerOperand` of the name would mint a second object out of whichever number the slot happens to hold,
+  which is **ADR 0233**'s rule read from the other side), `isTaggedCompareSide` admits it to the pair door
+  (**ADR 0410**'s `comparePair`, in the value road AND the condition road), and the literal-haystack membership
+  scan takes `@rt_contains_tagged` because the builder already writes a kind beside every slot. An integer or
+  interned-text item compiles byte-for-byte as before. `pkg/lang/loop_item_compare_test.go` NEW (**23** answered
+  programs on the compiled leg AND the record leg, **5** rows putting `print(v)` and `v == …` on ONE line, **8**
+  rows moving the item through every position a compare stands in, **12** door rows asked directly over
+  hand-built generator states, **6** IR rows in both directions, **1** row reading back which register the pair
+  call is handed, **5** filed-not-fixed) and `integration/loop_item_compare_test.go` NEW (**28** CLI rows against
+  a live `python3`, **8** exit-code rows, **5** owed rows pinned beside the reference). A **9526**-source sweep of
+  the record corpus through a `git worktree` build of the parent and this commit reports **0 changed answers** —
+  the corpus had no case for this family at all, which is why `tools/recmerge` wrote **48** entries from the
+  reference (**9526 → 9574**) and refused the one source whose compiled leg disagrees (a PARAMETER's kind —
+  **Gap R.417**'s standing). Four pins this row owned MOVED from the owed tables to the answered ones, in both
+  suites, and a fifth that belonged to **ADR 0425** went paid on the way through: `s = {1, 2}` / `for k in [1.5]:`
+  / `s.discard(k)` / `print(len(s))`, pinned at **`1`** where the reference prints **`2`**, answers `2` once the
+  removal asks the same arm instead of the number a box handle looks like. Three rows FILED from the same probe:
+  **Gap R.448** (the ordering door never asks the item — `print(v < 2)` over `[1.5, 2.5]` says `True` `True`
+  and `print(v < 3)` over `[None, 2.5]` answers where CPython raises), **Gap R.449** (the condition road folds
+  `s == None` from the payload words while the value road folds it from the source kinds — `s = "a"` /
+  `if s == None:` prints `void`), and **Gap R.450** (an item whose kind is a container, compared with a
+  container literal, is refused where the reference answers).
+
 - **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
   the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
   **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all
