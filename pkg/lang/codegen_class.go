@@ -95,6 +95,7 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		// `resolveMethod` hands a call site, for the same reason `strFuncs` is (Gap R.42, ADR 0224).
 		if methodIsGenerator(fd) {
 			g.genFuncs[funcName] = true
+			g.registerGenBuffer(funcName, fd.Body)
 			if param := generatorMethodParameterWalk(fd); param != "" {
 				if g.genMethodParamWalk == nil {
 					g.genMethodParamWalk = map[string]string{}

@@ -19985,7 +19985,7 @@ The fix is the missing word, not a second dispatch: a tag beside a dynamically d
 value word, asked at the one place the dispatch joins its arms. `receiverClass` and **ADR 0366**'s census give the row
 everything it needs to KNOW the arms; what it cannot do is carry a second word out of a `switch` that returns an `i32`.
 
-### Gap R.468 — a yielded text, float and void keep no kind on their way out of the buffer (⏳ OPEN, found by **ADR 0432**)
+### Gap R.468 — a yielded text, float and void keep no kind on their way out of the buffer (✅ CLOSED by **ADR 0433**, found by **ADR 0432**)
 
 | program | this backend (this commit AND its parent's module twin, byte for byte) | reference (CPython 3.12.3) |
 |---|---|---|
@@ -19999,6 +19999,29 @@ included because it prints the same four bytes: this is the append door's hole, 
 row is what stops the first from being read as a method bug. The values are not lost — the buffer holds them — they
 arrive with no word saying which arm of the printer they belong to, so a text answers its intern-table index and
 `None` and a float answer the low half of a handle.
+
+**Closed by ADR 0433**, on the row's own prescription and no wider. `yield` now asks the mutation door the `append`
+road asks, through the ONE writer `genBufferAppend` (`pkg/lang/codegen_genbuf.go`) that `stmtYield`, `stmtYieldFrom`'s
+literal arm and the class road's registration all call; and the claim that a buffer must be WALKED by asking each slot
+is earned per callee BODY — `registerGenBuffer` records, under the mangled symbol **ADR 0224** minted, whether a body
+yielded a value whose kind the untagged road cannot render, and the four doors that receive the answer (`for`, `print`,
+a binding, the copy `yield from` performs) ask `genBufferUsesSlots` rather than re-deriving the shape from the line.
+The claim is read off the callee's recorded body at the door that receives the answer (`genBodies`,
+`bodyWritesKinds`) rather than written at the door that registers it, because a body's claim can depend on the body it
+copies with `yield from`, and the registration order would otherwise decide the answer: a `yield from` of a generator
+that yields only integers is a SUM, and the record holds `104` for the program that does it — a blanket claim here spent
+**Gap R.146**'s refusal on that sum, which is the shape the drift ledger caught. The reward for asking the source is
+larger than the fix: a buffer forwarded through a second generator (`outer` copying `inner`, at the module door and the
+class door) prints `a` `2` `None` where the build this row opens printed the words under them.
+
+Both rows of the table above print the reference's four bytes at exit **0** on the compiled leg, the record leg and the
+reference leg (`integration/programs/generator_buffer_kind.gy` is byte-identical to CPython on both legs, the row's own
+program among them), and the module twin is unchanged, which is the control that says the fix belonged to the append
+door. The claim is deliberately NARROWER than the list claim it sits beside: an integer-only generator is not a pair,
+so it still sums — `s = s + v` over a buffer of integers answers the number at exit **0**, while a buffer that yielded
+floats reaches the standing **Gap R.146** refusal instead of the parent's truncated `3`. Two doors still read the OLD
+tables and are filed beside this close as **Gap R.477** (a comprehension's iterable, `str()`'s renderer) and **Gap
+R.478** (the membership test's untagged compare).
 
 ### Gap R.469 — a `return` after the yields answers the void, and the caller walks nothing (⏳ OPEN, found by **ADR 0432**)
 
@@ -20134,3 +20157,58 @@ tables must record the third verdict — a method that yields — and `answerFor
 `methodVoid`, exactly as **ADR 0428** taught the forwarding arm to ask the carried-only rule first. Until then the
 forwarding road is a wrong answer for a body the direct call answers correctly, which is the pair of rows this one
 exists to end.
+
+---
+
+## What **ADR 0433** (the kind a generator yields, **Gap R.468**) found on the way
+
+Three rows. Each was measured twice — once on this commit and once on a `git worktree` build of its parent
+(`bb4abc9`, **ADR 0432**) — and each says which of the two it is identical to. Two are doors this row deliberately did
+not open (they ask the tables that were there before, and the claim they need is already on the register), and one is
+a membership question older than the generator road that walked into it.
+
+### Gap R.477 — a comprehension over a bound buffer, and `str()` of one, render the word under the value (⏳ OPEN, found by **ADR 0433**)
+
+| program | this backend (this commit, and byte-identically on its parent) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        yield "a"` / `        yield 2` / `        yield None` / `c = C()` / `ys = c.m()` / `print([v for v in ys])` | exit 0 — `[0, 2, 0]` | `['a', 2, None]` |
+| the same comprehension over the same three values written as a LITERAL (`ys = ["a", 2, None]`) | exit 0 — `['a', 2, None]` (both commits) | `['a', 2, None]` |
+| `print(str(c.m()))` on the same class | exit 0 — `[0, 2, 0]` | `<generator object C.m at 0x…>` |
+| `print(str(["a", 2, None]))` | exit 0 — `['a', 2, None]` (both commits) | `['a', 2, None]` |
+| `print(f"{c.m()}")` on the same class | exit 0 — `1` (both commits) | `<generator object C.m at 0x…>` |
+| `xs = ["a", 2, None]` / `print(f"{xs}")` | exit 0 — `['a', 2, None]` (both commits) | `['a', 2, None]` |
+
+**ADR 0433** minted one claim — `genBuffers`/`genBufferSlots` in `pkg/lang/codegen_genbuf.go` — and taught the four
+doors that RECEIVE a buffer to ask it. These three doors ask the tables that were here first: the comprehension's
+iterable classifier reads `mixedLists`, the container arm of the renderer reads `listOperands`, and the interpolation
+engine asks that same renderer, so a field of a buffer prints the ONE word the register holds — `1` for a three-element
+buffer — while a field of the same values written as a literal prints the list. All three answers are the same object;
+only one of them is told it carries kinds. That is why the control rows matter: the identical
+comprehension and the identical `str()` over a LIST literal print the reference's bytes on this build, so the values
+are renderable and the register is simply not being consulted. The third row's reference output is a generator object
+and not a list — this backend's generator is the eager buffer (**ADR 0140**/**ADR 0081**), so the ladder is against
+its own model, and the model's own literal twin is the honest rung.
+
+The fix is to read the claim that already exists, in two lines, and to route the copy through the tagged element read
+**ADR 0241** rather than the payload word. It is deliberately not in this commit: a row that changes the renderer and
+the comprehension classifier beside the append door is two features in one commit, and the second has its own
+refusal behaviour to keep honest (`Gap R.76` makes a comprehension over a mixed-kind LITERAL iterable refuse, and the
+day the buffer becomes classifiable as mixed, that road must not start answering by accident).
+
+### Gap R.478 — the membership test asks the payload and not the tag, so an integer walks in as a text whose interned index is that number (⏳ OPEN, found by **ADR 0433**)
+
+| program | this backend (this commit, and byte-identically on its parent) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        yield "a"` / `        yield 2` / `c = C()` / `print(0 in c.m())` | exit 0 — `True` | `False` |
+| the same buffer bound first (`ys = c.m()` / `print(0 in ys)`) | exit 0 — `True` | `False` |
+| `print("a" in c.m())` on the same class | exit 0 — `True` | `True` |
+| `print(0 in ["a", 2])` — no class, no generator | exit 0 — `True` | `False` |
+
+A buffer's slots now carry (payload, tag) pairs, and the membership scan added by **ADR 0432** compares the payload
+word against the needle. A text's payload IS an index into `@str_tab`, and `"a"` is the first text this program
+interns, so the integer `0` matches it. The last row is the one that keeps this honest: the same verdict, at the same
+exit code, on a program with no generator and no class in it — the door is older than this row, which is why the row
+owns both shapes and why the fix is the door's and not the buffer's. **ADR 0247**'s `rt_payload_eq` is the one
+equality the container roads already ask with the tag beside the payload; **ADR 0324**/**Gap R.211** is the paid twin
+("the needle read the way the haystack is") for a slot read out of another container. The cross-kind answer is
+`False`, and a coincidence between an intern index and an integer is not a match.

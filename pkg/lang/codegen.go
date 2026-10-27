@@ -1284,6 +1284,29 @@ type irGen struct {
 	// (generator function results and generator expression results), so
 	// print/indexing can treat them as lists.
 	listOperands map[string]bool
+	// genBuffers is the narrower claim beside it: the IR register (the `%t7` a call left the answer
+	// in) or the source name (the `ys` a binding parked it under) that holds a GENERATOR's buffer —
+	// the heap list a `yield` filled. Every other list `listOperands` records is written by a road
+	// that decides the element's kind at compile time; a generator's slots are written by the
+	// `yield` itself, one element at a time, so the door that walks or renders the buffer has to ask
+	// the SLOT what it holds rather than print the word underneath the value. That question is the
+	// tag, and the tag is written by the same door that appends (ADR 0187, ADR 0311; roadmap
+	// **Gap R.468**, **ADR 0433**).
+	genBuffers map[string]bool
+	// genBufferSlots is the earned half of that claim, kept apart on purpose: the operands whose
+	// slots must actually be asked, because the callee's body yields something whose kind the
+	// untagged road cannot render. A generator that yields nothing but integers is NOT in this table
+	// — its walk stays a sum rather than a (payload, tag) pair, and the pair road's standing refusal
+	// (Gap R.146) never fires on a program that was adding numbers up.
+	genBufferSlots map[string]bool
+	// genBodies is where that verdict is taken from: the recorded body of every generator this program
+	// declares, keyed by the same symbol `genFuncs` uses. The claim is READ off the body at the call site
+	// rather than written at the registration door, because a body's claim can depend on the body it copies
+	// with `yield from`, and the registration order — module `def`s in source order, a class's methods in
+	// class order — would otherwise make the answer depend on which body the walk reached first (roadmap
+	// **Gap R.468**, **ADR 0433**). `bodyWritesKinds` is the question; `genBufferSlots` caches nothing and
+	// asserts nothing, it is the operand-side answer.
+	genBodies map[string][]Stmt
 	// genHandle is the runtime list handle for the generator function whose
 	// body is currently being emitted; stmt() appends each `yield` to it.
 	genHandle  string

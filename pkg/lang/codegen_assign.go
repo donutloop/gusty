@@ -1001,8 +1001,11 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 					// Both spellings of a generator call — the module `def`'s name and a method read off a
 					// receiver — hand back the buffer, so both bind the name as a list (roadmap **Gap R.455**,
 					// **ADR 0432**). The `for` road and the print road ask this name's kind, and an unclaimed
-					// name prints the heap slot it was handed.
+					// name prints the heap slot it was handed. The name is claimed as a GENERATOR's buffer too,
+					// which is the claim the print road asks to reach the printer that reads each slot's tag
+					// (roadmap **Gap R.468**, **ADR 0433**).
 					g.settleContainerKind(nm.Value, containerKindList)
+					g.markGenBuffer(nm.Value, g.callGenSymbols(call)...)
 				} else if fn, ok2 := call.Fn.(*Name); ok2 {
 					if g.genFuncs[fn.Value] {
 						g.settleContainerKind(nm.Value, containerKindList)

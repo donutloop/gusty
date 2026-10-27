@@ -61,6 +61,9 @@ func generatorMethodCLIFamily() []struct{ name, src, want string } {
 		// (that one is **Gap R.470**'s owed row below, refused on both doors).
 		{"a yield inside an except handler", "class C():\n    def m(self):\n        yield 1\n        try:\n            x = 1 // 0\n        except ZeroDivisionError:\n            yield 2\nc = C()\nfor v in c.m():\n    print(v)\n", "1\n2\n"},
 		{"an empty buffer walks nothing", "class C():\n    def m(self, k):\n        if k:\n            yield 1\nc = C()\nfor v in c.m(0):\n    print(v)\nprint(\"done\")\n", "done\n"},
+		// **Gap R.468**'s program: the buffer's slots carry their element's kind, so the walk prints the
+		// values and not the words underneath them (**ADR 0433**).
+		{"a yielded text, integer, void and float keep their kinds", "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\n        yield None\n        yield 1.5\nc = C()\nfor v in c.m():\n    print(v)\n", "a\n2\nNone\n1.5\n"},
 		{"defaulted and keyword arguments", "class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7, 8):\n    print(v)\n", "7\n8\n"},
 		{"two bindings are two buffers", gmCLITwo + "a = c.m()\nb = c.m()\nfor v in a:\n    print(v)\nfor v in b:\n    print(v)\n", "1\n2\n1\n2\n"},
 		{"a method calling its own class's generator", "class C():\n    def m(self):\n        yield 1\n        yield 2\n    def n(self):\n        for v in self.m():\n            print(v)\n        return None\nc = C()\nprint(c.n())\n", "1\n2\nNone\n"},
@@ -212,11 +215,6 @@ func TestTheGeneratorMethodRefusalIsMachineReadable(t *testing.T) {
 func TestWhatTheGeneratorMethodStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name: "a yielded text, float and void keep no kind", gap: "Gap R.468",
-			src:    "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\n        yield None\n        yield 1.5\nc = C()\nfor v in c.m():\n    print(v)\n",
-			python: "a\n2\nNone\n1.5\n", compiled: "0\n2\n0\n1\n",
-		},
 		{
 			name: "a return after the yields answers the void, not the buffer", gap: "Gap R.469",
 			src:    "class C():\n    def m(self):\n        yield 1\n        return\nc = C()\nxs = c.m()\nfor v in xs:\n    print(v)\n",

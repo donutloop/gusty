@@ -950,6 +950,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// there, asks the membership test and the sum, calls a generator through `self` and through `super()`, walks
 		// an inherited one, and dispatches one dynamically; every line is what CPython prints for it.
 		"generator_method",
+		// A generator's BUFFER carries the kind of every element the body yielded: the `yield` writes payload
+		// and tag through the one door `xs.append(...)` has used since **ADR 0187**/**ADR 0311**, and the walk,
+		// the print door, a binding and the membership test ask the SLOT what it holds instead of printing the
+		// word underneath the value (**ADR 0433**, roadmap **Gap R.468**). The program yields a text, an
+		// integer, the void, a float, a verdict and a nested container, at the class's door and the module's,
+		// through a binding, through `self` and `super()`, by `yield from` a literal, and by a `yield from` that
+		// FORWARDS another generator's buffer; every line is what CPython prints for it.
+		"generator_buffer_kind",
 
 		// A container SLOT whose value arrived through a binding, rather than being spelled, is built
 		// self-describing and printed by the mixed printer: the gate that decides whether a slot needs a

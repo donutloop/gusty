@@ -628,6 +628,13 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 			if g.mixedLists[nm.Value] {
 				printer = "rt_print_list_mixed"
 			}
+			// A name bound to a generator's buffer is printed by the printer that asks each slot what it
+			// holds: the buffer's element kinds are a run-time fact the body wrote, not a kind this pass
+			// can claim for the whole list (roadmap **Gap R.468**, **ADR 0433**).
+			if g.genBufferUsesSlots(nm.Value) {
+				printer = "rt_print_list_mixed"
+				g.floatFmtUsed = true
+			}
 			b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 0)\n", printer, hs))
 			continue
 		}
@@ -771,6 +778,14 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 			// a generator result is a runtime heap list handle: print it
 			// as a list rather than an int.
 			if g.listOperands[v] {
+				// A generator's buffer prints through the printer that reads a tag per slot: the kinds in
+				// it are what the body yielded, and no table beside the register says them (roadmap
+				// **Gap R.468**, **ADR 0433**). Every other list register keeps the printer it had.
+				if g.genBufferUsesSlots(v) {
+					b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", v))
+					g.floatFmtUsed = true
+					continue
+				}
 				b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %s, i32 0)\n", v))
 				continue
 			}

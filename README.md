@@ -161,7 +161,9 @@ gusty ships an indentation-based syntax covering:
   (**ADR 0360**, roadmap Gap R.31; `docs/language.md` § *Printf-style `%`* is the authority).
 - **Slicing** — `s[a:b]`, `s[::step]`, negative indices, lowered by the `rt_slice` runtime helper; the
   index arithmetic (`pySliceIndices`, `normPosIndex`) is shared code in `pkg/lang/fold.go`.
-- **Generators** — `def g(): yield a; yield b` collects yielded values.
+- **Generators** — `def g(): yield a; yield b` collects yielded values, and **each yielded value keeps its kind**:
+  a buffer that yields a text, an integer, the void and a float walks as `a` / `2` / `None` / `1.5` and prints
+  `['a', 2, None, 1.5]`, at the module door and through a generator METHOD alike (**ADR 0433**, roadmap Gap R.468).
 - **Async** — `async def` / `await` / `async for` / `async with`, with the await/return
   discipline checked in the shared front end: dropping a coroutine, awaiting one twice, or
   yielding inside an `async def` is a compile error, and each function's effect signature is
@@ -3422,6 +3424,53 @@ falls back to dynamic dispatch.
   on the parent, and **ADR 0166**'s exit 2 rather than a refusal), and **Gap R.466** (a method answering ONE float
   answers the double's low word — found by going to pin the forwarded spelling and finding the DIRECT call already
   wrong, which is the measurement that split it out of **Gap R.462**).
+- **A generator's buffer carries the kind of every element it yielded: one door writes payload and tag, and the
+  doors that receive the buffer ask the slot (Gap R.468, **ADR 0433**)** — `class C():` /
+  `    def m(self):` / `        yield "a"` / `        yield 2` / `        yield None` / `        yield 1.5` walked by a
+  `for` printed **`0` `2` `0` `1`** at the exit code of success where the reference prints `a` `2` `None` `1.5`, and the
+  module `def` twin printed those SAME four bytes — the measurement that moved the row out of **ADR 0432**'s class round
+  and onto the append door. A generator's buffer was filled by `rt_append`, which takes a payload and no kind: the
+  mutation road has owned the door that takes both since **ADR 0311** (`rt_append_tagged`, what `xs.append(...)` asks),
+  and a slot whose tag was never written reads whatever tag the previous tenant left (**ADR 0187**/**ADR 0189**), so a
+  text answered its `@str_tab` index and the void and a float answered the low half of a heap handle. `yield` now asks
+  that door through ONE writer (`genBufferAppend`, `pkg/lang/codegen_genbuf.go`) that `stmtYield`, `stmtYieldFrom`'s
+  literal arm and the class road all call, and the claim that a buffer must be WALKED by asking each slot is earned
+  from the callee's BODY — `registerGenBuffer` records, under the mangled symbol **ADR 0224** minted, whether a body
+  yielded a value whose kind the untagged road cannot render — so a `yield k` or a `yield k * 2` claims nothing, a
+  nested `def`'s yields are not this buffer's, and a dynamically dispatched call claims the kinds only when EVERY arm
+  earned them. The claim is deliberately narrower than the list claim it sits beside, and that narrowness is what keeps
+  the row from widening anyone's refusal: a buffer of nothing but integers is still walked and summed by the roads it
+  always used (`for v in c.m(): s = s + v` answers the number at exit **0**), while a buffer that yielded floats
+  reaches the standing **Gap R.146** pair refusal instead of the parent's truncated **`3`**. Measured beside a `git
+  worktree` build of the parent (`bb4abc9`, **ADR 0432**): across the answered family's **23** deduplicated sources
+  **17** moved onto the reference's bytes and **6** held byte-for-byte — the membership row that was already right, the
+  forwarded integer sum the record holds `104` for, the two integer-buffer controls, the parameter-fed buffer and the
+  expression-fed buffer — which is the control that
+  says the tag door opens for a KIND and not for a generator; one of the 17 moved off **exit 2** (`yield [1, 2]` /
+  `yield 3` handed `llc` the container literal's `@.lst1` GLOBAL inside the `define` — **Gap R.474**'s shape — and the
+  tagged door, which takes the literal's WORD, answers `[1, 2]` `3`), and the
+  only program that answered on the parent and refuses here is the mixed-buffer sum, which now spends the mixed-LIST
+  road's own sentence at exit **1** (the same sum over `xs = [1.5, 2.5]`, no generator in it, refuses with those bytes
+  today). `pkg/lang/generator_buffer_kind_test.go` NEW (**23** answered programs on the compiled leg AND the record leg
+  with a MISSING record failing the case, **9** method-vs-module rows that may differ only by a deliberate refusal
+  sentence, **4** eager-print rows pinned as this backend's model rather than the reference's, **20** reading rows
+  asking `generatorBodyWritesKinds`/`methodIsGenerator` directly with their own controls, **3** IR rows plus a negative
+  control that fails if a method which never yields carries `%gh` or `rt_append`, **8** owed rows) and
+  `integration/generator_buffer_kind_test.go` NEW (**23** CLI programs re-derived from a live `python3`, **1** record
+  audit, **4** eager-print rows, **3** exit-code rows with exit **2** forbidden, **5** owed rows, **1** corpus check)
+  with `integration/programs/generator_buffer_kind.gy` NEW, byte-identical to CPython on both legs; `tools/recmerge`
+  wrote **21** entries from the reference with the compiled leg cross-checked (**9814 → 9835**, none refused); the
+  owed, eager and exit-code tables were swept too — **5** moved (three eager-print rows off `[0, 2, 0, 1]` and `[1, 0]`, the
+  exit-code table's own row program, and the mixed-buffer sum) and **10** held byte-for-byte, which is what keeps every filed-not-fixed pin another row's lesion.
+  What the
+  round leaves owed is filed with its bytes: **Gap R.477** (a comprehension over a bound buffer, `str()` of one and an
+  interpolation field of one still read `mixedLists`/`listOperands` and never the buffer claim — `[0, 2, 0]` and `1`
+  where the same values as a list literal print `['a', 2, None]`), **Gap R.478** (the membership test compares
+  payloads, so `0 in c.m()` is `True` where the reference says `False` — and `0 in ["a", 2]` says the same thing, which
+  is what makes the door the owner and not the generator), plus the rows **ADR 0432** filed and this one did not reach:
+  **Gap R.467**/**Gap R.471** (a dynamic join whose arms disagree about kinds), **Gap R.475** (a `yield from` of a
+  parameter's list copies words) and **Gap R.474** (a container literal in a method's operand list, `llc` at exit 2).
+
 - **A generator METHOD is a generator: the reading is the body's own, taken at the class's door (Gap R.455, **ADR 0432**)** —
   `class C():` / `    def m(self):` / `        yield 1` / `c = C()` / `print(c.m() is None)` died at **exit 1** with
   **`yield outside a generator function`**, while `def g():` / `    yield 1` / `for v in g():` / `    print(v)` printed

@@ -5340,6 +5340,36 @@ not offered in completions.
   (`lower.unsupported.generator-method-parameter-walk`, Gap R.475) — the module `def` twin of that body
   answers. Generators are still EAGER buffers, not iterators: `print(g())` prints the list (ADR 0081),
   and `next()`, a partially consumed buffer and a lazy `yield` remain Gap L12.1's.
+- **What a generator yields keeps its kind** (roadmap **Gap R.468**, **ADR 0433**). The buffer a generator
+  answers is a list, and a list's slots carry their element's kind beside its payload — a `yield` writes both
+  through the one door `xs.append(...)` uses (`rt_append_tagged`, **ADR 0187**/**ADR 0311**), so a walked
+  buffer prints the values and not the words underneath them:
+
+      class Mixed():
+          def things(self):
+              yield "a"
+              yield 2
+              yield None
+              yield 1.5
+
+      for v in Mixed().things():   # a  2  None  1.5
+          print(v)
+
+  A yielded text prints as its text (not the intern table's index), a float as its fraction (not the float
+  box's heap slot), a verdict as `True`/`False` (not `1`/`0`), the void as `None`, and a nested container
+  with its brackets. A `yield from` is asked the same question of ITS source: a literal answers for itself
+  (`yield from [1, 2]` is the same buffer as two integer yields, and stays a sum), and any other source earns
+  the claim from the body that fills it — which is why `def outer(): yield from inner()` prints what `inner`
+  yielded, while a parameter the pass cannot classify earns nothing and still prints the words underneath
+  (**Gap R.475**). `print(mixed.things())` prints `['a', 2, None, 1.5]`, and the module `def` twin of the
+  same body prints the same bytes. A body that yields nothing but integers is walked by the roads it always
+  used — `for v in c.m(): s = s + v` stays a sum rather than becoming a (payload, tag) pair — and a mixed
+  buffer walked into an arithmetic position is refused with the pair road's standing sentence
+  (**Gap R.146**), the same one `xs = [1.5, 2.5]` / `for v in xs: s = s + v` spends. What still reads the
+  word rather than the value is a comprehension over a bound buffer (it prints `[0, 2, 0]` where the same
+  three values written as a list print `['a', 2, None]`), `str()` of one and an interpolation field of one
+  (which prints the one word the register holds) — **Gap R.477** — and the membership test, which compares
+  payloads and so takes `0` for a text interned at slot `0` (**Gap R.478**).
 - `[1, 2, 3]` is a list literal.
 - `for x in g():` and `for x in [1,2,3]:` iterate the elements, and so does `for x in c.m():` over a
   generator method — the loop walks the buffer rather than counting to the handle it was handed.

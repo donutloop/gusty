@@ -124,6 +124,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				// road's call site does for a module generator (roadmap **Gap R.455**, **ADR 0432**).
 				if g.genFuncs[fn] {
 					g.listOperands[ret] = true
+					g.markGenBuffer(ret, fn)
 				}
 				// A method is program code, and program code raises: without the
 				// call-site check the exception stayed in flight, the method returned
@@ -178,6 +179,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 			// handle as a count (roadmap **Gap R.455**, **ADR 0432**).
 			if g.genFuncs[fn] {
 				g.listOperands[ret] = true
+				g.markGenBuffer(ret, fn)
 			}
 			g.checkExn(b) // a method call propagates like any other call (Gap R.41, ADR 0223)
 			return ret, nil
@@ -288,6 +290,16 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		// value reading it always had (roadmap **Gap R.455**, **ADR 0432**).
 		if g.methodCallCasesAreGenerator(mname) {
 			g.listOperands[phi] = true
+			// Every arm that can answer the join is asked, because the arm that runs is a run-time fact:
+			// one class whose body never writes a tag and the join would have the walk read a stale word
+			// as the other arm's kind (roadmap **Gap R.468**, **ADR 0433**).
+			var syms []string
+			for _, cls := range g.classOrder {
+				if sym, ok := g.resolveMethod(cls, mname); ok {
+					syms = append(syms, sym)
+				}
+			}
+			g.markGenBuffer(phi, syms...)
 		}
 		return phi, nil
 	}

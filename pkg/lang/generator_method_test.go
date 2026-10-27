@@ -99,6 +99,9 @@ func generatorMethodFamily() []struct{ name, src, want string } {
 		// whose ONLY yield is in a handler is **Gap R.470**'s owed row, refused by `containsYield`).
 		{"a yield inside an except handler", "class C():\n    def m(self):\n        yield 1\n        try:\n            x = 1 // 0\n        except ZeroDivisionError:\n            yield 2\nc = C()\nfor v in c.m():\n    print(v)\n", "1\n2\n"},
 		{"an empty buffer walks nothing", gmEmptyBody + "for v in c.m(0):\n    print(v)\nprint(\"done\")\n", "done\n"},
+		// The four kinds the untagged word could not carry — **Gap R.468**'s program, which stands in the
+		// answered family now that the yield writes payload AND tag together (**ADR 0433**).
+		{"a yielded text, integer, void and float keep their kinds", "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\n        yield None\n        yield 1.5\nc = C()\nfor v in c.m():\n    print(v)\n", "a\n2\nNone\n1.5\n"},
 		// Call-site shapes: defaults, keywords, and two calls of one body.
 		{"defaulted and keyword arguments", "class C():\n    def gen(self, a, b=3):\n        yield a\n        yield b\nc = C()\nfor v in c.gen(7, 8):\n    print(v)\n", "7\n8\n"},
 		{"two bindings are two buffers", gmTwo + "a = c.m()\nb = c.m()\nfor v in a:\n    print(v)\nfor v in b:\n    print(v)\n", "1\n2\n1\n2\n"},
@@ -208,9 +211,9 @@ func TestTheGeneratorMethodModuleCarriesTheBufferDoors(t *testing.T) {
 	}
 	body := generatorMethodDefine(t, res.IR, "gy_C_m")
 	for _, want := range []string{
-		"%gh1 = call i32 @rt_alloc(i32 1)",      // the buffer, in the callee's frame
-		"call void @rt_append(i32 %gh1, i32 1)", // each yield appends its value
-		"call void @rt_append(i32 %gh1, i32 2)",
+		"%gh1 = call i32 @rt_alloc(i32 1)",              // the buffer, in the callee's frame
+		"call void @rt_append_tagged(i32 %gh1, i32 1, ", // each yield appends its value AND its kind
+		"call void @rt_append_tagged(i32 %gh1, i32 2, ", // — one operation, never two (ADR 0187)
 		"ret i32 %gh1", // and the answer IS the buffer
 	} {
 		if !strings.Contains(body, want) {
@@ -355,16 +358,6 @@ func TestWhatAGeneratorMethodStillCannotReachIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			// The buffer is filled by `rt_append`, which takes a payload and no kind; the tagged door
-			// (`rt_append_tagged`, what `xs.append(...)` already uses) is never asked. `list.append` prints the
-			// text; a generator's slot prints the intern table's index.
-			name:     "a yielded text, float and void keep no kind",
-			src:      "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\n        yield None\n        yield 1.5\nc = C()\nfor v in c.m():\n    print(v)\n",
-			wantExit: 0,
-			wantOut:  "0\n2\n0\n1\n",
-			dossier:  "**Gap R.468** — the reference prints `a 2 None 1.5`; the module twin prints these same four bytes, byte for byte, and `rt_append_tagged` is the door the row must ask",
-		},
 		{
 			// A `return` ends the body through the ordinary answer road, which hands back the void's word
 			// rather than the buffer the yields already filled.

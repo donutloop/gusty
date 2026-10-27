@@ -4482,6 +4482,27 @@
     },
     {
       "case": {
+        "id": "programs/generator_buffer_kind",
+        "name": "generator_buffer_kind.gy",
+        "source": "# A generator's buffer carries the KIND of every element its body yielded: the text prints as the text, the\n# float as the float, the verdict as True, the void as None and a nested container with its brackets — because\n# the yield now writes payload and tag through one door (`rt_append_tagged`), the same door `xs.append(...)`\n# has used since ADR 0187/ADR 0311. Before this row the same body printed the word underneath every one of\n# them: `0 2 0 1` where the reference prints `a 2 None 1.5` (roadmap Gap R.468, ADR 0433).\n#\n# A `yield from` that FORWARDS another generator is asked the same question of the body it copies, so the\n# forwarded buffer prints what the source yielded and not the words underneath its slots.\n#\n# Every line below is what the reference prints, one for one. Nothing here prints a generator itself — the\n# eager model's `print(g())` is ADR 0081's answer and the reference's is a generator object, so that pair is\n# pinned in `integration/generator_buffer_kind_test.go` rather than in a program the reference can certify.\nclass Mixed():\n    def things(self):\n        yield \"a\"\n        yield 2\n        yield None\n        yield 1.5\n    def verdicts(self):\n        yield True\n        yield False\n    def nested(self):\n        yield [1, 2]\n        yield 3\n    def through_a_binding(self):\n        yield \"b\"\n        yield 2.25\n    def copied(self):\n        yield from [1, \"c\", None]\n\nclass Forwarded():\n    def inner(self):\n        yield \"f\"\n        yield 2.5\n    def outer(self):\n        yield from self.inner()\n        yield None\n\nclass Base():\n    def kinds(self):\n        yield \"base\"\n        yield 0\n\nclass Child(Base):\n    def drain(self):\n        for v in super().kinds():\n            print(v)\n        return None\n\ndef module_twin():\n    yield \"a\"\n    yield 2\n    yield None\n    yield 1.5\n\nm = Mixed()\nfor v in m.things():\n    print(v)\nfor v in m.verdicts():\n    print(v)\nfor v in m.nested():\n    print(v)\nys = m.through_a_binding()\nfor v in ys:\n    print(v)\nfor v in m.copied():\n    print(v)\nprint(\"a\" in m.things())\nprint(\"zz\" in m.things())\nfor v in module_twin():\n    print(v)\nf = Forwarded()\nfor v in f.outer():\n    print(v)\nc = Child()\nprint(c.drain())\ntotal = 0\nfor v in m.verdicts():\n    total = total + 1\nprint(total)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "a\n2\nNone\n1.5\nTrue\nFalse\n[1, 2]\n3\nb\n2.25\n1\nc\nNone\nTrue\nFalse\na\n2\nNone\n1.5\nf\n2.5\nNone\nbase\n0\nNone\n2\n",
+      "python_ok": true,
+      "python_stdout": "a\n2\nNone\n1.5\nTrue\nFalse\n[1, 2]\n3\nb\n2.25\n1\nc\nNone\nTrue\nFalse\na\n2\nNone\n1.5\nf\n2.5\nNone\nbase\n0\nNone\n2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/void_slots_say_themselves",
         "name": "void_slots_say_themselves.gy",
         "source": "# The void a container slot holds is the void its binding wrote (ADR 0421, roadmap Gap R.435).\n#\n# One question, asked of two neighbours: the container literal's tag gate (`literalNeedsTags`) decides\n# whether a slot needs a word of its own beside the payload, and the print road decides which printer\n# renders the object. The gate's float and verdict arms have always gone past the spelling into the\n# ADR 0172 latest-binding records; its void arm recognized only the spelled `None`, so a slot holding the\n# void THROUGH A BINDING stayed on the static int array and printed the payload the void happens to carry.\n#\n# Every line below is what CPython prints for this program.\n\nk = None\n\n# The literal, in each of its spellings: the answer the payload used to give is gone.\nprint([k])\nprint([k, 1])\nprint([1, k])\nprint([k, k])\nprint([k, \"a\"])\nprint(str([k]))\nprint({k})\nprint((k,))\nprint({1: k})\nprint({k: 1})\nprint([[k]])\nprint({\"a\": [k]})\n\n# The roads that read the literal back: the slot says what it holds, so each asks the object.\nprint(len([k]))\nprint(None in [k])\nprint([k][0])\nprint([k] + [1])\nprint([k] == [None])\nprint(sorted([k]))\nfor v in [k]:\n    print(v)\n\nxs = [k]\nxs.append(1)\nprint(xs)\n\n# The void a CALL answers — a body with no value to give back, and every in-place mutator, which the\n# reference answers the same way. The element's effect is emitted; the tag, not the payload, is printed.\ndef nothing():\n    pass\n\nprint([nothing()])\nprint([nothing(), 1])\nprint({1: nothing()})\nprint({nothing()})\nprint(None in [nothing()])\nprint([{\"a\": 1}.get(\"z\")])\nys = [1]\nprint([ys.append(2)])\nprint(ys)\n\n# The gate gained an arm and changed no other answer: the spelled singleton, the single-kind numeric\n# literal, and a name the LAST binding made a number all answer as they did before.\nprint([None])\nprint([1, 2, 3])\nprint([1.5, 2.5])\nmixed = [None, 1, \"a\"]\nprint(mixed)\nk = 5\nprint([k])\nfor k in [1, 2]:\n    print([k])\n",
@@ -5689,11 +5710,11 @@
       ]
     }
   ],
-  "rows": 241,
+  "rows": 242,
   "skipped": 29,
-  "pass": 212,
+  "pass": 213,
   "fail": 0,
-  "oracle_match": 198,
+  "oracle_match": 199,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

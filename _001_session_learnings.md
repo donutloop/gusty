@@ -15839,3 +15839,64 @@ then every base in the order the dispatch walks them) and answer the callee's OW
 5. **A shape can be newly reachable without being newly broken, and `llc` is the witness.** `print(C().m([1, 2]))` fails with `global variable reference must have pointer type` — `i32 @.lst1` in an operand list. My first read was "my generator work emits bad IR". Ten minutes with the plain-method twin (`def m(self, xs): return 1`, same call) said otherwise: rejected identically on `d729564`, while the module `def` road answers the same call because it copies the literal into the heap through `staticLists`/`heapargs` and the method roads never knock. That is **Gap R.474** at exit 2 (**ADR 0166**'s artifact class, and the exit-2 pins in the integration file name the contract so the row cannot quietly be renamed a limitation), and it stayed out of this commit because the fix belongs to the three method call roads and the `__init__` field store, which is a measurement of its own.
 
 6. **A row's own Definition of Done is a to-do list you wrote while you could still see the map.** Ten filed rows, and the queue now carries the exact next moves: the tag beside a dispatched answer (**R.467**/**R.471**, one fix, three call sites of one function), `rt_append_tagged` at the `yield` road (**R.468**), the buffer answered at the third exit too (**R.469**), `containsYield` entering a handler — with the `finally`-during-unwind semantics settled in the same commit, because four lines of walking silently changes what `finally` means (**R.470**), the default fill hoisted to all four method call roads (**R.472**), the length question at the truth door (**R.473**), the literal door at the method roads (**R.474**), the parameter kinds in a method body (**R.475**), and the third verdict in the method round so the forwarding arm can ask it first, exactly as **ADR 0428** taught it to ask the carried-only rule (**R.476**). Each row names its pin, and each pin fails when the shape starts answering — that pairing is the only reason owed rows get closed instead of admired.
+
+## ADR 0433 — a generator's buffer carries the kind of every element it yielded: one door writes payload and tag, and the doors that receive the buffer ask the slot (Gap R.468 closed; Gaps R.477, R.478 filed, 2026-10-27)
+
+1. **A second append door is a second set of rules, and the rules were already written.** The generator road filled its
+   buffer with `rt_append`; every list the rest of the module builds goes through `rt_append_tagged` because **ADR 0187**
+   settled, years of gaps ago, that a payload and its tag are one store — a slot written alone inherits whoever lived
+   there last. Nobody had to discover that; the fix was to notice the generator was the one list in this compiler that
+   grew without asking the question, and to route every yield (plain `yield`, `yield from`'s literal arm, the class
+   road) through ONE writer so the fourth door cannot be written from memory again. The IR test asserts the writer
+   appears and the untagged one does not, which is the only form of "we use the right helper" that can fail.
+
+2. **The narrow claim is what kept the fix from becoming a regression, and a control row caught the moment I made it too wide.**
+   Two claims, not one: *this register is the buffer* (universal) and *the doors must ask each slot* (earned per callee
+   body). Without the second, `for v in c.m(): s = s + v` over `yield 10` / `yield 20` — the accumulator every tutorial
+   writes — would have met **Gap R.146**'s pair refusal and died at exit 1 for adding integers. And my first version of
+   the earner answered `true` for `yield from [1, 2]`, because the `*YieldFromStmt` case checked the literal's elements
+   and then fell through to the conservative `return true` meant for sources the pass cannot see. The reading table's
+   own control row — "a `yield from` a literal of nothing but integers does not" — failed immediately. A control is not
+   decoration: it is the only thing in the file that objects when a claim grows.
+
+3. **The drift ledger is a witness with a memory, and it indicted my conservative default.** `def gen(n):` /
+   `    yield i * i` under `def outer():` / `    yield from gen(3)` summed to `104` on the record and on the parent, and
+   printed nothing but a refusal on my first green run: I had written the `yield from` case to claim kinds for ANY
+   non-literal source — "conservative", I called it, meaning I had not asked the source — and the claim handed the loop a
+   pair, which `s = s + x` cannot carry (**Gap R.146**). The honest rule is that a `yield from` earns the claim from the
+   body it copies, which meant moving the verdict from registration time to read time (`genBodies`, `bodyWritesKinds`) so
+   the answer cannot depend on which generator the walk reached first. Two things I want to keep: a conservative claim is
+   still a claim, and the corpus is the only thing that reads it back. The reward is not just the fixed sum — a forwarded
+   buffer (`outer` copying `inner`, at both doors) now prints `a` `2` `None` instead of the words under them, because
+   asking the source is strictly more information than assuming it.
+
+4. **Ask the reference IN the case, or your owed row indicts the wrong door.** Two of my owed rows were wrong before I
+   ran anything. `str(c.m())`: I pinned the reference as `['a', 2, None]` and then asked `python3`, which prints
+   `<generator object C.m at 0x…>` — the eager buffer is this backend's model (**ADR 0081**), so the honest ladder is
+   against the literal (`str(["a", 2, None])` prints `['a', 2, None]` here too), not against a reference that never
+   prints a list. And `0 in c.m()` answering `True` looked like a generator bug until I asked `0 in ["a", 2]` with no
+   class and no generator in it: `True` here, `False` in the reference, byte-identical on the parent. That is why
+   **Gap R.478** owns the DOOR (both shapes) instead of the buffer, and why each owed row in the unit table now carries
+   its non-generator twin.
+
+5. **A refusal that replaces a wrong answer has to be the refusal somebody else already pays.** The mixed buffer used
+   as a number moved from `3` at exit 0 (two float boxes' heap slots, added) to **Gap R.146**'s
+   `travels as a (payload, tag) pair` at exit 1. That is only defensible because `xs = [1.5, 2.5]` walked into the same
+   sum spends those same bytes on a program with no generator in it, and the pin says so beside the row. A new refusal
+   invented by my own commit would have been the same artifact class as the `3`, wearing a better exit code.
+
+6. **The parent worktree again earned its keep — and the number is not the number you remember.** Twenty-three deduplicated
+   family sources through both builds: 17 moved, 6 held (the membership row that already answered correctly, the
+   forwarded integer sum the record holds `104` for, and the four integer/parameter/expression controls). One move was off **exit 2**: `yield [1, 2]` / `yield 3` handed `llc`
+   the container literal's `@.lst1` global inside the `define` — **Gap R.474**'s shape — because the tagged door is
+   handed the literal's WORD instead of its global, so a row about kinds quietly paid a row about operands. Meanwhile
+   the owed, eager and exit-code tables held 11 of 15 byte-for-byte, which is the sentence that keeps them other
+   rows' lesions. My notes said "16 moved / 4 held" until I ran the sweep; the README, the roadmap row and the ADR now
+   say what the sweep said, which is **Gap R.204**'s rule applied to my own prose rather than to a table.
+
+7. **Filed rows are the deliverable when the door is shared.** The two doors still reading the old tables
+   (`mixedLists` for the comprehension, `listOperands` for the renderer) were one `if` away, and taking them would have
+   made this commit change the renderer, the comprehension classifier and the membership compare at once — three roads
+   whose refusal behaviour this row had no business settling (**Gap R.76** makes a mixed-kind literal comprehension
+   refuse, and the day a buffer becomes classifiable, that road must not start answering by accident). They leave as
+   **Gap R.477** and **Gap R.478** with their bytes, their controls and their definitions of done.

@@ -1,0 +1,80 @@
+# A generator's buffer carries the KIND of every element its body yielded: the text prints as the text, the
+# float as the float, the verdict as True, the void as None and a nested container with its brackets — because
+# the yield now writes payload and tag through one door (`rt_append_tagged`), the same door `xs.append(...)`
+# has used since ADR 0187/ADR 0311. Before this row the same body printed the word underneath every one of
+# them: `0 2 0 1` where the reference prints `a 2 None 1.5` (roadmap Gap R.468, ADR 0433).
+#
+# A `yield from` that FORWARDS another generator is asked the same question of the body it copies, so the
+# forwarded buffer prints what the source yielded and not the words underneath its slots.
+#
+# Every line below is what the reference prints, one for one. Nothing here prints a generator itself — the
+# eager model's `print(g())` is ADR 0081's answer and the reference's is a generator object, so that pair is
+# pinned in `integration/generator_buffer_kind_test.go` rather than in a program the reference can certify.
+class Mixed():
+    def things(self):
+        yield "a"
+        yield 2
+        yield None
+        yield 1.5
+    def verdicts(self):
+        yield True
+        yield False
+    def nested(self):
+        yield [1, 2]
+        yield 3
+    def through_a_binding(self):
+        yield "b"
+        yield 2.25
+    def copied(self):
+        yield from [1, "c", None]
+
+class Forwarded():
+    def inner(self):
+        yield "f"
+        yield 2.5
+    def outer(self):
+        yield from self.inner()
+        yield None
+
+class Base():
+    def kinds(self):
+        yield "base"
+        yield 0
+
+class Child(Base):
+    def drain(self):
+        for v in super().kinds():
+            print(v)
+        return None
+
+def module_twin():
+    yield "a"
+    yield 2
+    yield None
+    yield 1.5
+
+m = Mixed()
+for v in m.things():
+    print(v)
+for v in m.verdicts():
+    print(v)
+for v in m.nested():
+    print(v)
+ys = m.through_a_binding()
+for v in ys:
+    print(v)
+for v in m.copied():
+    print(v)
+print("a" in m.things())
+print("zz" in m.things())
+for v in module_twin():
+    print(v)
+f = Forwarded()
+for v in f.outer():
+    print(v)
+c = Child()
+print(c.drain())
+total = 0
+for v in m.verdicts():
+    total = total + 1
+print(total)

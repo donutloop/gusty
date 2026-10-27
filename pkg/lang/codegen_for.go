@@ -189,6 +189,12 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 			mixedIter = true
 		case g.listVars[name.Value]:
 			iterKind = "list"
+			// A name bound to a generator's buffer holds a list every slot of which was written WITH its
+			// element's kind, so the walk binds payload AND tag per iteration exactly as the call-spelling
+			// arm below does (roadmap **Gap R.468**, **ADR 0433**).
+			if g.genBufferUsesSlots(name.Value) {
+				mixedIter = true
+			}
 		case g.mixedSets[name.Value]:
 			// A mixed set binds payload and tag like a mixed list: the member's i32 is
 			// ambiguous on its own, and the tag is what prints it (ADR 0232).
@@ -207,7 +213,13 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 		// `for v in g():` and `for v in c.m():` both walk a buffer the runtime owns; the kind is the same
 		// list either way, and the arm used to set it only for the spelling whose name the module walk had
 		// registered (roadmap **Gap R.455**, **ADR 0432**).
+		//
+		// The buffer's slots carry their element's kind — every `yield` writes payload and tag together —
+		// so the loop variable is bound through the pair door like a mixed list's, which is what lets
+		// `print(v)` render a yielded text, float, verdict or void instead of the word underneath it
+		// (roadmap **Gap R.468**, **ADR 0433**).
 		iterKind = "list"
+		mixedIter = g.callBufferUsesSlots(call)
 	} else if sl, ok := n.Iter.(*SetLit); ok {
 		// `for v in {1, 2}` is a container the program wrote where a variable would stand: it is
 		// built as an object and walked by the runtime, exactly like the variable form. Falling

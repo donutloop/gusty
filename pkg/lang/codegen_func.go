@@ -850,6 +850,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.genIdx++
 		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
 		g.genFuncs[g.fnName(fd)] = true
+		g.registerGenBuffer(g.fnName(fd), fd.Body)
 		g.heapUsed = true
 		g.emitRtAllocKind(b, g.genHandle, HeapKindList, Span{})
 		// Keep the generator's accumulator list alive across the GC emitted
@@ -937,11 +938,9 @@ func (g *irGen) stmtYieldFrom(b *strings.Builder, st Stmt, n *YieldFromStmt) err
 	// element directly instead of treating the global as a heap handle.
 	if ll, ok := n.Expr.(*ListLit); ok {
 		for _, el := range ll.Elems {
-			ev, err := g.value(b, el)
-			if err != nil {
+			if err := g.genBufferAppend(b, g.genHandle, el); err != nil {
 				return err
 			}
-			fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, ev)
 		}
 		return nil
 	}
@@ -983,7 +982,19 @@ func (g *irGen) stmtYieldFrom(b *strings.Builder, st Stmt, n *YieldFromStmt) err
 	g.loopSafePoint(b, nil)
 	el := g.newTmp()
 	fmt.Fprintf(b, "%s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", el, hv, ivc)
-	fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, el)
+	// The element travels out of one buffer and into another WITH its kind: the source's slot says what
+	// it holds, and the copy that does not carry the word across arrives as whatever the destination
+	// slot's previous tenant was tagged as (ADR 0187's rule, read at the second buffer).
+	// `srcCarriesTags` is the conservative half: only a source this pass KNOWS writes its tags has them
+	// read; any other object keeps the word the road always appended, tagged as the number it was
+	// printed as (roadmap **Gap R.468**, **ADR 0433**).
+	if g.srcCarriesTags(n.Expr) {
+		et := g.newTmp()
+		fmt.Fprintf(b, "%s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", et, hv, ivc)
+		fmt.Fprintf(b, "  call void @rt_append_tagged(i32 %s, i32 %s, i32 %s)\n", g.genHandle, el, et)
+	} else {
+		fmt.Fprintf(b, "  call void @rt_append_tagged(i32 %s, i32 %s, i32 %d)\n", g.genHandle, el, int(TagInt))
+	}
 	fmt.Fprintf(b, "  br label %%%s\n", inc)
 	fmt.Fprintf(b, "%s:\n", inc)
 	nv := g.newTmp()
@@ -1001,12 +1012,7 @@ func (g *irGen) stmtYield(b *strings.Builder, st Stmt, n *YieldStmt) error {
 	if g.genHandle == "" {
 		return fmt.Errorf("codegen: yield outside a generator function")
 	}
-	v, err := g.value(b, n.Expr)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, v)
-	return nil
+	return g.genBufferAppend(b, g.genHandle, n.Expr)
 }
 
 // stmtReturn is the road a `return` takes, including the double it has to carry when the
@@ -1487,6 +1493,7 @@ func (g *irGen) callUserFunc(b *strings.Builder, c *Call, fnName string) (string
 		// a generator function returns a runtime heap list handle
 		if g.genFuncs[fnName] {
 			g.listOperands[t] = true
+			g.markGenBuffer(t, fnName)
 		}
 	}
 	return t, nil
