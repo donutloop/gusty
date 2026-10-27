@@ -15532,3 +15532,60 @@ discovery — and it still taught me twice.
    instances of 'NoneType' and 'int'`. They are pinned at exit 0 with the reference's raise beside them, naming
    **Gap R.448**, because the alternative — pinning the raise we do not produce — would make the next cycle's
    green look like the reference's green (**ADR 0166**'s discipline, **ADR 0382**'s message).
+
+## ADR 0427 — a body that answers the void answers it at every door: one verdict, `answersOnlyTheVoid`, asked by the fold (Gap R.388 closed; Gap R.451, Gap R.452 filed, 2026-10-28)
+
+1. **When two roads answer one question, find the road that was already right and make the other ask it.**
+   `print(f())` had always written `None` for `def f(): return None`; `print(f() is None)` wrote `False` at
+   exit 0. The predicate that got it right (`isNoneExpr`, shared by `print`, `str()`/`repr()` and the REPL)
+   already existed, and the comparison fold had simply never been told to ask it — it asked `fdReturnsValue`,
+   i.e. "does the body contain a `return`?", a question whose answer is a property of the TEXT and not of the
+   value. The tempting fix was to widen the pair door (I wrote that first: `isTaggedCompareSide` +
+   `taggedOperand` arms routing the void call through `answerCallPair`). It answered `False` again, from a tag
+   slot no road in that program ever writes, and it left two sources of truth for one value. Deleting it and
+   connecting the fold to the existing verdict is the whole change: one line of permission in
+   `answerKindPlanOf` (record the void verdict for a pair-served body, still take no arms from it) plus two
+   lines in the predicate.
+
+2. **A `continue` that skips a bookkeeping block skips everything in it.** The pass had
+   `if p.carry[name] || pairReturns[name] { continue }`, correct for ARMS (a pair-served body's tag is a
+   run-time word and beats the plan's constant) and wrong for the VERDICT, which is consulted BY NAME by
+   roads that never look at arms. A body whose single arm is a literal is exactly the body the pair road
+   serves, which is how **ADR 0368** could grow its `void` set for years and still miss
+   `def f(): return None`. When a skip protects part of a block, split the block before adding a condition to
+   it — and say which half the skip is for, in the comment.
+
+3. **A fold has to be proven to keep the call, not just to keep the answer.** `r = f() == None` folds to a
+   constant, and a fold that also dropped the call would keep every assertion anybody wrote while destroying
+   the program. The suite therefore counts `call i32 @gy_f()` in `@main` — exactly one — for a body whose
+   `return` is preceded by a `print`, and the negative half is pinned too: no `@rt_payload_eq`, no
+   `@rt_pair_truth`, no `@rt_icmp_values` for an answer the source can name. Bidirectional IR rows are what
+   make "it is still a fold" and "the fold is still a call" separately falsifiable.
+
+4. **A DoD cell is a claim about the toolchain, and an unrun claim rots.** **Gap R.228**'s Definition of done
+   has read "`print(f())` writes `None` on both legs **and `f() is None` is `True`**" since 2026-10-19, and the
+   second half was false for one of its two spellings the entire time, because no test asked the second half.
+   The row's fix was to make its own sentence a test row on both witness legs, and to say so in the roadmap
+   cell. Any time a row's DoD is a program, that program belongs in a table.
+
+5. **Pins move; they do not evaporate.** Four owed rows became answered programs this cycle: the two
+   `Gap R.388` rows in `theVoidOwed()` / `TestWhatTheVoidQuestionStillOwesAtTheCLI`, and the applied-`lambda`
+   pair in `lambdaAnswerOwed` / `lambdaAnswerKindPinned` (`print((lambda: None)() is None)` — the hoist is a
+   `def`, so the row had always been the same bug wearing a different hat). Each was DELETED from its owed
+   table and re-created in the answered family with the reference's bytes, and each answered family also asks
+   the record leg, so a vanished row fails the suite rather than silently improving it.
+
+6. **The control is the row's safety case.** The suite's most valuable rows are the four that must NOT be read
+   as the void: `def f(x): if x: return None; return 1` (which arm ran is a run-time word), a number body
+   asked against `None` and against its own number, and a text body. A widening that reads a multi-arm body as
+   void would print `None` where the program answered `1` — **ADR 0368**'s original defect, reintroduced by a
+   commit that was only about the void. The direct-predicate rows ask `isNoneExpr` and
+   `answerKindPlan.answersOnlyTheVoid` over a parsed program in both directions so a future "helpful" arm fails
+   there, not in a print.
+
+7. **The first shape beyond the fix is the next row, not part of this one.** The battery's four hold-overs are
+   filed with today's bytes and each one's parent bytes: `def g(): return f()` (**Gap R.451**, `answerArmOf`
+   admits `return other(...)` only once OTHER is CARRIED, and a pair-served body is not), `c.m()`
+   (**Gap R.452**, `isNoneExpr` asks `g.fds` and the plan, both keyed by a MODULE-level `def`), the mixed-arm
+   body (standing **Gap R.324**), and `d.pop("a") is None`, pinned AS a refusal at exit 1 (**Gap R.174**) so
+   the row stays honest about which of its shapes is missing an answer and which is declined one.

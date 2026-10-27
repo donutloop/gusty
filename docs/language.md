@@ -1295,13 +1295,25 @@ else:
   void leaves behind, which is also the word an `int` slot carries (**ADR 0172**). The condition
   road (`if x is None:`, `while x is None:`, an `and`/`or` operand) asks that one door too, so a
   value and a test cannot be given different answers about one slot (**ADR 0232**). Folded where
-  the source decides: `print(1 is None)` emits no call at all.
+  the source decides: `print(1 is None)` emits no call at all. A CALL is foldable too, once the
+  compiler can state what its callee answers: a body whose every `return` is the void — spelled
+  `return None` or simply falling off the end — makes `print(f() is None)`, `print(f() == None)`
+  and `print((lambda: None)() is None)` print `True`, the way `print(f())` always printed `None`,
+  because both roads consult the ONE predicate `isNoneExpr` and it reads the answer plan's void
+  verdict (**Gap R.388**, **ADR 0427**). The fold keeps the call: `r = f() == None` still runs `f`,
+  so a body that prints prints (**ADR 0172**), and a body that answers `None` in one arm and a
+  number in another is NOT read as the void — which arm ran is a run-time word.
 - **What the identity question still gets wrong**: `is` asked of a *container* literal is not
   answered by the content door — content equality is the wrong answer for two containers holding
   the same elements — and the shape dies in the assembler instead (`print([1] is [1])`,
-  `Gap R.418`). Of a callee's own parameter (`Gap R.417`) and of a call that answers the void
-  (`Gap R.388`) the question is still answered by the fold, and prints `False` where the reference
-  prints `True`. Asked of the same list under a **second name** it no longer is: `ys = xs` /
+  `Gap R.418`). Of a callee's own parameter (`Gap R.417`) the question is still answered by the
+  fold, and prints `False` where the reference prints `True`. Of a call that ANSWERS the void it
+  is not: `def f():` / `    return None` / `print(f() is None)` and its `==` and applied-`lambda`
+  twins print the reference's `True`, because the fold now asks the one predicate `print`, `str()`
+  and the REPL ask (`isNoneExpr`, which reads `answerKindPlan`'s void verdict — `Gap R.388`,
+  **ADR 0427**). What that row leaves owed is one body deeper: a body that FORWARDS the void answer
+  (`def g(): return f()`, `Gap R.451`) and a METHOD whose body answers it (`Gap R.452`) are still
+  answered from the payload. Asked of the same list under a **second name** it no longer is: `ys = xs` /
   `print(ys.pop(0) is None)` asks the tag, because the record of an object's slots now travels with
   the handle the two names share (`Gap R.415`, **ADR 0412**). Nor is it answered by the fold for the
   item of a `for` **unrolled over a literal list**: `for v in [None, "a"]:` / `print(v is None)` /
@@ -6346,10 +6358,13 @@ print((lambda: f"hi{2}")())    # 0 (and llc refuses the module on the verifying 
 def f(v):
     return v
 print(f((lambda: None)()))     # 0 — Gap R.171: the void crosses a call boundary as the bare word, `def` twins too
-print((lambda: None)() is None)   # still False — Gap R.388: a CALL that answers the void is read as one word
 ```
 
-Each of those five is pinned with today's byte beside the reference's in both `pkg/lang/lambda_answer_test.go` and
+The fifth program that stood in that block — `print((lambda: None)() is None)`, pinned at `False` — answers
+`True` now (**Gap R.388**, **ADR 0427**: the comparison fold asks the same `isNoneExpr` the print road asks) and
+stands in the answered tables of `pkg/lang/void_answer_test.go` and `integration/void_answer_test.go`.
+
+Each of those four is pinned with today's byte beside the reference's in both `pkg/lang/lambda_answer_test.go` and
 `integration/lambda_answer_kind_test.go`, so the day one of them answers it stops being a footnote and fails a case.
 The same question asked of a slot the program built is answered, and is pinned in
 `pkg/lang/the_void_question_test.go` and `integration/the_void_question_test.go`:

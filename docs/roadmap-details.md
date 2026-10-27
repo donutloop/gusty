@@ -17333,7 +17333,7 @@ pinned with today’s byte beside the reference’s (two in `pkg/lang/lambda_ans
 their `llc` sentence), and the interpolation moves when the WALK moves — which is **Gap R.383**’s definition of
 done, whose own DoD is to DELETE a walker rather than to add one.
 
-### Gap R.388 — a void answer compared with None answers False, but only when the body writes `return None`
+### Gap R.388 — a void answer compared with None answers False, but only when the body writes `return None` (✅ CLOSED by **ADR 0427**, found by **ADR 0402**)
 
 ```console
 $ python3 -c 'def f(): return None
@@ -17376,6 +17376,47 @@ and `mixed_answer_kind_test.go` finds nothing. That is the process lesson worth 
 a claim nobody runs is a claim that quietly stops being true. **Gap R.171** owns the same missing word one position
 later (the void crossing a call boundary as the bare `0`, which the `def` twin here also demonstrates through a
 forwarding parameter), and **L11.1** owns the tagged value word that would make the comparison answerable at all.
+
+>
+**Closed 2026-10-28 by ADR 0427.** The verdict was there all along, in the one predicate the print door, `str()`
+and the REPL already ask — `isNoneExpr` — and it was reached by a second road that had no business deciding the
+question alone: the `is`/`==` fold settles "from what the SOURCE says each side is", and to say what a CALL is it
+asked only whether the callee's body has a `return` statement at all. A body that falls off its end has none, so
+the fold called it the void; a body that WRITES `return None` has one, so the fold called it a value and compared
+its payload. The fix is therefore not a new door but one line of permission: `isNoneExpr`'s Call arm asks
+**ADR 0368**'s answer plan (`answersOnlyTheVoid`), and `answerKindPlanOf` — which had been skipping a body whole
+the moment the pair road claimed it (`if p.carry[name] || pairReturns[name] { continue }`) — records the VOID
+verdict for a pair-served body even though it takes no arms from it. That skip is why this row's parent, **ADR
+0368**, could grow the `void` set and still miss the spelling: `def f():` / `    return None` is a one-arm body
+whose arm is a literal, which the pair road serves.
+
+Measured, not asserted: a **40-program battery** of void answers (the four spellings of the question, the void on
+either side of it, the applied and name-bound lambda twins, the `0`/`False`/`1` collisions, the print/str/repr/
+list/dict/bool/membership/bound positions, `if`/`while`/`and`/`or`/ternary/loop bodies, a body whose call prints
+for its effects, a mixed-arm body, an in-place mutation, a method, a forwarding body, a container `pop`) run
+through a `git worktree` build of the parent (`324f5c3`) beside this commit and each asked of the pinned CPython:
+**17 moved to the reference, 19 held byte-for-byte, none moved away**; the 4 that still differ are the pinned rows
+below, byte-identical on the parent. A **9618**-source sweep of the record corpus through the same two builds
+changes **nothing among the 9574 sources already on the record** — the **22** sources whose answer does move are
+all of them sources this row newly recorded, which is the sweep saying the blast radius was one shape and the
+corpus had no other case riding on it (a `0 changed answers` figure quoted over the whole file would have been
+the wrong claim, and is not the one this row makes). `tools/recmerge` wrote **44** entries from the
+reference (**9574 → 9618**) and refused four, which are the pinned owed rows, not records: a forwarded void answer
+(**Gap R.451**), a method's void body (**Gap R.452**), the arm of a body that also answers a number (standing
+**Gap R.324**, named in `comparePair`'s own comment), and a container `pop` over a name, refused exactly as it
+always was (**Gap R.174**).
+
+Four pins MOVED rather than vanished: the two `Gap R.388` rows of `pkg/lang/the_void_question_test.go` /
+`integration/the_void_question_test.go`, and the applied-`lambda` pair of `pkg/lang/lambda_answer_test.go` /
+`integration/lambda_answer_kind_test.go` — `print((lambda: None)() is None)` is the same bug wearing the hoist's
+hat, since the pass turns the `lambda` into a `def`. Each stands in its suite's answered family, where the case
+also asks the record leg, so a row that merely disappeared would fail.
+
+**The process lesson the row filed for itself.** `Gap R.228`'s Definition of done has read "`print(f())` writes
+`None` on both legs **and `f() is None` is `True`**" since 2026-10-19, and the second half of that sentence was
+false for one of its two spellings the whole time. A DoD cell is a claim about the toolchain; a claim no test
+runs is a claim that quietly stops being true, and the only fix is the one this cycle applied — the row's own
+programs became test rows, on both legs, with the record's answer consulted rather than the compiler's.
 
 <a id="gap-r-389--a-call-written-in-an-except-handler-loses-the-frames-trap-catch"></a>
 
@@ -19398,3 +19439,43 @@ the compiler has described to itself all the way to the printer is un-described 
 that ASKS the object has answered since **ADR 0426** opened the membership scan, which localises this to the
 equality door. **ADR 0189** is the door to reach: an item whose recorded kind is list/dict/set/instance is a
 CONTAINER side, its payload is already a handle, and the literal goes through `containerOperand` beside it.
+
+### Gap R.451 — a body that forwards a void answer is not itself read as answering the void (⏳ OPEN, found by **ADR 0427**)
+
+| program | this backend (`324f5c3` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `def f():` / `    return None` / `print(f() is None)` | `True` — exit 0 (paid by **ADR 0427**) | `True` |
+| `def f():` / `    return None` / `def g():` / `    return f()` / `print(g() is None)` | **`False`** — exit 0 | `True` |
+
+One call deeper, the same missing word. `answerBodyPlan` asks `answerArmOf` for every `return` arm, and the arm
+for `return other(...)` is admitted only once `other` is **carried** (`p.carries(nm.Value)`) — **ADR 0368**'s
+fixed-point rule, which exists so an inner frame writes the kind word before an outer caller reads it. A body
+whose every arm is a literal `None` is one of the bodies the PAIR road serves rather than the answer plan carries,
+so `f` is not "carried", `g`'s arm declines, `answerBodyPlan` declines the whole of `g`, and `g` keeps the roads
+this row's parent was filed for. The control that localises it is in the same module: the question asked of `f()`
+directly prints `True`.
+
+This is **ADR 0187**'s collision one call deeper — the void's payload is the word `0`, and the fold decides from
+what the source says, and the source here says `g()` is a call — and it is **L11.1**'s tagged answer word that
+would make the question a run-time fact instead. The fix is named in the row: let a body whose arms are all
+void-answering CALLS inherit the verdict, inside the rounds the plan already runs, and pin that a body carrying any
+OTHER kind may not borrow it. Pinned with today's bytes beside the reference's in
+`pkg/lang/void_answer_test.go::TestWhatTheVoidAnswerStillOwesIsFiledNotFixed`, byte-identical on `324f5c3`.
+
+### Gap R.452 — a method whose body returns None is not read as answering the void (⏳ OPEN, found by **ADR 0427**)
+
+| program | this backend (`324f5c3` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `def f():` / `    return None` / `print(f() is None)` | `True` — exit 0 (paid by **ADR 0427**) | `True` |
+| `class C():` / `    def m(self):` / `        return None` / `c = C()` / `print(c.m() is None)` | **`False`** — exit 0 | `True` |
+
+`isNoneExpr`'s Call arm asks two tables: `g.fds` (the module's `def`s, for the `fdReturnsValue` half) and `g.answer`
+(the plan, for the half this cycle grew). Both are keyed by a MODULE-level function name. A method's body is in
+neither — the class's own table is, which is the same one-question-two-tables split **ADR 0366** recorded for
+`strFuncs`/`methodReturnsStr` and **ADR 0368** for the answer plan. So the predicate never hears that the body
+answers nothing but the void, and the fold answers from the payload.
+
+The sibling pinned beside it is a REFUSAL, deliberately not folded into this row: `d = {"a": 1}` /
+`print(d.pop("a") is None)` stops the build at **exit 1** with **Gap R.174**'s container-method-over-a-name sentence
+where the reference prints `False`. Pinning a refusal as a refusal (exit 1, exit 2 forbidden, **ADR 0166**) is what
+keeps the row honest about which of its shapes is missing and which is declined.

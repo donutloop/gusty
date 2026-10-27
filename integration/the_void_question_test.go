@@ -24,7 +24,8 @@ import (
 //
 // The measurement, with a build of the parent commit `af8b847` beside a build of this one, over the programs
 // these two files carry: **17 of them moved to the reference's answer and none moved away from it**; 11 controls
-// held on both builds; 6 still differ and are rows — **Gap R.388** (a call that answers the void), **Gap R.415**
+// held on both builds; 6 differed and are rows — **Gap R.388** (a call that answers the void, SINCE PAID
+// by **ADR 0426**'s sibling **ADR 0427** and moved into the family above), **Gap R.415**
 // (the same list under a second name, SINCE PAID by **ADR 0412** and moved to `theAliasAnswered()`'s family in
 // `the_alias_shares_the_record_test.go`), **Gap R.416** (a loop item over a literal), **Gap R.417** (a callee's own
 // parameter) and **Gap R.418** (identity against a container literal, which reaches the assembler and dies).
@@ -69,6 +70,9 @@ func voidQuestionFamily() []struct {
 		{"a name the pair road bound", "xs = [None, \"a\"]\nn = xs[0]\nprint(n is None)\nif n is None:\n    print(\"y\")\n", "True\ny\n"},
 		{"a written void", "print(None is None)\nprint(None is not None)\n", "True\nFalse\n"},
 		{"a void bound to a name", "x = None\nprint(x is None)\n", "True\n"},
+		// The answer of a body that writes `return None`, moved out of the owed table by **ADR 0427**: it
+		// had pinned `False` `False` where the reference prints `True` `True`.
+		{"the answer of a body that writes return None", "def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n", "True\nTrue\n"},
 		// The literal spellings (`print(1 is None)`) are the unit suite's fold controls; a live CPython
 		// answers them with a SyntaxWarning on stderr, so the reference leg asks them of names instead.
 		{"the void asked of literals", "x = 1\ns = \"a\"\nprint(x is None)\nprint(s is None)\nprint([1] == None)\n", "False\nFalse\nFalse\n"},
@@ -217,11 +221,6 @@ func TestTheVoidQuestionsRefusalsAreMachineReadable(t *testing.T) {
 func TestWhatTheVoidQuestionStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name: "a call that answers the void", gap: "Gap R.388",
-			src:    "def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n",
-			python: "True\nTrue\n", compiled: "False\nFalse\n",
-		},
 		{
 			name: "a callee's own parameter", gap: "Gap R.417",
 			src:    "def f(v):\n    return v is None\nprint(f(None))\nprint(f(1))\n",

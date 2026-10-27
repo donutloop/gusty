@@ -3268,6 +3268,46 @@ falls back to dynamic dispatch.
   `if s == None:` prints `void`), and **Gap R.450** (an item whose kind is a container, compared with a
   container literal, is refused where the reference answers).
 
+- **A body that answers the void answers it at every door (Gap R.388, **ADR 0427**)** — `def f():` /
+  `    return None` / `print(f())` wrote **`None`**, and the line beside it wrote **`False`** for
+  `print(f() is None)` and **`False`** for `print(f() == None)`, both at the **exit code of success**,
+  where the reference prints `True` twice — while the very same body spelled `def f():` / `    pass`
+  printed `True`. One value, two spellings, three answers. The print road, `str()`/`repr()` and the REPL
+  all consult ONE predicate, `isNoneExpr`; the `is`/`==` road consulted a DIFFERENT one, asking only
+  whether the callee's body has a `return` statement at all (`fdReturnsValue`). A body that falls off its
+  end has none and was read as the void; a body that WRITES `return None` has one, so the fold called it
+  a value and compared its payload — the word `0`, which is also the word an `int` slot legally carries
+  (**ADR 0187**) — against nothing. The fix is one line of permission in the plan rather than a new door:
+  `answerKindPlanOf` had been skipping a body whole the moment the pair road claimed it
+  (`if p.carry[name] || pairReturns[name] { continue }`), and a body whose every arm answers `None` is
+  exactly such a body — it now records the VOID verdict while still taking no arms from it, and
+  `isNoneExpr`'s Call arm asks `answersOnlyTheVoid` before the older answer (**ADR 0368**, **ADR 0232**).
+  No comparison road was widened: the pair-door route was tried, answered `False` a second time from a
+  tag slot this program never reaches, and was deleted. The fold stays a fold and keeps the CALL —
+  `r = f() == None` still emits `call i32 @gy_f()` exactly once, so `def f():` / `    print("side")` /
+  `    return None` still prints `side` (**ADR 0172**), and a body answering `None` in one arm and `1` in
+  another is never read as the void. `pkg/lang/void_answer_test.go` NEW (**23** answered programs judged
+  on the compiled leg AND the record leg, **13** position rows — `if`, a negated `if`, `while`, both
+  short-circuits, a ternary, a loop element, a folded answer that prints its side effect, the answer used
+  twice, plus the controls that must NOT be read as the void — **4** print-and-compare parity rows,
+  **7** rows asking `isNoneExpr` and the plan DIRECTLY over a parsed program in both directions, **3** IR
+  rows, **4** filed-not-fixed) and `integration/void_answer_test.go` NEW (**35** CLI rows whose expectation
+  is read off a live `python3` in the same case, **7** exit-code rows, **1** machine-readable refusal row,
+  **3** owed rows pinned beside the reference). Four pins MOVED rather than vanished: the two
+  `Gap R.388` rows in `pkg/lang/the_void_question_test.go` and `integration/the_void_question_test.go`, and
+  the applied-`lambda` pair in `pkg/lang/lambda_answer_test.go` and `integration/lambda_answer_kind_test.go`
+  — each DELETED from its owed table and standing in the answered family with the reference's bytes.
+  A **40-program battery** beside a `git worktree` build of the parent (`324f5c3`, **ADR 0426**) reports
+  **17 moved to the reference, 19 held byte-for-byte, none moved away**, the 4 that still differ being the
+  pinned rows; a **9618**-source sweep of the record corpus through the same two builds changes
+  **nothing among the 9574 sources already on the record** — the **22** whose answer moves are all sources this
+  row newly recorded, which is the sweep saying the blast radius was one shape and no more. `tools/recmerge` wrote **44** entries from the reference with the compiled leg
+  cross-checked (**9574 → 9618**) and refused the four whose compiled leg disagrees, which are rows and not
+  records: **Gap R.451** (a body that FORWARDS the void answer — `def g(): return f()`), **Gap R.452** (a
+  METHOD whose body answers the void — `c.m() is None`), the arm of a body that also answers a number
+  (standing **Gap R.324**) and a container `pop` over a name, refused exactly as it always was
+  (**Gap R.174**).
+
 - **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
   the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
   **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all

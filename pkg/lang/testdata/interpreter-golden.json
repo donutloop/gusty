@@ -1,5 +1,221 @@
 {
  "entries": {
+"print((lambda: None)() is not None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+"def f(x):\n    if x:\n        return None\n    return 1\nprint(f(True), f(False))\n": {
+    "stdout": "None 1\n",
+    "hasStdout": true
+   },
+"def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"print((lambda: None)() is None)\nprint((lambda: None)() == None)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+"def f():\n    pass\nprint(f() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    pass\nprint(f(), f() == None)\n": {
+    "stdout": "None True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    print(\"side\")\n    return None\nr = f() == None\nprint(r)\n": {
+    "stdout": "side\nTrue\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"s\"\nprint(f() == None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1\nprint(f() == 1)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1\nprint(f() == None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 2\nprint(f(), f() == None)\n": {
+    "stdout": "2 False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nfor v in [f()]:\n    print(v is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nif f() != None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nif f() == None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nif f() is None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(1 if f() is None else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(None == f())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(None is f())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint([f()])\n": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(bool(f()))\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() != None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == 0)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == 1)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == False)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == None, f() == None)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() == f())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() in [None])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() is None and \"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() is None or \"t\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f() is not None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f(), f() != None, f() is not None)\n": {
+    "stdout": "None False False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(f(), f() == None, f() is None)\n": {
+    "stdout": "None True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint(str(f()), repr(f()))\n": {
+    "stdout": "None None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nprint({\"k\": f()})\n": {
+    "stdout": "{'k': None}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nr = f()\nprint(r is None, r)\n": {
+    "stdout": "True None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\nwhile f() is None:\n    print(\"once\")\n    break\n": {
+    "stdout": "once\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return None\nprint(f(1) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"g = lambda: None\nprint(g() == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: None)() == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((lambda: None)() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\nprint(xs.append(2) is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "s = {1, 2}\nfor k in [1.5]:\n    s.discard(k)\nprint(len(s))\n": {
     "stdout": "2\n",
     "hasStdout": true

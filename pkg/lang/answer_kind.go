@@ -138,11 +138,23 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 	for pass := 0; pass < 6; pass++ {
 		grew := false
 		for _, name := range order {
-			if p.carry[name] || pairReturns[name] {
-				continue
-			}
 			arms, voidOnly, ok := answerBodyPlan(fds[name], p)
 			if !ok {
+				continue
+			}
+			if pairReturns[name] {
+				// The pair road carries this body's answer, so no arm is taken from here — but the VOID
+				// verdict still is. `def f():` / `    return None` is one of these: the pair road serves it,
+				// and the print, truth and compare doors ask `answersOnlyTheVoid` BY NAME. Skipping the whole
+				// body for a pair-served name left that question unanswered for exactly the bodies whose
+				// payload is the word 0, which is how one program answered `None` to the printer and a number
+				// to `==` (roadmap **Gap R.388**, **Gap R.228**'s Definition of done).
+				if voidOnly {
+					p.void[name] = true
+				}
+				continue
+			}
+			if p.carry[name] {
 				continue
 			}
 			p.carry[name] = true

@@ -35,6 +35,11 @@ func lambdaAnswerKindPrograms() []struct{ name, src string } {
 		{"the row: a verdict", "print((lambda: True)())\n"},
 		{"the other verdict", "print((lambda: False)())\n"},
 		{"the void", "print((lambda: None)())\n"},
+		// The same answer asked against the void: **Gap R.388**, paid by **ADR 0427** — the comparison fold asks
+		// the one predicate the print road asks, so one `lambda` cannot be answered twice. The pin these rows
+		// replace is DELETED, not edited.
+		{"the void compared with None", "print((lambda: None)() is None)\n"},
+		{"the void compared with None, equality spelling", "print((lambda: None)() == None)\n"},
 		{"a text", "print((lambda: \"hi\")())\n"},
 		{"the verdict bound to a name", "v = (lambda: True)()\nprint(v)\n"},
 		{"the text bound to a name, then measured and cased", "t = (lambda: \"hi\")()\nprint(t, len(t), t.upper())\n"},
@@ -122,12 +127,8 @@ func lambdaAnswerKindPinned() []struct {
 			"Gap R.331",
 		},
 		{
-			"a void answer compared with None answers False (the `def` twin does too)",
-			"print((lambda: None)() is None)\n",
-			"False\n",
-			"Gap R.388",
-		},
-		{
+			// Gap R.388 is PAID — **ADR 0427** — and the pin that stood here is DELETED rather than edited: the
+			// program prints the reference's `True` and stands in the answered family above.
 			"the void handed to a forwarding parameter answers the digit 0 (Gap R.171's, not this row's)",
 			"def f(v):\n    return v\n\nprint(f((lambda: None)()))\n",
 			"0\n",

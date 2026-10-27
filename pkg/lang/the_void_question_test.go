@@ -45,7 +45,8 @@ import (
 // `af8b847` run beside a build of this one and every program asked of the pinned CPython: **17 moved to the
 // reference's answer, 11 controls held, 6 still differ, none moved away from the reference**. Five of the six
 // that differ are identical on the parent build, which is what makes them rows rather than regressions: a call
-// that answers the void and is then compared with it is **Gap R.388**'s standing row; a callee's own parameter
+// that answers the void and is then compared with it has since been PAID — `def f():` / `    return None` /
+// `print(f() is None)` asks **ADR 0427**'s answer plan and prints `True` (**Gap R.388**); a callee's own parameter
 // (**Gap R.417**) is a door this one did not reach. The unrolled loop item over a literal list — the third of
 // those six, filed against this row as **Gap R.416** — has since been PAID: **ADR 0426** reads the unroll's
 // per-item record at `isTaggedCompareSide`/`taggedOperand`, and its two programs stand in the family below.
@@ -108,6 +109,10 @@ func theVoidAnswered() []struct {
 		// Controls: what the fold still decides statically, with no call emitted.
 		{"a written void", "print(None is None)\nprint(None is not None)\n", "True\nFalse\n"},
 		{"a void bound to a name", "x = None\nprint(x is None)\n", "True\n"},
+		// The answer of a body that WRITES `return None`: the print road had always read it as the void and
+		// the source-side fold had not (**Gap R.388**, **ADR 0427**, **Gap R.228**'s Definition of done).
+		{"the answer of a body that writes return None", "def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n", "True\nTrue\n"},
+		{"the applied-lambda twin of that answer", "print((lambda: None)() is None)\nprint((lambda: None)() == None)\n", "True\nTrue\n"},
 		{"the void asked of literals", "print(1 is None)\nprint(\"a\" is None)\nprint([1] == None)\n", "False\nFalse\nFalse\n"},
 		{"identity between numbers", "n = 1\nprint(n is 1)\nprint(n is not 1)\n", "True\nFalse\n"},
 		{"a single-kind list keeps its road", "xs = [7, 8, 9]\nprint(xs.pop(0) is None)\nprint(xs.pop(0) == 8)\n", "False\nTrue\n"},
@@ -263,17 +268,6 @@ func theVoidOwed() []struct {
 		python   string
 		why      string
 	}{
-		{
-			name:     "a call that answers the void, compared with it",
-			src:      "def f():\n    return None\nprint(f() is None)\nprint(f() == None)\n",
-			gap:      "Gap R.388",
-			compiled: "False\nFalse\n",
-			python:   "True\nTrue\n",
-			why: "the `answerKindPlan` void set records a body that has NO return, and a body that SPELLS " +
-				"`return None` is registered as an answer that carries a kind — so the source-side fold decides it " +
-				"is not the void. Standing row, identical on the parent build; the pair door this row opened reaches " +
-				"it the moment the callee's answer is read as a (payload, tag) pair",
-		},
 		{
 			// The two **Gap R.416** rows that stood here are DELETED, not edited: **ADR 0426** reads the
 			// unroll's per-item record at the compare door, and both programs now print the reference's bytes

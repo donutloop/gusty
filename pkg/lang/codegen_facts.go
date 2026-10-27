@@ -327,6 +327,16 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 				// Gap R.228, ADR 0368).
 				return false
 			}
+			if g.answer.answersOnlyTheVoid(nm.Value) {
+				// Every arm of the body answers the void — `def f():` / `    return None` — which the answer
+				// plan now records for the pair-served bodies too. This predicate has always answered for the
+				// body that FALLS OFF ITS END (`fdReturnsValue`, the line below), and the explicit spelling was
+				// the one it missed: the void's payload is the word `0`, so `print(f())` said `None` here and
+				// `print(f() is None)` said `False` one line later, under the fold that decides the question
+				// from what the SOURCE says each side is (roadmap **L11.1**, **Gap R.228**'s Definition of done,
+				// **Gap R.388**; the same one-predicate rule **ADR 0232** states).
+				return true
+			}
 			if fd, ok2 := g.fds[nm.Value]; ok2 && !fdReturnsValue(fd) {
 				return true
 			}

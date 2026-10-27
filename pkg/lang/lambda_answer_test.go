@@ -90,6 +90,13 @@ func lambdaAnswerPrograms() []lambdaAnswerRow {
 		{"an applied lambda that answers a verdict answers the verdict", "print((lambda: True)())\n", "True\n"},
 		{"the other verdict", "print((lambda: False)())\n", "False\n"},
 		{"an applied lambda that answers None answers None", "print((lambda: None)())\n", "None\n"},
+		// The same answer asked the NEXT question — `is`/`==`/`is not` against the void — which is the shape
+		// **Gap R.388** filed and **ADR 0427** paid: the comparison fold now asks the one predicate `print`,
+		// `str()` and the REPL already ask (`isNoneExpr`), so the print road and the compare road cannot give one
+		// applied `lambda` two answers (**ADR 0232**). The pin this trio replaces is DELETED, not edited.
+		{"a void answer compared with None answers the void", "print((lambda: None)() is None)\n", "True\n"},
+		{"the same answer's equality twin", "print((lambda: None)() == None)\n", "True\n"},
+		{"the same answer's negated identity", "print((lambda: None)() is not None)\n", "False\n"},
 		{"an applied lambda that answers a text answers the text", "print((lambda: \"hi\")())\n", "hi\n"},
 		{"the verdict bound to a name", "x = (lambda: True)()\nprint(x)\n", "True\n"},
 		{"the text bound to a name", "x = (lambda: \"hi\")()\nprint(x)\n", "hi\n"},
@@ -292,23 +299,10 @@ func lambdaAnswerOwed() []lambdaAnswerOwedRow {
 			today: "use of undefined value '@rt_str_intern2'",
 			gap:   "Gap R.387, Gap R.333",
 		},
-		// Gap R.388 — the void SPELLED as `return None` is not the void reached by falling off the end. A body
-		// with no `return` stores the run-time kind word and `f() is None` answers True; a body that writes
-		// `return None` stores nothing, so `is`/`==` compare the payload `0` against None and answer False at
-		// exit 0. Roadmap Gap R.228's own Definition of done reads “`print(f())` writes `None` on both legs and
-		// `f() is None` is `True`” — the first half holds for both spellings, the second holds only for the
-		// fall-off-the-end one, and no test asked the question, which is how a DoD cell came to state an answer
-		// the toolchain does not give. The lambda spelling below is the same program with the hoist in front of
-		// it, which is why it is measured here; its `def` twin answers False too (the parity row in
-		// `lambdaAnswerFiledNotFixed`), so the row belongs to the comparison door and not to this pass.
-		{
-			name:  "a void answer compared with None answers False (the `def` twin does too)",
-			src:   "print((lambda: None)() is None)\n",
-			want:  "True\n",
-			mode:  "prints",
-			today: "False\n",
-			gap:   "Gap R.388",
-		},
+		// Gap R.388 — PAID by **ADR 0427**: the row that stood here (`print((lambda: None)() is None)`, pinned at
+		// `False` beside the reference's `True`) is DELETED rather than edited, and stands with the reference's
+		// bytes in the answered table above.
+		//
 		// Gap R.386 — the gate this row left shut: a body that READS the enclosing frame stays on the
 		// closure road, and the closure road has no container answer, so the program dies with the literal
 		// builder's own sentence, which names no callable and no row (ADR 0166, ADR 0345 §3).
