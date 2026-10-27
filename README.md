@@ -3308,6 +3308,37 @@ falls back to dynamic dispatch.
   (standing **Gap R.324**) and a container `pop` over a name, refused exactly as it always was
   (**Gap R.174**).
 
+- **A body that FORWARDS the void answers the void (Gap R.451, **ADR 0428**)** — `def f():` /
+  `    return None` / `def g():` / `    return f()` / `print(g() is None)` printed **`False`** at **exit 0**
+  where the reference prints `True`, and the line that makes it a defect rather than a cosmetic gap printed
+  **`True`** for `print(g() == 0)`: the fold was comparing the void's payload — the word `0`, which an `int`
+  slot legally carries (**ADR 0187**) — while the printer beside it wrote `None` (**ADR 0232**'s two doors,
+  one value). **ADR 0427** had connected the fold to the answer plan, and the verdict stopped at the callee's
+  own name: `answerArmOf` admits a `return other(...)` arm only once `other` is CARRIED (**ADR 0368**'s
+  fixed-point rule, so an inner frame writes its kind word before an outer caller reads it), and a void-only
+  callee is served by the PAIR road and never carried — so `g`'s arm declined, `answerBodyPlan` declines a body
+  with any un-nameable arm, and `g` kept the roads **Gap R.388** was filed for. The fix is the row's own
+  prescription, in the arm: ask `answersOnlyTheVoid` BEFORE the carried-only rule and answer the CONSTANT
+  `answerWordNone` instead of forwarding a word, because a body whose every road answers `None` has no word for
+  the outer frame to wait on. The call survives — `@gy_g` carries exactly one `call i32 @gy_f()`, a folded
+  comparison still calls `@gy_g` once, so `def g():` / `    print("side")` / `    return f()` prints `side`
+  (**ADR 0172**) — the self-call exclusion holds (**ADR 0273**), and a body forwarding a number, a text, a
+  verdict or a container is a control, asserted from its module to store no answer word at all. Two shapes the
+  parent REFUSED with *"answers …(), whose own answer carries a kind word this door declined"* now print the
+  reference's `True`: `f = lambda: None` above `def g(): return f()`, and the mutual pair `def a():` /
+  `    return b()` / `def b():` / `    return None`. `pkg/lang/void_forward_test.go` NEW (**24** answered
+  programs on the compiled leg AND the record leg, **10** position rows with their own controls, **8** rows
+  asking `answerKindPlanOf` directly in both directions, **3** IR rows, **4** filed-not-fixed) and
+  `integration/void_forward_test.go` NEW (**34** CLI programs read off a live `python3`, **6** exit-code rows,
+  **1** machine-readable refusal, **3** owed pins). A **32-program battery** beside a `git worktree` build of
+  the parent (`93f3404`, **ADR 0427**): **15 moved to the reference, 13 held byte-for-byte, none moved away**;
+  a **9618**-source sweep of the record corpus through both builds reports **0 changed answers** — the corpus
+  had no case that forwards a void answer, which is why `tools/recmerge` wrote **34** entries from the reference
+  (**9618 → 9652**, none refused; the parent was right for 15 of them, wrong for **17** and refused **2**). The
+  two `Gap R.451` pins MOVED from the `void_answer` owed tables into the answered families rather than vanishing,
+  and what the same battery left owed is pinned with bytes: a mixed-arm callee (**Gap R.324**, standing), a
+  forwarded PARAMETER (**Gap R.417**, standing) and a METHOD's body (**Gap R.452**).
+
 - **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
   the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
   **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all

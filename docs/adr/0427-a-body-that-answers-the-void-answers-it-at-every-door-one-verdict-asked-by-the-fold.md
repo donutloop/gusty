@@ -20,9 +20,9 @@ had ever been told the answer. `print(f())` wrote `None`, correctly, for both sp
 while the spelling that falls off its end wrote `True`. The two shapes of the same value, decided by whether a
 statement exists in a body.
 
-Two rows filed from the same probe, neither bought: **Gap R.451** (a body that FORWARDS a void answer —
-`def g(): return f()` — is not itself read as answering the void) and **Gap R.452** (a METHOD whose body returns
-`None`). A third shape, the arm of a body whose other arm answers a number, stays **Gap R.324**'s standing row, and
+Two rows filed from the same probe, neither bought here: **Gap R.451** (a body that FORWARDS a void answer —
+`def g(): return f()` — is not itself read as answering the void, **since PAID by ADR 0428**) and **Gap R.452**
+(a METHOD whose body returns `None`). A third shape, the arm of a body whose other arm answers a number, stays **Gap R.324**'s standing row, and
 a container `pop` over a name stays **Gap R.174**'s refusal — both pinned as what they are.
 
 ## Context
@@ -107,12 +107,14 @@ counts `call i32 @gy_f()` exactly once in `@main` (**ADR 0172**'s "both operands
   **4** controls that must NOT be read as the void (a two-arm body, a number body, a text body, and the same
   number body asked its own question); **4** print-and-compare parity rows;
   **7** rows asking `isNoneExpr` and the plan DIRECTLY over a parsed program, in both directions — plan-void ⇒
-  predicate-void, and predicate-void ⇒ plan-void OR no `return` at all; **3** IR rows; **4** filed-not-fixed pins.
+  predicate-void, and predicate-void ⇒ plan-void OR no `return` at all; **3** IR rows; **4** filed-not-fixed pins —
+  of which one, the forwarded void answer, has since moved to **ADR 0428**'s answered family, leaving **3**.
 - `integration/void_answer_test.go` (NEW): **35** programs of the family through the CLI with every expectation
   read off the live `python3` in the same case (a reference that stopped printing what the row pins fails too),
   the record-leg audit beside it (**ADR 0302**), a **7**-row exit-code table (no answer spends exit 2, no refusal
   is silently answered, no sentence leaks `*lang.`/`%!s(`/`__cans`/`0x`), one machine-readable refusal row for
-  the container `pop` (**ADR 0006**, **ADR 0346**), and **3** owed rows pinned beside the reference's bytes.
+  the container `pop` (**ADR 0006**, **ADR 0346**), and **3** owed rows pinned beside the reference's bytes (the
+  forwarded-void pin beside them moved to **ADR 0428**'s answered family the next cycle).
 - Pins MOVED rather than deleted: the `Gap R.388` rows in `pkg/lang/the_void_question_test.go` and
   `integration/the_void_question_test.go` leave the owed tables for `theVoidAnswered()` /
   `voidQuestionFamily()`, with the applied-lambda twin beside them, and the same happened to the applied-`lambda`
@@ -139,9 +141,9 @@ counts `call i32 @gy_f()` exactly once in `@main` (**ADR 0172**'s "both operands
 - `answerKindPlan` is now consulted by roads that take no arms from it. Anything that reads `p.void` may no longer
   assume "void ⇒ carried"; the two rows that read it (`isNoneExpr`, `order_kind.go`) were both read before this
   landed, and the direct-AST rows pin the pairing.
-- Three shapes stay owed and are now pinned with bytes, so the next cycle fails a test rather than a hope: a
-  forwarded void answer (**Gap R.451**), a method's void body (**Gap R.452**), and the arm of a body that also
-  answers a number (**Gap R.324**).
+- Three shapes stayed owed and were pinned with bytes, so the next cycle fails a test rather than a hope: a
+  forwarded void answer (**Gap R.451**, PAID the next cycle by **ADR 0428**), a method's void body
+  (**Gap R.452**), and the arm of a body that also answers a number (**Gap R.324**).
 - A DoD sentence in `roadmap.md` is now backed by the tests it describes. **Gap R.228**'s cell keeps its wording; it
   simply became true.
 

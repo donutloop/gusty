@@ -1,5 +1,174 @@
 {
  "entries": {
+"def a():\n    return b()\ndef b():\n    return None\nprint(a() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    print(\"inner\")\n    return None\ndef g():\n    return f()\nr = g() == None\nprint(r)\n": {
+    "stdout": "inner\nTrue\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return \"s\"\ndef g():\n    return f()\nprint(g(), g() == None, g() == \"s\")\n": {
+    "stdout": "s False True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1\ndef g():\n    return f()\nif g() == None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1\ndef g():\n    return f()\nprint(g(), g() == None, g() == 1)\n": {
+    "stdout": "1 False True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    print(\"side\")\n    return f()\nr = g() == None\nprint(r)\n": {
+    "stdout": "side\nTrue\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\ndef h():\n    return g()\ndef i():\n    return h()\nprint(i() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\ndef h():\n    return g()\nprint(h() is None, h(), bool(h()))\n": {
+    "stdout": "True None False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nfor v in [g()]:\n    print(v is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nif g() != None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "n\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nif g() is None:\n    print(\"y\")\nelse:\n    print(\"n\")\n": {
+    "stdout": "y\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(1 if g() is None else 0)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(None == g())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(None is g())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint([g()], {1: g()}, bool(g()))\n": {
+    "stdout": "[None] {1: None} False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() != None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() == 0, g() == False, g() == 1)\n": {
+    "stdout": "False False False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() == None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() == None, g() == None)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() in [None])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() is None and \"t\")\n": {
+    "stdout": "t\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g() is not None)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g())\n": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(g(), g() == None, g() is None)\n": {
+    "stdout": "None True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nprint(str(g()), repr(g()))\n": {
+    "stdout": "None None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nr = g()\nprint(r is None, r)\n": {
+    "stdout": "True None\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g():\n    return f()\nwhile g() is None:\n    print(\"once\")\n    break\n": {
+    "stdout": "once\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g(x):\n    if x:\n        return f()\nprint(g(True), g(False), g(True) is None, g(False) is None)\n": {
+    "stdout": "None None True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return None\ndef g(x):\n    return f()\nprint(g(1) is None, g(2) == None)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return True\ndef g():\n    return f()\nif g():\n    print(\"yes\")\nelse:\n    print(\"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return True\ndef g():\n    return f()\nprint(g(), g() is None, bool(g()))\n": {
+    "stdout": "True False True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\ndef g():\n    return f()\nprint(g())\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"f = lambda: None\ndef g():\n    return f()\nprint(g() is None)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "print((lambda: None)() is not None)\n": {
     "stdout": "False\n",
     "hasStdout": true

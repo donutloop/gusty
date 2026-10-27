@@ -19440,7 +19440,7 @@ that ASKS the object has answered since **ADR 0426** opened the membership scan,
 equality door. **ADR 0189** is the door to reach: an item whose recorded kind is list/dict/set/instance is a
 CONTAINER side, its payload is already a handle, and the literal goes through `containerOperand` beside it.
 
-### Gap R.451 — a body that forwards a void answer is not itself read as answering the void (⏳ OPEN, found by **ADR 0427**)
+### Gap R.451 — a body that forwards a void answer is not itself read as answering the void (✅ CLOSED by **ADR 0428**, found by **ADR 0427**)
 
 | program | this backend (`324f5c3` and this commit) | reference (CPython 3.12.3) |
 |---|---|---|
@@ -19461,6 +19461,35 @@ would make the question a run-time fact instead. The fix is named in the row: le
 void-answering CALLS inherit the verdict, inside the rounds the plan already runs, and pin that a body carrying any
 OTHER kind may not borrow it. Pinned with today's bytes beside the reference's in
 `pkg/lang/void_answer_test.go::TestWhatTheVoidAnswerStillOwesIsFiledNotFixed`, byte-identical on `324f5c3`.
+
+>
+**Closed 2026-10-28 by ADR 0428.** The row's own prescription is what shipped, in the arm rather than in the
+fold: `answerArmOf`'s `*Call` case now asks `p.answersOnlyTheVoid(nm.Value)` BEFORE the carried-only rule that
+declined the shape, and answers the CONSTANT `answerWordNone` instead of forwarding a word. The carried-only rule
+exists so an inner frame writes its kind word before an outer caller reads it, and a void-only callee has no such
+word to wait on — every road of it answers `None` — so the ordering argument does not apply to it, and the arm
+that respected the rule for it was the bug. Two things the row insisted on are asserted rather than hoped: the
+forwarding body still EMITS its call (`@gy_g` carries exactly one `call i32 @gy_f()`, and a folded comparison
+still calls `@gy_g` once, so `def g():` / `    print("side")` / `    return f()` prints `side`), and a body that
+carries any OTHER kind may not borrow the verdict (a forwarded number, text, verdict and container are controls,
+and a body forwarding a number stores no answer word at all — the control is asserted from the module, not from
+the print). The self-call exclusion (**ADR 0273**) keeps its own direct-AST row.
+
+Measured, not asserted: a **32-program battery** beside a `git worktree` build of the parent (`93f3404`,
+**ADR 0427**) and the pinned CPython — **15 moved to the reference, 13 held byte-for-byte, none moved away**; the
+4 that still differ are pinned rows and byte-identical on the parent. A **9618**-source sweep of the record corpus
+through both builds reports **0 changed answers**: the corpus had no pre-existing case that forwards a void answer,
+which is why the coverage is the new records and the sweep is only the safety claim (**ADR 0302**). Of the **34**
+sources this row newly recorded (**9618 → 9652**, none refused), the parent printed the reference's bytes for 15,
+answered wrongly for **17**, and REFUSED **2** outright (`f = lambda: None` above `def g(): return f()`, and the
+mutual pair `def a(): return b()` / `def b(): return None`, both dead with *"answers …(), whose own answer carries
+a kind word this door declined"*).
+
+Two pins moved rather than vanished: the `Gap R.451` row of `pkg/lang/void_answer_test.go::TestWhatTheVoidAnswerStillOwesIsFiledNotFixed`
+and its CLI twin in `integration/void_answer_test.go` are DELETED and stand in the answered families of
+`pkg/lang/void_forward_test.go` and `integration/void_forward_test.go`. What the same measurement left owed is
+pinned with bytes beside each other: a mixed-arm callee (**Gap R.324**, standing), a forwarded PARAMETER
+(**Gap R.417**/**Gap R.171**, standing) and a METHOD's body (**Gap R.452**, the sibling below).
 
 ### Gap R.452 — a method whose body returns None is not read as answering the void (⏳ OPEN, found by **ADR 0427**)
 

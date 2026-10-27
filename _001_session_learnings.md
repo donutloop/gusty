@@ -15589,3 +15589,44 @@ discovery — and it still taught me twice.
    (**Gap R.452**, `isNoneExpr` asks `g.fds` and the plan, both keyed by a MODULE-level `def`), the mixed-arm
    body (standing **Gap R.324**), and `d.pop("a") is None`, pinned AS a refusal at exit 1 (**Gap R.174**) so
    the row stays honest about which of its shapes is missing an answer and which is declined one.
+
+## ADR 0428 — a body that FORWARDS the void answers the void: ask the arm before the rule that would decline it (Gap R.451 closed; the sibling Gap R.452 open, 2026-10-28)
+
+1. **A rule that exists to order two writes has nothing to say about a value with one answer.** The
+   carried-only rule in `answerArmOf` is **ADR 0368**'s fixed-point discipline: `return other(...)` may forward
+   a kind word only once `other` is carried, so the inner frame writes before the outer caller reads. Applying it
+   to a void-only callee was correct-by-analogy and wrong in fact — a body whose every road answers `None` has
+   exactly one word, and it is a constant. The fix was not to weaken the rule but to notice which of its cases it
+   was never meant to cover, and to ask the void question *before* it. When a fixed-point rule refuses your
+   shape, ask what the rule is protecting before you widen it: sometimes the answer is "nothing, here".
+
+2. **The second frame is where a whole-program verdict is actually tested.** **ADR 0427** shipped a verdict that
+   was right about `f()` and silent about `g()` — and its own suite passed, because every row asked the question
+   at the callee's own name. One `def g(): return f()` turns "the plan knows" into "the plan knows one level
+   deep". A feature whose claim is *whole-program* needs a row that is two levels deep, and a battery that counts
+   what the parent refused: two of this row's programs (`f = lambda: None` above a forwarder, and the mutual
+   `a → b → None` pair) died with a refusal sentence on the parent and print `True` now — a fact only a
+   parent-built binary reveals.
+
+3. **The reference's answer to the collision question is the one worth pinning.** `print(g() == 0)` printed
+   `True` — that is the row's evidence, more damning than `print(g() is None)` printing `False`, because it shows
+   the fold not merely refusing to know the void but actively calling it an integer. When a family has several
+   wrong answers, the one that contradicts a sibling door in the same program is the one to lead the ADR with
+   (**ADR 0232**'s one-question rule made visible).
+
+4. **A control asserted from the module beats a control asserted from the print.** "Forwarding a number is not
+   forwarding the void" is asserted by reading `@gy_g`'s body and requiring that it store NO answer word at all —
+   so a future widening that prints the right bytes for the wrong reason still fails. Paired with the positive
+   row (`store i32 3, i32* @gy_g.anst` present, `call i32 @gy_f()` exactly once), the pair says both that the
+   verdict is stored and that it is stored only where it is earned.
+
+5. **A pinned refusal is a row's honesty about its own boundary.** `xs = []` / `def g():` / `    return xs.clear()`
+   stays an exit-1 refusal with **Gap R.35**'s sentence, and the machine-readable row asserts the phase, the exit
+   and the row name rather than a capability code — because the door has a sentence of its own, and minting a
+   second name for one shape is how a capability table rots (**ADR 0166**, **ADR 0346**).
+
+6. **Records are counted, so this cycle's 34 additions were a documentation change too**: `AGENTS.md`, the
+   `docs/operations.md` artifact table and the `roadmap.md` snapshot (9618 → 9652), `Rows owed 209 → 208`, ADR
+   count 417 → 418 — all recomputed by `golden_artifact_counts_test.go` and `roadmap_snapshot_test.go`, which is
+   **Gap R.204** doing its job. The two `Gap R.451` pins were DELETED from their owed tables and RE-CREATED in
+   the answered families, on both legs.

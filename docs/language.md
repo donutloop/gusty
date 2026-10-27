@@ -1300,9 +1300,14 @@ else:
   `return None` or simply falling off the end — makes `print(f() is None)`, `print(f() == None)`
   and `print((lambda: None)() is None)` print `True`, the way `print(f())` always printed `None`,
   because both roads consult the ONE predicate `isNoneExpr` and it reads the answer plan's void
-  verdict (**Gap R.388**, **ADR 0427**). The fold keeps the call: `r = f() == None` still runs `f`,
-  so a body that prints prints (**ADR 0172**), and a body that answers `None` in one arm and a
-  number in another is NOT read as the void — which arm ran is a run-time word.
+  verdict (**Gap R.388**, **ADR 0427**). A body that FORWARDS such an answer answers the void
+  itself: `def g():` / `    return f()` above `print(g() is None)` prints `True`, however many
+  frames deep the chain goes, because the `return other(...)` arm asks whether `other` answers only
+  the void and then answers the constant void word rather than forwarding one (**Gap R.451**,
+  **ADR 0428**). The fold keeps the call: `r = f() == None` still runs `f`, and `@gy_g` still calls
+  `@gy_f`, so a body that prints prints (**ADR 0172**); and a body that answers `None` in one arm
+  and a number in another is NOT read as the void — which arm ran is a run-time word — nor may a
+  body forwarding a number, a text, a verdict or a container borrow the answer.
 - **What the identity question still gets wrong**: `is` asked of a *container* literal is not
   answered by the content door — content equality is the wrong answer for two containers holding
   the same elements — and the shape dies in the assembler instead (`print([1] is [1])`,
@@ -1311,9 +1316,10 @@ else:
   is not: `def f():` / `    return None` / `print(f() is None)` and its `==` and applied-`lambda`
   twins print the reference's `True`, because the fold now asks the one predicate `print`, `str()`
   and the REPL ask (`isNoneExpr`, which reads `answerKindPlan`'s void verdict — `Gap R.388`,
-  **ADR 0427**). What that row leaves owed is one body deeper: a body that FORWARDS the void answer
-  (`def g(): return f()`, `Gap R.451`) and a METHOD whose body answers it (`Gap R.452`) are still
-  answered from the payload. Asked of the same list under a **second name** it no longer is: `ys = xs` /
+  **ADR 0427**), through as many forwarding bodies as the program writes (**Gap R.451**, **ADR 0428**).
+  What is still owed is a METHOD's body: `class C():` / `    def m(self):` / `        return None` above
+  `print(c.m() is None)` is answered from the payload, because both tables the predicate consults are
+  keyed by a module-level `def` (`Gap R.452`). Asked of the same list under a **second name** it no longer is: `ys = xs` /
   `print(ys.pop(0) is None)` asks the tag, because the record of an object's slots now travels with
   the handle the two names share (`Gap R.415`, **ADR 0412**). Nor is it answered by the fold for the
   item of a `for` **unrolled over a literal list**: `for v in [None, "a"]:` / `print(v is None)` /

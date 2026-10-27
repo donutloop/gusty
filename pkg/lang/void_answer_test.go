@@ -353,16 +353,11 @@ func TestWhatTheVoidAnswerStillOwesIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			// A body that FORWARDS a void answer is not itself read as answering the void: the plan's arm
-			// for `return f()` needs f to be CARRIED, and a pair-served body is not, so g's whole body plan
-			// declines and g keeps its old roads.
-			name:     "a body that forwards the void answer",
-			src:      "def f():\n    return None\ndef g():\n    return f()\nprint(g() is None)\n",
-			wantExit: 0, wantOut: "False\n",
-			dossier: "**Gap R.451** — the reference prints `True`; `answerArmOf` admits `return other(...)` only " +
-				"once OTHER is carried (**ADR 0368**), and the void verdict this row reads is per-body",
-		},
+		// The pin that stood here — `def f():` / `    return None` / `def g():` / `    return f()` /
+		// `print(g() is None)`, held at `False` beside the reference's `True` — is DELETED rather than
+		// edited: **ADR 0428** asks `answerArmOf` whether the callee answers only the void before the
+		// carried-only rule declines the arm, and the program prints `True`. It stands in the answered
+		// family of `pkg/lang/void_forward_test.go`, on the compiled leg AND the record leg.
 		{
 			// The method twin: the predicate answers for a `def` the module holds in `fds`, and a method's
 			// body is reached through the class's own table.

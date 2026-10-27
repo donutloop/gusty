@@ -401,6 +401,20 @@ func answerArmOf(fd *FuncDef, e Expr, p *answerKindPlan) (answerArm, bool) {
 			// outer caller has not read yet — the same exclusion ADR 0273 made of the pair road.
 			return answerArm{}, false
 		}
+		if p.answersOnlyTheVoid(nm.Value) {
+			// FORWARDING the void answers the void — asked BEFORE the carried-only rule below, because a
+			// void-only callee may be either carried (every arm a written `None`) or served by the pair
+			// road (a one-arm body), and the forwarding body's answer is the same constant either way.
+			// The carried-only rule exists so an inner frame writes its kind word before an outer caller
+			// reads it, and a void-only callee has no word for the outer frame to wait on: every road of
+			// it answers None, so this arm answers a CONSTANT word rather than forwarding one. The body
+			// still EVALUATES the call — the arm is a kind, not a substitution — so `def g():` /
+			// `    print("side")` / `    return f()` still prints `side`. Without this arm the forwarding
+			// body declines whole, and `g() is None` falls to the fold that reads the payload — the word 0,
+			// which an int slot legally carries (**ADR 0187**), one call deeper than the row this inherits
+			// (**Gap R.388**, **ADR 0427**; roadmap **Gap R.451**).
+			return answerArm{word: answerWordNone}, true
+		}
 		if !p.carries(nm.Value) {
 			return answerArm{}, false
 		}

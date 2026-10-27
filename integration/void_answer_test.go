@@ -216,11 +216,9 @@ func TestTheVoidAnswerRefusalIsMachineReadable(t *testing.T) {
 func TestWhatTheVoidAnswerStillOwesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, r := range []struct{ name, src, gap, python, compiled string }{
-		{
-			name: "a body that forwards the void answer", gap: "Gap R.451",
-			src:    "def f():\n    return None\ndef g():\n    return f()\nprint(g() is None)\n",
-			python: "True\n", compiled: "False\n",
-		},
+		// `Gap R.451` — the forwarding row that stood here — is PAID by **ADR 0428** and DELETED rather than
+		// edited: the program prints the reference's `True`, and stands in `voidForwardCLIFamily()` in
+		// `integration/void_forward_test.go`, beside a live CPython.
 		{
 			name: "a method whose body returns None", gap: "Gap R.452",
 			src:    "class C():\n    def m(self):\n        return None\nc = C()\nprint(c.m() is None)\n",
