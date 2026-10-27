@@ -79,7 +79,13 @@ const (
 // its payload, or the callee whose answer word this road forwards.
 type answerArm struct {
 	word string // one of the answerWord* constants, or answerWordVaried
-	dyn  string // non-empty: `return other(...)`, so other's own word is this arm's word
+	dyn  string // non-empty: `return other(...)`, so other's own answer is this arm's answer
+	// fwdKind is the container kind a FORWARDED method answer carries with it, recorded by the arm that read
+	// the callee (`answerForwardedMethodArm`). The roads that walk an answer — `len`, an index, `in`, a loop —
+	// read a container by its KIND, and a body whose only road is `return self.m()` states no kind of its own;
+	// without this the forwarding method's answer is an object those doors cannot name (roadmap **Gap R.454**,
+	// **ADR 0431**; the doors that read a SLOT of one are still **Gap R.464**'s).
+	fwdKind containerAnswerKind
 }
 
 // answerKindPlan is the whole-program answer to "which calls answer a value whose payload cannot
@@ -113,6 +119,24 @@ type answerKindPlan struct {
 	// Gap R.453, ADR 0430; ADR 0232's one question).
 	methodBodies   map[string]*FuncDef
 	methodArmExprs map[string][]Expr
+	// methodVoid is the METHOD round's `void`: the bodies, keyed by the same emitted symbol, that answer
+	// NOTHING but the void. The forwarding arm (`return self.m()`, roadmap **Gap R.454**, **ADR 0431**) asks
+	// this table and no other, because the reading that walked into the callee instead would follow two
+	// methods that forward to each other around forever — a round reads a table, and only a call could read
+	// a body. It is also why the void verdict is recorded for a body the CARRY round declines: a body with no
+	// `return` road at all (`def m(self): self.items = []`) answers the void exactly as one whose every road
+	// is `return None`, and the forwarding arm has to be able to say so without re-reading it.
+	methodVoid map[string]bool
+	// bodyClass names the class a method body was WRITTEN in, keyed by the body itself. An arm of the shape
+	// `return self.m()` is answerable only if the reading knows whose `self` it is, and the only thing
+	// `answerArmOf` is handed is the body (roadmap Gap R.454).
+	bodyClass map[*FuncDef]string
+	// classTable is the forwarding arm's inheritance walk read off the AST: the methods each class DECLARES
+	// and the bases it names, in the order `registerClass` records them and `resolveMethod` walks them, so
+	// the arm names the same body the dispatch will call (ADR 0273's rule that a call and its `define` answer
+	// to one scan). A class name declared twice is dropped — two classes, one name, is no class, which is the
+	// rule **ADR 0299** already applies to the method table.
+	classTable map[string]*declaredClass
 }
 
 // carries answers the caller's question: does a call to this name answer a value that needs its
@@ -126,6 +150,32 @@ func (p *answerKindPlan) carries(fnName string) bool {
 // first (roadmap L11.1, Gap R.228, ADR 0368).
 func (p *answerKindPlan) answersOnlyTheVoid(fnName string) bool {
 	return p != nil && p.void[fnName]
+}
+
+// declaredClass is one row of the plan's class table: what the class declares itself and what it inherits
+// from, in source order. It is the shape `registerClass` writes into `classInfo` and `resolveMethod` walks,
+// read off the AST instead of off the emitted program, because the answer direction exists before any IR
+// (roadmap **Gap R.454**, **ADR 0431**).
+type declaredClass struct {
+	bases   []string
+	methods map[string]*FuncDef
+}
+
+// bodyAnswersTheVoid is the ONE reading of "does every road of this body answer nothing but the void", the
+// question `answersOnlyTheVoid` asks of a module `def` by name, `methodAnswersOnlyTheVoid` asks of a body in
+// a class, and a forwarding arm asks of the callee it is about to answer for. Three doors, one walk
+// (**ADR 0232**), so a body cannot be the void at the print and a value at the `is`.
+func bodyAnswersTheVoid(fd *FuncDef, p *answerKindPlan) bool {
+	if fd == nil || fd.Async || len(fd.Decorators) > 0 || containsYield(fd.Body) {
+		return false
+	}
+	if _, voidOnly, planned := answerBodyPlan(fd, p); planned && voidOnly {
+		return true
+	}
+	// A body with no `return` road at all — `def m(self): pass`, `def reset(self): self.x = 0` — answers the
+	// void on every road that can reach it.
+	returns, _ := answerBodyReturns(fd.Body)
+	return len(returns) == 0
 }
 
 // methodAnswersOnlyTheVoid is the answer direction's METHOD round (roadmap **Gap R.452**, **ADR 0429**):
@@ -145,20 +195,10 @@ func (p *answerKindPlan) answersOnlyTheVoid(fnName string) bool {
 // `return self.x` makes the whole body un-nameable, and the caller keeps the roads it has always had. A
 // verdict that guesses is how `None` gets printed for a value.
 func (g *irGen) methodAnswersOnlyTheVoid(fd *FuncDef) bool {
-	if fd == nil || fd.Async || len(fd.Decorators) > 0 || containsYield(fd.Body) {
-		return false
-	}
-	if _, voidOnly, planned := answerBodyPlan(fd, g.answer); planned && voidOnly {
-		return true
-	}
-	// A body with no `return` road at all — `def m(self): pass`, `def reset(self): self.x = 0` — answers
-	// the void on every road that can reach it. The module road answers this shape with `fdReturnsValue`,
-	// which asks by REFLECTION and therefore walks into a nested `def`: `def m(self):` /
-	// `    def inner():` / `        return 7` / `    return None` is a method that answers None and a
-	// nested function that answers 7, and only the walk that STOPS at a nested body (**Gap R.392**'s two
-	// roads over one AST) tells them apart.
-	returns, _ := answerBodyReturns(fd.Body)
-	return len(returns) == 0
+	// One reading, three doors: this is the same walk `answersOnlyTheVoid` answers a module `def` by and the
+	// same walk a forwarding arm asks of its callee (**ADR 0232**), which is what keeps a method from being
+	// the void at the print door and a value at the `is` (roadmap **Gap R.452**, **Gap R.454**).
+	return bodyAnswersTheVoid(fd, g.answer)
 }
 
 // methodCallAnswersOnlyTheVoid is the `*Call` arm's question: is this an attribute call whose body the
@@ -327,10 +367,13 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 		void:           map[string]bool{},
 		arms:           map[*ReturnStmt]answerArm{},
 		methodCarry:    map[string]bool{},
+		methodVoid:     map[string]bool{},
 		methodObject:   map[string]bool{},
 		methodKind:     map[string]containerAnswerKind{},
 		methodBodies:   map[string]*FuncDef{},
 		methodArmExprs: map[string][]Expr{},
+		bodyClass:      map[*FuncDef]string{},
+		classTable:     map[string]*declaredClass{},
 	}
 	if prog == nil {
 		return p
@@ -352,15 +395,37 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 	// the wrong answer at the exit code of success (roadmap **Gap R.453**, **ADR 0430**).
 	methods := map[string]*FuncDef{}
 	methodOrder := []string{}
+	declaredOnce := map[string]bool{}
 	for _, st := range prog.Stmts {
 		cd, ok := st.(*ClassDef)
 		if !ok || cd == nil {
 			continue
 		}
+		if declaredOnce[cd.Name] {
+			// Two classes, one name: neither is that class, and no forwarding arm resolves through either
+			// — **ADR 0299**'s conservatism about a duplicated name, read off the walk that fills the table
+			// instead of written beside it (roadmap **Gap R.454**, **ADR 0431**).
+			delete(p.classTable, cd.Name)
+			continue
+		}
+		declaredOnce[cd.Name] = true
+		dc := &declaredClass{methods: map[string]*FuncDef{}}
+		p.classTable[cd.Name] = dc
+		for _, b := range cd.Bases {
+			if b != nil && b.Value != "" {
+				dc.bases = append(dc.bases, b.Value)
+			}
+		}
 		for _, ms := range cd.Body {
 			fd, ok := ms.(*FuncDef)
 			if !ok || fd == nil || fd.Name == "" {
 				continue
+			}
+			if _, seen := dc.methods[fd.Name]; seen {
+				dc.methods[fd.Name] = nil // two bodies in one class, one name: the dispatch answers neither
+			} else {
+				dc.methods[fd.Name] = fd
+				p.bodyClass[fd] = cd.Name
 			}
 			key := methodAnswerKey(cd.Name, fd.Name)
 			if _, seen := methods[key]; seen {
@@ -410,22 +475,32 @@ func answerKindPlanOf(prog *Program, pairReturns map[string]bool) *answerKindPla
 		//     return f()`) is nameable only once `f` is, and `f` may itself be a forwarding body written
 		// below the class (**ADR 0368**'s fixed point, read a second time by **ADR 0430**).
 		for _, key := range methodOrder {
-			if p.methodCarry[key] {
+			if p.methodCarry[key] || p.methodVoid[key] {
 				continue
 			}
-			arms, kind, mayBeObject, armExprs, ok := methodAnswerBodyPlan(methods[key], p)
-			if !ok {
+			fd := methods[key]
+			arms, kind, mayBeObject, armExprs, ok := methodAnswerBodyPlan(fd, p)
+			if ok {
+				p.methodCarry[key] = true
+				p.methodObject[key] = mayBeObject
+				p.methodKind[key] = kind
+				p.methodBodies[key] = fd
+				p.methodArmExprs[key] = armExprs
+				for st, a := range arms {
+					p.arms[st] = a
+				}
+				grew = true
 				continue
 			}
-			p.methodCarry[key] = true
-			p.methodObject[key] = mayBeObject
-			p.methodKind[key] = kind
-			p.methodBodies[key] = methods[key]
-			p.methodArmExprs[key] = armExprs
-			for st, a := range arms {
-				p.arms[st] = a
+			// The VOID half of the same round, and the reason this row had to add it: a void-only body is
+			// never CARRIED (**ADR 0429**'s fold answers it without a word), so a forwarding arm reading only
+			// `methodCarry` would name a call to a carried method and decline the same call over a void one —
+			// two answers to one question, which is what **ADR 0232** exists to forbid, and it would strand
+			// exactly the program **Gap R.452** paid (`def n(self):` / `    return self.m()` over a void `m`).
+			if bodyAnswersTheVoid(fd, p) {
+				p.methodVoid[key] = true
+				grew = true
 			}
-			grew = true
 		}
 		if !grew {
 			break
@@ -808,6 +883,26 @@ func methodAnswerBodyPlan(fd *FuncDef, p *answerKindPlan) (map[*ReturnStmt]answe
 			isOne = false
 		}
 	}
+	// A FORWARDED arm brings the callee's container kind with it. A body whose only road is `return self.m()`
+	// states no kind in `kinds` — the word is the callee's run-time fact — and the doors that WALK an answer
+	// (`len`, an index, `in`, a loop) choose their road from the kind, not from the word. Refusing to look at
+	// the arm made those four doors refuse the answer of a method that answers a container while the direct
+	// call to the same container answered (roadmap **Gap R.454**, **ADR 0431**; **ADR 0430**'s container round,
+	// read through the forwarding arm, and the slot-reading half of it still **Gap R.464**'s). Two arms that
+	// forward two DIFFERENT containers are not one kind, and
+	// the door declines them exactly as it declines a body that mixes a list and a dict.
+	if isOne {
+		for _, a := range arms {
+			if a.dyn == "" || a.fwdKind == notAContainerAnswer {
+				continue
+			}
+			if kind != notAContainerAnswer && kind != a.fwdKind {
+				isOne = false
+				break
+			}
+			kind = a.fwdKind
+		}
+	}
 	if !isOne {
 		kind = notAContainerAnswer
 	}
@@ -825,6 +920,117 @@ func answerKindsNeedAWord(kinds map[string]bool) bool {
 		return w == answerWordList || w == answerWordDict || w == answerWordSet
 	}
 	return false
+}
+
+// answerForwardedMethodArm is the `*Call` arm's ATTRIBUTE road, and the whole of roadmap **Gap R.454**
+// (**ADR 0431**):
+//
+//	class C():
+//	    def m(self):
+//	        return None
+//	    def n(self):
+//	        return self.m()
+//
+//	c = C()
+//	print(c.n() is None, c.n())   # the reference: True None — this backend, before: False 0, at exit 0
+//
+// `answerArmOf`'s `*Call` arm read `v.Fn.(*Name)` and returned `ok=false` for anything else, so a body that
+// forwarded a call to ANOTHER METHOD of its own class was one un-nameable road and the whole body declined —
+// the same cliff **ADR 0428** stepped back from one shape earlier, when the forwarded callee was a module
+// `def`. The answer is the callee's OWN word, void or carried, exactly as the name arm gives it, read out of
+// the two tables the METHOD round keeps (`methodVoid`, `methodCarry`) rather than out of the callee's body:
+// two methods that forward to each other are a reading that never ends, and a round reads a table.
+//
+// Three things it will not do, each declined and each pinned by a case in `pkg/lang/method_forward_test.go`:
+//
+//   - resolve a receiver the body's own spelling cannot name. `methodCensusT.receiverClass` knows a module
+//     variable bound once to one class, and a plan that leaned on that would hand one class's answer word to
+//     a call the dispatch may run against another (ADR 0299's ambiguity, wearing a name). `self` is the one
+//     receiver whose class is written in the body that wrote the arm.
+//   - forward a call to ITSELF. The name arm has the same exclusion (**ADR 0273**): the inner frame would
+//     write the kind word after the outer caller has read it. A body whose only road is `return self.m()` is
+//     one the plan leaves on the roads it has always had.
+//   - read a class the plan never registered, or one declared twice. The first is a class the module has no
+//     symbol for; the second is **ADR 0299**'s rule, and no arm resolves through either.
+func answerForwardedMethodArm(fd *FuncDef, c *Call, p *answerKindPlan) (answerArm, bool) {
+	if p == nil || fd == nil || c == nil {
+		return answerArm{}, false
+	}
+	attr, isAttr := c.Fn.(*Attr)
+	if !isAttr || attr == nil || attr.Name == nil || attr.Obj == nil || attr.Name.Value == "" {
+		return answerArm{}, false
+	}
+	recv, isName := attr.Obj.(*Name)
+	if !isName || recv.Value != "self" {
+		return answerArm{}, false
+	}
+	cls := p.classOf(fd)
+	if cls == "" {
+		return answerArm{}, false
+	}
+	target, owner, found := p.methodAnswerBodyAt(cls, attr.Name.Value, map[string]bool{}, 0)
+	if !found || target == nil || target == fd {
+		return answerArm{}, false
+	}
+	key := methodAnswerKey(owner, attr.Name.Value)
+	if p.methodVoid[key] {
+		// FORWARDING the void answers the void — the constant word, not a forwarded one, for the reason
+		// **ADR 0428** wrote for the module twin: a void-only callee has no word for an outer frame to wait
+		// on, and the body still EVALUATES the call, so a `print` inside it still prints.
+		return answerArm{word: answerWordNone}, true
+	}
+	if p.methodCarry[key] {
+		// FORWARDING a carried answer forwards its run-time word, read at the return by the same door a print
+		// or a binding reads it (**ADR 0368**, **ADR 0430**).
+		arm := answerArm{word: answerWordVaried, dyn: key}
+		if k, isContainer := p.methodContainerKind(key); isContainer {
+			arm.fwdKind = k
+		}
+		return arm, true
+	}
+	return answerArm{}, false
+}
+
+// classOf names the class a method body was written in, and the empty string for a body the plan never saw
+// in a class — a module `def`, or a method of a class declared twice (**ADR 0299**'s rule, applied by the
+// walk that filled the table).
+func (p *answerKindPlan) classOf(fd *FuncDef) string {
+	if p == nil || fd == nil {
+		return ""
+	}
+	return p.bodyClass[fd]
+}
+
+// methodAnswerBodyAt walks a class's own declarations and then every base in the order the source names
+// them — the walk `resolveMethod` walks at the call site and `methodCensusT.declaredMethodAt` walks for the
+// verdict census (**Gap R.66**: the compiled backend walks every base, so a reading that stopped at the
+// class's own body would decline an inherited method whose dispatch was never the problem). It answers the
+// body AND the class that declared it, because that class is the other half of the symbol the answer word
+// is stored under (**Gap R.453**'s key). A class already visited is not visited twice, and the depth is a
+// bound, not a tuning number.
+func (p *answerKindPlan) methodAnswerBodyAt(class, name string, seen map[string]bool, depth int) (*FuncDef, string, bool) {
+	if p == nil || class == "" || name == "" || depth > 8 || seen[class] {
+		return nil, "", false
+	}
+	seen[class] = true
+	dc, ok := p.classTable[class]
+	if !ok || dc == nil {
+		return nil, "", false
+	}
+	if fd, declared := dc.methods[name]; declared {
+		// Declared-and-nil is the class's own ambiguity (two bodies, one name): the base walk does not
+		// un-ambiguate a name the class itself declares twice.
+		if fd == nil {
+			return nil, "", false
+		}
+		return fd, class, true
+	}
+	for _, b := range dc.bases {
+		if fd, owner, found := p.methodAnswerBodyAt(b, name, seen, depth+1); found {
+			return fd, owner, true
+		}
+	}
+	return nil, "", false
 }
 
 // answerBodyArms reads one body once and reports what its `return` roads answer: the kind word of each
@@ -895,6 +1101,12 @@ func answerArmOf(fd *FuncDef, e Expr, p *answerKindPlan) (answerArm, bool) {
 	case *SetLit:
 		return answerArm{word: answerWordSet}, true
 	case *Call:
+		if a, armOk := answerForwardedMethodArm(fd, v, p); armOk {
+			// `return self.m()` — the arm the NAME road below has never been able to read, because its callee
+			// is an attribute and not a name (roadmap **Gap R.454**, **ADR 0431**). Asked FIRST and declined
+			// whole: an attribute callee is not a name, so nothing below could say anything about it.
+			return a, true
+		}
 		nm, isName := v.Fn.(*Name)
 		if !isName || (fd != nil && nm.Value == fd.Name) {
 			// A body that answers a call to ITSELF would have the inner frame write the word the

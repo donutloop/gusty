@@ -3340,7 +3340,7 @@ falls back to dynamic dispatch.
   **Gap R.453** (the answer direction has no method round — a mixed-arm method carries no word for which arm ran,
   and the arm that answers a container hands `llc` the literal's GLOBAL at **exit 2**, the shape **ADR 0333**
   took off a `def`'s `ret` and never off a class's — **closed by ADR 0430 below**), **Gap R.454** (a method forwarding a call to another METHOD
-  of its class: `answerArmOf`'s arm reads a `*Name` callee), **Gap R.455** (a generator METHOD refused as
+  of its class: `answerArmOf`'s arm reads a `*Name` callee — **closed by ADR 0431 below**), **Gap R.455** (a generator METHOD refused as
   `yield outside a generator function`, though the same body in a `def` compiles), **Gap R.456** (a method
   mutating `self.items` refused by the string-method door) and **Gap R.457** (a nested `def` inside a method
   re-emits the GC frame prologue and `llc` rejects the module).
@@ -3388,6 +3388,41 @@ falls back to dynamic dispatch.
   `ys = build()` can), **Gap R.460** (the kind word is ONE per carried body, not per call — `print(f(1) == f(0))`
   prints `True` where the reference prints `False`), and **Gap R.461** (a mixed container arm compared with a
   container literal refuses, in a sentence that also names `*lang.Call` to the program — **Gap R.116**'s class).
+- **A method that FORWARDS a call to another METHOD answers the callee's own word (Gap R.454, **ADR 0431**)** —
+  `class C():` / `    def m(self):` / `        return None` / `    def n(self):` / `        return self.m()` /
+  `c = C()` / `print(c.n() is None, c.n())` printed **`False 0`** at **exit 0** where the reference prints
+  `True None`, while the identical body forwarding a module `def` (`return f()`) had printed `True` since
+  **ADR 0428**: `answerArmOf`'s `*Call` arm read `v.Fn.(*Name)` and returned `ok=false` for an attribute callee,
+  ONE un-nameable arm retires a WHOLE body, and the body's `int` slot then legally carries the void's payload —
+  the word `0` (**ADR 0187**), which the number printer legally prints. The arm grew the attribute road beside its
+  name one, and it answers the CALLEE'S OWN WORD out of the two tables the METHOD round keeps
+  (`methodVoid`, `methodCarry`) rather than out of the callee's body — reading the body would follow
+  `def n(self):` / `    return self.m()` over `def m(self):` / `    return self.n()` around forever, and a round
+  reads a table. The callee is resolved through the plan's new `classTable` (own declarations, then every base in
+  the order the dispatch walks them, with **ADR 0299**'s rule applied by the walk that fills it: a duplicated class
+  answers nothing, and a name a class declares twice resolves to no body), and the forwarding body carries the
+  callee's CONTAINER kind with it in the new `answerArm.fwdKind`, which is what moved `print(c.n())` from `1` to
+  `[1, 2]`, `len(c.n())` from a refusal to `2`, and `1 in c.n()` / `for v in c.n():` from declines to answers.
+  The round had to become TWO verdicts first: a void-only body is never carried, so an arm reading `methodCarry`
+  alone would have named the carried callee and declined the identical call over a void one — **ADR 0232**'s two
+  answers to one question, and it would have stranded the exact program **Gap R.452** was paid for; and
+  `methodAnswersOnlyTheVoid` and the new arm now ask ONE predicate (`bodyAnswersTheVoid`), which is what
+  `answersOnlyTheVoid` already answered a module `def` by. Three declines, each pinned: a receiver the body's own
+  spelling cannot name, a call forwarded to ITSELF (**ADR 0273**'s exclusion), and a class the plan never
+  registered. `pkg/lang/method_forward_test.go` (**39** answered programs on the compiled and record legs, **20**
+  direct predicate rows, **4** IR rows, **7** pins) and `integration/method_forward_test.go` (**39** CLI programs
+  re-derived from a live `python3`, **1** machine-readable JSON refusal, **8** pins) are NEW; across both suites'
+  **68** deduplicated sources, measured beside a `git worktree` build of the parent (`68a327d`, **ADR 0430**),
+  **30** moved to the reference, **38** held and NOTHING moved away; `tools/recmerge` wrote **39** entries from the
+  reference with the compiled leg cross-checked (**9747 → 9786**). What the arm leaves owed is filed with its
+  bytes: **Gap R.462** (forwarding a call to a method answering ONE text prints the payload, though the direct
+  call answers it), **Gap R.463** (a module `def` forwarding a call through a PARAMETER), **Gap R.464** (a
+  forwarded container answer subscripted or read by key, where the same object prints, measures and walks),
+  **Gap R.465** (a base chain that names itself overflows the COMPILER's own stack in `resolveMethod` — byte-identical
+  on the parent, and **ADR 0166**'s exit 2 rather than a refusal), and **Gap R.466** (a method answering ONE float
+  answers the double's low word — found by going to pin the forwarded spelling and finding the DIRECT call already
+  wrong, which is the measurement that split it out of **Gap R.462**).
+
 - **A body that FORWARDS the void answers the void (Gap R.451, **ADR 0428**)** — `def f():` /
   `    return None` / `def g():` / `    return f()` / `print(g() is None)` printed **`False`** at **exit 0**
   where the reference prints `True`, and the line that makes it a defect rather than a cosmetic gap printed

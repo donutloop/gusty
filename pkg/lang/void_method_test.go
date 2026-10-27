@@ -266,6 +266,10 @@ func TestTheVoidAnsweringMethodIsTheBodyAndNotTheName(t *testing.T) {
         return 7
     def readsASelfCall(self):
         return self.voidReturn()
+    def readsACarriedCall(self):
+        return self.varied()
+    def readsItself(self):
+        return self.readsItself()
     def callsAModuleName(self):
         return number2()
     def generator(self):
@@ -312,7 +316,16 @@ print(1)
 		{"a body answering a verdict", &Name{Value: "c"}, "verdict", false},
 		{"a body answering a container", &Name{Value: "c"}, "container", false},
 		{"a body whose other arm answers a number", &Name{Value: "c"}, "varied", false},
-		{"a body that forwards a call to another method", &Name{Value: "c"}, "readsASelfCall", false},
+		// `readsASelfCall` FORWARDS the void — `return self.voidReturn()` answers nothing but the void once the
+		// arm can read the callee — so the verdict is now TRUE, which is what this case's own sentence demands
+		// ("the verdict comes from the BODY"). It read `false` while `answerArmOf` could not name an attribute
+		// callee at all, which is the hole **ADR 0431** / roadmap **Gap R.454** fills.
+		{"a body that forwards a call to another method", &Name{Value: "c"}, "readsASelfCall", true},
+		// The two directions the forwarding arm still declines, each read as "I have not read this body": a
+		// call to a method that answers a VALUE may never be read as the void, and a call to the body ITSELF is
+		// excluded the way **ADR 0273** excludes the name road's self-call.
+		{"a body forwarding a call to a value-answering method", &Name{Value: "c"}, "readsACarriedCall", false},
+		{"a body forwarding a call to itself", &Name{Value: "c"}, "readsItself", false},
 		{"a body that calls a module def by name", &Name{Value: "c"}, "callsAModuleName", false},
 		{"a generator body", &Name{Value: "c"}, "generator", false},
 		{"an async body", &Name{Value: "c"}, "coroutine", false},
@@ -506,15 +519,14 @@ func TestWhatTheVoidAnsweringMethodStillOwesIsFiledNotFixed(t *testing.T) {
 		// a container builds it before the word is written. The programs print the reference's bytes and
 		// stand in the answered family of `pkg/lang/method_answer_test.go` and
 		// `integration/method_answer_test.go`, on the compiled leg, the record leg AND the reference.
-		{
-			// The forwarding arm's method twin: `answerArmOf`'s Call arm reads a `*Name` callee, so a body
-			// that forwards a call to ANOTHER METHOD of its own class is an arm it cannot name.
-			name:     "a method forwarding a call to another method of its class",
-			src:      "class C():\n    def m(self):\n        return None\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n() is None, c.n())\n",
-			wantExit: 0, wantOut: "False 0\n",
-			dossier: "**Gap R.454** — the reference prints `True None`; the arm answers a call to a NAME, and " +
-				"`self.m()` is a call to an attribute",
-		},
+		// The pin that stood here is DELETED rather than edited. `class C():` / `    def m(self):` /
+		// `        return None` / `    def n(self):` / `        return self.m()` / `c = C()` /
+		// `print(c.n() is None, c.n())`, held at `False 0` beside the reference's `True None`, is closed by
+		// **ADR 0431**, which gives `answerArmOf` the ATTRIBUTE arm beside its `*Name` one: a body that
+		// forwards a call to another method of its class answers that method's OWN word — the void's constant,
+		// or the carried body's run-time tag — and the program now prints the reference's bytes. It stands in
+		// the answered family of `pkg/lang/method_forward_test.go` and `integration/method_forward_test.go`,
+		// on the compiled leg, the record leg and the reference leg.
 		{
 			// A generator METHOD: the body is a generator the front end never recognised because it lives
 			// in a class, so `yield` is refused as being outside a generator function.

@@ -19676,19 +19676,54 @@ tag.
 rather than of the body as written, compare through `rt_payload_eq`, and re-word the refusal through
 `nodeSurface` in the same commit — the old string appears in two owed pins, which are DELETED, not re-worded.
 
-### Gap R.454 — a method that forwards a call to another METHOD of its own class is an arm the plan cannot name (⏳ OPEN, found by **ADR 0429**)
+### Gap R.454 — a method that forwards a call to another METHOD of its own class is an arm the plan cannot name (✅ CLOSED by **ADR 0431**, found by **ADR 0429**)
 
-| program | this backend (`66c20b2` and this commit) | reference (CPython 3.12.3) |
+| program | this backend (`66c20b2` and `68a327d`) | reference (CPython 3.12.3) |
 |---|---|---|
 | `class C():` / `    def m(self):` / `        return None` / `    def n(self):` / `        return self.m()` / `c = C()` / `print(c.n() is None, c.n())` | `False 0` — exit 0 | `True None` |
 | the same body forwarding a module `def` (`return f()`) | `True` — exit 0 (paid by **ADR 0428**) | `True` |
+| `class B():` / `    def m(self):` / `        return None` / `class C(B):` / `    def n(self):` / `        return self.m()` / `print(c.n() is None)` | `False` — exit 0 | `True` |
+| `class C():` / `    def m(self):` / `        return [1, 2]` / `    def n(self):` / `        return self.m()` / `print(c.n())` | `1` — exit 0 (a container printed as a handle) | `[1, 2]` |
+| the same, `print(len(c.n()))` | **exit 1** — `len requires an inline list/dict/set literal` | `2` |
 
-`answerArmOf`'s `*Call` case begins `nm, isName := v.Fn.(*Name)`, and `self.m()` is a `*Call` whose `Fn` is an
-`*Attr`. `ok=false` for the arm means `answerBodyPlan` declines the BODY, which means `n` keeps the roads
-**Gap R.452** was filed for — and the fix is not to widen the fold but to give the arm the attribute callee, asked
-through the same class-qualified resolution `methodBodyOf` just grew. The exclusion **ADR 0273** made of a body that
-answers a call to ITSELF has to survive the widening (a method forwarding to itself is the inner frame and the outer
-caller at once), which is why the row says how the arm must be written rather than only what it must answer.
+`answerArmOf`'s `*Call` case began `nm, isName := v.Fn.(*Name)`, and `self.m()` is a `*Call` whose `Fn` is an
+`*Attr`. `ok=false` for the arm means `answerBodyArms` declines the BODY, which means `n` kept the roads
+**Gap R.452** was filed for — and the void's payload is the word `0` (**ADR 0187**), which an `int` slot legally
+carries and the number printer legally prints. A program the reference answers `True None` printed `False 0` at
+**exit 0**, the exit code of success: the class of bug a suite only catches if it asks.
+
+**ADR 0431** gave the arm the attribute road, and the whole shape of the answer is in the words *out of the tables*:
+`answerForwardedMethodArm` resolves the callee through the plan's new `classTable` (the class's own declared methods,
+then every base in the order the source names them, guarded by a per-lookup visit set and a depth bound) and then
+reads `methodVoid` or `methodCarry`. It never reads the callee's body, and that is the decision worth re-reading:
+`def n(self):` / `    return self.m()` above `def m(self):` / `    return self.n()` is a program the reference runs
+until it traps on recursion depth, and a plan that recursed would have hung or answered from whichever table the
+fixed point filled first. A round reads a table.
+
+Two roads the plan had to grow first, both of them **ADR 0232** rather than this row:
+
+* `methodVoid` had to become a table. A void-only body is never CARRIED — **ADR 0429**'s static fold answers it
+  without a word — so an arm reading `methodCarry` alone would have named a call to a carried callee and declined
+  the identical call over a void one. That is one question answered twice, and it would have stranded the exact
+  program **Gap R.452** was paid for, which is the row's own test case.
+* `bodyClass` had to exist because `answerArmOf` is handed a `*FuncDef` and a `*Call`: an arm spelled `self.m()` is
+  answerable only if the reading knows whose `self` it is. The census (`methodCensusT.receiverClass`) could have
+  answered it for a module variable bound once to one class, and was declined for that reason — see **Gap R.463**.
+
+The container half came free with the plan and was not free at the doors: a forwarding body states no container kind
+of its own, so `answerArm` grew `fwdKind` and `methodAnswerBodyPlan` adopts the callee's kind with the same rule it
+applies to two literal arms (two arms forwarding two DIFFERENT containers are not one kind, and the door declines).
+That is what moved `print(c.n())` from `1` to `[1, 2]`, `len(c.n())` from a refusal to `2`, `1 in c.n()` and
+`for v in c.n():` from declines to answers. The doors that read a SLOT are still owed — **Gap R.464**.
+
+Measured beside a `git worktree` build of the parent (`68a327d`, **ADR 0430**): across both suites' **68**
+deduplicated sources — the answered families AND both owed tables — **30** moved to the reference, **38** held (36
+byte-for-byte, 2 differing only in the temp path `llc` prints inside a refusal that fires identically on both
+builds), and nothing moved away. `tools/recmerge` wrote **39** entries from the reference with the compiled leg
+cross-checked (**9747 → 9786**). Evidence: `pkg/lang/method_forward_test.go` (**39** answered programs on the compiled
+and record legs, **20** direct predicate rows, **4** IR rows, **7** pins) and `integration/method_forward_test.go`
+(**39** CLI programs re-derived from a live `python3`, **1** JSON refusal, **7** pins). What this row leaves owed is
+filed as **Gap R.462**, **Gap R.463**, **Gap R.464** and **Gap R.465**.
 
 ### Gap R.455 — a generator METHOD is refused as `yield outside a generator function` (⏳ OPEN, found by **ADR 0429**)
 
@@ -19781,3 +19816,116 @@ module twin answers all four positions is the control that locates the hole in t
 writes, not in the doors. The fix is the same arm the direct-call positions grew in **ADR 0430**, taken at the
 binding rather than at the read: `methodContainerAnswerOf`'s verdict has to reach the variable, which is what
 `recordContainerAnswer` was written to do and does not do for this shape.
+
+### Gap R.462 — a call forwarded to a method that answers ONE kind prints the payload (⏳ OPEN, found by **ADR 0431**)
+
+| program | this backend (`68a327d` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def hi(self):` / `        return "hi"` / `    def greet(self):` / `        return self.hi()` / `c = C()` / `print(c.greet())` | `0` — exit 0 | `hi` |
+| the same class, `print(c.hi())` (the DIRECT call) | `hi` — exit 0 | `hi` |
+| `class C():` / `    def half(self):` / `        return 1.5` / `    def n(self):` / `        return self.half()` / `print(c.n())` | `1` — exit 0 | `1.5` |
+| the same class, `print(c.half())` (the DIRECT call) | `1` — **also wrong**, and wrong on the parent (**Gap R.466**'s, not this row's) | `1.5` |
+
+**ADR 0430** declines to carry a method whose every road answers ONE immediate kind: no kind word is needed when the
+spelling already says the kind, and a word that nothing reads would be write-only — the control row in
+`pkg/lang/method_answer_test.go` asserts exactly that from the IR. **ADR 0431**'s arm reads `methodVoid` and
+`methodCarry` and nothing else (reading the callee's body would follow a forwarding pair around forever), so a
+forwarding body over a one-kind callee is described by no table at all: the body answers a number, the number
+printer prints the text's handle and the double's low word, and the DIRECT call to the same callee still prints the
+text and the float right. One class, two spellings, two answers — **ADR 0232**'s shape, and the reason the row is
+filed rather than quietly folded: answering it means letting a one-kind method enter the round when (and only when)
+some body forwards it, which is a wider change than an arm and needs its own measurement.
+
+Pinned in `pkg/lang/method_forward_test.go::TestWhatTheMethodForwardingStillOwesIsFiledNotFixed` and
+`integration/method_forward_test.go::TestWhatTheMethodForwardingStillOwesAtTheCLI`, both legs, with the reference's
+bytes re-derived inside the case. The TEXT rows are this row's and only this row's: the direct call prints `hi`, so
+the missing half is the forwarding body's kind. The FLOAT rows are not — the direct call is wrong too, which is the
+measurement that moved them to **Gap R.466**, and they are pinned here as well only because the forwarded spelling
+is the one this cycle went looking for.
+
+### Gap R.466 — a method that answers ONE float answers the double's low word, at the print door the class has and the module has not (⏳ OPEN, found by **ADR 0431**)
+
+| program | this backend (`68a327d` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def f(self):` / `        return 1.5` / `c = C()` / `print(c.f())` | `1` — exit 0 | `1.5` |
+| `class C():` / `    def f(self):` / `        return 1.5` / `    def g(self):` / `        return self.f()` / `print(c.g())` | `1` — exit 0 | `1.5` |
+| `def f():` / `    return 1.5` / `print(f())` | `1.5` — exit 0 | `1.5` |
+| `class C():` / `    def hi(self):` / `        return "hi"` / `print(c.hi())` | `hi` — exit 0 | `hi` |
+
+Found by trying to pin the forwarded float and discovering the un-forwarded one was already wrong, on this build and
+on its parent alike — which is why it is its own row rather than a sentence in **Gap R.462**. The module `def` twin
+answers `1.5` because **ADR 0254** taught that road to read a body's return word off what the body DOES; the class's
+print door never asked. It asks a table instead — **ADR 0366**'s `strMethodFuncs`, the class-side twin of
+`textReturningCallables`, which **ADR 0430**'s `answerOwnsMethod` gate confines to bodies that really answer one text
+(that gate is why `print(bool(c.m(1)), bool(c.m(0)))` of a mixed body stopped printing `True True`). There is no
+float-shaped table beside it, so a method answering one float falls to the number road, and the number road prints
+the word in the slot, which for a double is the low word of the pair it is stored as (**ADR 0187**'s shape at a door
+**ADR 0366** never looked at).
+
+The row is deliberately NOT folded into **Gap R.462**: that row's answer is a plan change (let a forwarded one-kind
+body enter the round), this one's is a door change (give the class's print road the float arm the text arm has,
+filled from the same ONE body reading and gated by the same `answerOwnsMethod` so a mixed-arm body is never claimed
+by a one-kind table again — **ADR 0219**/**Gap R.219** is the mistake that rule exists to prevent). Refusing the
+positions that need the pair rather than the word is part of the prescription: **ADR 0189**/**ADR 0188** forbid
+comparing or storing a heap slot as a number, and a float answer handed to those doors as one word is the same bug
+wearing a different hat.
+
+### Gap R.463 — a module `def` forwarding a call through a PARAMETER is the same arm, declined (⏳ OPEN, found by **ADR 0431**)
+
+| program | this backend (`68a327d` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        return None` / `c = C()` / `def f(o):` / `    return o.m()` / `print(f(c) is None)` | `False` — exit 0 | `True` |
+| `class C():` / `    def m(self):` / `        return None` / `    def n(self):` / `        return self.m()` / `print(c.n() is None)` | `True` — exit 0 (paid by **ADR 0431**) | `True` |
+
+The `self` restriction is not an oversight, it is the row's own prescription: `self` is the one receiver whose class
+is written in the body that wrote the arm, and a plan that resolved a receiver the body cannot name would hand one
+class's answer word to a call the dispatch may run against another. What is owed is the READER, not the rule.
+`methodCensusT.receiverClass` (**ADR 0366**) already answers "which class is this name ever bound to" for the verdict
+census, and a module variable bound once to one class is a receiver a plan can name without guessing — but the census
+answers it over the whole module, and `def f(o): return o.m()` is a body that may be called with an instance of any
+class in the program. **ADR 0299** is the precedent for what happens when a reading leans on a name-keyed table the
+dispatch does not share: it writes a confident answer for the wrong body. So the fix named in the row is a GATED
+second receiver road — a parameter the census places at exactly one class, recorded once, with the ambiguity rule
+deciding every close call and the decline (and the pin) kept for everything else.
+
+### Gap R.464 — a forwarded container answer is walked and measured but never subscripted (⏳ OPEN, found by **ADR 0431**)
+
+| program | this backend (`68a327d` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class C():` / `    def m(self):` / `        return [1, 2]` / `    def n(self):` / `        return self.m()` / `c = C()` / `print(c.n()[0])` | **exit 1** — `index requires an inline list/dict/set literal` | `1` |
+| the same class, `print(c.n())` / `print(len(c.n()))` / `print(1 in c.n())` / `for v in c.n():` | `[1, 2]` / `2` / `True` / `1` `2` — exit 0 | the same |
+| the same class, `print(c.m()[0])` (the DIRECT call) | `1` — exit 0 (**ADR 0430**) | `1` |
+| `print(c.n()["a"])` over a body answering `{"a": 1}` | **exit 1** — `index must be a constant` | `1` |
+
+**ADR 0431** carried the callee's container KIND through the forwarding arm (`answerArm.fwdKind`), and that is what
+moved the doors that WALK an answer: `len`, `in` and a `for` iterable ask the plan for a kind and then go to the
+object through `containerHandleOf`/`containerOperand`. The doors that read a SLOT never got that far — an index
+resolves through the notebooks a literal fills, and a forwarded answer fills none, so it refuses on a program whose
+`print` two lines above succeeded. That two-door disagreement over ONE object is what makes the row worth its own
+ID rather than a sentence in the closed row: the object exists, the printer reads it, the measurer reads it, and the
+indexer is told there is nothing there. It is **Gap R.67**/**ADR 0333**'s record asked of a class one door further
+in, and it is the same door **Gap R.459** names for a BOUND method answer — which is the control that says the fix
+belongs to the doors, not to the arm.
+
+### Gap R.465 — a base chain that names itself overflows the COMPILER's own stack (⏳ OPEN, found by **ADR 0431**)
+
+| program | this backend (`68a327d` and this commit) | reference (CPython 3.12.3) |
+|---|---|---|
+| `class B(C):` / `    def m(self):` / `        return None` / `class C(B):` / `    def n(self):` / `        return self.m()` | `fatal error: stack overflow` in `(*irGen).resolveMethod`, exit 2, goroutine dump on stderr | `NameError: name 'C' is not defined` at the first line, exit 1 |
+| the same hierarchy asked of the ANSWER plan (`answerKindPlanOf`) | terminates, declines the arm, prints nothing | — |
+
+**ADR 0431** needed a base walk and measured this on the way: the plan's own `methodAnswerBodyAt` carries a per-lookup
+visit set and a depth bound and answers the row ("a base class that names its own derived class", in
+`pkg/lang/method_forward_test.go::TestTheForwardingArmIsAskedOfTheCalleeAndNotTheBody`), while the DISPATCH's walk —
+`resolveMethod`, which has recursed through `Bases` since before this queue had a number for it — has neither and
+dies in the Go runtime. Byte-identical on the parent, so nothing here caused it; it is simply the first shape this
+cycle found that the compiler answers with a crash rather than with a document. **ADR 0166** reserves **exit 2** for
+exactly this, which is what makes it a bug rather than a limitation: a refused program exits 1 with a capability code,
+a phase and a suggestion, and this program exits 2 with a goroutine dump that names a Go file to a program that never
+mentioned one (**Gap R.116**'s complaint, one layer deeper than the sentence level).
+
+The row carries TWO fixes because one without the other leaves a hole: give `resolveMethod` the visit set and the
+depth bound (so no hierarchy can kill the process), AND make the front end refuse a base that names a class the
+module has not declared (so the program is refused with the reference's own `NameError`-shaped message rather than
+compiled into a body that can never be instantiated). The case cannot be pinned in-process — a Go stack overflow
+takes the test binary with it — so the plan-side half is pinned and this section carries the crash's bytes.

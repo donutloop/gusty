@@ -1320,7 +1320,10 @@ else:
   answers a CONTAINER is carried for the same reason and builds it before it answers — `print(c.m())` of
   `        return [1, 2]` prints `[1, 2]`, and `len(c.m())`, `c.m()[0]`, `c.m()["k"]`, `1 in c.m()`,
   `c.m() == [1, 2]` and `for v in c.m():` all ask the object rather than refusing (**Gap R.67**, **ADR 0333**,
-  taken off a class's return for the first time). Two shapes stay declined, at exit 1 and in words:
+  taken off a class's return for the first time). A method that FORWARDS a call to another method of its class
+  carries that answer too — `    def n(self):` / `        return self.m()` above `print(c.n())` prints `[1, 2]`,
+  `len(c.n())` prints `2` and `for v in c.n():` walks, because the forwarded arm brings the callee's container kind
+  with it (**Gap R.454**, **ADR 0431**). The shapes that stay declined, at exit 1 and in words:
   `sum(c.m())`/`max(c.m())`/`min(c.m())` (`sum requires an inline list/set/dict literal` — the module `def`
   twin refuses the same sentence, **Gap R.458**), a BOUND answer measured or subscripted
   (`ys = c.m()` / `print(len(ys))` / `print(ys[0])`, where `ys = build()` answers — **Gap R.459**), a mixed
@@ -1345,9 +1348,18 @@ else:
   KIND: a method whose arms answer `7` and `None` prints `7`, `None` and answers `c.m(0) is None` → `True`,
   because a method whose arms do not all answer one kind is CARRIED — it keeps the arm that ran in a word of
   its own (`@gy_C_m.anst`, written by the same `answerReturn` a module `def` takes, read by the caller that just
-  called it), exactly as a module `def` has since **ADR 0368** (**Gap R.453**, **ADR 0430**). What is still owed
-  there is a method that forwards a call to another METHOD of its own class (`return self.m()`), which is an arm
-  the plan cannot name (**Gap R.454**). Asked of a CONTAINER POP — the same
+  called it), exactly as a module `def` has since **ADR 0368** (**Gap R.453**, **ADR 0430**). A method that
+  FORWARDS a call to another METHOD of its own class answers that method's own kind too — `class C():` /
+  `    def m(self):` / `        return None` / `    def n(self):` / `        return self.m()` above
+  `print(c.n() is None, c.n())` prints `True None`, through a base class and through a shadow as well, and a
+  forwarded container prints, measures (`len(c.n())`), walks (`for v in c.n():`) and tests (`1 in c.n()`),
+  because the arm asks the callee's verdict out of the same two tables and never walks into the callee — two
+  methods that forward to each other are a reading that would never end (**Gap R.454**, **ADR 0431**). What is
+  still owed there: forwarding a call to a method that answers ONE text (`print(c.greet())` of `return self.hi()`
+  prints `0` where `print(c.hi())` prints `hi` — **Gap R.462**), forwarding through a PARAMETER
+  (`def f(o):` / `    return o.m()`, **Gap R.463**), and subscripting a forwarded container
+  (`print(c.n()[0])`, **Gap R.464**); and a method answering ONE float prints the double's low word on the direct
+  call as well (**Gap R.466**). Asked of a CONTAINER POP — the same
   list under a **second name** — the fold's answer no longer holds either: `ys = xs` /
   `print(ys.pop(0) is None)` asks the tag, because the record of an object's slots now travels with
   the handle the two names share (`Gap R.415`, **ADR 0412**). Nor is it answered by the fold for the

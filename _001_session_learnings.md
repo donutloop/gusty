@@ -15770,3 +15770,58 @@ discovery — and it still taught me twice.
    fresh ID per measured defect, and each of these is one program, its bytes, and the owner it will name when
    somebody fixes it. Four of the five are pinned in this cycle's own owed tables, so a future fix that leaves a
    pin behind fails the suite rather than passing quietly.
+
+## ADR 0431 — a method that FORWARDS a call to another METHOD answers the callee's own word, read out of the tables and never out of the body (Gap R.454 closed; Gaps R.462–R.466 filed, 2026-10-28)
+
+**Change**: `answerArmOf`'s `*Call` case read `v.Fn.(*Name)` and nothing else, so `return self.m()` was one
+un-nameable arm — and one un-nameable arm retires a whole body. `class C():` / `    def m(self):` /
+`        return None` / `    def n(self):` / `        return self.m()` above `print(c.n() is None, c.n())` printed
+`False 0` where CPython prints `True None`, and the `0` was **ADR 0187**'s legal payload for the void sitting in an
+`int` slot. The arm grew the attribute road: resolve the callee through the plan's new `classTable` (own methods,
+then every base in the order the dispatch walks them) and answer the callee's OWN word out of `methodVoid` /
+`methodCarry`, carrying its container kind along in the new `answerArm.fwdKind`.
+
+1. **"Read the table, not the body" was the whole decision, and I found it by writing the wrong one first.** The
+   name road (`return other(...)`, **ADR 0428**) resolves a callee by looking it up and reading it, and my first
+   version of the attribute arm did the same. Then `def n(self):` / `    return self.m()` over `def m(self):` /
+   `    return self.n()` crossed my mind — a program the reference runs until it traps on depth — and the recursion
+   I had written would have hung the compiler on it. `answerKindPlanOf` already asks every body exactly once, so
+   both verdicts are sitting in the plan by the time any arm is asked; a round reads a table, and the fixed point is
+   what makes that true. Two hours of "just resolve the callee" replaced by two map lookups that cannot loop.
+
+2. **The plan having a `methodCarry` and no `methodVoid` was a latent **ADR 0232** violation, and only the
+   forwarding arm exposed it.** A void-only body is never carried (yesterday's **ADR 0429** static fold answers it
+   without a word), so the tables recorded carried bodies and simply did not mention void ones. An arm reading
+   `methodCarry` alone would have answered `return self(m)` for a carried callee and declined the identical call to
+   a void one — which is the row's own test case, the exact program **Gap R.452** was paid for, still broken. The
+   fix was not an arm but a verdict: `methodVoid` beside `methodCarry`, both filled by the fixed point, and one
+   predicate (`bodyAnswersTheVoid`) now asked by three doors — `answersOnlyTheVoid` for a module `def`,
+   `methodAnswersOnlyTheVoid` for a class body, and the new arm for a callee. When a "one predicate" claim starts
+   needing a fourth caller, check what the predicate's tables actually record.
+
+3. **A decline has to be measured, not assumed, and one decline turned out to be a different bug wearing my
+   row's clothes.** I went to pin "forwarding a call to a one-kind method prints the payload", wrote both the text
+   and the float rows, and went to check the reference for the float one. `print(c.half())` — the DIRECT call, no
+   forwarding anywhere in the program — prints `1` where CPython prints `1.5`, on this build and on the parent
+   build, while the module `def` twin prints `1.5`. So the float half was never my row: the class's print door asks a
+   table for a TEXT-answering method (**ADR 0366**'s `strMethodFuncs`) and has no float-shaped twin. Filing both
+   (`Gap R.462` for the text, `Gap R.466` for the float) cost ten minutes; pinning the float row under my own row
+   would have made the next cycle's fix look like mine, and the pin would have failed for the wrong reason.
+
+4. **`tools/recmerge`'s ledger is the only honest count of what a family newly asks.** 39 sources went in
+   (9747 → 9786), and the paired battery — 68 deduplicated sources from both suites through both builds — moved 30
+   to the reference and held 38, with the two "differences" being the temp path `llc` prints inside a refusal that
+   fires identically on both. The held rows are not a shrug: they are the controls (a one-kind body that must stay
+   un-carried, a declined arm that must stay declined) plus the owed rows that must stay wrong. What I did NOT do is
+   run the corpus sweep and stop there — for a family the corpus never asked about, a zero-change sweep and a 30/68
+   move are the same measurement seen from two ends.
+
+5. **A compiler crash found beside your own fix is still somebody else's row, and saying so needs bytes.** The
+   cyclic-class probe (`class B(C)` over `class C(B)`) came out of my plan-side visit-set work and, run against the
+   dispatch, prints a Go goroutine dump and exits **2** — **ADR 0166**'s compiler-bug code, byte-identical on the
+   parent. Two temptations: fix it in this commit (out of scope, and it wants a front-end refusal as well as a guard,
+   so it deserves its own measurement), or leave it out of the tracker because it is not "my feature". It is
+   **Gap R.465** with its bytes, its two-part prescription (the visit set AND the front-end refusal of an
+   undeclared base), and an explicit note that it cannot be pinned in-process because a Go stack overflow takes the
+   test binary with it. The plan-side half IS pinned — the row that terminates where the dispatch dies is the proof
+   that the walk is fixable and not fundamental.

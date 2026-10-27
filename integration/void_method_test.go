@@ -107,6 +107,13 @@ func voidMethodCLIFamily() []struct {
 		{"a method with one void arm and one number arm", "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\nc = C()\nprint(c.m(1), c.m(0), c.m(0) is None)\n", "7 None True\n"},
 		{"a method whose body answers a container list", "class C():\n    def m(self):\n        return [1, 2]\nc = C()\nprint(c.m())\n", "[1, 2]\n"},
 		{"a method whose body answers a dict", "class C():\n    def m(self):\n        return {\"a\": 1}\nc = C()\nprint(c.m())\n", "{'a': 1}\n"},
+		// The arm that FORWARDS a call to another method of its own class (**ADR 0431**, roadmap **Gap R.454**).
+		// These are the rows that used to stand in `TestWhatTheVoidAnsweringMethodStillOwesAtTheCLI`, pinned at
+		// the payload the call lowered to; the forwarding body now answers the callee's own word.
+		{"a method forwarding a call to a void-answering method", "class C():\n    def m(self):\n        return None\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n() is None, c.n())\n", "True None\n"},
+		{"a method forwarding a call inherited from a base", "class B():\n    def m(self):\n        return None\nclass C(B):\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n() is None, c.n())\n", "True None\n"},
+		{"a method forwarding a call to a method with two arms", "class C():\n    def m(self, x):\n        if x:\n            return 7\n        return None\n    def n(self, x):\n        return self.m(x)\nc = C()\nprint(c.n(1), c.n(0), c.n(0) is None)\n", "7 None True\n"},
+		{"a method forwarding a call to a container-answering method", "class C():\n    def m(self):\n        return [1, 2]\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n())\n", "[1, 2]\n"},
 	}
 }
 
@@ -262,11 +269,12 @@ func TestWhatTheVoidAnsweringMethodStillOwesAtTheCLI(t *testing.T) {
 		// rather than edited: the answer direction has a METHOD round now, so a body in a class keeps the arm
 		// that ran in a word of its own. The program prints the reference's bytes, and stands in
 		// `voidMethodCLIFamily()` above, beside a live CPython.
-		{
-			name: "a method forwarding a call to another method of its class", gap: "Gap R.454",
-			src:    "class C():\n    def m(self):\n        return None\n    def n(self):\n        return self.m()\nc = C()\nprint(c.n() is None, c.n())\n",
-			python: "True None\n", compiled: "False 0\n",
-		},
+		// The pin that stood here is DELETED rather than edited. `class C():` / `    def m(self):` /
+		// `        return None` / `    def n(self):` / `        return self.m()` / `c = C()` /
+		// `print(c.n() is None, c.n())`, pinned at `False 0` beside the reference's `True None`, is closed by
+		// **ADR 0431**: `answerArmOf` grew the ATTRIBUTE arm beside its `*Name` one, so a method that forwards a
+		// call to another method of its class answers that callee's own word. The program prints the reference's
+		// bytes and stands in `voidMethodCLIFamily()` above, beside a live CPython.
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
