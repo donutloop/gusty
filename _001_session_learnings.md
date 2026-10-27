@@ -15976,3 +15976,49 @@ then every base in the order the dispatch walks them) and answer the callee's OW
    **9835 → 9851**, programs **256 → 257**, matrix rows **242 → 243** (`pass` 214, oracle `match` 200), ADRs to **424**
    with highest **0434**; every one of those numbers is the file's, recomputed by the count guards (**Gap R.204**),
    including the ones I wrote in my own ADR.
+
+## ADR 0436 — a container door ships with the answer's word and the read's word: parking a half door, and what a `grep` that lies costs (Gaps R.483, R.484 filed, 2026-10-27)
+
+1. **The door was in the tree before I got here, and I did not know it.** `git status` was dirty when this
+   session opened — `heapargs.go`, `codegen_class.go`, `codegen_args.go`, `render.go`, `strargs.go` modified,
+   `method_container.go` and `field_container.go` untracked — and it was **the previous cycle's unfinished
+   Gap R.480 door**, not my own work. I read the diff as background, then spent the cycle building on it and
+   believing the results were mine. The first thing a cycle does is ask what the dirty tree IS: whose row it
+   belongs to, whether it builds, and whether its tests pass — before a single new claim is attached to it.
+
+2. **A half container door converts a refusal into a number, and that is the regression, not the crash.** The
+   parked door made `len`, `max`, `min`, `sum`, `all`, `any`, `sorted`, `reversed`, `for x in xs`,
+   `xs[i] = v`, `xs.append(v)`, `xs + ys`, `xs == ys`, `xs[i:j]`, a dict's `ks[k] = v`, a set's `s.add(v)`,
+   defaults, keywords, inherited methods and forwarding through a method's container parameter answer the
+   reference's bytes. It also made six other programs — `return xs`, `yield xs`, `return xs, ys`, `xs[1]`,
+   `print(self.xs)`, `for v in c.xs` — answer **slot numbers at exit 0**, where today the same programs are
+   `llc` rejections owned by **Gap R.474** and **Gap R.480**. Loud-and-owed beats silent-and-green, so the
+   door is parked (`git stash`, named) and the rule is written down as **ADR 0436**: a container door ships
+   with the answer's word and the read's word, or it stays in the stash.
+
+3. **The finding is the module door's, and it is cheap.** At `170e09e`, a module `def` whose parameter holds a
+   container already answers `print(xs)` → `[1, 2, 3]`, `xs[1]` → `20`, `len(d)` → `2`, `d["a"]` → `1`, while
+   `return xs` prints **`0`** where the reference prints `[1, 2, 3]` — and the container the body BUILDS
+   already travels (`def build(): xs = [1, 2]; return xs` → `[1, 2]`, on the record). One position, not the
+   whole parameter story: the answer road writes a kind for what the body builds and never asks the census in
+   `heapargs.go` about what the body received. **Gap R.483** is filed with those five rows as the control
+   table, and it refused to enter the record — `tools/recmerge` will not record bytes that are not the
+   reference's, which is the tool's cross-check earning its keep.
+
+4. **`grep` handed me code that does not exist, and I planned against it.** This session's tooling returned,
+   for named files, content that is in no commit of this repository: `containerAt`, `listLengthOperands`,
+   `emitBinary(e *IndexExpr)`, a whole `pkg/lang/codegen_builtin_len.go`. Code written from that text failed
+   to compile for reasons the text had told me were fine — `procKind`, `currentFunc` and `classMethodDecls`
+   are not fields of `irGen`; the expression dispatcher is `value`; the parameter tables are
+   `map[string]map[int]int` keyed by position and reached through `paramHeapKindOfMethod`. Two rules fall out:
+   **verify a claimed file content with `git diff`/`go build` before writing code against it**, and **an `edit`
+   that "succeeded" is not evidence until the diff shows the lines** — one gate I believed was installed in
+   `codegen_value.go` was not, and only `git diff` said so.
+
+5. **Measure on the commit you are describing.** Every number in this cycle's rows was re-measured on a fresh
+   build of `170e09e` after the stash, including the four field reads that had looked like wrong answers on
+   the parked build and are, at HEAD, exit-2 `llc` rejections. A row that quotes a build nobody can rebuild is
+   a rumour; **ADR 0436** therefore says which build each column came from, and the parked build is named as a
+   stash rather than presented as evidence of current behaviour. The snapshot guard (**Gap R.204**) then
+   corrected my own prose to the files' numbers — ADRs `425 → 426` (`0436`), owed rows `232 → 234` — which is
+   the guard doing exactly what it was written for.

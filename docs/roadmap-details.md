@@ -20369,3 +20369,88 @@ answers, and neither was the reference's. **ADR 0302**'s rule is that where the 
 reference is right and the record is the debt; the row has moved to that file's refusal table, where the guard is that
 the compiled leg *stays* a refusal, and the compiled leg now refuses at exit **1** beside the reference's exit **1**.
 A pinned `reference` cell has to have been asked of the reference.
+
+### Gap R.483 — a `def` that answers the container it received answers the slot's first word (⏳ OPEN, found by **ADR 0436**)
+
+```
+def f(xs):
+    return xs
+
+print(f([1, 2, 3]))
+```
+
+prints **`0`** at **exit 0** where the reference prints `[1, 2, 3]`. Measured on `170e09e` with a fresh build of
+`cmd/gustyc --file`, each program beside a live `python3`.
+
+The control that says this is the RECEIVED container and not a container-answer problem in general is the pair of
+programs either side of it. A container the body BUILDS travels — the record itself holds
+
+```
+def build():
+    xs = [1, 2]
+    return xs
+
+print(build())
+```
+
+with the bytes `[1, 2]` (`pkg/lang/testdata/interpreter-golden.json`, no hand-writing). And a container the body
+receives answers every question the source asks OF it on the same binary:
+
+| program | this backend | reference |
+|---|---|---|
+| `def f(xs): print(xs)` called `f([1, 2, 3])` | `[1, 2, 3]` | `[1, 2, 3]` |
+| `def f(xs): return xs[1]` called `f([10, 20, 30])` | `20` | `20` |
+| `def f(d): return len(d)` called `f({"a": 1, "b": 2})` | `2` | `2` |
+| `def f(d): return d["a"]` called `f({"a": 1, "b": 2})` | `1` | `1` |
+| `def f(xs): return xs` called `print(f([1, 2, 3]))` | **`0`** | `[1, 2, 3]` |
+
+So the parameter is rooted, the roads that measure it find the heap handle, and the ONE position that is missing is
+the answer: the road that gives a `return` its kind writes a word for the container the body *builds*
+(`pkg/lang/container_return.go`) and never asks the census in `pkg/lang/heapargs.go` whether the thing being returned
+is a parameter the call filled. The slot's first word is what comes back, and it comes back at the exit code that
+says the program was fine (**ADR 0166**).
+
+The method spelling — the same two lines inside `class A` with `self` first — does not reach an answer at all: it
+reaches `llc` and is rejected for the `i32 @.lst1` in an operand position, which is **Gap R.474**'s row and today's
+loud behaviour. That is why this row is scoped to the module door: the module half answers wrongly, and a fix that
+only moves the module half to where the method half is (a loud rejection) would be a downgrade dressed as progress.
+
+`tools/recmerge` refuses to record the source, because the compiled leg's bytes are not the reference's. The row is
+what the tool's refusal means: **ADR 0232**'s one-word-per-kind rule has an unbuilt door in front of it, and the
+cheapest open way through the container family is to build that door and let the record gain the source afterwards.
+
+### Gap R.484 — a field a body fills with a container has no kind word at the read (⏳ OPEN, found by **ADR 0436**)
+
+```
+class A():
+    def __init__(self):
+        self.xs = [10, 20]
+
+c = A()
+print(c.xs)
+```
+
+On `170e09e` this is **Gap R.474**'s row: `llc` rejects the module over the private global `@.lst1` written into an
+operand position, exit **2**, as do the three sibling reads (`for v in c.xs:` / `1 in c.xs` / `print(c.xs * 2)`).
+Loud, attributable, owed.
+
+Asked of the build where the STORE lands — the heap-container method-parameter door **ADR 0436** parks rather than
+merges, recoverable as the stash that ADR names — the four reads answer, and answer wrongly:
+
+| program after `self.xs = [10, 20]` | that build | reference |
+|---|---|---|
+| `print(c.xs)` | **`1`** | `[10, 20]` |
+| `for v in c.xs:` `print(v)` | **`0`**, **`1`** | `10`, `20` |
+| `print(1 in c.xs)` | **`True`** | `False` |
+| `print(c.xs * 2)` | **`2`** | `[10, 20, 10, 20]` |
+
+`@rt_inst_put` takes the store as an ordinary `i32` and `@rt_inst_get` hands the same word back with nothing beside
+it, so each road that reads the field numbers the container's ADDRESS: the `1` is the slot, the `0`/`1` are the loop
+counting addresses, `True` is an address equal to itself, and the `2` is a repeat of a value the program never had.
+None of them is a number the source wrote, and every one of them is exit **0**.
+
+The row is therefore a gate on **Gap R.474**'s landing rather than an independent defect: whoever opens the store
+opens the READ's word in the same commit — the field's kind read off the ONE census the parameter tables already
+use (`pkg/lang/heapargs.go`), asked at the read and not the store, which is **ADR 0232**'s rule and why storing
+stays legal — or the store's own fix converts four refusals into four silent answers. **ADR 0436**'s table is the
+checklist for that review.
