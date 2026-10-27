@@ -19219,3 +19219,72 @@ the closed row's symptom, not a second defect. `tools/recmerge` REFUSED all thre
 was found: an entry the compiled leg will not agree to is debt, not a record. The fix is the `for` road's
 binding, not a gate: retire the name's stale scalar records the way the road already retires the verdict
 record (`forgetVarBool`), and give the loop's store the word the item's kind asks for.
+
+### Gap R.422 — removing a set member asks the SET'S recorded kind instead of the ARGUMENT'S tag (✅ DONE, closed by **ADR 0425**)
+
+The row was filed by **ADR 0413** as one of the shapes the alias battery found and did not fix. It is the
+same lesion seen five ways, four of them at the exit code of success:
+
+| program | this backend (parent `0a6413d`) | reference (CPython 3.12.3) |
+|---|---|---|
+| `s = {1, 2}` / `s.discard("a")` / `print(s)` | `{1}` — exit 0 | `{1, 2}` |
+| `s = {1, 2}` / `s.discard(9)` / `print(s)` | `{1}` — exit 0 | `{1, 2}` |
+| `s = {0, 1}` / `s.discard(None)` / `print(s)` | `{1}` — exit 0 | `{0, 1}` |
+| `s = {1, 2}` / `s.discard([1])` | `{2}` — exit 0 | `TypeError: unhashable type: 'list'` |
+| `s = set()` / `s.add(1)` / `s.discard(1)` / `s.discard(9)` / `print(len(s))` | `-1` — exit 0 | `0` |
+| `s = {1, 2}` / `s.remove(9)` | refused at exit 1 | `KeyError: 9` |
+
+**Why the payload was the whole story.** `pkg/lang/codegen_method.go`'s runtime-set door shared `add` and
+`discard` in one `case`: it called `heapElemKind` for the argument's payload, consulted `elemKindTag` only to
+decide whether the *add* should be tagged, and handed the removal `rt_set_discard(h, v)` one word. The door
+scanned the payload array and deleted the first member whose payload equalled that word. A text's payload is
+an index into `@str_tab`, the void's is nothing and a float's is a box handle — which is exactly why **ADR
+0187** and **ADR 0189** put a second word beside every member, and why **ADR 0232**'s `add` road already hands
+it over: `in`, `len`, `print` and `add` can agree about a slot because they all ask the pair, and `discard`
+was the one road that asked the payload alone. The `-1` is the same omission from the other side: a door with
+no answer for "absent" also has no caller that can ask, so the length word underflowed.
+
+**Why `remove` was refused rather than missing.** `remove` fell past the set-method door to the string-method
+road, whose name-holds-container gate refuses a container METHOD over a NAME (**Gap R.174**'s standing). The
+refusal was not the bug — refusals are debt, not lies (**ADR 0166**) — but it hid the fact that the door beside
+it already had every fact a `remove` needs: the same pair, the same scan, plus a raise.
+
+**The measurement that decided the shape.** The obvious implementation copied `guardHashableTag` from the
+dict-key road. Asked of the pinned reference, one program per cell:
+
+```
+s.discard([1])            TypeError: unhashable type: 'list'
+s.discard({"a": 1})       TypeError: unhashable type: 'dict'
+s.discard({1})            NO ERROR AT ALL — the set prints unchanged
+s.discard((1, [2]))       TypeError: unhashable type: 'list'
+s.discard((1, {2}))       TypeError: unhashable type: 'set'
+s.remove([1])             TypeError: unhashable type: 'list'
+s.remove({1})             KeyError: {1} — the word is MISSING, not UNHASHABLE
+```
+
+CPython's two set entry points swallow a `TypeError` from hashing a set argument and report an absent member
+instead. Copying the dict guard would have invented `TypeError: unhashable type: 'set'` for two programs the
+reference either does not raise at all or raises a different class for — a wrong trap at exit 3 is the same
+class of defect as a wrong answer at exit 0, so `memberIsABareSet` is exactly as wide as that table (a
+`*SetLit`, the `set()` spelling of one, a name whose record says set) and `guardRemovableMemberTag` is
+`guardHashableTag` with the set arm removed. The tuple arm is forced the other way: this backend gives a tuple
+a list's storage (**ADR 0361**), so the emitted pair word for `s.discard((1, 2))` is `i32 5`, and a tag test
+would refuse a hashable member — the static door is the one that asks the question the language has, walking
+the tuple's elements and naming the first it cannot hash.
+
+**The sentence was a second row hiding inside the first.** `KeyError` carries the member's repr, and two
+readings were missing: `literalKeyRepr` had no arm for a set literal or the constructor spellings, and
+`keyNotFoundMessage` had no arm for the unroll's item — the tag was recorded per iteration by **ADR 0424** but
+*which* element it was was not, so `for k in [1, 2, 9]: s.remove(k)` said `key not found`. The dict door
+beside it answers a name-bound tuple the same way (`t = (3, 4)` / `print(d[t])`) and stays owed: that is **Gap
+R.189**'s row, and pinning both spellings together is what keeps it one row rather than two.
+
+**What the sweep proved.** A **9526**-source sweep of the record corpus through a `git worktree` build of the
+parent and this commit reports **9472 unchanged / 54 changed**; 52 of the changed sources are set-verb
+programs, **49 moved TO the record and none moved away**, and the remaining two differ only in the `llc` temp
+path inside an unchanged error string. `tools/recmerge` wrote **72** entries from the reference with the
+compiled leg cross-checked (**9454 → 9526**) and refused the sources whose compiled leg disagrees — those are
+pinned with the row that owes them: the printed order of a mixed-kind set (**Gap R.170**, the ordering **ADR
+0415**'s bucket work has not reached), the unquotable member (**Gap R.189**), and the loop item whose slot
+word is **Gap R.447**'s — a float whose box handle was stored into an `i32` by the unroll and re-materialised
+as `1.0`, which the pair door then correctly removed. Same verb, different owner.

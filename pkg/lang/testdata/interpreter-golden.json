@@ -1,5 +1,375 @@
 {
  "entries": {
+"s = {\"0\", \"1\"}\nt = s\nt.discard(0)\nprint(len(t))\nprint(0 in t)\nprint(\"0\" in t)\n": {
+    "stdout": "2\nFalse\nTrue\n",
+    "hasStdout": true
+   },
+"s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n": {
+    "stdout": "{'a'}\n",
+    "hasStdout": true
+   },
+"s = {\"0\", \"1\"}\ns.discard(0)\nprint(len(s))\nprint(0 in s)\nprint(\"0\" in s)\n": {
+    "stdout": "2\nFalse\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = {\"a\", \"b\"}\nks = [\"a\"]\nfor k in ks:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{'b'}\n",
+    "hasStdout": true
+   },
+
+"s = {\"a\"}\nfor k in [\"a\", \"zz\"]:\n    s.remove(k)\n": {
+    "err": "KeyError: 'zz'",
+    "exnType": "KeyError",
+    "exnMsg": "'zz'"
+   },
+
+"s = {\"a\"}\ns.remove(\"z\")\n": {
+    "err": "KeyError: 'z'",
+    "exnType": "KeyError",
+    "exnMsg": "'z'"
+   },
+
+"s = {0, 1}\ns.discard(None)\nprint(s)\n": {
+    "stdout": "{0, 1}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, \"a\"}\ns.discard(\"a\")\n": {
+    "hasStdout": true
+   },
+
+"s = {1, 2, \"a\"}\ns.discard(\"a\")\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, \"a\"}\ns.remove(\"a\")\ns.remove(1)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nfor k in [\"a\", \"b\"]:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add(\"a\")\ns.discard(\"a\")\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add(\"b\")\ns.discard(1)\nprint(s)\n": {
+    "stdout": "{2, 'b'}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(\"a\")\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(9)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(set())\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard({\"a\": 1})\n": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"s = {1, 2}\ns.remove(1)\n": {
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.remove(1.5)\n": {
+    "err": "KeyError: 1.5",
+    "exnType": "KeyError",
+    "exnMsg": "1.5"
+   },
+
+"s = {1, 2}\ns.remove(False)\n": {
+    "err": "KeyError: False",
+    "exnType": "KeyError",
+    "exnMsg": "False"
+   },
+
+"s = {1, 2}\ns.remove(None)\n": {
+    "err": "KeyError: None",
+    "exnType": "KeyError",
+    "exnMsg": "None"
+   },
+
+"s = {1, 2}\ns.remove(set())\n": {
+    "err": "KeyError: set()",
+    "exnType": "KeyError",
+    "exnMsg": "set()"
+   },
+
+"s = {1, 2}\ns.remove({\"a\": 1})\n": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"s = {1, 2}\nt = {1}\ns.discard(t)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nx = 2\ns.remove(x)\n": {
+    "hasStdout": true
+   },
+"d = {1: 'a'}\ns = {1, 2}\ns.remove(1)\nprint(d[1])\nprint(s)\n": {
+    "stdout": "a\n{2}\n",
+    "hasStdout": true
+   },
+
+"s = set()\ns.remove(1)\n": {
+    "err": "KeyError: 1",
+    "exnType": "KeyError",
+    "exnMsg": "1"
+   },
+
+"s = {\"a\", \"b\"}\nfor k in [\"a\", \"zz\"]:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{'b'}\n",
+    "hasStdout": true
+   },
+
+"s = {'a', 'b'}\nks = ['a']\nfor k in ks:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{'b'}\n",
+    "hasStdout": true
+   },
+
+"s = {0, 1}\ns.remove(0)\nprint(s)\n": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, \"a\"}\ns.discard(\"a\")\nprint(s)\nprint(len(s))\n": {
+    "stdout": "{1, 2}\n2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, \"a\"}\ns.remove(\"a\")\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.discard('a')\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.discard(1)\nprint(s)\n": {
+    "stdout": "{2, 'a'}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.discard(1.0)\nprint(1 in s)\nprint(len(s))\n": {
+    "stdout": "False\n2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.discard(True)\nprint(s)\n": {
+    "stdout": "{2, 'a'}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.remove('a')\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 'a'}\ns.remove('a')\ns.remove(1)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 3}\nfor k in [1, 2, 9]:\n    s.remove(k)\n": {
+    "err": "KeyError: 9",
+    "exnType": "KeyError",
+    "exnMsg": "9"
+   },
+
+"s = {1, 2, 3}\nfor k in [1, 3]:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 3}\nfor k in [1, 3]:\n    s.remove(k)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 3}\ns.remove(2)\nprint(s)\nprint(len(s))\n": {
+    "stdout": "{1, 3}\n2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 3}\nt = s\nt.discard(2)\nprint(t)\nprint(s)\n": {
+    "stdout": "{1, 3}\n{1, 3}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2, 3}\nt = s\nt.remove(2)\nprint(s)\nprint(t)\n": {
+    "stdout": "{1, 3}\n{1, 3}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nfor k in ['a', 'b']:\n    s.discard(k)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add(\"z\")\ns.discard(1)\nprint(s)\n": {
+    "stdout": "{2, 'z'}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add('a')\ns.discard('a')\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add('b')\ns.discard(1)\nprint(s)\n": {
+    "stdout": "{2, 'b'}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add(3)\ns.discard(3)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.add(3)\ns.discard(3)\ns.discard(9)\nprint(s)\nprint(len(s))\n": {
+    "stdout": "{1, 2}\n2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(\"a\")\ns.discard(1)\nprint(s)\nprint(len(s))\n": {
+    "stdout": "{2}\n1\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard('a')\ns.discard(1)\nprint(len(s))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard((1, 2))\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard((1, {2}))\n": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"s = {1, 2}\ns.discard(1)\nfor k in [1, 2]:\n    print(k)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(1)\nprint(len(s))\nprint(1 in s)\nprint(2 in s)\n": {
+    "stdout": "1\nFalse\nTrue\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(1)\ns.discard(2)\nprint(s)\n": {
+    "stdout": "set()\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard(None)\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.discard([1])\n": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"s = {1, 2}\ns.discard({'a': 1})\n": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"s = {1, 2}\ns.discard({1})\nprint(s)\n": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.remove((1, [2]))\n": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"s = {1, 2}\ns.remove(1)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.remove(1)\ns.remove(1)\n": {
+    "err": "KeyError: 1",
+    "exnType": "KeyError",
+    "exnMsg": "1"
+   },
+
+"s = {1, 2}\ns.remove(1.0)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.remove(True)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns.remove([1])\n": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"s = {1, 2}\ns.remove({1})\n": {
+    "err": "KeyError: {1}",
+    "exnType": "KeyError",
+    "exnMsg": "{1}"
+   },
+
+"s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n": {
+    "stdout": "{1, 2}\n{1, 2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nt = s\nt.discard(1)\nprint(s)\n": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nt = s\nt.discard(1)\nprint(t)\nprint(s)\nprint(len(t))\n": {
+    "stdout": "{2}\n{2}\n1\n",
+    "hasStdout": true
+   },
+
+"s = {True, False}\ns.discard(True)\nprint(s)\n": {
+    "stdout": "{False}\n",
+    "hasStdout": true
+   },
 "for i in [0, 1]:\n    for k in [None, 1.5]:\n        print([k, i])\n": {
     "stdout": "[None, 0]\n[1.5, 0]\n[None, 1]\n[1.5, 1]\n",
     "hasStdout": true

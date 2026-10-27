@@ -1496,6 +1496,23 @@ func (g *irGen) loopItemKindTag(e Expr) (int32, bool) {
 	return t, true
 }
 
+// loopItemExpr is the third arm of the unroll's record: WHICH element this body copy walks, not merely
+// what kind it is. A sentence the body raises can name the member only if the pass still knows which
+// item stood in front of it - `for k in [1, 2, 9]: s.remove(k)` says `KeyError: 9` in the reference and
+// said `key not found` here, because the tag told the pass the item was a number and nothing told it
+// which number (roadmap Gap R.189's sentence, on the set side; roadmap Gap R.440's record).
+func (g *irGen) loopItemExpr(e Expr) (Expr, bool) {
+	if g == nil || e == nil || g.loopElem == nil {
+		return nil, false
+	}
+	nm, isName := e.(*Name)
+	if !isName {
+		return nil, false
+	}
+	item, has := g.loopElem[nm.Value]
+	return item, has
+}
+
 // loopItemIsContainer is the container arm of the same reading: a slot holding an ITEM that is a
 // list, a dict, a set or an instance holds a heap handle whose kind the object carries, which is the
 // claim `isContainerLiteral` makes for a spelled literal and cannot make for a name (roadmap Gap R.440).

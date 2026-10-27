@@ -1879,14 +1879,41 @@ lst.append(7)
   alias `ys` still describes the first list (`print(ys)` is the reference's `[None, 1]`), and `s = {2, 3}` leaves `t`
   printing `{1}`. What this leaves owed is filed rather than smoothed over: the dict rebound under its own alias is
   `Gap R.420` (the rebinding releases the object and the allocator hands that slot to the next dict), the set built
-  from a LITERAL writes its members with no tag and in the order the source named them (`Gap R.423`), `discard`
-  compares the payload and not the pair (`Gap R.422`) — each of
+  from a LITERAL writes its members with no tag and in the order the source named them (`Gap R.423`) — each of
   those answers the same way with NO alias in the program — and a container METHOD over an aliased container
-  (`for k, v in e.items():`, `t.remove(1)`) is refused exactly as it is over the source name, because an alias is a
-  name and that is `Gap R.146`/`Gap R.174`'s standing, not this one's.
+  (`for k, v in e.items():`) is refused exactly as it is over the source name, because an alias is a
+  name and that is `Gap R.146`/`Gap R.174`'s standing, not this one's. What was owed here and is paid:
+  `t.discard("a")` and `t.remove(1)` over the aliased set now answer the reference (`Gap R.422`, `ADR 0425`)
+  — an alias is a name, and a name is what the removal door asks its member's pair of.
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.
+- **Removing a member asks the ARGUMENT, not the set** (`Gap R.422`, `ADR 0425`). A member is a pair — a
+  payload and the tag that says what the payload means, because a stored text is an index into the string
+  table and the text `"0"` and the number `0` are the same word — and `s.discard(v)` / `s.remove(v)` compare
+  BOTH words, exactly as `s.add(v)` writes them. So the value a set has never held removes nothing:
+
+  ```
+  s = {1, 2}
+  s.discard("a")      # nothing — the set prints {1, 2}
+  s.discard(9)        # nothing
+  s.discard(None)     # nothing
+  s.discard(1.0)      # the 1 goes: 1.0 == 1 and hash(1.0) == hash(1)
+  s.remove(9)         # KeyError: 9 — the member is named in the sentence
+  ```
+
+  A member the language refuses to hash raises `TypeError` BEFORE the set is consulted, worded for the type
+  the source wrote: `s.discard([1])`, `s.discard({"a": 1})`, `s.remove((1, [2]))` and `s.discard((1, {2}))`
+  are `TypeError: unhashable type: 'list'` / `'dict'` / `'list'` / `'set'`, the last two because a tuple walks
+  its elements and names the first it cannot hash. One exemption is the reference's own and not this
+  backend's convenience: a BARE set is a missing member, never an unhashable one — `s.discard({1})` raises
+  nothing at all and `s.remove({1})` says `KeyError: {1}` — while the same value inside a tuple still raises.
+  A tuple spelled as a tuple is hashable here even though it shares a list's storage (`ADR 0361`), so
+  `s.discard((1, 2))` prints the set unchanged.
+- **A set prints in the order its members arrived** (`Gap R.170`, `Gap R.423`): `{1, 2}` prints `{1, 2}`.
+  The reference prints hash-slot order, so a mixed-kind set can print its members in a different sequence —
+  `s = {"0", "1"}` / `s.discard(0)` / `print(s)` is `{'1', '0'}` there and `{'0', '1'}` here. Which members
+  are in the set, and what `len` and `in` say about them, agree with the reference; only the sequence differs.
 - **An empty container written as a call is the object its literal spells** (Gap R.360, ADR 0391),
   wherever it lands: `xs = [set()]` / `print(xs[0])` is `set()`, `d = {None: list()}` /
   `print(d[None])` is `[]`, `print([set(), list(), dict()])` is `[set(), [], {}]`, and

@@ -15365,3 +15365,113 @@ discovery — and it still taught me twice.
    0424) and the two "N sources" sentences in `AGENTS.md` and `docs/operations.md`. All four are recomputed on
    every uncached run, so the fix is always "edit the sentence, never the test". Worth re-reading before the
    next cycle's commit, because the failure text is the documentation for it.
+
+## ADR 0425 — removing a set member asks the ARGUMENT what it carries: one (payload, tag) pair, asked once, by both verbs (Gap R.422 closed, 2026-10-27)
+
+1. **The mirror of a road that asks its argument is a road that asks the same argument — check the mirror
+   before writing anything.** `s.add(v)` carries `(payload, tag)`; `s.discard(v)` carried the payload and
+   nothing else, and every wrong answer in the row followed from that one asymmetry: a text's payload is a
+   `@str_tab` index, so `s.discard("a")` over `{1, 2}` deleted the member whose number happened to equal the
+   text's index. The diagnosis cost one sentence — "what does `add` ask that `discard` doesn't?" — and the
+   fix was the same two readings (`pairElemPair`, `taggedOperand`) already sitting in `heapargs.go`. When a
+   feature has a dual, diff the questions, not the code.
+
+2. **"Absent" is a state the runtime has to be able to report, or the caller invents one.** The payload-only
+   door had no way to say "no such member", so `s.discard(9)` deleted a member and `s.add(1)` / `s.discard(1)`
+   / `s.discard(9)` / `print(len(s))` printed `-1`. That `-1` was in the drift ledger, unexplained, for
+   hundreds of ADRs. A door that cannot answer a question doesn't stay silent — it answers a different
+   question and lets the caller's arithmetic lie. Putting the absent test inside `rt_set_discard_tagged`
+   (where the finding lives) means no caller can forget to ask.
+
+3. **The obvious reuse of a neighbour's guard was the second bug, and only a measurement could stop it.** The
+   dict door's `guardHashableTag` refuses list, dict AND set keys, and CPython agrees for all three — so
+   copying it here looked free. Asked one program per cell, the set door disagrees with the dict door in two
+   cells: `s.discard({1})` raises NOTHING and `s.remove({1})` is `KeyError: {1}`, while `s.discard((1, {2}))`
+   still says `unhashable type: 'set'`. A wrong trap at exit 3 is the same class of defect as a wrong answer
+   at exit 0 (**ADR 0166**, **ADR 0271**), so the exemption is written as the table that produced it, with the
+   measurement in the comment. Corollary that only this backend has: a tuple carries the LIST's pair word
+   (**ADR 0361** — asserted in the emitted IR as `i32 5`), so a tag test would refuse a hashable member; the
+   static door is the one that walks a tuple's elements.
+
+4. **A trap message is a feature surface, and the record cannot tell you it is missing.** `KeyError` names
+   the member in the reference and said `key not found` here for anything the pass could not quote. Two
+   readings were missing, and neither is a runtime fact: `literalKeyRepr` had no arm for a set literal or the
+   constructor spellings, and the unroll recorded the item's KIND (**ADR 0424**) but not WHICH element it was —
+   so `for k in [1, 2, 9]: s.remove(k)` had the fact one map away from the door that needed it. New record:
+   `loopElem`, read by `loopItemExpr`, used by exactly one caller. Cheap to keep, and it turns a
+   non-actionable traceback into a grep-able one.
+
+5. **Refusal → answer is the direction that needs the exit-code test.** `s.remove(9)` used to leave the
+   compiler at exit 1, which is a COMPILE refusal's code; the parent's build made that visible and this one's
+   `TestSetMemberRemovalKeepsTheCompilerOutOfIt` keeps it invisible (no exit 1 with a codegen sentence, no exit
+   2 anywhere). When a row converts a refusal into an answer, the new test's job is to make the old refusal
+   unrepresentable, not merely to assert the new answer.
+
+6. **The sweep is the row's witness, and it also re-tells you which rows are not yours.** 9524 sources through
+   both builds: 9472 unchanged, 52 changed, 50 of them set-verb programs, 47 moving TO the record, 0 moving
+   away, 2 differing only in an `llc` temp path inside the same error string. Two "set" cases stayed wrong and
+   neither is this door's: a mixed-kind set's printed ORDER (**Gap R.170**/**R.423**) and a loop item whose
+   float arrived as `1.0` because the unroll stored an `i32` into the float road's `double` slot (**Gap
+   R.447**). The second one removed the member it was handed — the pair door answered correctly for a pair the
+   unroll had corrupted — which is why the owed table names the owner instead of the symptom.
+
+7. **Ledger hygiene, learned the hard way.** Deleting a drift row is only half of paying it: the count in
+   `docs/operations.md`'s artifact table has to move with it and the "went paid with **ADR …**" sentence has to
+   say why, because `TestMain` fails on a divergence that disappears without a story. I also dropped an
+   unrelated `d.get("zzz")` row that had drifted into the ledger from some earlier run mode — a ledger is an
+   observation, and an observation nobody can attribute is not one.
+
+## ADR 0425 — removing a set member asks the ARGUMENT, once: one (payload, tag) pair, both verbs, two doors (Gap R.422 closed, 2026-10-27)
+
+1. **A payload is never a discriminator, and a door that uses one as if it were will delete the wrong
+   member at exit 0.** `add` carries `(payload, tag)` because **ADR 0187**/**ADR 0189** said a stored text is
+   an index into `@str_tab`; `discard` carried the payload alone, so `s.discard("a")` over `{1, 2}` removed
+   whatever member's number happened to equal the text's index. `s.discard(9)` removed a member too, and
+   `s.add(1)` / `s.discard(1)` / `s.discard(9)` printed `-1` — an underflowed length, i.e. a door with no way
+   to say "absent" inventing an answer. The row's five symptoms were one missing word.
+
+2. **Reuse the neighbour's guard only after asking the reference whether the neighbour is right here.** The
+   obvious `guardHashableTag` copy would have raised `TypeError: unhashable type: 'set'` for
+   `s.discard({1})`/`s.remove({1})`; the pinned reference raises NOTHING for the first and `KeyError: {1}` for
+   the second, because CPython's set entry points swallow a TypeError from hashing a set argument and report
+   an absent member. Nested in a tuple the same value DOES name itself. The exemption is therefore written as
+   the measurement table it came from, and the tuple is exempt from the tag test for a backend-specific
+   reason that had to be measured too — a tuple's pair word is the LIST's tag (**ADR 0361**), asserted in the
+   emitted IR as `i32 5`, so a tag test would refuse a hashable member.
+
+3. **Both verbs share a finding, so the finding is asked once.** `remove` is not `discard` + `in`: two scans
+   are two doors that can answer differently (**ADR 0232**). `rt_set_find` answers the position; `remove`
+   raises on `-1` and hands the position to `rt_set_remove_at`; `discard` delegates the whole pair-question to
+   `rt_set_discard_tagged`, which holds the absent test where the finding is — so no caller can forget the
+   no-op, which is how `-1` got in. The shift moves BOTH arrays: the payload-only shift never had to keep the
+   tag array in step, because the payload-only door never had tags.
+
+4. **The trap sentence is a feature surface, and two records were missing from it.** `KeyError` must carry the
+   member's repr: `literalKeyRepr` had no `*SetLit` arm (and `set()` for the empty spelling, the way
+   `repr(set())` does), and `keyNotFoundMessage` had no arm for the unroll's item — **ADR 0424**'s record kept
+   the item's KIND, not WHICH element it was, so `for k in [1, 2, 9]: s.remove(k)` said `key not found`.
+   `loopElem` (read by `loopItemExpr`, used by the sentence road alone) is the cheapest record in the
+   compiler and it turns an unactionable traceback into a greppable one.
+
+5. **A sweep is the only honest witness for "I only changed the door I meant to".** 9524 record sources
+   through a `git worktree` build of the parent and this one: 9472 unchanged, 52 changed, 50 of them set-verb
+   programs, **47 moved toward the record and none away**, the other two differing only in the `llc` temp path
+   inside an unchanged error string. The three that did not match the record were exactly the three expected:
+   two print-nothing programs whose record entry has no `stdout` to compare, and `s.remove(9)`, whose record
+   still holds the retired engine's `remove(): element not in set` — the reference is right, the record is the
+   debt, and the drift ledger is where that sentence lives (**ADR 0302**).
+
+6. **Record discipline and ledger hygiene, both bite before the suite does.** `tools/recmerge` refused every
+   source whose compiled leg disagreed — the printed order of a mixed set (**Gap R.170**/**R.423**'s bucket
+   question), the string-hash randomisation that makes `{'0','1'}` vs `{'1','0'}` a coin flip unless
+   `PYTHONHASHSEED=0`, and the loop item whose slot word is **Gap R.447**'s — so those became PINNED owed rows
+   with today's bytes, not records. Paying a drift row means editing the count in `docs/operations.md` and
+   adding the "went paid with ADR …" sentence, because `TestMain` fails on a divergence that disappears
+   silently; deleting a row without that story is the failure mode, not the fix. And I dropped one unrelated
+   row (`d.get("zzz")`) that had drifted in from an earlier run mode: a ledger records what the suite observes,
+   and an observation nobody can attribute is not one.
+
+7. **Ask the AST, not just the program.** The two doors this row adds (`memberIsABareSet`,
+   `guardRemovableMemberTag`) are also asserted directly over `*SetLit`/`*Name`/`*ListLit`/an unknown name,
+   beside the end-to-end rows. The exemption list is the row's claim about CPython; a claim about a list of
+   kinds deserves a case per kind, not one program per kind through the whole pipeline.

@@ -4724,7 +4724,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)",
+      "aot_error": "get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)",
       "python_ok": true,
       "python_stdout": "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n",
       "aot_matches_python": false,
@@ -4738,7 +4738,7 @@
         "instance-identity"
       ],
       "oracle_notes": [
-        "compiled leg failed: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+        "compiled leg failed: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
       ]
     },
     {

@@ -489,12 +489,35 @@ func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
 	if repr, ok := literalKeyRepr(keyExpr); ok {
 		return repr
 	}
+	// A container spelled by its CONSTRUCTOR is the same key as the same container spelled by its
+	// brackets, and the reference's sentence for it is the repr the language itself prints: `set()`,
+	// `[]`, `{}`. The bracket door above cannot see past the syntax, so the road asks the same reading
+	// the member door asks (roadmap L11.2, ADR 0386; the sentence rule is Gap R.189's).
+	if c, isCall := keyExpr.(*Call); isCall && g != nil {
+		if lit, empty := g.emptyContainerCall(c); empty {
+			if repr, ok := literalKeyRepr(lit); ok {
+				return repr
+			}
+		}
+	}
 	// A key that arrived through a BINDING is nameable too, when the binding wrote one of the two
 	// singletons: the reference prints `KeyError: None` for `k = None` over a dict that has no such entry,
 	// and the generic sentence is the thing that made the traceback unactionable. This is the same record
 	// the read road now asks (Gap R.286), so the message cannot disagree with the lookup that missed.
 	// Every other key keeps the generic sentence: Gap R.189 owns naming a key the compiler cannot see.
 	if nm, isName := keyExpr.(*Name); isName && g != nil {
+		if item, isItem := g.loopItemExpr(nm); isItem {
+			// The name is an ITEM of an unrolled loop, and the unroll still holds which element this body
+			// copy walks (ADR 0424's record, widened by ADR 0425). Without that reading the sentence for
+			//   s = {1, 2, 3}
+			//   for k in [1, 2, 9]:
+			//       s.remove(k)
+			// says 'key not found' where the reference says KeyError: 9 - the half that makes a traceback
+			// findable was sitting in a map no one consulted on the way to the message.
+			if repr, ok := literalKeyRepr(item); ok {
+				return repr
+			}
+		}
 		switch {
 		case g.noneVars[nm.Value]:
 			return "None"
@@ -539,6 +562,23 @@ func literalKeyRepr(e Expr) (string, bool) {
 			return "(" + strings.Join(parts, ", ") + ")", true
 		}
 		return "[" + strings.Join(parts, ", ") + "]", true
+	case *SetLit:
+		// A set written at the call is quotable too, and the reference quotes it in braces: the missing
+		// member of `s.remove({1})` is named `KeyError: {1}`, not `key not found`. The empty set has no
+		// brace spelling in the reference - `{}` is an empty dict - so the sentence says `set()`, the way
+		// `repr(set())` does (roadmap L11.2, ADR 0386; roadmap Gap R.441's one question, asked of a trap).
+		if len(k.Elems) == 0 {
+			return "set()", true
+		}
+		parts := make([]string, 0, len(k.Elems))
+		for _, el := range k.Elems {
+			s, ok := literalKeyRepr(el)
+			if !ok {
+				return "", false
+			}
+			parts = append(parts, s)
+		}
+		return "{" + strings.Join(parts, ", ") + "}", true
 	case *StrLit:
 		return pyReprString(k.Value), true
 	case *IntLit:

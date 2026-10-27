@@ -922,6 +922,12 @@ type irGen struct {
 	// print it. The value is the canonical ValueTag; the entry exists only while a body copy is
 	// being emitted (roadmap L11.1, ADR 0233).
 	loopElemTag map[string]int32
+	// loopElem is the same unroll's record of the ELEMENT itself: while a body copy is being emitted,
+	// the name the loop binds is that expression for this iteration. The tag above says what the item
+	// IS; this says which item it is, which is the half a missing-member sentence needs - `for k in
+	// [1, 2, 9]: s.remove(k)` names `9`, not `key not found` (roadmap Gap R.189's sentence, on the set
+	// side; roadmap Gap R.440's record, one door over). Read by the KeyError road alone.
+	loopElem map[string]Expr
 	// strParamOf maps a function name to the parameter indices that receive strings; the
 	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
 	strParamOf map[string]map[int]bool

@@ -167,6 +167,14 @@ func theAliasAnswered() []struct {
 		{"the alias promotes and the void keeps its place", "s = {1}\nt = s\nt.add(\"a\")\nt.add(None)\nprint(s)\nprint(t)\n", "{None, 1, 'a'}\n{None, 1, 'a'}\n"},
 		{"the void and the number counted", "s = {1}\ns.add(None)\nprint(len(s))\nprint(1 in s)\nprint(None in s or s is None)\n", "2\nTrue\nTrue\n"},
 		{"zero and the void, both in bucket 0", "s = set()\ns.add(4)\ns.add(None)\ns.add(0)\nprint(s)\n", "{None, 0, 4}\n"},
+		// The two removal shapes **Gap R.419** filed here as owed and **Gap R.422** (**ADR 0425**) paid: a
+		// member taken out through one name is taken out of the ONE object both names hold, and the argument —
+		// never the set's notebook — decides which member that is. A text whose intern index happened to
+		// equal a number's payload used to remove that number; a `remove` over a NAME used to be refused.
+		{"a text discarded from a set of numbers leaves every member", "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n", "{1, 2}\n{1, 2}\n"},
+		{"a member whose payload collides with a text's index is kept", "s = {\"0\", \"1\"}\nt = s\nt.discard(0)\nprint(len(t))\nprint(0 in t)\nprint(\"0\" in t)\n", "2\nFalse\nTrue\n"},
+		{"a set member removed by value through the alias", "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n", "{'a'}\n"},
+		{"the alias removes, the source reads back", "s = {1, 2, 3}\nt = s\nt.remove(2)\nprint(s)\nprint(t)\n", "{1, 3}\n{1, 3}\n"},
 	}
 }
 
@@ -479,16 +487,6 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 		// the root table before it pushes the slot (**Gap R.420**, **ADR 0414**), and the program moved into
 		// theAliasAnswered() beside the set's twin rather than being edited here.
 		{
-			name:     "a text discarded from a set of numbers through the alias",
-			src:      "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
-			gap:      "Gap R.422",
-			compiled: "{1}\n{1}\n",
-			python:   "{1, 2}\n{1, 2}\n",
-			why: "`discard` asks the SET'S recorded kind instead of the ARGUMENT's tag, so the text's intern index " +
-				"is passed as a number and the member whose payload happens to equal it is removed — a wrong answer " +
-				"at exit 0 that the program with no alias answers identically, byte for byte",
-		},
-		{
 			name:     "the set built from a literal, joined by a number",
 			src:      "s = {7, 2}\ns.add(9)\nprint(s)\n",
 			gap:      "Gap R.423",
@@ -554,15 +552,9 @@ func TestWhatTheAliasRowStillOwesIsFiledNotFixed(t *testing.T) {
 				"standing **Gap R.174** wall, and an alias is a name — the row this one pays is the RECORD of the " +
 				"object, not a new road for the method",
 		},
-		{
-			name:     "a set member removed by value through the alias",
-			src:      "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n",
-			gap:      "Gap R.174",
-			compiled: "",
-			python:   "{'a'}\n",
-			why: "REFUSED, as `s.remove(1)` is: the same method over the same kind of NAME. Paying it wants the " +
-				"tagged-method door, not this file's notebook",
-		},
+		// `t.discard(...)` and `t.remove(...)` were filed here too. They are ANSWERED now — the pair road
+		// **Gap R.422** (**ADR 0425**) lowered them through lives in `theAliasAnswered()` — and a filed row
+		// that closes is DELETED here, not edited.
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {

@@ -191,21 +191,37 @@ sl:
 }
 
 ; rt_set_discard_tagged removes a member by (payload, tag) and shifts the tail of BOTH arrays.
-; Shifting the payloads while leaving the tags where they were would print every member after the
-; removed one through the kind of its neighbour.
+; The scan is rt_set_find's question and the shift is rt_set_remove_at's, so the two removal
+; roads -- s.discard(x) and s.remove(x) -- cannot ever disagree about which member a payload-and-tag
+; pair names, which is the pair ADR 0187 and ADR 0232 insist a slot is never read without
+; (roadmap Gap R.422).
 define internal void @rt_set_discard_tagged(i32 %h, i32 %v, i32 %t) {
 entry:
   %at = call i32 @rt_set_find(i32 %h, i32 %v, i32 %t)
   %absent = icmp slt i32 %at, 0
   br i1 %absent, label %done, label %work
 work:
+  call void @rt_set_remove_at(i32 %h, i32 %at)
+  ret void
+done:
+  ret void
+}
+
+; rt_set_remove_at drops the member at a position the caller already found, and shifts the tail of
+; BOTH arrays. Shifting the payloads while leaving the tags where they were would print every member
+; after the removed one through the kind of its neighbour -- the bug ADR 0187 names on every
+; positional door, kept here on the set's own array (roadmap Gap R.422). The caller has already
+; answered "is it there?"; this door does not ask again, which is why remove can raise its
+; KeyError from the finding instead of from a second scan that might find something else.
+define internal void @rt_set_remove_at(i32 %h, i32 %pos) {
+entry:
   %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %last = sub i32 %len, 1
   br label %shift
 shift:
-  %j = phi i32 [ %at, %work ], [ %jnext, %shiftdo ]
+  %j = phi i32 [ %pos, %entry ], [ %jnext, %shiftdo ]
   %go = icmp slt i32 %j, %last
   br i1 %go, label %shiftdo, label %shrink
 shiftdo:
@@ -222,8 +238,6 @@ shiftdo:
   br label %shift
 shrink:
   store i32 %last, i32* %lp
-  ret void
-done:
   ret void
 }
 

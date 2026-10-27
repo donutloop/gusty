@@ -512,6 +512,7 @@ func (g *irGen) bindUnrolledCompItem(b *strings.Builder, lv string, item Expr) (
 	prevInterned, hadInterned := g.internedVars[lv]
 	prevTagged, hadTagged := g.taggedVars[lv]
 	prevLoopTag, hadLoopTag := g.loopElemTag[lv]
+	prevLoopElem, hadLoopElem := g.loopElem[lv]
 	v, isStr, err := g.heapElemKind(b, item)
 	if err != nil {
 		return nil, err
@@ -540,6 +541,12 @@ func (g *irGen) bindUnrolledCompItem(b *strings.Builder, lv string, item Expr) (
 	}
 	itemTag := g.elemTagFor(item, isStr)
 	g.loopElemTag[lv] = itemTag
+	// Which item this copy walks, beside what it is: the sentence a body raises names the member the
+	// comprehension put in front of it (roadmap Gap R.440, Gap R.189).
+	if g.loopElem == nil {
+		g.loopElem = map[string]Expr{}
+	}
+	g.loopElem[lv] = item
 	// The unrolled road records this item's tag for the print, filter, and container-door questions that
 	// read the loop variable. It does not turn every item into the dynamic tagged-variable pair: those
 	// positions keep their own doors, and claiming the pair here made ordinary integer comprehension
@@ -560,6 +567,11 @@ func (g *irGen) bindUnrolledCompItem(b *strings.Builder, lv string, item Expr) (
 			g.loopElemTag[lv] = prevLoopTag
 		} else {
 			delete(g.loopElemTag, lv)
+		}
+		if hadLoopElem {
+			g.loopElem[lv] = prevLoopElem
+		} else {
+			delete(g.loopElem, lv)
 		}
 	}, nil
 }

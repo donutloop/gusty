@@ -3200,6 +3200,37 @@ falls back to dynamic dispatch.
   sentence blames the **list** when the operand is a **tuple** — right trap, wrong class, **ADR 0251**'s tuple
   being a list to the payload).
 
+- **Removing a set member asks the ARGUMENT what it carries (Gap R.422, **ADR 0425**)** — `s = {1, 2}` /
+  `s.discard("a")` / `print(s)` wrote **`{1}`**, `s.discard(9)` wrote **`{1}`**, `s = {0, 1}` /
+  `s.discard(None)` wrote **`{1}`**, `s.discard([1])` wrote **`{2}`** where CPython raises
+  **`TypeError: unhashable type: 'list'`**, and `s.add(1)` / `s.discard(1)` / `s.discard(9)` /
+  `print(len(s))` wrote **`-1`** — all five at the **exit code of success**. `s.remove(9)` was refused at
+  **exit 1** by the string-method road's name-holds-container gate, where the reference answers
+  **`KeyError: 9`**. One cause: `add` asks its argument what it carries (a stored text is an index into
+  `@str_tab`, so the text `"0"` and the number `0` are one `i32` — **ADR 0187**, **ADR 0189**) and `discard`
+  asked the SET, then handed the removal door ONE WORD, so the scan deleted the first member whose payload
+  happened to equal whatever the argument's payload happened to be. Both verbs now resolve the member the way
+  `add` does — `pairElemPair`, then `taggedOperand`, refusal rather than accident if neither answers — and go
+  to the same two doors in the same order: `rt_set_find` (payload AND tag, through `rt_slot_matches`) for the
+  position, `rt_set_remove_at` for the shift of BOTH arrays, with `rt_set_discard_tagged` holding the two and
+  the absent test between them. Hashability answers before the set is consulted, and the exemptions are
+  measured one program per cell rather than copied from the dict door: `s.discard({1})` raises NOTHING and
+  `s.remove({1})` says `KeyError: {1}` — a bare set is a MISSING member here, never an unhashable one — while
+  `s.discard((1, {2}))` still names the set, and a tuple is exempt from the tag test because this backend
+  gives it a LIST's pair word (**ADR 0361**). The raise names its member too (`KeyError: 9`, `'z'`, `None`,
+  `False`, `1.5`, `{1}`, `set()`), which needed the unroll to keep WHICH element this body copy walks beside
+  **ADR 0424**'s record of what it is. A **45-program battery** beside a rebuilt parent: **30 moved to the
+  reference, 0 regressed, 1 still owed** (**Gap R.447**'s slot word, not this door's); a **9526**-source sweep
+  of the record corpus through both builds reports **9472 unchanged / 54 changed** — 52 of them set-verb
+  programs, **49 moving TO the record, 0 moving away**. `pkg/lang/set_member_removal_test.go` NEW (**26**
+  answering rows on the compiled leg AND the record leg, **3** IR rows denying the payload-only scan, **11**
+  trap rows on both legs, **9** sentence rows, the two doors asked directly of the AST, **3** filed-not-fixed)
+  and `integration/set_member_removal_test.go` NEW (**29** CLI rows against a live `python3`, **15** raise rows
+  whose sentence the reference re-derives inside the case, **5** exit-code rows, **3** pinned wrong answers);
+  `tools/recmerge` wrote **72** entries from the reference with the compiled leg cross-checked
+  (**9454 → 9526**) and refused the sources whose compiled leg disagrees, which are the pinned rows and not
+  records.
+
 - **The element a slot is WRITTEN with answers what it is: the third road that writes a container slot asks
   the ELEMENT (Gap R.441, **ADR 0422**)** — `xs = [1]` / `xs[0] = 2.5` / `print(xs)` wrote **`[1]`** at
   **exit 0** where CPython writes **`[2.5]`**, while `xs.append(2.5)` beside it wrote **`[1, 2.5]`** all

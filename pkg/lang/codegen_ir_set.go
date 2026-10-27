@@ -149,8 +149,8 @@ add:
   ret void
 }
 
-; rt_set_discard removes a value if present and shifts the tail left; removing an absent
-; value is a no-op (that is what distinguishes discard from remove).
+; rt_set_clear empties the object: the length goes to zero and the slots are left alone, because
+; nothing reads a member past the length.
 define internal void @rt_set_clear(i32 %h) {
 entry:
   %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -159,46 +159,13 @@ entry:
   ret void
 }
 
-define internal void @rt_set_discard(i32 %h, i32 %v) {
-entry:
-  %obj = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
-  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
-  %len = load i32, i32* %lp
-  ; Computed here so it dominates the done block, which is reachable both when the
-  ; value is absent (scan -> done) and after the shift loop.
-  %last = sub i32 %len, 1
-  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
-  br label %scan
-scan:
-  %i = phi i32 [ 0, %entry ], [ %inext, %step ]
-  %more = icmp slt i32 %i, %len
-  br i1 %more, label %body, label %done
-body:
-  %p = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
-  %x = load i32, i32* %p
-  %hit = icmp eq i32 %x, %v
-  br i1 %hit, label %remove, label %step
-step:
-  %inext = add i32 %i, 1
-  br label %scan
-remove:
-  br label %shift
-shift:
-  %j = phi i32 [ %i, %remove ], [ %jnext, %shiftdo ]
-  %go = icmp slt i32 %j, %last
-  br i1 %go, label %shiftdo, label %done
-shiftdo:
-  %src = add i32 %j, 1
-  %sp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %src
-  %sv = load i32, i32* %sp
-  %dpp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %j
-  store i32 %sv, i32* %dpp
-  %jnext = add i32 %j, 1
-  br label %shift
-done:
-  store i32 %last, i32* %lp
-  ret void
-}
+; The removal doors are NOT here. rt_set_discard scanned the payload array with icmp eq i32 and
+; deleted the first member whose payload happened to equal the argument's -- which is how a set of
+; {1, 2} lost its member 2 to s.discard("a"), the text's intern index having collided with a number's
+; payload, and how s.discard(9) removed a member that was not 9. A payload is never the discriminator
+; (ADR 0187, ADR 0189), and a removal decided by one is not a door this module mounts: both verbs go
+; through rt_set_find and rt_set_remove_at in the tagged-slots block below, which compare the
+; (payload, tag) pair with rt_slot_matches (roadmap Gap R.422, ADR 0425).
 
 define internal i32 @rt_set_len(i32 %h) {
 entry:

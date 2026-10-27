@@ -247,9 +247,18 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		// Set methods on a heap set: without `add` the `set()` constructor produced
 		// a value nothing could grow (roadmap Gap K.3).
 		switch attr.Name.Value {
-		case "add", "discard":
+		case "add", "discard", "remove":
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("codegen: %s() takes exactly 1 argument", attr.Name.Value)
+			}
+			if attr.Name.Value != "add" {
+				// REMOVAL IS NOT GROWING. `s.discard(v)` and `s.remove(v)` share one road, and it asks the
+				// ARGUMENT what it carries rather than the SET what it remembers — the payload-only door this
+				// arm used to fall through to deleted whatever member's payload happened to collide with the
+				// argument's, and it recorded the discarded argument as a member the set had (roadmap Gap R.422,
+				// ADR 0425). `remove` is the same road with a `KeyError` on the absent branch, which the reference
+				// has always answered and this backend refused under Gap R.174's standing.
+				return g.setMemberRemoval(b, nm.Value, attr.Name.Value, c.Args[0], c.Src)
 			}
 			if g.mixedSets[nm.Value] {
 				// Growing a set whose members describe themselves has to keep that promise:
@@ -262,11 +271,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
-				fn := "rt_set_add_tagged"
-				if attr.Name.Value == "discard" {
-					fn = "rt_set_discard_tagged"
-				}
-				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s, i32 %s)\n", fn, hs, mv, mt))
+				b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, mv, mt))
 				return "", nil
 			}
 			// A member the pair road bound hands the set its payload and its tag as two registers,
@@ -281,11 +286,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
 				g.promotePairMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set")
 				g.guardHashableTag(b, pt, c.Src)
-				addFn := "rt_set_add_tagged"
-				if attr.Name.Value == "discard" {
-					addFn = "rt_set_discard_tagged"
-				}
-				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s, i32 %s)\n", addFn, hs, pv, pt))
+				b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, pv, pt))
 				return "", nil
 			}
 			av, interned, err := g.heapElemKind(b, c.Args[0])
@@ -305,10 +306,6 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 					return "", err
 				}
 			}
-			fn := "rt_set_add"
-			if attr.Name.Value == "discard" {
-				fn = "rt_set_discard"
-			}
 			// A member that is a float or None has no payload the set's compiled kind can render,
 			// so the set stops claiming one — the same promotion an appended element gets
 			// (roadmap L11.1, ADR 0233).
@@ -319,10 +316,10 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 					}
 				}
 			}
-			if kt, ok := g.elemKindTag(c.Args[0]); ok && attr.Name.Value == "add" {
+			if kt, ok := g.elemKindTag(c.Args[0]); ok {
 				b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, av, kt))
 			} else {
-				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s)\n", fn, hs, av))
+				b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, av))
 			}
 			if interned {
 				// The object, not the variable, records that its members are strings: a helper

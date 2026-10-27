@@ -112,6 +112,13 @@ func aliasRecordFamily() []struct {
 		{"the member added twice is one member", "s = {1, 2}\ns.add(1)\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n"},
 		{"the alias promotes and the void keeps its place", "s = {1}\nt = s\nt.add(\"a\")\nt.add(None)\nprint(s)\nprint(t)\n", "{None, 1, 'a'}\n{None, 1, 'a'}\n"},
 		{"zero and the void, both in bucket 0", "s = set()\ns.add(4)\ns.add(None)\ns.add(0)\nprint(s)\n", "{None, 0, 4}\n"},
+		// The two removal shapes **Gap R.419** filed as owed and **Gap R.422** (**ADR 0425**) paid: it is the
+		// ARGUMENT that says which member leaves, never the set's recorded kind, and one name's removal is the
+		// other name's removal because both names hold one object.
+		{"a text discarded from a set of numbers leaves every member", "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n", "{1, 2}\n{1, 2}\n"},
+		{"a member whose payload collides with a text's index is kept", "s = {\"0\", \"1\"}\nt = s\nt.discard(0)\nprint(len(t))\nprint(0 in t)\nprint(\"0\" in t)\n", "2\nFalse\nTrue\n"},
+		{"a set member removed by value through the alias", "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n", "{'a'}\n"},
+		{"the alias removes, the source reads the same object back", "s = {1, 2, 3}\nt = s\nt.remove(2)\nprint(s)\nprint(t)\n", "{1, 3}\n{1, 3}\n"},
 	}
 }
 
@@ -251,11 +258,6 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 		// of this list — the rebound alias, **Gap R.420** — is answered and lives in `aliasRecordFamily()`;
 		// a filed row that closes is DELETED here, not edited.
 		{
-			name: "a text discarded from a set of numbers through the alias", gap: "Gap R.422",
-			src:    "s = {1, 2}\nt = s\nt.discard(\"a\")\nprint(t)\nprint(s)\n",
-			python: "{1, 2}\n{1, 2}\n", compiled: "{1}\n{1}\n",
-		},
-		{
 			name: "the set built from a literal, joined by a number", gap: "Gap R.423",
 			src:    "s = {7, 2}\ns.add(9)\nprint(s)\n",
 			python: "{9, 2, 7}\n", compiled: "{9, 7, 2}\n",
@@ -285,11 +287,11 @@ func TestWhatTheAliasRowStillOwesAtTheCLI(t *testing.T) {
 			src:    "d = {\"a\": 1, \"b\": 2}\ne = d\nfor k, v in e.items():\n    print(k, v)\n",
 			python: "a 1\nb 2\n", compiled: "", refuses: true,
 		},
-		{
-			name: "a set member removed by value through the alias", gap: "Gap R.174",
-			src:    "s = {1, \"a\"}\nt = s\nt.remove(1)\nprint(t)\n",
-			python: "{'a'}\n", compiled: "", refuses: true,
-		},
+		// `t.discard(...)` and `t.remove(...)` were filed here beside the dict's `items()` loop and both are
+		// ANSWERED now — the pair road **Gap R.422** (**ADR 0425**) lowered them through lives in
+		// `aliasRecordFamily()`. A filed row that closes is DELETED here, not edited; the `items()` loop
+		// above stays, because it is the same method over the same kind of NAME and this commit does not
+		// touch it.
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {

@@ -113,6 +113,12 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 				g.loopElemTag = map[string]int32{}
 			}
 			g.loopElemTag[loopSlot] = g.elemTagFor(el, isStr)
+			// And which element this copy walks, so a sentence the body raises can name the item the
+			// loop put in front of it (roadmap Gap R.440, Gap R.189).
+			if g.loopElem == nil {
+				g.loopElem = map[string]Expr{}
+			}
+			g.loopElem[loopSlot] = el
 			bodyL := g.newLabel("for.list.body")
 			contL = g.newLabel("for.list.cont")
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, loopVarName(n.Var)))
@@ -157,6 +163,7 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 			delete(g.internedVars, loopSlot)
 		}
 		delete(g.loopElemTag, loopSlot) // the loop variable is a plain name again (ADR 0233)
+		delete(g.loopElem, loopSlot)
 		return nil
 	}
 	// runtime heap list iterable: a generator-call result or a tracked
