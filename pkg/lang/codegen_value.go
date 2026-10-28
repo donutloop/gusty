@@ -77,12 +77,37 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		// Instance attribute read: `self.x` / `inst.x`.
 		if className := g.receiverClass(n.Obj); className != "" {
+			// An instance does not hold the class's members: the reference looks in the object's own row first
+			// and then walks the class and EVERY base of it. This backend stopped at the object's row, so
+			// `class C:` / `X = 1` / `print(C().X)` read a slot nothing had written and printed `0` at the exit
+			// code of success (roadmap **Gap R.56**, row **L12.4**). The class object is asked here, and the
+			// question that decides HOW it is asked is whether the program ever writes this name onto an
+			// instance of this class: an instance's own word wins, as the reference's `__dict__` wins.
+			//   · no such write exists — the answer is a compile-time fact, so the read lowers the class's own
+			//     value and emits nothing for the object at all;
+			//   · the write exists AND the class binds the name — which word belongs to a given object is a
+			//     run-time fact, and `@rt_inst_has` is asked (**Gap R.19**'s row keeps the case where NEITHER
+			//     binds it and the reference raises AttributeError while this backend still answers 0);
+			//   · the write exists and no class binds the name — the instance road it has always used.
+			owner, chainVal, chainOwed, chainFound := g.classChainMember(className, n.Name.Value)
+			bindsOnInstance := g.instanceBindsAttr(className, n.Name.Value)
+			if chainFound && !bindsOnInstance {
+				if chainOwed {
+					return "", g.classChainRefusal(fmt.Sprintf("%s.%s", owner, n.Name.Value), className, n.Name.Value)
+				}
+				return g.value(b, chainVal)
+			}
 			objHandle, err := g.value(b, n.Obj)
 			if err != nil {
 				return "", err
 			}
 			g.heapUsed = true
 			slot := g.attrSlot(n.Name.Value)
+			if chainFound && !chainOwed {
+				if out, ok := g.presenceCheckedAttrRead(b, objHandle, slot, chainVal); ok {
+					return out, nil
+				}
+			}
 			ret := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ret, objHandle, slot))
 			return ret, nil
@@ -100,15 +125,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// expression is lowered where it is READ, which is what keeps a text printing as a text and a number
 		// as a number without a second value representation for the class road.
 		if nm, isName := n.Obj.(*Name); isName {
-			if ci, isClass := g.classInfos[nm.Value]; isClass {
+			if _, isClass := g.classInfos[nm.Value]; isClass {
 				member := n.Name.Value
-				if v, held := ci.attrs[member]; held {
-					return g.value(b, v)
+				// The read asks the class AND every base of it, in the reference's resolution order: it used to
+				// look only at the class's own body, so `class Base:` / `NAME = "base"` / `class Sub(Base)` /
+				// `print(Sub.NAME)` was refused where the reference answers (roadmap **Gap R.66**, row **L12.4**).
+				if _, val, owed, found := g.classChainMember(nm.Value, member); found {
+					if owed {
+						return "", g.classChainRefusal(fmt.Sprintf("%s.%s", nm.Value, member), nm.Value, member)
+					}
+					return g.value(b, val)
 				}
-				if v, owed := ci.owedAttrs[member]; owed {
-					return "", fmt.Errorf("codegen: %s.%s is refused: the class body binds %s to %s, and this backend reads a class member only where the read lowers to the same word the reference prints — a fractional, verdict or void member needs the tagged value word that carries its own kind (roadmap L11.1, Gap R.431)", nm.Value, member, member, classAttrKindName(v))
-				}
-				return "", fmt.Errorf("codegen: %s.%s is refused: the class names no member of that name — its body binds methods, and %s holds nothing the class could answer with, so the reference would raise AttributeError here (a member the body never bound, and one bound by a call or a container, are roadmap Gap R.431)", nm.Value, member, member)
+				return "", g.classChainRefusal(fmt.Sprintf("%s.%s", nm.Value, member), nm.Value, member)
 			}
 		}
 

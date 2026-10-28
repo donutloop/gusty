@@ -1,0 +1,91 @@
+# The class OBJECT — roadmap L12.4 (Gap R.56, Gap R.66), ADR 0446.
+# What a class body binds is an attribute of the class, an instance reads it, and the read walks
+# EVERY base in the reference's resolution order. Before this row the four `print`s marked
+# (was 0) answered the digit 0 and the two marked (was refused) stopped the build in words.
+
+class Color:
+    RED = 1
+    BLUE = 2
+
+print(Color.RED, Color.BLUE)                  # the enum idiom, read through the class name
+print(Color().RED)                            # (was 0) the same member, read through an instance
+
+class Counter:
+    START = 10
+
+    def step(self):
+        return self.START + 1
+
+print(Counter.START)                          # a member used as a number
+print(Counter().step())                       # (was 0) a method reading its class's member
+
+class Base:
+    NAME = "base"
+    LIMIT = 4
+
+class Middle(Base):
+    pass
+
+class Deep(Middle):
+    pass
+
+print(Deep().NAME, Deep.NAME)                 # (was 0 / refused) a member inherited two bases deep
+print(Deep().LIMIT == 4, Deep.LIMIT < 5)      # a numeric member compared through the chain
+
+class Over(Base):
+    NAME = "over"
+
+print(Over().NAME, Over.NAME, Base().NAME)    # the nearer binding wins
+
+class Left:
+    pass
+
+class Right:
+    TAG = 7
+
+class Both(Left, Right):
+    pass
+
+print(Both().TAG, Both.TAG)                   # (was refused) a member found in the SECOND base
+
+class A:
+    V = 1
+
+class B:
+    V = 2
+
+class BothAB(A, B):
+    pass
+
+print(BothAB().V, BothAB.V)                    # the first of two bases wins when both bind it
+
+class AA:
+    W = 1
+
+class BA(AA):
+    W = 2
+
+class CA(AA):
+    W = 3
+
+class DA(BA, CA):
+    pass
+
+print(DA().W, DA.W)                            # (was refused) a diamond resolves in the linearized order
+
+class Shadow:
+    X = 1
+
+one = Shadow()
+two = Shadow()
+two.X = 9
+print(one.X, two.X, Shadow().X)                # (was 0 0) the object's own word wins, per object
+
+class Written:
+    LABEL = "class"
+
+    def __init__(self):
+        self.LABEL = "object"
+
+print(Written().LABEL, Written.LABEL)          # (was 0) an object that writes what the class also binds
+print([Base.LIMIT, Deep.LIMIT], {"k": Color.RED})   # members in container slots

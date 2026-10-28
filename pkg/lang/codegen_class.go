@@ -965,6 +965,14 @@ func (g *irGen) methodReturnsStr(fd *FuncDef) bool {
 	if methodReturnsStrWith(fd, census) {
 		return true
 	}
+	// A body that hands back a class MEMBER — `return self.NAME`, where the class body or any BASE of it
+	// bound a text — hands back a text too. The shape predicate below reads literals, annotations and
+	// parameters, and a class member is none of those: it belongs to the class object, reached by the same
+	// resolution chain an attribute read walks (roadmap row **L12.4**, **Gap R.56**). Without this arm the
+	// caller prints the intern table's index — `0` — where the reference prints the text.
+	if g.methodReturnsClassText(fd) {
+		return true
+	}
 	// The shape predicate reads literals, annotations and the two built-text doors' SPELLINGS. The
 	// generator-side predicate reads what the operations actually answer — a char method on a text parameter,
 	// a subscript of one, a repeat of one — and is the same question `scanStringBindings` asks a `def`

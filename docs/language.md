@@ -7470,6 +7470,51 @@ class that declares `upper` (**Gap R.317**). What a *field* hands back is read f
 above) and is still owed for a text — `return self.v` of a text field prints the intern position
 (**Gap R.319**).
 
+### A class body's bindings are the CLASS's, and an attribute read walks every base (Gap R.56 + Gap R.66, ADR 0446)
+
+Executing a `class` statement makes an object holding what the body bound. That is not only the enum-ish idiom the
+body reads like — it is what an INSTANCE reads too, and the read does not stop at the class the source named:
+
+```gy
+class Color:
+    RED = 1
+print(Color.RED, Color().RED)          # 1 1 — the class, and an instance of it
+
+class Counter:
+    START = 10
+    def step(self):
+        return self.START + 1
+print(Counter().step())                # 11 — a method reading a member of its own class
+
+class Base:
+    NAME = "base"
+class Middle(Base):
+    pass
+class Deep(Middle):
+    pass
+print(Deep().NAME, Deep.NAME)          # base base — every base is walked
+
+class Left:
+    pass
+class Right:
+    TAG = 7
+class Both(Left, Right):
+    pass
+print(Both().TAG)                      # 7 — the SECOND base answers
+```
+
+The order is the reference's own (C3), and the order is the answer: `class D(B, C)` over a shared `A`, with `B`, `C`
+and `A` each binding `W`, resolves to `B`'s binding, and `class C(A, B)` where both bind `V` resolves to `A`'s.
+A shadow is per object, not per class — the object's own word wins, so two instances of one class answer their own
+words (`9 1 1`) — and an attribute the program writes on the object keeps the plain slot read it always had.
+
+What the class holds that this backend cannot yet lower is refused in words rather than guessed: a member bound to a
+fractional, verdict, void or container value (`Gap R.431`), a class body reading its own earlier bindings
+(`Gap R.505`), rebinding a member outside the body (`Gap R.506`), and `__doc__` on a class that has no docstring,
+which prints the empty text where the reference holds `None` (`Gap R.507`). A name that neither the object nor any
+class in the chain binds still answers the digit `0` instead of raising `AttributeError` — that one is `Gap R.19`,
+older than the class object, and the presence row the read now asks is where its raise will live.
+
 ### A method and a helper may share a name
 
 The words that describe what a class does are usually the words that describe a helper, so this

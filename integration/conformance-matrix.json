@@ -499,6 +499,27 @@
     },
     {
       "case": {
+        "id": "programs/class_object",
+        "name": "class_object.gy",
+        "source": "# The class OBJECT — roadmap L12.4 (Gap R.56, Gap R.66), ADR 0446.\n# What a class body binds is an attribute of the class, an instance reads it, and the read walks\n# EVERY base in the reference's resolution order. Before this row the four `print`s marked\n# (was 0) answered the digit 0 and the two marked (was refused) stopped the build in words.\n\nclass Color:\n    RED = 1\n    BLUE = 2\n\nprint(Color.RED, Color.BLUE)                  # the enum idiom, read through the class name\nprint(Color().RED)                            # (was 0) the same member, read through an instance\n\nclass Counter:\n    START = 10\n\n    def step(self):\n        return self.START + 1\n\nprint(Counter.START)                          # a member used as a number\nprint(Counter().step())                       # (was 0) a method reading its class's member\n\nclass Base:\n    NAME = \"base\"\n    LIMIT = 4\n\nclass Middle(Base):\n    pass\n\nclass Deep(Middle):\n    pass\n\nprint(Deep().NAME, Deep.NAME)                 # (was 0 / refused) a member inherited two bases deep\nprint(Deep().LIMIT == 4, Deep.LIMIT \u003c 5)      # a numeric member compared through the chain\n\nclass Over(Base):\n    NAME = \"over\"\n\nprint(Over().NAME, Over.NAME, Base().NAME)    # the nearer binding wins\n\nclass Left:\n    pass\n\nclass Right:\n    TAG = 7\n\nclass Both(Left, Right):\n    pass\n\nprint(Both().TAG, Both.TAG)                   # (was refused) a member found in the SECOND base\n\nclass A:\n    V = 1\n\nclass B:\n    V = 2\n\nclass BothAB(A, B):\n    pass\n\nprint(BothAB().V, BothAB.V)                    # the first of two bases wins when both bind it\n\nclass AA:\n    W = 1\n\nclass BA(AA):\n    W = 2\n\nclass CA(AA):\n    W = 3\n\nclass DA(BA, CA):\n    pass\n\nprint(DA().W, DA.W)                            # (was refused) a diamond resolves in the linearized order\n\nclass Shadow:\n    X = 1\n\none = Shadow()\ntwo = Shadow()\ntwo.X = 9\nprint(one.X, two.X, Shadow().X)                # (was 0 0) the object's own word wins, per object\n\nclass Written:\n    LABEL = \"class\"\n\n    def __init__(self):\n        self.LABEL = \"object\"\n\nprint(Written().LABEL, Written.LABEL)          # (was 0) an object that writes what the class also binds\nprint([Base.LIMIT, Deep.LIMIT], {\"k\": Color.RED})   # members in container slots\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "1 2\n1\n10\n11\nbase base\nTrue True\nover over base\n7 7\n1 1\n2 2\n1 9 1\nobject class\n[4, 4] {'k': 1}\n",
+      "python_ok": true,
+      "python_stdout": "1 2\n1\n10\n11\nbase base\nTrue True\nover over base\n7 7\n1 1\n2 2\n1 9 1\nobject class\n[4, 4] {'k': 1}\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5899,11 +5920,11 @@
       ]
     }
   ],
-  "rows": 251,
+  "rows": 252,
   "skipped": 29,
-  "pass": 222,
+  "pass": 223,
   "fail": 0,
-  "oracle_match": 208,
+  "oracle_match": 209,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

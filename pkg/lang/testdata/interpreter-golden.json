@@ -1,5 +1,148 @@
 {
  "entries": {
+"# The class OBJECT — roadmap L12.4 (Gap R.56, Gap R.66), ADR 0446.\n# What a class body binds is an attribute of the class, an instance reads it, and the read walks\n# EVERY base in the reference's resolution order. Before this row the four `print`s marked\n# (was 0) answered the digit 0 and the two marked (was refused) stopped the build in words.\n\nclass Color:\n    RED = 1\n    BLUE = 2\n\nprint(Color.RED, Color.BLUE)                  # the enum idiom, read through the class name\nprint(Color().RED)                            # (was 0) the same member, read through an instance\n\nclass Counter:\n    START = 10\n\n    def step(self):\n        return self.START + 1\n\nprint(Counter.START)                          # a member used as a number\nprint(Counter().step())                       # (was 0) a method reading its class's member\n\nclass Base:\n    NAME = \"base\"\n    LIMIT = 4\n\nclass Middle(Base):\n    pass\n\nclass Deep(Middle):\n    pass\n\nprint(Deep().NAME, Deep.NAME)                 # (was 0 / refused) a member inherited two bases deep\nprint(Deep().LIMIT == 4, Deep.LIMIT \u003c 5)      # a numeric member compared through the chain\n\nclass Over(Base):\n    NAME = \"over\"\n\nprint(Over().NAME, Over.NAME, Base().NAME)    # the nearer binding wins\n\nclass Left:\n    pass\n\nclass Right:\n    TAG = 7\n\nclass Both(Left, Right):\n    pass\n\nprint(Both().TAG, Both.TAG)                   # (was refused) a member found in the SECOND base\n\nclass A:\n    V = 1\n\nclass B:\n    V = 2\n\nclass BothAB(A, B):\n    pass\n\nprint(BothAB().V, BothAB.V)                    # the first of two bases wins when both bind it\n\nclass AA:\n    W = 1\n\nclass BA(AA):\n    W = 2\n\nclass CA(AA):\n    W = 3\n\nclass DA(BA, CA):\n    pass\n\nprint(DA().W, DA.W)                            # (was refused) a diamond resolves in the linearized order\n\nclass Shadow:\n    X = 1\n\none = Shadow()\ntwo = Shadow()\ntwo.X = 9\nprint(one.X, two.X, Shadow().X)                # (was 0 0) the object's own word wins, per object\n\nclass Written:\n    LABEL = \"class\"\n\n    def __init__(self):\n        self.LABEL = \"object\"\n\nprint(Written().LABEL, Written.LABEL)          # (was 0) an object that writes what the class also binds\nprint([Base.LIMIT, Deep.LIMIT], {\"k\": Color.RED})   # members in container slots\n": {
+    "stdout": "1 2\n1\n10\n11\nbase base\nTrue True\nover over base\n7 7\n1 1\n2 2\n1 9 1\nobject class\n[4, 4] {'k': 1}\n",
+    "hasStdout": true
+   },
+"class A:\n    NAME = \"a\"\n\n    def show(self):\n        return self.NAME\n\nprint(A().show())\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"class A:\n    NAME = \"a\"\n\nclass B(A):\n    def show(self):\n        return self.NAME\n\nprint(B().show())\n": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"class A:\n    NAME = \"base\"\n\nclass B(A):\n    pass\n\nclass C(B):\n    pass\n\nprint(C().NAME, C.NAME)\n": {
+    "stdout": "base base\n",
+    "hasStdout": true
+   },
+
+"class A:\n    NAME = \"base\"\n\nclass B(A):\n    pass\n\nprint(B().NAME, B.NAME)\n": {
+    "stdout": "base base\n",
+    "hasStdout": true
+   },
+
+"class A:\n    X = 1\n\nclass B(A):\n    X = 2\n\nclass C(A):\n    X = 3\n\nclass D(B, C):\n    pass\n\nprint(D().X, D.X)\n": {
+    "stdout": "2 2\n",
+    "hasStdout": true
+   },
+
+"class A:\n    X = 1\n\nclass B(A):\n    X = 2\n\nprint(B().X, B.X)\n": {
+    "stdout": "2 2\n",
+    "hasStdout": true
+   },
+
+"class A:\n    X = 1\n\nclass B(A):\n    pass\n\nb = B()\nb.X = 9\nprint(b.X, B().X, A().X)\n": {
+    "stdout": "9 1 1\n",
+    "hasStdout": true
+   },
+
+"class A:\n    X = 1\n\nclass B:\n    X = 2\n\nclass C(A, B):\n    pass\n\nprint(C().X)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class A:\n    X = 1\n\nclass B:\n    Y = 2\n\nclass C:\n    Z = 3\n\nclass D(A, B, C):\n    pass\n\nd = D()\nprint(d.X, d.Y, d.Z)\n": {
+    "stdout": "1 2 3\n",
+    "hasStdout": true
+   },
+
+"class A:\n    pass\n\nclass B:\n    X = 7\n\nclass C(A, B):\n    pass\n\nprint(C().X, C.X)\n": {
+    "stdout": "7 7\n",
+    "hasStdout": true
+   },
+
+"class C:\n    FLAG = 1\n\nif C.FLAG:\n    print(\"yes\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"class C:\n    K = 5\n\nprint({C.K: C.K})\n": {
+    "stdout": "{5: 5}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    NAME = \"c\"\n\nc = C()\nc.NAME = \"z\"\nprint(c.NAME, C().NAME)\n": {
+    "stdout": "z c\n",
+    "hasStdout": true
+   },
+
+"class C:\n    NAME = \"c\"\n\nc = C()\nprint(c.NAME)\n": {
+    "stdout": "c\n",
+    "hasStdout": true
+   },
+
+"class C:\n    NAME = \"c\"\n\nprint(f\"hi {C.NAME}\")\n": {
+    "stdout": "hi c\n",
+    "hasStdout": true
+   },
+
+"class C:\n    NAME = \"n\"\n\nc = C()\nprint(c.NAME.upper())\n": {
+    "stdout": "N\n",
+    "hasStdout": true
+   },
+
+"class C:\n    NAME = \"n\"\n\nprint(C.NAME + \"!\")\n": {
+    "stdout": "n!\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 1\n\n    def __init__(self):\n        self.X = 8\n\nprint(C().X, C.X)\n": {
+    "stdout": "8 1\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 1\n\n    def get(self):\n        return self.X\n\nprint(C().get())\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 1\n\nc = C()\nc.X = 5\nprint(c.X)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 1\n\nc = C()\nprint(c.X)\nc.X = 7\nprint(c.X)\n": {
+    "stdout": "1\n7\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 1\n\nprint(C().X)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 3\n\nprint([C.X, C.X])\n": {
+    "stdout": "[3, 3]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 4\n\nc = C()\nprint(c.X)\nprint(c.X)\n": {
+    "stdout": "4\n4\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 4\n\ndef f(a):\n    return a * 2\n\nprint(f(C.X))\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"class C:\n    X = 4\n\nprint(C.X == 4, C.X \u003c 5)\n": {
+    "stdout": "True True\n",
+    "hasStdout": true
+   },
+
+"class Color:\n    R = 1\n    G = 2\n\nfor v in [Color.R, Color.G]:\n    print(v)\n": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"class Color:\n    RED = 1\n\nprint(Color().RED)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
 "def a1():\n    return None\n\ndef f(v):\n    return v\n\nprint(f(a1()))": {
     "stdout": "None\n",
     "hasStdout": true

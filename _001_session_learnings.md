@@ -16584,3 +16584,63 @@ the condition and `bool()` ask `rt_heap_len`.
    attribution rule (control build beside the new one, measure before naming the cause) is what let me call R.503
    inherited and R.504 mine; without the parent binary both would have been written the same way, and the honest one
    would have been filed as an old bug.
+
+
+## ADR 0446 — an attribute read asks the class OBJECT, and the walk goes through EVERY base (roadmap L12.4, Gap R.56 + Gap R.66 closed, Gaps R.505, R.506, R.507 filed; 2026-10-29)
+
+1. **A value road and a kind road are two roads, and widening one alone ships a new wrong answer.** With the read
+   answering the class's interned index, `print(B().NAME)` printed `0` and `print(B().show())` printed `0`: the value came
+   from the new walk and the tag still came from the old one, which reads what an expression SPELLS. Three doors had to be
+   widened with the value road — `methodReturnsClassText`, the constant-fold silence in `stringVal`, and
+   `classMemberReadIsText` in the text door — and the measurement that proved it was `print(c.NAME, C().NAME)` printing
+   `0 1` AFTER the value road was already right. This is **ADR 0445**'s lesson (a kind table that reads an expression has
+   to be asked whose expression) arriving from the class side; a feature is not the read, it is the read plus every door
+   that labels it.
+
+2. **Ask the static question first, and let the run-time row answer only what only the run time can answer.** The
+   reference's rule is "the object's row, then the class and every base", and the naive implementation puts a load, an
+   `icmp` and a branch on EVERY attribute read in EVERY program. The static scan (`instanceAttrWrites`) asks whether the
+   program can write that name onto an instance of that class at all: when it cannot, the class's value is lowered where
+   the read stands and the module contains neither `@rt_inst_get` nor the presence row — and a module-shape row asserts
+   that ABSENCE, because "we did not add cost" is exactly the claim a reader cannot re-measure from a green suite. Where
+   the program can shadow, `@rt_inst_has` (in the tree since **ADR 0235**, asked by a plain read for the first time in this
+   repo's life) decides per object.
+
+3. **For a resolution order, the order IS the answer, so measure the diamond before choosing the cheap walk.** "Walk the
+   bases depth-first, first hit wins" is four lines and is what **Gap R.66** measured on the retired engine. It is wrong for
+   `class D(B, C)` over a shared `A`, and it gets `class C(A, B)` where both bind the member right only when the source
+   happens to list the binding class first. C3's merge is ~30 lines including the terminator for a base list no consistent
+   order satisfies, and it is memoised per class because a program that uses classes asks this for every read.
+
+4. **Splicing lowered IR into one arm of a branch needs a single block, and the honest response to "I cannot tell" is the
+   old road.** The class's value is lowered into a sub-builder and pasted into the else-arm only when the text contains no
+   label and no terminator; anything else keeps the plain slot read. A half-spliced value would leave uses its block does
+   not dominate, which is a `llc` rejection at exit 2 — the accusation the CLI itself calls an artifact bug (**ADR 0166**,
+   **Gap R.203**). Restricting costs one unfixed shape; guessing costs a broken module.
+
+5. **Compare against the TRUE parent, not a nearby commit — a quoted measurement is a claim.** My first draft of the ADR
+   quoted `print(b.X, B().X, A().X)` as `9 0 0` from a binary built two commits back, because I had it in `/tmp` from the
+   previous cycle; the parent of this commit prints the same bytes for that program but the check I "remembered" was not the
+   check I had run. Every quoted byte in an ADR must come from a binary built from the parent commit specifically — a
+   worktree at `HEAD` plus `go build -tags=llvm20` costs two minutes and is the only way to know which rows are damage and
+   which are history (**Gap R.204**'s re-measurability rule, applied to your own prose).
+
+6. **"Is it a text?" and "which text is it?" are different questions, and one function answering both is how a shadow
+   disappeared.** The constant-fold road (`stringVal`) also feeds print's tag question, so teaching it about class members
+   made `c.NAME = "z"` print the CLASS's `"c"`. The fix is not a narrower fold but two answers: the fold stays silent when
+   the object may hold another word, and the text door (`textDoorIsText`) says "whatever word this read answers, it is an
+   index into `@str_tab`". A fold that is also a predicate will keep answering a question nobody asked it.
+
+7. **A row that closes is a row whose control still passes.** **ADR 0418**'s guard
+   (`TestTheInstanceRoadIsUntouchedByTheClassRoad`) exists to stop this exact feature — it says the instance road must not
+   move when the class road opens. Reading it before writing the walk is what produced the three-road design (static /
+   presence-checked / plain slot read) instead of a single override, and it still passes: an attribute the program writes on
+   the object keeps the road it always had, byte for byte.
+
+8. **What the sweep found beside the win gets a row, not a footnote.** Three defects showed up while measuring this
+   family and none of them is fixed here: a class body cannot read its own earlier bindings — the second reading of the body
+   has no scope holding the first's — and the apology attached to that refusal claims the reference reports the same error,
+   which for that program is a lie (**Gap R.505**, and **Gap R.116**); the class-attribute STORE still refuses, so the
+   counter idiom stays unwritable while the read walks every base (**Gap R.506**); and a class with no docstring prints the
+   empty text where the reference holds the void, which is a wrong answer at exit 0 sitting under a row that says the
+   feature is `DONE` (**Gap R.507**). A `DONE` row is not evidence about the neighbours.

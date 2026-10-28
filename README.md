@@ -3768,6 +3768,26 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **An attribute read asks the class OBJECT, and the walk goes through EVERY base in the reference's resolution order
+  (**L12.4**, **Gap R.56** + **Gap R.66**, **ADR 0446**)** — `class C:` / `    X = 1` / `print(C().X)` printed `0` at the
+  exit code of success, `print(Sub.NAME)` for a member only a base binds was refused in words (`the class names no member
+  of that name`), a method handing back `self.NAME` printed the intern table's index, and two objects of one class — one of
+  them written to — were read with one word (`9 0 0` for the reference's `9 1 1`). The class body's bindings were already
+  kept (**ADR 0418**); what the tree had never had was the walk. `classLinearization` writes C3's merge rather than
+  approximating it — `class D(B, C)` over a shared `A`, and `class C(A, B)` where both bind the member, are answered by no
+  cheaper order — `classChainMember` asks it what the first class binds, keeping **ADR 0418**'s owed/stable split so
+  `C().ratio` still refuses instead of printing `1.0` (**Gap R.431**), and `instanceAttrWrites` decides whether the object's
+  own word wins: with no write anywhere the read is a compile-time fact emitting neither `@rt_inst_get` nor the presence row
+  (asserted), and with a write plus a class binding the read asks `@rt_inst_has` — **ADR 0235**'s row, asked by a plain
+  attribute read for the first time. The residual lesson is **ADR 0445**'s arriving from the class side: a value road and a
+  kind road are two roads, and widening one alone printed `0 1` for `print(c.NAME, C().NAME)` — so
+  `methodReturnsClassText`, the silence in `stringVal` and `classMemberReadIsText` ask the same walk. 23 answer rows + 5
+  shadowing rows on both witness legs, 4 module-shape rows, 7 filed rows, 26 CLI programs on both execution legs, and
+  `integration/programs/class_object.gy` joined the corpus byte-identical (the parent refuses it at exit 1);
+  **29 record entries (10168 → 10197)** were written from reference/compiled agreements, none refused. Filed beside it:
+  **Gap R.505** (a class body may not read its own earlier bindings), **Gap R.506** (a class attribute may not be rebound
+  outside the body), **Gap R.507** (`__doc__` on a class that has none prints the empty text, not `None`).
+
 - **A hand-off call answers with the CALLER'S kind word, so a container slot stops wearing a guessed one (**Gap R.502**,
   **ADR 0445**)** — `def g(v):` / `    return v` / `print([g(x) for x in [1, "a", 2.5, None]])` printed
   `[1, 0, 1, 0]` for the reference's `[1, 'a', 2.5, None]`, `print({g(x): 1 for x in ["a", "b"]})` printed

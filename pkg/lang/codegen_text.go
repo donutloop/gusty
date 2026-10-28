@@ -135,7 +135,7 @@ func joinShapeIsText(e Expr) bool {
 // text index for this expression? A caller that has a generator asks THIS; a pre-scan that has only the AST
 // asks `textDoorShapeIsText`.
 func (g *irGen) textDoorIsText(e Expr) bool {
-	return g.percentIsTextExpr(e) || g.seqIsTextExpr(e)
+	return g.percentIsTextExpr(e) || g.seqIsTextExpr(e) || g.classMemberReadIsText(e)
 }
 
 // textDoorShapeIsText is the pre-scan's version of the same question, reading only the spelling.
@@ -316,14 +316,29 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				}
 			}
 		}
-		// A MEMBER OF A CLASS read through the class name is a text when the class body bound a text to it:
-		// `class C:` / `label = "hi"` / `print(C.label)` answers 'hi', and without this arm the read lowers to
-		// the intern table's INDEX and prints 0 — the number the reader never wrote (roadmap Gap R.297,
-		// ADR 0418). The class's member table is the same one the value road reads.
+		// A MEMBER OF A CLASS is a text when the class body — or any BASE of it, in the reference's resolution
+		// order — bound a text to it: `class C:` / `label = "hi"` / `print(C.label)` answers 'hi', and without
+		// this arm the read lowers to the intern table's INDEX and prints 0 — the number the reader never wrote
+		// (roadmap Gap R.297, ADR 0418). The same word is missing for the two reads row L12.4 opened: a member
+		// inherited from a base (`print(Sub.label)`) and a member read through an instance (`print(c.label)`),
+		// which is why both answered 0 while the direct read answered 'hi' (**Gap R.56**, **Gap R.66**).
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
-			if ci, isClass := g.classInfos[nm.Value]; isClass {
-				if v, held := ci.attrs[e.(*Attr).Name.Value]; held {
-					return g.stringVal(v)
+			if _, isClass := g.classInfos[nm.Value]; isClass {
+				if _, val, owed, found := g.classChainMember(nm.Value, e.(*Attr).Name.Value); found && !owed {
+					return g.stringVal(val)
+				}
+			}
+		}
+		// The same member seen from an instance: the object's own row is asked first (an instance's word wins,
+		// as the reference's `__dict__` does), and the class chain answers only when the program never writes
+		// that name onto an instance of the class.
+		if className := g.receiverClass(e.(*Attr).Obj); className != "" {
+			if _, val, owed, found := g.classChainMember(className, e.(*Attr).Name.Value); found && !owed {
+				// The object's own word wins when the program writes this name onto an instance — and it is
+				// still a TEXT when every such write is a text, which is the case that keeps `print` from
+				// labelling the slot a number and printing the intern table's index.
+				if len(g.instanceAttrWrites(className, e.(*Attr).Name.Value)) == 0 {
+					return g.stringVal(val)
 				}
 			}
 		}

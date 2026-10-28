@@ -110,6 +110,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// and `{g(x): 1 for x in ["a", "b"]}` printed `{0: 1, 1: 1}`, both byte-identical to the reference here
 		// (roadmap **Gap R.502**, **ADR 0273**'s element position, **ADR 0232**'s self-describing slots).
 		"forwarded_answer",
+		// The class OBJECT: what a class body binds is an attribute of the class, an INSTANCE reads it, and the
+		// read walks EVERY base in the reference's resolution order. `print(C().X)` for `class C: X = 1` printed
+		// `0`, `print(Sub.NAME)` for a member only a base binds was refused in words, a method handing back
+		// `self.NAME` printed the intern table's index, and two objects of one class were read with one word
+		// (roadmap row **L12.4**, **Gap R.56** + **Gap R.66**, **ADR 0446**).
+		"class_object",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

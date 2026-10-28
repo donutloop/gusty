@@ -21519,3 +21519,135 @@ that same slot — wrong in the other direction). The misprint is pinned as a fi
 `pkg/lang/forwarded_answer_test.go`, with the reference's bytes as the thing asked for; the two crashing programs are
 pinned only here and in the roadmap row, because **2** is a compiler bug and no case in this repo runs a crashing
 program (**ADR 0166**, **Gap R.203**).
+
+### L12.4 — the class object
+
+```
+$ gustyc --eval 'class C:
+    X = 1
+print(C().X)'
+0                                               reference: 1        (73f7eb1, exit 0)
+$ gustyc --eval 'class Base:
+    NAME = "base"
+class Sub(Base):
+    pass
+print(Sub.NAME)'
+gustyc: jit: codegen: Sub.NAME is refused: the class names no member of that name …
+                                                reference: base
+$ gustyc --eval 'class A:
+    NAME = "a"
+class B(A):
+    def show(self):
+        return self.NAME
+print(B().show())'
+0                                               reference: a
+$ gustyc --eval 'class A:
+    X = 1
+class B(A):
+    pass
+b = B()
+b.X = 9
+print(b.X, B().X, A().X)'
+9 0 0                                           reference: 9 1 1
+```
+
+**Closed by ADR 0446**, together with the two rows the row owns (**Gap R.56**, **Gap R.66**). The class body's bindings
+were already kept — **ADR 0418** taught the walk to record `class C:` / `first = xs[0]` as `classInfo.attrs`, and a read
+through the CLASS NAME consulted it. What the tree had never had was the WALK: no road asked that table for an instance,
+and no road asked it for anything but the class the read named. Twenty-nine programs were measured into that one shape,
+and they are exactly the four questions the row's wording asks — what the body binds read through an instance, what a BASE
+binds read through either, which of two bindings wins, and what a method handing back `self.X` answers.
+
+The walk is one file (`pkg/lang/codegen_class_chain.go`) and three questions. `classLinearization` answers WHICH classes,
+in C3's order — written out as the merge rather than approximated, because `class D(B, C)` over a shared `A` is answered
+wrongly by every cheaper order the tree could have reached, and `class C(A, B)` where both bind the member is answered by
+`A`, which a first-base walk gets only by luck. `classChainMember` answers WHAT the first class in that order binds, keeping
+**ADR 0418**'s split between a member this road can lower and an OWED one it must refuse; `C().ratio` for `ratio = 1.5`
+still refuses, in the sentence that names **Gap R.431**, because answering with the payload word would print `1.0`.
+`instanceAttrWrites` answers whether the object's own word can win at all, and it is asked STATICALLY: where the program
+never writes the name on an instance of the class, the read is a compile-time fact and the module emits neither
+`@rt_inst_get` nor the presence row (a module-shape row asserts the absence — a door that asked presence for every read
+would make every program that never shadows pay for a case it does not have). Where the program DOES write it and the class
+binds it too, the read asks `@rt_inst_has` — **ADR 0235**'s presence row, written by `@rt_inst_put`, asked by a plain
+attribute read for the first time — and joins the arms with a `phi`, splicing the class's value into the else-arm only when
+it lowers to a single basic block.
+
+The lesson the last third of the work taught, and it is **ADR 0445**'s lesson arriving from the class side: **a value road
+and a kind road are two roads, and a walk added to one is a bug in the other.** With the value road answering a text,
+`print(B().NAME)` printed `0` and `print(B().show())` printed `0`, because `stringVal` — the constant-fold road that also
+feeds print's tag question — had not been widened, and the method answer-kind table reads what a `return` SPELLS rather
+than what it answers. Three doors joined: `methodReturnsClassText`, the silence in `stringVal` when an instance write exists
+(folding the class's constant would print the class's word for an object holding another), and `classMemberReadIsText` in
+the text door, which says "whatever word this read answers, it is an index into `@str_tab`". The measurement that proved
+the need was the one that printed `0 1` for `print(c.NAME, C().NAME)` after the value road was already right.
+
+Two regressions were checked rather than assumed. The corpus of `integration/programs/*.gy` — 266 programs — printed
+byte-identical bytes on `73f7eb1` and on this commit, with one exception: `class_object.gy`, the program this row promotes,
+which the parent refuses at exit 1 and this build answers line-for-line. And the ADR 0418 control case
+(`TestTheInstanceRoadIsUntouchedByTheClassRoad`) still passes: an attribute the program writes on the object keeps the plain
+slot read, unchanged.
+
+What the row deliberately did not buy is filed rather than absorbed: **Gap R.505** (a class body reading its own earlier
+bindings), **Gap R.506** (rebinding a class member outside the body), **Gap R.507** (`__doc__` for a class that has none),
+**Gap R.431** (the owed members) and **Gap R.19** (a name nothing binds, which the presence row now has somewhere to raise —
+but does not yet).
+
+### Gap R.505 — a class body cannot read its own earlier bindings (⏳ OPEN, filed by **ADR 0446**)
+
+```
+$ gustyc --eval 'class A:
+    X = 1
+    Y = X + 1
+print(A.Y)'
+gustyc: jit: codegen: undefined name "X" (no binding for it; assign it before use) — the reference
+reports the same error                                  → exit 1   (reference: 2)
+```
+
+The reference EXECUTES a class body, in a namespace that is the class's, so the line `Y = X + 1` reads the `X` the line
+above it bound. This backend reads the body twice — once into `classInfo.attrs` (**ADR 0418**'s table, which is what makes
+`print(A.X)` answer) and once as ordinary code, and the second reading has no scope holding the first's bindings. The
+sentence is the row's real cost: it says the name has no binding when the line above gave it one, and then claims the
+reference reports the same error, which for this program is false (**Gap R.116**'s rule about what a refusal may assert).
+Filed by the row that made the class object exist (**L12.4**, **ADR 0446**) rather than left as a footnote of it: the fix is
+to give the class-body walk the scope a function body already has.
+
+### Gap R.506 — a class attribute cannot be rebound outside the body (⏳ OPEN, filed by **ADR 0446**)
+
+```
+$ gustyc --eval 'class Base:
+    NAME = "base"
+class Sub(Base):
+    pass
+Sub.NAME = "sub"
+print(Sub.NAME)'
+gustyc: jit: codegen: cannot store Sub.NAME — this backend keeps a class member only for the values
+a class body bound it to …                                  → exit 1   (reference: sub)
+$ gustyc --eval 'class C:
+    N = 1
+C.N = C.N + 1
+print(C.N)'                                                    → exit 1   (reference: 2)
+```
+
+The read walks every base now; the store does not. `codegen_assign.go`'s class-member store re-binds a name only where the
+SAME class's body already bound it with a value the table can hold, so an inherited member is no member of the subclass as
+far as a write is concerned, and `C.N + 1` — an expression that reads the member back — is not a value the store can hold
+either. The counter idiom (`C.N = C.N + 1`), which is the reason a class body with a binding is useful at all, stays
+unwritable. Filed beside **L12.4** because the fix is to ask the store the same question the read asks:
+`classChainMember` already knows which class binds the name and whether its value is holdable.
+
+### Gap R.507 — a class with no docstring prints the empty string (⏳ OPEN, filed by **ADR 0446**)
+
+```
+$ gustyc --eval 'class C:
+    pass
+print(C.__doc__)'
+                                                → exit 0, an empty line   (reference: None)
+```
+
+Row **P2.13** says `__doc__` is `DONE`, and for a class that HAS a docstring it is: the string folds to a constant in the
+AOT path too, and prints. The fold has no answer for ABSENCE — `classInfo.doc` is the empty string whether the body began
+with a string literal or with nothing — so the read prints the empty text where the reference's class object holds the void.
+That is a wrong answer at the exit code of success, which is the class this repo ranks worst, so it is a fresh row rather than
+an edit to a `DONE` one (**Gap R.204**'s rule about a claim a reader can re-measure: `print(C.__doc__)` is four lines). The
+void word is the same missing tagged-word family **Gap R.431** owns, which is why the fix may be that door arriving rather
+than a special case for `__doc__`.

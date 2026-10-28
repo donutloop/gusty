@@ -1234,8 +1234,13 @@ type irGen struct {
 	classIDs   map[string]int        // class name -> runtime dispatch id
 	classOrder []string              // classes in id order (dispatch switch)
 	varClasses map[string]string     // local var -> class name
-	selfClass  string                // enclosing class of current self
-	attrSlots  map[string]int        // attr name -> instance data slot
+	// classLinCache / classLinVisits back the method-resolution walk an attribute read takes
+	// (`classLinearization`, roadmap L12.4): the order is a property of the class table, so it is computed once
+	// per class and reused by every read, and the visit set is what stops a cyclic base list from looping.
+	classLinCache  map[string][]string
+	classLinVisits map[string]bool
+	selfClass      string         // enclosing class of current self
+	attrSlots      map[string]int // attr name -> instance data slot
 	// classPat is the front end's answer to what a class pattern needs to know — which class a
 	// pattern name denotes (through `Alias = Point`), and which attribute names the program can
 	// ever write. It is computed before emission so the presence-row clear length is final (ADR 0235).

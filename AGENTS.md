@@ -17,7 +17,7 @@ the retired `--interp` flag, which is a usage error rather than a silent no-op:
 A feature therefore ships **once**, in that backend, and is judged on **two witness legs** — the two
 things a compiled answer can be measured against now that no second engine exists:
 
-- the **record leg** — `pkg/lang/testdata/interpreter-golden.json`, the answer on record for 10168 sources —
+- the **record leg** — `pkg/lang/testdata/interpreter-golden.json`, the answer on record for 10197 sources —
   the retired interpreter's own answer for everything it ran, plus every source first asked after ADR 0302
   retired it, recorded from the reference with the compiled leg cross-checked (the file's own
   `meta.added_after_0302` says which is which) (value repr, type name, stdout, trap class and message, front-end refusal; the
