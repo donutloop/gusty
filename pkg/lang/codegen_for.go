@@ -240,6 +240,24 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 		// when the slot holds a number pretending to be one. The loop then walks that object the way
 		// it walks any list, and the tag travels with each element so print(v) dispatches per
 		// iteration — text, float, None, a nested container (roadmap L11.1, ADR 0241).
+		//
+		// A COMPREHENSION standing here answers its own brace (roadmap **Gap R.490**, **Gap R.500**,
+		// **ADR 0443**). `containerHandleOf` hands back the object — the heap register the runtime built,
+		// or the fold's global materialised into the heap by `containerOperand` (**ADR 0188**'s rule) —
+		// but it declines to NAME the kind, because for a slot read only the tag knows. A comprehension
+		// is not a slot read: the program wrote `[`, `{a}` or `{a: b}`, which is the same question
+		// **ADR 0439** asks of an element's tag and **ADR 0442** asks of the count. Asked, the loop walks
+		// the object with `rt_list_len`/`rt_set_len`/`rt_dict_len`; NOT asked — the shape this row is
+		// filed for — the arm accepted the handle, left `iterKind` empty, and the walk below was skipped
+		// for want of a kind: the loop fell to the numeric counter road, which for a FOLDED comprehension
+		// compared the counter against `@.lst2` (`llc` rejects, **ADR 0166**'s exit **2**) and for a
+		// BUILT one succeeded and printed the counter (`for v in [g(x) for x in [1, 2, 3]]:` wrote `0`
+		// for CPython's `2`, `4`, `6`, at the exit code of success).
+		if kind == "" {
+			if compKind, isComp := compContainerKind(n.Iter); isComp {
+				kind = compKind
+			}
+		}
 		iterKind = kind
 		mixedIter = true
 		hVal = h

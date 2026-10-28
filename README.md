@@ -3753,6 +3753,43 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked, tested and
+  measured as the OBJECT (Gap R.490 + Gap R.500, **ADR 0443**)** — three programs, one missing question.
+  `for v in [x for x in [1]]:` and `if [g(x) for x in [1, 2, 3]]:` died with `llc-20: global variable reference must
+  have pointer type` on `%t3 = icmp slt i32 %_ctr1.ld1, @.lst2` — **exit 2**, **ADR 0166**'s own code — and
+  `for v in [g(x) for x in [1, 2, 3]]:` printed **`0`** for CPython's `2`, `4`, `6` at the exit code that means the
+  program ran. The loop road already asked the door that knows how to make a comprehension's object
+  (`containerHandleOf`'s `*Comp` arm, **ADR 0439**, materialising a fold through `containerOperand` the way
+  **ADR 0188** taught) — but that door answers `""` for the KIND, correctly for a slot read where only the tag knows,
+  and the loop arm stored the empty kind, skipped the walk, and fell through to the numeric counter road. The
+  condition and `bool()` had no arm at all: they probed the word the comprehension arrived in, which is `@.lstN`
+  (exit 2) or an allocation index (every comprehension "true", the empty one included). One predicate now answers
+  the kind from the brace the program wrote — `[` → a list, `{a}` → a set, `{a: b}` → a dict, the kind being a fact
+  of the **spelling** and not a run-time question — and all three doors ask it once: the loop walks the handle with
+  `rt_list_len`/`rt_set_len`/`rt_dict_len` + `rt_get_elem`/`rt_tag_of`, the road a container VARIABLE takes (a dict
+  comprehension yields its KEYS, in insertion order), the condition and `bool()` ask the object its length through
+  the `rt_heap_len` **ADR 0442**'s count door asks. Deliberately NOT by widening `containerHandleOf`'s kind answer or
+  `isContainerExpr`: **ADR 0339** measured that a deciding door which says "container" without a handle to hand turns
+  programs that answer into refusals. Fifteen loops and thirteen condition/`bool` programs on the compiled leg AND
+  the record leg (asked with **no** tolerance for a missing entry — `tools/recmerge` wrote **35 entries, 10051 →
+  10086**, none refused), four module rows naming the length helper per brace plus both-altitude assertions that
+  `icmp slt i32 %_ctr … @.` is absent, 43 programs through `--eval` beside a live `python3` with exit **2**
+  forbidden on every row, six asks of the predicate directly, and `integration/programs/comp_loop_truth.gy` joined
+  the corpus as a line-for-line `match` (33 lines). The walk was not the whole fix: with the kind asked and the walk
+  in place the built loop printed **`4`, `6`, `4`, `6`** for `2`, `4`, `6`, because the object a builder allocates
+  lives in a bare register while the road that FILLS it is free to CALL, and a call's body collects — **ADR 0181**'s
+  forbidden shape, one construct earlier than the loop **ADR 0347** rooted. `gcRootDuringBuild`/`gcEndBuildRoot`
+  open and close that window in the four builders (`rt_root_put` beside the allocation, `rt_root_clear` after the
+  last element), attributed by control build and pinned by two more tests; a loop that mints a runtime comprehension
+  3000 times still runs at `total_freed=2999`, `capacity=1024`, `exhausted=0`. What the two fixes do NOT settle is
+  FILED with today's bytes, not
+  folded in: **Gap R.502** — the comprehension's ELEMENT carries no kind word, so
+  `for v in [g(x) for x in [1, "a", 2.5, None]]:` prints `1`, `0`, `1`, `0` and `print([g(x) for x in [1, "a", 2.5,
+  None]])` prints `[1, 0, 1, 0]`, byte-identical on `290aa59` and on this commit, which is what keeps it a row and
+  not damage; and a loop item handed to a call is now refused in **Gap R.146**'s words where it used to reach `llc`
+  at exit **2** — a refusal that names the missing word beats a module LLVM rejected. The three **Gap R.500** rows
+  left the filed tables for the answering tables (they fail on the fix) and the emptied slot names where they went.
+
 - **A comprehension the run time BUILDS is an OBJECT, and `len` asks it (Gap R.496, **ADR 0442**)** —
   `def g(v):` / `    return v * 2` / `print(len([g(x) for x in [1, 2, 3]]))` never became a program at all:
   `%t15 = load i32, i32* getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %h1, i32 0, i32 0)`,

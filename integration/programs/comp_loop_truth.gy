@@ -1,0 +1,69 @@
+# A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked,
+# tested and measured as the OBJECT it is: `for v in [x for x in [1]]:` used to compare its counter with
+# the comprehension's compile-time global and die in `llc` at exit 2, `if [g(x) for x in [1,2,3]]:` died
+# the same way, and `print(bool([g(x) for x in [1,2,3]]))` printed `False` for `True` at the exit code of
+# success (roadmap Gap R.490 + Gap R.500, ADR 0443).
+#
+# The last four lines are the other half of the commit: an element that CALLS collects while the object that
+# will hold it is still half-filled, and an object whose handle lives only in a register is invisible to the
+# mark phase. `h` builds two lists per call and collects inside them, so the comprehension below is collected
+# over and over while it is being filled; unrooted, those two loops print `10`, `15`, `6` at the exit code of
+# success for the `2`, `4`, `6` the reference prints (ADR 0181, ADR 0347).
+def g(v):
+    return v * 2
+for v in [x for x in [1]]:
+    print(v)
+for v in [g(x) for x in [1, 2, 3]]:
+    print(v)
+xs = [1, 2, 3]
+for v in [g(x) for x in xs]:
+    print(v)
+for v in [g(x) for x in [1, 2, 3] if g(x) > 2]:
+    print(v)
+for v in [g(x) for x in range(3)]:
+    print(v)
+for v in {x for x in [3, 3, 4]}:
+    print(v)
+for k in {x: 1 for x in ["a", "b"]}:
+    print(k)
+for v in [x for x in [1, 2, 3]]:
+    if v == 2:
+        break
+    print(v)
+for v in [x for x in [1, 2]]:
+    print(v)
+else:
+    print("else ran")
+for v in [x for x in []]:
+    print(v)
+else:
+    print("else ran")
+if [x for x in [1]]:
+    print("yes")
+else:
+    print("no")
+if [g(x) for x in [1, 2, 3]]:
+    print("yes")
+else:
+    print("no")
+if [x for x in []]:
+    print("yes")
+else:
+    print("no")
+print(bool([x for x in [1]]))
+print(bool([g(x) for x in [1, 2, 3]]))
+print(bool([x for x in []]))
+print(not [x for x in [1]])
+if [x for x in [1]] and [x for x in []]:
+    print("both")
+else:
+    print("not both")
+
+def h(v):
+    total = 0
+    for a in [v, v + 1, v + 2]:
+        total = total + len([a * b for b in [2, 3]])
+    return v * 2
+for v in [h(x) for x in [1, 2, 3]]:
+    print(v)
+print(bool([h(x) for x in [1, 2, 3]]))

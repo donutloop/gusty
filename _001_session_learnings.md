@@ -16402,3 +16402,87 @@ fold's load for the comprehension the fold actually answered.
    all three modules rejected. Keeping the commit to the measuring door is not just **AGENTS.md**'s one-feature rule:
    the fix I could prove in this cycle is `g.rtComps` at one call site, and the fix they need is a handle threaded
    through a deciding predicate, which is a different change with a different gate.
+
+---
+
+## ADR 0443 — a comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked, tested and measured as the OBJECT (roadmap Gaps R.490 + R.500 closed; ADR 0443; Gap R.502 filed, 2026-10-28)
+
+**Change**: the loop head, the condition door and the truth door asked a comprehension nothing about itself, so
+`for v in [x for x in [1]]:` and `if [x for x in [1]]:` reached `llc` with `%_ctr1.ld1, @.lst2` (**exit 2**) and
+`for v in [g(x) for x in [1, 2, 3]]:` / `print(bool([g(x) for x in [1, 2, 3]]))` answered `0` and `False` at the exit
+code of success. `compContainerKind` (new, `pkg/lang/for_iterable.go`) answers a comprehension's kind from the brace
+the program wrote, and the three doors ask it once — the loop walks the handle with the list/set/dict length helpers,
+the condition and `bool()` ask `rt_heap_len`.
+
+1. **The door already had the handle; the kind was the whole bug.** My first instinct on "the loop does not walk a
+   comprehension" was to add an arm. The arm existed — `containerHandleOf`'s `*Comp` case, built by **ADR 0439** for
+   the slot doors, is three lines up the same `if/else` chain in `stmtFor`. It returns `("", handle)`, the arm stores
+   the empty kind, `if iterKind != ""` skips the walk, and the counter road runs. A door that "handles" a shape by
+   accepting a value it then refuses to use is invisible to every test that only asks whether the program compiled:
+   the walk is not missing, it is UNREACHED. I now grep for who READS a value an arm sets before I add anything.
+
+2. **Widening a deciding door is how you break a program that answers today.** The one-line version — give
+   `containerHandleOf`'s `*Comp` arm a real kind — passed my probes and I nearly kept it. **ADR 0339**'s row has the
+   scar in its own text: teaching `isContainerExpr`/`staticContainerKind` about a container without teaching the road
+   beside it turned `print(1 in sorted(xs))` from `True` into a refusal. I ran the comprehension suite instead of my
+   six probes before deciding, and the discipline cost me nothing but the temptation.
+
+3. **Two rows, one fix — and saying so is not bundling.** **Gap R.490** (folded comprehension, exit 2) and **Gap
+   R.500** (built comprehension, wrong answer at exit 0) are the same three doors over the two roads one node can
+   take. Splitting them would have shipped a commit that made the folded spelling answer and the built one keep
+   lying, which is a worse tree than the one I started with. One ADR, both rows, and the record shows both classes:
+   one exit-2 family and one exit-0 family moved.
+
+4. **The expectation has to come from `python3`, again.** I wrote `for v in {g(x) for x in [2, 2, 4]}` with the
+   expected `4\n2` because I "knew" sets keep insertion order. CPython yields `8\n4` and the backend agreed with
+   CPython; the test was the only wrong thing in the room. The recorder would have caught it too (it cross-checks the
+   compiled leg), so the cheapest referee in this project keeps getting hired and keeps firing my mistakes.
+
+5. **A refusal that replaces an exit 2 is still a filed row.** `for v in [x * 2 for x in [1, 2]]: show(v)` went from
+   exit **2** (a rejected module) to an honest **exit 1** naming **Gap R.146** — the loop item is now a (payload,
+   tag) pair and a call argument keeps one word. Better, not answered. It sits in the filed table with both sentences
+   pinned, and the comment says what the same program used to cost, so nobody reads the refusal as the old crash or
+   as the fix.
+
+6. **The element's tag is a different debt, and I let it stay one.** The mixed loop
+   (`[g(x) for x in [1, "a", 2.5, None]]`) prints `1`, `0`, `1`, `0` before my commit and after it — measured on a
+   detached worktree at `290aa59` before I believed it. Filed as **Gap R.502** with the generator buffer (**ADR 0433**)
+   named as the neighbour that already carries the word, and every answered loop row in the new file walks an iterable
+   of ONE kind. An answered test that quietly depends on a tag nobody writes is how a filed defect turns into a green
+   suite, which is the failure mode this house calls loudest.
+
+7. **A filed table's empty slot is a sentence, not a hole.** Deleting the three **Gap R.500** rows left a comment-only
+   entry in a struct slice that the test then ran as an empty case — `"" answered ""`, a passing assertion about
+   nothing. Comments go at the table's level, outside the entries; a table row is a claim, and an entry with no fields
+   is the suite grading itself.
+
+8. **A wrong answer that changes SHAPE mid-fix is a second fault, not a partial fix.** With the brace asked, the
+   handle handed over and the walk in place, the filed loop printed `4`, `6`, `4`, `6` for CPython's `2`, `4`, `6` —
+   four lines where the reference writes three, at the exit code of success. The temptation was to read that as my own
+   change misfiring (it looked like an off-by-one in the walk) or as progress (`0` → real numbers!). Neither: the
+   comprehension's object had been allocated, parked in a register, and left **unrooted** while its elements called a
+   function whose body collects, so the collector recycled the half-filled object and handed its arena slot to the next
+   `rt_alloc`. A GC window leaves no trace in a module, so the only honest attribution was a control build — empty
+   `gcRootDuringBuild`, change nothing else, rebuild: `4`, `6`, `4`, `6` and `10`, `15`, `6` on two programs, both at
+   exit 0. When a fix moves a wrong answer somewhere I cannot explain, the explanation is a second fault and the commit
+   waits for it.
+
+9. **ADR 0181's rule covers allocations the program never named.** I have been reading that ADR as "root your
+   variables", because the roads that call `rt_root_put` are the assignment roads and **ADR 0347**'s loop-iterable
+   root. A comprehension's buffer is a third caller nobody had: it is allocated by the compiler, held in `%h7`, and
+   filled by a road that is free to CALL. The permanent fix is two lines and the wrong answer was four lines of
+   output; the reclamation numbers did not move (`total_freed=2999`, `capacity=1024`, `exhausted=0` with and without
+   the clear), which is a useful warning — a leak test that cannot tell the difference is not measuring the leak.
+
+10. **A tool that reports success is not a fact; the file is.** Twice this cycle an `edit` call answered
+    "Successfully replaced N block(s)" and the file did not contain what I asked for — once because my `oldText` had
+    been written from memory of the code rather than from a read of it, once because a later edit silently reverted an
+    earlier one in the same file. Both times the compile or the test caught it, but only after I had already written a
+    claim into a doc. And one `git checkout <file>` I ran to undo a *control* build reverted **my own uncommitted
+    feature work** in three files. Two rules taken back: after any edit that carries a claim, `grep` for the new
+    identifier before building; and restore control-build edits from a `/tmp` copy, never from git.
+
+11. **Measure with the gate's tags.** My first sweep of the R.501 candidates built the CLI through the harness helper
+    `buildCLI`, which shells out to `go build` without `-tags=llvm20`; the numbers it produced were close enough to the
+    tagged build to be believable and wrong enough to have been filed as rows. Every measured byte now comes from a
+    binary I built with the same tag the gate uses, or from a `go test -tags=llvm20` case that builds it itself.

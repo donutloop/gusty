@@ -56,6 +56,28 @@ import (
 // step over would print one fabricated number and call it success.
 // =============================================================================
 
+// compContainerKind is a comprehension's OWN answer to “what kind of container are you”, read off the
+// brace the program wrote: `[` → a list, `{a}` → a set, `{a: b}` → a dict. It is the one question
+// **ADR 0439** asks of an element's tag, **ADR 0442** asks of the count, and **ADR 0443** asks of the
+// loop head, the condition and `bool()` — asked ONCE, of the spelling, because a comprehension's kind
+// is not a run-time fact: the author wrote the bracket. Anything else is not a comprehension, and the
+// caller's own question stands (roadmap **Gap R.490**, **Gap R.500**).
+func compContainerKind(e Expr) (string, bool) {
+	c, ok := e.(*Comp)
+	if !ok {
+		return "", false
+	}
+	switch c.Kind {
+	case CompList:
+		return "list", true
+	case CompSet:
+		return "set", true
+	case CompDict:
+		return "dict", true
+	}
+	return "", false
+}
+
 // foldedForIterable rewrites a `for`'s iterable when the loop can walk the container the
 // expression DENOTES rather than the expression itself: `sorted([3, 1, 2])` denotes the literal
 // list [1, 2, 3]. Only a call is rewritten — a literal list or text is already the road's own

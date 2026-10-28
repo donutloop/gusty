@@ -227,6 +227,9 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.emitRtAllocKind(b, h, kind, c.Span())
+	// Rooted for the build: the handle is a register and an operand may call (roadmap **Gap R.500**,
+	// **ADR 0443**; **ADR 0181**, **ADR 0347**).
+	buildRoot := g.gcRootDuringBuild(b, h)
 	if g.runtimeCompNeedsSelfDescribingSlots(c, operands, lv, itemExprs) {
 		b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 	}
@@ -363,6 +366,7 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		restore()
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", skipL, skipL))
 	}
+	g.gcEndBuildRoot(b, buildRoot)
 	if g.rtComps == nil {
 		g.rtComps = map[*Comp]bool{}
 	}

@@ -93,6 +93,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// CPython, the two COLLAPSE lines say the count came from the object, and the last four are the
 		// fold's control (roadmap **Gap R.496**, paid by **ADR 0442**).
 		"built_comp_len",
+		// A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked,
+		// tested and measured as the OBJECT: `for v in [x for x in [1]]:` compared its counter with the
+		// comprehension's compile-time global and died in `llc` at exit 2, `if [g(x) for x in [1, 2, 3]]:`
+		// died the same way, and `print(bool(…))` printed `False` for `True` at the exit code of success
+		// (roadmap **Gap R.490** + **Gap R.500**, paid by **ADR 0443**).
+		"comp_loop_truth",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

@@ -444,6 +444,9 @@ func (g *irGen) nestedCompRuntimeList(b *strings.Builder, c *Comp) (string, erro
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.emitRtAllocKind(b, h, HeapList, c.Span())
+	// Rooted for the build: the handle is a register and a nested element may call (roadmap **Gap R.500**,
+	// **ADR 0443**; **ADR 0181**, **ADR 0347**).
+	buildRoot := g.gcRootDuringBuild(b, h)
 
 	var walkFailed error
 	var walk func(k int, bound map[string]Expr)
@@ -533,6 +536,7 @@ func (g *irGen) nestedCompRuntimeList(b *strings.Builder, c *Comp) (string, erro
 	if walkFailed != nil {
 		return "", walkFailed
 	}
+	g.gcEndBuildRoot(b, buildRoot)
 	if g.rtComps == nil {
 		g.rtComps = map[*Comp]bool{}
 	}

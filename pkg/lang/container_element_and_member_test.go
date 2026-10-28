@@ -62,32 +62,13 @@ func containerElementFiledRows() []struct {
 		reference string
 		row       string
 	}{
-		{
-			// The comprehension standing where the LOOP asks for a container: the deciding doors have no arm
-			// for it, so that road reads its word as a count and the module carries the global.
-			name:      "a comprehension as a loop iterable is rejected by llc",
-			src:       "for v in [x for x in [1]]:\n    print(v)\n",
-			kind:      "module",
-			today:     "@.lst",
-			reference: "1",
-			row:       "Gap R.490 (the loop head; the folded global reaches an i32 operand \u2014 ADR 0166's code)",
-		},
-		{
-			name:      "a comprehension in a truth test is rejected by llc",
-			src:       "if [x for x in [1]]:\n    print(\"yes\")\n",
-			kind:      "module",
-			today:     "@.lst",
-			reference: "yes",
-			row:       "Gap R.490 (the condition door, the same instruction shape)",
-		},
-		{
-			name:      "bool() of a comprehension is rejected by llc",
-			src:       "print(bool([x for x in [1]]))\n",
-			kind:      "module",
-			today:     "@.lst",
-			reference: "True",
-			row:       "Gap R.490 (`icmp ne i32 @.lst1, 0` \u2014 the truth door asked the word, not the object)",
-		},
+		// **Gap R.490**'s three comprehension rows — the LOOP head, the truth test and `bool()` over a
+		// comprehension the fold ANSWERED — MOVED with **ADR 0443**: they are asserted, not remembered, in
+		// `pkg/lang/comp_loop_truth_test.go::TestTheLoopWalksAComprehensionStandingWhereItsIterableIs` /
+		// `TestTheConditionAndBoolAskAComprehensionWhetherItIsEmpty` and their CLI twin, with the forbidden
+		// instruction (`icmp slt i32 %_ctr … @.`) pinned ABSENT by
+		// `TestNoModuleComparesALoopCounterWithAComprehensionGlobal`. The same three doors over a comprehension the
+		// run time BUILDS were **Gap R.500**, answered by the same commit.
 		{
 			// The item door names an integer literal or a `range`, and nothing else; a container of
 			// containers is answered with an index instead of an item.

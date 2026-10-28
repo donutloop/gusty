@@ -69,6 +69,16 @@ func (g *irGen) builtinBool(b *strings.Builder, c *Call, fnName string) (string,
 	// reference must have pointer type"), and for a container the answer would have been "non-empty"
 	// for every handle ever allocated, `bool([])` included. Refusing is the honest answer until the
 	// tagged value word lets the object be asked (roadmap Gap R.131, ADR 0287, L11.1).
+	// A COMPREHENSION is a container the program wrote without naming it, and its truthiness is the same
+	// question every container asks: does the object hold anything. The word under the probe would be a
+	// heap register (non-zero for the empty comprehension too) or the fold's GLOBAL in an `icmp` slot,
+	// which `llc` rejects — **ADR 0166**'s exit **2** (roadmap **Gap R.490**, **Gap R.500**, **ADR 0443**).
+	// The handle comes from the container door and the count from `rt_heap_len`, **ADR 0442**'s door.
+	if _, isComp := c.Args[0].(*Comp); isComp {
+		if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
+			return g.asBoolI32(b, g.heapLenOf(b, h)), nil
+		}
+	}
 	if g.nameIsContainerRecorded(c.Args[0]) {
 		return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)")
 	}

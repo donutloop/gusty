@@ -269,28 +269,12 @@ func TestWhatTheCountDoorStillOwesThroughTheCLI(t *testing.T) {
 		reference string
 		row       string
 	}{
-		{
-			// **Gap R.496**'s own row MOVED with the fix — it is answered above, in
-			// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI, and pinned in the
-			// module by its instruction shape. What is left of that door's family is the same object asked
-			// by the doors BESIDE the count, measured by the same sweep and answered by none of them.
-			"a `for` over a comprehension the run time builds walks the COUNTER (the loop road's row)",
-			"def g(v):\n    return v * 2\nfor v in [g(x) for x in [1, 2, 3]]:\n    print(v)",
-			"answer:0", "", "2\n4\n6",
-			"roadmap Gap R.500",
-		},
-		{
-			"the truth test over a comprehension the run time builds is false (the same road's row)",
-			"def g(v):\n    return v * 2\nif [g(x) for x in [1, 2, 3]]:\n    print(\"yes\")",
-			"answer:", "", "yes",
-			"roadmap Gap R.500",
-		},
-		{
-			"`bool` of a comprehension the run time builds is False (the same road's row)",
-			"def g(v):\n    return v * 2\nprint(bool([g(x) for x in [1, 2, 3]]))",
-			"answer:False", "", "True",
-			"roadmap Gap R.500",
-		},
+		// **Gap R.496**'s own row MOVED with the fix — it is answered above, in
+		// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI, and pinned in the
+		// module by its instruction shape. **Gap R.500**'s three rows MOVED with **ADR 0443**'s fix — they
+		// are answered in `integration/comp_loop_truth_test.go`, on both sides of the pipe, beside a live
+		// `python3`. What is left of that family is the object's ELEMENT (**Gap R.502**) and the subscript
+		// door's row below.
 		{
 			"a subscript of a comprehension the run time builds reads a slot the builder never filled (the subscript door's row)",
 			"def g(v):\n    return v * 2\nprint([g(x) for x in [1, 2, 3]][1])",

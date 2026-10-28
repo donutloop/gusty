@@ -244,6 +244,40 @@ func (g *irGen) gcRootIterable(b *strings.Builder, h string) {
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", h, "_"+name))
 	g.gcReg(b, name) // pushes `%_<name>`, the spelling every variable slot uses
 }
+
+// gcRootDuringBuild parks the object a container road ALLOCATED into a frame slot and registers that
+// slot as a root, for as long as the road is still filling it. The road mints the object with
+// `rt_alloc`, keeps its handle in a bare register, and then runs the element road — which is free to
+// CALL, and a call's body collects (ADR 0347, ADR 0317). The object is live, its handle sits in a
+// register, and nothing else in the program can reach it: ADR 0181's forbidden shape, one construct
+// earlier than the loop ADR 0347 rooted. Measured, `def g(x): y = len([x * a for a in [2, 3]])` /
+// `for v in [g(x) for x in [1, 2, 3]]:` — three collection points inside the build, each free to
+// recycle the half-filled object and hand its arena slot to the next `rt_alloc` — printed `4`, `6`,
+// `4`, `6` for CPython's `2`, `4`, `6` at the exit code of success (roadmap **Gap R.500**, **ADR 0443**).
+// The road calls gcEndBuildRoot when the last slot is written; the consumer roots the object itself by
+// then, so the window is exactly the build and a comprehension that dies unused is still reclaimable.
+func (g *irGen) gcRootDuringBuild(b *strings.Builder, h string) string {
+	if h == "" || !g.heapUsed {
+		return ""
+	}
+	// Same spelling discipline as gcRootIterable: a root entry naming a slot that was never allocated is
+	// the module `llc` rejects, and the counter makes each build's slot distinct inside one frame.
+	name := fmt.Sprintf("cb%d", g.gcRootIdx)
+	b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", h, "_"+name))
+	g.gcReg(b, name)
+	return name
+}
+
+// gcEndBuildRoot closes gcRootDuringBuild's window: the object is on record as no longer reachable from
+// that slot, so a comprehension nothing consumed is collectable at the next safe point (ADR 0181's
+// clearing rule, applied to a build instead of an assignment).
+func (g *irGen) gcEndBuildRoot(b *strings.Builder, name string) {
+	if name == "" {
+		return
+	}
+	g.gcClearRoot(b, name)
+}
 func (g *irGen) gcCall(b *strings.Builder) {
 	if !g.heapUsed {
 		return

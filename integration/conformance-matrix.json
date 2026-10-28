@@ -436,6 +436,27 @@
     },
     {
       "case": {
+        "id": "programs/comp_loop_truth",
+        "name": "comp_loop_truth.gy",
+        "source": "# A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked,\n# tested and measured as the OBJECT it is: `for v in [x for x in [1]]:` used to compare its counter with\n# the comprehension's compile-time global and die in `llc` at exit 2, `if [g(x) for x in [1,2,3]]:` died\n# the same way, and `print(bool([g(x) for x in [1,2,3]]))` printed `False` for `True` at the exit code of\n# success (roadmap Gap R.490 + Gap R.500, ADR 0443).\n#\n# The last four lines are the other half of the commit: an element that CALLS collects while the object that\n# will hold it is still half-filled, and an object whose handle lives only in a register is invisible to the\n# mark phase. `h` builds two lists per call and collects inside them, so the comprehension below is collected\n# over and over while it is being filled; unrooted, those two loops print `10`, `15`, `6` at the exit code of\n# success for the `2`, `4`, `6` the reference prints (ADR 0181, ADR 0347).\ndef g(v):\n    return v * 2\nfor v in [x for x in [1]]:\n    print(v)\nfor v in [g(x) for x in [1, 2, 3]]:\n    print(v)\nxs = [1, 2, 3]\nfor v in [g(x) for x in xs]:\n    print(v)\nfor v in [g(x) for x in [1, 2, 3] if g(x) \u003e 2]:\n    print(v)\nfor v in [g(x) for x in range(3)]:\n    print(v)\nfor v in {x for x in [3, 3, 4]}:\n    print(v)\nfor k in {x: 1 for x in [\"a\", \"b\"]}:\n    print(k)\nfor v in [x for x in [1, 2, 3]]:\n    if v == 2:\n        break\n    print(v)\nfor v in [x for x in [1, 2]]:\n    print(v)\nelse:\n    print(\"else ran\")\nfor v in [x for x in []]:\n    print(v)\nelse:\n    print(\"else ran\")\nif [x for x in [1]]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nif [g(x) for x in [1, 2, 3]]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nif [x for x in []]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nprint(bool([x for x in [1]]))\nprint(bool([g(x) for x in [1, 2, 3]]))\nprint(bool([x for x in []]))\nprint(not [x for x in [1]])\nif [x for x in [1]] and [x for x in []]:\n    print(\"both\")\nelse:\n    print(\"not both\")\n\ndef h(v):\n    total = 0\n    for a in [v, v + 1, v + 2]:\n        total = total + len([a * b for b in [2, 3]])\n    return v * 2\nfor v in [h(x) for x in [1, 2, 3]]:\n    print(v)\nprint(bool([h(x) for x in [1, 2, 3]]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "1\n2\n4\n6\n2\n4\n6\n4\n6\n0\n2\n4\n3\n4\na\nb\n1\n1\n2\nelse ran\nelse ran\nyes\nyes\nno\nTrue\nTrue\nFalse\nFalse\nnot both\n2\n4\n6\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "1\n2\n4\n6\n2\n4\n6\n4\n6\n0\n2\n4\n3\n4\na\nb\n1\n1\n2\nelse ran\nelse ran\nyes\nyes\nno\nTrue\nTrue\nFalse\nFalse\nnot both\n2\n4\n6\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5836,11 +5857,11 @@
       ]
     }
   ],
-  "rows": 248,
+  "rows": 249,
   "skipped": 29,
-  "pass": 219,
+  "pass": 220,
   "fail": 0,
-  "oracle_match": 205,
+  "oracle_match": 206,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

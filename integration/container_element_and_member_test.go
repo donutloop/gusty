@@ -26,33 +26,13 @@ func TestWhatTheContainerElementAndMemberDoorsOweAtTheCLI(t *testing.T) {
 		reference string // what CPython prints (or raises) for the same file
 		row       string
 	}{
-		{
-			// The comprehension standing where the LOOP, the truth test and `bool()` ask for a container: the
-			// deciding doors have no arm for it, so the word they read is the folded compile-time global and
-			// `llc` refuses the module — exit 2, the code ADR 0166 reserves for a compiler bug.
-			name:      "a comprehension as a loop iterable is rejected by llc",
-			src:       "for v in [x for x in [1]]:\n    print(v)\n",
-			wantErr:   "@.lst",
-			wantCode:  2,
-			reference: "1",
-			row:       "Gap R.490 (the loop head)",
-		},
-		{
-			name:      "a comprehension in a truth test is rejected by llc",
-			src:       "if [x for x in [1]]:\n    print(\"yes\")\n",
-			wantErr:   "@.lst",
-			wantCode:  2,
-			reference: "yes",
-			row:       "Gap R.490 (the condition door)",
-		},
-		{
-			name:      "bool() of a comprehension is rejected by llc",
-			src:       "print(bool([x for x in [1]]))\n",
-			wantErr:   "@.lst",
-			wantCode:  2,
-			reference: "True",
-			row:       "Gap R.490 (`icmp ne i32 @.lst1, 0`)",
-		},
+		// **Gap R.490**'s three comprehension rows — the LOOP head, the truth test and `bool()` over a
+		// comprehension the fold ANSWERED, each of which reached `llc` with a container GLOBAL in an `i32`
+		// operand and died at **ADR 0166**'s exit **2** — MOVED with **ADR 0443** to
+		// `integration/comp_loop_truth_test.go`, where the same programs are asserted beside a live `python3`
+		// (`TestTheLoopWalksAComprehensionThroughTheCLI`, `TestTheConditionAndBoolAskAComprehensionThroughTheCLI`)
+		// with exit 2 forbidden on every row. The same three doors over a comprehension the run time BUILDS were
+		// **Gap R.500**, answered by the same commit.
 		{
 			// The item door names an integer literal or a `range` and nothing else, so a comprehension over a
 			// container of containers is answered with an index and the program raises what the reference prints.

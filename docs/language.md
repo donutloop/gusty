@@ -1000,9 +1000,37 @@ the compiler can write down — `[x for x in [1, 2, 3]]`, `[x * 2 for x in range
 (**ADR 0192**), and its length is loaded out of the global the fold filled. One the run time BUILDS — an element, a
 key, a value or a filter the compiler cannot see, as above — is a heap object, and its length is a word inside that
 object: the door calls the same `rt_heap_len` a container variable's length calls, which is why a set comprehension
-that collapses members answers `2` and not `3`. Two shapes of that same object are still owed, stated rather than
-smoothed: the loop head, the truth test and `bool()` read it as a repeat count (**Gap R.500**), and a subscript of it
-reads a slot the builder never filled (**Gap R.501**).
+that collapses members answers `2` and not `3`.
+
+The same object stands where a LOOP, a CONDITION or `bool()` asks for a container, and it is walked, tested and
+measured there too (**ADR 0443**). `compContainerKind` asks the comprehension its own brace — `[` → a list, `{a}` →
+a set, `{a: b}` → a dict, the kind being a fact of the spelling and not a run-time question — and the loop then
+walks the handle with `rt_list_len`/`rt_set_len`/`rt_dict_len` exactly as it walks a list variable (a dict
+comprehension yields its KEYS, in insertion order), while the condition and `bool()` ask the object how many slots
+it holds:
+
+```
+for v in [g(x) for x in [1, 2, 3]]:      # 2, 4, 6   (this wrote 0 — the loop had walked its own counter)
+    print(v)
+if [g(x) for x in [1, 2, 3]]:            # yes       (this died in llc at exit 2)
+    print("yes")
+print(bool([x for x in []]))              # False     (a handle is non-zero even for the empty one)
+print(bool({x for x in [3, 3, 4]}))       # True
+```
+
+The build is itself a GC window. An element that CALLS collects while the object that will hold it is still
+half-filled, and a container whose handle lives only in a register is invisible to the mark phase — so each of the four
+runtime builders roots the object it allocated for the duration of its own build and clears that root when the last
+slot is written (**ADR 0181**, **ADR 0347**, **ADR 0443**). Without that root the first loop above printed four lines
+(`4`, `6`, `4`, `6`) rather than three, at the exit code of success, and a loop that mints a comprehension per
+iteration would fill the arena.
+
+What the object does not yet carry is its ELEMENT'S kind: a comprehension the run time builds over an iterable of
+more than one kind prints the payload — `for v in [g(x) for x in [1, "a", 2.5, None]]:` writes `1`, `0`, `1`, `0`
+where the reference writes `1`, `a`, `2.5`, `None` (**Gap R.502**), and handing such an item to a call is refused
+for want of the tag a one-word position cannot carry (**Gap R.146**, where the same program used to reach `llc`).
+Two further shapes of that same object are still owed: a subscript of it reads a slot the builder never filled
+(**Gap R.501**), and `bool` of a container VARIABLE or a spelled-out literal still refuses in **Gap R.131**'s words.
 
 Three further shapes are still owed: a subscript of a read out of a comprehension still refuses
 (**Gap R.495**), and an element that reads a verdict, a double or the void out of a container the fold answered is

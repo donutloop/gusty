@@ -259,6 +259,10 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		allocKind = HeapKindSet
 	}
 	g.emitRtAllocKind(b, h, allocKind, c.Span())
+	// The object lives in a register while the element road below is free to CALL, and a call's body
+	// collects: the half-filled object is ADR 0181's forbidden shape unless it is rooted for the build
+	// (roadmap **Gap R.500**, **ADR 0443**, **ADR 0347**).
+	buildRoot := g.gcRootDuringBuild(b, h)
 	// Every slot the loop writes goes through a tagged helper, so the object must let each slot say
 	// what it holds. The compiler cannot always name the kind before the iteration reaches it — the
 	// iterable may hold more than one kind, and an operand may be a call — and assuming one kind is
@@ -427,6 +431,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", merge, merge))
 	}
 	b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n  br label %%%s\n%s:\n", nextReg, idx, cond, done))
+	g.gcEndBuildRoot(b, buildRoot)
 	if g.rtComps == nil {
 		g.rtComps = map[*Comp]bool{}
 	}
@@ -623,6 +628,9 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	g.emitRtAllocKind(b, h, HeapList, c.Span())
+	// Rooted for the build: the handle is a register and an element may call (roadmap **Gap R.500**,
+	// **ADR 0443**; **ADR 0181**, **ADR 0347**).
+	buildRoot := g.gcRootDuringBuild(b, h)
 	// Whether the elements are interned text is asked of the element itself, once per write, by the
 	// door below — a pre-scan here emitted an intern call the loop never used.
 	// appendElem writes the payload and the tag together, through the same door `xs.append(v)` uses
@@ -691,6 +699,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		restore()
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", skipL, skipL))
 	}
+	g.gcEndBuildRoot(b, buildRoot)
 	if g.rtComps == nil {
 		g.rtComps = map[*Comp]bool{}
 	}

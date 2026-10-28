@@ -129,6 +129,23 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	if ansName, _, okAns := g.containerAnswerOperandRead(b, e, containerReadShape); okAns {
 		return g.truthOperandErr(b, ansName)
 	}
+	// `if [x for x in xs]:` and `while [x for x in xs]:` ask a COMPREHENSION the question every
+	// container answers — is anything in it. The object is the only party that knows: a comprehension
+	// the run time built is a heap register and one the fold wrote is a compile-time global, so the
+	// word under test is either an allocation index or `@.lstN` sitting in an `icmp` slot — the second
+	// of which `llc` rejects (**ADR 0166**'s exit **2**, roadmap **Gap R.490**) and the first of which
+	// is non-zero for the empty comprehension too (**Gap R.500**, CPython's `False`). The handle comes
+	// from `containerHandleOf`, which materialises the fold the way `containerOperand` does (**ADR 0188**,
+	// **ADR 0439**), and the length from the same `rt_heap_len` **ADR 0442**'s count door asks — one
+	// question to the object, whichever road built it.
+	if _, isComp := e.(*Comp); isComp {
+		if h, _, okH := g.containerHandleOf(b, e); okH {
+			n := g.heapLenOf(b, h)
+			p := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, n)
+			return g.markI1(p), nil
+		}
+	}
 	// Strings and containers test their *content*, never their representation: a
 	// string is an i8* and a container is a compile-time struct or a heap handle,
 	// so `if xs:` on a handle would be true even for [] and testing the string

@@ -20840,7 +20840,7 @@ container — still stores the handle and the `TagList`, and prints `[[1], 1]`: 
 on both witness legs in `pkg/lang/named_container_element_test.go::TestTheLoopItemOverAContainerNameKeepsItsOwnKind`
 and are recorded; the CLI leg is `integration/named_container_element_test.go`.
 
-### Gap R.490 — a comprehension standing where the LOOP, the truth test or `bool()` asks for a container hands the toolchain a global (⏳ OPEN, found by **ADR 0439**)
+### Gap R.490 — a comprehension standing where the LOOP, the truth test or `bool()` asks for a container hands the toolchain a global (✅ DONE, closed by **ADR 0443**)
 
 **ADR 0439** opened the doors that WRITE a slot and left the doors that READ a container standing in the same
 field:
@@ -20878,6 +20878,22 @@ would convert today's honest exit-2 crash into a wrong number walking out of a g
 Pinned at both legs with the exit code asserted: `pkg/lang/container_element_and_member_test.go`'s `module` rows
 ask that the assembly fail and name `@.lst`; `integration/container_element_and_member_test.go` pins exit **2**,
 so the day the three become wrong numbers at exit 0 the cases say so rather than going quiet.
+
+**Closed by ADR 0443, together with Gap R.500.** The row said the arm alone is not the fix, and it was right
+about the arm it named: giving `isContainerExpr`/`staticContainerKind` a `*Comp` case leaves all three modules
+rejected, because a deciding door that says "container" without a handle to hand still sends the road off to find
+its own word. The fix went the other way round. `containerHandleOf` already had the `*Comp` arm **ADR 0439** built
+— the one that materialises a fold through `containerOperand` (**ADR 0188**) or hands back the register a runtime
+builder filled — and the loop road already asks it, three questions deep in its iterable chain. What the arm
+answered back was a handle with an EMPTY kind, because for a slot read (`xs[0]`, `d["a"]`) only the tag knows what
+the payload is; the loop arm stored that empty kind in `iterKind`, the `if iterKind != ""` gate below skipped the
+walk, and the numeric counter road ran with a container in its bound. One predicate (`compContainerKind`) now
+answers the kind from the brace the program wrote, and the three doors ask it once: `rt_list_len`/`rt_set_len`/
+`rt_dict_len` + `rt_get_elem`/rt_tag_of` for the loop, `rt_heap_len` + `icmp ne … 0` for the condition and `bool()`.
+Both legs forbid the instruction this row was written for — a line matching `icmp slt i32 %_ctr` whose other
+operand is a `@.` global — and assert the length helper is there instead. Measured on a detached worktree at
+`290aa59`: the folded loop and the folded condition moved from **exit 2** to the reference's bytes; the truth test
+and `bool()` over a BUILT comprehension moved from a wrong answer at **exit 0** with it.
 
 ### Gap R.491 — a comprehension whose ITERABLE is a container of containers is answered with an index (⏳ OPEN, found by **ADR 0439**)
 
@@ -21167,7 +21183,7 @@ this one closed left the two filed tables (they fail on the fix) for the answeri
 (`tools/recmerge`: **16 entries, 10035 → 10051, none refused**) — which it could not while the compiled leg never
 became a program.
 
-### Gap R.500 — the loop head, the truth test and `bool()` read a comprehension the run time builds as a repeat count (⏳ OPEN, found by **ADR 0442**)
+### Gap R.500 — the loop head, the truth test and `bool()` read a comprehension the run time builds as a repeat count (✅ DONE, closed by **ADR 0443**)
 
 ```
 $ gustyc --eval 'def g(v):
@@ -21194,6 +21210,41 @@ materialise the object (**ADR 0188**'s rule included), and **Gap R.490** measure
 all three modules rejected. Give the handle first, then the arms, and the three shapes answer together; the row's own
 gate is that the counter road never again sees a container at either altitude, asserted by the instruction shape
 beside it.
+
+**Closed by ADR 0443, as one decision with Gap R.490.** Same three doors, other comprehension: the built one hands
+the loop a heap register, the counter comparison SUCCEEDS against whatever word the compiler reads for its bound,
+the body runs once and the loop variable — the counter — prints `0`. `compContainerKind` is the question the brace
+answers, `containerHandleOf` is the handle the door already knew how to make, and the walk is the road a container
+variable's loop has taken all along, GC rooting included (**ADR 0181**, **Gap Q.2**: the handle parked in the
+preheader, the loop variable's slot registered before the body can collect). The condition and `bool()` had no arm
+at all and got one that asks the object how many slots it holds — the `rt_heap_len` **ADR 0442**'s count door asks
+— because a handle is non-zero for the empty comprehension too, and "true" that never tests anything is the same
+defect the folded spelling showed as a crash.
+
+**The walk was not the whole fix, and a control build is what said so.** With the brace asked, the handle handed
+over and the walk in place, the row's loop still printed `4`, `6`, `4`, `6` for CPython's `2`, `4`, `6` — at **exit
+0**, four lines where the reference writes three. The second fault is older than this row and belongs to the
+collector: a comprehension the run time BUILDS is `rt_alloc`'d, its handle lives in a bare register, and the road
+that then FILLS it is free to CALL — and a call's body collects (**ADR 0347**, **ADR 0317**). `def g(v):` /
+`    y = len([v * a for a in [2, 3]])` / `    return v * 2` puts a collection inside every element of the outer
+comprehension, and each one is free to recycle the half-filled object and hand its arena slot to the next
+`rt_alloc`. A live object whose only reference is a register is the one shape **ADR 0181** exists to forbid;
+**ADR 0347** rooted the container a LOOP walks, and this is that rule one construct earlier, at the BUILD itself.
+`gcRootDuringBuild`/`gcEndBuildRoot` (`pkg/lang/codegen_gc.go`) open and close the window in the four builders
+(`runtimeCompList`, `runtimeCompSetDict`, `runtimeCompLoop`, `nestedCompRuntimeList`) and the row's program answers
+`2`, `4`, `6`. The attribution is a control build because a GC window is not readable off a module: with
+`gcRootDuringBuild` emptied and NOTHING else changed, the same program prints `4`, `6`, `4`, `6` and the variant
+whose element collects nine times per item prints `10`, `15`, `6`. The window closes at the build's end
+(`rt_root_clear` on the build's slot) so a comprehension nothing consumed is still garbage: a loop that mints a
+runtime comprehension 3000 times runs at `total_freed=2999`, `capacity=1024`, `grown=0`, `exhausted=0`, which is the
+number **ADR 0347**'s wall is measured in.
+
+What the walk does NOT settle is filed beside it as **Gap R.502**: the element's kind word. `for v in [g(x) for x
+in [1, "a", 2.5, None]]:` now walks the object and still prints `1`, `0`, `1`, `0`, and `print([g(x) for x in
+[1, "a", 2.5, None]])` prints `[1, 0, 1, 0]` — byte-identical on the parent and on this commit, which is the
+measurement that keeps it a row rather than damage. That is also why every answered loop row in
+`pkg/lang/comp_loop_truth_test.go` walks an iterable of ONE kind: an answered row that quietly depends on a tag
+nobody writes is how a filed defect becomes a green test.
 
 ### Gap R.501 — a subscript of a comprehension the run time builds reads a slot the builder never filled (⏳ OPEN, found by **ADR 0442**)
 
@@ -21296,3 +21347,44 @@ a read whose base the fold answered with something that has no slots is the refe
 The pair door and the bounds check keep their arms: a position out of range and a slot the compiler cannot see are
 different questions, and `print([True][0])` printing `True` is the control that keeps the widening honest. Until
 then four rows pin today's `1`/`2` at both legs in the filed table beside this door.
+
+### Gap R.502 — the loop item of a comprehension the run time builds carries no kind word (⏳ OPEN, found by **ADR 0443**)
+
+```
+$ gustyc --eval 'def g(v):
+    return v
+for v in [g(x) for x in [1, "a", 2.5, None]]:
+    print(v)'
+    1 / 0 / 1 / 0                                                            → exit 0
+$ python3   (same source)                             reference: 1, a, 2.5, None
+$ gustyc --eval 'def g(v):
+    return v
+print([g(x) for x in [1, "a", 2.5, None]])'
+    [1, 0, 1, 0]                                                      → exit 0   (reference: [1, 'a', 2.5, None])
+$ gustyc --eval 'def g(v):
+    return v
+for k in {g(x): 1 for x in ["a", "b"]}:
+    print(k)'
+    0 / 1                                                             → exit 0   (reference: a, b)
+```
+
+**ADR 0443** gave the loop the object — the count, the keys and the order are asked of it now — and the element
+still arrives as a bare word. The runtime builders decide whether a buffer is SELF-DESCRIBING
+(`runtimeCompNeedsSelfDescribingSlots`) before they know what the element will turn out to hold: `g(x)`'s answer
+kind is not visible, so no tag array is allocated, `rt_put_elem` stores payloads, and the loop's `rt_tag_of`
+answers the default tag for every slot. `print(v)` then dispatches off a tag nobody wrote: a text's `@str_tab`
+index prints as `0`, a float box's index as `1`, the void as `0`.
+
+That is why this row is not the loop's. The neighbour that already carries the word is **ADR 0433** — a
+GENERATOR's buffer writes payload and tag together because every `yield` asks the question at the door that
+knows the element — and the comprehension builder is the same buffer with the same door unwritten. **Gap R.248**
+is the same missing word at a comparator, **ADR 0439** at a literal's slot, **ADR 0442** at a count. The fix
+names itself from those: decide self-description from the element expression AND the filter (not from the
+iterable — `[g(x) for x in xs]` has no compile-time element to inspect, which is the whole reason the door took
+the untagged road), allocate the tag array beside the payload array when either can hold more than one kind, and
+write the pair per iteration; then the loop's item, the print door and `==` all read the tag the builder wrote.
+Until then the four shapes are pinned with today's bytes in
+`pkg/lang/comp_loop_truth_test.go::TestWhatTheComprehensionLoopStillOwesIsFiledNotFixed` and its CLI twin, and
+the negative control that keeps the widening cheap is a homogeneous int comprehension emitting NO tag array —
+asserted through `--emit-llvm`, because a door that tags everything is a door that made every loop in the
+language pay for one program's mixed list.
