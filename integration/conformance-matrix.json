@@ -961,6 +961,27 @@
     },
     {
       "case": {
+        "id": "programs/compare_chains",
+        "name": "compare_chains.gy",
+        "source": "# Comparison chains — roadmap L12.1 / Gap R.53 (ADR 0288, ADR 0450).\n#\n# `a \u003c b \u003c c` is ONE program: `a \u003c b` AND `b \u003c c`, with the middle operand read once. This grammar used\n# to cut it as `(a \u003c b) \u003c c`, which asks a question about a boolean the reference never asks, and this\n# front end ANSWERS that question rather than refusing it — four of the verdicts below printed the\n# opposite one at the exit code of success. The last lines are the same chains read by the rules that\n# read a type: a name bound from a chain is a verdict, and a link no pair of values can answer is named\n# by `--check` while the program still runs and still raises.\n\nx = 5\nif 1 \u003c x \u003c 3:\n    print(\"in\")\nelse:\n    print(\"out\")\nprint(1 \u003c 2 \u003c 3)\nprint(10 \u003c x \u003c 20)\nprint(1 \u003e 2 \u003c 3)\nprint(1 \u003c 2 \u003e 1)\nprint(1 \u003c 2 == 2 \u003c 4)\nprint(\"a\" \u003c \"b\" \u003c \"c\")\nprint(\"c\" \u003c \"b\" \u003c \"a\")\n\ndef middle():\n    print(\"evaluated\")\n    return 5\n\nprint(1 \u003c middle() \u003c 10)\n\ndef in_range(v: int) -\u003e bool:\n    return 0 \u003c v \u003c 10\n\nprint(in_range(5))\nprint(in_range(50))\n\nhits = [v for v in range(10) if 2 \u003c v \u003c 6]\nprint(hits)\n\nverdict = 1 \u003c 2 \u003c 3\nprint(verdict)\nprint(str(verdict))\nif verdict:\n    print(\"the chain answered a verdict\")\n\nxs = [1, 2, 3]\nprint(0 \u003c xs[1] \u003c 3)\nd = {\"a\": 5}\nprint(1 \u003c d[\"a\"] \u003c 10)\n\ntry:\n    print(1 \u003c \"a\" \u003c 3)\n    print(\"unreachable\")\nexcept TypeError as e:\n    print(\"TypeError\")\n    print(str(e))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "out\nTrue\nFalse\nFalse\nTrue\nTrue\nTrue\nFalse\nevaluated\nTrue\nTrue\nFalse\n[3, 4, 5]\nTrue\nTrue\nthe chain answered a verdict\nTrue\nTrue\nTypeError\n'\u003c' not supported between instances of 'int' and 'str'\n",
+      "python_ok": true,
+      "python_stdout": "out\nTrue\nFalse\nFalse\nTrue\nTrue\nTrue\nFalse\nevaluated\nTrue\nTrue\nFalse\n[3, 4, 5]\nTrue\nTrue\nthe chain answered a verdict\nTrue\nTrue\nTypeError\n'\u003c' not supported between instances of 'int' and 'str'\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6238,11 +6259,11 @@
       ]
     }
   ],
-  "rows": 262,
+  "rows": 263,
   "skipped": 36,
-  "pass": 226,
+  "pass": 227,
   "fail": 0,
-  "oracle_match": 212,
+  "oracle_match": 213,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

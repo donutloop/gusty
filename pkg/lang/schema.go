@@ -1022,7 +1022,8 @@ const astIRSchemaTemplate = `{
             "type.variance.contravariant",
             "type.variance.nominal",
             "type.callable.arity",
-            "type.union.members"
+            "type.union.members",
+            "type.compare.uncomparable"
           ]
         },
         "suggestion": {

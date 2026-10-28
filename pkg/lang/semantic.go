@@ -1227,6 +1227,11 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 			n.Ty = ty.Name()
 		case *BinOp:
 			n.Ty = ty.Name()
+		case *ChainCompare:
+			// A chain answers a verdict, so it carries the verdict's type — the same type the
+			// single-comparison form carries. Without this arm the annotation and argument rules were
+			// reading `any` where the program wrote a comparison (roadmap L12.1, ADR 0450).
+			n.Ty = ty.Name()
 		case *UnOp:
 			n.Ty = ty.Name()
 		case *CondExpr:
@@ -1309,6 +1314,12 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 		return t
 	case *BinOp:
 		return an.inferBinOp(n)
+	case *ChainCompare:
+		// The chain's own arm: every operand is inferred through the ordinary road and the node is typed
+		// `bool` (roadmap L12.1 / Gap R.53, ADR 0450). Before this arm existed the walk stopped at the
+		// chain's door — `--check 'y = 1 < zzz < 3'` reported `ok` for a name `--check 'y = 1 < zzz'`
+		// reports as undefined.
+		return an.inferChainCompare(n)
 	case *UnOp:
 		if n.Op == "not" {
 			return TBool()
@@ -1427,6 +1438,10 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 		}
 		return TDyn()
 	case "==", "!=", "<", "<=", ">", ">=", "in", "not in", "is", "is not":
+		// The same link question a chain asks, asked here so a comparison and a chain's link cannot give
+		// two answers about the same two kinds (ADR 0232). Warning-level: the reference RUNS `1 < "a"`,
+		// by raising, so the checker may name it and may not refuse it (ADR 0166).
+		an.compareLinkWarns(n.Span(), n.Op, lt, rt)
 		return TBool()
 	case "and", "or":
 		// `a and b` hands back one of its **operands**, so the answer's type is the operand's type: when

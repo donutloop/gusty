@@ -21931,3 +21931,188 @@ the read road, raising `NameError` with the frame the read stood in so the exist
 carries it. Then `probe_global_statement.gy` — the guarded write (`if 0:` / `gz = 1` / `return gz`), the
 program this whole row was filed from — runs, and its refusal rows in both test files become trap rows
 carrying the reference's class and sentence.
+
+<a id="l12-1-checked"></a>
+### L12.1 — a comparison chain is checked like the comparisons it holds (✅ DONE, closed by **ADR 0450**)
+
+```
+$ gustyc --check 'y = 1 < zzz < 3'
+ok                                              exit 0            ← a name nothing binds
+$ gustyc --check 'y = 1 < zzz'
+error at 1:9: undefined name "zzz"              exit 1
+$ gustyc --check 'def f(x):
+    return x
+
+y = 1 < f() < 3'
+ok                                              exit 0            ← the callee wants one argument
+$ gustyc --check 'y: int = 1 < 2 < 3'
+ok                                              exit 0            ← a verdict into an int annotation
+$ gustyc --check 'y: int = 1 < 2'
+error at 1:1: type mismatch: expected int, got bool   exit 1
+$ gustyc --emit-ast 'y = 1 < 2 < 3' | jq '.stmts[0].value | keys'
+["operands", "ops", "span"]                     ← no "inferred"; `1 < 2` answers ["inferred", …]
+```
+
+One missing `case` in `inferExprTy`. ADR 0288 gave `a < b < c` its own node — which is what made "the
+middle operand is read once" a property of the module rather than a hope — and gave the node its lowering,
+its tests and its conformance probe. It did not give the node an arm in the analyzer, and a node the
+analyzer's expression walk does not know is a node whose contents do not exist: the walk reached
+`*ChainCompare`, found no arm, returned nothing, and moved on. Everything the chain held went unvisited —
+not visited-and-accepted, unvisited.
+
+That is a hole with two faces, and the second is the one an agent hits first. The first is the missing
+diagnostics: the operand-level rules (`undefined name`, `function "f" expects N arguments, got M`, the
+variance rule behind a bad argument) are emitted by the roads that infer an operand, and those roads were
+never called. The second is the missing TYPE: `inferExpr` writes the inferred type into the node's `Ty`
+field from a switch over the node kinds, and with no arm there was no field, so a chain standing in an
+annotated binding, a typed parameter or an arithmetic operand was typed `any` — the gradual type, the one
+every rule steps aside for. `y: int = 1 < 2 < 3` was not a program with a wrong annotation; it was a
+program the checker could not see the annotation's subject in.
+
+The fix is two arms, and deliberately nothing else:
+
+  * `inferExprTy` infers every operand left to right — the order the values are produced in, so a name
+    bound between two links is bound for the links after it — and returns `TBool()`;
+  * `inferExpr`'s `Ty` switch gains `case *ChainCompare`.
+
+The type claim deserves the emphasis it did not get: a chain answers the conjunction of its links, so it
+answers a *verdict*, and the single-comparison form has always been typed that way. The asymmetry was
+invisible only because both readings of the missing field — "no type" and "any type" — behave the same to
+a rule that steps aside for `any`.
+
+The row's own definition of done asked for `--check` to *refuse* a chain whose middle is not comparable.
+It does better than that word, and differently: it **names** the link, at warning level, in the
+reference's own words, under the stable code `type.compare.uncomparable`:
+
+```
+$ gustyc --check 'print(1 < "a" < 3)'
+warning at 1:11: comparison chain: '<' not supported between instances of 'int' and 'str'
+warning at 1:17: comparison chain: '<' not supported between instances of 'str' and 'int'
+ok                                              exit 0
+$ gustyc --file chain.gy                     # the same program, run
+TypeError: '<' not supported between instances of 'int' and 'str'      exit 3
+```
+
+Refusing at `error` level would have been a *second* defect, because the reference RUNS that program — by
+raising, from inside the program's own `except TypeError:` if the author wrote one. **ADR 0166**'s lesson,
+quoted back at Gap R.242's lexer row and now at this one: a refusal is the wrong answer to a program the
+reference runs. So the checker says the sentence and the run time raises the sentence, and they are the
+same sentence because both come out of the one table that already decides when the compiled leg raises
+(`order_kind.go`'s `orderFamilyOf` / `orderPairHasNoOrdering` / `unsupportedOrderMessage`) — **ADR 0232**'s
+one-question rule, and the rule `abs_kind_test.go` already enforces about doors naming one operand two
+ways. The membership half (`argument of type 'int' is not iterable`) had no such table and states its own
+rule, silently declining to speak about anything whose members some dunder could supply: a class, a
+dynamic value, a union, an iterator.
+
+What the sweep of the node found next is filed rather than fixed here, because both are lowering defects
+and this row's fix is the front end's: **Gap R.520** (every link is evaluated, including the links the
+reference never reaches, so an unreachable link still raises) and **Gap R.521** (`1 in 5` answers `False`
+at the exit code of success where the reference raises). The first is the same shape **ADR 0275** paid for
+`and`/`or`; the second is a fold where the runtime road one door away already asks the object.
+
+Evidence: `pkg/lang/compare_chain_check_test.go` (the pair table — chain vs the same source with one
+operator removed, diagnostic lists asserted EQUAL; the typed-position table; the AST row; the link table;
+the stay-silent table; the malformed-chain row; the code row), `integration/compare_chain_check_test.go`
+(the pairs at the CLI as JSON, five link rows whose sentence is read out of a live `python3` traceback and
+re-asked of the compiled trap, the `--emit-ast` row, the program row), and `integration/programs/
+compare_chains.gy`, 21 lines byte-identical to CPython, registered as an asserted `match` row.
+
+<a id="gap-r-520"></a>
+### Gap R.520 — a chain runs EVERY link, the ones the reference never reaches included (⏳ OPEN, filed by **ADR 0450**)
+
+```
+$ gustyc --eval 'x = None
+print(1 == x < 3)'
+Traceback (most recent call last):
+  File "prog", line 2, in <module>
+TypeError: '<' not supported between instances of 'NoneType' and 'int'
+                                                reference: False      (exit 3 here, exit 0 there)
+$ gustyc --eval 'x = 5
+print(x > 9 < 1 // 0)'
+Traceback (most recent call last):
+  File "prog", line 2, in <module>
+ZeroDivisionError: integer division or modulo by zero
+                                                reference: False
+$ gustyc --eval 'def boom():
+    print("called")
+    return 5
+
+print(3 < 2 < boom())'
+called
+False                                           reference: False — `called` is never printed
+```
+
+Three faces of one lowering decision, all measured 2026-10-30 while the analyzer's missing arm was being
+closed. `chainValue` (codegen_arith.go) does two things ADR 0288 taught it: store each operand exactly once
+into a slot, and lower each link through the ordinary comparison road so a chain gets the int, float, text,
+container and tagged-slot answers an ordinary comparison gets — rather than a second set of roads that can
+disagree with the first. Both are right. The third thing it does is lower ALL of them eagerly and then
+conjoin the verdicts with a flat `and i32`, and that is this row.
+
+The reference does not work that way. `a < b < c` evaluates `a`, evaluates `b`, asks `a < b`; if that is
+false the chain is over — `c` is never evaluated and `b < c` is never asked. The consequence the file above
+records is that a link is not a pure expression: a link can raise (`None < 3`, `1 // 0`) and an operand can
+have an effect (a call that prints, a call that raises). An eager chain performs effects the program never
+asked for, and performs them at the exit code of a crash. The third program above is the one to worry
+about: its verdict is CORRECT, and it printed `called`.
+
+The house already paid for this shape once. **ADR 0275**'s four doors (`logicCondition`, `logicValue`,
+`logicDouble`, `logicPrintPair`) exist because `and`/`or` were evaluating the operand the test rejected,
+and their skeleton is the one a chain needs: left operand once, `br i1` on its truth, everything the branch
+rejects emitted in the block the branch enters, one `phi` per arm. The chain's own constraint survives
+that — the operands must still be STORED once, which is what keeps L12.1's "the middle operand runs exactly
+once" a property of the module — because a store in a block the run never enters is a store that never
+happened, and a store that never happened in a chain the reference also skipped is not a divergence, it is
+the answer.
+
+This is not ADR 0288's rule being wrong; it is the rule stated only about the operands. A chain is a run of
+links, and the links have the short-circuit behaviour the boolean words have. **Gap R.521**'s `in` link is
+the same row's problem from the other side: the membership raise is an effect of a link the reference may
+not reach, and this backend evaluates it eagerly and cannot even fold it correctly.
+
+<a id="gap-r-521"></a>
+### Gap R.521 — membership in a value with no members answers `False` instead of raising (⏳ OPEN, filed by **ADR 0450**)
+
+```
+$ python3 -c 'print(1 in 5)'
+TypeError: argument of type 'int' is not iterable
+$ gustyc --eval 'print(1 in 5)'
+False                                            exit 0
+$ gustyc --eval 'print(1 in None)'
+False                                            reference: … argument of type 'NoneType' is not iterable
+$ gustyc --eval 'print("a" in 1.5)'
+False                                            reference: … argument of type 'float' is not iterable
+$ gustyc --eval 'print(1 == 1 in 5)'
+False                                            reference: TypeError, same sentence
+```
+
+A wrong answer at the exit code of success — the queue's priority-1 class — on the most ordinary question
+the language asks about a container: `x in y`. The embarrassing part, and the reason this row is a fix
+rather than a design question, is that the door exists.
+
+```
+$ gustyc --eval 'xs = [1]
+print(1 in xs[0])'
+TypeError: argument of type 'int' is not iterable      exit 3
+```
+
+Same operator, same wrong operand, right answer — because there the container's kind is a run-time fact, so
+the question goes to `@rt_contains`, which asks the OBJECT what it is, finds an int, and raises the
+reference's sentence through the non-local raise road every compiler-detected trap takes (ADR 0214:
+catchable by `except TypeError:`, exit 3 uncaught). What the compiled leg cannot do is ask the same question
+of an operand it can FOLD: a literal `5`, a literal `None`, a literal `1.5` reach the containment fold, the
+fold does not know what a member is, and answers "not present".
+
+That is **ADR 0266**'s and **ADR 0329**'s rule with the roles reversed — those doors refuse to substitute a
+value for an operand whose kind makes the operator impossible; this fold substitutes `False` for a raise
+because nobody asked it the question before answering. The fix is to ask the fold what the runtime door
+already asks: when the right operand's kind is known and carries no members, raise the sentence
+(`argument of type '%s' is not iterable`, one `%s` filled from the same kind table the printers read) via
+the same `exnCode`/`raiseTo` road, leaving the block through the program's own handler; when the kind is
+not known, hand the pair to the object and let it answer.
+
+The `in` and `not in` link is also half of **L12.1**'s comparison-chain surface — `print(1 == 1 in 5)` is
+one chain, not two statements — and its fourth row above shows the fold missing it in the chain form too.
+The checker named this pair as of **ADR 0450** (`type.compare.uncomparable`, warning level, at `--check`),
+which is the front end's half: it tells an agent the program is asking something the reference will refuse.
+It is not this row's half — the program must still RUN, and raise.

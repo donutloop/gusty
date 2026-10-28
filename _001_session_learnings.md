@@ -16822,3 +16822,56 @@ reference/compiled agreements, none refused; `programs/iterator_protocol.gy` mov
 byte-identical with CPython, six probes joined the corpus (276 programs), and every pre-existing program is
 byte-identical parent to child — the container roads were not touched, which is what the container-loop negative control
 in the IR row is there to keep true.
+
+## ADR 0450 — a comparison chain is CHECKED like the comparisons it holds, and typed the verdict it answers (roadmap L12.1 closed, Gaps R.520, R.521 filed; 2026-10-30)
+
+**A node the analyzer's switch does not name is a node that does not exist.** `a < b < c` has had its own AST
+node, its own lowering, its own operand-carriage door and its own conformance probe since **ADR 0288**, and
+`inferExprTy` still had no `case *ChainCompare` for it. The walk reached the chain, matched nothing, returned
+`nil`, and moved on. Two measurable faces fell out: the operand roads (`undefined name`, arity, the variance
+rules behind an argument) never ran, and the node never got a `Ty`, so every rule that reads a sub-expression's
+type was reading the gradual `any` that every rule steps aside for. `--check 'y = 1 < zzz < 3'` → `ok`, exit 0,
+for a program `--check 'y = 1 < zzz'` refuses. A new construct needs the SWITCH, not just the parser and the
+emitter, and the cheapest way to find the missing arm is to ask what the same program says with one operator
+removed.
+
+**A false `ok` is worse than a wrong answer, because nothing in the program shows it.** A wrong verdict appears
+in the program's stdout and a CI diff finds it; a clean `--check` on a program the same toolchain refuses at
+codegen is invisible to exactly the consumer the JSON output is written for. So the tests are written as PAIRS —
+chain vs single comparison, diagnostic lists asserted EQUAL, not "the checker says something" — a checker that
+learns to talk about chains can still say the wrong thing about them, and only the pair shape can tell that.
+
+**"Refuses" is a word a definition-of-done cell can get wrong.** L12.1 asked `--check` to *refuse* a chain whose
+middle is not comparable. `1 < "a" < 3` is a program CPython RUNS — it raises, and it raises inside the
+program's own `except TypeError:` if the author wrote one — so an error-level diagnostic would have traded one
+defect for a worse one (**ADR 0166**, the same lesson Gap R.242's lexer row carries). What ships is a warning
+under the code `type.compare.uncomparable` whose sentence is the reference's own, with the run path untouched;
+`docs/language.md` and the tracker's Status cell say so in those words, and the row's `Free text` stays the item's
+own, because the Status cell is the truth (the tracker's own column contract).
+
+**Never write the second copy of a table that already decides a trap.** The ordering families live in
+`order_kind.go`, because the compiled leg needs them to know when to raise. My first draft restated them for the
+checker with its own family enum; the fix was to delete the enum and feed the existing door's kind words into the
+existing functions, and to assert it — `TestTheOpinionIsTheSameSentenceTheCompiledLegRaisesWith` requires the
+module to carry verbatim the sentence the checker warns with, and the run to raise it. Two doors naming one pair
+of kinds two ways is the failure `abs_kind_test.go` already polices; a shared table beats a shared string.
+
+**Say nothing where you cannot name both kinds.** Every rule in this door has a no-opinion branch, and the
+false-positive table is the load-bearing part: an unannotated parameter, a slot the run time filled, a call the
+checker cannot describe, a class that may define `__lt__`/`__contains__`, a union where one member would answer,
+a container against a container (the tagged door ANSWERS `a < b`, and an opinion there would trade a correct
+answer for a raise — the ladder again). Gradual typing's second half is the silence.
+
+**The record is the corpus's toll, not an afterthought.** `programs/compare_chains.gy` joined the conformance corpus
+as a `match` row and the gc corpus immediately asked for its recorded answer — **1 record entry (10282 → 10283)**
+through `tools/recmerge`, the reference and the compiled leg having answered the 21 lines identically, which is the
+only way an entry may be written at all.
+
+**The sweep of a node finds the neighbouring rows.** Two chain defects fell out of walking the AST, both in the
+lowering rather than the front end, so both are rows rather than this commit: **Gap R.520** (every link is lowered
+eagerly, so `print(1 == x < 3)` with `x = None` dies at exit 3 where CPython prints `False`, and
+`print(3 < 2 < boom())` prints `called` — a verdict that is right while an effect the reference skips is
+performed; **ADR 0275**'s short-circuit skeleton is the fix, and the operand stores survive it because a store in
+a block never entered is a store that never happened) and **Gap R.521** (`print(1 in 5)` answers `False` at exit 0
+while `print(1 in xs[0])` over the same int raises the reference's sentence — the fold substitutes a verdict where
+the runtime door asks the object, **ADR 0266**/**ADR 0329**'s rule with the roles reversed).

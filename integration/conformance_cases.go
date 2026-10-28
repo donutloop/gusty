@@ -235,6 +235,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// verdict at exit 0 on both witness legs, agreeing with each other and disagreeing with the reference
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		"probe_comparison_chains",
+		// The same construct read by the FRONT END rather than by the printer: a chain reports what the
+		// same link reports with one operator removed (`--check 'y = 1 < zzz < 3'` used to answer `ok` for
+		// a name `--check 'y = 1 < zzz'` reports as undefined), it carries the verdict's type into an
+		// annotated binding and a typed parameter, and a link no pair of values can answer is NAMED by the
+		// checker in the reference's own words — named, not refused, because the program under it is a
+		// program the reference runs by raising (roadmap L12.1, ADR 0450).
+		"compare_chains",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's

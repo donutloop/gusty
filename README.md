@@ -3768,6 +3768,31 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A comparison chain is CHECKED like the comparisons it holds, and typed the verdict it answers (**L12.1**,
+  **ADR 0450**)** — `a < b < c` has been one node since **ADR 0288**, with its own lowering, its own operand-carriage
+  door and its own conformance probe. What it never had was an arm in the analyzer's expression switch, and a node the
+  walk does not know is a node whose contents do not exist: `gustyc --check 'y = 1 < zzz < 3'` answered **`ok`** at exit
+  0 for a name nothing binds, `--check 'y = 1 < f() < 3'` answered `ok` for a callee that asks for an argument, and
+  `--check 'y: int = 1 < 2 < 3'` answered `ok` for a verdict poured into an `int` annotation that the SAME program with
+  one operator removed reports as `type mismatch: expected int, got bool`. A false `ok` is the failure mode an agent
+  driving the compiler cannot see — the JSON says the program is sound, and codegen disagrees forty seconds later with a
+  sentence that has no span, no level and no code. The fix is two arms and nothing else: infer every operand through the
+  ordinary road (so the diagnostics a chain swallowed are the operand's own, at the operand's own span) and type the
+  node **`bool`** (so the annotation, argument and arithmetic rules stop stepping aside for a `any` the node never had).
+  The row's owed half — `--check` and a link the reference can never answer — ships as a NAMED warning, code
+  `type.compare.uncomparable`, worded in the reference's own sentence (`'<' not supported between instances of 'int' and
+  'str'`, `argument of type 'int' is not iterable`) and asked out of the ONE table the compiled leg already reads to
+  decide when to raise (`order_kind.go`, **ADR 0232**), because refusing it would stop the build on a program the
+  reference runs by raising — **ADR 0166**'s rule, quoted at the lexer and now at the chain. Every test is a PAIR (a
+  chain and the same source with one operator removed, diagnostic lists asserted EQUAL), the five CLI rows read their
+  expected sentence out of a live `python3` traceback and re-ask the compiled trap for the same bytes, a 12-row
+  stay-silent table is the false-positive guard, and `integration/programs/compare_chains.gy` joined the corpus as a
+  `match` row — 21 lines byte-identical to CPython, its first two lines the `out` then `True` the row names as its own
+  definition of done, its source **1 record entry (10282 → 10283)** through `tools/recmerge`. What the sweep found in
+  the LOWERING is filed rather than papered over: a chain evaluates every
+  link, so an unreachable link still raises (**Gap R.520**, the **ADR 0275** skeleton is the fix), and `print(1 in 5)`
+  answers `False` at exit 0 where the runtime door one step away raises (**Gap R.521**).
+
 - **A `for` asks the OBJECT for its iterator (**L12.2**, **Gap R.54**, **ADR 0449**)** — the loop had one question for
   an iterable, *can I count its slots?*, and an object that answered a different question fell through it: the textbook
   `class Count:` / `    def __iter__(self): return self` / `    def __next__(self): … raise StopIteration` counted out

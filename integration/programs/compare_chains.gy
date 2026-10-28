@@ -1,0 +1,54 @@
+# Comparison chains — roadmap L12.1 / Gap R.53 (ADR 0288, ADR 0450).
+#
+# `a < b < c` is ONE program: `a < b` AND `b < c`, with the middle operand read once. This grammar used
+# to cut it as `(a < b) < c`, which asks a question about a boolean the reference never asks, and this
+# front end ANSWERS that question rather than refusing it — four of the verdicts below printed the
+# opposite one at the exit code of success. The last lines are the same chains read by the rules that
+# read a type: a name bound from a chain is a verdict, and a link no pair of values can answer is named
+# by `--check` while the program still runs and still raises.
+
+x = 5
+if 1 < x < 3:
+    print("in")
+else:
+    print("out")
+print(1 < 2 < 3)
+print(10 < x < 20)
+print(1 > 2 < 3)
+print(1 < 2 > 1)
+print(1 < 2 == 2 < 4)
+print("a" < "b" < "c")
+print("c" < "b" < "a")
+
+def middle():
+    print("evaluated")
+    return 5
+
+print(1 < middle() < 10)
+
+def in_range(v: int) -> bool:
+    return 0 < v < 10
+
+print(in_range(5))
+print(in_range(50))
+
+hits = [v for v in range(10) if 2 < v < 6]
+print(hits)
+
+verdict = 1 < 2 < 3
+print(verdict)
+print(str(verdict))
+if verdict:
+    print("the chain answered a verdict")
+
+xs = [1, 2, 3]
+print(0 < xs[1] < 3)
+d = {"a": 5}
+print(1 < d["a"] < 10)
+
+try:
+    print(1 < "a" < 3)
+    print("unreachable")
+except TypeError as e:
+    print("TypeError")
+    print(str(e))

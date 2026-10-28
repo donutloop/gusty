@@ -3049,6 +3049,39 @@ ADR 0288 the grammar parsed chains left-associatively as `(a < b) < c`, which co
 boolean — a question this front end answers rather than refusing, so `print(1 > 2 < 3)` printed `True` where
 Python prints `False`.
 
+**A chain is checked like the comparisons it holds** (ADR 0450, closing `L12.1`). Every operand is inferred
+through the ordinary road, so a chain reports exactly what the same source reports with one operator removed
+— and the whole node is typed **`bool`**, which is what lets the annotation and argument rules reach it:
+
+```
+gustyc --check 'y = 1 < zzz < 3'   # error: undefined name "zzz"     (same as 'y = 1 < zzz')
+gustyc --check 'y: int = 1 < 2 < 3'# error: type mismatch: expected int, got bool
+gustyc --check 'print((1 < 2 < 3) + 1)'   # warning: arithmetic on non-numeric operands (bool, int)
+gustyc --emit-ast 'y = 1 < 2 < 3' # the chain node carries "inferred": "bool"
+```
+
+A link that no pair of values can answer is **named**, at `--check`, under the code
+`type.compare.uncomparable`, in the reference's own sentence — and the program still compiles, still runs, and
+still raises it, because the reference RUNS such a program (by raising, catchably) and a refusal would be the
+wrong answer to it:
+
+```
+$ gustyc --check 'print(1 < "a" < 3)'
+warning at 1:11: comparison chain: '<' not supported between instances of 'int' and 'str'
+warning at 1:17: comparison chain: '<' not supported between instances of 'str' and 'int'
+ok                                              exit 0
+$ gustyc --check 'print(1 in 5)'
+warning at 1:9: argument of type 'int' is not iterable
+ok
+```
+
+The ordering rule is the one `pkg/lang/order_kind.go` already states for the compiled leg (one question, one
+table), and the checker says nothing at all where it cannot name both kinds — a dynamic value, a union, a
+class instance whose `__lt__` may answer anything, a container against a container. What this construct still
+owes is on the compiled side: a chain evaluates **every** link, so a link the reference never reaches still
+raises (`Gap R.520`), and membership in a value with no members answers `False` where the reference raises
+(`Gap R.521`).
+
 ### Control flow
 
 ```

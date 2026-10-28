@@ -131,6 +131,7 @@ instead of pattern-matching prose:
 | `type.variance.nominal` | a class annotation accepts only that class or a subclass |
 | `type.callable.arity` | callable / tuple arity mismatch |
 | `type.union.members` | no union member accepts the value |
+| `type.compare.uncomparable` | a comparison — one link of a chain, or an ordinary comparison — is written over two kinds the operator can never take (warning: the reference runs such a program, by raising) |
 
 `code` is stable; `msg` wording may improve. Both the `diagnostic` shape (with
 its code enum) and the `varianceRule` shape are declared in `gustyc --schema`.
