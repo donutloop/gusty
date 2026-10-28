@@ -20653,7 +20653,7 @@ cross-checked (**9886 → 9905**, none refused), and the family now answers in
 `print([[{"a": 1} for x in range(1)], 1])` printing `[1, 1]` is still owed — that road is **Gap R.487**, a
 comprehension rather than a name — and one level deeper is **Gap R.488**'s exit 2.
 
-### Gap R.487 — a COMPREHENSION written as the element of a literal answers the slot's first word (⏳ OPEN, found by **ADR 0437**)
+### Gap R.487 — a COMPREHENSION written as the element of a literal answers the slot's first word (✅ DONE, found by **ADR 0437**, closed by **ADR 0439**)
 
 The sibling of **Gap R.486** on the other road into the same slot:
 
@@ -20689,7 +20689,38 @@ the value rather than the two doors closes both, which is the **ADR 0436** argum
 `tools/recmerge` refuses them and the shapes live as pinned rows. That refusal is the artifact's credibility, not
 an inconvenience — a record written from the compiled leg would have certified `[1, 1]` as the language's answer.
 
-### Gap R.488 — the same shape one level deeper reaches `llc`, and the toolchain exits 2 (⏳ OPEN, found by **ADR 0437**)
+**Paid by ADR 0439.** The three roads that write a slot now ask one predicate, `compSlotIsContainer`, what the
+comprehension's brace spells — `elemKindTag` for the label, `nestedContainerElem` for the store, and
+`literalNeedsTags`/`literalNeedsHeap` for the header that tells the object its slots are the truth:
+
+| door | asked of `[<comprehension>, 1]` before | after |
+|---|---|---|
+| the slot's **word** | `heapElemKind` → `nestedContainerElem`: is this one of the three literal spellings, or a name? | no → the ordinary value road, which answers `@.lst1` for a fold and a handle for a runtime builder | the same predicate as the tag: yes → `containerOperand`, which materialises the fold and passes the handle in a register |
+| the slot's **tag** | `elemTagFor` → `elemKindTag`, whose `switch` had no `*Comp` case and whose tail answers `TagInt` | `TagInt` (0) beside a heap handle | `TagList` (5) / `TagDict` (6) / `TagSet` (7), read off `Comp.Kind` |
+| the object's **header** | `literalNeedsTags`: does any element's spelling need a tag? | no bit 8 → `rt_print_list`, the single-kind printer, prints the handle as the number | bit 8 set → `rt_print_list_mixed` reads the pair |
+
+`print([[{"a": 1} for x in range(1)], 1])` prints `[[{'a': 1}], 1]`, `print([[f() for x in range(1)], 2])` prints
+`[[1], 2]`, and the family runs to 25 sources on the compiled and record legs and 28 through the CLI against a
+live CPython. The fold road's static array is intact: the IR rows assert `print([1, 2, 3])` still emits
+`rt_print_list` with no census bit, which is **ADR 0239**'s `sum`/`min`/`max` fold and the reason the census arm
+had to be a question about the element rather than a blanket.
+
+The taggability of the comprehension's CONTENTS is asked of the door the literals already ask
+(`taggableNestedElem`, through `compContentsTaggable`), so the arm cannot over-claim: a comprehension whose element
+nests deeper than any slot can be tagged declines with `nestedContainerElemErr`, and one whose KEY is a container
+declines with `nestedContainerKeyErr` — the sentences that were already there for the literal spelling. The key
+door gained the arm too, because a comprehension that builds a list builds an object with no hash:
+`print({[x for x in [1]]: 1})` now refuses the way `{[1]: 1}` always has, and — following **Gap R.232**/**Gap
+R.249** — `exprSnippet`/`exprSummary` name it "a list comprehension" instead of `*lang.Comp`, which is also what
+`repr of ` had been printing for every comprehension argument.
+
+Both sources are on the record now: `tools/recmerge` wrote 27 entries from the reference with the compiled leg
+cross-checked (**9905 → 9932**: the family's 26 sources, and the corpus program's own 27-line text, which
+`integration/gc_stress_test.go` asks about by its own spelling — a corpus program with no record is a failed case, so a
+new `.gy` costs a record), and the three rows that pinned these bytes (unit leg and CLI leg) moved from the
+filed tables of `container_element_and_member_test.go` into `comprehension_element_test.go`'s answer tables.
+
+### Gap R.488 — the same shape one level deeper reaches `llc`, and the toolchain exits 2 (✅ DONE, found by **ADR 0437**, closed by **ADR 0439**)
 
 One level up the road becomes a compiler bug in **ADR 0166**'s own sense of the word:
 
@@ -20724,6 +20755,24 @@ that should be a raise, two wrong numbers at exit 0 that come from two different
 assembles. All eight of their sources are pinned in `pkg/lang/container_element_and_member_test.go` and
 `integration/container_element_and_member_test.go`, none of them is on the record, and none of them is on the
 conformance matrix.
+
+**Paid by ADR 0439.** `nestedContainerElem`'s new `*Comp` case lets the element reach the door that has always
+known how to build the object — `containerOperand`'s `*Comp` arm, which asks `value`, looks the answer up in
+`staticLists`/`staticSets`/`staticDicts`, and rebuilds the folded container on the heap (**ADR 0188**'s rule,
+**ADR 0192**'s arm). The emitted instruction became `call void @rt_set_elem(i32 %t1, i32 0, i32 %t3)` — a register
+holding the handle, tagged `TagList` — and `llc` has nothing to reject:
+
+```
+$ printf 'print([[[x for x in [1]]]])
+' | gustyc --file -   ; echo "exit=$?"
+[[[1]]]
+exit=0
+```
+
+The exit-**2** assertions in the two filed tables became answer assertions, and `TestTheComprehensionElement
+NeverExitsTwo` runs ten of the family through the CLI with exit **2** forbidden. What the same sweep did NOT fix
+is the same instruction at the three doors that are not slots — the loop head, the condition, `bool()` — which is
+**Gap R.490** immediately below, measured on this cycle's build and on its parent.
 
 ### Gap R.489 — the loop item a container NAME was used for keeps the container's tag (✅ DONE, found and closed by **ADR 0438**)
 
@@ -20790,3 +20839,109 @@ container — still stores the handle and the `TagList`, and prints `[[1], 1]`: 
 `rt_tag_elem(%t4, 0, 5)` there and `rt_tag_elem(%t2, 0, 0)` (never `5`) for the int item. Eight sources answer
 on both witness legs in `pkg/lang/named_container_element_test.go::TestTheLoopItemOverAContainerNameKeepsItsOwnKind`
 and are recorded; the CLI leg is `integration/named_container_element_test.go`.
+
+### Gap R.490 — a comprehension standing where the LOOP, the truth test or `bool()` asks for a container hands the toolchain a global (⏳ OPEN, found by **ADR 0439**)
+
+**ADR 0439** opened the doors that WRITE a slot and left the doors that READ a container standing in the same
+field:
+
+```
+$ printf 'for v in [x for x in [1]]:\n    print(v)\n' | gustyc --file -   ; echo "exit=$?"
+gustyc: jit: llc: exit status 1
+llc-20: error: …/jit.ll:4188:34: error: global variable reference must have pointer type
+  %t3 = icmp slt i32 %_ctr1.ld1, @.lst2
+  ^
+exit=2
+$ python3 -c 'for v in [x for x in [1]]: print(v)'
+1
+
+$ printf 'print(bool([x for x in [1]]))\n' | gustyc --file -  ; echo "exit=$?"
+… %t1 = icmp ne i32 @.lst1, 0 …                                     exit=2
+$ python3 -c 'print(bool([x for x in [1]]))'
+True
+```
+
+Same instruction family as **Gap R.488** (paid by the same cycle), different door: `heapElemKind` asks
+`nestedContainerElem`, which ADR 0439 gave the `*Comp` arm, and now goes through `containerOperand`, which
+materialises the fold. The loop head, the condition door and the truth door ask `isContainerExpr` /
+`staticContainerKind` instead, and neither has the arm — so they read the comprehension's word as a count or a
+truthiness and the module carries the global.
+
+**Why the arm alone is not the fix (measured, not argued).** The `*Comp` arms were added to both deciding doors on
+this cycle's build and the three programs were re-measured: all three still die in `llc`, at the same instructions
+(the loop's `icmp slt … , @.lst2` moves line, `icmp ne i32 @.lst1, 0` does not). A deciding door that says "list"
+without a handle to hand is how a `for` gets a compile-time global for a repeat count. So the row owns the handle
+first (`containerHandleOf`'s `*Comp` arm, which already exists but is not reached from those roads) and the arm
+second, and the row is filed rather than half-landed because a deciding arm shipped without the road behind it
+would convert today's honest exit-2 crash into a wrong number walking out of a green suite.
+
+Pinned at both legs with the exit code asserted: `pkg/lang/container_element_and_member_test.go`'s `module` rows
+ask that the assembly fail and name `@.lst`; `integration/container_element_and_member_test.go` pins exit **2**,
+so the day the three become wrong numbers at exit 0 the cases say so rather than going quiet.
+
+### Gap R.491 — a comprehension whose ITERABLE is a container of containers is answered with an index (⏳ OPEN, found by **ADR 0439**)
+
+```
+$ printf 'print([[x for x in [[1]]][0], 2])\n' | gustyc --file -  ; echo "exit=$?"
+Traceback (most recent call last):
+  File "prog", line 1, in <module>
+IndexError: list index out of range                                            exit=3
+$ python3 -c 'print([[x for x in [[1]]][0], 2])'
+[[1], 2]
+```
+
+Identical on the build before **ADR 0439** and on it, which is the measurement that keeps it out of that cycle and
+on this row. `compItems` — the door that decides what the loop variable is bound to — names an inline integer
+literal or a `range`, and nothing else; given `[[1]]` it has no item to give, and the fold binds a position where
+the reference binds the item `[1]`. The program then asks the element to index a container that was never bound,
+and the raise it produces is the reference's class with the reference's message attached to a program the reference
+answers — the worst kind of green, because a `try:` around it would swallow it.
+
+The road the row points at already exists: `runtimeCompList` walks a heap list slot by slot with its tag, which is
+what `for v in <container>` has done since **ADR 0192**. What is missing is `compItems` saying "I cannot name
+these items" and the caller taking that as the route rather than as a refusal.
+
+### Gap R.492 — a set literal accepts a comprehension that builds an unhashable member (⏳ OPEN, found by **ADR 0439**)
+
+```
+$ printf 'print({[x for x in [1]]})\n' | gustyc --file -   ; echo "exit=$?"
+{[1]}
+exit=0
+$ python3 -c 'print({[x for x in [1]]})'
+TypeError: unhashable type: 'list'
+```
+
+This is **Gap R.485**'s door and **Gap R.81**'s rule — a set literal's members are hashed, and a list, a dict or a
+set has no hash — reached by a new spelling. The spelling matters only for how it was found: before **ADR 0439**
+this program was an `llc` rejection (`rt_set_add(i32 %t1, i32 @.lst1)`, exit 2), and the arm that labels a
+comprehension element moved it onto the member door where it has been wrong ever since, beside
+`print({[1], [2]})` → `{[1], [2]}` and `print({sa})` → `{{1: 'a', 'b': 2}}`.
+
+One row per spelling, one fix for all three: ask the member's kind at the literal door and raise CPython's own
+sentence from the tag **ADR 0439** just wrote, so the raise is shared by the literal member, the named member and
+the comprehension member. The key side of the same hashability question is already refused in words
+(`{[1]: 1}`, and since this cycle `{[x for x in [1]]: 1}`), which is the asymmetry the row exists to remove.
+
+### Gap R.493 — a builtin's NAME standing alone as an expression statement reads a frame slot no `define` allocated (⏳ OPEN, found by **ADR 0439**)
+
+Found by the recorder, not by a program anyone wrote: `tools/recmerge` refused a source whose compiled leg died
+this way while the comprehension family was being recorded.
+
+```
+$ gustyc --eval 'hash'
+gustyc: jit: codegen: internal invariant violated (frame-slot audit): main reads %_hash, a stack slot no
+`define` allocated. Emitted as `%_hash.ld1 = load i32, i32* %_hash`. This is a bug in the compiler, not in the
+program: … (roadmap L11.6 · Gap R.342, ADR 0378 — ADR 0166 is why it leaves at the compiler-bug exit code)   exit=2
+```
+
+`abs`, `len`, `print`, `range` and `str` do the same, one per builtin name. The auditor is doing its job —
+**ADR 0378**'s frame-slot audit turns what would have been a wild load into a stated invariant violation — and the
+road behind it is wrong: a name the checker resolves to a BUILTIN has no slot in the module frame at all, so the
+statement road is loading a variable the program never bound. An undefined *user* name is refused in words
+(`error at 1:1: undefined name "name"`), which is the difference between this row and the honest diagnostic three
+characters away.
+
+The row's `Next concrete action` is deliberately two-armed, because the two answers are different programs: ask
+the builtin table before the frame, then either name a callable value (which needs **Gap R.297**'s word — a
+callable has no representation to store yet) or decline the statement the way the reference declines the name.
+What it may not do is emit a load of an alloca no pass created.

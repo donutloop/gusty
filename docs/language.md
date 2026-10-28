@@ -937,6 +937,34 @@ the `for` road still reads a call's argument as a bound (**Gap R.299**), and a g
 refused by the grammar in its bare spelling and by the door in its parenthesised one (**Gap R.296**).
 
 
+### What a comprehension written as an ELEMENT is (LLVM codegen)
+
+A comprehension is a container object wherever it stands, including as the element of another container: the
+literal's slot stores the handle the comprehension road builds, and the tag beside the slot is read off the
+comprehension's own brace — `[` → a list, `{a: b}` → a dict, `{a}` → a set — which is the same question
+`elemKindTag` already asked of a literal and of a name (**ADR 0192** for the object, **ADR 0438**/**ADR 0439** for
+the label; roadmap **Gap R.487**, **Gap R.488**). So the element answers as the container it is, at every road that
+writes the slot and every road that reads it back:
+
+```
+print([[{"a": 1} for x in range(1)], 1])       # [{'a': 1}, 1]   (this printed [1, 1])
+print([[[x for x in [1]]]])                    # [[[1]]]         (this died in llc at exit 2)
+print([[x for x in [1]][0][0], 2])             # [1, 2]          two levels of subscript, no IndexError
+d = {"k": [y for y in [2]]}
+print(d["k"][0], len(d["k"]), "k" in d)         # 2 1 True
+print([[x for x in [1, 2, 3] if x > 1], [k for k in {"a": 1}]])   # [[2, 3], ['a']]
+```
+
+A comprehension is not a KEY: a dict or set literal whose key is one is declined in words — `dict key must be a
+string, int, bool, or float expression` — because the interned key a hashed container needs is what **L11.1**
+refuses to invent, and the sentence names the expression by what it is (`a list comprehension`, never a Go node
+name: **Gap R.232**/**Gap R.249**'s rule, applied to a node no one had asked). What the same construct still gets
+wrong at the doors **ADR 0439** did not open is filed, not smoothed over: a comprehension as the LOOP head, as a
+truth test or inside `bool()` reaches the assembler with a global in an operand position and exits **2** (**Gap
+R.490**), a comprehension whose iterable is a container of containers raises `IndexError` instead of answering
+(**Gap R.491**), and a set literal accepts a member a comprehension built where the reference refuses to hash it
+(**Gap R.492**).
+
 ### Multi-argument range iterables (comprehensions)
 
 List comprehensions over `range(start, stop)` and `range(start, stop, step)`
@@ -1655,8 +1683,17 @@ Rules that the compiled backend implement:
   and the same shape spelled `sa = {1: "a", "b": 2}` / `print([sa, 1])` as **R.486**) answers now — **ADR 0438**
   gave the census the container-NAME arm the tag door has had since **ADR 0189**, so `print([xs, 2])` writes
   `[[1], 2]` and `print([sa, 1])` writes `[{1: 'a', 'b': 2}, 1]`, the object labelling its own slots and
-  `rt_print_list_mixed` walking the pair. What a literal's element still cannot do is carry a COMPREHENSION
-  (**R.487**) or a nested comprehension without a `llc` rejection (**R.488**).
+  `rt_print_list_mixed` walking the pair. A literal's element that is a COMPREHENSION answers the same way now —
+  **ADR 0439** gave the tag road, the store road and both censuses one predicate that reads the brace
+  (**R.487**, **R.488**), so `print([[{"a": 1} for x in range(1)], 1])` writes `[[{'a': 1}], 1]`,
+  `print([{x for x in [1]}])` writes `[{1}]`, `xs.append([x for x in [1]])` and `d["k"] = [x for x in [1]]` store
+  the handle with `TagList` beside it, and the folded spelling that used to put `@.lst1` in an `i32` operand
+  (an `llc` rejection at exit **2**) is materialised into the heap the way **ADR 0188** requires. What still
+  refuses in words is a dict keyed by one (no hashing rule for the object the brace builds, the sentence naming
+  "a list comprehension" rather than a Go type), and what still refuses in the toolchain is a comprehension
+  standing where the LOOP, a truth test or `bool()` asks for a container — the same global at a different door,
+  filed as **R.490**; a comprehension whose iterable is a container of containers (**R.491**); and a set literal
+  that accepts the unhashable member one builds (**R.492**, beside **R.485**).
 
   **A loop item's own kind is the item's, not the name's** (**R.440**, **ADR 0424**). The unrolled `for` road
   records what each item is once per iteration (`loopElemTag`, beside the interned-text record **ADR 0233**

@@ -1034,6 +1034,12 @@ func (g *irGen) nestedContainerElem(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit, *SetLit, *DictLit:
 		return true
+	case *Comp:
+		// A comprehension is the container its brace spells, and the slot stores the handle of the object
+		// it builds — materialised out of the compile-time global by `containerOperand`'s `*Comp` arm
+		// (**ADR 0188**, **ADR 0192**), which is the road this gate lets the builder take (roadmap
+		// **Gap R.488**, **Gap R.487**).
+		return g.compIsContainerSlotExpr(n)
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
 	}
@@ -1150,6 +1156,15 @@ func dictKeyHasNoHash(k Expr) bool {
 	case *Call:
 		_, isEmpty := emptyContainerLiteral(n)
 		return isEmpty
+	case *Comp:
+		// A comprehension builds a list, a dict or a set, and none of the three has a hash: the entry would
+		// be filed under whichever handle the allocator handed the object, which is the rule
+		// `nestedContainerKeyErr` states for the literal spelling of the same value (roadmap L11.1,
+		// **Gap R.487**'s key side; the set-member side of this family is **Gap R.485**).
+		switch n.Kind {
+		case CompList, CompDict, CompSet:
+			return true
+		}
 	}
 	return false
 }
@@ -1163,7 +1178,7 @@ func (g *irGen) literalNeedsHeap(e Expr) bool {
 	// the tag that says what it is. `print([set(), list(), dict()])` printed `[1, 2, 3]` while this gate
 	// asked only the literal (roadmap Gap R.360).
 	slotsContainer := func(x Expr) bool {
-		if isStringExpr(x) || isContainerLiteral(x) {
+		if isStringExpr(x) || isContainerLiteral(x) || g.compIsContainerSlotExpr(x) {
 			return true
 		}
 		if c, isCall := x.(*Call); isCall {
@@ -1219,7 +1234,7 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	slotsItself := func(x Expr) bool {
 		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
 			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x) ||
-			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x)
+			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x) || g.compIsContainerSlotExpr(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -1881,6 +1896,20 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 		default:
 			return int32(TagSet), true
 		}
+	case *Comp:
+		// A comprehension written as an element IS the container its brace spells: the payload is the
+		// handle of the object the road builds and the tag says list, dict or set, so the printer reaches
+		// the container printer and the comparison reaches the content compare instead of reading the
+		// handle as the integer the allocator handed out. The build door has had this arm since
+		// **ADR 0192**; the tag road is the half that was missing, and it is the half that printed
+		// `[1, 1]` for `print([[{'a': 1} for x in range(1)], 1])` (roadmap **Gap R.487**).
+		if t, ok := g.compSlotIsContainer(e); ok {
+			return t, true
+		}
+		// A comprehension whose contents no slot can describe declines here and is answered by the arms
+		// below, exactly as it was before this case existed — the door does not newly refuse a program it
+		// used to label.
+		break
 	case *Tuple, *Lambda:
 		return 0, false
 	case *BoolLit:
@@ -2071,6 +2100,12 @@ func (g *irGen) dictKeyIsContainer(k Expr) bool {
 	switch k.(type) {
 	case *ListLit, *DictLit, *SetLit:
 		return true
+	case *Comp:
+		// The same object the literal spells, arriving under the comprehension's brace: a list, a dict or a
+		// set has no hash, so the entry would be filed under whichever handle the allocator handed out — the
+		// rule this door already states for `[1]: 1`, read of `print([[x for x in [1]]] and of
+		// `{[x for x in [1]]: 1}` (roadmap **Gap R.487**'s key side, beside **Gap R.81** and **Gap R.360**).
+		return g.compIsContainerSlotExpr(k)
 	}
 	if c, isCall := k.(*Call); isCall && g != nil {
 		if lit, isEmpty := g.emptyContainerCall(c); isEmpty {
@@ -2099,6 +2134,16 @@ func tupleElementsHashable(ln *ListLit) bool {
 			return false
 		case *DictLit, *SetLit:
 			return false
+		case *Comp:
+			// The brace builds a list, a dict or a set, and the walk is the reference's: a tuple hashes by
+			// hashing its elements, so a tuple carrying the object a comprehension builds is not hashable
+			// either (roadmap L11.3, **ADR 0361**, beside **Gap R.487**'s key door). A generator expression is
+			// the object the reference happily hashes — an iterator is a value with an identity — so the arm
+			// says nothing about it and the tuple keeps the door it has (roadmap Gap R.195).
+			switch el.Kind {
+			case CompList, CompDict, CompSet:
+				return false
+			}
 		}
 	}
 	return true
@@ -2223,6 +2268,11 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 		return true
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	case *Comp:
+		// The object a comprehension builds has the slots its element expression writes, so the question
+		// is asked of the literal with those contents — one reading for the comprehension and the literal
+		// of the same shape (**ADR 0249**'s gate-and-door pair, roadmap **Gap R.487**/**Gap R.488**).
+		return g.compContentsTaggable(n)
 	}
 	_, ok := g.emptyContainerCall(e)
 	return ok
@@ -2534,6 +2584,21 @@ func exprSnippet(e Expr) string {
 		return "a dict literal"
 	case *SetLit:
 		return "a set literal"
+	case *Comp:
+		// The same rule as the two arms above, learned from the same disease: a refusal that says
+		// `*lang.Comp` tells the reader nothing, and the program wrote a brace. The kind is the
+		// comprehension's own, so the sentence names which comprehension it is (roadmap **Gap R.232**,
+		// **Gap R.249**, beside **Gap R.487**'s key door).
+		switch n.Kind {
+		case CompDict:
+			return "a dict comprehension"
+		case CompSet:
+			return "a set comprehension"
+		case CompGenerator:
+			return "a generator expression"
+		default:
+			return "a list comprehension"
+		}
 	case *Tuple:
 		return "a tuple literal"
 	case *Lambda:
@@ -2764,6 +2829,19 @@ func (g *irGen) exprSummary(e Expr) string {
 		return "a dict"
 	case *SetLit:
 		return "a set"
+	case *Comp:
+		// `%T` would answer `*lang.Comp` where the source wrote a brace (**Gap R.249**'s rule; roadmap
+		// **Gap R.487**). The kind is the comprehension's own.
+		switch n.Kind {
+		case CompDict:
+			return "a dict comprehension"
+		case CompSet:
+			return "a set comprehension"
+		case CompGenerator:
+			return "a generator expression"
+		default:
+			return "a list comprehension"
+		}
 	case *Index:
 		return "an element read"
 	case *BinOp:
@@ -7906,4 +7984,78 @@ func (g *irGen) elementNameHoldsContainer(x Expr) bool {
 		return false
 	}
 	return t == int32(TagList) || t == int32(TagDict) || t == int32(TagSet)
+}
+
+// compSlotIsContainer is the element door's answer for the slot that holds a COMPREHENSION: the word
+// the slot carries is the handle of the object the comprehension builds, and the brace the program
+// wrote around it says which of the three that object is — a list, a dict or a set.
+//
+// The BUILD door has known this since **ADR 0192**: `containerOperand` and `containerHandleOf` each
+// carry a `*Comp` arm, and the constant-folded spelling is materialised into the heap precisely because
+// **ADR 0188** forbade handing `@.lst1` to a runtime helper whose argument is an `i32`. The doors that
+// DECIDE never grew the arm. `nestedContainerElem` stopped at the three literal spellings and a name,
+// so `heapElemKind` fell past the container road to the ordinary value road — which for a folded
+// comprehension answers the name of a compile-time GLOBAL, and `rt_set_elem(i32 %h, i32 0, i32 @.lst1)`
+// is the instruction `llc` rejects (exit **2**, the code **ADR 0166** reserves for a compiler bug, paid
+// for `print([[x for x in [1]], 1])` — roadmap **Gap R.488**). `elemKindTag` had no `*Comp` case
+// either, so the spelling that did reach the runtime builder stored a good handle beside the blanket
+// `TagInt` and printed `[1, 1]` at the exit code of success for `print([[{'a': 1} …], 1])` — roadmap
+// **Gap R.487**. One construct, two faces, and the same disagreement **ADR 0249** names: a gate that
+// asks a different question from the door it gates.
+//
+// The taggability of the comprehension's CONTENTS is asked of the same door the literals ask
+// (`taggableNestedElem`, through `compContentsTaggable`), so a comprehension whose element nests deeper
+// than any slot can be tagged for declines here exactly as the literal of the same contents declines —
+// and `heapElemKind`'s own door keeps the refusal sentence rather than emitting an operand nobody can
+// lower.
+func (g *irGen) compSlotIsContainer(e Expr) (int32, bool) {
+	c, isComp := e.(*Comp)
+	if !isComp || g == nil {
+		return 0, false
+	}
+	if !g.compContentsTaggable(c) {
+		return 0, false
+	}
+	switch c.Kind {
+	case CompList:
+		return int32(TagList), true
+	case CompSet:
+		return int32(TagSet), true
+	case CompDict:
+		return int32(TagDict), true
+	}
+	// A generator expression is not a container: it is the iterator the reference hands back, whose
+	// state no slot of this backend represents (roadmap Gap R.195). It keeps the road it has today.
+	return 0, false
+}
+
+// compIsContainerSlotExpr is the census's and the store's reading of the question above: does this
+// element hold a container's handle. `literalNeedsTags` and `literalNeedsHeap` ask it so the OBJECT
+// says its slots are the truth, `nestedContainerElem` asks it so the WORD is a materialised handle,
+// and `elemKindTag` asks the same predicate for the LABEL — three doors, one reading, so a later
+// widening of one cannot silently disagree with the other two (**ADR 0232**'s one question, the rule
+// **ADR 0438** applied to the container held in a name).
+func (g *irGen) compIsContainerSlotExpr(e Expr) bool {
+	_, ok := g.compSlotIsContainer(e)
+	return ok
+}
+
+// compContentsTaggable asks whether every slot of the object a comprehension builds can carry a tag,
+// by asking the question of the literal with the same contents. The recursion is safe: a comprehension
+// written INSIDE the element list is a smaller expression than the one being asked, so each level
+// terminates on the literals, and the `inner` arm of `taggableNestedElem` reaches it through
+// `elemKindTag`'s `*Comp` case.
+func (g *irGen) compContentsTaggable(c *Comp) bool {
+	if g == nil || c == nil {
+		return false
+	}
+	switch c.Kind {
+	case CompList:
+		return g.taggableNestedElem(&ListLit{Elems: c.Elems, Src: c.Src})
+	case CompSet:
+		return g.taggableNestedElem(&SetLit{Elems: c.Elems, Src: c.Src})
+	case CompDict:
+		return g.taggableNestedElem(&DictLit{Keys: c.Keys, Vals: c.Vals, Src: c.Src})
+	}
+	return false
 }

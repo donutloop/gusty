@@ -1,31 +1,39 @@
-// Shapes measured while landing ADR 0437 and still NOT fixed: a COMPREHENSION that arrives as an element of a
-// literal, and a container that arrives as a member of a set literal. Each row is pinned with today's bytes
-// beside the reference's, in this file and in `integration/container_element_and_member_test.go`, and each byte
-// below was re-measured on a build of the commit before the family was filed (`4fdb87c`) as well as on this
-// one — the sentences changed in that commit, these answers did not.
+// Shapes measured while landing ADR 0437 and still NOT fixed: a container that arrives as a member of a set
+// literal, and the doors beside the one ADR 0439 paid. Each row is pinned with today's bytes beside the
+// reference's, in this file and in `integration/container_element_and_member_test.go`, and each byte below was
+// re-measured on a build of the commit before the family was filed (`4fdb87c`) as well as on this one — the
+// sentences changed in that commit, these answers did not.
 //
-// The family had four doors and one has been paid: the ELEMENT door also refused to describe a container held
-// in a NAME (`sa = {1: "a", "b": 2}` / `print([sa, 1])` printed `[1, 1]`), and that one is closed by **ADR
-// 0438** — the census that labels the object now asks the tag road's answer, so a named container travels as a
-// tagged pair (**Gap R.486**, paid, and its rows moved to `named_container_element_test.go`). What is left here:
+// The family had four doors and two have been paid. The ELEMENT door refused to describe a container held in a
+// NAME (`sa = {1: "a", "b": 2}` / `print([sa, 1])` printed `[1, 1]`); **ADR 0438** closed that one — the
+// census that labels the object now asks the tag road's answer, so a named container travels as a tagged pair
+// (**Gap R.486**, paid, rows in `named_container_element_test.go`). The ELEMENT door's other half — the
+// element that is a COMPREHENSION — is closed by **ADR 0439**: the tag, the store and the census now read the
+// comprehension's own brace, so `print([[[{"a": 1} for x in range(1)], 1])` answers `[[{'a': 1}], 1]` and
+// `print([[[x for x in [1]]]])` no longer hands `llc` a compile-time global in an operand position
+// (**Gap R.487**, **Gap R.488**, paid; their rows answer in `comprehension_element_test.go`). What is left here:
 //
-//   - the ELEMENT door, comprehension half. `heapListFrom` builds a literal list one slot at a time, and a slot
-//     is a word plus a tag. When the element is a container the compiler can read — a literal, or a name the
-//     container tables describe — the pair comes from the builder that made the object (**ADR 0332**,
-//     **ADR 0384**, **ADR 0438**). When the element is a COMPREHENSION, or a comprehension over a call, the road
-//     keeps one word and calls it the value, and the word is the allocator's slot: `print([[{"a": 1} for x in
-//     range(1)], 1])` prints `[1, 1]` at exit **0** where the reference prints `[[{'a': 1}], 1]`
-//     (**Gap R.487**); and the same shape one level deeper — `print([[[x for x in [1]]]])` — puts the
-//     compile-time global `@.lst1` in an operand position and `llc` rejects the module, which is exit **2**, the
-//     code **ADR 0166** reserves for a compiler bug (**Gap R.488**); and
 //   - the MEMBER door. A set literal's members are hashed. A list, a dict or a set has no hash in the
 //     reference, which raises `TypeError: unhashable type: 'list'`; this backend files the handle as a member
-//     and prints `{[1], [2]}` at exit **0** — **Gap R.81**'s rule (`sa.add([1])` adds what cannot be a member)
-//     at the literal door rather than the `add` one (**Gap R.485**).
+//     and prints `{[1], [2]}` at exit **0** — **Gap R.81**'s rule (`sa.add([1])` adds what cannot be a
+//     member) at the literal door rather than the `add` one (**Gap R.485**). The comprehension spelling of the
+//     same member (`print({[x for x in [1]]})`) walked through that door on ADR 0439's arm and lands on the
+//     same answer at the same exit code; before the arm it was an `llc` rejection. The raise is one raise for
+//     the family, and the row that owns it is **Gap R.492** beside **Gap R.485** — the member door's, not
+//     this cycle's; and
+//   - the doors that stand a comprehension in a position that is not a slot at all: the LOOP head, the truth
+//     test and `bool()` ask the container question of an expression the deciding doors still cannot name, and
+//     the answer is `icmp ne i32 @.lst1, 0` / `rt_step(i32 @.lst1)` — exit **2** again, and filed as
+//     **Gap R.490** because the fix there is the handle at those doors, not another arm on the deciding side
+//     (measured: giving `isContainerExpr`/`staticContainerKind` the `*Comp` arm leaves the same three modules
+//     rejected, so an arm alone is not what that door owes); and
+//   - the comprehension whose ITERABLE is a container of containers, which the item door cannot name and the
+//     fold answers with an index: `print([[x for x in [[1]]][0], 2])` raises `IndexError` where the reference
+//     prints `[[1], 2]` (**Gap R.491**).
 //
-// None of these sources is on the record, and `tools/recmerge` refuses each: the compiled leg's bytes
-// are not the reference's, which is the recorder's cross-check earning its keep and the reason a row exists
-// rather than a record.
+// None of these sources is on the record, and `tools/recmerge` refuses each: the compiled leg's bytes are not
+// the reference's, which is the recorder's cross-check earning its keep and the reason a row exists rather
+// than a record.
 package lang
 
 import (
@@ -33,11 +41,11 @@ import (
 	"testing"
 )
 
-// containerElementFiledRows are the elements that arrive as one word where the answer needs a pair, and the
-// one shape among them that reaches `llc` at all. `kind` says which witness the row asks: an ANSWER compared
-// to the bytes pinned here, a REFUSAL whose sentence is pinned, or a module that never reaches a running
-// program at all (the exit-2 class, where the unit leg can only ask that the assembly fails and names the
-// global it choked on — the exit code itself is the CLI twin's job).
+// containerElementFiledRows are the doors beside the one ADR 0439 paid: the comprehension that stands where a
+// slot does not go. `kind` says which witness the row asks: an ANSWER compared to the bytes pinned here, a
+// REFUSAL whose sentence is pinned, or a module that never reaches a running program at all (the exit-2 class,
+// where the unit leg can only ask that the assembly fails and names the global it choked on \u2014 the exit code
+// itself is the CLI twin's job).
 func containerElementFiledRows() []struct {
 	name      string
 	src       string
@@ -55,28 +63,40 @@ func containerElementFiledRows() []struct {
 		row       string
 	}{
 		{
-			name:      "a comprehension as an element answers the slot",
-			src:       "print([[{\"a\": 1} for x in range(1)], 1])\n",
-			kind:      "answer",
-			today:     "[1, 1]\n",
-			reference: "[[{'a': 1}], 1]",
-			row:       "Gap R.487",
-		},
-		{
-			name:      "a comprehension over a call, as an element, answers the slot",
-			src:       "def f():\n    return 1\nprint([[f() for x in range(1)], 2])\n",
-			kind:      "answer",
-			today:     "[1, 2]\n",
-			reference: "[[1], 2]",
-			row:       "Gap R.487",
-		},
-		{
-			name:      "the same shape one level deeper reaches llc",
-			src:       "print([[[x for x in [1]]]])\n",
+			// The comprehension standing where the LOOP asks for a container: the deciding doors have no arm
+			// for it, so that road reads its word as a count and the module carries the global.
+			name:      "a comprehension as a loop iterable is rejected by llc",
+			src:       "for v in [x for x in [1]]:\n    print(v)\n",
 			kind:      "module",
-			today:     "@.lst1",
-			reference: "[[[1]]]",
-			row:       "Gap R.488 (the CLI exits 2 — ADR 0166's own-bug code — on `rt_set_elem(i32 %t, i32 0, i32 @.lst1)`)",
+			today:     "@.lst",
+			reference: "1",
+			row:       "Gap R.490 (the loop head; the folded global reaches an i32 operand \u2014 ADR 0166's code)",
+		},
+		{
+			name:      "a comprehension in a truth test is rejected by llc",
+			src:       "if [x for x in [1]]:\n    print(\"yes\")\n",
+			kind:      "module",
+			today:     "@.lst",
+			reference: "yes",
+			row:       "Gap R.490 (the condition door, the same instruction shape)",
+		},
+		{
+			name:      "bool() of a comprehension is rejected by llc",
+			src:       "print(bool([x for x in [1]]))\n",
+			kind:      "module",
+			today:     "@.lst",
+			reference: "True",
+			row:       "Gap R.490 (`icmp ne i32 @.lst1, 0` \u2014 the truth door asked the word, not the object)",
+		},
+		{
+			// The item door names an integer literal or a `range`, and nothing else; a container of
+			// containers is answered with an index instead of an item.
+			name:      "a comprehension over a container of containers raises where the reference answers",
+			src:       "print([[x for x in [[1]]][0], 2])\n",
+			kind:      "trap",
+			today:     "TRAPPED: IndexError: list index out of range",
+			reference: "[[1], 2]",
+			row:       "Gap R.491 (the comprehension's items, asked of a container the fold cannot hold)",
 		},
 	}
 }
@@ -122,6 +142,17 @@ func containerMemberFiledRows() []struct {
 			reference: "raises TypeError: unhashable type: 'set'",
 			row:       "Gap R.485",
 		},
+		{
+			// The member door's comprehension spelling. Before **ADR 0439** this was the exit-2 class
+			// (`rt_set_add(i32 %t, i32 @.lst1)`); the arm moved it onto the door the literal member already
+			// stands on, so the raise this backend owes is one raise for the family rather than two shapes.
+			name:      "a set literal accepts a comprehension that builds a list",
+			src:       "print({[x for x in [1]]})\n",
+			kind:      "answer",
+			today:     "{[1]}\n",
+			reference: "raises TypeError: unhashable type: 'list'",
+			row:       "Gap R.492 (the member door, one raise for the family with Gap R.485)",
+		},
 	}
 }
 
@@ -151,6 +182,25 @@ func TestWhatTheContainerElementAndMemberDoorsStillOweIsFiledNotFixed(t *testing
 				}
 				if !strings.Contains(err.Error(), tc.today) {
 					t.Errorf("%q failed the assembly without naming %q: %v (%s)", tc.src, tc.today, err, tc.row)
+				}
+				return
+			}
+			if tc.kind == "trap" {
+				// The program RUNS and raises: a raise the reference does not raise is a wrong answer wearing
+				// a traceback, and the exit class (3, not 2) is part of what the row pins.
+				res, err := Compile(tc.src)
+				if err != nil {
+					t.Fatalf("%q was refused, where this row pins a trap the program reaches (%s): %v", tc.src, tc.row, err)
+				}
+				code, out := runIRAllowingTrap(t, res.IR)
+				if code == 2 {
+					t.Fatalf("%q exited 2 — ADR 0166's compiler-bug code — where this row pins a trap at exit 3 (%s): %s", tc.src, tc.row, out)
+				}
+				if !strings.Contains(out, strings.TrimPrefix(tc.today, "TRAPPED: ")) {
+					t.Errorf("%q trapped without naming %q: %s (%s)", tc.src, tc.today, out, tc.row)
+				}
+				if HasGoldenAnswer(tc.src) {
+					t.Errorf("%q is on the record with an answer, although it traps wrongly (%s)", tc.src, tc.row)
 				}
 				return
 			}

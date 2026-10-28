@@ -3753,6 +3753,38 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **A comprehension is a container at the doors that DECIDE, too: its element answers the brace (Gaps R.487,
+  R.488, **ADR 0439**)** — `print([[{"a": 1} for x in range(1)], 1])` printed **`[1, 1]`** and
+  `def f(): return 1` / `print([[f() for x in range(1)], 2])` printed **`[1, 2]`**, both at the exit code that means
+  the program ran, while `print([[[x for x in [1]]]])` died in `llc` on
+  `call void @rt_set_elem(i32 %t3, i32 0, i32 @.lst1)` at exit **2** — **ADR 0166**'s compiler-bug code, for a
+  program the reference answers with `[[[1]]]`. One construct, two faces, one missing arm: the BUILD door has known
+  a comprehension is a container since **ADR 0192** (`containerOperand` and `containerHandleOf` each carry the
+  `*Comp` case, and the former materialises a folded `@.lst1`/`@.set1`/`@.dict1` because **ADR 0188** forbids a
+  global in an `i32` operand), while the doors that DECIDE — `nestedContainerElem` for the word, `elemKindTag` for
+  the label, `literalNeedsTags`/`literalNeedsHeap` for the header — stopped at the three literal spellings and a
+  name, exactly the shape **ADR 0249** forbids. All three now ask one predicate, `compSlotIsContainer`, which reads
+  the brace: `TagList` (5), `TagDict` (6), `TagSet` (7) beside the handle in a register, `rt_mark_estr(o, 8)` on the
+  object, `rt_print_list_mixed` chosen — so `[[1], 1]`, `[{'k': [1]}]`, `[{1}]`, `[{1: 1}]`, `([1], 2)`,
+  `[[[1]]]`, `[[{'a': 0}, {'a': 1}], 1]` come out at every door that WRITES the slot (a list element, a dict value,
+  an `append`, a `d[k] =`, a tuple element) and every door that READS it back (`[0][0]`, `len`, `in`, a `for`, `==`,
+  `str`, a repeat by a number). A dict keyed by one is declined by the hashing rule the literal spelling has always
+  met, and — **Gap R.232**/**Gap R.249**'s rule applied to a node nobody had asked — the sentence says "a list
+  comprehension", not `*lang.Comp` (the `repr` door had been saying `repr of ` for exactly that reason). Twenty-five
+  sources answer on the compiled leg and the record leg, 28 more through the CLI beside a live CPython with the exit
+  code asserted, ten with exit **2** forbidden; `tools/recmerge` wrote 27 entries from the reference with the
+  compiled leg cross-checked (**9905 → 9932**, none refused — the family's 26 sources plus the corpus program's own
+  27-line text, which the GC corpus asks about by its own spelling) and `integration/programs/
+  comprehension_container_element.gy` joined the corpus as a line-for-line `match`. The numeric-literal IR row still
+  asserts `print([1, 2, 3])` takes `rt_print_list` with no census bit, which is what keeps **ADR 0239**'s static
+  array — and `sum`/`min`/`max` — from being paid for this. Four shapes the sweep surfaced are FILED with today's
+  bytes pinned, not papered over: **Gap R.490** (the same global at the LOOP head, the truth test and `bool()`,
+  still exit 2 — and the rejected alternative, recorded with its measurement: the deciding `*Comp` arms were built
+  and the three programs still die, so that door owes the handle before the arm), **Gap R.491** (a comprehension
+  over a container of containers raises `IndexError` where the reference prints), **Gap R.492** (a set literal
+  accepts the unhashable member a comprehension builds, beside **Gap R.485**), and **Gap R.493** (a builtin's name
+  as a statement reads a frame slot no `define` allocated — found by the recorder, not by a program).
+
 ## Modern front-end (lexer & parser)
 
 - **Error-recovering lexer** — on an unexpected character, emits a `TokError`

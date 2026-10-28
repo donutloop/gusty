@@ -1,5 +1,138 @@
 {
  "entries": {
+"xs = [[x for x in [1]], 1]\nprint(xs)\nprint([[[x for x in [1]]]])\nprint([[{\"a\": 1} for x in range(1)], 1])\n\n\ndef f():\n    return 1\n\n\nprint([[f() for x in range(1)], 2])\nprint([{\"k\": [x for x in [1]]}])\nprint([{x for x in [1]}])\nprint([{1: x for x in [1]}])\nys = []\nys.append([x for x in [1]])\nprint(ys)\nd = {}\nd[\"k\"] = [x for x in [1]]\nprint(d)\nprint(([x for x in [1]], 2))\nprint([[x for x in [1]]][0][0])\nprint(len([[x for x in [1]]][0]))\nprint(1 in [[x for x in [1]]][0])\nfor v in [[x for x in [1]]][0]:\n    print(v)\nprint([[x for x in [1]]] == [[1]])\nprint(str([[x for x in [1]]]))\nprint([[v for v in [\"a\", \"b\"]], 1])\nprint([[{\"a\": n} for n in range(2)], 1])\nprint([[x for x in [1]], \"a\"])\nprint([[x for x in [1] if x], 1])\nprint([1, 2, 3])\nprint([[1, 2], 1])\nprint({(1, 2): 1})\n": {
+    "stdout": "[[1], 1]\n[[[1]]]\n[[{'a': 1}], 1]\n[[1], 2]\n[{'k': [1]}]\n[{1}]\n[{1: 1}]\n[[1]]\n{'k': [1]}\n([1], 2)\n1\n1\nTrue\n1\nTrue\n[[1]]\n[['a', 'b'], 1]\n[[{'a': 0}, {'a': 1}], 1]\n[[1], 'a']\n[[1], 1]\n[1, 2, 3]\n[[1, 2], 1]\n{(1, 2): 1}\n",
+    "hasStdout": true
+   },
+"d = {}\nd[\"k\"] = [x for x in [1]]\nprint(d)\n": {
+    "stdout": "{'k': [1]}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 1\nprint([[f() for x in range(1)], 2])\n": {
+    "stdout": "[[1], 2]\n",
+    "hasStdout": true
+   },
+
+"def mk():\n    return [1]\nxs = [[x for x in mk()]]\nprint(xs[0] == [1])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"for v in [[x for x in [1]]][0]:\n    print(v)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(([x for x in [1]], 2))\n": {
+    "stdout": "([1], 2)\n",
+    "hasStdout": true
+   },
+
+"print(1 in [[x for x in [1]]][0])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([[[x for x in [1]]]])\n": {
+    "stdout": "[[[1]]]\n",
+    "hasStdout": true
+   },
+
+"print([[[x for x in [y]] for y in [1, 2]], 3])\n": {
+    "stdout": "[[[1], [2]], 3]\n",
+    "hasStdout": true
+   },
+
+"print([[v for v in [\"a\", \"b\"]], 1])\n": {
+    "stdout": "[['a', 'b'], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1] if x], 1])\n": {
+    "stdout": "[[1], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]], \"a\"])\n": {
+    "stdout": "[[1], 'a']\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]], 1])\n": {
+    "stdout": "[[1], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]], [y for y in [2]]])\n": {
+    "stdout": "[[1], [2]]\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]]] == [[1]])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]]][0] * 2)\n": {
+    "stdout": "[1, 1]\n",
+    "hasStdout": true
+   },
+
+"print([[x for x in [1]]][0][0])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print([[{\"a\": 1} for x in range(1)], 1])\n": {
+    "stdout": "[[{'a': 1}], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[{\"a\": x} for x in range(2)], 1])\n": {
+    "stdout": "[[{'a': 0}, {'a': 1}], 1]\n",
+    "hasStdout": true
+   },
+
+"print([{\"k\": [x for x in [1]]}])\n": {
+    "stdout": "[{'k': [1]}]\n",
+    "hasStdout": true
+   },
+
+"print([{1: x for x in [1]}])\n": {
+    "stdout": "[{1: 1}]\n",
+    "hasStdout": true
+   },
+
+"print([{x for x in [1]}])\n": {
+    "stdout": "[{1}]\n",
+    "hasStdout": true
+   },
+
+"print(len([[x for x in [1]]][0]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(str([[x for x in [1]]]))\n": {
+    "stdout": "[[1]]\n",
+    "hasStdout": true
+   },
+
+"print({(1, 2): 1})\n": {
+    "stdout": "{(1, 2): 1}\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append([x for x in [1]])\nprint(xs)\n": {
+    "stdout": "[[1]]\n",
+    "hasStdout": true
+   },
+
+"ys = [[x for x in [1]]]\nprint(ys)\n": {
+    "stdout": "[[1]]\n",
+    "hasStdout": true
+   },
 "sa = {1: \"a\", \"b\": 2}\nprint([sa, 1])\n": {
     "stdout": "[{1: 'a', 'b': 2}, 1]\n",
     "hasStdout": true

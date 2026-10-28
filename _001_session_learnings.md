@@ -16145,3 +16145,86 @@ number.
    `docs/operations.md`'s artifact table and `roadmap.md`'s Snapshot, and `TestTheRoadmapSnapshot…` recomputed the
    ADR pair (`427/0437 → 428/0438`) and the owed tally (`237/392 → 235/393`) at the same time. Write the prose
    count last, from the guard's output, never from memory.
+
+## ADR 0439 — a comprehension is a container at the doors that DECIDE too: the tag, the store and the census ask its brace one question (Gaps R.487, R.488 closed; Gaps R.490–R.493 filed, 2026-10-28)
+
+1. **The fix was already in the file, in the wrong layer.** `containerOperand` and `containerHandleOf` have had a
+   `*Comp` arm since **ADR 0192**, and the former's comment states **ADR 0188**'s rule in print: a folded
+   comprehension is materialised into the heap because handing `@.lst1` to a helper whose argument is an `i32` is
+   the invalid-IR shape. What was missing was never the build — it was that `nestedContainerElem`, `elemKindTag`
+   and the two censuses did not know the construct existed. When a bug is "the answer exists and one road can't
+   reach it", grep for the arm before writing one: `grep -n "case \*Comp" pkg/lang/heapargs.go` showed two arms in
+   the build doors and none in the deciding doors, which is **ADR 0249**'s gate-and-door defect stated as a file
+   listing.
+
+2. **Exit 2 and exit 0 with a wrong number were one defect, and the pair is the proof.** `print([[<comp>, 1]])`
+   printed the allocator's slot (`[1, 1]`, exit 0) and `print([[[x for x in [1]]]])` had `llc` reject the module
+   (exit 2). One arm fixed both, because the fold's answer is a global NAME and the runtime road's answer is a
+   handle: the tag road had nothing to say about either, so one path printed a handle as an integer and the other
+   put a symbol in a register slot. Filing them as two rows (**R.487**, **R.488**) was right when they were filed —
+   they are falsified by different observations — and closing them in one commit was right for the same reason:
+   one reading answers both questions.
+
+3. **I built the rejected alternative, and the measurement is why it stayed rejected.** The obvious widening — give
+   `isContainerExpr` and `staticContainerKind` the same `*Comp` arm, so `len`, `in`, `==`, the loop and truthiness
+   decide what the builder builds — was written, compiled and measured in this session. `for v in [x for x in
+   [1]]:`, `if [x for x in [1]]:` and `print(bool([x for x in [1]]))` still died in `llc`, at the same instructions
+   (`icmp slt i32 %_ctr1.ld1, @.lst2`, `icmp ne i32 @.lst1, 0`). A deciding door that says "list" with no handle to
+   hand is how a `for` gets a compile-time global for a repeat count. The arms came out, the row (**Gap R.490**) went
+   in with that measurement in its `Free text` and in this file, so the next cycle does not re-try the diff that is
+   already known not to work. An alternative is rejected by a measurement, not by a taste — and the comment that
+   says "rejected" without one is a rumour.
+
+4. **The recorder found a bug this cycle never touched.** `tools/recmerge` refuses to write an entry the compiled
+   leg will not agree to, and one source in the batch refused with `internal invariant violated (frame-slot audit):
+   main reads %_hash, a stack slot no `define` allocated` — for the program `hash`. `abs`, `len`, `print`, `range`
+   and `str` do it too: a builtin's name as an expression statement loads a variable slot that no pass created
+   (an undefined *user* name is refused in words three characters away). **ADR 0378**'s auditor turned a would-be
+   wild load into a stated violation at the compiler-bug exit code, which is exactly its job; the road behind it is
+   **Gap R.493**, filed with the recorder run that found it named in the row so it can be re-found. The lesson is
+   to read the recorder's refusals rather than only its successes: it is the one harness in this repo that
+   compiles programs nobody intended to write.
+
+5. **A refusal sentence is an interface, and one missing `case` proved it twice.** The key door said
+   `a compiled container cannot hold *lang.Comp as a key`, and the repr door said `repr of  is not implemented` —
+   the empty name is the same missing arm rendering nothing. `exprSnippet`/`exprSummary` now name "a list
+   comprehension" / "a dict comprehension" / "a set comprehension" / "a generator expression", and the new rows
+   assert the sentences carry no `*lang.`, no `%!s(`, no `__cans` (**Gap R.232**, **Gap R.249**). Adding a node to
+   one door should be checked against the doors that *describe* it; the guard against Go-in-prose is a test, and it
+   only fires on the roads that have the node.
+
+6. **Hashability is one rule with three spellings, and I nearly shipped it answering two ways.** The set-member
+   case (`print({[x for x in [1]]})`) went from an `llc` rejection to `{[1]}` at exit 0 — the same wrong answer
+   **Gap R.485** already pins for the literal spelling (`print({[1], [2]})`). That is deliberately consistent (one
+   door, one answer) and deliberately not fixed here: the raise belongs to the member door for all three spellings,
+   so **Gap R.492** is filed `Blocked on` **Gap R.485** rather than landing a raise that the literal member would
+   contradict. The dict-KEY side could be closed here because the door already exists and already refuses — the arm
+   made the brace meet the rule `{[1]: 1}` has always met, plus **ADR 0361**'s walk for a tuple carrying one.
+
+7. **Pinned rows moved, counts moved, and the guards did the bookkeeping.** Six filed rows (three programs × two
+   legs) started answering and failed with "this row pins …, the reference prints …", which is the suite's own
+   instruction to move them; they now live in `comprehension_element_test.go` (unit: compiled leg + record leg + IR
+   rows; CLI: exit asserted, exit 2 forbidden) beside a new conformance program. `tools/recmerge` took the record
+   9905 → 9932 (26 family sources, and the corpus program's own 27-line text — a `.gy` added to the corpus needs a
+   record of its own, because `integration/gc_stress_test.go` asks each corpus program's source of the artifact and
+   fails on a missing key), the corpus 258 → 259 and the matrix 244 → 245, and `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+   named every stale number in `AGENTS.md`, `docs/operations.md` and `roadmap.md` — including the ADR pair, which I
+   wrote before writing the ADR file and was corrected for. Write the prose counts last, from the guard's output:
+   four files, five numbers, zero of them memorable.
+
+8. **`go build` is not the measurement, and a stale binary writes a fiction into the roadmap.** I drafted this
+   cycle's evidence cells against a build in `/tmp` that predated my own edits: `print([[[x for x in [1]]]])` was
+   still exit **2**, and `print([[x for x in [[1]]][0], 2])` — which the draft described as fixed — still raised
+   `IndexError`. Rebuilding from the working tree moved both numbers. The rule the cycle then held itself to: every
+   byte in an evidence cell comes from a build made from the tree under test, the parent is measured by
+   `git stash` + rebuild, and every filed row names the two revisions it was measured across
+   (`93f3404`..`272c969` here). A row is a measurement claim; a claim copied from a stale process is not a
+   measurement, and no count guard can catch it because the number was plausible.
+
+9. **The recorder is a detector, not just a scribe.** **Gap R.493** arrived from `tools/recmerge`'s own line
+   `refused: hash — codegen: internal invariant violated (frame-slot audit): main reads %_hash, a stack slot no
+   `define` allocated` — a program (`hash` alone, with no call and no binding) that no sweep had written and no
+   test had asked. The artifact-writing modes are where the toolchain reports what it declined to record, and that
+   output is evidence: the five refusals in that run became four filed rows and one fixed shape. Read the
+   `refused:` lines of every recording run; a run that adds N entries and refuses M sources has told you M things
+   the answered tests cannot.

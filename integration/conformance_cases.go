@@ -65,6 +65,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// because that one also asks for the ORDER of two containers (roadmap Gap R.33, closed by ADR 0365;
 		// the ordering half is filed as Gap R.314).
 		"sequence_builds",
+		// A COMPREHENSION written as the element of a container literal is the container its brace spells:
+		// `[[{...} for x in range(1)], 1]` prints `[[{'a': 1}], 1]` and `[[[x for x in [1]]]]` prints
+		// `[[[1]]]`, at every door that writes the slot (a list element, a dict value, an `append`, a
+		// `d[k] =`, a tuple element) and at every door that reads it back (two levels of subscript, `len`,
+		// `in`, a `for`, `==`, `str`). The fold's compile-time global in an `i32` operand — the instruction
+		// `llc` rejected at exit 2 — is the shape this row no longer emits, and the numeric literal beside it
+		// keeps the static array it always had (roadmap **Gap R.487**, **Gap R.488**, paid by **ADR 0439**).
+		"comprehension_container_element",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the
