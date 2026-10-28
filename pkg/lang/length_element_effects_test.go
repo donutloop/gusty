@@ -469,15 +469,13 @@ var countDoorFiledRows = []struct {
 	// `bool()` over a comprehension the run time builds now walk and measure the OBJECT, and they are
 	// asserted in `compIterableLoops` / `compIterableTruths`
 	// (`pkg/lang/comp_loop_truth_test.go`) and their CLI twin. What is left of that family is the
-	// object's ELEMENT (**Gap R.502**, pinned in `TestWhatTheComprehensionLoopStillOwesIsFiledNotFixed`)
-	// and the subscript door's row below.
-	{
-		"a subscript of a comprehension the run time builds reads a slot the builder never filled (the subscript door's row)",
-		theDoubleFn + "print([g(x) for x in [1, 2, 3]][1])",
-		"trap", "IndexError: list index out of range",
-		"prints 4",
-		"roadmap Gap R.501",
-	},
+	// object's ELEMENT (**Gap R.502**, pinned in `TestWhatTheComprehensionLoopStillOwesIsFiledNotFixed`).
+	//
+	// **Gap R.501**'s subscript row MOVED with this commit: a built comprehension's slot is now read by the
+	// subscript door that reads a container variable's slot, and the program's own out-of-range position is
+	// the only `IndexError` that arrives. It is answered in `pkg/lang/built_comp_subscript_test.go` and
+	// `integration/built_comp_subscript_test.go`, not deleted — a row that is answered is asserted, not
+	// forgotten.
 	{
 		// Found by the same sweep, and NOT this door's debt: this program has no `len` in it. A `def`
 		// written inside a `try:` block has its whole `define` emitted into the enclosing block, so the

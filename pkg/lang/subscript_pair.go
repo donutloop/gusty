@@ -106,6 +106,22 @@ func (g *irGen) subscriptPairOf(b *strings.Builder, ix *Index) (val, tag string,
 		g.floatFmtUsed = true
 		return v, t, true, nil
 	}
+	// `[g(x) for x in xs][i]` — a COMPREHENSION the RUN TIME BUILT, subscripted where it stands. Its slot was
+	// written beside a tag by the builder that filled the object, and the tag is what tells `"a"` from the
+	// interned index 0 — so the printer is handed the PAIR and dispatches on the slot, instead of the ordinary
+	// road printing the one word the fold's empty table implied (roadmap **Gap R.501**; **ADR 0442**'s
+	// two-comprehensions-one door rule, **ADR 0443**'s brace for the kind, **ADR 0232**'s self-describing slot,
+	// **ADR 0187**'s rule that a payload never travels without its tag). The FOLD's comprehension is not this
+	// arm's object: `runtimeSlotPairDeep` asks **ADR 0192**'s priority question first and leaves the global
+	// answer to the fold. Where the door declines, the ordinary road keeps the shape, so this arm can only
+	// widen what `print` and the f-string field reach.
+	if _, isComp := ix.Obj.(*Comp); isComp {
+		if v, t, okPair := g.runtimeSlotPairDeep(b, ix); okPair {
+			g.heapUsed = true
+			g.floatFmtUsed = true
+			return v, t, true, nil
+		}
+	}
 	return "", "", false, nil
 }
 

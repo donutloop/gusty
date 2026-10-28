@@ -273,14 +273,12 @@ func TestWhatTheCountDoorStillOwesThroughTheCLI(t *testing.T) {
 		// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI, and pinned in the
 		// module by its instruction shape. **Gap R.500**'s three rows MOVED with **ADR 0443**'s fix — they
 		// are answered in `integration/comp_loop_truth_test.go`, on both sides of the pipe, beside a live
-		// `python3`. What is left of that family is the object's ELEMENT (**Gap R.502**) and the subscript
-		// door's row below.
-		{
-			"a subscript of a comprehension the run time builds reads a slot the builder never filled (the subscript door's row)",
-			"def g(v):\n    return v * 2\nprint([g(x) for x in [1, 2, 3]][1])",
-			"trap3", "IndexError: list index out of range", "4",
-			"roadmap Gap R.501",
-		},
+		// `python3`. What is left of that family is the object's ELEMENT (**Gap R.502**).
+		//
+		// **Gap R.501**'s subscript row MOVED with this commit: the built comprehension's slot is read by
+		// the object's subscript door, its in-range answers and its own out-of-range `IndexError` are answered
+		// through the CLI in `integration/built_comp_subscript_test.go`, and the row is no longer pinned as a
+		// wrong raise here. It is not deleted — a row that is answered is asserted, not forgotten.
 		{
 			"a def inside a `try:` block lands its body inside the enclosing block (the def road's row)",
 			"try:\n    def f():\n        return 1\n    print(\"ok\")\nexcept ZeroDivisionError as e:\n    print(\"caught\", e)",

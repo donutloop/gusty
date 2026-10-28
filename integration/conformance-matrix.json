@@ -457,6 +457,27 @@
     },
     {
       "case": {
+        "id": "programs/built_comp_subscript",
+        "name": "built_comp_subscript.gy",
+        "source": "# A subscript standing on a comprehension the RUN TIME BUILDS is read from the OBJECT that comprehension\n# built: `print([g(x) for x in [1, 2, 3]][1])` used to raise IndexError because the fold's count table was\n# empty, and `print({g(x) for x in [1, 2]}[0])` stopped the build instead of raising the set's own\n# TypeError (roadmap Gap R.501, ADR 0442's two-comprehensions-one-door rule, ADR 0443's brace for the kind).\ndef g(v):\n    return v * 2\n\ndef h(v):\n    return v\n\nprint([g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][0])\nprint([g(x) for x in [1, 2, 3]][-1])\nv = [g(x) for x in [1, 2, 3]][1]\nprint(v)\nprint(len([g(x) for x in [1, 2, 3]]) + [g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][1] == 4)\nprint([h(x) for x in [1, 2, 3]][1] == 4)\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][-1][0])\nprint({h(x): 1 for x in [1, 2]}[2])\nprint({h(x): h(x) for x in [1, 2]}[2])\nxs = [1, 2, 3]\nprint([g(x) for x in xs][2])\nprint([g(x) for x in range(3)][1])\ntry:\n    print([g(x) for x in [1, 2, 3]][7])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print([g(x) for x in [1, 2, 3]][-9])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x): 1 for x in [1, 2]}[3])\nexcept KeyError as e:\n    print(\"caught\", e)\ntry:\n    print([h(x) for x in [1, 2]][1.5])\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x) for x in [1, 2]}[0])\nexcept TypeError as e:\n    print(\"caught\", e)\nprint([x * 2 for x in [1, 2, 3]][1])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "4\n2\n6\n4\n7\nTrue\nFalse\n4\n2\n1\n2\n6\n2\ncaught list index out of range\ncaught list index out of range\ncaught 3\ncaught list indices must be integers or slices, not float\ncaught 'set' object is not subscriptable\n4\n",
+      "python_ok": true,
+      "python_stdout": "4\n2\n6\n4\n7\nTrue\nFalse\n4\n2\n1\n2\n6\n2\ncaught list index out of range\ncaught list index out of range\ncaught 3\ncaught list indices must be integers or slices, not float\ncaught 'set' object is not subscriptable\n4\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5857,11 +5878,11 @@
       ]
     }
   ],
-  "rows": 249,
+  "rows": 250,
   "skipped": 29,
-  "pass": 220,
+  "pass": 221,
   "fail": 0,
-  "oracle_match": 206,
+  "oracle_match": 207,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

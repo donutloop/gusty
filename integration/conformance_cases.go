@@ -99,6 +99,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// died the same way, and `print(bool(…))` printed `False` for `True` at the exit code of success
 		// (roadmap **Gap R.490** + **Gap R.500**, paid by **ADR 0443**).
 		"comp_loop_truth",
+		// A subscript standing on a comprehension the RUN TIME BUILDS reads the object the comprehension built:
+		// `[g(x) for x in [1, 2, 3]][1]` used to raise IndexError from a count table the builder never filled,
+		// and a built set's subscript refused instead of raising the reference's TypeError (roadmap **Gap R.501**,
+		// **ADR 0442**'s two-comprehensions-one-door rule, **ADR 0443**'s brace for the kind).
+		"built_comp_subscript",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

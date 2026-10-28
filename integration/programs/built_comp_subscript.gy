@@ -1,0 +1,46 @@
+# A subscript standing on a comprehension the RUN TIME BUILDS is read from the OBJECT that comprehension
+# built: `print([g(x) for x in [1, 2, 3]][1])` used to raise IndexError because the fold's count table was
+# empty, and `print({g(x) for x in [1, 2]}[0])` stopped the build instead of raising the set's own
+# TypeError (roadmap Gap R.501, ADR 0442's two-comprehensions-one-door rule, ADR 0443's brace for the kind).
+def g(v):
+    return v * 2
+
+def h(v):
+    return v
+
+print([g(x) for x in [1, 2, 3]][1])
+print([g(x) for x in [1, 2, 3]][0])
+print([g(x) for x in [1, 2, 3]][-1])
+v = [g(x) for x in [1, 2, 3]][1]
+print(v)
+print(len([g(x) for x in [1, 2, 3]]) + [g(x) for x in [1, 2, 3]][1])
+print([g(x) for x in [1, 2, 3]][1] == 4)
+print([h(x) for x in [1, 2, 3]][1] == 4)
+print([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])
+print([[g(y) for y in [1, 2]] for x in [1, 2]][-1][0])
+print({h(x): 1 for x in [1, 2]}[2])
+print({h(x): h(x) for x in [1, 2]}[2])
+xs = [1, 2, 3]
+print([g(x) for x in xs][2])
+print([g(x) for x in range(3)][1])
+try:
+    print([g(x) for x in [1, 2, 3]][7])
+except IndexError as e:
+    print("caught", e)
+try:
+    print([g(x) for x in [1, 2, 3]][-9])
+except IndexError as e:
+    print("caught", e)
+try:
+    print({h(x): 1 for x in [1, 2]}[3])
+except KeyError as e:
+    print("caught", e)
+try:
+    print([h(x) for x in [1, 2]][1.5])
+except TypeError as e:
+    print("caught", e)
+try:
+    print({h(x) for x in [1, 2]}[0])
+except TypeError as e:
+    print("caught", e)
+print([x * 2 for x in [1, 2, 3]][1])

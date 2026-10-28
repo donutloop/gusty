@@ -1025,12 +1025,33 @@ slot is written (**ADR 0181**, **ADR 0347**, **ADR 0443**). Without that root th
 (`4`, `6`, `4`, `6`) rather than three, at the exit code of success, and a loop that mints a comprehension per
 iteration would fill the arena.
 
+The same object now stands UNDER A SUBSCRIPT too (**ADR 0444**). The fold's comprehension keeps the global answer;
+a comprehension the run time built is read by the door that reads a container variable's slot — `rt_list_len`,
+`rt_get_elem` and `rt_tag_of` for a list, the keyed doors for a dict — so the slot the builder wrote is the slot
+the program reads:
+
+```
+def g(v):
+    return v * 2
+print([g(x) for x in [1, 2, 3]][1])             # 4   (this raised IndexError against an empty fold table)
+print([g(x) for x in [1, 2, 3]][-1])            # 6   (negative positions are the object's positions)
+print([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])   # 4
+print({g(x): 1 for x in [1, 2]}[2])             # 1   (a built dict hashes its key and raises KeyError if absent)
+print({g(x) for x in [1, 2]}[0])                # TypeError: 'set' object is not subscriptable
+print([x * 2 for x in [1, 2, 3]][1])            # 4   (the fold's answer, still the global the fold filled)
+```
+
+A built set gets the reference's raise, not the documented set-slot membership answer: the brace says there are no
+positions to read. The subscript door does not decide the element's kind — the tag road still owes that — so an
+answer that is text, float, `None` or a container may print the payload where the reference prints the value
+(**Gap R.502**).
+
 What the object does not yet carry is its ELEMENT'S kind: a comprehension the run time builds over an iterable of
 more than one kind prints the payload — `for v in [g(x) for x in [1, "a", 2.5, None]]:` writes `1`, `0`, `1`, `0`
 where the reference writes `1`, `a`, `2.5`, `None` (**Gap R.502**), and handing such an item to a call is refused
 for want of the tag a one-word position cannot carry (**Gap R.146**, where the same program used to reach `llc`).
-Two further shapes of that same object are still owed: a subscript of it reads a slot the builder never filled
-(**Gap R.501**), and `bool` of a container VARIABLE or a spelled-out literal still refuses in **Gap R.131**'s words.
+One further shape of that same object is still owed: `bool` of a container VARIABLE or a spelled-out literal still
+refuses in **Gap R.131**'s words.
 
 Three further shapes are still owed: a subscript of a read out of a comprehension still refuses
 (**Gap R.495**), and an element that reads a verdict, a double or the void out of a container the fold answered is
@@ -1060,10 +1081,11 @@ A comprehension is not a KEY: a dict or set literal whose key is one is declined
 string, int, bool, or float expression` — because the interned key a hashed container needs is what **L11.1**
 refuses to invent, and the sentence names the expression by what it is (`a list comprehension`, never a Go node
 name: **Gap R.232**/**Gap R.249**'s rule, applied to a node no one had asked). What the same construct still gets
-wrong at the doors **ADR 0439** did not open is filed, not smoothed over: a comprehension as the LOOP head, as a
-truth test or inside `bool()` reaches the assembler with a global in an operand position and exits **2** (**Gap
-R.490**), a comprehension whose iterable is a container of containers raises `IndexError` instead of answering
-(**Gap R.491**), and a set literal accepts a member a comprehension built where the reference refuses to hash it
+wrong at the doors **ADR 0439** did not open was filed, not smoothed over: a comprehension as the LOOP head, as a
+truth test or inside `bool()` reached the assembler with a global in an operand position and exited **2** (**Gap
+R.490**, paid by **ADR 0443**), a comprehension whose iterable is a container of containers raised `IndexError`
+instead of answering (**Gap R.491**, paid by **ADR 0444**), and a set literal accepts a member a comprehension built
+where the reference refuses to hash it
 (**Gap R.492**).
 
 ### Multi-argument range iterables (comprehensions)

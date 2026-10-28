@@ -16486,3 +16486,41 @@ the condition and `bool()` ask `rt_heap_len`.
     `buildCLI`, which shells out to `go build` without `-tags=llvm20`; the numbers it produced were close enough to the
     tagged build to be believable and wrong enough to have been filed as rows. Every measured byte now comes from a
     binary I built with the same tag the gate uses, or from a `go test -tags=llvm20` case that builds it itself.
+
+## ADR 0444 — a subscript standing on a comprehension the run time BUILDS asks the OBJECT for its slot (roadmap Gap R.501 closed; 2026-10-28)
+
+1. **A pair door's gate is a permission, not a hint.** My first attempt put every `*Comp` through
+   `runtimeSlotPairDeep` because the door could tell built from folded after lowering it. That is
+   backwards: a gate returns true only when the door is allowed to emit. The fix was a side-effect-free
+   `compTakesTheRuntimeRoad` predicate, mirroring `comp`'s own branch order before the pair road touches
+   the builder. This lets the built comprehension answer without materialising the fold's global just to
+   reject it.
+
+2. **The same object has a different question for each kind.** A list has a position, a dict has a key,
+   and a set has neither. The first cut let all three fall through to `containerSlotRead`, which meant
+   `print({g(x) for x in [1, 2]}[0])` returned `False` from the pair road and then died with the value
+   road's "not in set". The brace is a permission: a set brace standing under a subscript is the
+   reference's TypeError.
+
+3. **Record first, test second.** Several rows that worked in probes were not on the record, and the
+   unit/integration answer rows failed because a missing record is a failure by design. `tools/recmerge`
+   has to be run against exactly the source strings the tests will ask — including the blank line the
+   Go string carries — or the legs disagree for syntax rather than semantics.
+
+4. **Exit 3 is the program's raise, not a failure.** The compiled backend's trap convention differs
+   from CPython's exit 1, but the row's claim is the class and sentence: IndexError, KeyError, TypeError
+   and the catchability. The CLI test therefore checks stderr for `TypeError: 'set' object is not
+   subscriptable` and exit 3, while separately checking the live reference's final line.
+
+5. **A negative control must be pinned in the module, not just in prose.** Once the pair road handled
+   comprehensions generally, the folded `[x * 2 for x in [1, 2, 3]][1]` test began materializing a list and
+   using `rt_get_elem`. Reverting it with the gate predicate made it load from `@.lst1` again. The unit
+   and CLI tests now both assert folded `load … getelementptr({i32, [3 x i32]} … @.lst` and forbid
+   folded `call i32 @rt_get_elem(`. That is what keeps **ADR 0192** from being paid away in a future pass.
+
+6. **A fix can pay a neighbouring row before I have asked it to.** After the R.501 door opened, the suite failed a
+   filed-not-fixed row for **Gap R.491**: `print([[x for x in [[1]]][0], 2])` was answering `[[1], 2]`. That was not
+   a test bug; the same built-comprehension pair road had walked the iterable item the fold used to bind as an
+   index. The right response was to record the row, move it to the answering tables, and close **Gap R.491** in the
+   same ADR rather than narrow the door to make an old wrong answer come back. A filed row that starts passing is
+   evidence, not an inconvenient test failure.

@@ -1,5 +1,120 @@
 {
  "entries": {
+"# A subscript standing on a comprehension the RUN TIME BUILDS is read from the OBJECT that comprehension\n# built: `print([g(x) for x in [1, 2, 3]][1])` used to raise IndexError because the fold's count table was\n# empty, and `print({g(x) for x in [1, 2]}[0])` stopped the build instead of raising the set's own\n# TypeError (roadmap Gap R.501, ADR 0442's two-comprehensions-one-door rule, ADR 0443's brace for the kind).\ndef g(v):\n    return v * 2\n\ndef h(v):\n    return v\n\nprint([g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][0])\nprint([g(x) for x in [1, 2, 3]][-1])\nv = [g(x) for x in [1, 2, 3]][1]\nprint(v)\nprint(len([g(x) for x in [1, 2, 3]]) + [g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][1] == 4)\nprint([h(x) for x in [1, 2, 3]][1] == 4)\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][-1][0])\nprint({h(x): 1 for x in [1, 2]}[2])\nprint({h(x): h(x) for x in [1, 2]}[2])\nxs = [1, 2, 3]\nprint([g(x) for x in xs][2])\nprint([g(x) for x in range(3)][1])\ntry:\n    print([g(x) for x in [1, 2, 3]][7])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print([g(x) for x in [1, 2, 3]][-9])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x): 1 for x in [1, 2]}[3])\nexcept KeyError as e:\n    print(\"caught\", e)\ntry:\n    print([h(x) for x in [1, 2]][1.5])\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x) for x in [1, 2]}[0])\nexcept TypeError as e:\n    print(\"caught\", e)\nprint([x * 2 for x in [1, 2, 3]][1])\n": {
+    "stdout": "4\n2\n6\n4\n7\nTrue\nFalse\n4\n2\n1\n2\n6\n2\ncaught list index out of range\ncaught list index out of range\ncaught 3\ncaught list indices must be integers or slices, not float\ncaught 'set' object is not subscriptable\n4\n",
+    "hasStdout": true
+   },
+"print([[x for x in [[1]]][0], 2])": {
+    "stdout": "[[1], 2]\n",
+    "hasStdout": true
+   },
+"def g(v):\n    return v\n\nprint({g(x): g(x) for x in [1, 2]}[2])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\ntry:\n    print({g(x) for x in [1, 2]}[0])\nexcept TypeError as e:\n    print(\"caught\", e)": {
+    "stdout": "caught 'set' object is not subscriptable\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][-1][0])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][1] == 4)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in range(3)][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\ndef g(v):\n    return v * 2\n\nprint([g(x) for x in xs][2])": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, 2]][1.5])": {
+    "err": "TypeError: list indices must be integers or slices, not float",
+    "exnType": "TypeError",
+    "exnMsg": "list indices must be integers or slices, not float"
+   },
+
+"def g(v):\n    return v\n\nprint({g(x): 1 for x in [1, 2]}[3])": {
+    "err": "KeyError: 3",
+    "exnType": "KeyError",
+    "exnMsg": "3"
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][-9])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][7])": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, 2, 3]][1] == 4)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g(x) for x in [1, 2]}[0])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"def g(v):\n    return v\n\nprint({g(x): 1 for x in [1, 2]}[2])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\ntry:\n    print({g(x): 1 for x in [1, 2]}[3])\nexcept KeyError as e:\n    print(\"caught\", e)": {
+    "stdout": "caught 3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][-1])": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][0])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint([g(x) for x in [1, 2, 3]][1])": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nprint(len([g(x) for x in [1, 2, 3]]) + [g(x) for x in [1, 2, 3]][1])": {
+    "stdout": "7\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\ntry:\n    print([g(x) for x in [1, 2, 3]][7])\nexcept IndexError as e:\n    print(\"caught\", e)": {
+    "stdout": "caught list index out of range\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\n\nv = [g(x) for x in [1, 2, 3]][1]\nprint(v)": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
 "# A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked,\n# tested and measured as the OBJECT it is: `for v in [x for x in [1]]:` used to compare its counter with\n# the comprehension's compile-time global and die in `llc` at exit 2, `if [g(x) for x in [1,2,3]]:` died\n# the same way, and `print(bool([g(x) for x in [1,2,3]]))` printed `False` for `True` at the exit code of\n# success (roadmap Gap R.490 + Gap R.500, ADR 0443).\n#\n# The last four lines are the other half of the commit: an element that CALLS collects while the object that\n# will hold it is still half-filled, and an object whose handle lives only in a register is invisible to the\n# mark phase. `h` builds two lists per call and collects inside them, so the comprehension below is collected\n# over and over while it is being filled; unrooted, those two loops print `10`, `15`, `6` at the exit code of\n# success for the `2`, `4`, `6` the reference prints (ADR 0181, ADR 0347).\ndef g(v):\n    return v * 2\nfor v in [x for x in [1]]:\n    print(v)\nfor v in [g(x) for x in [1, 2, 3]]:\n    print(v)\nxs = [1, 2, 3]\nfor v in [g(x) for x in xs]:\n    print(v)\nfor v in [g(x) for x in [1, 2, 3] if g(x) \u003e 2]:\n    print(v)\nfor v in [g(x) for x in range(3)]:\n    print(v)\nfor v in {x for x in [3, 3, 4]}:\n    print(v)\nfor k in {x: 1 for x in [\"a\", \"b\"]}:\n    print(k)\nfor v in [x for x in [1, 2, 3]]:\n    if v == 2:\n        break\n    print(v)\nfor v in [x for x in [1, 2]]:\n    print(v)\nelse:\n    print(\"else ran\")\nfor v in [x for x in []]:\n    print(v)\nelse:\n    print(\"else ran\")\nif [x for x in [1]]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nif [g(x) for x in [1, 2, 3]]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nif [x for x in []]:\n    print(\"yes\")\nelse:\n    print(\"no\")\nprint(bool([x for x in [1]]))\nprint(bool([g(x) for x in [1, 2, 3]]))\nprint(bool([x for x in []]))\nprint(not [x for x in [1]])\nif [x for x in [1]] and [x for x in []]:\n    print(\"both\")\nelse:\n    print(\"not both\")\n\ndef h(v):\n    total = 0\n    for a in [v, v + 1, v + 2]:\n        total = total + len([a * b for b in [2, 3]])\n    return v * 2\nfor v in [h(x) for x in [1, 2, 3]]:\n    print(v)\nprint(bool([h(x) for x in [1, 2, 3]]))\n": {
     "stdout": "1\n2\n4\n6\n2\n4\n6\n4\n6\n0\n2\n4\n3\n4\na\nb\n1\n1\n2\nelse ran\nelse ran\nyes\nyes\nno\nTrue\nTrue\nFalse\nFalse\nnot both\n2\n4\n6\nTrue\n",
     "hasStdout": true

@@ -20895,13 +20895,13 @@ operand is a `@.` global — and assert the length helper is there instead. Meas
 `290aa59`: the folded loop and the folded condition moved from **exit 2** to the reference's bytes; the truth test
 and `bool()` over a BUILT comprehension moved from a wrong answer at **exit 0** with it.
 
-### Gap R.491 — a comprehension whose ITERABLE is a container of containers is answered with an index (⏳ OPEN, found by **ADR 0439**)
+### Gap R.491 — a comprehension whose ITERABLE is a container of containers is answered with an index (✅ DONE, found by **ADR 0439**, closed by **ADR 0444**)
 
 ```
 $ printf 'print([[x for x in [[1]]][0], 2])\n' | gustyc --file -  ; echo "exit=$?"
-Traceback (most recent call last):
-  File "prog", line 1, in <module>
-IndexError: list index out of range                                            exit=3
+    before: Traceback (most recent call last):
+            IndexError: list index out of range                                    exit=3
+    now:    [[1], 2]                                                                exit=0
 $ python3 -c 'print([[x for x in [[1]]][0], 2])'
 [[1], 2]
 ```
@@ -20913,9 +20913,12 @@ the reference binds the item `[1]`. The program then asks the element to index a
 and the raise it produces is the reference's class with the reference's message attached to a program the reference
 answers — the worst kind of green, because a `try:` around it would swallow it.
 
-The road the row points at already exists: `runtimeCompList` walks a heap list slot by slot with its tag, which is
-what `for v in <container>` has done since **ADR 0192**. What is missing is `compItems` saying "I cannot name
-these items" and the caller taking that as the route rather than as a refusal.
+The road the row pointed at already existed: `runtimeCompList` walks a heap list slot by slot with its tag, which is
+what `for v in <container>` has done since **ADR 0192**. **ADR 0444** supplied the last permission: the built
+comprehension’s object is admitted to the subscript’s pair road, so `[x for x in [[1]]][0]` reads the item that the
+runtime comprehension bound rather than the position the fold had given it. The closed row moved from
+`TestWhatTheContainerElementAndMemberDoorsStillOweIsFiledNotFixed` and its CLI twin into the answering rows of
+`pkg/lang/built_comp_subscript_test.go` and `integration/built_comp_subscript_test.go`.
 
 ### Gap R.492 — a set literal accepts a comprehension that builds an unhashable member (⏳ OPEN, found by **ADR 0439**)
 
@@ -21246,29 +21249,44 @@ measurement that keeps it a row rather than damage. That is also why every answe
 `pkg/lang/comp_loop_truth_test.go` walks an iterable of ONE kind: an answered row that quietly depends on a tag
 nobody writes is how a filed defect becomes a green test.
 
-### Gap R.501 — a subscript of a comprehension the run time builds reads a slot the builder never filled (⏳ OPEN, found by **ADR 0442**)
+### Gap R.501 — a subscript of a comprehension the run time builds reads a slot the builder never filled (✅ DONE, found by **ADR 0442**, closed by **ADR 0444**)
 
 ```
 $ gustyc --eval 'def g(v):
     return v * 2
 print([g(x) for x in [1, 2, 3]][1])'
-    IndexError: list index out of range                                              → exit 3
+    before: IndexError: list index out of range                                  → exit 3
+    now:    4                                                                      → exit 0
 $ python3   (same source)                             reference: 4
 ```
 
 The base is a container the run time built, so the fold cannot answer it and the pair door owns the read — and
-`runtimeSlotPairDeep` has an arm for a container a NAME holds and for a container a CALL answers and none for a
-container a BUILT COMPREHENSION answers. The subscript road therefore goes in with a payload where it should go in with
-a `(payload, tag)` pair, meets the ordinary bounds check, and reports a position that is not there for an object it
-never asked for. The program dies of an accident it did not write, which is worse than a refusal: it looks like the
-author's bug.
+`runtimeSlotPairDeep` had an arm for a container a NAME holds and for a container a CALL answers and none for a
+container a BUILT COMPREHENSION answers. The subscript road therefore went in with a payload where it should go in
+with a `(payload, tag)` pair, met the ordinary bounds check against the fold's empty count, and reported a position
+that is not there for an object it never asked for. The program died of an accident it did not write, which is worse
+than a refusal: it looks like the author's bug.
 
-`containerHandleOf`'s `*Comp` case is where the handle lives — the same arm **Gap R.495** needs for the FOLDED base and
-**ADR 0439** needed for the slot doors — so the two rows are the same hand-off asked at two bases, and they are filed
-apart because the two bases take different roads to get there (`[[x for x in [1]][0][0]` refuses at exit 1; this one
-traps at exit 3). Pinned with today's bytes at both legs, including the `trap`/`trap3` kinds the filed tables grew for
-exactly this shape: a program that RUNS and raises what the reference does not raise is neither an exit-0 answer nor a
-build that never finished, and a filed table that can only say "it broke" cannot pin it.
+**ADR 0444** made the subscript road ask the same question **ADR 0442** made `len` ask: who built this object? The
+value road’s built `*Comp` arm now calls `compContainerKind` and `containerSlotRead`; the pair road’s bottom chain
+learnt the same base; and `subscriptPairOf` asks that door after the existing subscript-pair arms. A built list is
+measured with `rt_list_len` and read with `rt_get_elem`/`rt_tag_of`; a built dict uses the keyed doors and its
+reference `KeyError`; a built set emits `TypeError: 'set' object is not subscriptable`, not the slot-extension
+membership answer and not a refusal. The fold’s road remains the fold’s road, asserted by the module negative
+control: `[x * 2 for x in [1, 2, 3]][1]` still loads from `@.lst1` and must not carry the built road’s
+`rt_get_elem`.
+
+The deciding predicate had to be side-effect-free. The first draft admitted every comprehension to the pair road and
+let `containerHandleOf` discover builtness by lowering it, which made the folded control allocate a list and read
+its slots before the door declined it. `compTakesTheRuntimeRoad` now mirrors `comp`’s own branch order without
+emitting, and the real `rtComps` record remains the final authority once a builder has run. This is **ADR 0249**’s
+gate/door rule and **ADR 0430**’s “ask, then maybe refuse” lesson in one place.
+
+The residue stays filed: **Gap R.502** owns the element’s kind word, so mixed built comprehensions over strings,
+floats, `None` and containers still print payloads; **Gap R.495** owns the folded-base hand-off; **Gap R.217** owns
+a set *variable’s* raise. The closed rows left `TestWhatTheCountDoorStillOwesIsFiledNotFixed` and its CLI twin and
+were replaced by the answering tables in `pkg/lang/built_comp_subscript_test.go` and
+`integration/built_comp_subscript_test.go`.
 
 ### Gap R.497 — a `def` inside a `try:` block emits its body into the enclosing block, and `llc` rejects the module (⏳ OPEN, found by **ADR 0441**)
 

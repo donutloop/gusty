@@ -1309,3 +1309,62 @@ func (g *irGen) rangeBounds(b *strings.Builder, iter Expr) (string, string, stri
 	}
 	return "0", hi, "1", nil
 }
+
+// compTakesTheRuntimeRoad is the pair doors' side-effect-free version of the choice `comp` makes: does
+// this comprehension's answer live in a heap object a builder filled, or in the global the fold filled?
+// **ADR 0442** asked the question once the builder had run (for `len`), and **ADR 0443** asked it of the
+// loop, condition and `bool()` with a handle in hand. A subscript's pair road has to choose before it may
+// emit anything, because a door that declines owes the module no instruction; asking `containerHandleOf`
+// first would materialise a folded global's object just to discover the fold owned it (roadmap
+// **Gap R.501**, **ADR 0249**'s gate/door rule).
+//
+// It deliberately mirrors the first lines of `comp`, not a guess: a literal that asks for the tagged loop,
+// a real iterable, or an element/key/value/filter the folder cannot see belongs to the builder; everything
+// the fold can name belongs to the global. If the two ever disagree, the actual `rtComps` record wins as
+// soon as a builder has filled it, and the pair road's second question keeps it from answering for a fold
+// the road's own record does not claim.
+func (g *irGen) compTakesTheRuntimeRoad(c *Comp) bool {
+	if c == nil || c.ForVar == nil {
+		return false
+	}
+	switch c.Kind {
+	case CompList, CompSet, CompDict:
+	default:
+		return false
+	}
+	if g.rtComps[c] {
+		return true
+	}
+	if !compIsSingleClause(c) {
+		_, _, folded := g.nestedCompFold(c)
+		return !folded
+	}
+	if ll, ok := c.Iter.(*ListLit); ok && compLiteralAsksForTheTaggedLoop(ll) {
+		return true
+	}
+	iterStatic := false
+	switch c.Iter.(type) {
+	case *ListLit:
+		iterStatic = true
+	case *Call:
+		iterStatic = compIterIsStaticRange(c.Iter)
+	}
+	iterKind := containerKindFromTy(exprTyName(c.Iter))
+	if !iterStatic && (g.isContainerExpr(c.Iter) || iterKind == "list" || isCallExpr(c.Iter) ||
+		(c.Kind != CompList && (iterKind == "set" || iterKind == "dict"))) {
+		return true
+	}
+	items, itemExprs, err := g.compItems(c)
+	if err != nil {
+		return false
+	}
+	switch c.Kind {
+	case CompList:
+		return !g.comprehensionFolds(c, items, itemExprs)
+	case CompSet:
+		return !g.setCompFolds(c, items, itemExprs)
+	case CompDict:
+		return !g.dictCompFolds(c, items, itemExprs)
+	}
+	return false
+}

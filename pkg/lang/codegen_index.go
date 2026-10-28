@@ -887,12 +887,40 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 		//   - list: positional GEP+load into {i32, [n x i32]}.
 		//   - set:  membership test against the folded elements.
 		//   - dict: constant key lookup against the folded key/value pairs.
+		name, err := g.comp(b, obj)
+		if err != nil {
+			return "", err
+		}
+		if g.rtComps[obj] {
+			// TWO comprehensions, one door — the rule **ADR 0442** wrote for `len`, asked at the SUBSCRIPT
+			// (roadmap **Gap R.501**). A comprehension the FOLD answered is the unrolled global below, whose count
+			// and slots this pass can read. A comprehension the RUN time BUILDS is a heap object in a register:
+			// there is no global, `g.compLen`/`g.compKeys`/`g.compEls` hold nothing, and the constant road below
+			// bounds-checked the position against a count of ZERO — so `print([g(x) for x in [1, 2, 3]][1])` died
+			// with `IndexError: list index out of range` at exit **3** for the reference's `4`, and every element
+			// of a built comprehension was out of range. The read is the one a container VARIABLE gets
+			// (**ADR 0334**'s call-result arm, **ADR 0241**'s pair): the object answers its own length, its slot,
+			// and the tag beside it, and the program's own accident (a position past the end) is the error that
+			// arrives (**ADR 0188**'s rule about what may sit in an operand, **ADR 0443**'s brace for the kind).
+			kind, okKind := compContainerKind(obj)
+			if !okKind {
+				return "", fmt.Errorf("index of a comprehension the run time builds needs the kind its brace states (roadmap Gap R.501)")
+			}
+			if kind == "set" {
+				// The brace is the answer: a set has no position, and the program that wrote one gets the
+				// reference's raise rather than a compiler refusal or a membership answer borrowed from the
+				// slot-extension road (roadmap Gap R.501, Gap R.217's sentence for this spelling).
+				g.constantTrap(b, "TypeError", notSubscriptableSentence("set"), n.Span())
+				return "0", nil
+			}
+			v, _, okRead := g.containerSlotRead(b, name, kind, n.Idx, n.Span())
+			if !okRead {
+				return "", fmt.Errorf("index of a comprehension the run time builds could not be read from the object it built (roadmap Gap R.501)")
+			}
+			return v, nil
+		}
 		switch obj.Kind {
 		case CompList:
-			name, err := g.comp(b, obj)
-			if err != nil {
-				return "", err
-			}
 			n := g.compLen[obj]
 			key = normPosIndex(key, int64(n))
 			if key < 0 || key >= int64(n) {
@@ -904,11 +932,8 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 			return v, nil
 		case CompSet:
 			// set membership: `s[key]` returns the element if present,
-			// otherwise errors (interpreter semantics). comp() populates
-			// compEls and emits the set global.
-			if _, err := g.comp(b, obj); err != nil {
-				return "", err
-			}
+			// otherwise errors (interpreter semantics). comp() above populated
+			// compEls and emitted the set global.
 			for _, el := range g.compEls[obj] {
 				if el == key {
 					return fmt.Sprintf("%d", key), nil
@@ -917,10 +942,7 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 			return "", fmt.Errorf("not in set")
 		case CompDict:
 			// dict lookup: `d[key]` returns the mapped value, else errors.
-			// comp() populates compKeys/compEls and emits the dict global.
-			if _, err := g.comp(b, obj); err != nil {
-				return "", err
-			}
+			// comp() above populated compKeys/compEls and emitted the dict global.
 			for i, k := range g.compKeys[obj] {
 				if k == key {
 					return fmt.Sprintf("%d", g.compEls[obj][i]), nil

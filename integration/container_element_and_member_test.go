@@ -5,10 +5,12 @@ import (
 	"testing"
 )
 
-// The shapes ADR 0437 measured and filed, at the command line (roadmap Gaps R.485, R.490, R.491, R.492 — its
-// R.486 half is paid by **ADR 0438** and answers in `integration/named_container_element_test.go`, and its
+// The shapes ADR 0437 measured and filed, at the command line (roadmap Gaps R.485, R.492; its
+// R.486 half is paid by **ADR 0438** and answers in `integration/named_container_element_test.go`, its
 // R.487/R.488 halves are paid by **ADR 0439** and answer in
-// `integration/comprehension_element_test.go`). Each row is the compiled backend's answer beside a live
+// `integration/comprehension_element_test.go`, its R.490/R.500 halves are paid by **ADR 0443** and answer in
+// `integration/comp_loop_truth_test.go`, and its R.491 half is paid by **ADR 0444** and answers in
+// `integration/built_comp_subscript_test.go`). Each row is the compiled backend's answer beside a live
 // CPython's, in one case, and the exit code is asserted rather than inferred — these are rows whose wrongness
 // is that they exit **0**, and the ones whose wrongness is that they exit **2** (ADR 0166's own-bug code) are
 // pinned at 2 so that the day they become a wrong number at 0, this case says so.
@@ -33,16 +35,11 @@ func TestWhatTheContainerElementAndMemberDoorsOweAtTheCLI(t *testing.T) {
 		// (`TestTheLoopWalksAComprehensionThroughTheCLI`, `TestTheConditionAndBoolAskAComprehensionThroughTheCLI`)
 		// with exit 2 forbidden on every row. The same three doors over a comprehension the run time BUILDS were
 		// **Gap R.500**, answered by the same commit.
-		{
-			// The item door names an integer literal or a `range` and nothing else, so a comprehension over a
-			// container of containers is answered with an index and the program raises what the reference prints.
-			name:      "a comprehension over a container of containers raises where the reference answers",
-			src:       "print([[x for x in [[1]]][0], 2])\n",
-			wantErr:   "IndexError: list index out of range",
-			wantCode:  3,
-			reference: "[[1], 2]",
-			row:       "Gap R.491",
-		},
+		//
+		// **Gap R.491**'s container-of-containers row MOVED with **ADR 0444**: the comprehension now walks the
+		// object its iterable built, the subscript reads the bound item through the pair road, and the same
+		// program is asserted beside a live `python3` in
+		// `integration/built_comp_subscript_test.go::TestASubscriptOfABuiltComprehensionThroughTheCLI`.
 		{
 			name:      "a set literal accepts a list member",
 			src:       "print({[1], [2]})\n",

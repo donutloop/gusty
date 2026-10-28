@@ -27,13 +27,14 @@
 //     **Gap R.490** because the fix there is the handle at those doors, not another arm on the deciding side
 //     (measured: giving `isContainerExpr`/`staticContainerKind` the `*Comp` arm leaves the same three modules
 //     rejected, so an arm alone is not what that door owes); and
-//   - the comprehension whose ITERABLE is a container of containers, which the item door cannot name and the
-//     fold answers with an index: `print([[x for x in [[1]]][0], 2])` raises `IndexError` where the reference
-//     prints `[[1], 2]` (**Gap R.491**).
+//   - the comprehension whose ITERABLE is a container of containers, which the item door could not name and
+//     the fold used to answer with an index: `print([[x for x in [[1]]][0], 2])` once raised `IndexError` where
+//     the reference prints `[[1], 2]` (**Gap R.491**). It is answered by **ADR 0444**'s built-comprehension
+//     subscript door and asserted in `pkg/lang/built_comp_subscript_test.go` / its CLI twin.
 //
-// None of these sources is on the record, and `tools/recmerge` refuses each: the compiled leg's bytes are not
-// the reference's, which is the recorder's cross-check earning its keep and the reason a row exists rather
-// than a record.
+// The sources still filed here are not on the record, and `tools/recmerge` refuses each: the compiled leg's
+// bytes are not the reference's, which is the recorder's cross-check earning its keep and the reason a row
+// exists rather than a record.
 package lang
 
 import (
@@ -69,16 +70,11 @@ func containerElementFiledRows() []struct {
 		// instruction (`icmp slt i32 %_ctr … @.`) pinned ABSENT by
 		// `TestNoModuleComparesALoopCounterWithAComprehensionGlobal`. The same three doors over a comprehension the
 		// run time BUILDS were **Gap R.500**, answered by the same commit.
-		{
-			// The item door names an integer literal or a `range`, and nothing else; a container of
-			// containers is answered with an index instead of an item.
-			name:      "a comprehension over a container of containers raises where the reference answers",
-			src:       "print([[x for x in [[1]]][0], 2])\n",
-			kind:      "trap",
-			today:     "TRAPPED: IndexError: list index out of range",
-			reference: "[[1], 2]",
-			row:       "Gap R.491 (the comprehension's items, asked of a container the fold cannot hold)",
-		},
+		//
+		// **Gap R.491**'s container-of-containers row MOVED with **ADR 0444**: the item is now the object the
+		// runtime comprehension bound, the subscript reads it through the pair road, and the row is asserted in
+		// `pkg/lang/built_comp_subscript_test.go::TestASubscriptOfABuiltComprehensionAsksTheObject` and
+		// `integration/built_comp_subscript_test.go::TestASubscriptOfABuiltComprehensionThroughTheCLI`.
 	}
 }
 

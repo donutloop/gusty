@@ -3753,6 +3753,21 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **A subscript standing on a comprehension the RUN TIME BUILDS asks the OBJECT for the slot (**Gap R.501**, **ADR 0444**)** —
+  `def g(v):` / `    return v * 2` / `print([g(x) for x in [1, 2, 3]][1])` raised `IndexError: list index out of range`
+  for the reference's `4`, and `print({g(x) for x in [1, 2]}[0])` stopped the build instead of raising the set's
+  `TypeError: 'set' object is not subscriptable`. **ADR 0442** gave `len`, **ADR 0443** gave the loop, condition and
+  `bool()` — the subscript was the sibling door still consulting the fold's empty table for the object a builder
+  filled. The fix is the same two-comprehensions-one-door rule, with a side-effect-free deciding predicate
+  (`compTakesTheRuntimeRoad`) mirroring `comp`'s own choice before the pair road may emit an instruction. Built lists
+  use `rt_list_len` + `rt_get_elem` + `rt_tag_of`; built dicts use the keyed doors; negative positions, missing keys
+  and the wrong key kind raise the program's own accidents; built sets raise the set's TypeError. The fold's control
+  still loads `getelementptr({i32, [3 x i32]}, …)` and is asserted NOT to acquire the built road's `rt_get_elem`.
+  Fourteen unit answer rows, five trap rows with both compiled/record legs, nineteen CLI rows against live `python3`, and
+  `integration/programs/built_comp_subscript.gy` joined the matrix as a `match` row. The same door paid the filed
+  **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
+  the reference’s class against a position the fold invented.
+
 - **A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked, tested and
   measured as the OBJECT (Gap R.490 + Gap R.500, **ADR 0443**)** — three programs, one missing question.
   `for v in [x for x in [1]]:` and `if [g(x) for x in [1, 2, 3]]:` died with `llc-20: global variable reference must

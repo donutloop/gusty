@@ -4147,6 +4147,42 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 		}
 		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 	}
+	if c, isComp := ix.Obj.(*Comp); isComp {
+		// TWO comprehensions, one door. A comprehension the FOLD answered remains the fold's answer; this arm
+		// is for the comprehension the RUN TIME BUILT, which has no global and no count table and therefore must
+		// be read from the object (**ADR 0442**'s rule, asked here at **Gap R.501**'s subscript).
+		if !g.compTakesTheRuntimeRoad(c) {
+			return "", "", false
+		}
+		// The bottom of the chain is a COMPREHENSION the builder filled. `containerHandleOf` hands back the
+		// register that builder made (**ADR 0439**), the comprehension's OWN brace names the kind
+		// (**ADR 0443**'s `compContainerKind`, because that door answers `""` for a slot read where only the tag
+		// knows), and `rt_get_elem`/`rt_tag_of` ask the object. Before this arm neither altitude answered:
+		// `print([g(x) for x in [1, 2, 3]][1])` died with `IndexError: list index out of range` at exit **3**
+		// for the reference's `4` — the payload of a slot the fold's global never filled, checked against a
+		// count that was not there (**roadmap Gap R.501**; **ADR 0442**'s count door and **ADR 0334**'s
+		// call-result arm are the neighbours this copies).
+		h, kind, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		if kind == "" {
+			k, isK := compContainerKind(c)
+			if !isK {
+				return "", "", false
+			}
+			kind = k
+		}
+		// A set has no position to read: the reference raises `TypeError: 'set' object is not subscriptable`.
+		// The pair road therefore declines the shape and leaves it to the subscript door, which emits that
+		// raise; letting `containerSlotRead` answer the documented gusty set-membership extension here would
+		// turn a reference raise into an answer the program never asked for (**roadmap Gap R.501**,
+		// **ADR 0328**'s separation of the set's own question from a list or dict slot).
+		if kind == "set" {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
 	base, baseTag, okBase := g.runtimeSlotPairDeep(b, ix.Obj)
 	if !okBase {
 		return "", "", false
@@ -4212,6 +4248,14 @@ func (g *irGen) runtimeContainerSide(e Expr) bool {
 		}
 		_, ok := g.containerAnswerOf(nm.Value)
 		return ok && g.containerAnswerCallIsCarriable(n)
+	case *Comp:
+		// The RUN TIME's comprehension owns the object: its elements are slots of the heap object a builder
+		// filled (**ADR 0439**), and its length is a word inside that object rather than a count the fold
+		// recorded (**ADR 0442**). The fold's comprehension is not this gate's object — it keeps the global
+		// answer and the fold's own doors (**ADR 0192**), so widening the pair road here would move the fold
+		// onto a runtime read this row does not owe (roadmap **Gap R.501**). The door below asks the same
+		// predicate again (**ADR 0249**'s gate/door rule), so the two can only disagree in the safe direction.
+		return g.compTakesTheRuntimeRoad(n)
 	}
 	return false
 }
