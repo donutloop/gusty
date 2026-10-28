@@ -335,6 +335,28 @@ func (p *parser) parseStmt() (Stmt, error) {
 		p.next()
 		return &PassStmt{Src: t.Span}, nil
 	}
+	// `global a, b` — the declaration that the names a body writes are the MODULE's (roadmap
+	// Gap R.48, ADR 0448). The list is comma-separated like the reference's, and an empty list is
+	// the program's error, said in words that name what is missing rather than what node is bare.
+	if t.IsKeyword("global") {
+		sp := t.Span
+		p.next()
+		var names []*Name
+		for {
+			if p.peek().Kind != TokIdent {
+				return nil, p.errorf(p.peek(), "`global` names nothing; write `global name` or `global a, b`")
+			}
+			nm := &Name{Value: p.peek().Text, Src: p.peek().Span}
+			p.next()
+			names = append(names, nm)
+			if p.peek().IsOp(",") {
+				p.next()
+				continue
+			}
+			break
+		}
+		return &GlobalStmt{Names: names, Src: sp}, nil
+	}
 	// expression / assignment
 	return p.parseExprOrAssign()
 }

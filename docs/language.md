@@ -681,6 +681,75 @@ is `1e+20`. In the AOT backend this is `@rt_fmt_double` (a `snprintf` precision
 ladder checked against `strtod`, then the `.0`), because `%g` truncates digits and
 `%.17g` invents them.
 
+### `global name[, name...]` — a body writes the MODULE's name (Gap R.48, ADR 0448)
+
+`global` is a declaration, not an assignment. It says: the names on this line are NOT locals of this
+body — read them and write them where the module keeps them.
+
+```gusty
+count = 0
+
+def bump():
+    global count
+    count = count + 1
+
+bump()
+bump()
+print(count)          # 2
+```
+
+Without the declaration the same body owns a local called `count`, reads it before it is written, and
+never touches the module's binding — which is what Python means too, and what every other statement in
+this language already does (**ADR 0220**: a body's bindings are its own). The declaration is the single
+exception the reference makes, so it is the single exception here: the statement emits nothing where it
+is written, and its whole effect is which slot the OTHER statements of that body write. Storage is
+**ADR 0227**'s — the same `@gy_mod_<name>` global the module's own assignments keep — so a declared name
+is one object shared by the module and every body that declares it, and `print(logged(), logged(), calls)`
+reads the very word the calls bumped.
+
+What a declared name answers, out of the module's one word: **a number**, **a verdict**, **the void**. The shapes
+that ship are the ordinary ones — the counter a helper bumps,
+the accumulator a `for` fills, the countdown a `while` runs, the flag a branch sets, one declaration
+naming several (`global a, b`), the name a METHOD writes, a nested body reaching the module rather than
+its enclosing frame, and a name the module never bound that only a body ever wrote:
+
+```gusty
+def make_ready():
+    global status
+    status = 1        # the module never bound this name
+
+make_ready()
+print(status)         # 1
+```
+
+A body that only READS a module name needs no declaration — reads already find the module when the body
+does not own the name. A `global` written at module level is legal and means nothing, and the reference
+agrees.
+
+The checker asks the whole program, before anything runs, because the reference's refusals are
+`SyntaxError`s and a `SyntaxError` does not wait for the call. Four shapes stop the build, each with the
+reference's own sentence inside the diagnostic:
+
+| program | the reference | this backend |
+|---|---|---|
+| `def f(x):` / `    global x` | `SyntaxError: name 'x' is parameter and global` | exit 1, same words |
+| `def f():` / `    print(x)` / `    global x` | `SyntaxError: name 'x' is used prior to global declaration` (a READ above the line) | exit 1, same words |
+| `def f():` / `    x = 1` / `    global x` | `SyntaxError: name 'x' is assigned to before global declaration` (a BINDING above the line) | exit 1, same words |
+| `def f():` / `    global z` / `    return z` (nothing ever writes `z`) | `NameError` at the read, **exit 3**, catchable | exit 1 before the program runs — **Gap R.513** |
+
+Three more stop the build because the answer would be a handle printed as a number: a declared global
+whose writes spell **two kinds** (`reg = 0` then `reg = [1, 2]` would print `0`), one whose kind the
+module's int-sized word cannot carry — a **text** a body writes (`word = ""` then `word = "ready"` would
+print the intern table's index, and a text the module never bound at all refuses the same way), a
+fractional number, any container — and one declared in a
+**class body** (where **ADR 0418** keeps what a body binds as a member and the reference rebinds module
+scope). Those are **Gap R.512** (waiting on **L11.1**'s tagged value word) and **Gap R.511**; an unwritten
+global that should RAISE rather than refuse is **Gap R.513**. A `global` whose only write sits behind a
+branch the program never takes (`if 0:` / `gz = 1` / `return gz`) is refused too — a guarded write is a
+write that may never happen, and answering `0` for it is **Gap R.22**. Reading a module text from a body
+that does NOT declare it (`word = "hi"` at module scope, `def f(): return word`) is answered: the refusal
+is about a body WRITING a text into the module's one-word slot.
+
 ### Expression statements
 
 Any expression on its own line.

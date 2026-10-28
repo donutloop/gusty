@@ -1,11 +1,13 @@
-# There is no `global` statement (roadmap Gap R.48, found by ADR 0228's probe pass).
+# There is a `global` statement (roadmap Gap R.48, closed by ADR 0448) — and this program is still a refusal.
 #
-# CPython reads `global gz` as a declaration, so the read below is a NameError for a module name that
-# was never bound. gusty has no such statement: the interpreter parses `global gz` as an expression
-# and reports `name 'global' is not defined`, and the compiled backend refuses the program. Three
-# engines, three answers -- and the two that are "wrong" are wrong in ways a Python reader will not
-# predict. The fix is the statement: declare the names a body means to write in the module, and make
-# reads and writes go to module state (@gy_mod_* the way ADR 0227 already stores it).
+# What changed: `global gz` used to lex as an ordinary name, so the line parsed as the EXPRESSION `global gz`
+# and the resolver answered `undefined name "global"`. It is a keyword now, the declaration means what Python
+# means by it, and reads and writes of a declared name go to the module's own `@gy_mod_<name>` storage (ADR
+# 0227). What did not change: this program's answer is still "no answer". The only write to `gz` sits behind
+# `if 0:`, so the `return gz` below reads a module name nothing ever bound — CPython dies there with
+# `NameError: name 'gz' is not defined`, and this backend stops the build with the same sentence inside its
+# own refusal rather than answering 0 from an unwritten slot (Gap R.22's signature). The raise, with its
+# traceback, is what roadmap Gap R.513 owns; the refusal, at exit 1, is what this row ships.
 
 
 def touch():

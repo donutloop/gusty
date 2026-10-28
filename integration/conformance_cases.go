@@ -123,6 +123,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// words, `print([C()])` printed the handle, and `print(f"{C()}")` printed the intern table's index
 		// (roadmap row **L12.3**, **Gap R.55**, **ADR 0447**).
 		"class_render",
+		// The `global` statement: a body that DECLARES a name writes the module's binding and the module
+		// reads what the body wrote — the counter a helper bumps, the accumulator a loop body fills, the flag
+		// a branch sets, the name a method writes. `global` lexed as an ordinary name and the resolver
+		// answered `undefined name "global"`, so the whole family was unwritable (roadmap **Gap R.48**,
+		// **ADR 0448**).
+		"global_statement",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

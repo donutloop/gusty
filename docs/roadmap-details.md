@@ -2987,7 +2987,8 @@ refusal tables were emptied into CPython-checked answer tables. A pinned refusal
 the future: when the gap closes, the pin has to move.
 
 <a id="gap-r-48"></a>
-### R.48 — there is no `global` statement (OPEN, language surface)
+<a id="gap-r-48"></a>
+### R.48 — there is no `global` statement (✅ CLOSED by **ADR 0448**, language surface)
 
 ```gusty
 def touch():
@@ -3011,6 +3012,43 @@ statement itself: a declaration that routes reads and writes of the named entrie
 is exactly the `@gy_mod_<name>` storage ADR 0227 already built for rebound module scalars, so the
 machinery is there and only the surface is missing. The checker side needs the mirror rule of ADR 0228's
 `seedLocalsFromBody`: a `global` name is *not* a local of the frame, whatever the body assigns.
+
+**Closed by ADR 0448 (2026-10-29).** `global` became a keyword (`TokGlobal` / `GlobalStmt` /
+`parseGlobalStmt`, printed by `fmt.go`) and the declaration was implemented as what it is — a decision
+about which table a name belongs to — rather than as a third storage: `enterBody` records a body's
+declarations (`globalDeclsIn`) and DELETES those names from `funcLocals`, so the read road and the store
+road both fall through to the `@gy_mod_<name>` slot **ADR 0227** already built, and no new arm was added
+to either. That choice is what the IR-shape row tests: a body that never declares a name gets NO module
+storage for it (the frame slot is the rule, the declaration the one exception), and a body that does
+writes the module's own slot rather than keeping an unread word behind it (**ADR 0351**'s defect, asked
+from the declaration side).
+
+Two measurements decided the shape of the checker. The first is that the reference's refusals are
+**compile-time** — `def f(x): global x` and `def f(): print(x); global x` are `SyntaxError`s even when
+nothing calls `f` — so the checker is a whole-program walk run from `GenerateIRReport`, not an emit-time
+pass, and `TestTheGlobalCheckerAsksTheBodiesNobodyCalls` fails if it ever becomes one. The second is that
+a draft which ordered a body's statements by LINE refused four programs the reference answers (`while`,
+a countdown, a read-only body, a global-then-local body) while telling the reader each was "used prior to
+global declaration", at "line 0": this parser leaves many statement spans at zero, so the ordering rule
+is a **document-order** walk (`globalUsedPriorToDecl` with `noteNames` / `scanExprForPriorRead`) and a
+line number appears in the sentence only when the parser knew it — **Gap R.116**'s rule, applied before
+it was needed rather than after.
+
+The second half of the row is what the row does NOT answer, because a `global` is a module binding and a
+module binding is one int-sized word: the five refusals are a class-body declaration (**Gap R.511**), a
+name whose writes spell two kinds and a name whose kind the word cannot carry — a text, a fractional
+number, any container (**Gap R.512**, waiting on **L11.1**'s tagged word) — a name nothing ever writes,
+and a name a body reads before any statement at the top level wrote it, including a write the program
+GUARDS (`if 0:` / `gz = 1` / `return gz` is the probe this row was filed from, and an unwritten slot
+answering `0` is **Gap R.22**'s signature). The last two are refusals where the reference RAISES, which
+is honest and narrow at the same time, and the narrowing has its own row (**Gap R.513**).
+
+Witnesses: `programs/global_statement.gy` is a `match` row — ten prints, byte-identical to the reference,
+and the parent binary refuses it at exit 1 with `undefined name "global"`; 17 answer rows and 9 refusal
+rows in `pkg/lang/global_stmt_test.go` (compiled leg + record leg, and class + sentence + owning row);
+11 CLI rows plus a `cc` link-and-run row in `integration/global_statement_test.go`, each re-asking CPython
+inside the case; **18 record entries (10243 → 10261)** written by `tools/recmerge`, none refused; and the
+corpus — 268 programs, 2 moved, both of them this row's own.
 
 <a id="gap-r-30"></a>
 ### R.30 — the compiled backend truncated `//` toward zero (CLOSED, ADR 0216)
@@ -21752,3 +21790,104 @@ are each provable texts, resolving a `self.m()` callee with the `methodReturnsSt
 owns — behind a visited set, because a dunder that calls itself must not be proved, and a door that hangs the program
 is worse than a door that keeps the identity form. Until then the identity form answers, which is honest fallback
 (**ADR 0325**) rather than the `0` this row was created to close.
+
+<a id="gap-r-511"></a>
+### Gap R.511 — a `global` written in a CLASS BODY is refused where the reference rebinds module scope (⏳ OPEN, filed by **ADR 0448**)
+
+```gusty
+x = 0
+class A:
+    global x
+    x = 4
+
+print(x)
+```
+
+```
+$ gustyc --eval '…'                                     reference: 4
+gustyc: jit: codegen: `global x` written in a CLASS body: the reference rebinds MODULE scope
+        there, and this backend keeps what a body binds as a MEMBER of the class …
+```
+
+**ADR 0418** is the reason this is a refusal and not an answer. That decision is what makes
+`class A: X = 1` / `A.X` readable at all: the class road keeps a table of what a body bound, and the
+attribute read consults it. A declaration inside the same body points the write somewhere else — at the
+module — and the two roads then disagree in the one way a compiler must not: the member table would hold
+a value no statement wrote, and the module would hold one the class body wrote while the read asked the
+table. Measured, the first draft of this row answered `0` there, which is **Gap R.22**'s signature
+arriving through a declaration.
+
+The neighbour is **Gap R.505** (a class body cannot read its own earlier bindings): both are the same
+missing thing — a class body that sees two tables at once. The fix is one name-at-a-time rule inside the
+class-body lowering: a name the body declares goes to the module's slot and is NOT recorded as a member;
+every other name keeps ADR 0418's table. The witness is already written and already inverted:
+`TestTheGlobalCheckerRefusesWhatTheReferenceRefuses`'s row "a class body may not declare a name into the
+module" fails the build the day the row is paid, and the reference's `4` belongs in the answer table
+beside the other seventeen.
+
+<a id="gap-r-512"></a>
+### Gap R.512 — a declared global whose writes spell two kinds, or a kind the module's word cannot carry, is refused (⏳ OPEN, filed by **ADR 0448**, owner **L11.1**)
+
+```gusty
+reg = 0
+def f():
+    global reg
+    reg = [1, 2]
+
+f()
+print(reg)          # reference: [1, 2]
+```
+
+Three shapes, one root. `reg = 0` then `reg = [1, 2]` printed **`0`**; `word = ""` with a body writing
+`word = "ready"` printed the intern table's **index**; `TBD = None` with a body writing `TBD = 5` printed
+the void's word for the number. All three at **exit 0**, which is the aggravating part: the module's slot
+is **one int-sized word with no kind beside it** (**ADR 0227**'s shape, sufficient for the rebound scalar
+it was minted for), so a write of a second kind cannot be recorded, and a read answers whatever the FIRST
+kind said it was.
+
+The refusal fires from `globalFacts`, which walks every write of every declared name in document order and
+asks each one what it spells (`globalSpelledKind`, the same three-outcome reading the render door uses:
+provable-text, provable-non-text, unreadable). Two spelled kinds is a conflict; one kind the word cannot
+carry (`TagFloat`, the containers, or a text with a claim beside it) is uncarryable; an unspelled write
+makes no claim and no conflict, so a body writing a value the door cannot read is refused by the store
+road rather than by this one.
+
+The row is not this row's to fix. **L11.1** owns the tagged value word — the (payload, tag) pair **ADR
+0189**'s discipline demands, the same pair that already travels together through the mixed print road —
+and once a module slot carries a tag, every one of these three is an answer row, and the three refusal
+rows in `pkg/lang/global_stmt_test.go` / `integration/global_statement_test.go` (two kinds, a container, a
+text) become the promotion test.
+
+<a id="gap-r-513"></a>
+### Gap R.513 — an unwritten declared global is a compile-time refusal where the reference RAISES at the read (⏳ OPEN, filed by **ADR 0448**)
+
+```gusty
+def f():
+    global z
+    pass
+
+f()
+try:
+    print(z)
+except NameError:
+    print("unbound")        # reference: unbound
+```
+
+The reference runs this and dies at the `print` with `NameError: name 'z' is not defined` at **exit 3** —
+a trap, which means the program is allowed to catch it, and the `try` above does. This backend stops the
+build at **exit 1** with the reference's own sentence inside the diagnostic, so the handler never gets
+asked. That is the honest half of the rule and the narrow half at the same time, and both halves are worth
+saying separately.
+
+Honest, because the alternative was measured: an unwritten module slot answers `0`, which is **Gap R.22**'s
+signature and the exact class of wrong this repo refuses to ship — a program that prints a number for a
+name that has no value is worse than a build that stops. Narrow, because a refusal is not a raise: it
+cannot be caught, it happens before any of the program's side effects, and it turns a program with a
+handler into a program with a diagnostic.
+
+The fix is the module's **bound-flag discipline** — the same machinery **ADR 0227**'s rebound scalars need
+for a read-before-assignment at module scope: one flag per module global, set by the store road, tested by
+the read road, raising `NameError` with the frame the read stood in so the existing `try`/`except` unwind
+carries it. Then `probe_global_statement.gy` — the guarded write (`if 0:` / `gz = 1` / `return gz`), the
+program this whole row was filed from — runs, and its refusal rows in both test files become trap rows
+carrying the reference's class and sentence.

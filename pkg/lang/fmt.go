@@ -135,6 +135,20 @@ func writeStmt(sb *strings.Builder, st Stmt, depth int) {
 	case *PassStmt:
 		indent(sb, depth)
 		sb.WriteString("pass")
+	case *GlobalStmt:
+		// `global a, b` prints as it is written: the printer is the machine path for a source round-trip,
+		// and a declaration that printed nothing would silently drop a binding from the program (--emit-ast,
+		// roadmap Gap R.48 / ADR 0448).
+		indent(sb, depth)
+		sb.WriteString("global ")
+		for i, nm := range s.Names {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			if nm != nil {
+				sb.WriteString(nm.Value)
+			}
+		}
 	case *TypeAliasStmt:
 		indent(sb, depth)
 		sb.WriteString("type ")

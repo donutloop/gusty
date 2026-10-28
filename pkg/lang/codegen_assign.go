@@ -161,6 +161,12 @@ func (g *irGen) bindFloatValue(b *strings.Builder, name, fv string, hadSlot bool
 // `keepContainer` is the plain road's `rebindsContainer`: a binding that just took over a container slot
 // leaves the claim to the container roads.
 func (g *irGen) recordNoneAndBool(name string, rhs Expr, keepContainer bool) {
+	if g.globalNames[name] {
+		// The KIND claims below are the ones that format the value, and a declared global keeps them: the
+		// module's own binding is what tells print whether to write True, None or 1. What is dropped is any
+		// frozen VALUE for the name, which a body's write supersedes (roadmap Gap R.48, ADR 0448).
+		delete(g.strVals, name)
+	}
 	if g.isNoneExpr(rhs) {
 		if g.noneVars == nil {
 			g.noneVars = map[string]bool{}
@@ -187,7 +193,15 @@ func (g *irGen) recordNoneAndBool(name string, rhs Expr, keepContainer bool) {
 // `t`, because print asks the record and nothing wrote it (roadmap L11.1, Gap R.321, ADR 0270's family;
 // Gap R.73 is the same record on the call side).
 func (g *irGen) recordTextStatus(name string, rhs Expr) {
-	if sv, ok := g.stringVal(rhs); ok {
+	declaredGlobal := g.globalNames[name]
+	if declaredGlobal {
+		// The interned-text CLAIM stays (it is the kind, and it is what makes print write `b` rather than
+		// the number the handle is), the frozen text does not (it is the value a body rewrote) — roadmap
+		// **Gap R.48**, **ADR 0448**. Recording it here is how `k = "a"` / `def setup(): global k; k = "b"`
+		// / `setup()` / `print(k)` printed the module's `a`.
+		delete(g.strVals, name)
+	}
+	if sv, ok := g.stringVal(rhs); ok && !declaredGlobal {
 		if g.strVals == nil {
 			g.strVals = map[string]string{}
 		}

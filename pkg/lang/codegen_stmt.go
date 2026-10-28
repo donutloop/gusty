@@ -191,6 +191,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if err != nil {
 			return err
 		}
+	case *GlobalStmt:
+		// A declaration of module ownership emits nothing where it is written: its whole effect is which slot
+		// the OTHER statements in the body write, and that is decided by `enterBody` (which takes the name out of
+		// the frame's table) and by `storeModuleScalar` (which stores to `@gy_mod_<name>` instead of an `%_x`
+		// alloca). A module-level `global` is legal and means nothing, and the reference agrees — the statement
+		// exists so a program that says it compiles, not so that this line can emit (roadmap Gap R.48, ADR 0448).
+		return nil
 	default:
 		// The one arm in this switch that has no sentence of its own, so the name it prints is the whole
 		// diagnostic — and a Go type name is not a name the reader has. `stmtSurface` answers the keyword the

@@ -70,6 +70,76 @@ type CapabilityRefusalKind struct {
 // backend that ships and its sentence read off the result — rather than written from memory, and each
 // cites the row that owns the missing half.
 var capabilityRefusalRegistry = []CapabilityRefusalKind{
+	// The `global` statement (**Gap R.48**, **ADR 0448**). A declaration is a claim about where a name lives, and
+	// six shapes make that claim unsatisfiable in this backend: three the reference refuses too (its own
+	// `SyntaxError` words ride inside the sentence), and three where the answer would be a word printed as a value
+	// — the module's slot is one int-sized word (**ADR 0227**), so a kind it cannot carry, a name no statement ever
+	// writes (**Gap R.22**), or a name whose only write sits behind a branch the program never takes, stop the build
+	// with the row that owns the fix named in the sentence.
+	{
+		Code:       "lower.unsupported.global-parameter-and-global",
+		Shape:      "a body declares `global x` for a name its own parameter list already binds — the call writes the frame's slot for it while the declaration points at the module's",
+		Suggestion: "give the parameter or the module name a different spelling; the reference refuses the same program with `name 'x' is parameter and global`, so this is not a shape to work around in the body",
+		Rows:       []string{"ADR 0448", "Gap R.48"},
+		Markers:    []string{"is parameter and global"},
+		Sample:     "def f(x):\n    global x\n    return x\n\nprint(f(1))\n",
+	},
+	{
+		Code:       "lower.unsupported.global-read-above-its-declaration",
+		Shape:      "a body READS a name above the `global` line that claims it, so the read means the frame's slot and the rest of the body means the module's",
+		Suggestion: "move the declaration to the top of the body (or read the name only after it) — the reference refuses this too, as `name 'x' is used prior to global declaration`",
+		Rows:       []string{"ADR 0448", "Gap R.48"},
+		Markers:    []string{"used prior to global declaration"},
+		Sample:     "x = 1\n\ndef f():\n    print(x)\n    global x\n    x = 2\n\nf()\n",
+	},
+	{
+		Code:       "lower.unsupported.global-bound-above-its-declaration",
+		Shape:      "a body BINDS a name above the `global` line that claims it, so the binding belongs to the frame and the declarations below it belong to the module",
+		Suggestion: "move the declaration above the binding (or rename the local) — the reference refuses the same program as `name 'x' is assigned to before global declaration`",
+		Rows:       []string{"ADR 0448", "Gap R.48"},
+		Markers:    []string{"assigned to before global declaration"},
+		Sample:     "def f():\n    x = 1\n    global x\n    x = 2\n\nf()\n",
+	},
+	{
+		Code:       "lower.unsupported.global-declared-in-a-class-body",
+		Shape:      "a CLASS body declares `global x` — the class road keeps what a body binds as a member, and the reference routes that write to the module, so the two readers of the name would see two different values",
+		Suggestion: "write the module's name from a function body instead of a class body (a method's `global` answers); the class-body form is owed to the class-body family beside Gap R.505",
+		Rows:       []string{"Gap R.511", "ADR 0418", "ADR 0448"},
+		Markers:    []string{"which this backend cannot honour: the class road keeps"},
+		Sample:     "x = 0\n\nclass A:\n    global x\n    x = 4\n\nprint(x)\n",
+	},
+	{
+		Code:       "lower.unsupported.global-read-before-any-write",
+		Shape:      "a body reads a declared global that nothing at module level has bound, and its own write sits behind a branch the program may never take (`if 0:` / `gz = 1` / `return gz`)",
+		Suggestion: "bind the name at module level (or make the write unconditional) — the reference raises `NameError` there and an unwritten module slot would answer 0; the raisable version is owed to the module's bound-flag discipline",
+		Rows:       []string{"Gap R.513", "Gap R.22", "ADR 0448"},
+		Markers:    []string{"before any statement has written it and nothing at module level binds it"},
+		Sample:     "def touch():\n    global gz\n    if 0:\n        gz = 1\n    return gz\n\nprint(touch())\n",
+	},
+	{
+		Code:       "lower.unsupported.global-no-write-anywhere",
+		Shape:      "a body declares a module binding that no statement in the program ever writes, so the read has no value to answer from",
+		Suggestion: "write the name somewhere the program runs (module level, or a body the program calls); the reference raises `NameError` at the read, and the module's word would answer 0",
+		Rows:       []string{"Gap R.513", "Gap R.22", "ADR 0448"},
+		Markers:    []string{"declares a module binding that no statement ever writes"},
+		Sample:     "def f():\n    global z\n    print(1)\n\nf()\n",
+	},
+	{
+		Code:       "lower.unsupported.global-kind-the-module-word-cannot-carry",
+		Shape:      "a declared global is written as a kind the module's one int-sized word cannot carry — a text (an interned index beside a length), a fractional number, any container",
+		Suggestion: "keep the declared name a number, a verdict or the void, and hold the rich value in a local or a container the program owns; the tagged module word is owed to L11.1",
+		Rows:       []string{"L11.1", "Gap R.512", "Gap R.22", "ADR 0448"},
+		Markers:    []string{"names a module binding written as"},
+		Sample:     "reg = 0\n\ndef f():\n    global reg\n    reg = [1, 2]\n\nf()\nprint(reg)\n",
+	},
+	{
+		Code:       "lower.unsupported.global-writes-spell-two-kinds",
+		Shape:      "a declared global is written as two different kinds in one program, and the module's slot has no kind word beside it — whichever value the read asked, the other would print as the first one's kind",
+		Suggestion: "give each kind its own name (the reference re-kinds one name freely, this backend has one word per module binding); the tagged word that would carry both is owed to L11.1",
+		Rows:       []string{"L11.1", "Gap R.512", "ADR 0448"},
+		Markers:    []string{"is written as both"},
+		Sample:     "reg = 0\n\ndef f():\n    global reg\n    reg = True\n\nf()\nprint(reg)\n",
+	},
 	{
 		Code:       "lower.unsupported.list-copy",
 		Shape:      "list(<container>) copies a container the program already built",

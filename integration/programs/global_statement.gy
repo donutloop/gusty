@@ -1,0 +1,104 @@
+# The `global` statement — roadmap Gap R.48, ADR 0448.
+# A body that DECLARES a name writes the module's binding, and the module reads what the body wrote.
+# Before this row `global` was an ordinary name and the resolver answered `undefined name "global"`,
+# so none of these programs could be written at all.
+
+count = 0
+
+def bump():
+    global count
+    count = count + 1
+
+bump()
+bump()
+print(count)                              # 2 — the counter a helper bumps
+
+total = 0
+
+def acc():
+    global total
+    for i in [1, 2, 3]:
+        total = total + i
+
+acc()
+print(total)                              # 6 — an accumulator a loop body fills
+
+n = 0
+
+def down():
+    global n
+    n = 3
+    while n > 0:
+        n = n - 1
+
+down()
+print(n)                                  # 0 — a countdown in a while body
+
+a = 0
+b = 0
+
+def set_both():
+    global a, b
+    a = 7
+    b = 8
+
+set_both()
+print(a, b)                               # 7 8 — one declaration names several
+
+flag = False
+
+def raise_flag():
+    global flag
+    if True:
+        flag = True
+
+raise_flag()
+print(flag)                               # True — a flag a branch sets
+
+hits = 0
+
+class Counter:
+    def tick(self):
+        global hits
+        hits = hits + 1
+
+c = Counter()
+c.tick()
+c.tick()
+print(hits)                               # 2 — a method writing the module's name
+
+steps = 0
+
+def outer():
+    def inner():
+        global steps
+        steps = steps + 4
+    inner()
+
+outer()
+print(steps)                              # 4 — a nested body reaches the module, not the frame
+
+x = 5
+
+def use_and_keep():
+    global x
+    y = x + 1
+    return y
+
+print(use_and_keep(), x)                  # 6 5 — read the module's word, leave it alone
+
+def make_ready():
+    global status
+    status = 1                             # the module never bound this name; the body writes it
+
+make_ready()
+print(status)                              # 1
+
+calls = 0
+
+def logged():
+    global calls
+    calls = calls + 1
+    return calls
+
+print(logged(), logged(), calls)           # 1 2 2 — the call and the module agree on one word

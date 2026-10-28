@@ -3768,6 +3768,27 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A body that DECLARES a name writes the MODULE's binding (**Gap R.48**, **ADR 0448**)** — `global` was an ordinary
+  name, so `global count` was an expression mentioning a name called `global` and the resolver answered `undefined name
+  "global"`: the counter a helper bumps, the accumulator a loop body fills, the flag a setup function sets and the name
+  a METHOD writes could not be written at all, and the only way to share state between a body and the module was to
+  shadow it and read `0`. The storage already existed — **ADR 0227** mints `@gy_mod_<name>` for a module-bound name a
+  body reads — and the write half did not, which is the whole decision: **a declaration is not a new storage, it is the
+  permission to write the storage the reads already use**. `enterBody` records what a body declares and DELETES those
+  names from `funcLocals`, so the read road and the store road both fall through to the module's slot and neither
+  needed a new arm; a body that never declares a name keeps its frame slot (asserted from `--emit-llvm` in both
+  directions, **ADR 0351**'s defect asked from the declaration side). The checker is a whole-program walk at compile
+  time because the reference's refusals are `SyntaxError`s that do not wait for the call, and its "used prior" rule is
+  a DOCUMENT-ORDER walk because a first draft that compared line numbers refused four programs the reference answers
+  while reporting each at "line 0" (**Gap R.116**). `integration/programs/global_statement.gy` joined the corpus
+  byte-identical (ten prints; the parent refuses it at exit 1), beside 17 answer rows on the compiled leg and the
+  record leg, 9 refusal rows, 11 CLI rows and a `cc` link-and-run row that re-ask CPython inside the case; **18 record
+  entries (10243 → 10261)** went in through `tools/recmerge` and the 268-program corpus moved exactly twice, both times
+  this cycle's own program. What the module's one int-sized word cannot carry is refused in words rather than printed as
+  a handle — two kinds, a text, a fractional number, a container (**L11.1**'s tagged word, filed as **Gap R.512**), a
+  name declared in a class body (**Gap R.511**, beside **ADR 0418**), and an unwritten global the reference would rather
+  RAISE than refuse (**Gap R.513**).
+
 - **An instance prints the way its own CLASS says, and there are TWO questions, not one (**L12.3**, **Gap R.55**,
   **ADR 0447**)** — `class C:` / `    def __str__(self): return "S"` / `    def __repr__(self): return "R"` /
   `print(C())` printed `0` at the exit code of success (the intern table's index going to `%d`, **Gap R.22**'s

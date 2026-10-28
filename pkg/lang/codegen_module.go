@@ -32,7 +32,9 @@ import (
 // A name with no module slot is the ordinary case and returns false: the caller keeps its own alloca,
 // which is what a function body's local has always been and what a module temporary still is.
 func (g *irGen) storeModuleScalar(b *strings.Builder, name, val string) bool {
-	if g.inFunc {
+	if g.inFunc && g.globalDecls[name] == false {
+		// A body writes a frame slot, not the module, for every name it owns — and for no name it declared
+		// `global`, which is the whole meaning of the declaration (roadmap Gap R.48, ADR 0448).
 		return false
 	}
 	sym, ok := g.moduleSlots[name]
@@ -60,6 +62,12 @@ func moduleEnvFor(prog *Program) (map[string]Expr, map[string]bool) {
 	if prog == nil {
 		return consts, all
 	}
+	// A name some body DECLARES with `global` is module state that a body writes, so it is not a value:
+	// folding it would let the module print the literal the body never touched. `moduleEnvFor`'s rule is
+	// that a body's bindings are local (**ADR 0220**) and therefore cannot make a constant mutable — the
+	// declaration is exactly the exception the reference makes, and the one this backend has to make too
+	// (roadmap Gap R.48, ADR 0448).
+	declaredGlobals := programGlobalDeclNames(prog)
 	literal := func(e Expr) bool {
 		switch e.(type) {
 		case *IntLit, *StrLit, *BoolLit, *NoneLit:
@@ -91,6 +99,10 @@ func moduleEnvFor(prog *Program) (map[string]Expr, map[string]bool) {
 			moduleBindingNames(st, targets)
 			disqualify(targets)
 		}
+	}
+	for nm := range declaredGlobals {
+		delete(consts, nm)
+		all[nm] = true
 	}
 	return consts, all
 }
@@ -127,6 +139,18 @@ func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool,
 		}
 	}
 	reads := moduleBodyReads(prog, all)
+	// A name some body DECLARES with `global` is a name the module owns whether or not the module's own
+	// statements ever mention it: `def f():` / `    global y` / `        y = 5`, then `f()` and `print(y)`, has
+	// no module-level assignment to ask about, and the reference still binds `y` at module scope and prints 5
+	// (roadmap Gap R.48, ADR 0448). Such a name enters as if its first write were scalar; a module-level
+	// binding that is not scalar keeps its own verdict and the container refusal that goes with it (Gap R.35).
+	for nm := range programGlobalDeclNames(prog) {
+		reads[nm] = true
+		if !seenBefore[nm] {
+			scalar[nm] = true
+			seenBefore[nm] = true
+		}
+	}
 	for nm := range reads {
 		if _, isConst := consts[nm]; isConst {
 			continue // a value needs no slot

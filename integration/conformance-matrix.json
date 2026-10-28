@@ -541,6 +541,27 @@
     },
     {
       "case": {
+        "id": "programs/global_statement",
+        "name": "global_statement.gy",
+        "source": "# The `global` statement — roadmap Gap R.48, ADR 0448.\n# A body that DECLARES a name writes the module's binding, and the module reads what the body wrote.\n# Before this row `global` was an ordinary name and the resolver answered `undefined name \"global\"`,\n# so none of these programs could be written at all.\n\ncount = 0\n\ndef bump():\n    global count\n    count = count + 1\n\nbump()\nbump()\nprint(count)                              # 2 — the counter a helper bumps\n\ntotal = 0\n\ndef acc():\n    global total\n    for i in [1, 2, 3]:\n        total = total + i\n\nacc()\nprint(total)                              # 6 — an accumulator a loop body fills\n\nn = 0\n\ndef down():\n    global n\n    n = 3\n    while n \u003e 0:\n        n = n - 1\n\ndown()\nprint(n)                                  # 0 — a countdown in a while body\n\na = 0\nb = 0\n\ndef set_both():\n    global a, b\n    a = 7\n    b = 8\n\nset_both()\nprint(a, b)                               # 7 8 — one declaration names several\n\nflag = False\n\ndef raise_flag():\n    global flag\n    if True:\n        flag = True\n\nraise_flag()\nprint(flag)                               # True — a flag a branch sets\n\nhits = 0\n\nclass Counter:\n    def tick(self):\n        global hits\n        hits = hits + 1\n\nc = Counter()\nc.tick()\nc.tick()\nprint(hits)                               # 2 — a method writing the module's name\n\nsteps = 0\n\ndef outer():\n    def inner():\n        global steps\n        steps = steps + 4\n    inner()\n\nouter()\nprint(steps)                              # 4 — a nested body reaches the module, not the frame\n\nx = 5\n\ndef use_and_keep():\n    global x\n    y = x + 1\n    return y\n\nprint(use_and_keep(), x)                  # 6 5 — read the module's word, leave it alone\n\ndef make_ready():\n    global status\n    status = 1                             # the module never bound this name; the body writes it\n\nmake_ready()\nprint(status)                              # 1\n\ncalls = 0\n\ndef logged():\n    global calls\n    calls = calls + 1\n    return calls\n\nprint(logged(), logged(), calls)           # 1 2 2 — the call and the module agree on one word\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "2\n6\n0\n7 8\nTrue\n2\n4\n6 5\n1\n1 2 2\n",
+      "python_ok": true,
+      "python_stdout": "2\n6\n0\n7 8\nTrue\n2\n4\n6 5\n1\n1 2 2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5650,7 +5671,7 @@
       "case": {
         "id": "programs/probe_global_statement",
         "name": "probe_global_statement.gy",
-        "source": "# There is no `global` statement (roadmap Gap R.48, found by ADR 0228's probe pass).\n#\n# CPython reads `global gz` as a declaration, so the read below is a NameError for a module name that\n# was never bound. gusty has no such statement: the interpreter parses `global gz` as an expression\n# and reports `name 'global' is not defined`, and the compiled backend refuses the program. Three\n# engines, three answers -- and the two that are \"wrong\" are wrong in ways a Python reader will not\n# predict. The fix is the statement: declare the names a body means to write in the module, and make\n# reads and writes go to module state (@gy_mod_* the way ADR 0227 already stores it).\n\n\ndef touch():\n    global gz\n    if 0:\n        gz = 1\n    return gz\n\n\nprint(touch())\n",
+        "source": "# There is a `global` statement (roadmap Gap R.48, closed by ADR 0448) — and this program is still a refusal.\n#\n# What changed: `global gz` used to lex as an ordinary name, so the line parsed as the EXPRESSION `global gz`\n# and the resolver answered `undefined name \"global\"`. It is a keyword now, the declaration means what Python\n# means by it, and reads and writes of a declared name go to the module's own `@gy_mod_\u003cname\u003e` storage (ADR\n# 0227). What did not change: this program's answer is still \"no answer\". The only write to `gz` sits behind\n# `if 0:`, so the `return gz` below reads a module name nothing ever bound — CPython dies there with\n# `NameError: name 'gz' is not defined`, and this backend stops the build with the same sentence inside its\n# own refusal rather than answering 0 from an unwritten slot (Gap R.22's signature). The raise, with its\n# traceback, is what roadmap Gap R.513 owns; the refusal, at exit 1, is what this row ships.\n\n\ndef touch():\n    global gz\n    if 0:\n        gz = 1\n    return gz\n\n\nprint(touch())\n",
         "asserted": false,
         "oracle": "not_applicable",
         "reason": "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, while the compiled backend parses `global gz` as the *expression* `global gz` and refuses the program for having no binding for `global` — it disagrees with the reference on a construct every Python reader expects",
@@ -5664,7 +5685,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: undefined name \"global\" (no binding for it; assign it before use) — the reference reports the same error",
+      "aot_error": "codegen: a body reads `global gz` before any statement has written it and nothing at module level binds it: the reference raises `NameError: name 'gz' is not defined` there, and this backend's unwritten module slot would answer 0 for it — the raise, with its traceback, belongs to the module's bound-flag discipline (roadmap Gap R.48, Gap R.22)",
       "python_ok": false,
       "python_stdout": "",
       "python_error": "exit status 1: Traceback (most recent call last):",
@@ -5941,11 +5962,11 @@
       ]
     }
   ],
-  "rows": 253,
+  "rows": 254,
   "skipped": 29,
-  "pass": 224,
+  "pass": 225,
   "fail": 0,
-  "oracle_match": 210,
+  "oracle_match": 211,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

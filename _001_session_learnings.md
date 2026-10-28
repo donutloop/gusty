@@ -16712,3 +16712,51 @@ reproduced BYTE-IDENTICAL on the parent, so the test says "inherited" in its own
 CONCATENATES a literal with a method call keeps the identity form while the f-string spelling of the same body answers —
 the tell that it is a door gap and not a language gap). **46 record entries** were written (10197 → 10243) from
 reference/compiled agreements; nothing was refused.
+
+## ADR 0448 — a body that DECLARES a name writes the MODULE's binding (roadmap Gap R.48 closed, Gaps R.511, R.512, R.513 filed; 2026-10-29)
+
+**A declaration is a move between tables, not a third storage.** The first design in my head was a new kind of
+slot for declared globals; the measured one deletes the name from `funcLocals` and lets the two roads that already
+exist decide. `value()` asks "does this body own this name?" and answers `@gy_mod_<name>` when it does not; the
+store road asks the same question. One `delete` in `enterBody` therefore routes BOTH halves of every declared name
+to **ADR 0227**'s module global, adds no arm to either road, and cannot produce the two-slot defect a second table
+would have needed refusing later. The IR-shape row is the thing that proves it: a body that never declares a name
+gets no `@gy_mod_` storage (the frame slot is the rule), a body that does writes the module's word instead of an
+unread one of its own.
+
+**A ported draft is a hypothesis, not an answer.** This row arrived as a stalled draft in a second worktree, and its
+`used prior to global declaration` rule compared statement line numbers. Against the corpus it refused FOUR programs
+the reference answers — a `while` countdown, a loop accumulator, a read-only body, a global-then-local body — while
+telling the reader each was "used prior", at **"line 0"**. This parser leaves many statement spans at zero, so the
+rule had to become a document-order walk (`globalUsedPriorToDecl`, `noteNames`, `scanExprForPriorRead`) and the line
+number appears only when the parser actually knew one. That is **Gap R.116**'s rule, and it cost a rewritten checker
+to learn it a second time.
+
+**A refusal the reference makes at compile time cannot be made at emit time.** `def f(x): global x` is a
+`SyntaxError` even when nothing ever calls `f`, so a checker that only sees the bodies the compiler lowers accepts
+programs the reference refuses to parse. The refusals run from `GenerateIRReport` over the whole program, and
+`TestTheGlobalCheckerAsksTheBodiesNobodyCalls` fails a regression that moves them back into the lowering path.
+
+**The module's word is the boundary of the promise, and the sentence has to say so.** `reg = 0` + `reg = [1, 2]`
+printed `0`; a text a body wrote printed the intern table's INDEX; `TBD = None` + `TBD = 5` printed the void's word
+for a number — all at exit 0, all **Gap R.22**'s signature. Demoting the frozen VALUE records for a declared global
+is what stops the module answering its own stale literal, and demoting the KIND records as well (measured, reverted)
+is what produces `1` for a `False` and `(null)` for a text. Where the word cannot carry the value, the row now
+refuses with **L11.1** named in the sentence (**Gap R.512**) rather than inventing an answer.
+
+**A guarded write is a write that may never happen.** `if 0:` / `gz = 1` / `return gz` — the shape ADR 0228's probe
+was built from — is `NameError` in the reference and `0` here, so only a write at a body's OWN level licenses a later
+read. Pre-running the body to find out would run the program to decide whether to compile it.
+
+**The harness can silence a witness.** `cliRunCode` files a compiled refusal in the drift ledger and then SKIPS the
+case. That is right for an answer row that drifted and wrong for a row whose whole job is to read a filed refusal's
+sentence — a skipped row testifies to nothing — so the refusal table runs the CLI directly (`cliRefusalRun`) and
+asserts exit 1, the sentence, and the owning roadmap row.
+
+**Filed by this cycle**: **Gap R.511** (a `global` in a CLASS body, where **ADR 0418**'s member table and the
+reference's module write have one reader each), **Gap R.512** (a declared global whose writes spell two kinds, or a
+kind the module's int-sized word cannot carry — waiting on **L11.1**), **Gap R.513** (an unwritten declared global
+should RAISE `NameError` at exit 3, catchable, rather than be refused at exit 1 — the module's bound-flag
+discipline). **18 record entries** were written (10243 → 10261) from reference/compiled agreements, none refused;
+`programs/global_statement.gy` joined the corpus byte-identical, and of 268 programs exactly TWO moved parent to
+child, both of them this row's own.

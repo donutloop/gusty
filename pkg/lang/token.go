@@ -144,4 +144,8 @@ var keywords = map[string]bool{
 	"async": true, "await": true,
 	"type":  true,
 	"break": true, "continue": true, "raise": true, "pass": true,
+	// `global` is a statement keyword, not an expression one: `global x` reads as a declaration in every
+	// program that wants one, and as an undefined name in every program that does not (roadmap
+	// Gap R.48, ADR 0448).
+	"global": true,
 }

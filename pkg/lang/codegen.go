@@ -171,6 +171,27 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
 	g.moduleBinds = map[string][]Expr{}
 	scanRebinds(prog.Stmts, g.moduleBinds)
+	// A name that some body DECLARES `global` is module state a body writes, so it is not a static fact
+	// about this module: the record of "what was last bound to this name" only ever sees the module's own
+	// statements, and a body's write arrives after every one of them. `TBD = None` / `def setup(): global
+	// TBD; TBD = "ready"` / `setup()` / `print(TBD)` printed the module's None where the reference prints
+	// ready — the fold answering a question the run time had already re-asked (roadmap **Gap R.48**,
+	// **ADR 0448**). Demoting the name from the per-name kind records sends the read to the slot the write
+	// actually touched; the kind-changing shape (an int slot later holding a text, a bool or a container)
+	// is the tagged module word **L11.1** owns and is filed from this row rather than answered here.
+	g.globalNames = programGlobalDeclNames(prog)
+	// The VALUE records are demoted, and the KIND records are not. Which value a declared global holds is
+	// the module's last binding as the folder saw it — and a body's write arrives after every one of those
+	// statements, so `k = "a"` folded the print to `a` after a setup function had written `b`, and `TBD =
+	// None` printed None for a body that had assigned a text. Which KIND it holds is a different question,
+	// and the records that answer it are the same ones that format an ordinary variable: demoting those too
+	// printed `1` for a declared global the module had bound to `False`, and `0` for one holding a text —
+	// the untagged-handle signature this repo ranks worst (roadmap **Gap R.48**, **ADR 0448**;
+	// **Gap R.22**). A name whose writes spell two kinds never reaches either record: the checker refuses it.
+	for nm := range g.globalNames {
+		delete(g.strVals, nm)
+		delete(g.moduleBinds, nm)
+	}
 	g.strArgBindCache = map[string][]Expr{}
 	g.moduleSlots, g.moduleFloatSlots, g.moduleContainers = moduleTablesFor(prog, g.moduleConsts, g.moduleNames, g.containerRet)
 	g.moduleContainerReads = map[string]bool{}
@@ -337,6 +358,21 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// compiler bug (ADR 0166).
 	doneModuleFlags := g.enterBoundFlags(nil, prog.Stmts)
 	defer doneModuleFlags()
+	// A `global` declaration is checked against the body that writes it, and the check is PROGRAM-wide
+	// rather than emission-wide: the reference refuses `def f(x): global x` and `def f(): print(x); global x`
+	// when it COMPILES the function, so a program that never calls the function still refuses. An
+	// emission-wide check would compile that program and answer with whichever of the two slots it happened
+	// to read (roadmap **Gap R.48**, **ADR 0448**).
+	if err := g.checkGlobalDecls(prog); err != nil {
+		return "", nil, err
+	}
+	// The other three: a declaration no statement ever writes, a slot its writes fill with two different
+	// kinds, and a declaration written in a class body. Each of these answered at the exit code of success
+	// before the checker asked — a NameError the program never raised, a list printed as the 0 that was
+	// bound first, a module printing a literal only the class body touched (roadmap **Gap R.48**, **ADR 0448**).
+	if err := g.globalDeclChecks(prog); err != nil {
+		return "", nil, err
+	}
 	g.emitBoundAllocas(&b)
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
@@ -1234,6 +1270,16 @@ type irGen struct {
 	classIDs   map[string]int        // class name -> runtime dispatch id
 	classOrder []string              // classes in id order (dispatch switch)
 	varClasses map[string]string     // local var -> class name
+	// globalDecls is the set a body declared with `global a, b` (roadmap Gap R.48, ADR 0448): the names it
+	// may write even though they are not its frame's. A declared name is deleted from `funcLocals` beside
+	// being recorded here — the read road in `value()` takes `@gy_mod_<name>` for a name the body does not
+	// own, and the write road asks this table before it stores to a frame slot.
+	globalDecls map[string]bool
+	// globalNames is the program-wide view of the same table (roadmap Gap R.48, ADR 0448): the names ANY
+	// body declares. A name in it is module state a body writes, so the per-name records that answer
+	// "what was last bound here" — which only ever see the module's own statements — must not claim it:
+	// the read goes to the slot the write actually touched instead.
+	globalNames map[string]bool
 	// classLinCache / classLinVisits back the method-resolution walk an attribute read takes
 	// (`classLinearization`, roadmap L12.4): the order is a property of the class table, so it is computed once
 	// per class and reused by every read, and the visit set is what stops a cyclic base list from looping.
@@ -1452,6 +1498,17 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	saved := g.funcLocals
 	g.funcLocals = map[string]bool{}
 	collectLocals(body, g.funcLocals)
+	// A name the body DECLARES with `global` is not its frame's: it is deleted from the table that answers
+	// "does this body own this name", which is what sends both roads — the read in `value()` and the store in
+	// `storeModuleScalar` — to the module's `@gy_mod_<name>` without a new arm in either (roadmap Gap R.48,
+	// ADR 0448). The table is restored with the body's exit, exactly as `funcLocals` is.
+	savedGlobals := g.globalDecls
+	g.globalDecls = globalDeclsIn(body)
+	if g.globalDecls != nil {
+		for nm := range g.globalDecls {
+			delete(g.funcLocals, nm)
+		}
+	}
 	// A body that begins its locals also begins its FLOAT table. The two roads that call this helper — the
 	// closure lift's nested `def` and the class road's method — do not call `beginScope`, and left the float
 	// table out of both helpers, so a method's float `self`/parameter and a lifted closure's local leaked
@@ -1471,6 +1528,7 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	savedSlots := g.enterFrameSlots()
 	return func() {
 		g.funcLocals = saved
+		g.globalDecls = savedGlobals
 		savedFloats()
 		savedTargets()
 		savedSlots()

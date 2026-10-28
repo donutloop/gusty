@@ -1,5 +1,92 @@
 {
  "entries": {
+"x = 0\n\ndef f():\n    global x\n    try:\n        x = 1\n    except Exception:\n        pass\n\nf()\nprint(x)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"# The `global` statement — roadmap Gap R.48, ADR 0448.\n# A body that DECLARES a name writes the module's binding, and the module reads what the body wrote.\n# Before this row `global` was an ordinary name and the resolver answered `undefined name \"global\"`,\n# so none of these programs could be written at all.\n\ncount = 0\n\ndef bump():\n    global count\n    count = count + 1\n\nbump()\nbump()\nprint(count)                              # 2 — the counter a helper bumps\n\ntotal = 0\n\ndef acc():\n    global total\n    for i in [1, 2, 3]:\n        total = total + i\n\nacc()\nprint(total)                              # 6 — an accumulator a loop body fills\n\nn = 0\n\ndef down():\n    global n\n    n = 3\n    while n \u003e 0:\n        n = n - 1\n\ndown()\nprint(n)                                  # 0 — a countdown in a while body\n\na = 0\nb = 0\n\ndef set_both():\n    global a, b\n    a = 7\n    b = 8\n\nset_both()\nprint(a, b)                               # 7 8 — one declaration names several\n\nflag = False\n\ndef raise_flag():\n    global flag\n    if True:\n        flag = True\n\nraise_flag()\nprint(flag)                               # True — a flag a branch sets\n\nhits = 0\n\nclass Counter:\n    def tick(self):\n        global hits\n        hits = hits + 1\n\nc = Counter()\nc.tick()\nc.tick()\nprint(hits)                               # 2 — a method writing the module's name\n\nsteps = 0\n\ndef outer():\n    def inner():\n        global steps\n        steps = steps + 4\n    inner()\n\nouter()\nprint(steps)                              # 4 — a nested body reaches the module, not the frame\n\nx = 5\n\ndef use_and_keep():\n    global x\n    y = x + 1\n    return y\n\nprint(use_and_keep(), x)                  # 6 5 — read the module's word, leave it alone\n\ndef make_ready():\n    global status\n    status = 1                             # the module never bound this name; the body writes it\n\nmake_ready()\nprint(status)                              # 1\n\ncalls = 0\n\ndef logged():\n    global calls\n    calls = calls + 1\n    return calls\n\nprint(logged(), logged(), calls)           # 1 2 2 — the call and the module agree on one word\n": {
+    "stdout": "2\n6\n0\n7 8\nTrue\n2\n4\n6 5\n1\n1 2 2\n",
+    "hasStdout": true
+   },
+"a = 0\nb = 0\n\ndef f():\n    global a, b\n    a = 7\n    b = 8\n\nf()\nprint(a, b)\n": {
+    "stdout": "7 8\n",
+    "hasStdout": true
+   },
+
+"a = 1\n\ndef f():\n    global a\n    a = a + 1\n\ndef g():\n    global a\n    a = a * 10\n\nf()\ng()\nprint(a)\n": {
+    "stdout": "20\n",
+    "hasStdout": true
+   },
+
+"count = 0\n\ndef bump():\n    global count\n    count = count + 1\n\nbump()\nbump()\nprint(count)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    global x\n    x = 1\n\nf()\nprint(x + 1)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def f():\n    global y\n    y = 5\n\nf()\nprint(y)\n": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"def f(a):\n    global b\n    b = a * 2\n\nf(4)\nprint(b)\n": {
+    "stdout": "8\n",
+    "hasStdout": true
+   },
+
+"flag = False\n\ndef f():\n    global flag\n    if True:\n        flag = True\n\nf()\nprint(flag)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"global x\nx = 1\nprint(x)\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"hits = 0\n\nclass Counter:\n    def tick(self):\n        global hits\n        hits = hits + 1\n\nc = Counter()\nc.tick()\nc.tick()\nprint(hits)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"n = 0\n\ndef bump():\n    global n\n    n = n + 1\n    return n\n\nprint(bump(), bump(), n)\n": {
+    "stdout": "1 2 2\n",
+    "hasStdout": true
+   },
+
+"n = 0\n\ndef down():\n    global n\n    n = 3\n    while n \u003e 0:\n        n = n - 1\n\ndown()\nprint(n)\n": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"total = 0\n\ndef acc():\n    global total\n    for i in [1, 2, 3]:\n        total = total + i\n\nacc()\nprint(total)\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"v = 0\n\ndef outer():\n    def inner():\n        global v\n        v = 3\n    inner()\n\nouter()\nprint(v)\n": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"x = 1\n\ndef f():\n    global x\n    x = 2\n\nf()\nprint(x)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"x = 10\n\ndef f():\n    global x\n    return x\n\nprint(f())\n": {
+    "stdout": "10\n",
+    "hasStdout": true
+   },
+
+"x = 5\n\ndef f():\n    global x\n    y = x + 1\n    return y\n\nprint(f(), x)\n": {
+    "stdout": "6 5\n",
+    "hasStdout": true
+   },
 "class A:\n    def __repr__(self):\n        return \"A\"\n\nclass B(A):\n    def __repr__(self):\n        return \"B\"\n\nprint([A(), B()])\n": {
     "stdout": "[A, B]\n",
     "hasStdout": true

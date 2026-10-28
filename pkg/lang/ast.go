@@ -720,6 +720,23 @@ type PassStmt struct {
 	Src Span `json:"span,omitempty"`
 }
 
+// GlobalStmt is `global a, b`: a declaration that the NAMES a body writes are the MODULE's, not the frame's.
+// The reference executes a function body with a set of names bound outside it, and this backend had no way to say
+// so — `global` lexed as an ordinary name and the resolver answered `undefined name "global"` (roadmap
+// **Gap R.48**, **ADR 0448**). The storage it names is the one **ADR 0227** built for the reads that already worked
+// (`@gy_mod_<name>`); what was missing was the write, and the declaration that licenses it.
+//
+// A module-level `global` is legal and means nothing (the module is already module scope), so the statement carries
+// only the names and their span: the checker, not the emitter, decides what a declaration is worth where it sits.
+type GlobalStmt struct {
+	Names []*Name `json:"names"`
+	Src   Span    `json:"span,omitempty"`
+}
+
+func (n *GlobalStmt) Span() Span     { return n.Src }
+func (n *GlobalStmt) stmtNode()      {}
+func (n *GlobalStmt) SetSpan(s Span) { n.Src = s }
+
 func (n *BreakStmt) Span() Span     { return n.Src }
 func (n *BreakStmt) stmtNode()      {}
 func (n *BreakStmt) SetSpan(s Span) { n.Src = s }
