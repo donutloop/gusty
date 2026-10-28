@@ -3768,6 +3768,35 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A `for` asks the OBJECT for its iterator (**L12.2**, **Gap R.54**, **ADR 0449**)** — the loop had one question for
+  an iterable, *can I count its slots?*, and an object that answered a different question fell through it: the textbook
+  `class Count:` / `    def __iter__(self): return self` / `    def __next__(self): … raise StopIteration` counted out
+  NOTHING, printed only the trailer, and exited **0** — the code that means the program ran. Zero iterations is the worst
+  answer this backend can give, because it is indistinguishable from an empty iterable to a caller, a CI job or an agent,
+  so the row's DoD is not "the loop runs" but "a protocol loop either runs or refuses". It now asks the object once for
+  `__iter__` (outside the loop, rooted for the loop's whole life so a body that allocates cannot collect the iterator
+  mid-loop, **ADR 0181**), emits one `it.__next__()` per turn through the ORDINARY binding road — which is why the element
+  keeps the kind the method answered with and a text still prints as a text instead of the intern table's index (**Gap
+  R.22**) — and treats the `StopIteration` the iterator raises as the loop's own end signal, tested against the reference's
+  exception CODE and eaten by the loop, so `except StopIteration:` outside never sees it while a `ValueError` from `__next__`
+  walks out to the program's handler and dies at exit **3**. Not being iterable is a RUN-TIME `TypeError: 'Plain' object is
+  not iterable` — catchable, fatal at 3 — not a compile-time refusal, because the reference's test is a question about the
+  object in hand; `__next__` alone does not make an iterable, and a subclass inherits whichever answer its base has
+  (**ADR 0446**). Six shapes refuse in words, each naming the missing rule and its row, because for every one of them the
+  alternative was the parent's silent exit 0: `__getitem__` sequence iteration (**Gap R.514**), an `__iter__` whose hand-off
+  has no class the source names (**Gap R.515**), the iterator test the reference runs at run time (**Gap R.516**), two call
+  sites disagreeing about one frame parameter (**Gap R.517**), a container the loop fills and the frame hands back — the
+  answer table reading an absent kind as "not a container" and printing the allocator's slot (**Gap R.518**, **ADR 0344**'s
+  fault form), and a `__next__` answering a fractional number, which has no float word to travel in because the class road
+  emits every method as an `i32` function whatever its body answers (**Gap R.519**, the same missing word as
+  `print(o.m())`). `integration/programs/iterator_protocol.gy` printed only its trailer on the parent and now prints the
+  counted-out values byte-identically to CPython, beside six `probe_iterator_*.gy`; 17 answer rows run on the compiled leg
+  AND the record leg, 3 pin the raise, 8 pin the refusals, one asks the emitted module for `__iter__`/`__next__`/`@exn_code`
+  and forbids the protocol leaking into a container loop, and a watchdog row keeps the third failure mode — a loop that
+  never ends — out by construction, the retired engine having printed 7.3 M lines in 15 s. **21 record entries (10261 →
+  10282)** went in through `tools/recmerge`, the 276-program corpus moved only where this row says it should, and the corpus
+  classifier files the six refusals under their six `lower.unsupported.iterator-*` capability codes.
+
 - **A body that DECLARES a name writes the MODULE's binding (**Gap R.48**, **ADR 0448**)** — `global` was an ordinary
   name, so `global count` was an expression mentioning a name called `global` and the resolver answered `undefined name
   "global"`: the counter a helper bumps, the accumulator a loop body fills, the flag a setup function sets and the name

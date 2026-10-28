@@ -1,0 +1,107 @@
+# There is an iterator protocol (roadmap L12.2 / Gap R.54, closed by ADR 0449): a `for` asks the object
+# for its iterator with `__iter__`, asks the iterator for each element with `__next__`, and ENDS when
+# `__next__` raises StopIteration. Before this row the loop had one question for an iterable — can I count
+# its slots? — and an object answering a different question fell straight through it: this program
+# compiled, printed nothing, and exited 0, the code that means the program ran.
+
+
+class Count:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 3:
+            raise StopIteration
+        return self.i
+
+
+class Words:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 2:
+            raise StopIteration
+        if self.i == 1:
+            return "a"
+        return "b"
+
+
+class Inner:
+    def __init__(self):
+        self.n = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.n = self.n + 1
+        if self.n > 2:
+            raise StopIteration
+        return self.n * 10
+
+
+class Outer:
+    def __iter__(self):
+        return Inner()
+
+
+total = 0
+for v in Count():
+    total = total + v
+print(total)
+
+for w in Words():
+    print(w)
+
+for v in Count():
+    if v == 2:
+        continue
+    if v == 3:
+        break
+    print(v)
+
+for v in Count():
+    print(v)
+else:
+    print("counted out")
+
+for v in Outer():
+    print(v)
+
+
+def total_of(it):
+    s = 0
+    for v in it:
+        s = s + v
+    return s
+
+
+print(total_of(Count()))
+
+for a in Count():
+    for b in Inner():
+        print(a * 100 + b)
+
+
+class Boom:
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise ValueError("boom")
+
+
+try:
+    for v in Boom():
+        print(v)
+except ValueError:
+    print("caught what the iterator raised")

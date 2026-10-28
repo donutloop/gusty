@@ -4115,6 +4115,46 @@ binary printed `after` and exited **0** — an iterable with elements answered "
 phase's signature pair: two engines, two different wrong answers, and the only shape in the survey
 that can hang a CI job rather than fail it. Owner L12.2.
 
+**Closed 2026-10-29 by ADR 0449, on the compiled leg only.** The hang died with the engine that had it (**ADR 0302**);
+what was left standing is the worse of the two answers, because it is silent: the compiled `for` had exactly one
+question for an iterable — *can I count its slots?* — and an object that answers a different question fell through the
+loop. Measured on the parent of this cycle, `for x in R():` printed `after` and exited **0**, the code that means the
+program ran; the same silence covers an empty iterable, a typo in a dunder name, and a protocol the compiler never
+asked about, so no caller, no CI job and no agent can tell the three apart. That is why this row's DoD is not "the
+loop runs" but "a protocol loop either runs or refuses": the road either emits the protocol or stops the build with the
+missing rule, never an empty loop.
+
+The measurement that decided the shape was the hand-off. `__iter__` may return `self`, may construct a named class,
+may return a field, may return a literal, and may fall off the end; the loop's element dispatch is a call to the
+`__next__` of whichever of those arrives, so the class of the ITERATOR (not of the iterable) has to be a fact the
+compiler holds. `return self` and `return SomeClass()` are named by the source and are compiled; a field or a call's
+answer is not, and guessing there would name a class the run-time object may not belong to — the same fork **Gap
+R.517** measures from the call-site side, where one frame parameter is a protocol object to one caller and an `int` to
+another. Both forks refuse rather than choose a caller, and each refusal says which word is missing: **Gap R.514**
+for the `__getitem__` sequence road the reference also accepts, **Gap R.515** for the unnamed hand-off, **Gap R.516**
+for the iterator test the reference runs at run time (and so can *raise* from, where this backend can only refuse),
+**Gap R.517** for the disagreeing call sites, **Gap R.518** for the container a loop fills and the frame hands back —
+where the answer table (**ADR 0333**, fault form **ADR 0344**) reads an absent kind as "not a container" and the caller
+prints the allocator's slot at the exit code of success — and **Gap R.519** for the fractional element, which is the
+same missing word as `print(o.m())` on a float-returning method: the class road emits every method as an `i32`
+function whatever its body answers, so a float element would arrive as the payload with its tag gone and print `0`.
+
+Two rows in the suite are there because the failure mode of a protocol loop is not a wrong value but a program that
+never ends. `TestAHungIteratorLoopIsImpossibleByConstruction` runs a bounded iterator under a watchdog — the retired
+engine's version of the same source printed 7.3 M lines in 15 s — and asks structurally why it cannot spin: the only
+edge out of the loop body is a `__next__` that raised, and the loop leaves that edge by testing the exception CODE the
+raise stored against `StopIteration`'s own (**ADR 0446**'s class table), never a flag of this file's invention. The
+other is the negative control on the container road: a `for` over a list still emits no `__iter__`, no `__next__`, no
+rooted iterator slot, because every one of those is this row's addition and none of them belongs beside a list.
+
+**The witness.** 17 answer rows in `pkg/lang/iterator_protocol_test.go` are each run on both legs — the compiled
+module and the record (`evalGolden` / `runGoldenStdout`) — after being written against CPython; 3 more pin the raise
+(`'Plain' object is not iterable`, and the subclass that inherits the non-iterability), and 8 pin the refusals' sentences
+and the row each cites. `integration/iterator_protocol_test.go` re-asks the same family through the CLI with the
+reference consulted inside each row, links one program through `cc`, checks the raise's exit code is **3**, and reads
+each of the six refusals off `--json` with its capability code. 21 record entries came in through `tools/recmerge`,
+written only where the reference and the compiled leg agreed.
+
 <a id="gap-r-55"></a>
 
 ### Gap R.55 — `print` ignores `__str__` / `__repr__` (✅ DONE, closed by **ADR 0447**; found by the 2026-10-01 surface survey)

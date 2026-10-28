@@ -1,0 +1,32 @@
+# The loop's element arrives through a parameter, and the container the loop builds is what the frame
+# hands back. The answer table (ADR 0333) describes a callee's container by reading the bindings that wrote
+# its slots, and a slot filled from a loop whose element came from a call the compiler cannot see through
+# has no kind to record — absence was read as "not a container", and the caller printed the allocator's
+# slot number where the reference prints `[1, 2]` (roadmap L12.2, Gap R.518).
+#
+# Same program, loop over a class the SOURCE names (`for v in Count():`), answers unchanged: it is the
+# parameter that hides the element's kind. See `programs/iterator_protocol.gy` for that leg.
+
+
+class Count:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 2:
+            raise StopIteration
+        return self.i
+
+
+def build(it):
+    out = []
+    for v in it:
+        out.append(v)
+    return out
+
+
+print(build(Count()))

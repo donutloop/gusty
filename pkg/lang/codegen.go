@@ -1280,6 +1280,14 @@ type irGen struct {
 	// "what was last bound here" — which only ever see the module's own statements — must not claim it:
 	// the read goes to the slot the write actually touched instead.
 	globalNames map[string]bool
+	// iteratorSeq numbers the iterator slots the protocol loop mints — one per `for` that asks an object
+	// for its elements (roadmap L12.2, Gap R.54, ADR 0449). The slot is a register the loop owns, not a
+	// name the program wrote, so it must not collide with one.
+	iteratorSeq int
+	// iterCensus memoizes the whole-program question “which frame parameter does some call hand an
+	// instance of a protocol-answering class?” — asked once per module, read by every loop that names a
+	// parameter as its iterable (roadmap L12.2, Gap R.544, ADR 0449).
+	iterCensus *iteratorCensus
 	// classLinCache / classLinVisits back the method-resolution walk an attribute read takes
 	// (`classLinearization`, roadmap L12.4): the order is a property of the class table, so it is computed once
 	// per class and reused by every read, and the visit set is what stops a cyclic base list from looping.

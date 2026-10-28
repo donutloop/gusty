@@ -16760,3 +16760,65 @@ should RAISE `NameError` at exit 3, catchable, rather than be refused at exit 1 
 discipline). **18 record entries** were written (10243 → 10261) from reference/compiled agreements, none refused;
 `programs/global_statement.gy` joined the corpus byte-identical, and of 268 programs exactly TWO moved parent to
 child, both of them this row's own.
+
+## ADR 0449 — a `for` asks the OBJECT for its iterator, and the `StopIteration` the iterator raises IS the loop's end signal (roadmap L12.2 / Gap R.54 closed on the compiled leg, Gaps R.514–R.519 filed; 2026-10-29)
+
+**Change**: `pkg/lang/codegen_iterator.go` — the road a `for` takes over an object that answers
+`__iter__`/`__next__`, asked from `stmtFor` BEFORE the container roads, plus the loop's rooted iterator slot, the
+end-signal test against `@exn_code`, the call-site census that lets a loop over a frame parameter be compiled, six
+refusals with six capability codes, and the reference's `TypeError: 'C' object is not iterable` emitted as a real raise.
+
+**Zero iterations at exit 0 is the failure mode, and it is not a value.** The parent printed the trailer only and
+exited **0**: an object that answered the protocol's question fell through the counter road, whose only condition was
+"have I counted past the slots?". A wrong value is a red test; a silent empty loop is a green test about a program that
+did not run, and the row's DoD therefore had to be "either runs the protocol or refuses in words" rather than "the loop
+works". Every one of the six refusals is a shape whose alternative is that same exit-0 silence.
+
+**Reuse the binding road and the element keeps its kind.** The first instinct for a loop element is a raw handle in,
+unbox at the print. Emitting the turn as the statement `v = it.__next__()` instead — the same lowering that statement
+gets anywhere else, with the iterator's class bound in `varClasses` — meant a `__next__` returning `"a"` bound a TEXT and
+printed `a`, where a flattened handle would print the intern table's index (**Gap R.22**'s signature, dodged by not
+inventing a road). The same rule is why the loop's handler is pushed only around the `__next__` call: the body's own
+exceptions belong to the program, not to the loop.
+
+**The end signal has to be the reference's, not a flag of mine.** A `stopped` boolean was the obvious implementation and
+the wrong one: it is a second end signal whose truth has to be maintained beside `@exn_code`, and any drift between them
+is a loop that ends early or never. Testing the loaded code against `exnClassCode("StopIteration")` makes the loop's exit
+the same fact `except StopIteration:` would have been, which is what the two pinned rows (the loop eats it; an enclosing
+handler never sees it) actually testify to.
+
+**Some questions are about the call, not the line, and the honest answer is a refusal.** `__iter__` may `return self`,
+may build a named class, may return a field, and may fall off the end. The element dispatch is a call to the `__next__`
+of whichever arrives, so the ITERATOR's class must be a fact the compiler holds: `return self` and `return SomeClass()`
+are, a field is not (**Gap R.515**). The mirror image is `def walk(it)` called with `Count()` and with `3` — one body,
+two protocols, and choosing a caller answers one and misbehaves for the other (**Gap R.517**). The census keeps
+`seenOther` apart from the bound class and asks "mixed" before "bound", because an order-dependent census is a
+refusal that depends on which call the walk reached first.
+
+**The answer table is a witness, and an absent kind is a claim.** A `build(it)` that fills a list in a protocol loop
+over a parameter and returns it printed the allocator's slot: **ADR 0333**'s table records a container's element kind by
+reading the bindings that wrote its slots, and a slot written from a loop whose element only the call site knows has
+nothing to record — absence read as "not a container" (**ADR 0344**'s fault, **Gap R.518**). Refusing the frame's answer
+is honest; the container built by a loop over a class the SOURCE names still returns and prints unchanged.
+
+**A missing WORD is a different refusal from a missing RULE.** `return self.i / 4` from a `__next__` measured `0` because
+the class road emits every method as an `i32` function whatever its body answers — the same hole `print(H().m())` has
+today, measured at `0` for `0.25`. The loop asks the print road's own question (`funcReturnsFloat`) and refuses on its
+answer, so the sentence names the word that is missing (**Gap R.519**, waiting on **L11.1**) instead of blaming the
+value; and the question is asked only where every return is statically fractional, because a `return x` whose kind is
+unknown has always been callable here and inventing a refusal for it would stop programs that print correctly.
+
+**A raise belongs at run time when the reference's test is about the object.** `'Plain' object is not iterable` is a
+`TypeError`, catchable, exit 3 — not a compile-time refusal — because a class that looks plain at its own text may be
+subclassed where the loop cannot see. The one exception is the iterator test (**Gap R.516**): raising it needs a
+run-time "does this answer `__next__`?" query, and until that exists the honest placeholder is the reference's own
+sentence in a build-time refusal.
+
+**Filed by this cycle**: **Gap R.514** (`__getitem__` sequence iteration), **Gap R.515** (an `__iter__` whose hand-off
+has no static class), **Gap R.516** (no run-time iterator test), **Gap R.517** (call sites disagreeing about one
+parameter), **Gap R.518** (a container a protocol loop fills and the frame hands back), **Gap R.519** (a fractional
+element, the method float word). **21 record entries (10261 → 10282)** were written through `tools/recmerge` from
+reference/compiled agreements, none refused; `programs/iterator_protocol.gy` moved from trailer-only-at-exit-0 to
+byte-identical with CPython, six probes joined the corpus (276 programs), and every pre-existing program is
+byte-identical parent to child — the container roads were not touched, which is what the container-loop negative control
+in the IR row is there to keep true.

@@ -1,0 +1,30 @@
+# One frame, two call sites, two kinds of iterable: `walk(Count())` hands the loop a protocol object and
+# `walk(3)` hands it an int, which the reference refuses with `TypeError: 'int' object is not iterable`
+# (roadmap L12.2, Gap R.517). A single compiled loop body cannot answer both callers, and answering the
+# one the census liked best would print for the other at the exit code of success — so the shape refuses,
+# naming the parameter the call sites disagree about.
+
+
+class Count:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 2:
+            raise StopIteration
+        return self.i
+
+
+def walk(it):
+    n = 0
+    for v in it:
+        n = n + 1
+    return n
+
+
+print(walk(Count()))
+print(walk(3))

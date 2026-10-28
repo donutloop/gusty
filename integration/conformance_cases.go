@@ -129,6 +129,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// answered `undefined name "global"`, so the whole family was unwritable (roadmap **Gap R.48**,
 		// **ADR 0448**).
 		"global_statement",
+		// The ITERATOR PROTOCOL: a `for` asks the object for its iterator with `__iter__`, asks the iterator
+		// for each element with `__next__`, and ENDS on the `StopIteration` the iterator raises. Every shape of
+		// it used to compile, run ZERO iterations and exit 0 — the counter class, the text elements, the
+		// `break`/`continue`, the `else:` clause, the iterator that is a different class from the iterable,
+		// the nested pair of protocol loops, the frame whose parameter is the iterable, and the exception that
+		// is NOT the end signal, which reaches the program's own `except` (roadmap **L12.2**, **Gap R.54**,
+		// **ADR 0449**).
+		"iterator_protocol",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the
@@ -1224,7 +1232,20 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_method_text_field",
 		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
 		"probe_global_statement", // Gap R.48 — no `global` statement; compiled, the record leg and the reference each answer differently
-		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
+		// The iterator protocol's refusals and raises, each pinned by ADR 0449: an object that is not iterable
+		// RAISES the reference's TypeError (where it ran zero iterations), and the four shapes this backend
+		// will not guess at say which half is missing (roadmap Gap R.514 — `__getitem__` iteration, Gap R.515 —
+		// an `__iter__` whose hand-off has no static class, Gap R.516 — no run-time iterator test, Gap R.517 —
+		// two call sites disagreeing about one parameter, Gap R.518 — a container the loop fills and the frame
+		// hands back).
+		"probe_iterator_not_iterable",
+		"probe_iterator_getitem_iteration",
+		"probe_iterator_not_an_iterator",
+		"probe_iterator_opaque_handoff",
+		"probe_iterator_mixed_parameter",
+		"probe_iterator_frame_answer",
+		"probe_iterator_float_answer",
+		"unwritten_slot_trap", // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
 		// A capture is a binding, so it happens in the arm that matched and nowhere else: the arms that
 		// did not run used to write the slot on their way past it, and the read afterwards answered it
 		// (roadmap Gap R.68, ADR 0358).
@@ -1576,6 +1597,36 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_global_statement": {oracle: lang.OracleNA,
 		reason: "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, while the compiled backend parses `global gz` as the *expression* `global gz` and refuses the program for having no binding for `global` — it disagrees with the reference on a construct every Python reader expects",
 		ref:    "roadmap Gap R.48 (`global` is not in the language); Gap R.36 (the probe pass that found it)",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+
+	// L12.2 / Gap R.54 (ADR 0449): the iterator protocol, its one raise, and the four shapes it refuses.
+	"programs/probe_iterator_not_iterable": {oracle: lang.OracleNA,
+		reason: "an object with no `__iter__` and no `__next__` is not iterable, and both legs now say so the same way: CPython dies with `TypeError: 'Plain' object is not iterable` at the `for`, and the compiled leg raises the same class, message and line instead of running zero iterations at exit 0",
+		ref:    "roadmap L12.2 / Gap R.54 (the iterator protocol); ADR 0449",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "exit status 3"}, {Backend: "python", Missing: true, Err: "exit status 1"}}},
+	"programs/probe_iterator_getitem_iteration": {oracle: lang.OracleDebt,
+		reason: "`__getitem__` is the reference's other way to be iterable — called with 0, 1, 2… until IndexError — and this backend lowers neither the call nor the end test, so the compiled leg refuses the shape in words where CPython prints 0, 1, 4",
+		ref:    "roadmap Gap R.514 (sequence iteration), filed by ADR 0449 under L12.2 / Gap R.54",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_iterator_not_an_iterator": {oracle: lang.OracleNA,
+		reason: "`__iter__` handing back a value with no `__next__` is the reference's `TypeError: iter() returned non-iterator of type 'int'`; the compiled leg refuses at the line the source names, because it has no run-time iterator test to raise from",
+		ref:    "roadmap Gap R.516 (no run-time iterator test), filed by ADR 0449 under L12.2 / Gap R.54",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_iterator_opaque_handoff": {oracle: lang.OracleNA,
+		reason: "`__iter__` returning a field makes the element dispatch a run-time fact about an object the loop never saw; the reference raises on the int the field holds, and the compiled leg refuses rather than name a class it would have to guess",
+		ref:    "roadmap Gap R.515 (an `__iter__` whose hand-off has no static class), filed by ADR 0449 under L12.2 / Gap R.54",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_iterator_mixed_parameter": {oracle: lang.OracleNA,
+		reason: "one loop body, two call sites, two iterables: `walk(Count())` and `walk(3)` cannot share a compiled protocol loop, and answering the one the census liked would print for the other at exit 0 — the reference raises for the int",
+		ref:    "roadmap Gap R.517 (call sites disagreeing about one parameter), filed by ADR 0449 under L12.2 / Gap R.54",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_iterator_frame_answer": {oracle: lang.OracleDebt,
+		reason: "the loop fills a container the frame hands back, and a slot written from a loop whose element the compiler cannot see through has no kind for the answer table — the caller would print the allocator's slot where the reference prints [1, 2]",
+		ref:    "roadmap Gap R.518 (a container built by a protocol loop over a parameter), filed by ADR 0449 under L12.2 / Gap R.54; ADR 0333/ADR 0344's answer table",
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
+	"programs/probe_iterator_float_answer": {oracle: lang.OracleDebt,
+		reason: "`__next__` answering a fractional number has no float word to travel in — the class road emits a method as an i32 function whatever its body answers — so the loop would print 0, 0 where the reference prints 0.25, 0.5; the build stops with the missing word named instead",
+		ref:    "roadmap Gap R.519 (the method float word), filed by ADR 0449 under L12.2 / Gap R.54; L11.1",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_operand_types": {oracle: lang.OracleDebt,

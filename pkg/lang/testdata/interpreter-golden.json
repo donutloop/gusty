@@ -1,5 +1,111 @@
 {
  "entries": {
+"# There is an iterator protocol (roadmap L12.2 / Gap R.54, closed by ADR 0449): a `for` asks the object\n# for its iterator with `__iter__`, asks the iterator for each element with `__next__`, and ENDS when\n# `__next__` raises StopIteration. Before this row the loop had one question for an iterable — can I count\n# its slots? — and an object answering a different question fell straight through it: this program\n# compiled, printed nothing, and exited 0, the code that means the program ran.\n\n\nclass Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\n\nclass Words:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        if self.i == 1:\n            return \"a\"\n        return \"b\"\n\n\nclass Inner:\n    def __init__(self):\n        self.n = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.n = self.n + 1\n        if self.n \u003e 2:\n            raise StopIteration\n        return self.n * 10\n\n\nclass Outer:\n    def __iter__(self):\n        return Inner()\n\n\ntotal = 0\nfor v in Count():\n    total = total + v\nprint(total)\n\nfor w in Words():\n    print(w)\n\nfor v in Count():\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\n\nfor v in Count():\n    print(v)\nelse:\n    print(\"counted out\")\n\nfor v in Outer():\n    print(v)\n\n\ndef total_of(it):\n    s = 0\n    for v in it:\n        s = s + v\n    return s\n\n\nprint(total_of(Count()))\n\nfor a in Count():\n    for b in Inner():\n        print(a * 100 + b)\n\n\nclass Boom:\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        raise ValueError(\"boom\")\n\n\ntry:\n    for v in Boom():\n        print(v)\nexcept ValueError:\n    print(\"caught what the iterator raised\")\n": {
+    "stdout": "6\na\nb\n1\n1\n2\n3\ncounted out\n10\n20\n6\n110\n120\n210\n220\n310\n320\ncaught what the iterator raised\n",
+    "hasStdout": true
+   },
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nclass Boom:\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        raise ValueError(\"boom\")\n\ntry:\n    for v in Boom():\n        print(v)\nexcept ValueError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nclass Inner:\n    def __init__(self):\n        self.n = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.n = self.n + 1\n        if self.n \u003e 2:\n            raise StopIteration\n        return self.n\n\nfor a in Count():\n    for b in Inner():\n        print(a * 100 + b)\n": {
+    "stdout": "101\n102\n201\n202\n301\n302\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nclass Report:\n    def sum_all(self):\n        s = 0\n        for v in Count():\n            s = s + v\n        return s\n\nprint(Report().sum_all())\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nclass Sub(Count):\n    pass\n\nfor v in Sub():\n    print(v)\n": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\ndef build():\n    out = []\n    for v in Count():\n        out.append(v)\n    return out\n\nprint(build())\n": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\ndef total_of(it):\n    s = 0\n    for v in it:\n        s = s + v\n    return s\n\nprint(total_of(Count()))\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nfor v in Count():\n    if v == 2:\n        break\nelse:\n    print(\"never\")\nprint(\"tail\")\n": {
+    "stdout": "tail\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nfor v in Count():\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\nprint(\"after\")\n": {
+    "stdout": "1\nafter\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nfor v in Count():\n    print(v)\nelse:\n    print(\"counted out\")\n": {
+    "stdout": "1\n2\n3\ncounted out\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nfor v in Count():\n    print(v)\nprint(\"after\")\n": {
+    "stdout": "1\n2\n3\nafter\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nout = []\nfor v in Count():\n    out.append(v * 2)\nprint(out, len(out))\n": {
+    "stdout": "[2, 4, 6] 3\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\nr = Count()\nfor v in r:\n    print(v)\n": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\ntotal = 0\nfor v in Count():\n    total = total + v\nprint(total)\n": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"class Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\ntry:\n    for v in Count():\n        print(v)\nexcept StopIteration:\n    print(\"the loop should have eaten it\")\nprint(\"tail\")\n": {
+    "stdout": "1\n2\n3\ntail\n",
+    "hasStdout": true
+   },
+
+"class Inner:\n    def __init__(self):\n        self.n = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.n = self.n + 1\n        if self.n \u003e 2:\n            raise StopIteration\n        return self.n * 10\n\nclass Outer:\n    def __iter__(self):\n        return Inner()\n\nfor v in Outer():\n    print(v)\n": {
+    "stdout": "10\n20\n",
+    "hasStdout": true
+   },
+
+"class Plain:\n    def value(self):\n        return 1\n\nclass Derived(Plain):\n    pass\n\nfor v in Derived():\n    print(v)\n": {
+    "err": "TypeError: 'Derived' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'Derived' object is not iterable"
+   },
+
+"class Plain:\n    def value(self):\n        return 1\n\nfor v in Plain():\n    print(v)\nprint(\"after\")\n": {
+    "err": "TypeError: 'Plain' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'Plain' object is not iterable"
+   },
+
+"class Plain:\n    pass\n\ntry:\n    for v in Plain():\n        print(v)\nexcept TypeError as e:\n    print(str(e))\n": {
+    "stdout": "'Plain' object is not iterable\n",
+    "hasStdout": true
+   },
+
+"class Tail:\n    def __next__(self):\n        return 1\n\nfor v in Tail():\n    print(v)\n": {
+    "err": "TypeError: 'Tail' object is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "'Tail' object is not iterable"
+   },
+
+"class Words:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        if self.i == 1:\n            return \"a\"\n        return \"b\"\n\nfor w in Words():\n    print(w)\nprint(\"done\")\n": {
+    "stdout": "a\nb\ndone\n",
+    "hasStdout": true
+   },
 "x = 0\n\ndef f():\n    global x\n    try:\n        x = 1\n    except Exception:\n        pass\n\nf()\nprint(x)\n": {
     "stdout": "1\n",
     "hasStdout": true

@@ -1,0 +1,25 @@
+# A `__next__` that answers a fractional number has no float word to arrive in (roadmap L12.2, Gap R.519
+# owns the method float word that ADR 0449 left standing). The class road emits every method as an `i32`
+# function whatever its body answers, so the element would reach the loop as the payload with its
+# float-ness gone — `0`, `0` where the reference prints `0.25`, `0.5`.
+#
+# The refusal says which word is missing instead of printing a number the program never wrote. The same
+# missing word shows one step away: `print(H().m())` for a float-returning method answers `0` today.
+
+
+class Halves:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 2:
+            raise StopIteration
+        return self.i / 4
+
+
+for v in Halves():
+    print(v)

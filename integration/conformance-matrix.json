@@ -562,6 +562,27 @@
     },
     {
       "case": {
+        "id": "programs/iterator_protocol",
+        "name": "iterator_protocol.gy",
+        "source": "# There is an iterator protocol (roadmap L12.2 / Gap R.54, closed by ADR 0449): a `for` asks the object\n# for its iterator with `__iter__`, asks the iterator for each element with `__next__`, and ENDS when\n# `__next__` raises StopIteration. Before this row the loop had one question for an iterable — can I count\n# its slots? — and an object answering a different question fell straight through it: this program\n# compiled, printed nothing, and exited 0, the code that means the program ran.\n\n\nclass Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 3:\n            raise StopIteration\n        return self.i\n\n\nclass Words:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        if self.i == 1:\n            return \"a\"\n        return \"b\"\n\n\nclass Inner:\n    def __init__(self):\n        self.n = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.n = self.n + 1\n        if self.n \u003e 2:\n            raise StopIteration\n        return self.n * 10\n\n\nclass Outer:\n    def __iter__(self):\n        return Inner()\n\n\ntotal = 0\nfor v in Count():\n    total = total + v\nprint(total)\n\nfor w in Words():\n    print(w)\n\nfor v in Count():\n    if v == 2:\n        continue\n    if v == 3:\n        break\n    print(v)\n\nfor v in Count():\n    print(v)\nelse:\n    print(\"counted out\")\n\nfor v in Outer():\n    print(v)\n\n\ndef total_of(it):\n    s = 0\n    for v in it:\n        s = s + v\n    return s\n\n\nprint(total_of(Count()))\n\nfor a in Count():\n    for b in Inner():\n        print(a * 100 + b)\n\n\nclass Boom:\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        raise ValueError(\"boom\")\n\n\ntry:\n    for v in Boom():\n        print(v)\nexcept ValueError:\n    print(\"caught what the iterator raised\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "6\na\nb\n1\n1\n2\n3\ncounted out\n10\n20\n6\n110\n120\n210\n220\n310\n320\ncaught what the iterator raised\n",
+      "python_ok": true,
+      "python_stdout": "6\na\nb\n1\n1\n2\n3\ncounted out\n10\n20\n6\n110\n120\n210\n220\n310\n320\ncaught what the iterator raised\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5705,6 +5726,261 @@
     },
     {
       "case": {
+        "id": "programs/probe_iterator_not_iterable",
+        "name": "probe_iterator_not_iterable.gy",
+        "source": "# An object that answers NEITHER `__iter__` NOR `__next__` is not iterable, and the reference says so with\n# a TypeError at the line that wrote `for` (roadmap L12.2 / Gap R.54, ADR 0449). This program is the half\n# that a silent zero-iteration loop used to answer: the class below has a method, and a method is not an\n# iterator, so CPython dies with `TypeError: 'Plain' object is not iterable` where the compiled backend\n# used to run zero iterations, print the trailer, and exit 0 — the code that means the program ran.\n#\n# The compiled leg now raises the same sentence, at the same line, with the same class, and a program's own\n# `except TypeError:` reaches it.\n\n\nclass Plain:\n    def value(self):\n        return 1\n\n\nfor v in Plain():\n    print(v)\nprint(\"after\")\n",
+        "asserted": false,
+        "oracle": "not_applicable",
+        "reason": "an object with no `__iter__` and no `__next__` is not iterable, and both legs now say so the same way: CPython dies with `TypeError: 'Plain' object is not iterable` at the `for`, and the compiled leg raises the same class, message and line instead of running zero iterations at exit 0",
+        "ref": "roadmap L12.2 / Gap R.54 (the iterator protocol); ADR 0449",
+        "pins": [
+          {
+            "backend": "aot",
+            "error": "exit status 3",
+            "missing": true
+          },
+          {
+            "backend": "python",
+            "error": "exit status 1",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 3",
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "an object with no `__iter__` and no `__next__` is not iterable, and both legs now say so the same way: CPython dies with `TypeError: 'Plain' object is not iterable` at the `for`, and the compiled leg raises the same class, message and line instead of running zero iterations at exit 0",
+      "oracle_ref": "roadmap L12.2 / Gap R.54 (the iterator protocol); ADR 0449",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_getitem_iteration",
+        "name": "probe_iterator_getitem_iteration.gy",
+        "source": "# `__getitem__` is the reference's OTHER way to be iterable: with no `__iter__` on the class, `for` calls\n# `__getitem__(0)`, `__getitem__(1)`, … until IndexError (roadmap L12.2, Gap R.514 owns this half of\n# ADR 0449's row). The compiled leg refuses the shape in words rather than running zero iterations,\n# because lowering it needs both the call and the end test, and neither exists here yet.\n\n\nclass Squares:\n    def __getitem__(self, i):\n        if i \u003e 2:\n            raise IndexError\n        return i * i\n\n\nfor v in Squares():\n    print(v)\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "`__getitem__` is the reference's other way to be iterable — called with 0, 1, 2… until IndexError — and this backend lowers neither the call nor the end test, so the compiled leg refuses the shape in words where CPython prints 0, 1, 4",
+        "ref": "roadmap Gap R.514 (sequence iteration), filed by ADR 0449 under L12.2 / Gap R.54",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over an object of class 'Squares' leans on __getitem__: the reference calls it with 0, 1, 2… until IndexError, and this backend lowers neither the call nor the end test (roadmap L12.2, Gap R.514)",
+      "python_ok": true,
+      "python_stdout": "0\n1\n4\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "`__getitem__` is the reference's other way to be iterable — called with 0, 1, 2… until IndexError — and this backend lowers neither the call nor the end test, so the compiled leg refuses the shape in words where CPython prints 0, 1, 4",
+      "oracle_ref": "roadmap Gap R.514 (sequence iteration), filed by ADR 0449 under L12.2 / Gap R.54",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: `for` over an object of class 'Squares' leans on __getitem__: the reference calls it with 0, 1, 2… until IndexError, and this backend lowers neither the call nor the end test (roadmap L12.2, Gap R.514)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_not_an_iterator",
+        "name": "probe_iterator_not_an_iterator.gy",
+        "source": "# `__iter__` must hand back an ITERATOR. The reference asks the object it was handed for `__next__` and,\n# finding none, raises `TypeError: iter() returned non-iterator of type 'int'` at the `for` (roadmap\n# L12.2, Gap R.516 owns the run-time test this backend does not have, so the shape is refused at the point\n# the source names — where the returned value's class is still a fact the compiler holds).\n#\n# Zero iterations at the exit code of success was the answer before ADR 0449.\n\n\nclass OnlyIter:\n    def __iter__(self):\n        return 1\n\n\nfor v in OnlyIter():\n    print(v)\n",
+        "asserted": false,
+        "oracle": "not_applicable",
+        "reason": "`__iter__` handing back a value with no `__next__` is the reference's `TypeError: iter() returned non-iterator of type 'int'`; the compiled leg refuses at the line the source names, because it has no run-time iterator test to raise from",
+        "ref": "roadmap Gap R.516 (no run-time iterator test), filed by ADR 0449 under L12.2 / Gap R.54",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over an object of class 'OnlyIter': the reference raises TypeError: iter() returned non-iterator of type 'int', and this backend has no run-time iterator test to raise it from (roadmap L12.2, Gap R.516)",
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "`__iter__` handing back a value with no `__next__` is the reference's `TypeError: iter() returned non-iterator of type 'int'`; the compiled leg refuses at the line the source names, because it has no run-time iterator test to raise from",
+      "oracle_ref": "roadmap Gap R.516 (no run-time iterator test), filed by ADR 0449 under L12.2 / Gap R.54",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_opaque_handoff",
+        "name": "probe_iterator_opaque_handoff.gy",
+        "source": "# `__iter__` hands back a value whose class the line does not name: below it returns a FIELD, so which\n# `__next__` the loop would call is a fact about whatever the field happened to hold when the loop ran\n# (roadmap L12.2, Gap R.515 owns the run-time dispatch this would need). The reference answers it — and\n# raises, because the field holds an int and an int is not an iterator.\n#\n# The refusal is the honest answer: naming a class the compiler guessed would put words in the\n# reference's sentence (Gap R.38's rule about what a refusal may claim).\n\n\nclass Hidden:\n    def __init__(self):\n        self.src = 0\n\n    def __iter__(self):\n        return self.src\n\n\nfor v in Hidden():\n    print(v)\n",
+        "asserted": false,
+        "oracle": "not_applicable",
+        "reason": "`__iter__` returning a field makes the element dispatch a run-time fact about an object the loop never saw; the reference raises on the int the field holds, and the compiled leg refuses rather than name a class it would have to guess",
+        "ref": "roadmap Gap R.515 (an `__iter__` whose hand-off has no static class), filed by ADR 0449 under L12.2 / Gap R.54",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over an object of class 'Hidden' asks its __iter__ for a value whose class the source does not name, so the element dispatch would be a run-time fact about an object the loop never saw (roadmap L12.2, Gap R.515)",
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "`__iter__` returning a field makes the element dispatch a run-time fact about an object the loop never saw; the reference raises on the int the field holds, and the compiled leg refuses rather than name a class it would have to guess",
+      "oracle_ref": "roadmap Gap R.515 (an `__iter__` whose hand-off has no static class), filed by ADR 0449 under L12.2 / Gap R.54",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_mixed_parameter",
+        "name": "probe_iterator_mixed_parameter.gy",
+        "source": "# One frame, two call sites, two kinds of iterable: `walk(Count())` hands the loop a protocol object and\n# `walk(3)` hands it an int, which the reference refuses with `TypeError: 'int' object is not iterable`\n# (roadmap L12.2, Gap R.517). A single compiled loop body cannot answer both callers, and answering the\n# one the census liked best would print for the other at the exit code of success — so the shape refuses,\n# naming the parameter the call sites disagree about.\n\n\nclass Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        return self.i\n\n\ndef walk(it):\n    n = 0\n    for v in it:\n        n = n + 1\n    return n\n\n\nprint(walk(Count()))\nprint(walk(3))\n",
+        "asserted": false,
+        "oracle": "not_applicable",
+        "reason": "one loop body, two call sites, two iterables: `walk(Count())` and `walk(3)` cannot share a compiled protocol loop, and answering the one the census liked would print for the other at exit 0 — the reference raises for the int",
+        "ref": "roadmap Gap R.517 (call sites disagreeing about one parameter), filed by ADR 0449 under L12.2 / Gap R.54",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over the parameter 'it': one call site hands this frame an instance of a class that answers __next__ and another hands it something the loop cannot ask, so which protocol the loop runs is a fact about the call, not about the line (roadmap L12.2, Gap R.517)",
+      "python_ok": false,
+      "python_stdout": "2\n",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "one loop body, two call sites, two iterables: `walk(Count())` and `walk(3)` cannot share a compiled protocol loop, and answering the one the census liked would print for the other at exit 0 — the reference raises for the int",
+      "oracle_ref": "roadmap Gap R.517 (call sites disagreeing about one parameter), filed by ADR 0449 under L12.2 / Gap R.54",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_frame_answer",
+        "name": "probe_iterator_frame_answer.gy",
+        "source": "# The loop's element arrives through a parameter, and the container the loop builds is what the frame\n# hands back. The answer table (ADR 0333) describes a callee's container by reading the bindings that wrote\n# its slots, and a slot filled from a loop whose element came from a call the compiler cannot see through\n# has no kind to record — absence was read as \"not a container\", and the caller printed the allocator's\n# slot number where the reference prints `[1, 2]` (roadmap L12.2, Gap R.518).\n#\n# Same program, loop over a class the SOURCE names (`for v in Count():`), answers unchanged: it is the\n# parameter that hides the element's kind. See `programs/iterator_protocol.gy` for that leg.\n\n\nclass Count:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        return self.i\n\n\ndef build(it):\n    out = []\n    for v in it:\n        out.append(v)\n    return out\n\n\nprint(build(Count()))\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "the loop fills a container the frame hands back, and a slot written from a loop whose element the compiler cannot see through has no kind for the answer table — the caller would print the allocator's slot where the reference prints [1, 2]",
+        "ref": "roadmap Gap R.518 (a container built by a protocol loop over a parameter), filed by ADR 0449 under L12.2 / Gap R.54; ADR 0333/ADR 0344's answer table",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over the parameter 'it' writes the container 'out' that this frame hands back, and the element arrives from a call the compiler cannot see through: the answer table has no kind to record for those slots, so the caller would print the allocator's slot where the reference prints the container (roadmap L12.2, Gap R.518)",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the loop fills a container the frame hands back, and a slot written from a loop whose element the compiler cannot see through has no kind for the answer table — the caller would print the allocator's slot where the reference prints [1, 2]",
+      "oracle_ref": "roadmap Gap R.518 (a container built by a protocol loop over a parameter), filed by ADR 0449 under L12.2 / Gap R.54; ADR 0333/ADR 0344's answer table",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: `for` over the parameter 'it' writes the container 'out' that this frame hands back, and the element arrives from a call the compiler cannot see through: the answer table has no kind to record for those slots, so the caller would print the allocator's slot where the reference prints the container (roadmap L12.2, Gap R.518)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_iterator_float_answer",
+        "name": "probe_iterator_float_answer.gy",
+        "source": "# A `__next__` that answers a fractional number has no float word to arrive in (roadmap L12.2, Gap R.519\n# owns the method float word that ADR 0449 left standing). The class road emits every method as an `i32`\n# function whatever its body answers, so the element would reach the loop as the payload with its\n# float-ness gone — `0`, `0` where the reference prints `0.25`, `0.5`.\n#\n# The refusal says which word is missing instead of printing a number the program never wrote. The same\n# missing word shows one step away: `print(H().m())` for a float-returning method answers `0` today.\n\n\nclass Halves:\n    def __init__(self):\n        self.i = 0\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        self.i = self.i + 1\n        if self.i \u003e 2:\n            raise StopIteration\n        return self.i / 4\n\n\nfor v in Halves():\n    print(v)\n",
+        "asserted": false,
+        "oracle": "debt",
+        "reason": "`__next__` answering a fractional number has no float word to travel in — the class road emits a method as an i32 function whatever its body answers — so the loop would print 0, 0 where the reference prints 0.25, 0.5; the build stops with the missing word named instead",
+        "ref": "roadmap Gap R.519 (the method float word), filed by ADR 0449 under L12.2 / Gap R.54; L11.1",
+        "pins": [
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: `for` over an object of class 'Halves' asks __next__ for a fractional number, and the class road emits every method as an i32 function whatever its body answers: the element would arrive as the payload without the word that says it is a float, and print would read it as an integer (roadmap L12.2, Gap R.519)",
+      "python_ok": true,
+      "python_stdout": "0.25\n0.5\n",
+      "aot_matches_python": false,
+      "conformant": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "`__next__` answering a fractional number has no float word to travel in — the class road emits a method as an i32 function whatever its body answers — so the loop would print 0, 0 where the reference prints 0.25, 0.5; the build stops with the missing word named instead",
+      "oracle_ref": "roadmap Gap R.519 (the method float word), filed by ADR 0449 under L12.2 / Gap R.54; L11.1",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: `for` over an object of class 'Halves' asks __next__ for a fractional number, and the class road emits every method as an i32 function whatever its body answers: the element would arrive as the payload without the word that says it is a float, and print would read it as an integer (roadmap L12.2, Gap R.519)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/unwritten_slot_trap",
         "name": "unwritten_slot_trap.gy",
         "source": "# A local assigned on one path only is unbound on the other (roadmap Gap R.36, ADR 0228).\n#\n# `x` is written inside `if c:` with no else, so `f(False)` reads a slot no path assigned. CPython\n# raises UnboundLocalError; so does the interpreter, and so does the compiled backend — which used to\n# print 0 for the second call and exit 0, the silent wrong answer this program exists to keep dead.\n# The class matters as much as the trap: `except UnboundLocalError:` has to match on both backends,\n# and a name the frame does not own at all (`mod_` shape below, or Gap R.39's read-above-the-write)\n# is a NameError instead. Neither leg may invent a value for a slot the program never wrote.\n\n\ndef f(c):\n    if c:\n        x = 1\n    return x\n\n\nprint(f(True))\nprint(f(False))\n",
@@ -5962,12 +6238,12 @@
       ]
     }
   ],
-  "rows": 254,
-  "skipped": 29,
-  "pass": 225,
+  "rows": 262,
+  "skipped": 36,
+  "pass": 226,
   "fail": 0,
-  "oracle_match": 211,
-  "oracle_debt": 21,
-  "oracle_not_applicable": 22,
+  "oracle_match": 212,
+  "oracle_debt": 24,
+  "oracle_not_applicable": 26,
   "oracle_drift": 0
 }

@@ -1,0 +1,19 @@
+# `__iter__` hands back a value whose class the line does not name: below it returns a FIELD, so which
+# `__next__` the loop would call is a fact about whatever the field happened to hold when the loop ran
+# (roadmap L12.2, Gap R.515 owns the run-time dispatch this would need). The reference answers it — and
+# raises, because the field holds an int and an int is not an iterator.
+#
+# The refusal is the honest answer: naming a class the compiler guessed would put words in the
+# reference's sentence (Gap R.38's rule about what a refusal may claim).
+
+
+class Hidden:
+    def __init__(self):
+        self.src = 0
+
+    def __iter__(self):
+        return self.src
+
+
+for v in Hidden():
+    print(v)

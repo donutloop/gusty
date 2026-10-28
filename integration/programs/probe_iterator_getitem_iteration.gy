@@ -1,0 +1,15 @@
+# `__getitem__` is the reference's OTHER way to be iterable: with no `__iter__` on the class, `for` calls
+# `__getitem__(0)`, `__getitem__(1)`, … until IndexError (roadmap L12.2, Gap R.514 owns this half of
+# ADR 0449's row). The compiled leg refuses the shape in words rather than running zero iterations,
+# because lowering it needs both the call and the end test, and neither exists here yet.
+
+
+class Squares:
+    def __getitem__(self, i):
+        if i > 2:
+            raise IndexError
+        return i * i
+
+
+for v in Squares():
+    print(v)

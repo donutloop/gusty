@@ -1,0 +1,15 @@
+# `__iter__` must hand back an ITERATOR. The reference asks the object it was handed for `__next__` and,
+# finding none, raises `TypeError: iter() returned non-iterator of type 'int'` at the `for` (roadmap
+# L12.2, Gap R.516 owns the run-time test this backend does not have, so the shape is refused at the point
+# the source names — where the returned value's class is still a fact the compiler holds).
+#
+# Zero iterations at the exit code of success was the answer before ADR 0449.
+
+
+class OnlyIter:
+    def __iter__(self):
+        return 1
+
+
+for v in OnlyIter():
+    print(v)

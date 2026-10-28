@@ -6219,7 +6219,103 @@ slice, a dict's keys, a set's elements, a user function's container answer and a
 asserted unchanged, on both witness legs, in `pkg/lang/for_iterable_test.go` and
 `integration/programs/for_iterables.gy`.
 
+### A `for` over an object asks it for an iterator (L12.2, Gap R.54, ADR 0449)
+
+An object is iterable when it answers the protocol, not when the compiler can count its slots:
+
+```python
+class Count:
+    def __init__(self):
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 3:
+            raise StopIteration      # the loop's END SIGNAL, not an error
+        return self.i
+
+for v in Count():          # 1, 2, 3      — __iter__ once, __next__ once per turn
+    print(v)
+print("after")             # after        — and the trailer runs, because the loop ENDED
+
+total = 0
+for v in Count():
+    if v == 2:
+        continue
+    total = total + v      # break and continue work, and `break` skips the `else:`
+else:
+    print("counted out")   # a normal end runs the loop's `else:` clause
+```
+
+`__iter__` is asked **once**, before the loop, and what it hands back is rooted for the loop's whole
+life (a body that allocates cannot collect the iterator out from under the loop, **ADR 0181**). Each turn
+emits `v = it.__next__()` through the ordinary binding road, which is why the element keeps the kind the
+method answered with — a text stays a text, a float stays a float (**ADR 0267**'s pair travels the way it
+does from any other call) rather than arriving flattened to an object handle. `StopIteration` is the
+loop's **private** end signal: the loop installs its own handler around the `__next__` call, compares the
+raised class against `StopIteration`'s own code, and eats it — an enclosing `try: … except StopIteration:`
+never sees it, exactly as in the reference. Any OTHER exception walks out of the loop to the program's
+own handler: a `__next__` that raises `ValueError("boom")` is caught by `except ValueError:`, and with no
+handler it dies as `ValueError: boom` at exit **3**.
+
+The protocol is found through the same resolution order every other attribute is found through
+(**ADR 0446**), so `class Sub(Count): pass` is iterable because its base said `__iter__`. A loop inside a
+method asks the protocol too, and a loop whose iterable is a frame parameter is compiled when every call
+site hands that parameter the same protocol class:
+
+```python
+def total_of(it):
+    s = 0
+    for v in it:
+        s = s + v
+    return s
+
+print(total_of(Count()))               # 6 — the call site names the class the loop dispatches on
+```
+
+An object that answers neither `__iter__` nor `__next__` is **not iterable**, and the compiled loop says so
+the way the reference does — a run-time `TypeError`, catchable, fatal at exit **3** with a traceback
+without a handler. It is not a compile-time refusal, because the reference's test is a question about the
+object in hand:
+
+```python
+class Plain:
+    def value(self):
+        return 1
+
+try:
+    for v in Plain():                     # TypeError: 'Plain' object is not iterable
+        print(v)
+except TypeError as e:
+    print(str(e))                        # 'Plain' object is not iterable
+```
+
+Five shapes are **refused in words** rather than answered, each naming the missing rule and the row that
+owns it, because the alternative for every one of them is a loop that runs ZERO iterations and exits **0**
+— indistinguishable from an empty iterable, which is the worst answer this backend can give:
+
+| Shape the reference answers | Refusal cites | Capability code |
+|---|---|---|
+| `__getitem__`-only iteration (called with 0, 1, 2… until `IndexError`) | **Gap R.514** | `lower.unsupported.iterator-getitem-sequence` |
+| `__iter__` handing back a field or a call's answer — no class to name | **Gap R.515** | `lower.unsupported.iterator-opaque-handoff` |
+| `__iter__` handing back a value with no `__next__` (`iter() returned non-iterator of type 'int'`) | **Gap R.516** | `lower.unsupported.iterator-not-an-iterator` |
+| one frame parameter, two call sites, two different iterables | **Gap R.517** | `lower.unsupported.iterator-parameter-kinds-disagree` |
+| a container the loop fills and the frame hands back (`print(build(Count()))` → `[1, 2]`) | **Gap R.518** | `lower.unsupported.iterator-frame-answers-built-container` |
+| `__next__` answering a fractional number, which has no float word to travel in | **Gap R.519** | `lower.unsupported.iterator-float-answer` |
+
+The iterator protocol is a fact about the ITERATOR's class, and the compiler has to hold that class to
+emit the element call. Where the source names it — `return self`, `return SomeClass()` — the loop runs;
+where the source does not, the road stops rather than guess, and says which word it is missing. A loop
+over a container is untouched by any of this: a `for` over a list, a text, a dict, a set or a `range`
+still emits the counter road it always did, with no `__iter__`, no `__next__` and no rooted iterator slot
+in the module (`pkg/lang/iterator_protocol_test.go` asserts that negative control).
+
 ### The ordering builtins ask their options by name (L11.7, Gap R.249, ADR 0340)
+
+
 
 `sorted`, `min` and `max` now read `key=` and `reverse=` as **named options**, not as another candidate
 or as the old positional reverse flag:

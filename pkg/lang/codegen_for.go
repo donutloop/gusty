@@ -31,6 +31,25 @@ func (g *irGen) stmtFor(b *strings.Builder, st Stmt, n *ForStmt) error {
 	// builtin's argument list, and a no-op option sitting in it would decline a program the builtin
 	// itself answers (roadmap Gap R.249, ADR 0340).
 	n.Iter = normaliseIdentityKey(n.Iter)
+	// The ITERATOR PROTOCOL is asked before any container question, because an object that answers
+	// `__iter__` and `__next__` is not a container: the counter road below compares its counter with the
+	// iterable's word, which for an object handle means the loop either ran the handle's value times or,
+	// more often, ran ZERO times and printed nothing at the exit code that means the program ran
+	// (roadmap L12.2, Gap R.54, ADR 0449). An object that answers neither dunder is not an iterable
+	// either, and the reference says so with a TypeError the loop now raises where it used to be silent.
+	if p := g.iteratorProtocolOf(n.Iter); p.state != iteratorNotProtocol {
+		switch p.state {
+		case iteratorRuns:
+			if why := g.iteratorFrameRefusal(n, p); why != "" {
+				return fmt.Errorf("%s", why)
+			}
+			return g.stmtForIterator(b, n, p)
+		case iteratorNotIterable:
+			return g.raiseNotIterable(b, n, p)
+		default:
+			return fmt.Errorf("%s", iteratorRefusal(p))
+		}
+	}
 	if folded, okFold := g.foldedForIterable(n.Iter); okFold {
 		n.Iter = folded
 	} else if named, okNamed := g.materializeSortedReversedForLoop(b, n.Iter); okNamed {

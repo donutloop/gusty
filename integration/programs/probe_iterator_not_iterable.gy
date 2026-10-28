@@ -1,0 +1,18 @@
+# An object that answers NEITHER `__iter__` NOR `__next__` is not iterable, and the reference says so with
+# a TypeError at the line that wrote `for` (roadmap L12.2 / Gap R.54, ADR 0449). This program is the half
+# that a silent zero-iteration loop used to answer: the class below has a method, and a method is not an
+# iterator, so CPython dies with `TypeError: 'Plain' object is not iterable` where the compiled backend
+# used to run zero iterations, print the trailer, and exit 0 — the code that means the program ran.
+#
+# The compiled leg now raises the same sentence, at the same line, with the same class, and a program's own
+# `except TypeError:` reaches it.
+
+
+class Plain:
+    def value(self):
+        return 1
+
+
+for v in Plain():
+    print(v)
+print("after")
