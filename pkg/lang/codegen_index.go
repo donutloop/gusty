@@ -966,10 +966,23 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 		if v, ok := g.numericElemUse(b, n); ok {
 			return v, nil
 		}
+		if kind, isConstant := g.constantSubscriptKind(n.Obj); isConstant {
+			g.constantTrap(b, "TypeError", notSubscriptableSentence(kind), n.Span())
+			return "0", nil
+		}
 		return "", g.slotReadRefusal(n, "index")
 	default:
 		if v, ok := g.numericElemUse(b, n); ok {
 			return v, nil
+		}
+		// The base is a CONSTANT because the fold already answered the read underneath it:
+		// `print([[1, 2][0][0], 1])` and `print([1, 2, 3][0][0])` leave `1[0]` standing where a chain of
+		// two reads was written, and the reference answers that with a catchable TypeError rather than a
+		// build that stops. The refusal below blames a literal the program did write, which sends the
+		// reader after the wrong half (roadmap Gap R.227, ADR 0440).
+		if kind, isConstant := g.constantSubscriptKind(n.Obj); isConstant {
+			g.constantTrap(b, "TypeError", notSubscriptableSentence(kind), n.Span())
+			return "0", nil
 		}
 		return "", g.slotReadRefusal(n, "index")
 	}

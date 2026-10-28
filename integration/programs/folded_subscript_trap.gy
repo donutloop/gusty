@@ -1,0 +1,35 @@
+# A subscript standing on a read the compiler already answered: the fold's answer IS the number, and the
+# reference answers `1[0]` with a TypeError the program catches. roadmap Gap R.227, ADR 0440.
+print([[1, 2][0], 1])
+print([[[1, 2][0]][0], 1])
+print([[[1], [2]][1][0], 5])
+print([[[1, 2], [3, 4]][1][0], 9])
+print([[1, 2, 3][1] + 1])
+print([1, 2][1])
+print(["ab"[0][0]])
+print(["ab"[0], "c"[0]])
+d = {"a": {"b": [1]}}
+print(d["a"]["b"][0])
+print({"a": [1, 2][0]}["a"])
+print([[[1, 2]], [3]][0][0][0])
+print([[[1, 2][0], [3][0]]])
+try:
+    print([[1, 2][0][0], 1])
+except TypeError as e:
+    print("caught", e)
+try:
+    print([[1][0][0], 1])
+except TypeError as e:
+    print("caught", e)
+try:
+    print([[True][0][0]])
+except TypeError as e:
+    print("caught", e)
+try:
+    print([[None][0][0]])
+except TypeError as e:
+    print("caught", e)
+try:
+    print([[[1, 2][5]][0]])
+except IndexError as e:
+    print("caught", e)

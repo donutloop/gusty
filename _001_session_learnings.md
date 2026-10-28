@@ -16228,3 +16228,50 @@ number.
    output is evidence: the five refusals in that run became four filed rows and one fixed shape. Read the
    `refused:` lines of every recording run; a run that adds N entries and refuses M sources has told you M things
    the answered tests cannot.
+
+## ADR 0440 — a subscript stands on what the FOLD already answered: the door raises the reference's TypeError instead of refusing the build (roadmap Gap R.227 closed; ADR 0440; Gaps R.494, R.495 filed, 2026-10-28)
+
+1. **A refusal is a claim about the program, and this one was false.** `index requires an inline list/dict/set
+   literal` fired on a program that contains three inline list literals. The sentence was written for the case
+   where no literal is in sight; reusing it as the tail of a road exhausted the case where a literal was in
+   sight and the fold had already answered it. The house rule this exercises (**ADR 0326**) is that when the fold
+   discovers the program cannot proceed, the output is the trap the reference raises — emitted, catchable, with
+   the landing pad the enclosing `try:` pushed — and never a build stop. A refusal should describe a missing
+   lowering; here it described an executed program.
+
+2. **The pair door was the obvious answer, and measurement said no.** The row's own `Next concrete action` said
+   to hand the outer subscript the pair the inner read computed. That arm was written; it never fired, because
+   `runtimeSlotPairDeep` refuses exactly the literals the fold can read, on **ADR 0331**'s rule that a fold's
+   shape stays the fold's answer — and widening it would have put two roads in charge of one literal's slots
+   (**ADR 0249**/**ADR 0232**). Rejected on measurement, written into the ADR and into the row with the
+   measurement attached, and the shape that really wants that arm (a base built by a comprehension) is filed as
+   **Gap R.495** with today's refusal pinned rather than smuggled into this commit.
+
+3. **A stale binary nearly produced a false "fixed" twice in one cycle.** The first draft of the family's results
+   came from a `/tmp` build that predated the arms: `print([[1, 2][0][0], 1])` was still exit **1**, and
+   `print([[x for x in [1]][0][0]])` looked like a fourth fix until a rebuild from the tree showed it refusing
+   identically on `b276ddf` and on this build. Same guard as last cycle, restated because I still had to be caught
+   by it: every byte in an evidence cell comes from a build made from the tree under test, the parent is measured
+   by a second worktree at the recorded parent revision, and a claim that cannot name both revisions is not
+   evidence. `git worktree add --detach /tmp/wt_head HEAD` is cheaper than `git stash`, cannot lose the tree, and
+   makes "measured on two builds" a sentence anyone can re-run.
+
+4. **The recorder refused three programs, and the refusals were the finding.** `tools/recmerge` would not record
+   `print(len([[1, 2][0][0], 1]))` or the `len([f()])` probe (the compiled leg answered `2` / `1`, the reference
+   trapped) nor the comprehension shape (the compiled leg refused a program the reference traps). Excluding them
+   from the batch was the correct move — the recorder certifies agreement, not greenness — and the three named
+   sources became **Gap R.494** and **Gap R.495**. A recording run's `refused:` lines are a detector: read them,
+   or the sweep that found the bugs is lost to `stdout`.
+
+5. **A filed table that empties itself proves nothing either.** Deleting the **Gap R.227** row from
+   `pair_element_read_test.go`'s residue table (correctly — it stops refusing and moved to the answering tables)
+   left an empty table whose loop passes vacuously, so the sweep's real residue — a read of a read out of a
+   comprehension — was filed into that table instead of into my own new file, where a reader would look for it
+   under the wrong door. Row hygiene cuts both ways: a row that starts answering must move, and a ledger must
+   still hold something to be a ledger.
+
+6. **Two rows for one family, because the legs disagree differently.** The literal chain raised, the `len` chain
+   answered at exit 0, and the comprehension chain refused. Filing those as three faces of "the fold and the
+   subscript do not meet" would have hidden the exit-0 case (the loudest defect this house recognises) inside two
+   honest-looking ones, so the length door and the built-container door each got a row with its own today-bytes
+   beside the reference's, and both fail their own tests on the day they close.

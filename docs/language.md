@@ -937,6 +937,35 @@ the `for` road still reads a call's argument as a bound (**Gap R.299**), and a g
 refused by the grammar in its bare spelling and by the door in its parenthesised one (**Gap R.296**).
 
 
+### What a subscript of an already-answered read is (LLVM codegen)
+
+The compiler answers some reads at compile time, and the answer is a VALUE, not a container: `[1, 2][0]` is the
+integer 2. Write another subscript on top of it and the program has written `1[0]`, which the reference answers
+with a catchable `TypeError` rather than a build that stops:
+
+```
+print([[1, 2][0][0], 1])   # TypeError: 'int' object is not subscriptable   (this stopped the build at exit 1)
+print([1, 2, 3][0][0])     # TypeError: 'int' object is not subscriptable
+print({(1, 2)[0][0]})      # the same, over a tuple
+print([[True][0][0]])      # TypeError: 'bool' object is not subscriptable
+print([[None][0][0]])      # TypeError: 'NoneType' object is not subscriptable
+print([[[1, 2][5]][0]])    # IndexError: list index out of range — the INNER accident, the one written first
+try:
+    print([[1, 2][0][0], 1])
+except TypeError as e:
+    print("caught", e)      # caught 'int' object is not subscriptable
+```
+
+The kind word comes from the fold's own answer (`constantSubscriptKind`, in `pkg/lang/constant_trap.go`), the
+raise is emitted by the same door as a missing key (**ADR 0326**) and a position past the end (**ADR 0330**), and
+the sentence is written once — `notSubscriptableSentence` — which the run-time subscript door quotes too, so the
+fold and the object cannot report one accident two ways (**roadmap Gap R.227**, **ADR 0440**). A TEXT is the
+exception the language keeps: a text is a container of one-character texts, so `print(["ab"[0][0]])` answers
+`['a']`, and chains the fold or the pair door already answer (`[[[1, 2], [3, 4]][1][0], 9]` → `[3, 9]`) keep
+answering. Two shapes are still owed, stated rather than smoothed: `len` of a literal counts without evaluating
+its elements, so `print(len([[1, 2][0][0], 1]))` prints `2` where the reference raises (**Gap R.494**), and a
+subscript of a read out of a comprehension still refuses (**Gap R.495**).
+
 ### What a comprehension written as an ELEMENT is (LLVM codegen)
 
 A comprehension is a container object wherever it stands, including as the element of another container: the

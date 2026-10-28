@@ -73,6 +73,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `llc` rejected at exit 2 — is the shape this row no longer emits, and the numeric literal beside it
 		// keeps the static array it always had (roadmap **Gap R.487**, **Gap R.488**, paid by **ADR 0439**).
 		"comprehension_container_element",
+		// A subscript standing on a read the compiler already answered is the accident the reference raises:
+		// `[1, 2][0]` IS the integer 2, so `[[1, 2][0][0], 1]` has written `1[0]`, and the program catches
+		// `TypeError: 'int' object is not subscriptable` from its own `except` — while the chains the fold and
+		// the pair door do answer (`[[[1, 2], [3, 4]][1][0], 9]`, a text subscripted twice, a dict of a dict of
+		// a list) keep printing what they printed. The build used to stop at exit 1 on the first shape with a
+		// sentence about an inline literal; the inner read's own accident (a position that is not there) still
+		// wins the order, because it is the one the program wrote first (roadmap **Gap R.227**, **ADR 0440**).
+		"folded_subscript_trap",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

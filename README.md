@@ -3753,6 +3753,36 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **A subscript stands on what the FOLD already answered, and the door raises instead of refusing (Gap R.227,
+  **ADR 0440**)** — `print([[1, 2][0][0], 1])` and `print([[1][0][0], 1])` stopped the build at exit **1** with
+  `codegen: index requires an inline list/dict/set literal`, where the reference raises
+  `TypeError: 'int' object is not subscriptable` and the program can catch it. The fold was never the bug —
+  `[1, 2][0]` IS the integer 2 — but what it leaves behind is an AST the next read cannot use: the outer
+  subscript still sees the inner `Index`, its gates (`numericElemUse`, the pair doors) each correctly decline,
+  and the tail of the road blamed a literal the program did write. `(*irGen).constantSubscriptKind` now walks
+  that one fold level at the door (`foldedLiteralElemOf` asks the SAME `listLiteralFoldAnswers` question
+  `valueIndex` asks, and declines a literal it cannot read, a non-constant position and a position out of range,
+  which the pair door and the bounds check own), and the trap goes out through the emitter **ADR 0326**'s
+  `KeyError` and **ADR 0330**'s `IndexError` use, so the enclosing `try:`'s landing pad is reached.
+  `notSubscriptableSentence` is the one spelling of `'int'/'float'/'bool'/'NoneType' object is not subscriptable`,
+  quoted by the run-time tag door too, so the fold and the object cannot report one accident twice. The order is
+  the reference's — `print([[[1, 2][5]][0]])` raises the INNER `IndexError: list index out of range` — and a text
+  stays what it is: `print(["ab"[0][0]])` answers `['a']`, because raising there would be a raise where the
+  reference prints. Twenty-one sources raise on the compiled leg AND against the record (`jitTrap` +
+  `recordTrapOf`), twenty are caught by the program's own `except … as e:` with the sentence compared byte for
+  byte, fifteen controls answer on both legs, five IR rows pin the module (the sentence present, the refusal
+  absent, no `i32 @.` in an operand — **ADR 0188**), and a twelve-row table asks the predicate directly so a
+  widening fails a decision row; through the CLI 21 raises at exit **3**, 6 catches at exit **0** beside a live
+  CPython, 16 controls line-for-line, exit **2** forbidden throughout. `tools/recmerge` wrote 72 entries (9932 →
+  10004, none refused) and `integration/programs/folded_subscript_trap.gy` joined the corpus (260 programs) as a
+  line-for-line `match`. The residue is FILED, not folded in: **Gap R.494** (`len` of a literal counts without
+  evaluating its elements, so `print(len([[1, 2][0][0], 1]))` prints `2` at the exit code that means the program
+  ran, and `len([f()])` never performs the call inside the literal — **Gap R.149**'s rule at the length door) and
+  **Gap R.495** (a subscript of a read out of a COMPREHENSION still refuses — the pair the first read computed
+  never reaches the second). The stale filed row left `pair_element_read_test.go` for the answering tables, and
+  the residue table stayed populated with **Gap R.495**: a row that stops refusing moves, and a filed table that
+  empties itself proves nothing.
+
 - **A comprehension is a container at the doors that DECIDE, too: its element answers the brace (Gaps R.487,
   R.488, **ADR 0439**)** — `print([[{"a": 1} for x in range(1)], 1])` printed **`[1, 1]`** and
   `def f(): return 1` / `print([[f() for x in range(1)], 2])` printed **`[1, 2]`**, both at the exit code that means

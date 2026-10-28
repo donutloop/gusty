@@ -82,6 +82,68 @@ func indexOutOfRangeSentenceFor(isTuple bool) string {
 func listAssignmentIndexOutOfRange() string { return "list assignment index out of range" }
 func stringIndexOutOfRange() string         { return "string index out of range" }
 
+// notSubscriptableSentence is the read the reference refuses when the object under the subscript is not
+// a container at all: `print([[1, 2][0][0], 1])` folds the INNER read to the integer 1, and the outer
+// subscript therefore stands on a number, which CPython answers
+// `TypeError: 'int' object is not subscriptable` — a trap the program can catch, not a build the
+// compiler may decline (roadmap Gap R.227, ADR 0440). The tag-reading run-time door quotes the same
+// helper, so one program gets one message whichever road read the slot (ADR 0326's one-question rule).
+func notSubscriptableSentence(kind string) string {
+	return "'" + kind + "' object is not subscriptable"
+}
+
+// constantSubscriptKind names the constant a subscript is really standing on. The inner read of
+// `[[1, 2][0][0], 1]`, of `[1, 2, 3][0][0]` and of `(1, 2)[0][0]` is answered at compile time, and the
+// answer is a number, a verdict or nothing — so the program has written `1[0]`, which the reference
+// answers with a catchable TypeError rather than a build that stops. Walking one fold level is the whole
+// of it: the fold's answer IS that constant, and the AST node the outer subscript sees is still the inner
+// `Index` (roadmap Gap R.227, ADR 0440). A TEXT is deliberately absent from both halves: `"ab"[0][0]` is
+// `'a'[0]` to CPython and answers `'a'`, so the character road keeps its own arm, and a pair door that can
+// answer the read is asked before this one is.
+func (g *irGen) constantSubscriptKind(e Expr) (string, bool) {
+	switch x := e.(type) {
+	case *IntLit:
+		return "int", true
+	case *FloatLit:
+		return "float", true
+	case *BoolLit:
+		return "bool", true
+	case *NoneLit:
+		return "NoneType", true
+	case *Index:
+		if g == nil {
+			return "", false
+		}
+		if el, ok := g.foldedLiteralElemOf(x); ok {
+			return g.constantSubscriptKind(el)
+		}
+	}
+	return "", false
+}
+
+// foldedLiteralElemOf is the element the compile-time read of a list or tuple literal answers, asked of
+// the read rather than of the container: the position the program named, resolved only where
+// listLiteralFoldAnswers says the whole literal is readable at compile time (the same question
+// valueIndex's list arm asks before it folds, so the fold and this walk cannot disagree about which
+// literal is a constant — ADR 0326's one-question rule, roadmap Gap R.227). A position outside the
+// literal, and a literal the fold cannot read, answer "no": the pair door and the bounds check own those,
+// and this road exists only for the accident the fold has already decided.
+func (g *irGen) foldedLiteralElemOf(ix *Index) (Expr, bool) {
+	ll, isList := ix.Obj.(*ListLit)
+	if !isList || !g.listLiteralFoldAnswers(ll, ix.Idx) {
+		return nil, false
+	}
+	il, isInt := ix.Idx.(*IntLit)
+	if !isInt {
+		return nil, false
+	}
+	pos := int(normPosIndex(il.Value, int64(len(ll.Elems))))
+	if pos < 0 || pos >= len(ll.Elems) {
+		return nil, false
+	}
+	return ll.Elems[pos], true
+}
+
 // The `int()`/`float()` conversion sentences, in CPython's own words. Both quote the *source text* it
 // was handed, repr-quoted, which is the part a reader acts on — `invalid literal for int() with base 10`
 // without the offending text is a message that tells the author nothing about which argument to fix.

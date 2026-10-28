@@ -353,15 +353,24 @@ func TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		gap      string
 	}{
 		{
-			"a read of a read of a literal, as an element",
-			"print([[1, 2][0][0], 1])",
-			"", "TypeError: 'int' object is not subscriptable", "roadmap Gap R.227 (Gap R.214's shape one level in)",
+			// **Gap R.495**, measured while closing **Gap R.227**: the read out of a comprehension the
+			// builder filled is answered, the read OF that read is not — the same chain, one builder over,
+			// and the pair the first read computed is what the second one never receives.
+			"a read of a read out of a comprehension",
+			"print([[x for x in [1]][0][0]])",
+			"", "TypeError: 'int' object is not subscriptable", "roadmap Gap R.495 (Gap R.227's shape, one builder over)",
 		},
-		// The row this table carried for Gap R.67 — `def f(): return [{"a": "x"}["a"], 2]` /
+		// The row this table carried for **Gap R.227** — `print([[1, 2][0][0], 1])`, recorded as refusing
+		// `index requires an inline list/dict/set literal` while the reference raised — raises the reference's
+		// `TypeError: 'int' object is not subscriptable` now the subscript door walks the fold's answer
+		// (**ADR 0440**), and it moved to the trap table beside the shape it is the same accident of:
+		// `pkg/lang/folded_subscript_trap_test.go::TestASubscriptOfAFoldedReadRaisesWhatTheReferenceRaises.
+		// A row that stops refusing moves; it does not disappear.
+		//
+		// The row this table carried for **Gap R.67** — `def f(): return [{"a": "x"}["a"], 2]` /
 		// `print(f())`, recorded as answering `0` — answers `['x', 2]` now the return door exists, and it
 		// moved to the answering table beside the element door that always got it right:
-		// TestAPairElementListReturnedFromACallAnswersTheList in container_return_test.go. A row that stops
-		// refusing moves; it does not disappear.
+		// TestAPairElementListReturnedFromACallAnswersTheList in container_return_test.go.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

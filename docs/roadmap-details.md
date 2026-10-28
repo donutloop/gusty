@@ -20945,3 +20945,126 @@ The row's `Next concrete action` is deliberately two-armed, because the two answ
 the builtin table before the frame, then either name a callable value (which needs **Gap R.297**'s word — a
 callable has no representation to store yet) or decline the statement the way the reference declines the name.
 What it may not do is emit a load of an alloca no pass created.
+
+### Gap R.227 — a subscript whose base is itself a subscript of a literal is answered by the fold, and the door now raises what the fold's answer makes true (✅ DONE, found by **ADR 0332**, closed by **ADR 0440**)
+
+The two programs the row was filed on, measured on the build before (`b276ddf`) and on the one that closed it:
+
+```
+$ gustyc --eval 'print([[1, 2][0][0], 1])'        # parent b276ddf
+gustyc: jit: codegen: index requires an inline list/dict/set literal                            exit=1
+$ gustyc --eval 'print([[1, 2][0][0], 1])'        # ADR 0440
+Traceback (most recent call last):
+  File "prog", line 1, in <module>
+TypeError: 'int' object is not subscriptable                                                      exit=3
+$ python3 -c 'print([[1, 2][0][0], 1])'
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+TypeError: 'int' object is not subscriptable                                                      exit=1
+```
+
+and the same pair for `print([[1][0][0], 1])`. `print([[1, 2][0], 1])` printed `[1, 1]` on both builds and on
+CPython, which is the fact that says where the defect was: **the fold is not the bug**. `[1, 2][0]` *is* the
+integer 2 — `listLiteralFoldAnswers` licenses the claim, and it is the same question `valueIndex` asks before
+its list arm folds, so the two doors could never have disagreed about which literal is a constant.
+
+What the fold leaves behind is an AST the next read cannot use. The outer subscript's `Obj` is still the inner
+`Index` node, so the road tried its gates — `numericElemUse`, the pair doors — and each of them was right to
+decline: the pair doors are `runtimeSlotPairDeep`, which refuses a literal the fold can read, by **ADR 0331**'s
+rule that *the fold's own shape stays the fold's answer*. Then the tail of the road printed a sentence about an
+inline literal, at the exit code that stops a build:
+
+* the program **did** write an inline literal, so the sentence sent the reader hunting through correct code;
+* the reference does not refuse — it raises a `TypeError` naming the kind, and the program can catch it.
+
+The row's original `Next concrete action` said to hand the outer subscript the pair the inner read computed and
+let `slotReadUnderTag` ask the object. That was built first, and it does not reach this shape: the pair door is
+not asked for a literal the fold answers, so widening it would have made two roads responsible for one
+literal's slots, which is **ADR 0249**'s and **ADR 0232**'s defect with the labels swapped. The measurement, not
+the taste, is why the cell says so now. The shape that *does* still want that arm — the base built by a
+comprehension, which the fold cannot read and the pair door owns — is filed as **Gap R.495** below, with today's
+refusal pinned.
+
+What ships is one question asked at the door that has to answer it. `(*irGen).constantSubscriptKind`
+(`pkg/lang/constant_trap.go`, living beside the sentences that file quotes) names the constant the subscript is
+really standing on: a literal `int`/`float`/`bool`/`None` answers itself; an `Index` answers the element the fold
+would have produced, via `foldedLiteralElemOf`, which asks the *same* `listLiteralFoldAnswers` question and then
+declines three things it must not answer — a literal whose elements are not all constants (the pair door's), a
+position that is not a constant (the pair door's), and a position out of range (the bounds check's, whose
+`IndexError` must win, and does: `print([[[1, 2][5]][0]])` raises `IndexError: list index out of range` on both
+legs). `valueIndex`'s two tails — the `*Call` base and the `default` base — ask it after `numericElemUse`
+declines, and emit through `constantTrap`, the same emitter **ADR 0326**'s `KeyError` and **ADR 0330**'s
+`IndexError` use, which ends the block with the branch to the enclosing `try:`'s landing pad and opens the label
+the rest of the statement belongs to.
+
+The sentence is spelled once. `notSubscriptableSentence(kind)` is the only place
+`'int'/'float'/'bool'/'NoneType' object is not subscriptable` is written, and the run-time tag-dispatch door in
+`pkg/lang/heapargs.go` — which built the string inline from its own kind table — quotes it, so the fold and the
+object cannot report the same accident in two ways (**ADR 0326**'s one-question rule, one road over from where
+it was born).
+
+Two things the change deliberately does **not** do, both pinned: a `*StrLit` names no kind, because
+`"ab"[0][0]` is `'a'[0]` and the reference answers `'a'` — shipping a raise there would have been the worst
+failure mode this house recognises, a raise where the reference prints; and the AST is not rewritten by a pass
+the checker shares, because a fold that replaces a node whose lowering emitted a trap turns a catchable
+exception into no exception at all, silently.
+
+The evidence is on both legs, and one of the legs is the artifact rather than a memory: 21 trap sources asserted
+by class and message through `jitTrap` **and** `recordTrapOf`, 20 of them caught by the program's own
+`except … as e:` with the printed sentence compared byte for byte, 15 controls (a text twice, a dict of a dict
+of a list, a tuple's slot, `+ 1`, `==`, a bound element) answering on both legs, five IR rows asserting the module
+carries the sentence and no longer carries the refusal and no `i32 @.` sits in an operand, and a 12-row table that
+asks the predicate directly so that widening it fails a decision row rather than only a behaviour row. Through the
+CLI: 21 raises at exit **3** with stdout silent, 6 catches at exit **0** beside a live `python3`, 16 controls
+line-for-line with the reference, exit **2** forbidden throughout. `tools/recmerge` wrote 72 entries (9932 →
+10004, none refused) and `integration/programs/folded_subscript_trap.gy` joined the corpus as a line-for-line
+`match` (matrix 245 → 246, oracle `match` 202 → 203).
+
+The filed row left `pkg/lang/pair_element_read_test.go`'s residue table for the answering tables, and the
+residue table stayed populated with **Gap R.495** — a row that stops refusing moves; it does not disappear, and a
+filed table that empties itself proves nothing either.
+
+### Gap R.494 — `len` of a literal counts without evaluating the literal's elements (⏳ OPEN, found by **ADR 0440**)
+
+```
+$ gustyc --eval 'print(len([[1, 2][0][0], 1]))'      this backend: 2   at exit 0
+$ python3    -c 'print(len([[1, 2][0][0], 1]))'      reference:  TypeError: 'int' object is not subscriptable
+$ gustyc --eval 'def f():\n    print("side")\n    return 1\nprint(len([f()]))'
+   this backend: 1          reference: side\n1
+```
+
+The count door answers a spelled-out container from its own length and never lowers the elements, so both the
+element's raise and the element's *effect* are skipped. Measured identically on `b276ddf` and on the **ADR 0440**
+build — the fix that made the read raise did not reach this door, and this door is the reason the family looked
+partly unfixed until it was measured separately.
+
+It is **Gap R.149**'s rule one construct over (the operand the test did not choose is still evaluated), arriving
+from the literal side: the reference evaluates `[expr, …]` left to right, allocating, and only then asks the
+object's length, so an element that raises or prints has already done its work. The row's `Next concrete action`
+names the shape of the fix and the trap inside it: lower the elements for their effects, in the reference's
+order, and subtract the marks the discarded object would have set — **ADR 0192**'s `literalNeedsTags` already
+subtracts one road's marks from another's, which is the precedent for a door that walks elements without
+building the container. A literal whose elements cannot be lowered stays the count it answers today; `sum`,
+`min` and `max` are separate doors with their own static-array fold (**ADR 0239**) and are not claimed here.
+
+### Gap R.495 — a subscript of a read out of a COMPREHENSION still refuses where the reference raises (⏳ OPEN, found by **ADR 0440**)
+
+```
+$ gustyc --eval 'print([[x for x in [1]][0][0]])'      this backend: exit 1,
+    codegen: index requires an inline list/dict/set literal
+$ python3    -c 'print([[x for x in [1]][0][0]])'      reference:  TypeError: 'int' object is not subscriptable
+```
+
+**Gap R.227**'s chain, one builder over. The first read does not come from a literal the fold can read but from
+the runtime buffer the comprehension filled, so the pair door owns it — and the pair the first read computed is
+never handed to the second, which is the same missing hand-off the row above describes for the fold, arriving by
+the other road. `runtimeSlotPairDeep` has the arm for a container a NAME holds and for a container a CALL
+answers (`containerHandleOf`); it has no arm for a container a COMPREHENSION answers, and
+`containerHandleOf`'s `*Comp` case is where the handle this shape needs already lives (**ADR 0188**'s
+materialisation included, which is what kept **Gap R.488** out of `llc`).
+
+Identical on `b276ddf` and on the **ADR 0440** build — the arm that raised the literal case does not reach a
+built container — which is why it is a row rather than part of that commit, and it is pinned in the filed table
+where the pair-element residue lives (`pkg/lang/pair_element_read_test.go`), so the day the door grows, the row
+fails instead of quietly disappearing. `print([[[1, 2], [3, 4]][1][0], 9])` printing `[3, 9]` on both builds is
+the control that keeps the two shapes from being merged into one row.

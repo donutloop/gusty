@@ -4300,7 +4300,7 @@ func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *I
 	fmt.Fprintf(b, "  br label %%%s\n", genericBad)
 	for i, t := range traps {
 		fmt.Fprintf(b, "%s:\n", trapBlock[i])
-		g.raiseTo(b, exnCode("TypeError"), "TypeError", "'"+t.name+"' object is not subscriptable", sp)
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", notSubscriptableSentence(t.name), sp)
 	}
 	fmt.Fprintf(b, "%s:\n", genericBad)
 	g.raiseTo(b, exnCode("TypeError"), "TypeError", "object is not subscriptable", sp)
