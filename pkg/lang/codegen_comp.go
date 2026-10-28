@@ -386,9 +386,10 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 			if vIntern {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 4)\n", h))
 			}
-			if kDyn || vDyn {
+			if kDyn || vDyn || g.forwardedCallIsPairElem(c.Keys[0]) || g.forwardedCallIsPairElem(c.Vals[0]) {
 				// A slot written from a tag the compiler only carries, never reads, obliges the object
-				// to let each slot speak for itself when it is printed (ADR 0232).
+				// to let each slot speak for itself when it is printed (ADR 0232). The hand-off call's
+				// answer is such a tag when its argument's kind lives in the objects (roadmap **Gap R.502**).
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 			}
 			return nil
@@ -410,7 +411,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		// As above: a slot that needs its tag obliges the object to let each slot speak (ADR 0232). A
 		// tagged loop variable always needs it — its kind is in the object and nowhere the compiler can
 		// read it at this point in the program.
-		if t, okTag := g.elemKindTag(c.Elems[0]); (okTag && slotTagSelfDescribing(t)) || g.compElemIsTaggedLoopVar(c) {
+		if t, okTag := g.elemKindTag(c.Elems[0]); (okTag && slotTagSelfDescribing(t)) || g.compElemIsTaggedLoopVar(c) || g.forwardedCallIsPairElem(c.Elems[0]) {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil
@@ -665,8 +666,11 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		// A slot whose payload only means something through its tag — a float box, None, another
 		// container — obliges the whole object to stop claiming one element kind, or the printer renders
 		// every slot through the number printer and `[[1, 2] for x in [1]]` prints the box handles
-		// ([2, 3]) instead of the lists (ADR 0232, roadmap Gap R.75).
+		// ([2, 3]) instead of the lists (ADR 0232, roadmap Gap R.75). A slot whose tag came in as a register
+		// — the hand-off call's answer — is the same claim to stop making (roadmap **Gap R.502**).
 		if t, okTag := g.elemKindTag(tagQuery); okTag && slotTagSelfDescribing(t) {
+			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
+		} else if g.forwardedCallIsPairElem(c.Elems[0]) {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil

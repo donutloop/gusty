@@ -515,7 +515,11 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Suggestion: "print the call, or bind it (`y = f(x)`) and use the name — the positions that read one word cannot carry the tag beside the payload, so the pair has nowhere to go",
 		Rows:       []string{"L11.1", "Gap R.146"},
 		Markers:    []string{"hands back the (payload, tag) pair its answer arrived in"},
-		Sample:     "def f(x):\n    return x\n\nys = []\nys.append(f(1.5))\nprint(len(ys))",
+		// The sample was `def f(x): return x` / `ys.append(f(1.5))` until **ADR 0445** answered it: a hand-off
+		// reads its kind off the caller's argument, so that program prints `[1.5]` now. What still refuses is
+		// the shape beside it — a body that COMPUTES the answer (`return x + 0`), whose kind is a run-time fact
+		// of the callee's frame and has no word to travel with (roadmap **Gap R.146**).
+		Sample: "def f(x):\n    return x + 0\n\nys = []\nys.append(f(1.5))\nprint(len(ys))",
 	},
 	{
 		Code:       "lower.unsupported.literal-element-needs-tag",

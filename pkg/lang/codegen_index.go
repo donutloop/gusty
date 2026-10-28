@@ -152,7 +152,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		ktS, vtS := strconv.FormatInt(int64(kt), 10), strconv.FormatInt(int64(vt), 10)
 		if kIsPair {
 			ktS = keyTag
-			g.guardHashableTag(b, keyTag, ix.Src)
+			g.guardHashableExprTag(b, keyTag, ix.Idx, ix.Src)
 		}
 		if valIsPair {
 			vtS = valTag

@@ -118,6 +118,25 @@ func (g *irGen) compOperandTagKind(e Expr, c *Comp, lv string, item Expr) (tag i
 	if e == nil {
 		return 0, true, false
 	}
+	// The hand-off call — `def g(v): return v` — wears the kind of the argument the caller handed it, and
+	// that argument may BE the loop variable, whose kind this reading is the only place that has per item.
+	// Asked of the item, exactly as the operand that copies the loop variable is asked (**Gap R.358**'s
+	// rule, carried through a call by roadmap **Gap R.502**): the gate that asked the NAME instead got
+	// `TagInt` for every item of `{g(x): 1 for x in ["a", "b"]}`, told the object it had one element kind,
+	// and printed `{0: 1, 1: 1}` — the `@str_tab` indices — for CPython's `{'a': 1, 'b': 1}`.
+	if arg, _, okFwd := g.forwardedParameterOperand(e); okFwd && arg != nil {
+		if nm, isName := arg.(*Name); isName && c != nil && c.ForVar != nil && nm.Value == c.ForVar.Value {
+			if t, hasTag := g.elemKindTag(item); hasTag {
+				return t, false, true
+			}
+			return 0, true, false
+		}
+	}
+	// The hand-off call whose argument's kind lives in the objects: the tag is a register, so this
+	// operand is exactly the case the classification exists for (roadmap **Gap R.502**).
+	if g.forwardedCallIsPairElem(e) {
+		return 0, true, true
+	}
 	if nm, isName := e.(*Name); isName && c != nil && c.ForVar != nil && nm.Value == c.ForVar.Value {
 		if compElemCopiesTheLoopVariable(e, lv) || g.compElemCopiesABool(e, lv, item) {
 			// The operand is the item, so this iteration's item decides its kind. Asking the NAME first
@@ -262,7 +281,7 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		// is: a list, a dict or a set member raises the reference's own sentence from the write rather
 		// than landing a heap handle in a bucket and printing a plausible set (Gap R.81, ADR 0310,
 		// ADR 0311 — the same door `s.add(v)` stands in front of).
-		g.guardHashableTag(b, kt, c.Span())
+		g.guardHashableExprTag(b, kt, c.Elems[0], c.Span())
 		b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %s)\n", h, av, kt))
 		if intern || forcedText {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
@@ -321,7 +340,7 @@ func (g *irGen) runtimeCompSetDict(b *strings.Builder, c *Comp, itemExprs []Expr
 		}
 		// Only the key asks the hashable question — a dict VALUE may be a container (roadmap Gap R.353,
 		// beside ADR 0310's entry door).
-		g.guardHashableTag(b, kt, c.Span())
+		g.guardHashableExprTag(b, kt, c.Keys[0], c.Span())
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", h, kv, vv, kt, vt))
 		if kIntern {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 2)\n", h))

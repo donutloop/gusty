@@ -118,9 +118,12 @@ func TestTheConditionAndBoolAskAComprehensionThroughTheCLI(t *testing.T) {
 }
 
 // TestWhatTheComprehensionLoopStillOwesThroughTheCLI pins the residue with today's exit code beside the
-// reference's: the loop ITEM of a comprehension the run time builds carries no kind word of its own, so a
-// mixed iterable prints the payload — the same bytes on the build before **ADR 0443** and on it, which is
-// what makes it a row rather than damage from it (**Gap R.204**'s rule).
+// reference's.
+//
+// The three answer rows this table carried while **Gap R.502** was open — a loop item of a built
+// comprehension over a mixed iterable, the same comprehension printed whole, and a built dict
+// comprehension's KEY — print the reference's bytes now and moved to `integration/forwarded_answer_test.go`
+// with **ADR 0445**; the rows that remain are positions this door deliberately does not widen.
 func TestWhatTheComprehensionLoopStillOwesThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -131,24 +134,6 @@ func TestWhatTheComprehensionLoopStillOwesThroughTheCLI(t *testing.T) {
 		reference string
 		row       string
 	}{
-		{
-			"a loop item of a built comprehension over a mixed iterable prints the payload",
-			"def g(v):\n    return v\nfor v in [g(x) for x in [1, \"a\", 2.5, None]]:\n    print(v)",
-			"answer:1\n0\n1\n0", "", "1\na\n2.5\nNone",
-			"roadmap Gap R.502",
-		},
-		{
-			"the same comprehension printed whole answers the same wrong bytes",
-			"def g(v):\n    return v\nprint([g(x) for x in [1, \"a\", 2.5, None]])",
-			"answer:[1, 0, 1, 0]", "", "[1, 'a', 2.5, None]",
-			"roadmap Gap R.502",
-		},
-		{
-			"a built dict comprehension's KEY prints the word, not the kind",
-			"def g(v):\n    return v\nfor k in {g(x): 1 for x in [\"a\", \"b\"]}:\n    print(k)",
-			"answer:0\n1", "", "a\nb",
-			"roadmap Gap R.502",
-		},
 		{
 			// Not this door's debt: `bool` of a container VARIABLE or a spelled-out literal has refused in
 			// **Gap R.131**'s own words for as long as `bool` had a road — identically on the build before

@@ -175,12 +175,12 @@ func TestNoModuleComparesALoopCounterWithAComprehensionGlobal(t *testing.T) {
 	})
 }
 
-// What the three doors still cannot reach, pinned with today's bytes beside the reference's: the LOOP
-// ITEM of a comprehension the run time builds over an iterable of MORE THAN ONE KIND. The loop now walks
-// the object (**ADR 0443**) and the print of the whole comprehension already walked it — but the element
-// comes back without its tag, so a text prints its interned index and a double its float-box index. The
-// same bytes are on the build before this commit and on it, which is what makes it a row rather than
-// damage from it (**Gap R.204**'s rule about claims that cannot be re-measured).
+// What the three doors still cannot reach, pinned with today's bytes beside the reference's.
+//
+// The three rows this table carried when **Gap R.502** was open — the loop item of a built comprehension
+// over a mixed iterable, the same comprehension printed whole, and a built dict comprehension's KEY —
+// ANSWER now, and moved to `forwarded_answer_test.go`'s answering tables with **ADR 0445**: a slot written
+// by a builder that guessed the kind is exactly what that door stopped guessing.
 var compIterableFiledRows = []struct {
 	name      string
 	src       string
@@ -190,23 +190,6 @@ var compIterableFiledRows = []struct {
 	row       string
 }{
 	{
-		"a loop item of a built comprehension over a mixed iterable prints the payload, not the kind",
-		"def g(v):\n    return v\nfor v in [g(x) for x in [1, \"a\", 2.5, None]]:\n    print(v)",
-		"answer", "1\n0\n1\n0",
-		"prints 1, a, 2.5, None",
-		"roadmap Gap R.502",
-	},
-	{
-		// The KEYS of a built dict comprehension are elements too: the loop walks the object and asks it
-		// for the count and the slots, and the key comes back a word with no kind beside it — so `print(k)`
-		// reads the @str_tab index. Same missing word, the dict's key slots.
-		"a built dict comprehension's KEY prints the word, not the kind",
-		"def g(v):\n    return v\nfor k in {g(x): 1 for x in [\"a\", \"b\"]}:\n    print(k)",
-		"answer", "0\n1",
-		"prints a, b",
-		"roadmap Gap R.502",
-	},
-	{
 		// The loop ITEM now travels as a (payload, tag) pair, and handing it to a call is a position that
 		// keeps one word — so the door refuses naming L11.1 instead of answering. On the build before this
 		// commit the same program was **ADR 0166**'s exit **2** (`%_ctr1.ld1, @.lst2`), which is why the
@@ -215,14 +198,7 @@ var compIterableFiledRows = []struct {
 		"def show(v):\n    print(v)\nfor v in [x * 2 for x in [1, 2]]:\n    show(v)",
 		"refusal", "the element a loop stepped over",
 		"prints 2, 4",
-		"roadmap L11.1 · Gap R.146 (a tag with nowhere to go), Gap R.502 (the loop item's kind word)",
-	},
-	{
-		"the same comprehension printed whole answers the same wrong bytes",
-		"def g(v):\n    return v\nprint([g(x) for x in [1, \"a\", 2.5, None]])",
-		"answer", "[1, 0, 1, 0]",
-		"prints [1, 'a', 2.5, None]",
-		"roadmap Gap R.502",
+		"roadmap L11.1 · Gap R.146 (a tag with nowhere to go)",
 	},
 }
 

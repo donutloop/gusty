@@ -318,19 +318,43 @@ func TestWhatTheEmptyContainerCallStillCannotBeIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, actual, reference, row string
 	}{
-		{
-			name:      "a set whose member is an empty set",
-			src:       "print({set()})\n",
-			actual:    "{set()}\n",
-			reference: "raises TypeError: unhashable type: 'set'\n",
-			row:       "Gap R.81",
-		},
+		// The one row this table carried — `print({set()})` answering `{set()}` for the reference's
+		// `TypeError: unhashable type: 'set'` — RAISES now, so it is asserted as a raise below rather than
+		// pinned as today's answer here: that is what this table exists to notice (**ADR 0343**'s rule, and
+		// **ADR 0445**'s gate that lets the hashability guard be asked of a member whatever wrote its tag).
 	} {
 		t.Run("answer_"+tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := compiledOut(t, tc.src); got != tc.actual {
 				t.Fatalf("%s printed %q, want today's %q — the row that owns it is %s (the reference: %s)",
 					tc.src, got, tc.actual, tc.row, tc.reference)
+			}
+		})
+	}
+}
+
+// TestAnEmptyContainerMemberRaisesWhatTheReferenceRaises is the row above, answered: an empty container spelled
+// by a call — `set()`, `list()`, `dict()` — has no more hash than the literal has, and the set literal now
+// asks the question the store can answer (roadmap **Gap R.81**'s literal half, paid by **ADR 0445**; the
+// `s.add(set())` door stays **Gap R.81**'s own row and is pinned beside it, not here).
+func TestAnEmptyContainerMemberRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src, class, message string
+	}{
+		{"an empty set spelled by its call", "print({set()})", "TypeError", "unhashable type: 'set'"},
+		{"an empty list spelled by its call", "print({list()})", "TypeError", "unhashable type: 'list'"},
+		{"an empty dict spelled by its call", "print({dict()})", "TypeError", "unhashable type: 'dict'"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			class, message := jitTrap(t, tc.src)
+			if class != tc.class || message != tc.message {
+				t.Fatalf("%q raised %s: %s; the reference raises %s: %s", tc.src, class, message, tc.class, tc.message)
+			}
+			if err := goldenRunError(t, tc.src); err == nil {
+				t.Fatalf("%q has no recorded trap, although the compiled run raises %s: %s", tc.src, class, message)
 			}
 		})
 	}

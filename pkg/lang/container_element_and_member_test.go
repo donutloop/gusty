@@ -13,14 +13,13 @@
 // `print([[[x for x in [1]]]])` no longer hands `llc` a compile-time global in an operand position
 // (**Gap R.487**, **Gap R.488**, paid; their rows answer in `comprehension_element_test.go`). What is left here:
 //
-//   - the MEMBER door. A set literal's members are hashed. A list, a dict or a set has no hash in the
-//     reference, which raises `TypeError: unhashable type: 'list'`; this backend files the handle as a member
-//     and prints `{[1], [2]}` at exit **0** — **Gap R.81**'s rule (`sa.add([1])` adds what cannot be a
-//     member) at the literal door rather than the `add` one (**Gap R.485**). The comprehension spelling of the
-//     same member (`print({[x for x in [1]]})`) walked through that door on ADR 0439's arm and lands on the
-//     same answer at the same exit code; before the arm it was an `llc` rejection. The raise is one raise for
-//     the family, and the row that owns it is **Gap R.492** beside **Gap R.485** — the member door's, not
-//     this cycle's; and
+//   - the MEMBER door — PAID by **ADR 0445**. A set literal's members are hashed. A list, a dict or a set has no
+//     hash in the reference, which raises `TypeError: unhashable type: 'list'`; this backend filed the handle as a
+//     member and printed `{[1], [2]}` at exit **0** — **Gap R.81**'s rule (`sa.add([1])` adds what cannot be a
+//     member) at the literal door rather than the `add` one (**Gap R.485**). The comprehension spelling of the same
+//     member (`print({[x for x in [1]]})`) walked through that door on ADR 0439's arm and landed on the same answer
+//     at the same exit code (**Gap R.492**). Both raise the reference's own sentence now, catchably at exit **3**,
+//     in `TestTheMemberDoorRaisesWhatTheReferenceRaises` and its CLI twin; the `add` door stays **Gap R.81**'s.
 //   - the doors that stand a comprehension in a position that is not a slot at all: the LOOP head, the truth
 //     test and `bool()` ask the container question of an expression the deciding doors still cannot name, and
 //     the answer is `icmp ne i32 @.lst1, 0` / `rt_step(i32 @.lst1)` — exit **2** again, and filed as
@@ -38,6 +37,7 @@
 package lang
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -95,41 +95,13 @@ func containerMemberFiledRows() []struct {
 		reference string
 		row       string
 	}{
-		{
-			name:      "a set literal accepts a list member",
-			src:       "print({[1], [2]})\n",
-			kind:      "answer",
-			today:     "{[1], [2]}\n",
-			reference: "raises TypeError: unhashable type: 'list'",
-			row:       "Gap R.485 (the literal door; Gap R.81 owns the `add` door)",
-		},
-		{
-			name:      "a set literal accepts a dict member",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint({sa})\n",
-			kind:      "answer",
-			today:     "{{1: 'a', 'b': 2}}\n",
-			reference: "raises TypeError: unhashable type: 'dict'",
-			row:       "Gap R.485",
-		},
-		{
-			name:      "a set literal accepts a set member",
-			src:       "print({{1}})\n",
-			kind:      "answer",
-			today:     "{{1}}\n",
-			reference: "raises TypeError: unhashable type: 'set'",
-			row:       "Gap R.485",
-		},
-		{
-			// The member door's comprehension spelling. Before **ADR 0439** this was the exit-2 class
-			// (`rt_set_add(i32 %t, i32 @.lst1)`); the arm moved it onto the door the literal member already
-			// stands on, so the raise this backend owes is one raise for the family rather than two shapes.
-			name:      "a set literal accepts a comprehension that builds a list",
-			src:       "print({[x for x in [1]]})\n",
-			kind:      "answer",
-			today:     "{[1]}\n",
-			reference: "raises TypeError: unhashable type: 'list'",
-			row:       "Gap R.492 (the member door, one raise for the family with Gap R.485)",
-		},
+		// The four rows this table carried while **Gap R.485** and **Gap R.492** were open raise the reference's
+		// own `TypeError: unhashable type: …` now, catchably and at exit **3**, and moved to
+		// `TestTheMemberDoorRaisesWhatTheReferenceRaises` with **ADR 0445**. The raise was never a missing
+		// sentence — `guardHashableTag` compares the tag a slot arrived with, and the untagged set road handed it
+		// nothing to compare, so the member was filed under its own handle and printed back. The gate that opens
+		// the tagged member road now admits a member whatever produced its kind word (**Gap R.146**'s payload with
+		// its tag), and the guard is asked of the tag the store receives, whoever wrote it.
 	}
 }
 
@@ -215,6 +187,81 @@ func TestTheContainerElementRowsAreNotSilentlyOnTheRecord(t *testing.T) {
 			t.Parallel()
 			if HasGoldenAnswer(tc.src) {
 				t.Errorf("%q is on the record although it is a filed defect (%s) — the record holds the reference's answer, and this is not it", tc.src, tc.row)
+			}
+		})
+	}
+}
+
+// TestTheMemberDoorRaisesWhatTheReferenceRaises is the answered half of the member door (**Gap R.485** +
+// **Gap R.492**, paid by **ADR 0445**): a set literal whose member is a list, a dict, a set or a comprehension
+// that builds one asks the hashing question and dies with the reference's own sentence. The record leg is not
+// decoration — **Gap R.204**'s rule is that a raise a reader cannot re-measure is a claim, and these four
+// programs had no record at all while they printed the unhashable member; `tools/recmerge` wrote each entry
+// only after the reference and the compiled leg raised the same line.
+func TestTheMemberDoorRaisesWhatTheReferenceRaises(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		src     string
+		class   string
+		message string
+	}{
+		{"a list member", "print({[1], [2]})", "TypeError", "unhashable type: 'list'"},
+		{"a dict member, held in a name", "sa = {1: \"a\", \"b\": 2}\nprint({sa})", "TypeError", "unhashable type: 'dict'"},
+		{"a set member", "print({{1}})", "TypeError", "unhashable type: 'set'"},
+		{"a comprehension that builds a list", "print({[x for x in [1]]})", "TypeError", "unhashable type: 'list'"},
+		{"a spelled set inside a set", "print({{1, 2}})", "TypeError", "unhashable type: 'set'"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			class, message := jitTrap(t, tc.src)
+			if class != tc.class || message != tc.message {
+				t.Fatalf("%q raised %s: %s; the reference raises %s: %s", tc.src, class, message, tc.class, tc.message)
+			}
+			err := goldenRunError(t, tc.src)
+			if err == nil {
+				t.Fatalf("%q has no recorded trap, although the compiled run raises %s: %s", tc.src, class, message)
+			}
+			var te *TrapError
+			if errors.As(err, &te) {
+				if te.ExnType != tc.class || te.ExnMsg != tc.message {
+					t.Fatalf("the record traps %s: %s; the reference raises %s: %s", te.ExnType, te.ExnMsg, tc.class, tc.message)
+				}
+			} else if !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("the record's failure %q does not carry %q", err, tc.message)
+			}
+		})
+	}
+}
+
+// TestTheMemberDoorStaysQuietForAHashableMember is the control the raise above has to keep: a tuple is the
+// container this language hashes (**ADR 0361**), so the decision is the AST's and not the heap's — a tuple and a
+// list share the heap's layout, and a guard that read the layout would refuse every row below (**Gap R.81**).
+func TestTheMemberDoorStaysQuietForAHashableMember(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{"print({(1, 2)})", "{(1, 2)}"},
+		{"print({(1, 2), (3, 4)})", "{(1, 2), (3, 4)}"},
+		{"print({1, 2})", "{1, 2}"},
+		{"print({1, 2.5})", "{1, 2.5}"},
+	} {
+		tc := tc
+		t.Run(tc.src, func(t *testing.T) {
+			t.Parallel()
+			out := strings.TrimRight(compiledOut(t, tc.src), "\n")
+			if out != tc.want {
+				t.Fatalf("%q printed %q; a hashable member is not an accident — the reference prints %q", tc.src, out, tc.want)
+			}
+			rec, err := runGoldenStdout(t, tc.src)
+			if err != nil {
+				t.Fatalf("the record does not answer a program both legs agree on: %v", err)
+			}
+			if strings.TrimRight(rec, "\n") != tc.want {
+				t.Fatalf("the record says %q, the reference prints %q", rec, tc.want)
 			}
 		})
 	}

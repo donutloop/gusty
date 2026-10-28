@@ -69,14 +69,51 @@ func (g *irGen) subscriptIsPairElem(x Expr) bool {
 
 // isPairElem is the whole element question, asked of every position of a container literal before any IR is
 // emitted: is this value one whose kind travels beside it in a register the objects wrote, rather than in a
-// tag the compiler can read off its spelling? Two shapes qualify — a name the pair road bound (ADR 0306)
-// and a subscript the pair door reads (this row). Every gate that decides whether a literal is built by the
-// tagged builder has to ask this question and not a narrower one, because a builder that is never opened
-// leaves the element to the road that stores one word (roadmap L11.1, Gap R.146, Gap R.224).
+// tag the compiler can read off its spelling? Six shapes qualify — a name the pair road bound (ADR 0306),
+// a subscript the pair door reads, a call the argument-carried answer plan owns, the answer of `list.pop()`,
+// a hand-off that gives the caller's own argument back, and any call whose callee already answers with a
+// pair. Every gate that decides whether a literal is built by the tagged builder has to ask this question
+// and not a narrower one, because a builder that is never opened leaves the element to the road that stores
+// one word and GUESSES the kind (roadmap L11.1, Gap R.146, Gap R.224, Gap R.502).
 func (g *irGen) isPairElem(x Expr) bool {
 	return g.nameIsPairElem(x) || g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x) ||
-		g.popAnswerIsPairElem(x)
+		g.popAnswerIsPairElem(x) || g.forwardedCallIsPairElem(x) || g.pairReturningCallIsPairElem(x)
 }
+
+// pairReturningCallIsPairElem is the sixth shape: the answer of a call the pair road already serves — the
+// callee stored its answer's kind beside its own `ret` (**ADR 0273**), so the payload means a different
+// thing per arm. The gate knew only the answer PLAN's carried functions (`carriedCallIsPairElem`), so the
+// element of a list literal never reached the door that reads the second word, and the ordinary numeric
+// road refused the shape the print door answers:
+//
+//	def g(v):
+//	    return v
+//	print([g(2.5), 1])   # [2.5, 1] in the reference; the program refused with Gap R.146's sentence
+//
+// A container ELEMENT is one of the positions ADR 0273 lists as opting in to a pair-returning answer —
+// print, `str`/`repr`, a truth test, an f-string field and a container element — so widening the gate here
+// gives the element the door that already exists rather than a new road (roadmap **Gap R.502**).
+func (g *irGen) pairReturningCallIsPairElem(x Expr) bool {
+	c, isCall := x.(*Call)
+	if !isCall || g == nil {
+		return false
+	}
+	if g.carriedCallIsPairElem(c) || g.popAnswerIsPairElem(c) || g.forwardedCallIsPairElem(c) {
+		return false
+	}
+	nm, isName := c.Fn.(*Name)
+	if !isName || !g.pairRetDone[nm.Value] {
+		return false
+	}
+	// The claim is the pair road's own, narrowed to the answers the road can actually name: a hand-off of the
+	// caller's argument, or a value the body spells. A body that COMPUTES its answer (`return v + 0`) keeps
+	// Gap R.146's refusal, because an element built from a tag this pass cannot read prints a float box's
+	// address as a number — the wrong answer the refusal exists to prevent (**ADR 0249**, **Gap R.502**).
+	return g.handOffOrSpelledAnswer(c)
+}
+
+// The FIFTH shape — a hand-off that gives the caller's own argument back — is documented on
+// `forwardedCallIsPairElem` in `forwarded_answer.go`, beside the door that reads the caller's expression.
 
 // popAnswerIsPairElem is the fourth shape of pair element: the element a `list.pop()` removes. It is a
 // subscript by another name — the position lives in the container, the kind lives in the container — and the

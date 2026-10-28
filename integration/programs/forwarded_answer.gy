@@ -1,0 +1,113 @@
+# A hand-off call answers with the CALLER'S argument, so the container slot it lands in wears the
+# argument's kind and not the compiler's guess (roadmap Gap R.502, ADR 0445, ADR 0273's element
+# position, ADR 0232's self-describing slots).
+#
+# A call whose body is `return v` spells no kind of its own: the value it answers with came in from the
+# call site, unchanged. Reading the kind off the element expression therefore answered "number" for
+# every arm of the comprehension below and printed an interned id where a text lived. The kind is asked
+# of the argument now, at the call site, and carried to the store through the tagged runtime door.
+#
+# The hand-offs are spelled one per kind, except `hand`, which the comprehension rows hand a whole mixed
+# iterable: which arm a parameter answers with is a run-time fact, and the door reads the kind the caller
+# carried rather than naming one here (roadmap Gap R.164 owns the call-signature half of that).
+#
+# The rendering below is what CPython prints for the same program.
+
+def hand(v):
+    return v
+
+def hand_number(v):
+    return v
+
+def hand_keyword(v):
+    return v
+
+def hand_double(v):
+    return v
+
+def hand_text(v):
+    return v
+
+def hand_void(v):
+    return v
+
+def hand_list(v):
+    return v
+
+def hand_tuple(v):
+    return v
+
+def hand_dict(v):
+    return v
+
+def hand_set(v):
+    return v
+
+def spelled(v):
+    return 1
+
+def built(v):
+    return v + v
+
+def with_default(v = 2.5):
+    return v
+
+# A list literal: the element the hand-off hands back keeps its own kind beside the numbers.
+print([hand_double(2.5), 1])
+print([hand_text("a"), 1])
+print([hand_void(None), 1])
+print([hand_list([1, 2]), 3])
+print([hand_tuple((1, 2)), 3])
+print([hand_keyword(v = 2.5), 1])
+print([spelled(2.5), 1])
+print([built(1), 1])
+print([hand_number(x) for x in [1, 2, 3]])
+
+# A dict entry and a set member: the same value through the two other stores.
+print({1: hand_void(None)})
+print({hand_void(None)})
+print({hand_text("a")})
+print({hand_tuple((1, 2))})
+print({hand_tuple((1, 2)): 1})
+print({(1, 2): 5})
+
+# append and an assigned slot: the store the run time owns, not the literal's compile-time table.
+xs = []
+xs.append(hand_void(None))
+print(xs)
+ys = [0]
+ys[0] = hand_double(2.5)
+print(ys)
+
+# The comprehension the RUN TIME builds: the element, the KEY and the member all pass through a builder
+# that used to write a kind it had guessed.
+print([hand(x) for x in [1, "a", 2.5, None]])
+for v in [hand(x) for x in [1, "a", 2.5, None]]:
+    print(v)
+print({hand(x): 1 for x in ["a", "b"]})
+for k in {hand(x): 1 for x in ["a", "b"]}:
+    print(k)
+print({1: hand(x) for x in ["a", 2.5]})
+print({hand(x) for x in [1, 2.5]})
+print([hand(x) for x in [1, "a", 2.5]][1])
+print([hand(x) for x in [1, "a", 2.5]][1] == "a" and len([hand(x) for x in [1, "a", 2.5]]) == 3)
+
+# An unhashable answer dies where the reference dies, and the program catches its own accident.
+try:
+    print({hand_list([1, 2])})
+except TypeError as e:
+    print("caught", e)
+try:
+    print({hand_dict({"k": 1})})
+except TypeError as e:
+    print("caught", e)
+try:
+    print({hand_set({1, 2}): 1})
+except TypeError as e:
+    print("caught", e)
+
+# The default the call leaves out is the argument the kind is read from.
+print([with_default(), 1])
+
+# The control that nothing else moved: a comprehension with no call at all.
+print([x * 2 for x in [1, 2, 3]])

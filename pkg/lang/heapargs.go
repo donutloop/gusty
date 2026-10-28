@@ -854,7 +854,7 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 	// read them (roadmap L11.1 (1b), ADR 0232). A key or a value the pair road bound is a second
 	// reason for the same record: its tag is not a constant the compiler can read off a spelling,
 	// so the entry has to go through the tagged put with the register the objects wrote (Gap R.146).
-	mixed := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl)
+	mixed := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl) || g.dictLiteralHandsBackATag(dl)
 	if mixed {
 		bits |= 8
 		if name != "" {
@@ -870,13 +870,12 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 			// Each of the two positions answers for itself: a pair-bound one brings both of its words,
 			// an ordinary one brings its payload and the tag `elemKindTag` proves. Put and tag stay one
 			// call, so an entry never lands with the tag the previous tenant of that slot left behind.
-			kk, kt, kPair, err := g.taggedSlotWords(b, dl.Keys[i])
+			kk, kt, _, err := g.taggedSlotWords(b, dl.Keys[i])
 			if err != nil {
 				return "", err
 			}
-			if kPair {
-				g.guardHashableTag(b, kt, dl.Src)
-			}
+			// The key's own question, whatever road produced its tag (**Gap R.81**, **Gap R.502**).
+			g.guardHashableExprTag(b, kt, dl.Keys[i], dl.Src)
 			vv, vt, _, err := g.taggedSlotWords(b, dl.Vals[i])
 			if err != nil {
 				return "", err
@@ -926,7 +925,7 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 	// A member the pair road bound carries its own tag register, and a set dedups by the pair, so a
 	// member stored without its tag would collide with an ordinary payload that means something else
 	// (roadmap L11.1, Gap R.146; ADR 0232's tagged members, ADR 0187's payload-with-tag).
-	mixed := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl)
+	mixed := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl) || g.setLiteralHandsBackATag(sl)
 	if mixed {
 		bits |= 8
 		if name != "" {
@@ -940,13 +939,15 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 			// Adding and tagging are one call: a member added without its tag dedups against the
 			// payload alone and prints through whatever the slot held last time. A pair member hands
 			// over the tag it already owns instead of that constant.
-			v, t, isPair, err := g.taggedSlotWords(b, el)
+			v, t, _, err := g.taggedSlotWords(b, el)
 			if err != nil {
 				return "", err
 			}
-			if isPair {
-				g.guardHashableTag(b, t, sl.Src)
-			}
+			// Whether the tag came from a pair register or from the element's own spelling, it answers the
+			// same question before the store: can this member be a key at all? A constant tag makes the check
+			// a constant the verifier folds; a register makes it a run-time one, which is where a handed-back
+			// container dies, beside the store that would have held it (**Gap R.502**, **Gap R.81**).
+			g.guardHashableExprTag(b, t, el, sl.Src)
 			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %s)\n", h, v, t)
 			idx++
 			continue
@@ -1234,7 +1235,12 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	slotsItself := func(x Expr) bool {
 		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
 			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x) ||
-			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x) || g.compIsContainerSlotExpr(x)
+			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x) || g.compIsContainerSlotExpr(x) ||
+			// The answer of a hand-off call — `def g(v): return v` — wears its argument's kind, and when that
+			// kind is a float box, the void, a verdict or another container the payload means nothing on its
+			// own: `[g(None), 1]` printed `[0, 1]` because the object claimed one element kind and the number
+			// printer rendered the void's payload (roadmap **Gap R.502**, **ADR 0232**).
+			g.forwardedCallSlotsItself(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -1251,7 +1257,8 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if g.floatSlotExpr(k) || g.noneSlotExpr(k) || g.boolSlotExpr(k) || g.carriedCallIsPairElem(k) {
+			if g.floatSlotExpr(k) || g.noneSlotExpr(k) || g.boolSlotExpr(k) || g.carriedCallIsPairElem(k) ||
+				g.forwardedCallSlotsItself(k) {
 				return true
 			}
 		}
@@ -1330,6 +1337,13 @@ func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, o
 		// is never reported as the program's fault).
 		p, t, okPair, perr := g.pairCallPair(b, e)
 		if perr != nil || !okPair {
+			// The hand-off round of the same question: `def g(v): return v` answers the kind its argument
+			// arrived with, and when the argument is a pair the answer is that pair — read at the call site,
+			// where the argument is, because the callee returns the caller's own word unchanged
+			// (roadmap **Gap R.502**, **ADR 0445**).
+			if p2, t2, okFwd, ferr := g.forwardedCallPair(b, e); ferr == nil && okFwd {
+				return p2, t2, true
+			}
 			return "", "", false
 		}
 		return p, t, true
@@ -1467,7 +1481,8 @@ func (g *irGen) literalHasPairElement(e Expr) bool {
 		// The third such element is the answer of a call that carries its own kind: its payload means a
 		// different thing per arm, so the slot has to be written with the callee's word beside it
 		// (roadmap Gap R.219, ADR 0368).
-		return g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x) || g.popAnswerIsPairElem(x)
+		return g.subscriptIsPairElem(x) || g.carriedCallIsPairElem(x) || g.popAnswerIsPairElem(x) ||
+			g.forwardedCallIsPairElem(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -2013,7 +2028,35 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 			}
 		}
 	}
+	// A body that is nothing but a hand-off — every `return` naming ONE of its own parameters — answers
+	// the kind the caller handed in, and the caller's argument is right here to be asked. The tables above
+	// all read what a `return` SPELLS, so `def g(v): return v` answered the table's default for every
+	// value but an int: `print([g(None), 1])` wrote the void's payload `0` beside `TagInt` and printed
+	// `[0, 1]`, `print([g([1, 2]), 3])` printed the allocator's slot as a number, and a comprehension
+	// whose element was such a call tagged every slot `TagInt` and printed `[1, 0, 1, 0]` for
+	// `[1, 'a', 2.5, None]` at exit 0 (roadmap **Gap R.502**, **ADR 0445**). Asked LAST among the call
+	// readings, so an answer those tables already name keeps the label it has always had, and a question
+	// this door cannot answer falls through to the reading it had before — the door answers, it never takes
+	// an answer away.
+	if t, ok := g.forwardedAnswerKindTag(e); ok {
+		return t, true
+	}
 	return int32(TagInt), true
+}
+
+// forwardedAnswerKindTag is the tag half of the hand-off reading: the constant the argument's own spelling
+// answers, or nothing where only the objects can tell (that case travels as a pair, not as a constant,
+// through `forwardedCallIsPairElem` and `forwardedCallPair`).
+func (g *irGen) forwardedAnswerKindTag(e Expr) (int32, bool) {
+	tag, fromRegister, ok := g.forwardedAnswerTagUnder(e)
+	if !ok || fromRegister {
+		return 0, false
+	}
+	t, err := strconv.Atoi(tag)
+	if err != nil {
+		return 0, false
+	}
+	return int32(t), true
 }
 
 // taggableMixedDict reports a dict literal whose key and value slots can each carry a tag the
@@ -2657,6 +2700,14 @@ func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag stri
 			p, t := g.numericPairRegs(b, nm.Value, nm.Span())
 			return p, t, false, nil
 		}
+	}
+	// A call whose whole body hands back one of its own parameters answers the kind the CALLER'S argument
+	// wears, and when only the objects can tell that kind the pair arrives as the two registers the pair
+	// road wrote — the same arrangement ADR 0306 built for a bound name and ADR 0332 for a read. Asked
+	// here, at the one door every container-writing road uses, so a comprehension's element, a list slot,
+	// a dict entry and a set member cannot keep four answers to one value (roadmap **Gap R.502**).
+	if p, t, isPair, perr := g.forwardedCallPair(b, e); perr == nil && isPair {
+		return p, t, false, nil
 	}
 	t, ok := g.elemKindTag(e)
 	if !ok {

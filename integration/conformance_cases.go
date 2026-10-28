@@ -104,6 +104,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// and a built set's subscript refused instead of raising the reference's TypeError (roadmap **Gap R.501**,
 		// **ADR 0442**'s two-comprehensions-one-door rule, **ADR 0443**'s brace for the kind).
 		"built_comp_subscript",
+		// A hand-off call — `def g(v): return v` — answers with the CALLER'S argument, so the element, KEY and
+		// member a comprehension builder stores wear the argument's kind instead of the kind the compiler read
+		// off the element expression and guessed: `[g(x) for x in [1, "a", 2.5, None]]` printed `[1, 0, 1, 0]`
+		// and `{g(x): 1 for x in ["a", "b"]}` printed `{0: 1, 1: 1}`, both byte-identical to the reference here
+		// (roadmap **Gap R.502**, **ADR 0273**'s element position, **ADR 0232**'s self-describing slots).
+		"forwarded_answer",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

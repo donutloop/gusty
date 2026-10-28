@@ -3768,6 +3768,28 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A hand-off call answers with the CALLER'S kind word, so a container slot stops wearing a guessed one (**Gap R.502**,
+  **ADR 0445**)** — `def g(v):` / `    return v` / `print([g(x) for x in [1, "a", 2.5, None]])` printed
+  `[1, 0, 1, 0]` for the reference's `[1, 'a', 2.5, None]`, `print({g(x): 1 for x in ["a", "b"]})` printed
+  `{0: 1, 1: 1}` for `{'a': 1, 'b': 1}`, and `print([g(None), 1])` printed `[0, 1]` — all at the exit code of success.
+  The builder asked the element EXPRESSION what kind to write beside the payload, and a call whose body hands back one
+  of its own parameters spells no kind: the table fell through to Int and the tag array held a lie. A hand-off has no
+  answer of its own — its answer IS the caller's argument — so the kind is read from the ARGUMENT at the call site
+  (positional, keyword, or the declared default) and carried to the store through the tagged door that already existed:
+  `rt_append_tagged`, `rt_set_add_tagged`, `rt_dict_put_tagged`, with `rt_mark_estr(…, 8)` marking the built slot
+  self-describing. The gate is narrow and measured: only a body whose every `return` names one parameter, never rebound,
+  is a hand-off, and `def g(v): return v + 0` keeps Gap R.146's refusal because an element built from a tag the pass
+  cannot read prints a float box's address as a number. Asking the tag made the hashability guard askable, which closed
+  two neighbouring rows on the way: `{[1], [2]}`, `{sa}`, `{{1}}` and `{[x for x in [1]]}` printed the member the
+  reference refuses to hash and now raise `TypeError: unhashable type: …` catchably (**Gap R.485**, **Gap R.492**), while
+  `{(1, 2)}` keeps building because a tuple's hashability is the AST's verdict, not the heap's (**ADR 0361**). 27 unit
+  answer rows (22 container positions + 9 built-comprehension positions, each judged on the compiled leg AND the record
+  leg), 6 module-shape rows, 12 hashability rows checked against both the compiled trap and the record's, 5 filed rows,
+  and **44** CLI rows beside a live `python3` (33 answers, 5 traps at exit **3**, 3 catchable raises at exit **0**, 3
+  refusals that keep exit **1**), plus `integration/programs/forwarded_answer.gy` joined byte-identical; **59 record
+  entries (10109 → 10168)** were written from reference/compiled agreements and the merge tool refused the one program
+  whose compiled bytes diverge — **Gap R.504**, filed rather than recorded.
+
 - **A comprehension standing where the LOOP, the CONDITION or `bool()` asks for a container is walked, tested and
   measured as the OBJECT (Gap R.490 + Gap R.500, **ADR 0443**)** — three programs, one missing question.
   `for v in [x for x in [1]]:` and `if [g(x) for x in [1, 2, 3]]:` died with `llc-20: global variable reference must

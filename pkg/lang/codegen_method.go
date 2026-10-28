@@ -344,7 +344,7 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
 				g.promotePairMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set")
-				g.guardHashableTag(b, pt, c.Src)
+				g.guardHashableExprTag(b, pt, c.Args[0], c.Src)
 				b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, pv, pt))
 				return "", nil
 			}

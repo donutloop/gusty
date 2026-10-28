@@ -242,13 +242,9 @@ func TestWhatTheDecidingDoorsStillOweTheEmptyContainerCall(t *testing.T) {
 			reference: "False\n",
 			row:       "Gap R.175",
 		},
-		{
-			name:      "a set whose member is an empty set",
-			src:       "print({set()})\n",
-			actual:    "{set()}\n",
-			reference: "raises TypeError: unhashable type: 'set'\n",
-			row:       "Gap R.81",
-		},
+		// `print({set()})` RAISES the reference's `TypeError: unhashable type: 'set'` now — asserted as a raise
+		// in `empty_container_tag_test.go::TestAnEmptyContainerMemberRaisesWhatTheReferenceRaises` with
+		// **ADR 0445**; a filed row that starts passing is evidence, not an inconvenient failure (**ADR 0343**).
 	} {
 		t.Run("answer_"+tc.name, func(t *testing.T) {
 			t.Parallel()

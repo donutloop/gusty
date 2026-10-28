@@ -478,6 +478,27 @@
     },
     {
       "case": {
+        "id": "programs/forwarded_answer",
+        "name": "forwarded_answer.gy",
+        "source": "# A hand-off call answers with the CALLER'S argument, so the container slot it lands in wears the\n# argument's kind and not the compiler's guess (roadmap Gap R.502, ADR 0445, ADR 0273's element\n# position, ADR 0232's self-describing slots).\n#\n# A call whose body is `return v` spells no kind of its own: the value it answers with came in from the\n# call site, unchanged. Reading the kind off the element expression therefore answered \"number\" for\n# every arm of the comprehension below and printed an interned id where a text lived. The kind is asked\n# of the argument now, at the call site, and carried to the store through the tagged runtime door.\n#\n# The hand-offs are spelled one per kind, except `hand`, which the comprehension rows hand a whole mixed\n# iterable: which arm a parameter answers with is a run-time fact, and the door reads the kind the caller\n# carried rather than naming one here (roadmap Gap R.164 owns the call-signature half of that).\n#\n# The rendering below is what CPython prints for the same program.\n\ndef hand(v):\n    return v\n\ndef hand_number(v):\n    return v\n\ndef hand_keyword(v):\n    return v\n\ndef hand_double(v):\n    return v\n\ndef hand_text(v):\n    return v\n\ndef hand_void(v):\n    return v\n\ndef hand_list(v):\n    return v\n\ndef hand_tuple(v):\n    return v\n\ndef hand_dict(v):\n    return v\n\ndef hand_set(v):\n    return v\n\ndef spelled(v):\n    return 1\n\ndef built(v):\n    return v + v\n\ndef with_default(v = 2.5):\n    return v\n\n# A list literal: the element the hand-off hands back keeps its own kind beside the numbers.\nprint([hand_double(2.5), 1])\nprint([hand_text(\"a\"), 1])\nprint([hand_void(None), 1])\nprint([hand_list([1, 2]), 3])\nprint([hand_tuple((1, 2)), 3])\nprint([hand_keyword(v = 2.5), 1])\nprint([spelled(2.5), 1])\nprint([built(1), 1])\nprint([hand_number(x) for x in [1, 2, 3]])\n\n# A dict entry and a set member: the same value through the two other stores.\nprint({1: hand_void(None)})\nprint({hand_void(None)})\nprint({hand_text(\"a\")})\nprint({hand_tuple((1, 2))})\nprint({hand_tuple((1, 2)): 1})\nprint({(1, 2): 5})\n\n# append and an assigned slot: the store the run time owns, not the literal's compile-time table.\nxs = []\nxs.append(hand_void(None))\nprint(xs)\nys = [0]\nys[0] = hand_double(2.5)\nprint(ys)\n\n# The comprehension the RUN TIME builds: the element, the KEY and the member all pass through a builder\n# that used to write a kind it had guessed.\nprint([hand(x) for x in [1, \"a\", 2.5, None]])\nfor v in [hand(x) for x in [1, \"a\", 2.5, None]]:\n    print(v)\nprint({hand(x): 1 for x in [\"a\", \"b\"]})\nfor k in {hand(x): 1 for x in [\"a\", \"b\"]}:\n    print(k)\nprint({1: hand(x) for x in [\"a\", 2.5]})\nprint({hand(x) for x in [1, 2.5]})\nprint([hand(x) for x in [1, \"a\", 2.5]][1])\nprint([hand(x) for x in [1, \"a\", 2.5]][1] == \"a\" and len([hand(x) for x in [1, \"a\", 2.5]]) == 3)\n\n# An unhashable answer dies where the reference dies, and the program catches its own accident.\ntry:\n    print({hand_list([1, 2])})\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({hand_dict({\"k\": 1})})\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({hand_set({1, 2}): 1})\nexcept TypeError as e:\n    print(\"caught\", e)\n\n# The default the call leaves out is the argument the kind is read from.\nprint([with_default(), 1])\n\n# The control that nothing else moved: a comprehension with no call at all.\nprint([x * 2 for x in [1, 2, 3]])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[2.5, 1]\n['a', 1]\n[None, 1]\n[[1, 2], 3]\n[(1, 2), 3]\n[2.5, 1]\n[1, 1]\n[2, 1]\n[1, 2, 3]\n{1: None}\n{None}\n{'a'}\n{(1, 2)}\n{(1, 2): 1}\n{(1, 2): 5}\n[None]\n[2.5]\n[1, 'a', 2.5, None]\n1\na\n2.5\nNone\n{'a': 1, 'b': 1}\na\nb\n{1: 2.5}\n{1, 2.5}\na\nTrue\ncaught unhashable type: 'list'\ncaught unhashable type: 'dict'\ncaught unhashable type: 'set'\n[2.5, 1]\n[2, 4, 6]\n",
+      "python_ok": true,
+      "python_stdout": "[2.5, 1]\n['a', 1]\n[None, 1]\n[[1, 2], 3]\n[(1, 2), 3]\n[2.5, 1]\n[1, 1]\n[2, 1]\n[1, 2, 3]\n{1: None}\n{None}\n{'a'}\n{(1, 2)}\n{(1, 2): 1}\n{(1, 2): 5}\n[None]\n[2.5]\n[1, 'a', 2.5, None]\n1\na\n2.5\nNone\n{'a': 1, 'b': 1}\na\nb\n{1: 2.5}\n{1, 2.5}\na\nTrue\ncaught unhashable type: 'list'\ncaught unhashable type: 'dict'\ncaught unhashable type: 'set'\n[2.5, 1]\n[2, 4, 6]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5878,11 +5899,11 @@
       ]
     }
   ],
-  "rows": 250,
+  "rows": 251,
   "skipped": 29,
-  "pass": 221,
+  "pass": 222,
   "fail": 0,
-  "oracle_match": 207,
+  "oracle_match": 208,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

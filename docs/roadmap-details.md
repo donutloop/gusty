@@ -4989,6 +4989,9 @@ found a wrong answer that had been shipping: two float slots holding `1.5` compa
 helper that compared "tags then words" was comparing two box handles. That helper is gone; one equality
 answers the slot question now, and a test fails if the old one comes back.
 
+
+**Half paid by ADR 0445 (🟨 PARTIAL).** The SET-LITERAL member door asks the hashing question now: `print({set()})`, `print({list()})`, `print({dict()})`, `print({[1], [2]})`, `print({{1}})` and `sa = {1: "a", "b": 2}` / `print({sa})` die `TypeError: unhashable type: …` catchably at exit **3** — the guard `guardHashableTag` had always existed, and what was missing was a gate that lets a member reach the store that keeps a kind word beside a payload (**Gap R.485**/**Gap R.492** closed on the way). `s.add(set())` is this row's own door and stays open: the `add` road still adds what cannot be a member. Rows: `pkg/lang/empty_container_tag_test.go::TestAnEmptyContainerMemberRaisesWhatTheReferenceRaises`, `pkg/lang/container_element_and_member_test.go::TestTheMemberDoorRaisesWhatTheReferenceRaises` and the CLI twins.
+
 ### Gap R.82 — the ordering comparison of a tagged slot read refuses (measured 2026-10-02, paid by ADR 0250)
 
     xs = [1, "a"]
@@ -12962,6 +12965,9 @@ default object is created once, at definition, and shared by every call (so `def
 `[1]` then `[1, 1]`); that is a definition-time allocation stored beside the prototype, which is exactly where
 ADR 0322 already keeps it, and the number case has been taking the shortcut all along.
 
+
+**Half paid by ADR 0445 (🟨 PARTIAL).** A default the call omits is still an argument, and a hand-off body reads its kind off it: `def d(y=None): return y` answers `None`, `def d(xs=[]): return xs` answers `[]`, `def d(w={}): return w` answers `{}` — three rows that left `lambda_default_param_test.go`'s filed table for `forwarded_answer_test.go`'s answering table, both legs. The rest of the row stands: a body that computes from the default (`def d(y=None): return y is None` answers `False`), the `*args` spelling, the trailing comma and the missing-argument doors.
+
 ### Gap R.278 — no parameter list has `*args` or `**kwargs`
 
 `def d(*a): return len(a)` / `print(d(1, 2, 3))` is the reference's `3`; this toolchain answers `2 parse
@@ -20527,7 +20533,7 @@ checklist for that review.
 
 ---
 
-### Gap R.485 — a set literal accepts a member the reference refuses to hash (⏳ OPEN, found by **ADR 0437**)
+### Gap R.485 — a set literal accepts a member the reference refuses to hash (✅ DONE, found by **ADR 0437**, closed by **ADR 0445**)
 
 The door this row names already exists in the file and is not being asked. `pkg/lang/heapargs.go`'s
 `guardHashableTag` emits three `icmp`/`branchRaise` pairs whose sentences are the reference's own —
@@ -20572,6 +20578,23 @@ call through the builtin's dispatch, the other is a builder emitting `rt_set_add
 Pinned with today's bytes at both legs in `pkg/lang/container_element_and_member_test.go` and
 `integration/container_element_and_member_test.go`. No record: `tools/recmerge` refuses a source whose compiled
 bytes are not the reference's, which is the cross-check doing its job rather than an obstacle.
+
+
+**Closed by ADR 0445.** The raise was never a missing sentence. `guardHashableTag` compares the kind word a slot
+arrived with against list/dict/set, and the set literal's UNTAGGED member road handed it nothing to compare: the member
+was stored by `rt_set_add`, the tag array left whatever the last tenant wrote, and the program filed an address under a
+bucket no future lookup could name. What this commit changed is the GATE: the tagged member road (`rt_set_add_tagged`,
+which stores payload and kind as one act) is opened by `literalTakesPairSlots`/`taggableMixedSet` plus the new
+`setLiteralHandsBackATag`, and the guard is asked of the tag the store receives whoever produced it — a register the pair
+road wrote, or a constant the element expression spells, which the verifier folds into the same raise. All four rows
+therefore die `TypeError: unhashable type: 'list'|'dict'|'set'` at exit **3**, catchably, and the control the raise needs
+is that a TUPLE still answers: a tuple and a list share the heap's layout (**ADR 0361**), so `exprIsHashableTupleAnswer`
+gives the AST the last word and `{(1, 2)}` / `{(1, 2), (3, 4)}` keep building. Rows:
+`pkg/lang/container_element_and_member_test.go::TestTheMemberDoorRaisesWhatTheReferenceRaises` (+ the hashable control)
+and `integration/container_element_and_member_test.go::TestTheMemberDoorRaisesWhatTheReferenceRaisesThroughTheCLI`;
+each raise has a record entry `tools/recmerge` wrote from a reference/compiled agreement, because none of the four had
+one while they printed the unhashable member (**Gap R.204**). **Gap R.81** keeps the `add` door: `sa.add([1])` is a
+different road, still open, and this row's closing says nothing about it.
 
 ### Gap R.486 — a container held in a NAME, written as the element of a literal, answers the slot's first word (✅ DONE, found by **ADR 0437**, closed by **ADR 0438**)
 
@@ -20920,7 +20943,7 @@ runtime comprehension bound rather than the position the fold had given it. The 
 `TestWhatTheContainerElementAndMemberDoorsStillOweIsFiledNotFixed` and its CLI twin into the answering rows of
 `pkg/lang/built_comp_subscript_test.go` and `integration/built_comp_subscript_test.go`.
 
-### Gap R.492 — a set literal accepts a comprehension that builds an unhashable member (⏳ OPEN, found by **ADR 0439**)
+### Gap R.492 — a set literal accepts a comprehension that builds an unhashable member (✅ DONE, found by **ADR 0439**, closed by **ADR 0445**)
 
 ```
 $ printf 'print({[x for x in [1]]})\n' | gustyc --file -   ; echo "exit=$?"
@@ -20940,6 +20963,15 @@ One row per spelling, one fix for all three: ask the member's kind at the litera
 sentence from the tag **ADR 0439** just wrote, so the raise is shared by the literal member, the named member and
 the comprehension member. The key side of the same hashability question is already refused in words
 (`{[1]: 1}`, and since this cycle `{[x for x in [1]]: 1}`), which is the asymmetry the row exists to remove.
+
+
+**Closed by ADR 0445**, as the same raise as **Gap R.485**: `print({[x for x in [1]]})` and `print({{x for x in [1]}})`
+raise `TypeError: unhashable type: 'list'` / `'set'` at exit **3** where they printed `{[1]}` / `{{1}}` at exit **0**.
+**ADR 0439** had moved the comprehension member onto the literal member's door, which is why one guard covers both
+spellings; what neither door could do was ask the hashing question, because the road that stores no kind word gives the
+guard nothing to ask. The gate widening (a member whose kind comes from a comprehension's brace, a pair register or a
+spelled literal opens the tagged store) is what closed the family — see **Gap R.485**'s closing above for the mechanism
+and for the tuple control, and the same two test files for the rows.
 
 ### Gap R.493 — a builtin's NAME standing alone as an expression statement reads a frame slot no `define` allocated (⏳ OPEN, found by **ADR 0439**)
 
@@ -21366,7 +21398,7 @@ The pair door and the bounds check keep their arms: a position out of range and 
 different questions, and `print([True][0])` printing `True` is the control that keeps the widening honest. Until
 then four rows pin today's `1`/`2` at both legs in the filed table beside this door.
 
-### Gap R.502 — the loop item of a comprehension the run time builds carries no kind word (⏳ OPEN, found by **ADR 0443**)
+### Gap R.502 — the loop item of a comprehension the run time builds carries no kind word (✅ DONE, found by **ADR 0443**, closed by **ADR 0445**)
 
 ```
 $ gustyc --eval 'def g(v):
@@ -21406,3 +21438,84 @@ Until then the four shapes are pinned with today's bytes in
 the negative control that keeps the widening cheap is a homogeneous int comprehension emitting NO tag array —
 asserted through `--emit-llvm`, because a door that tags everything is a door that made every loop in the
 language pay for one program's mixed list.
+
+**Closed by ADR 0445.** The tag array was not the missing piece; the KIND WORD written into it was. The builders asked
+their self-describing question of the element EXPRESSION, and an element that is `g(x)` — a call whose body is
+`return x` — has no expression-level kind to read, so the answer was `TagInt` for every arm of every comprehension and
+the tag array, marked or not, held a lie. A hand-off has no answer of its own: its answer IS the caller's argument,
+unchanged, so `forwardedParameterOperand` asks the call site which parameter every `return` names, resolves that
+parameter's operand (positional, keyword, or the declared default), and reads the kind off THAT expression — the same
+reading (`forwardedAnswerTagUnder`) feeding the gate that opens the tagged builder and the door that hands
+`(payload, tag)` to the store, so no road can be opened by a test the store cannot honour.
+
+Three measurements made the shape of that permission. (1) `def g(v): return v + 0` printed `[2, 1]` — a float box's
+address read as a number — the moment the pair gate was widened to every pair-shaped callee, where the same program
+refused before and refuses after: the gate claims only an answer the pair road can name, a hand-off or a body whose
+every `return` spells a literal (**ADR 0356**'s narrowing for the constant-fold door, for the same reason). (2) A
+parameter the body REBINDS is not a hand-off, and a body that can fall off the end is not either — a gate that guessed
+from an argument the callee may ignore would be re-explaining **ADR 0273**'s one-word refusal in a worse place. (3) A
+gate may not EMIT: only the pair road's own allocas may be read twice, so a tag is never learned by re-lowering a
+subscript, a `.pop()` or a call (**ADR 0249**).
+
+Hashability came along with the word, because it is the question a tag answers and the guard could not previously be
+asked of these slots at all: `{g([1, 2])}` stored an address and printed `{[1, 2]}`, and now dies `TypeError:
+unhashable type: 'list'` catchably at exit **3**, where `{g((1, 2))}` builds — a tuple is a list to the heap
+(**ADR 0361**), so the AST, read through the hand-off's argument, has the final say (**Gap R.81**).
+
+The residue this door deliberately did not widen is pinned in `pkg/lang/forwarded_answer_test.go`'s filed table with
+today's bytes beside the reference's: a computed body, a rebound parameter, a method's hand-off (**Gap R.453**'s
+round) and a loop ITEM whose kind the loop itself bound (**Gap R.146**'s one-word position). What the same sweep found
+crashing is filed as **Gap R.503** (the build inherited that one) and **Gap R.504** (the misprint and the crash this
+cycle's own door introduced, named the day it was measured).
+
+### Gap R.503 — a set literal that mixes a handed-back text with a number dies in the run time that owns the tags (⏳ OPEN, found by **ADR 0445**)
+
+```
+$ gustyc --eval 'def g(v):
+    return v
+print({g("a"), 1})'
+gustyc: the compiled program was killed by segmentation fault — it never returned, so this is the artifact,
+not the program (roadmap Gap R.203)                              → exit 2   (reference: {1, 'a'})
+$ gustyc --eval 'def g(v):
+    return v
+print({1, g("a")})'                                              # the same crash, the other order
+```
+
+This is the row the answer table could not keep. `print({g("a")})` prints `{'a'}` and `print({g(2.5), 1})` prints
+`{1, 2.5}` on this build, so neither the hand-off nor the mixed set is on its own the crash: it is the two together, in
+the run-time door that dedups a set on the (payload, tag) PAIR — the read **Gap R.146** exists to feed. It is measured
+byte-identical on `9605949` (**ADR 0444**) and on this commit, which is the test that keeps it a row rather than damage
+from **ADR 0445**: the sweep that closed **Gap R.502** put this program in the candidate table, and the answer rows it
+could keep are kept precisely because the ones it could not were filed here instead of quietly dropped (**Gap R.204**'s
+rule about a claim a reader cannot re-measure). The exit code is the CLI's own accusation — **2** is a compiler bug,
+never a program result (**ADR 0166**) — so no case in this repo runs it: the crash is pinned here and in the roadmap
+row, and the two answer rows the crash displaced (`{g("a")}` and `{g(2.5), 1}`) carry the family instead.
+
+### Gap R.504 — a hand-off answer that carries a handle into a container slot crashes the linked artifact (⏳ OPEN, found by **ADR 0445**)
+
+```
+$ gustyc --file /tmp/h504.gy          # def g(v): return v
+[0, 0, 1]                             # → the build 9605949 printed this, alive, on BOTH legs
+$ gustyc --eval 'def g(v):
+    return v
+print([g([1, 2]), g({"k": 2}), g((1, 3))])'
+[[1, 2], {'k': 2}, (1, 3)]            # the JIT: the reference's own bytes
+$ gustyc --file /tmp/h504.gy
+['k', {'k': {'k': {'k': {'k': …       # the linked artifact: a dict that points at itself
+gustyc: the compiled program was killed by segmentation fault …                      → exit 2
+```
+
+`tools/recmerge` is what caught it: the merge tool compiles the source, runs it, and REFUSES to write an entry whose
+compiled bytes differ from the reference's — `got "['k', {'k': {'k': …"`, `want "[[1, 2], {'k': 2}, (1, 3)]"`. A record
+tool that argues with you is the mechanism that keeps a diverging answer out of the ledger rather than in it, and what
+it argued about here was a crash on this commit's own build.
+
+Two facts make it **damage** rather than an inherited accident. The build **ADR 0444** shipped printed `[0, 0, 1]`
+— wrong, but alive — on both legs; this build prints the reference's bytes on the JIT leg and dies on the linked leg.
+The same slot read is the story of the row's second program: `print([[g([1, 2]), 3], [g(None), 4]])` answers
+`[[None, 4], [None, 4]]` where the reference answers `[[[1, 2], 3], [None, 4]]`, because the two inner lists carry one
+slot tag and a handle read with the other kind's tag answers the neighbouring slot (`9605949` printed `[0, 4]` for
+that same slot — wrong in the other direction). The misprint is pinned as a filed row in
+`pkg/lang/forwarded_answer_test.go`, with the reference's bytes as the thing asked for; the two crashing programs are
+pinned only here and in the roadmap row, because **2** is a compiler bug and no case in this repo runs a crashing
+program (**ADR 0166**, **Gap R.203**).

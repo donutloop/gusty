@@ -306,26 +306,16 @@ func TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 			src:  "def outer():\n    b = 42\n    def inner():\n        return b\n    return inner()\n\nprint(outer())",
 			want: "42", today: "42",
 		},
-		{
-			desc: "a None default is never bound", gap: "Gap R.277",
-			src:  "def d(y=None):\n    return y\n\nprint(d())",
-			want: "None", today: "0",
-		},
+		// "a None default is never bound" ANSWERS `None` now and moved to `forwarded_answer_test.go`'s answering
+		// table with **ADR 0445**: a hand-off body (`return y`) takes its kind off the argument the call site
+		// leaves out, which is the DEFAULT, so the slot it fills is written with the void's kind and not a 0.
 		{
 			desc: "a None default asked as a question", gap: "Gap R.277",
 			src:  "def d(y=None):\n    return y is None\n\nprint(d())",
 			want: "True", today: "False",
 		},
-		{
-			desc: "a list default is never bound", gap: "Gap R.277",
-			src:  "def d(xs=[]):\n    return xs\n\nprint(d())",
-			want: "[]", today: "0",
-		},
-		{
-			desc: "a dict default is never bound", gap: "Gap R.277",
-			src:  "def d(w={}):\n    return w\n\nprint(d())",
-			want: "{}", today: "0",
-		},
+		// "a list default is never bound" ANSWERS `[]` now — same door, same move (**ADR 0445**).
+		// "a dict default is never bound" ANSWERS `{}` now — same door, same move (**ADR 0445**).
 		{
 			desc: "the same default, supplied by the caller, is bound", gap: "Gap R.277's control",
 			src:  "def d(xs=[]):\n    return len(xs)\n\nprint(d([1, 2, 3]))",

@@ -198,17 +198,13 @@ func lambdaAnswerFiledNotFixed() []struct{ name, src, defTwin, gap string } {
 			"def h():\n    return [3, 4]\n\ndef g():\n    return [h(), 1]\n\nprint(g())\n",
 			"Gap R.67",
 		},
-		{
-			// Gap R.171: a void that crosses a call boundary arrives as the bare word 0, because the parameter
-			// has no tag beside it. Now that an applied `lambda` that answers the void becomes a declaration, the
-			// two spellings of the program — the void handed to a forwarding parameter by a hoisted `lambda` and
-			// by a `def` — arrive at the SAME wrong byte, which is the parity this row claims: the missing word
-			// is the parameter's, not the lambda's.
-			"the void handed to a forwarding parameter answers the digit 0 (Gap R.171's, not this row's)",
-			"def f(v):\n    return v\n\nprint(f((lambda: None)()))\n",
-			"def a1():\n    return None\n\ndef f(v):\n    return v\n\nprint(f(a1()))\n",
-			"Gap R.171",
-		},
+		// The void handed to a FORWARDING parameter — `def f(v): return v` called with `(lambda: None)()` and
+		// with a hoisted `def a1(): return None` — prints `None` on both spellings now, which is the reference's
+		// byte, so the row left this table for the answering table of `forwarded_answer_test.go` with **ADR 0445**
+		// (a hand-off reads its kind off the caller's argument; the parity the row claimed still holds, only at
+		// the right answer). What **Gap R.171** still owns here is the void crossing a boundary into a body that
+		// COMPUTES — `return y is None` over a void argument still answers `False`, pinned in
+		// `lambda_default_param_test.go`'s filed table.
 	}
 }
 

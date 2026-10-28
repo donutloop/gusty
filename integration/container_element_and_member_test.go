@@ -40,41 +40,11 @@ func TestWhatTheContainerElementAndMemberDoorsOweAtTheCLI(t *testing.T) {
 		// object its iterable built, the subscript reads the bound item through the pair road, and the same
 		// program is asserted beside a live `python3` in
 		// `integration/built_comp_subscript_test.go::TestASubscriptOfABuiltComprehensionThroughTheCLI`.
-		{
-			name:      "a set literal accepts a list member",
-			src:       "print({[1], [2]})\n",
-			wantOut:   "{[1], [2]}\n",
-			wantCode:  0,
-			reference: "raises TypeError: unhashable type: 'list'",
-			row:       "Gap R.485 (Gap R.81 owns the `add` door)",
-		},
-		{
-			name:      "a set literal accepts a dict member",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint({sa})\n",
-			wantOut:   "{{1: 'a', 'b': 2}}\n",
-			wantCode:  0,
-			reference: "raises TypeError: unhashable type: 'dict'",
-			row:       "Gap R.485",
-		},
-		{
-			name:      "a set literal accepts a set member",
-			src:       "print({{1}})\n",
-			wantOut:   "{{1}}\n",
-			wantCode:  0,
-			reference: "raises TypeError: unhashable type: 'set'",
-			row:       "Gap R.485",
-		},
-		{
-			// The member door's comprehension spelling: on ADR 0439's arm it reaches the same door the literal
-			// member stands on, so it prints the member the reference refuses to hash — one raise for the
-			// family, owned by Gap R.485 and filed as Gap R.492.
-			name:      "a set literal accepts a comprehension that builds a list",
-			src:       "print({[x for x in [1]]})\n",
-			wantOut:   "{[1]}\n",
-			wantCode:  0,
-			reference: "raises TypeError: unhashable type: 'list'",
-			row:       "Gap R.492 (with Gap R.485)",
-		},
+		// The four SET-MEMBER rows this table carried while **Gap R.485** and **Gap R.492** were open raise the
+		// reference's own `TypeError: unhashable type: …` now, at exit **3** and catchably, and moved to
+		// `TestTheMemberDoorRaisesWhatTheReferenceRaisesThroughTheCLI` with **ADR 0445**: the guard that asks the
+		// hashing question lives on the road that stores a kind word, and the gate that opens that road now
+		// admits a member whatever produced its tag.
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,6 +70,90 @@ func TestWhatTheContainerElementAndMemberDoorsOweAtTheCLI(t *testing.T) {
 			}
 			if !strings.Contains(stdout+stderr, tc.wantErr) {
 				t.Errorf("%q refused without naming %q (%s):\n%s", tc.src, tc.wantErr, tc.row, stdout+stderr)
+			}
+		})
+	}
+}
+
+// TestTheMemberDoorRaisesWhatTheReferenceRaisesThroughTheCLI is the answered half of the member door: a set
+// literal whose member is a list, a dict, a set or a comprehension that builds one dies with the reference's
+// own sentence, at the program's exit code rather than the compiler's, and the program can catch it
+// (roadmap **Gap R.485** + **Gap R.492**, paid by **ADR 0445**; **Gap R.81** owns the `add` door, and the
+// rows that stayed filed there are pinned beside it, not here).
+//
+// The raise was never a missing sentence — it was a question nobody could ask. `guardHashableTag` compares the
+// tag a slot arrived with, and the untagged set road handed it nothing to compare, so the member was filed
+// under its own handle and printed back. The gate that opens the tagged member road now admits a member
+// whatever produced its kind word, and the guard is asked of the tag the store receives.
+func TestTheMemberDoorRaisesWhatTheReferenceRaisesThroughTheCLI(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		src     string
+		message string
+	}{
+		{"a list member", "print({[1], [2]})\n", "unhashable type: 'list'"},
+		{"a dict member, held in a name", "sa = {1: \"a\", \"b\": 2}\nprint({sa})\n", "unhashable type: 'dict'"},
+		{"a set member", "print({{1}})\n", "unhashable type: 'set'"},
+		{"a comprehension that builds a list", "print({[x for x in [1]]})\n", "unhashable type: 'list'"},
+		{"a spelled set inside a set", "print({{1, 2}})\n", "unhashable type: 'set'"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "member.gy", tc.src)
+			refOut, refCode := oracleTrap(t, path)
+			if refCode == 0 {
+				t.Fatalf("the reference answered %q where this row expects %s to raise", refOut, tc.message)
+			}
+			if !strings.Contains(refOut, tc.message) {
+				t.Fatalf("the reference does not raise %q: %s", tc.message, refOut)
+			}
+			stdout, stderr, code := cliStreams(t, cliEngines[0], path)
+			if code == 2 {
+				t.Fatalf("the toolchain failed on its own program (exit 2 — ADR 0166's code):\n%s", stderr)
+			}
+			if code != 3 {
+				t.Fatalf("exit %d, want the program's raise at exit 3; stdout %q stderr %q", code, stdout, stderr)
+			}
+			if stdout != "" {
+				t.Fatalf("stdout %q, want the raise to print nothing", stdout)
+			}
+			if !strings.Contains(stderr, tc.message) {
+				t.Fatalf("stderr does not carry %q:\n%s", tc.message, stderr)
+			}
+		})
+	}
+}
+
+// TestTheMemberDoorStaysQuietForAHashableMember is the control the raise has to keep: a tuple is the container
+// this language hashes (**ADR 0361**), and a guard that fired on the heap's layout instead of the AST would
+// turn every one of these rows into a raise the reference does not raise.
+func TestTheMemberDoorStaysQuietForAHashableMember(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{"print({(1, 2)})\n", "{(1, 2)}\n"},
+		{"print({(1, 2), (3, 4)})\n", "{(1, 2), (3, 4)}\n"},
+		{"print({1, 2})\n", "{1, 2}\n"},
+		{"print({1, 2.5})\n", "{1, 2.5}\n"},
+	} {
+		tc := tc
+		t.Run(strings.TrimSpace(tc.src), func(t *testing.T) {
+			t.Parallel()
+			path := writeSrc(t, t.TempDir(), "hashable.gy", tc.src)
+			refOut, refCode := oracleTrap(t, path)
+			if refCode != 0 || refOut != tc.want {
+				t.Fatalf("the reference itself answered %q exit %d, this row expects %q", refOut, refCode, tc.want)
+			}
+			stdout, stderr, code := cliStreams(t, cliEngines[0], path)
+			if code != 0 {
+				t.Fatalf("exit %d, want 0 — a hashable member is not an accident\nstderr %s", code, stderr)
+			}
+			if stdout != tc.want {
+				t.Fatalf("printed %q, the reference prints %q", stdout, tc.want)
 			}
 		})
 	}

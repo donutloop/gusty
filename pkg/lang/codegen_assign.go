@@ -771,7 +771,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			// is neither the number set nor the string set (roadmap L11.1 (1b), ADR 0232). A member
 			// the pair road bound is the same record for the same reason: its tag is a register, and a
 			// member added without it dedups against the payload alone (Gap R.146).
-			mixedSet := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl)
+			mixedSet := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl) || g.setLiteralHandsBackATag(sl)
 			if mixedSet {
 				g.mixedSets[nm.Value] = true
 				g.setElemStr[nm.Value] = false
@@ -794,7 +794,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 						return err
 					}
 					if isPair {
-						g.guardHashableTag(b, t, sl.Src)
+						g.guardHashableExprTag(b, t, el, sl.Src)
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, ev, t))
 					si++
@@ -864,7 +864,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			// kinds has no kind to record, so every slot carries its own tag (ADR 0232). A key or a
 			// value the pair road bound is the same case with one more word: the entry goes through
 			// the tagged put with the tag register the objects wrote (roadmap L11.1, Gap R.146).
-			mixedDict := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl)
+			mixedDict := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl) || g.dictLiteralHandsBackATag(dl)
 			if mixedDict {
 				g.mixedDicts[nm.Value] = true
 				g.dictKeyStr[nm.Value] = false
@@ -888,7 +888,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 						return err
 					}
 					if kPair {
-						g.guardHashableTag(b, kt, dl.Src)
+						g.guardHashableExprTag(b, kt, dl.Keys[i], dl.Src)
 					}
 					vv, vt, _, err := g.taggedSlotWords(b, dl.Vals[i])
 					if err != nil {

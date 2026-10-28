@@ -16524,3 +16524,63 @@ the condition and `bool()` ask `rt_heap_len`.
    index. The right response was to record the row, move it to the answering tables, and close **Gap R.491** in the
    same ADR rather than narrow the door to make an old wrong answer come back. A filed row that starts passing is
    evidence, not an inconvenient test failure.
+
+## ADR 0445 — a call whose body hands back one of its own parameters answers with the CALLER'S kind word (roadmap Gap R.502 + Gap R.485 + Gap R.492 closed, Gap R.503 + Gap R.504 filed; 2026-10-29)
+
+1. **A kind table that reads an expression has to be asked whose expression.** `elemKindTag` read what the element
+   spelled, and a `*Call` element got the answer of the callee's `return`. For `def g(v): return 2.5` that is the right
+   question; for `def g(v): return v` the body spells nothing, and the table's `TagInt` default wrote the tag of a number
+   beside an interned text. The lesson is not "widen the table" — it is that a hand-off's kind belongs to the CALL SITE,
+   so the door resolves the parameter's operand (positional, keyword, or default) and asks that expression instead. Every
+   fall-through-to-a-default in a kind table is a place where an answer can be printed as somebody else's bits.
+
+2. **A gate that claims more than the door can honour ships a wrong answer, not a wider fix.** Widening the
+   pair-element gate to every callee the pair road had typed made `def g(v): return v + 0` print `[2, 1]` — the float
+   box's address read as an integer — where the same program refused before and refuses after. The gate now claims only
+   an answer the pair road can name (a hand-off, or a body whose every `return` spells a literal), which is **ADR 0356**'s
+   narrowing for the constant-fold door applied to a neighbour for the same reason. Between a refusal and an answered
+   wrong, the repo's own history picks the refusal; the probe that showed me this was one I had written expecting it to
+   pass.
+
+3. **A guard nobody could call is a bug in the gate, not in the guard.** `guardHashableTag` had existed since
+   **Gap R.81**, and four filed rows (**Gap R.485**, **Gap R.492**) said set literals accepted unhashable members. Both
+   were true: the guard compares the tag a slot arrived with, and the untagged set road handed it nothing to compare.
+   Opening the tagged member road for the hand-off also made those four raise the reference's sentence — so the commit
+   that closed R.502 closed two rows I had not gone after, and the honest move was to move their rows into answering
+   tables and say so in the ADR, not to narrow the door back to make an old wrong answer return.
+
+4. **A tag cannot tell two heap shapes apart; only the AST can.** Tuples and lists share the heap's layout, so "is this
+   key hashable?" is a question about the program, not about the value: `{(1, 2)}` builds and `{[1, 2]}` dies. Reading
+   the answer through the hand-off's argument is what kept that verdict available after the value crossed a call.
+
+5. **Measure against the reference with the parent binary beside you, and know the reference's own noise.** The 464-source
+   sweep flagged two "regressions" in corpus programs that turned out to be CPython's per-process `PYTHONHASHSEED`
+   flipping set order (`{'q', 'r'}` vs `{'r', 'q'}` for the same program across seeds), with parent and new build
+   agreeing byte for byte. A comparison harness that cannot say "the reference disagrees with itself" will happily
+   report your change as broken; set rows are pinned by MEMBERS, and a per-seed ordering claim is not something a reader
+   can re-measure (**Gap R.204**).
+
+6. **A keyword argument is a call site the signature road does not always know.** `print([g(v = 2.5), 1])` inside a
+   program that also called `g` with other kinds tripped the pair-signature refusal ("another call site hands it something
+   it cannot name", **Gap R.164**'s road) rather than answering. The kind door resolves keywords and defaults; the call
+   SIGNATURE road is a different door, and the conformance program keeps that row under its own callee so the family stays
+   visible instead of hiding behind one refusal.
+
+7. **A crash found while measuring gets a row, not a silent drop.** `print({g("a"), 1})` segfaults on the parent AND on
+   this build. It came out of the answer table and into **Gap R.503** with the exit code, the two spellings and the
+   parent measurement; the two answers that crash displaced (`{g("a")}`, `{g(2.5), 1}`) stayed as rows. Deleting the
+   probe would have made the sweep look cleaner and the language worse.
+
+8. **The record tool is a test, and the crash it caught was mine.** `tools/recmerge` compiles each candidate source and
+   refuses to write an entry whose bytes differ from the reference's. That refusal is what surfaced
+   `print([g([1, 2]), g({"k": 2}), g((1, 3))])`: the JIT prints the reference's `[[1, 2], {'k': 2}, (1, 3)]`, while the
+   linked artifact prints `['k', {'k': {'k': …` and dies — the stored dict pointing at itself. `9605949` printed
+   `[0, 0, 1]` and stayed alive, so this cycle converted a wrong-and-alive answer into a crash on one leg. It is filed
+   as **Gap R.504** with the reference's bytes, not recorded, and not "fixed" by deleting the source. Two process
+   lessons: a merge tool that argues with you is the cheapest regression test you own, and **`--eval` agreeing with the
+   reference does not mean the artifact does** — every answer row this cycle had to be measured on both legs.
+
+9. **A widening that closes three rows can open one crash, and the commit is judged on whether it says so.** The
+   attribution rule (control build beside the new one, measure before naming the cause) is what let me call R.503
+   inherited and R.504 mine; without the parent binary both would have been written the same way, and the honest one
+   would have been filed as an old bug.

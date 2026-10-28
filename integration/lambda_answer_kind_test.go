@@ -126,14 +126,15 @@ func lambdaAnswerKindPinned() []struct {
 			"0\n",
 			"Gap R.331",
 		},
-		{
-			// Gap R.388 is PAID — **ADR 0427** — and the pin that stood here is DELETED rather than edited: the
-			// program prints the reference's `True` and stands in the answered family above.
-			"the void handed to a forwarding parameter answers the digit 0 (Gap R.171's, not this row's)",
-			"def f(v):\n    return v\n\nprint(f((lambda: None)()))\n",
-			"0\n",
-			"Gap R.171",
-		},
+		// Gap R.388 is PAID — **ADR 0427** — and the pin that stood there is DELETED rather than edited: the
+		// program prints the reference's `True` and stands in the answered family above.
+		//
+		// Gap R.171's HAND-OFF half is PAID — **ADR 0445** — and its pin is DELETED on the same rule:
+		// `def f(v): return v` called with `(lambda: None)()` prints the reference's `None`, and the program
+		// stands in the answered family of
+		// `integration/forwarded_answer_test.go::TestAHandOffAnswerWearsItsArgumentsKindThroughTheCLI`, record leg
+		// included. What **Gap R.171** still owns is a body that COMPUTES from the void argument
+		// (`def d(y=None): return y is None` answers `False`), pinned beside its own today's byte above.
 	}
 }
 

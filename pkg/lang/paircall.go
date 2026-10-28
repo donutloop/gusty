@@ -2545,8 +2545,19 @@ func (g *irGen) pairPayloadNeedsRoot(c *Call) (bool, bool) {
 // than the payload alone.
 func (g *irGen) pairCallPrint(b *strings.Builder, e Expr) (bool, error) {
 	p, t, ok, err := g.pairCallPair(b, e)
-	if err != nil || !ok {
+	if err != nil {
 		return false, err
+	}
+	if !ok {
+		// The hand-off round of the print door: `def g(v): return v` answers its argument's kind, and when
+		// the argument is a value the pair road bound the printer is handed the same two words — the row's
+		// own shape, `for v in [g(x) for x in [1, "a", 2.5, None]]:` printing each item, and `print(g(n))`
+		// for a pair-bound `n` beside it (roadmap **Gap R.502**, **ADR 0445**).
+		var ferr error
+		p, t, ok, ferr = g.forwardedCallPair(b, e)
+		if ferr != nil || !ok {
+			return false, ferr
+		}
 	}
 	g.heapUsed = true
 	g.floatFmtUsed = true

@@ -1,5 +1,309 @@
 {
  "entries": {
+"def a1():\n    return None\n\ndef f(v):\n    return v\n\nprint(f(a1()))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def d(w={}):\n    return w\n\nprint(d())": {
+    "stdout": "{}\n",
+    "hasStdout": true
+   },
+
+"def d(xs=[]):\n    return xs\n\nprint(d())": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"def d(y=None):\n    return y\n\nprint(d())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    return v\n\nprint(f((lambda: None)()))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+"print({dict()})": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"print({list()})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({set()})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+"print({set()})\n": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+"print({(1, 2), (3, 4)})": {
+    "stdout": "{(1, 2), (3, 4)}\n",
+    "hasStdout": true
+   },
+
+"print({(1, 2)})": {
+    "stdout": "{(1, 2)}\n",
+    "hasStdout": true
+   },
+
+"print({1, 2.5})": {
+    "stdout": "{1, 2.5}\n",
+    "hasStdout": true
+   },
+
+"print({1, 2})": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"print({[1], [2]})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({[x for x in [1]]})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({{1}})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"sa = {1: \"a\", \"b\": 2}\nprint({sa})": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+"print({[1, 2]})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({{\"k\": 1}})": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"print({{1, 2}})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"print({{x for x in [1, 2]}})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+"# A hand-off call answers with the CALLER'S argument, so the container slot it lands in wears the\n# argument's kind and not the compiler's guess (roadmap Gap R.502, ADR 0445, ADR 0273's element\n# position, ADR 0232's self-describing slots).\n#\n# A call whose body is `return v` spells no kind of its own: the value it answers with came in from the\n# call site, unchanged. Reading the kind off the element expression therefore answered \"number\" for\n# every arm of the comprehension below and printed an interned id where a text lived. The kind is asked\n# of the argument now, at the call site, and carried to the store through the tagged runtime door.\n#\n# The hand-offs are spelled one per kind, except `hand`, which the comprehension rows hand a whole mixed\n# iterable: which arm a parameter answers with is a run-time fact, and the door reads the kind the caller\n# carried rather than naming one here (roadmap Gap R.164 owns the call-signature half of that).\n#\n# The rendering below is what CPython prints for the same program.\n\ndef hand(v):\n    return v\n\ndef hand_number(v):\n    return v\n\ndef hand_keyword(v):\n    return v\n\ndef hand_double(v):\n    return v\n\ndef hand_text(v):\n    return v\n\ndef hand_void(v):\n    return v\n\ndef hand_list(v):\n    return v\n\ndef hand_tuple(v):\n    return v\n\ndef hand_dict(v):\n    return v\n\ndef hand_set(v):\n    return v\n\ndef spelled(v):\n    return 1\n\ndef built(v):\n    return v + v\n\ndef with_default(v = 2.5):\n    return v\n\n# A list literal: the element the hand-off hands back keeps its own kind beside the numbers.\nprint([hand_double(2.5), 1])\nprint([hand_text(\"a\"), 1])\nprint([hand_void(None), 1])\nprint([hand_list([1, 2]), 3])\nprint([hand_tuple((1, 2)), 3])\nprint([hand_keyword(v = 2.5), 1])\nprint([spelled(2.5), 1])\nprint([built(1), 1])\nprint([hand_number(x) for x in [1, 2, 3]])\n\n# A dict entry and a set member: the same value through the two other stores.\nprint({1: hand_void(None)})\nprint({hand_void(None)})\nprint({hand_text(\"a\")})\nprint({hand_tuple((1, 2))})\nprint({hand_tuple((1, 2)): 1})\nprint({(1, 2): 5})\n\n# append and an assigned slot: the store the run time owns, not the literal's compile-time table.\nxs = []\nxs.append(hand_void(None))\nprint(xs)\nys = [0]\nys[0] = hand_double(2.5)\nprint(ys)\n\n# The comprehension the RUN TIME builds: the element, the KEY and the member all pass through a builder\n# that used to write a kind it had guessed.\nprint([hand(x) for x in [1, \"a\", 2.5, None]])\nfor v in [hand(x) for x in [1, \"a\", 2.5, None]]:\n    print(v)\nprint({hand(x): 1 for x in [\"a\", \"b\"]})\nfor k in {hand(x): 1 for x in [\"a\", \"b\"]}:\n    print(k)\nprint({1: hand(x) for x in [\"a\", 2.5]})\nprint({hand(x) for x in [1, 2.5]})\nprint([hand(x) for x in [1, \"a\", 2.5]][1])\nprint([hand(x) for x in [1, \"a\", 2.5]][1] == \"a\" and len([hand(x) for x in [1, \"a\", 2.5]]) == 3)\n\n# An unhashable answer dies where the reference dies, and the program catches its own accident.\ntry:\n    print({hand_list([1, 2])})\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({hand_dict({\"k\": 1})})\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({hand_set({1, 2}): 1})\nexcept TypeError as e:\n    print(\"caught\", e)\n\n# The default the call leaves out is the argument the kind is read from.\nprint([with_default(), 1])\n\n# The control that nothing else moved: a comprehension with no call at all.\nprint([x * 2 for x in [1, 2, 3]])\n": {
+    "stdout": "[2.5, 1]\n['a', 1]\n[None, 1]\n[[1, 2], 3]\n[(1, 2), 3]\n[2.5, 1]\n[1, 1]\n[2, 1]\n[1, 2, 3]\n{1: None}\n{None}\n{'a'}\n{(1, 2)}\n{(1, 2): 1}\n{(1, 2): 5}\n[None]\n[2.5]\n[1, 'a', 2.5, None]\n1\na\n2.5\nNone\n{'a': 1, 'b': 1}\na\nb\n{1: 2.5}\n{1, 2.5}\na\nTrue\ncaught unhashable type: 'list'\ncaught unhashable type: 'dict'\ncaught unhashable type: 'set'\n[2.5, 1]\n[2, 4, 6]\n",
+    "hasStdout": true
+   },
+"def g(v):\n    return v\n\ntry:\n    print({g((1, 2)): 1})\nexcept TypeError as e:\n    print(\"caught\", e)": {
+    "stdout": "{(1, 2): 1}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\ntry:\n    print({g([1, 2])})\nexcept TypeError as e:\n    print(\"caught\", e)": {
+    "stdout": "caught unhashable type: 'list'\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\ntry:\n    print({g({1, 2}): 1})\nexcept TypeError as e:\n    print(\"caught\", e)": {
+    "stdout": "caught unhashable type: 'set'\n",
+    "hasStdout": true
+   },
+"def g(v = 2.5):\n    return v\n\nprint([g(), 1])": {
+    "stdout": "[2.5, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return 1\n\nprint([g(2.5), 1])": {
+    "stdout": "[1, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nfor k in {g(x): 1 for x in [\"a\", \"b\"]}:\n    print(k)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nfor v in [g(x) for x in [\"a\"]]:\n    print(v)": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nfor v in [g(x) for x in [1, \"a\", 2.5, None]]:\n    print(v)": {
+    "stdout": "1\na\n2.5\nNone\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(\"a\"), 1])": {
+    "stdout": "['a', 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g((1, 2)), 3])": {
+    "stdout": "[(1, 2), 3]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(2.5), 1])": {
+    "stdout": "[2.5, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(None), 1])": {
+    "stdout": "[None, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g([1, 2]), 3])": {
+    "stdout": "[[1, 2], 3]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(v=2.5), 1])": {
+    "stdout": "[2.5, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, \"a\", 2.5, None]])": {
+    "stdout": "[1, 'a', 2.5, None]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, \"a\", 2.5]][1] == \"a\" and len([g(x) for x in [1, \"a\", 2.5]]) == 3)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, \"a\", 2.5]][1])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint([g(x) for x in [1, 2, 3]])": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({1: g(None)})": {
+    "stdout": "{1: None}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({1: g(x) for x in [\"a\", 2.5]})": {
+    "stdout": "{1: 2.5}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g(\"a\")})": {
+    "stdout": "{'a'}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g((1, 2)): 1})": {
+    "stdout": "{(1, 2): 1}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g((1, 2))})": {
+    "stdout": "{(1, 2)}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g(None)})": {
+    "stdout": "{None}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g([1, 2]) for x in [1]})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"def g(v):\n    return v\n\nprint({g([1, 2])})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"def g(v):\n    return v\n\nprint({g(x) for x in [1, 2.5]})": {
+    "stdout": "{1, 2.5}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g(x): 1 for x in [\"a\", \"b\"]})": {
+    "stdout": "{'a': 1, 'b': 1}\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nprint({g({\"k\": 1})})": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"def g(v):\n    return v\n\nprint({g({1, 2}): 1})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"def g(v):\n    return v\n\nxs = [0]\nxs[0] = g(2.5)\nprint(xs)": {
+    "stdout": "[2.5]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v\n\nxs = [1]\nprint({g(xs), 2})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"def g(v):\n    return v\n\nxs = []\nxs.append(g(None))\nprint(xs)": {
+    "stdout": "[None]\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v + v\n\nprint([g(1), 1])": {
+    "stdout": "[2, 1]\n",
+    "hasStdout": true
+   },
+
+"def g(v, w):\n    return w\n\nprint([g(2.5, \"a\"), 1])": {
+    "stdout": "['a', 1]\n",
+    "hasStdout": true
+   },
+
+"print([x * 2 for x in [1, 2, 3]])": {
+    "stdout": "[2, 4, 6]\n",
+    "hasStdout": true
+   },
+
+"print({(1, 2): 5})": {
+    "stdout": "{(1, 2): 5}\n",
+    "hasStdout": true
+   },
 "# A subscript standing on a comprehension the RUN TIME BUILDS is read from the OBJECT that comprehension\n# built: `print([g(x) for x in [1, 2, 3]][1])` used to raise IndexError because the fold's count table was\n# empty, and `print({g(x) for x in [1, 2]}[0])` stopped the build instead of raising the set's own\n# TypeError (roadmap Gap R.501, ADR 0442's two-comprehensions-one-door rule, ADR 0443's brace for the kind).\ndef g(v):\n    return v * 2\n\ndef h(v):\n    return v\n\nprint([g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][0])\nprint([g(x) for x in [1, 2, 3]][-1])\nv = [g(x) for x in [1, 2, 3]][1]\nprint(v)\nprint(len([g(x) for x in [1, 2, 3]]) + [g(x) for x in [1, 2, 3]][1])\nprint([g(x) for x in [1, 2, 3]][1] == 4)\nprint([h(x) for x in [1, 2, 3]][1] == 4)\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][0][1])\nprint([[g(y) for y in [1, 2]] for x in [1, 2]][-1][0])\nprint({h(x): 1 for x in [1, 2]}[2])\nprint({h(x): h(x) for x in [1, 2]}[2])\nxs = [1, 2, 3]\nprint([g(x) for x in xs][2])\nprint([g(x) for x in range(3)][1])\ntry:\n    print([g(x) for x in [1, 2, 3]][7])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print([g(x) for x in [1, 2, 3]][-9])\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x): 1 for x in [1, 2]}[3])\nexcept KeyError as e:\n    print(\"caught\", e)\ntry:\n    print([h(x) for x in [1, 2]][1.5])\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print({h(x) for x in [1, 2]}[0])\nexcept TypeError as e:\n    print(\"caught\", e)\nprint([x * 2 for x in [1, 2, 3]][1])\n": {
     "stdout": "4\n2\n6\n4\n7\nTrue\nFalse\n4\n2\n1\n2\n6\n2\ncaught list index out of range\ncaught list index out of range\ncaught 3\ncaught list indices must be integers or slices, not float\ncaught 'set' object is not subscriptable\n4\n",
     "hasStdout": true

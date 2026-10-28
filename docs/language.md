@@ -1077,6 +1077,34 @@ print(d["k"][0], len(d["k"]), "k" in d)         # 2 1 True
 print([[x for x in [1, 2, 3] if x > 1], [k for k in {"a": 1}]])   # [[2, 3], ['a']]
 ```
 
+What goes INTO those slots is now the caller's business too (**ADR 0445**). A call whose body hands one of its own
+parameters straight back — `def g(v): return v`, a hand-off — has no answer of its own: the value it returns IS the
+argument the call site passed. The kind word stored beside such an answer is therefore read from the ARGUMENT, at the
+call site, and not from the element expression, which spells nothing:
+
+```
+def g(v):
+    return v
+print([g(x) for x in [1, "a", 2.5, None]])      # [1, 'a', 2.5, None]  (was [1, 0, 1, 0])
+for v in [g(x) for x in [1, "a", 2.5, None]]:   # 1, a, 2.5, None      (was 1, 0, 1, 0)
+    print(v)
+print({g(x): 1 for x in ["a", "b"]})            # {'a': 1, 'b': 1}     (was {0: 1, 1: 1})
+print([g(None), 1])                             # [None, 1]            (was [0, 1])
+print([g(2.5), 1])                              # [2.5, 1]
+print([g([1, 2]), 3])                           # [[1, 2], 3]
+print([g(v = 2.5), 1])                          # [2.5, 1]  — the keyword and a DEFAULT argument answer the same way
+xs = [0]
+xs[0] = g(2.5)
+print(xs)                                       # [2.5]
+```
+
+The door is narrow on purpose. A hand-off is a module-level `def` whose EVERY `return` names one parameter and whose
+body never rebinds it; a body that computes (`return v + 0`), a parameter the body assigns to, and a method's
+self-forwarding are not hand-offs and keep the refusal they had (**Gap R.146**, **Gap R.453**). A set member or dict key
+that comes back as a list, a dict or a set now dies where the reference dies — `TypeError: unhashable type: 'list'` —
+because the guard can finally ask the question of a tag that exists, and a TUPLE is exempt, since a tuple of hashables
+hashes and the heap cannot tell the two apart (**ADR 0361**): the AST, read through the hand-off's argument, decides.
+
 A comprehension is not a KEY: a dict or set literal whose key is one is declined in words — `dict key must be a
 string, int, bool, or float expression` — because the interned key a hashed container needs is what **L11.1**
 refuses to invent, and the sentence names the expression by what it is (`a list comprehension`, never a Go node
@@ -1084,9 +1112,10 @@ name: **Gap R.232**/**Gap R.249**'s rule, applied to a node no one had asked). W
 wrong at the doors **ADR 0439** did not open was filed, not smoothed over: a comprehension as the LOOP head, as a
 truth test or inside `bool()` reached the assembler with a global in an operand position and exited **2** (**Gap
 R.490**, paid by **ADR 0443**), a comprehension whose iterable is a container of containers raised `IndexError`
-instead of answering (**Gap R.491**, paid by **ADR 0444**), and a set literal accepts a member a comprehension built
-where the reference refuses to hash it
-(**Gap R.492**).
+instead of answering (**Gap R.491**, paid by **ADR 0444**), and a set literal accepted a member a comprehension built
+where the reference refuses to hash it (**Gap R.492**, paid by **ADR 0445** — the hashability guard is asked of the tag
+the store receives, whoever produced it, so `{[1, 2]}`, `{{1, 2}}` and `{{x for x in [1]}}` die the reference's
+`TypeError: unhashable type: …` at the moment the slot is written).
 
 ### Multi-argument range iterables (comprehensions)
 
