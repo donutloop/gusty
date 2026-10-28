@@ -1,0 +1,35 @@
+# Banned emitter strings (ADR 0437, Gap R.288).
+#
+# One phrase per line; `#` starts a comment. This list is asked of the strings the COMPILER emits —
+# the string literals in `pkg/lang/*.go` and `cmd/gustyc/*.go` that a user or an agent reads out of a
+# diagnostic — while witness-banned-phrases.txt is asked of the files that make claims (the tests, the
+# CLI, the case registry, the agent-facing documents). The two lists are read together: an offer to run
+# a program the way this toolchain retired is as false in a message as it is in a document, and the
+# reader who follows it is the same reader either way.
+#
+# What is specific to a message is the SHAPE of the offer. A document can name the retired engine in
+# prose about the retirement; a refusal cannot tell the reader to go and run the program that way,
+# because since ADR 0302 there is one way to run a program here and `--interp` is a usage error.
+#
+# A literal that carries a marker from witness-history-markers.txt is licensed — a diagnostic that
+# says "the engine that was retired" is telling the reader what happened, not offering a way to run.
+#
+# the second way to run, offered
+run it interpreted
+run it in the interpreter
+run it through the interpreter
+run it on the interpreter
+run the program interpreted
+run the program in the interpreter
+run this program interpreted
+run your program interpreted
+run it aot or interpreted
+or run it\b
+#
+# the retired flag, offered as a way to run
+--interp\b
+#
+# the retired entry points, offered as a callable way to run
+EvalExpr
+EvalProgram
+InterpreterRun

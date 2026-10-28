@@ -1553,9 +1553,16 @@ Rules that the compiled backend implement:
                               #        and that is the runtime's key-equality rule, not the gate's
   ```
 
-  A key this backend cannot tag — a container — is refused **before** the door: `d = {[1]: "x"}` says a
-  compiled container cannot hold a list literal (ADR 0327's untypable-key row; the class a container key raises
-  is **Gap R.217**'s, and the sentence's own wording is **Gap R.288**'s). A **tuple key answers**: `d = {(1, 2): "x"}` /
+  A key this backend cannot tag — a container — is refused **before** the door, and since **ADR 0437** the
+  refusal says WHICH rule it is standing in front of: `d = {[1]: "x"}` says a compiled container cannot hold a list
+  literal **as a key yet**, because a dict finds an entry by hashing its key and there is no hashing rule for a
+  container here (the class a container key raises is **Gap R.217**'s, the sentence's own wording is **Gap
+  R.288**'s, and the machine-readable half is the capability code `lower.unsupported.container-key` — `--json`
+  puts it in `capability`, `gustyc --capabilities` prints the whole inventory). The sibling door, an element that
+  nests deeper than any tag the compiler writes, says so in its own sentence and carries
+  `lower.unsupported.container-element`; the sentence quotes the object the reader has to change, so
+  `print([{{[1]: 2}}])` names `[1]` rather than the tag that was never the problem. Neither sentence offers a way to
+  run the program that this toolchain does not have. A **tuple key answers**: `d = {(1, 2): "x"}` /
   `print(d[(1, 2)])` prints `x`, `print((1, 2) in d)` prints `1`, a tuple key added at run time (`e[(5, 6)] = 7`) reads
   back, and a missing one raises `KeyError: (3, 4)` with the key's own repr — because since **ADR 0361** a tuple is an
   object the dict road can hash, element by element, and an unhashable element names the inner type (`(1, [2])` says

@@ -205,14 +205,18 @@ func TestTheNoneKeyRowLeavesTheOperatorRoadsOnTheTracker(t *testing.T) {
 		// The sibling this table used to pin — a tuple key refusing with `unsupported expression
 		// *lang.Tuple` — is PAID: ADR 0361 gave the tuple a compiled object and the shape now answers `x`,
 		// the reference's own answer, so it moved to TestATupleKeyAnswersWhereTheTupleObjectArrived below.
-		// A sentence the emitter no longer produces has no pin; Gap R.288 keeps its row for the half that
-		// survives — the offer below (one pin per refusal shape).
+		//
+		// The other half of the untaggable-key control — the sentence that closed by offering to "run it
+		// interpreted", a way to run this toolchain retired with ADR 0302 — is PAID: the door says which rule
+		// is missing (a dict hashes its key, and a container has no hash here) and offers nothing else. The CLI
+		// rows that hold the whole sentence, the forbidden offer and the `--json` message beside the human one
+		// are in `integration/refusal_names_the_missing_rule_test.go` (roadmap **Gap R.288**, **ADR 0437**).
 		{
-			name:      "an_untaggable_key_offers_the_retired_way_to_run",
+			name:      "an_untaggable_key_names_the_rule_it_is_missing",
 			src:       "d = {[1]: \"x\"}\nprint(d[[1]])\n",
-			wantErr:   "or run it interpreted",
-			reference: "TypeError: unhashable type: 'list' — the refusal is honest, the offer of another way to run it is not",
-			row:       "Gap R.288",
+			wantErr:   "as a key yet: a dict finds an entry by hashing its key",
+			reference: "TypeError: unhashable type: 'list' — the refusal is honest, and it no longer offers a way to run that was retired",
+			row:       "Gap R.288 (paid by ADR 0437)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

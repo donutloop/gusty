@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "added_by": "ADR 0437",
+    "rule": "One row per emitted string that the witness-emitter guard is told to tolerate. A row names the substring, the file it sits in, the roadmap row that owns the fix, and why the string cannot simply be restated today. A row that matches no emitted string fails the case (TestTheEmitterLedgerStillNamesStringsThatExist), so an exemption cannot outlive its sentence. Adding a row is a decision about a string the toolchain says out loud: it is reviewed with the row that owns it, never added to make a run green.",
+    "guard": "pkg/lang/witness_emitter_test.go"
+  },
+  "rows": []
+}

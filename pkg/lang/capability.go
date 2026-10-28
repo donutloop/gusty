@@ -87,6 +87,26 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Sample:     "print(dict({\"a\": 1}))",
 	},
 	{
+		Code: "lower.unsupported.container-key",
+		// The two rulings this door used to recite in one sentence are two codes now, for the same
+		// reason they are two sentences (**ADR 0437**, roadmap **Gap R.288**): one code matching both
+		// means an agent's branch cannot tell "no hash for this key" from "no tag for this element",
+		// which is the difference between re-keying the dict and flattening the value.
+		Shape:      "a dict keyed by a container: the entry would be filed by a hash this backend does not have for a container",
+		Suggestion: "key the dict by a value that has a hash — a text, an integer, a float, a verdict or the void — and keep the container in the value; a tuple key works when every element of it has a hash, and what is missing for a list, dict or set key is the rule that asks two containers with the same elements whether they are the same key",
+		Rows:       []string{"L11.1", "Gap R.217"},
+		Markers:    []string{"as a key yet: a dict finds an entry by hashing its key"},
+		Sample:     "print({[1]: 2})",
+	},
+	{
+		Code:       "lower.unsupported.container-element",
+		Shape:      "an element that nests deeper than any tag the compiler writes: the slot would hold the inner object's handle",
+		Suggestion: "build that inner value separately, one level shallower, so every element is a value a slot can tag — what is missing is the one word beside the slot that says what the other word is, and the print/compare roads then read a handle as a number",
+		Rows:       []string{"L11.1", "Gap R.75"},
+		Markers:    []string{"a slot of a compiled container carries one word"},
+		Sample:     "d = {1: [2]}\nprint([[d[1]] for k in d])",
+	},
+	{
 		Code:       "lower.unsupported.tuple-is-immutable",
 		Shape:      "a write into the immutable container: a tuple method or an item assignment reaches the door that would mutate the list layout a tuple shares",
 		Suggestion: "write the tuple you want out as a literal — `t = (1, 2, 3)` — or build a list for what you mutate; concatenating (`t + (3,)`) is not compiled either, so the advice does not offer it (Gap R.33) and the door refuses rather than answering a mutated tuple",

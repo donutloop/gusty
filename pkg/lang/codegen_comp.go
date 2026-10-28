@@ -598,7 +598,11 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		return "", fmt.Errorf("codegen: a runtime comprehension builds one element at a time (roadmap L11.1)")
 	}
 	if g.nestedContainerElem(c.Elems[0]) && !g.taggableNestedElem(c.Elems[0]) {
-		return "", fmt.Errorf("codegen: %s", nestedContainerErr(c.Elems[0]).Error())
+		// The door's own sentence, once. This road used to wrap it in a second `codegen: `, so the reader
+		// saw the prefix twice — `gustyc: jit: codegen: codegen: a compiled container cannot hold …` — which
+		// is the same defect as promising a way to run that does not exist: a sentence about the toolchain
+		// that is not true (**ADR 0437**, **ADR 0249**).
+		return "", nestedContainerErr(c.Elems[0])
 	}
 	lv := loopVarName(c.ForVar)
 	if !g.allocd[lv] {

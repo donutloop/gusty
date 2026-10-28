@@ -441,7 +441,8 @@ what stayed open is the sentence. A capability refusal reached a human as prose 
 `"error": "codegen: …"`, so an agent planning a compilation had to match on the wording to learn what it was
 refused — and prose is not a contract: the sentence gets edited, the branch silently stops firing, and the
 failure is a script that quietly stops covering the shape. `pkg/lang/capability.go` is now the single source for
-the code (`lower.unsupported.<shape>`, 40 of them), the suggestion that writes the same intent in what the
+the code (`lower.unsupported.<shape>` — one per refused shape, and `gustyc --capabilities` is the inventory the
+registry prints rather than a number this document remembers), the suggestion that writes the same intent in what the
 backend does answer, and the roadmap rows that own the missing half. It reaches three readers: the `capability`
 member of every `--json` failure payload, `gustyc --capabilities` as one self-describing document, and
 `--schema`'s `definitions.capabilityRefusalCode` — where the enum is *spliced out of the registry at init*,
@@ -3696,6 +3697,33 @@ falls back to dynamic dispatch.
   `--bench-baseline` gates a run against a saved baseline, so "the compiler got
   slower" is a number with its own exit code (5) instead of a hunch.
   `--bench-dir integration/programs` benchmarks the parity programs too.
+
+- **A refusal names the rule it is missing, and never offers a way to run that is gone (Gap R.288, **ADR 0437**)** —
+  `d = {[1]: "x"}` / `print(d[[1]])` was refused honestly and described dishonestly: `a compiled container cannot
+  hold a list literal yet; a dict keyed by a container has no hashing rule, **and** an element nested deeper than
+  every inner element can be tagged would be printed by handle … Build that inner value separately, **or run it
+  interpreted**`. One sentence recited both rulings whatever the position asked, and the last five words pointed at
+  the engine **ADR 0302** deleted — a flag (`--interp`) whose answer is a usage error. The door is now two: the KEY
+  door says `cannot hold %s as a key yet: a dict finds an entry by hashing its key, and this backend has no hashing
+  rule for a container, so the entry would live under whichever handle the allocator handed out … Key the dict by a
+  value that has a hash — a text, an integer, a float, a verdict or the void — and keep the container in the value`,
+  the ELEMENT door says `cannot hold %s yet: a slot of a compiled container carries one word and the tag that says
+  what that word is, and this element nests deeper than any tag the compiler writes …`, and the element door walks
+  into what it declines, so `print([{{[1]: 2}}])` blames `[1]` rather than the tag that was never the problem. The
+  comprehension road that reached the same door used to wrap its error in a second `codegen: ` — `gustyc: jit:
+  codegen: codegen: a compiled container …` at `4fdb87c` — and that is fixed too, because a doubled prefix is a
+  sentence about the toolchain that is not true. The machine path moved with the prose: **two codes** where there
+  were none, `lower.unsupported.container-key` and `lower.unsupported.container-element`, so a script branches on
+  the shape and not on the wording. What makes the promise checkable is `pkg/lang/witness_emitter_test.go`, which
+  reads the string literals of every non-test file in `pkg/lang` and `cmd/gustyc` — the corpus the document-side
+  witness guard never opened (**Gap R.193**) — against the phrase lists in `pkg/lang/testdata/`, with exemptions in
+  a ledger that fails if a row matches no live string, and the ledger is EMPTY. Grepping that corpus for the first
+  time found two more sentences still describing two engines: `semantic.go`'s builtin-shadow diagnostic, and
+  `schema.go`'s `valueTag` description, which used to credit its tag table to the retired engine's heap objects —
+  the JSON an agent reads to learn the ABI. Eight control sources (hashable keys at every depth, three depths of nested
+  literal elements, a dict in a list, a comprehension over a literal of containers) went to the record — **9878 →
+  9886** — and `tools/recmerge` refused the refusals, which have no answer to cross-check; the four shapes the same
+  sweep found wrong are **Gaps R.485**–**R.488**, filed with today's bytes at both legs and unfixed.
 
 ## Modern front-end (lexer & parser)
 

@@ -74,7 +74,11 @@ func TestTheRefusalIsReachableFromTheCLI(t *testing.T) {
 	if !strings.Contains(text, `"range" is a built-in here`) {
 		t.Fatalf("--check did not refuse the ambiguous call:\n%s", text)
 	}
-	if !strings.Contains(text, "move the definition above every use") {
+	// "the definition above every use", not "move the definition …": **ADR 0437** reworded the first half of
+	// this diagnostic, which used to explain the refusal as a disagreement between two engines (one executing
+	// in order, one emitting every function first) when there is one engine and one answer. The advice is the
+	// same advice, now its own sentence — so the pin asks for the advice and not for the verb's capitalisation.
+	if !strings.Contains(text, "the definition above every use") {
 		t.Errorf("the refusal does not say what to do about it:\n%s", text)
 	}
 

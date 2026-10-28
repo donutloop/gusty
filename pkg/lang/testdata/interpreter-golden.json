@@ -1,5 +1,44 @@
 {
  "entries": {
+"d = {\"a\": 1}\nprint(d[\"a\"])\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"d = {(1, 2): \"x\"}\nprint(d[(1, 2)])\n": {
+    "stdout": "x\n",
+    "hasStdout": true
+   },
+
+"print([[1, [2]], 1])\n": {
+    "stdout": "[[1, [2]], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[[1, 2], [3]], 1])\n": {
+    "stdout": "[[[1, 2], [3]], 1]\n",
+    "hasStdout": true
+   },
+
+"print([[{\"a\": [1]}], 1])\n": {
+    "stdout": "[[{'a': [1]}], 1]\n",
+    "hasStdout": true
+   },
+
+"print([{\"a\": 1}, 2])\n": {
+    "stdout": "[{'a': 1}, 2]\n",
+    "hasStdout": true
+   },
+
+"print({(1, 2): 3})\n": {
+    "stdout": "{(1, 2): 3}\n",
+    "hasStdout": true
+   },
+
+"xs = [[1, 2], [3]]\nprint([y for y in xs])\n": {
+    "stdout": "[[1, 2], [3]]\n",
+    "hasStdout": true
+   },
 "class C():\n    def greet(self, name=\"world\"):\n        return \"hi \" + name\nprint(C().greet())\n": {
     "stdout": "hi world\n",
     "hasStdout": true

@@ -408,20 +408,24 @@ func TestWhatTheNoneKeyReadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// (roadmap Gap R.287, ADR 0387). The answers are asserted in `dict_entry_pair_sign_test.go`, with the
 		// int-key twin among them.
 		// The untaggable-key control, asked because this row's gate is a key-kind question: what the backend
-		// says when the key has no tag at all. Both refusals are honest in what they decline and wrong in how
-		// they say it — one offers a way to run that ADR 0302 retired, the other names an AST node.
+		// says when the key has no tag at all. It used to refuse honestly and say so dishonestly — the sentence
+		// closed by offering to "run it interpreted", a way to run ADR 0302 retired. The offer is gone: the
+		// door now names the one rule it is missing (no hashing rule for a container key), and
+		// `pkg/lang/refusal_names_the_missing_rule_test.go` and its CLI twin hold the whole contract — the two
+		// doors' sentences, the phrases a refusal may never say, and the `--json` message asked beside the
+		// human one (roadmap **Gap R.288**, **ADR 0437**).
 		{
-			name:        "an_untaggable_key_offers_the_retired_way_to_run",
+			name:        "an_untaggable_key_names_the_rule_it_is_missing",
 			src:         "d = {[1]: \"x\"}\nprint(d[[1]])\n",
-			wantRefusal: "or run it interpreted",
-			reference:   "raises TypeError: unhashable type: 'list' — declining is this backend's honest answer, the offer beside it is not (and `--interp` is a usage error)",
-			row:         "Gap R.288",
+			wantRefusal: "as a key yet: a dict finds an entry by hashing its key",
+			reference:   "raises TypeError: unhashable type: 'list' — declining is this backend's honest answer, and it now says which rule it is declining",
+			row:         "Gap R.288 (paid by ADR 0437)",
 		},
 		// The tuple-key sibling that used to sit here — `d = {(1, 2): "x"}` / `print(d[(1, 2)])` refusing
 		// with `unsupported expression *lang.Tuple` — is PAID: ADR 0361 gave the tuple a compiled object, the
 		// shape answers `x`, and the sentence the emitter used for it no longer exists. TestATupleDictKeyAnswers
-		// in dict_literal_key_test.go carries it as an answer now; Gap R.288 keeps its row for the offer to run
-		// a program "interpreted", which the surviving row below still pins.
+		// in dict_literal_key_test.go carries it as an answer now; **Gap R.288**'s offer to run a program
+		// "interpreted" is paid above, where the same shape names the hashing rule it is missing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

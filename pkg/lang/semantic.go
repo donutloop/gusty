@@ -1521,15 +1521,17 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return an.inferUserCall(fd, n)
 		}
 		// A module that claims a built-in name owns it — but only from its definition onwards,
-		// because that is when the binding exists. Above the definition the two backends disagree:
-		// the interpreter, executing in order, still reaches the built-in, while codegen, which emits
+		// because that is when the binding exists. Above the definition the reader and the compiler
+		// disagree: the built-in is what a reader expects to be called there, while codegen, which emits
 		// every function before the body, resolves the call to the program's definition (roadmap Gap
-		// R.12, ADR 0205). Two engines printing different things from one file is not something a
-		// programmer can debug, so the program is refused where the ambiguity is written, with the
-		// line the definition is on.
+		// R.12, ADR 0205). Before ADR 0302 retired the second engine the same sentence was written the
+		// other way round — the engine executing in order reached the built-in while codegen reached the
+		// definition — and the refusal is the same either way: one name meaning two things in one file is
+		// not something a programmer can debug, so the program is refused where the ambiguity is written,
+		// with the line the definition is on.
 		if an.curFn == nil {
 			if fd, ok := an.predeclaredDefs[name.Value]; ok && fd.Src.Line > n.Src.Line {
-				an.errorf(n.Src, "%q is a built-in here, but this module defines it below, at line %d: the interpreter uses the built-in and the compiled backend uses that definition — move the definition above every use, or rename it", name.Value, fd.Src.Line)
+				an.errorf(n.Src, "%q is a built-in here, but this module defines it below, at line %d: the compiled backend resolves every use of the name to that definition, the uses above it included, where a reader expects the built-in — one name meaning two things in one file. Move the definition above every use, or rename it", name.Value, fd.Src.Line)
 				// Analysis continues down the *built-in* path rather than bailing out: the loop
 				// variable, the argument types and everything derived from them keep the types they
 				// would have had, so the one real error is not followed by a trail of warnings about

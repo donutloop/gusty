@@ -13437,6 +13437,68 @@ Both refusals are pinned with their exact current text — `or run it interprete
 sentence changes, a case notices in each direction: a rewrite that only deletes the offer still fails the pin,
 and so does the offer reappearing.
 
+**Closed by ADR 0437 (2026-10-28), by subtraction and by splitting the door in two.** The two rulings that one
+sentence recited are now two sentences, each standing in front of the thing it describes, and each keeping the
+family's stem so a reader who has met one recognises the other:
+
+| door | emitted when | the sentence |
+|---|---|---|
+| key | a dict, or anything filed by key, is keyed by an object with no hash — a list, a dict, a set, a tuple holding one, an empty container spelled as a call | `a compiled container cannot hold a list literal as a key yet: a dict finds an entry by hashing its key, and this backend has no hashing rule for a container, so the entry would live under whichever handle the allocator handed out and nothing but the program that stored it could find it again (roadmap L11.1). Key the dict by a value that has a hash — a text, an integer, a float, a verdict or the void — and keep the container in the value` |
+| element | a slot would hold a container that nests deeper than any tag the compiler writes | `a compiled container cannot hold a list literal yet: a slot of a compiled container carries one word and the tag that says what that word is, and this element nests deeper than any tag the compiler writes, so the word would be the inner object's handle — printed by handle and compared by address (roadmap L11.1). Build that inner value separately, one level shallower, so every element is a value a slot can tag` |
+
+Two rulings means two failure modes to guard against, and the cases assert both directions: a key row fails if
+the element door's phrase appears in its sentence, an element row fails if the key door's does. A door that
+says the true-but-wrong half is exactly the defect this row opened with, and "one of the two sentences is
+right" is not a test.
+
+**The element door walks into what it declines.** `exprWantingContainerKey` descends through nested literals —
+list elements, dict keys *and* dict values, set members, bounded at the depth the rulings themselves reach —
+and if any dict it passes has a key with no hash, it reports the **key** rule about **that** key. So
+`print([{{[1]: 2}}])` blames `[1]`, the object the reader has to change, where the element door alone would
+have blamed a tag that was never the problem, and `print([{[1]: 2} for x in range(1)])` says the same. This is
+**ADR 0232**'s one question, asked of the object rather than of the call site that found it.
+
+**The doubled prefix, found by walking rather than reading.** The same door reached through a comprehension's
+element printed its prefix twice — the comprehension road wrapped the door's already-prefixed error in a second
+`codegen: `, in a different file:
+
+| `print([{[1]: 2} for x in [1]])` at `4fdb87c` | the same program on this tree |
+|---|---|
+| `gustyc: jit: codegen: codegen: a compiled container cannot hold a dict literal yet; … or run it interpreted` | `gustyc: jit: codegen: a compiled container cannot hold a list literal as a key yet: …` |
+
+Two untruths in one line, one about how to run the program and one about what the toolchain printed; the case
+now pins the absence of `codegen: codegen:` beside the absence of the offer.
+
+**The corpus the guard reads.** `pkg/lang/witness_emitter_test.go` walks the string literals of every non-test
+file in `pkg/lang` and `cmd/gustyc` with `go/ast`, and asks each of the two phrase lists — the document list and
+the new `pkg/lang/testdata/witness-emitter-banned-phrases.txt` (the offers to run it a second way, the retired
+flag, the retired entry points). A literal is licensed only by a marker on the line the offending phrase sits
+on, so a long honest sentence cannot shelter a dishonest clause; exemptions are rows in
+`pkg/lang/testdata/witness-emitter-ledger.json` and **a row that matches no live literal fails the case**, so
+an exemption cannot outlive its string or be invented to silence a run. The injection case hands the checker a
+`codegen:` error containing the offer that no file contains, which is what makes the guard a check and not a
+walk. The ledger ships empty: nothing in the tree needed tolerating.
+
+Scanning for the first time found **three** sentences, not the one this row filed:
+
+| file | said | now |
+|---|---|---|
+| `pkg/lang/heapargs.go` | `…Build that inner value separately, or run it interpreted` | split into the two doors above |
+| `pkg/lang/semantic.go` | `the interpreter uses the built-in and the compiled backend uses that definition` | `the compiled backend resolves every use of the name to that definition, the uses above it included, where a reader expects the built-in — one name meaning two things in one file`; the refusal's *condition* is untouched, only its explanation stops describing a race between two engines that no longer exist |
+| `pkg/lang/schema.go` | `…shared by the interpreter's heap objects (obj.kind → obj.tag)…`, inside the `valueTag` description an agent reads as the ABI | names only the consumers that exist: the compiled runtime's tagged values, the heap object's kind word via `lang.HeapTagFor`, the extern-fn ABI's tag word |
+
+The last two were not on this row and are in this commit, for the reason the ADR gives: a guard that ships red
+is a guard that gets deleted.
+
+**What the row did not have to touch.** `print([[[1]]])`, `print([[{"a": [1]}]])` and `print([[[1, 2], [[3]]]])`
+answer correctly and were pinned as controls *before* the door was changed, because a refusal that widened to
+catch them would have been a regression dressed as a fix; `tools/recmerge` put eight such sources on the record
+(9878 → 9886) and refused to record the refusals, which have no answer to compare. And the sibling shape this
+row filed alongside — `d = {(1, 2): "x"}` / `print(d[(1, 2)])`, refused with `unsupported expression
+*lang.Tuple` — is no longer a refusal at all: a tuple key answers `x` here as it does under CPython, so it
+moved from the pin list to the control list instead of being reworded. What the four shapes the same sweep found
+still get wrong is **Gaps R.485**–**R.488**, filed below and unfixed.
+
 ### Gap R.289 — a read in a construct the escape walk did not visit deleted the container it reads
 
 `deadListAssignments` is not a report. Its answer is a permission: a top-level name that comes back unread has
@@ -20454,3 +20516,168 @@ opens the READ's word in the same commit — the field's kind read off the ONE c
 use (`pkg/lang/heapargs.go`), asked at the read and not the store, which is **ADR 0232**'s rule and why storing
 stays legal — or the store's own fix converts four refusals into four silent answers. **ADR 0436**'s table is the
 checklist for that review.
+
+---
+
+### Gap R.485 — a set literal accepts a member the reference refuses to hash (⏳ OPEN, found by **ADR 0437**)
+
+The door this row names already exists in the file and is not being asked. `pkg/lang/heapargs.go`'s
+`guardHashableTag` emits three `icmp`/`branchRaise` pairs whose sentences are the reference's own —
+`TypeError: unhashable type: 'list'`, `'dict'`, `'set'` — and the set builder calls it for a member that came
+in through the **pair** road. It does not call it for a member that came in through the ordinary one.
+
+```
+$ printf 'print({[1], [2]})\n' | gustyc --file -   ; echo "exit=$?"
+{[1], [2]}
+exit=0
+$ python3 -c 'print({[1], [2]})'
+TypeError: unhashable type: 'list'
+
+$ printf 'sa = {1: "a", "b": 2}\nprint({sa})\n' | gustyc --file -   ; echo "exit=$?"
+{{1: 'a', 'b': 2}}
+exit=0
+$ python3 -c 'sa = {1: "a", "b": 2}; print({sa})'
+TypeError: unhashable type: 'dict'
+```
+
+**Why.** `heapSetFrom` chooses its road from `mixed := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl)`.
+A literal whose members are all containers is not mixed — every member has the same shape — and none of them
+arrives as a pair, so `mixed` is false and the loop takes the bottom road: `heapElemKind` for one word, then
+`call void @rt_set_add(i32 %h, i32 %v)` with no guard and no tag beside the word. The handle goes into the
+bucket table as if it were a hash, and the printer finds the object again through it, which is why the output
+*looks* right: `{[1], [2]}` is the answer to a question the reference never allows to be asked.
+
+The dedup consequence is the part a user meets second: two distinct containers with the same elements are two
+members here and a `TypeError` there, and a container that is mutated after the literal is built keeps a
+membership the reference could never have had.
+
+**What is owed.** Ask the member's kind on the ordinary road too and reach the guard that is already written —
+`guardHashableTag` wants a tag word, and the ordinary road has the object; the question is which door asks it,
+not what the raise says. Catchable by `except TypeError:` like every other raise this backend emits (**ADR
+0166**'s exit code for an uncaught one is the reference's, not this row's to invent).
+
+**Not this row.** The dict-key half — a dict keyed by a container — is refused, and since **ADR 0437** refused
+in words that name the hashing rule (**Gap R.288**, closed). **Gap R.81** owns the same object arriving through
+`sa.add([1])`; this row is the literal's door, and the two are separate because the roads are: one is a method
+call through the builtin's dispatch, the other is a builder emitting `rt_set_add`.
+
+Pinned with today's bytes at both legs in `pkg/lang/container_element_and_member_test.go` and
+`integration/container_element_and_member_test.go`. No record: `tools/recmerge` refuses a source whose compiled
+bytes are not the reference's, which is the cross-check doing its job rather than an obstacle.
+
+### Gap R.486 — a container held in a NAME, written as the element of a literal, answers the slot's first word (⏳ OPEN, found by **ADR 0437**)
+
+```
+$ printf 'sa = {1: "a", "b": 2}\nprint([sa, 1])\n' | gustyc --file -   ; echo "exit=$?"
+[1, 1]
+exit=0
+$ python3 -c 'sa = {1: "a", "b": 2}; print([sa, 1])'
+[{1: 'a', 'b': 2}, 1]
+
+$ printf 'sa = {1: "a", "b": 2}\nprint([sa])\n' | gustyc --file -   ; echo "exit=$?"
+[1]
+exit=0
+```
+
+Exit **0**, no diagnostic, no traceback: the number printed is the heap slot the allocator handed the dict, and
+the list's element printer was told by its tag that the word was an integer.
+
+**Why.** `heapListFrom` writes each slot as a pair — `rt_set_elem` for the word, `rt_tag_elem` for the kind —
+and the two halves ask different questions of the element. The word comes from `heapElemKind`, which asks
+`nestedContainerElem(e)`: is the element a container the builder can **see**. An `*Name` bound to a dict is not
+a container the builder can see, so the guard does not fire, and the element is lowered as an ordinary value —
+which for a container value is its handle. The tag comes from `elemTagFor(el, interned)`, which asks the element
+its **spelling**: interned text → `TagStr`, a loop item → the kind the iteration recorded, `elemKindTag` → the
+kind the name's own entry claims, `*NoneLit`/`*FloatLit` → their tags, and otherwise `TagInt`. A name holding a
+container has no spelling and no entry, so the slot is labelled "integer" and the printer obliges.
+
+The same fall-through is documented two lines above where it happens: `elemTagFor`'s comment records that "the
+builders used to answer it locally and drifted from `elemKindTag` — which is how appending a list variable to
+another list stored the handle and tagged it `TagInt`, printing `[1, 1]` for `[1, [2]]`". That road got a reading;
+the literal-element road did not. **Gap R.483** (the `def` that answers the container it received) is the same
+fall-through with a parameter instead of a name, and **ADR 0436**'s argument applies here verbatim: the fix is one
+fact per value — the value carries its kind across the slot — not one reading per door.
+
+**What is owed.** `heapElemKind` asks the name what it holds and the slot gets the tag from the same reading as
+the word, so the pair is never written from two questions (**ADR 0232**). The `print` and `str` roads already
+dispatch through a slot's tag when the object says its elements need tags, so nothing downstream has to learn a
+new representation: the object's "read me through my tags" bit is set by `literalNeedsTags`/`literalMixedKinds`,
+and the element whose kind was never asked is exactly the case that must set it.
+
+**Controls, so the fix cannot widen.** `print([[1, [2]], 1])`, `print([[[1, 2], [3]], 1])`,
+`print([{"a": 1}, 2])`, `print([[{"a": [1]}], 1])` all answer the reference's bytes today, on the record
+(the last four are among the eight sources **ADR 0437** added, 9878 → 9886) and are pinned as controls in
+`TestTheContainerDoorsStillSayWhatTheyAnsweredBefore`. A literal element the builder can see must keep taking the
+road it takes now.
+
+### Gap R.487 — a COMPREHENSION written as the element of a literal answers the slot's first word (⏳ OPEN, found by **ADR 0437**)
+
+The sibling of **Gap R.486** on the other road into the same slot:
+
+```
+$ printf 'print([[{"a": 1} for x in range(1)], 1])\n' | gustyc --file -   ; echo "exit=$?"
+[1, 1]
+exit=0
+$ python3 -c "print([[{'a': 1} for x in range(1)], 1])"
+[[{'a': 1}], 1]
+
+$ printf 'def f():\n    return 1\nprint([[f() for x in range(1)], 2])\n' | gustyc --file -   ; echo "exit=$?"
+[1, 2]
+exit=0
+$ python3 -c 'def f(): return 1
+print([[f() for x in range(1)], 2])'
+[[1], 2]
+```
+
+Again exit **0**; again the number is the slot. The inner comprehension builds its own buffer and the outer
+literal stores the handle the buffer was allocated at, tagged `TagInt` by the same `elemTagFor` fall-through —
+a comprehension is neither interned text, nor a loop item, nor a literal with a spelling, so it is an integer as
+far as the slot is concerned. The second row is the one that makes the class clear rather than a printing quirk:
+the comprehension there yields **integers**, and the outer list still prints `[1, 2]` where the reference prints
+`[[1], 2]`, so the answer is not "the contents print wrongly" but "the container the program wrote is not the
+container the program reads".
+
+Two rows rather than one, because the two roads are chosen in two places — a name in `heapElemKind`'s
+not-a-container branch, a comprehension where the builder cannot see into a buffer that does not exist until the
+loop has run — and a fix that reads only the name-shaped door leaves this one printing numbers. A fix that reads
+the value rather than the two doors closes both, which is the **ADR 0436** argument again.
+
+**No record for either**, for the **Gap R.486** reason: the compiled bytes differ from the reference's, so
+`tools/recmerge` refuses them and the shapes live as pinned rows. That refusal is the artifact's credibility, not
+an inconvenience — a record written from the compiled leg would have certified `[1, 1]` as the language's answer.
+
+### Gap R.488 — the same shape one level deeper reaches `llc`, and the toolchain exits 2 (⏳ OPEN, found by **ADR 0437**)
+
+One level up the road becomes a compiler bug in **ADR 0166**'s own sense of the word:
+
+```
+$ printf 'print([[[x for x in [1]]]])\n' | gustyc --file -   ; echo "exit=$?"
+gustyc: jit: llc: exit status 1
+llc-20: error: llc-20: /tmp/gusty-jit-1012633113/jit.ll:4403:46: error: global variable reference must have
+  pointer type
+  call void @rt_set_elem(i32 %t1, i32 0, i32 @.lst1)
+                                             ^
+exit=2
+$ python3 -c 'print([[[x for x in [1]]]])'
+[[[1]]]
+```
+
+The module is never assembled, so nothing runs: exit **2** is the code the contract reserves for exactly this —
+a toolchain that emitted IR its own back end rejects — and the case pins **2** rather than the sentence, so the
+day the shape starts answering a wrong number at exit 0 the case says so instead of going quiet.
+
+**Why.** A compile-time-constant list is not allocated, it is a module global (`@.lst1`) — the same family of
+representation that put `@.str1` into an `i32` operand until **Gap I.2** taught the slot to store the intern
+*index* instead. `heapElemKind` resolves an element to either a register, an interned index, or a container
+operand via `containerOperand`; the road that chooses between them asks the element's spelling, and a nested
+comprehension has none, so the global's *name* is handed to a call that wants an `i32`. **Gap R.474** (a
+container literal written into a method body, whose global lands inside the `define` and `llc` rejects the
+module) is the same defect at a different boundary, and **Gap I.2** is the precedent for the fix: the slot decides
+what representation it stores, before the call is emitted, so a global never reaches an operand position.
+
+**Filed with, not fixed by** **ADR 0437**. The four rows of this family — **R.485**, **R.486**, **R.487**, this
+one — are one sweep's output, kept as four because each is falsified by a different observation: an exit code
+that should be a raise, two wrong numbers at exit 0 that come from two different roads, and a module that never
+assembles. All eight of their sources are pinned in `pkg/lang/container_element_and_member_test.go` and
+`integration/container_element_and_member_test.go`, none of them is on the record, and none of them is on the
+conformance matrix.

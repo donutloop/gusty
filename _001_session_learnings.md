@@ -16022,3 +16022,71 @@ then every base in the order the dispatch walks them) and answer the callee's OW
    stash rather than presented as evidence of current behaviour. The snapshot guard (**Gap R.204**) then
    corrected my own prose to the files' numbers — ADRs `425 → 426` (`0436`), owed rows `232 → 234` — which is
    the guard doing exactly what it was written for.
+
+## ADR 0437 — a refusal names the rule it is missing: splitting one door into two, and what an emitter nobody grepped was saying (Gap R.288 closed; Gaps R.485–R.488 filed, 2026-10-28)
+
+The row was small and the cycle was not. `d = {[1]: "x"}` / `print(d[[1]])` was refused, and the refusal ended
+**"or run it interpreted"** — five words pointing at the engine **ADR 0302** deleted. Closing that turned into a
+door split, a guard for a corpus nobody had been reading, two new capability codes, four filed rows, and a
+documentation column that had been telling readers to do something impossible for twenty cycles.
+
+1. **A witness guard that reads the documents and not the emitter is half a guard, and the half it misses is the
+   half users read.** `pkg/lang/witness_claim_test.go` polices the tests, the CLI, the case registry and the ten
+   agent-facing documents. Grepping every string literal of every non-test file in `pkg/lang` and `cmd/gustyc` —
+   `go/ast`, `*ast.BasicLit`, the whole production corpus — found **three** stale sentences where this row had
+   filed one: the refusal, plus `semantic.go`'s builtin-shadow diagnostic ("the interpreter uses the built-in and
+   the compiled backend uses that definition"), plus `schema.go`'s `valueTag` description, which still claimed its
+   tag table was "shared by the interpreter's heap objects" **in the JSON document an agent reads to learn the
+   ABI**. The lesson is not that prose rots; it is that a corpus is defined by what the guard opens, and mine was
+   defined by where claims are *made* rather than where they are *printed*.
+
+2. **The banned list is data, and the guard is a check only if it can be falsified.** Both phrase lists live in
+   `pkg/lang/testdata/` (`witness-banned-phrases.txt`, the new `witness-emitter-banned-phrases.txt`) and no test
+   quotes them, so the test that forbids a phrase cannot become the thing it forbids. Three properties make it a
+   check rather than a walk over strings: it fails if the corpus is empty, the injection case hands the checker a
+   `codegen:` error containing the offer that no file contains, and an exemption is a row in
+   `witness-emitter-ledger.json` that **fails if it matches no live literal** — so an exemption cannot outlive its
+   sentence and cannot be invented to silence a run. The ledger shipped empty, which is the honest result and the
+   one that makes the next addition a decision.
+
+3. **Two rulings in one sentence is untestable, and two codes in one shape is the same bug on the machine path.**
+   The old sentence recited both the hashing rule and the tag rule whichever position asked, so no case could
+   assert it had said the *relevant* half. The element door now walks into what it declines
+   (`exprWantingContainerKey`) and reports the key rule about the actual culprit — `print([{{[1]: 2}}])` blames
+   `[1]`, not the set's tag — and the two doors carry **two capability codes**, `lower.unsupported.container-key`
+   and `lower.unsupported.container-element`. One code matching both would leave an agent's branch unable to
+   distinguish "re-key this dict" from "flatten that value", which is exactly the distinction the prose half of
+   this row exists to make. Both were `capability: null` before; the registry's own test compiled each sample and
+   classified the sentence, so the codes cannot be claims about nothing.
+
+4. **Walk to the door from every road before you say what the door says.** Reading `nestedContainerErr` cannot
+   tell you that the comprehension road in a different file wraps its error in a second `codegen: `, which is why
+   `print([{[1]: 2} for x in [1]])` printed `gustyc: jit: codegen: codegen: …` at `4fdb87c`. Same class as the
+   retired offer: a sentence about the toolchain that is not true. Both absences are now pinned — the offer, and
+   the doubled prefix.
+
+5. **Pin the controls before you touch the door, and let the recorder refuse the rest.** `print([[[1]]])`,
+   `print([[{"a": [1]}]])`, `print([[[1, 2], [[3]]]])` answer correctly, and I did not know that until they were
+   written down; a refusal widened to catch them would have been a regression wearing this row's clothes. Eight
+   such sources went to the record (9878 → 9886) via `tools/recmerge`, which **refused** every refusal — a refusal
+   has no answer to cross-check, so it cannot be recorded, and that is why the four shapes this sweep found are
+   rows and not records. A record written from the compiled leg would have certified `[1, 1]` as the language's
+   answer to `print([sa, 1])`.
+
+6. **A phrase-shaped guard misses an instruction-shaped lie.** `docs/operations.md`'s capability table has a
+   "Workaround" column, and eleven of its rows told the reader to use the `interpreter` or to "run it on the
+   record" — the first is an engine that does not exist, the second is a witness nobody can run (AGENTS.md says so
+   in as many words). None of it matched the banned-phrase list, because that list is written for prose claims
+   ("both engines agree"), not for an imperative in a table cell. Eleven cells rewritten to say what to write
+   instead, and a rule printed above the table so the next column editor knows what the column is for.
+
+7. **Re-measure before you rewrite.** This row's filed sibling — `d = {(1, 2): "x"}` / `print(d[(1, 2)])`, refused
+   with `unsupported expression *lang.Tuple` — is no longer a refusal: a tuple key answers `x` here as it does under
+   CPython, so it moved from the pin list to the control list instead of being reworded. A roadmap row's "current
+   behaviour" is a measurement with a date, and the date is the part that expires.
+
+8. **The guards corrected me, which is their whole job.** The snapshot (**Gap R.204**) failed my prose to the
+   files' numbers — ADRs `426 → 427` (`0437`), owed rows `234 → 237` of `388 → 392`, record `9878 → 9886` — and
+   `capability_docs_test.go` failed the hand-typed code table until I regenerated it with `go run ./tools/captable`.
+   A document that is generated and guarded is a document that cannot drift; a document that is typed is a rumour
+   with nice formatting.

@@ -841,7 +841,7 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 		// (roadmap L11.1).
 		for _, k := range dl.Keys {
 			if isContainerLiteral(k) || g.dictKeyIsContainer(k) {
-				return "", nestedContainerErr(k)
+				return "", nestedContainerKeyErr(k)
 			}
 		}
 	}
@@ -1040,8 +1040,118 @@ func (g *irGen) nestedContainerElem(e Expr) bool {
 	return false
 }
 
+// nestedContainerErr is the door that declines a container whose shape no rule describes, and it now
+// says WHICH rule it is missing. Until **ADR 0437** one sentence recited both rulings whatever the
+// position asked, and closed by offering to "run it interpreted" — a way to run that **ADR 0302**
+// retired, on a flag (`--interp`) whose answer is a usage error, so the half of the sentence that was
+// true (this shape is not built) arrived with an instruction nobody can follow (roadmap
+// **Gap R.288**). There are two rulings, and each road now names its own:
+//
+//   - an element that nests deeper than any tag the compiler writes: the slot would hold the inner
+//     object's handle, which prints by handle and compares by address rather than by content; and
+//   - a dict keyed by a container: the entry is filed by the handle the allocator handed out, so
+//     nothing but the program that stored it could ever find it again — the hashing rule that would
+//     ask two containers with the same elements whether they are the same key is what is missing.
+//
+// Both keep the family's stem (`a compiled container cannot hold %s`), because a reader who has seen
+// one of these refusals recognises the shape of the answer, and **ADR 0232**'s rule that one question
+// has one reading: the question here is *which rule is missing at this position*, and the position is
+// what the caller knows.
 func nestedContainerErr(e Expr) error {
-	return fmt.Errorf("codegen: a compiled container cannot hold %s yet; a dict keyed by a container has no hashing rule, and an element nested deeper than every inner element can be tagged would be printed by handle and compared by address (roadmap L11.1). Build that inner value separately, or run it interpreted", exprSnippet(e))
+	if key, wantsHash := exprWantingContainerKey(e, 0); wantsHash {
+		return nestedContainerKeyErr(key)
+	}
+	return nestedContainerElemErr(e)
+}
+
+// nestedContainerElemErr is the element half of the door above: the object the slot would hold is
+// another container, and the tag beside the slot has no number for an element that nests deeper than
+// the elements one level in can be tagged as.
+func nestedContainerElemErr(e Expr) error {
+	return fmt.Errorf("codegen: a compiled container cannot hold %s yet: a slot of a compiled container carries one word and the tag that says what that word is, and this element nests deeper than any tag the compiler writes, so the word would be the inner object's handle — printed by handle and compared by address (roadmap L11.1). Build that inner value separately, one level shallower, so every element is a value a slot can tag", exprSnippet(e))
+}
+
+// nestedContainerKeyErr is the key half of the door above: the entry would be filed under the handle
+// the allocator handed the key, and the rule that asks two containers with the same elements whether
+// they are the same key — the hash — is the half this backend does not have.
+func nestedContainerKeyErr(e Expr) error {
+	return fmt.Errorf("codegen: a compiled container cannot hold %s as a key yet: a dict finds an entry by hashing its key, and this backend has no hashing rule for a container, so the entry would live under whichever handle the allocator handed out and nothing but the program that stored it could find it again (roadmap L11.1). Key the dict by a value that has a hash — a text, an integer, a float, a verdict or the void — and keep the container in the value", exprSnippet(e))
+}
+
+// dictLitWantsContainerKey is the key half of the door read without an irGen in hand — the shape
+// question `dictWantsContainerKey` asks when the codegen state exists, minus the arms that need it.
+func dictLitWantsContainerKey(dl *DictLit) bool {
+	for _, k := range dl.Keys {
+		if dictKeyHasNoHash(k) {
+			return true
+		}
+	}
+	return false
+}
+
+// exprWantingContainerKey is the walk that lets the ELEMENT door report the KEY rule when the element it
+// is declining contains a dict that needs it: `print([{{[1]: 2}}])` refuses for want of a hashing rule on
+// `[1]`, not for want of a tag on the set, and a sentence that named the tag would send the reader to fix
+// the wrong thing. It walks down through the containers the element nests (**Gap R.75**'s depth, bounded by
+// the same small number the door's own rulings reach), and it returns the offending KEY expression, not the
+// object that holds it, because the key is what the sentence quotes — `{[1]: 2}` as an element says
+// “cannot hold a list literal as a key”, which is the object the reader has to change
+// (**ADR 0249**'s refusal names the missing half; **ADR 0232**'s one question, here asked of the object).
+func exprWantingContainerKey(e Expr, depth int) (Expr, bool) {
+	if e == nil || depth > 3 {
+		return nil, false
+	}
+	switch n := e.(type) {
+	case *DictLit:
+		for _, k := range n.Keys {
+			if dictKeyHasNoHash(k) {
+				return k, true
+			}
+		}
+		for _, v := range n.Vals {
+			if key, ok := exprWantingContainerKey(v, depth+1); ok {
+				return key, true
+			}
+		}
+		for _, k := range n.Keys {
+			if key, ok := exprWantingContainerKey(k, depth+1); ok {
+				return key, true
+			}
+		}
+	case *ListLit:
+		for _, el := range n.Elems {
+			if key, ok := exprWantingContainerKey(el, depth+1); ok {
+				return key, true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if key, ok := exprWantingContainerKey(el, depth+1); ok {
+				return key, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// dictKeyHasNoHash is `dictKeyIsContainer`'s shape question, asked with no codegen state: a list, a dict or
+// a set literal has no hash; a tuple inherits one only when every element has one (**ADR 0361**'s
+// hashability walk); and a key spelled as a call to the empty-container builtin is the same object its
+// literal spells (**Gap R.360**).
+func dictKeyHasNoHash(k Expr) bool {
+	switch n := k.(type) {
+	case *ListLit:
+		if n.IsTuple() {
+			return !tupleElementsHashable(n)
+		}
+		return true
+	case *DictLit, *SetLit:
+		return true
+	case *Call:
+		_, isEmpty := emptyContainerLiteral(n)
+		return isEmpty
+	}
+	return false
 }
 
 func (g *irGen) literalNeedsHeap(e Expr) bool {
