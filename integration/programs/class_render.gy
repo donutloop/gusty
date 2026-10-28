@@ -1,0 +1,59 @@
+# The class speaks for how its instances print — roadmap L12.3 (Gap R.55), ADR 0447.
+# `print`, `str()`, `repr()` and every container element consult the instance's OWN class
+# `__str__` / `__repr__` before the value-form table. Before this row the lines marked
+# (was …) printed the handle, the intern table's index or `0`, or stopped the build in words.
+
+class Greeting:
+    def __str__(self):
+        return "hello"
+
+    def __repr__(self):
+        return "Greeting()"
+
+g = Greeting()
+print(g)                                      # (was <__main__.Greeting object at 0x…>) __str__ answers
+print(str(g))                                 # (was refused) the same text, through str()
+print(repr(g))                                # (was refused) __repr__ answers the repr question
+print(g, g)                                   # two arguments, one answer, one separator
+print("say: " + str(g) + "!")                 # the answer is a text the program can work on
+print(str(g) == "hello")                      # and a text the program can compare
+print(f"{g}")                                 # (was the intern table's index) the field asks the class
+print(f"{g!r}")                               # (was refused) the !r conversion asks the repr door
+print(f"g={g}|")                              # the text around a rendered field survives
+
+class OnlyRepr:
+    def __repr__(self):
+        return "<repr-only>"
+
+r = OnlyRepr()
+print(r)                                      # (was the identity form) print falls through to __repr__
+print(str(r))                                 # object.__str__ hands the question to __repr__
+print([r])                                    # (was [<…at 0x…>]) a container element is the repr answer
+print([1, r, "t", None, 2.5])                 # mixed, and the element is unquoted
+print({"k": r})                               # a dict value too
+print({r})                                    # and a set member
+print(r, [r], {"k": r})                        # one print, three renderings
+
+class Base:
+    def __repr__(self):
+        return "Base()"
+
+class Sub(Base):
+    pass
+
+class Over(Base):
+    def __repr__(self):
+        return "Over()"
+
+print([Sub()])                                # (was the identity form) the member a base owns is found
+print([Over()])                               # and the override wins over the base's
+print([Base(), Sub(), Over()])                # one container, three classes, three answers
+
+class Broken:
+    def __str__(self):
+        return 7                              # the reference REFUSES to print a number here
+
+try:
+    print(Broken())
+except TypeError as e:
+    print("caught:", str(e))                  # (was refused) the raise is the reference's own sentence

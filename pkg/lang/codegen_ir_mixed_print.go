@@ -108,8 +108,10 @@ checkInstance:
   %isInst = icmp eq i32 %t, 10
   br i1 %isInst, label %inst, label %num
 inst:
-  %ip = call i8* @rt_instance_repr_ptr(i32 %v)
-  call void @rt_out_txt(i8* %ip)
+  ; One call, because the class gets to answer first: whatever its own class binds for __str__ or
+  ; __repr__ is what renders, and the identity form is what answers when it binds nothing
+  ; (roadmap Gap R.209 + Gap R.55, ADR 0325).
+  call void @rt_print_instance_value(i32 %v, i32 %quote)
   ret void
 cont:
   call void @rt_print_container_value(i32 %v, i32 %quote)
@@ -142,11 +144,21 @@ body:
   br i1 %is0, label %first, label %sep
 first:
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
-  br label %cont
+  ; A member's own class can RAISE on the way to its answer (its __repr__ handed back something the
+  ; reference will not print). The raise outranks the rest of this container: the walk stops, the
+  ; bracket that would close it is not written, and the module's own check reports the raise. Bytes
+  ; already on stdout cannot be recalled — ADR 0258 says the same about the float door (Gap R.508).
+  %ef1 = load i32, i32* @exn_flag
+  %bf1 = icmp ne i32 %ef1, 0
+  br i1 %bf1, label %bail, label %cont
 sep:
   call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
-  br label %cont
+  %ef2 = load i32, i32* @exn_flag
+  %bf2 = icmp ne i32 %ef2, 0
+  br i1 %bf2, label %bail, label %cont
+bail:
+  ret void
 cont:
   %i1 = add i32 %i, 1
   br label %loop

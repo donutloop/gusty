@@ -328,6 +328,13 @@ func (g *irGen) fstringNeedsRenderer(fs *FString) bool {
 		if g.fstringFieldIsContainer(part.Expr) {
 			return true
 		}
+		if g.receiverClassOf(part.Expr) != "" {
+			// An instance's text is what its own class says — `__str__` through the render table — and
+			// the printf road's only words are an i32 and an i8*, which is how `f"v={x}"` came to write
+			// the digits of the heap handle (roadmap Gap R.55, row L12.3; ADR 0359's rule for the
+			// shapes a `%d` cannot state).
+			return true
+		}
 	}
 	return false
 }

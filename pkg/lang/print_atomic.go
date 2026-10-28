@@ -98,6 +98,10 @@ var printWriteSinks = map[string]bool{
 	"@rt_print_list":        true,
 	"@rt_print_list_str":    true,
 	"@rt_print_list_mixed":  true,
+	// The class's own renderer is a write too: it runs the program's `__str__` / `__repr__` and hands the
+	// text back through rt_print_mixed_value, so a print line whose argument renders itself has bytes on the
+	// stream before its raise (roadmap Gap R.55, ADR 0447; Gap L.5's atomicity).
+	"@rt_print_instance_value": true,
 	// The immutable container's three printers are writes for the same reason the list's are: the
 	// brackets, the separator and the elements all go to stdout through rt_out_txt and
 	// rt_print_mixed_value, and a print line that calls the dispatcher must be seen as the write it

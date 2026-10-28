@@ -1,5 +1,240 @@
 {
  "entries": {
+"class A:\n    def __repr__(self):\n        return \"A\"\n\nclass B(A):\n    def __repr__(self):\n        return \"B\"\n\nprint([A(), B()])\n": {
+    "stdout": "[A, B]\n",
+    "hasStdout": true
+   },
+
+"class A:\n    def __repr__(self):\n        return \"A\"\n\nclass B(A):\n    pass\n\nprint([B()])\n": {
+    "stdout": "[A]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nd = {}\nprint({\"k\": C()})\n": {
+    "stdout": "{'k': R}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint([1, C(), \"t\", None, 2.5])\n": {
+    "stdout": "[1, R, 't', None, 2.5]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        print(\"side\")\n        return \"S\"\n\nprint(C())\n": {
+    "stdout": "side\nS\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\n    def __repr__(self):\n        return \"R\"\n\nprint(f\"{C()!r}\")\n": {
+    "stdout": "R\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\n    def __repr__(self):\n        return \"R\"\n\nx = C()\nprint(x, [x], {\"k\": x})\n": {
+    "stdout": "S [R] {'k': R}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(\"\u003c\" + str(C()) + \"\u003e\")\n": {
+    "stdout": "\u003cS\u003e\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(f\"v={C()}\")\n": {
+    "stdout": "v=S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(str(C()) == \"S\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return 7\n\ntry:\n    print(C())\nexcept TypeError as e:\n    print(\"caught:\", str(e))\n": {
+    "stdout": "caught: __str__ returned non-string (type int)\n",
+    "hasStdout": true
+   },
+"# The class speaks for how its instances print — roadmap L12.3 (Gap R.55), ADR 0447.\n# `print`, `str()`, `repr()` and every container element consult the instance's OWN class\n# `__str__` / `__repr__` before the value-form table. Before this row the lines marked\n# (was …) printed the handle, the intern table's index or `0`, or stopped the build in words.\n\nclass Greeting:\n    def __str__(self):\n        return \"hello\"\n\n    def __repr__(self):\n        return \"Greeting()\"\n\ng = Greeting()\nprint(g)                                      # (was \u003c__main__.Greeting object at 0x…\u003e) __str__ answers\nprint(str(g))                                 # (was refused) the same text, through str()\nprint(repr(g))                                # (was refused) __repr__ answers the repr question\nprint(g, g)                                   # two arguments, one answer, one separator\nprint(\"say: \" + str(g) + \"!\")                 # the answer is a text the program can work on\nprint(str(g) == \"hello\")                      # and a text the program can compare\nprint(f\"{g}\")                                 # (was the intern table's index) the field asks the class\nprint(f\"{g!r}\")                               # (was refused) the !r conversion asks the repr door\nprint(f\"g={g}|\")                              # the text around a rendered field survives\n\nclass OnlyRepr:\n    def __repr__(self):\n        return \"\u003crepr-only\u003e\"\n\nr = OnlyRepr()\nprint(r)                                      # (was the identity form) print falls through to __repr__\nprint(str(r))                                 # object.__str__ hands the question to __repr__\nprint([r])                                    # (was [\u003c…at 0x…\u003e]) a container element is the repr answer\nprint([1, r, \"t\", None, 2.5])                 # mixed, and the element is unquoted\nprint({\"k\": r})                               # a dict value too\nprint({r})                                    # and a set member\nprint(r, [r], {\"k\": r})                        # one print, three renderings\n\nclass Base:\n    def __repr__(self):\n        return \"Base()\"\n\nclass Sub(Base):\n    pass\n\nclass Over(Base):\n    def __repr__(self):\n        return \"Over()\"\n\nprint([Sub()])                                # (was the identity form) the member a base owns is found\nprint([Over()])                               # and the override wins over the base's\nprint([Base(), Sub(), Over()])                # one container, three classes, three answers\n\nclass Broken:\n    def __str__(self):\n        return 7                              # the reference REFUSES to print a number here\n\ntry:\n    print(Broken())\nexcept TypeError as e:\n    print(\"caught:\", str(e))                  # (was refused) the raise is the reference's own sentence\n": {
+    "stdout": "hello\nhello\nGreeting()\nhello hello\nsay: hello!\nTrue\nhello\nGreeting()\ng=hello|\n\u003crepr-only\u003e\n\u003crepr-only\u003e\n[\u003crepr-only\u003e]\n[1, \u003crepr-only\u003e, 't', None, 2.5]\n{'k': \u003crepr-only\u003e}\n{\u003crepr-only\u003e}\n\u003crepr-only\u003e [\u003crepr-only\u003e] {'k': \u003crepr-only\u003e}\n[Base()]\n[Over()]\n[Base(), Base(), Over()]\ncaught: __str__ returned non-string (type int)\n",
+    "hasStdout": true
+   },
+
+"class A:\n    def __repr__(self):\n        return \"A\"\n\nclass B(A):\n    pass\n\nclass C(A):\n    def __repr__(self):\n        return \"C\"\n\nclass D(B, C):\n    pass\n\nprint(D())\n": {
+    "stdout": "C\n",
+    "hasStdout": true
+   },
+
+"class A:\n    def __str__(self):\n        return \"A\"\n\nclass B(A):\n    def __str__(self):\n        return \"B\"\n\nprint(B(), A())\n": {
+    "stdout": "B A\n",
+    "hasStdout": true
+   },
+
+"class A:\n    def __str__(self):\n        return \"A\"\n\nclass B(A):\n    pass\n\nprint(B())\n": {
+    "stdout": "A\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"C\"\n\nprint([1, C(), \"t\", None])\n": {
+    "stdout": "[1, C, 't', None]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"K\"\n\nd = {}\nd[C()] = 1\nprint(d)\n": {
+    "stdout": "{K: 1}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nc = C()\nprint([c])\n": {
+    "stdout": "[R]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint(C())\n": {
+    "stdout": "R\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint([C()])\n": {
+    "stdout": "[R]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint([[C()]])\n": {
+    "stdout": "[[R]]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint(repr(C()))\n": {
+    "stdout": "R\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint(str(C()))\n": {
+    "stdout": "R\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint({\"k\": C()})\n": {
+    "stdout": "{'k': R}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __repr__(self):\n        return \"R\"\n\nprint({C()})\n": {
+    "stdout": "{R}\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        pass\n\nprint(C())\n": {
+    "err": "TypeError: __str__ returned non-string (type NoneType)",
+    "exnType": "TypeError",
+    "exnMsg": "__str__ returned non-string (type NoneType)"
+   },
+
+"class C:\n    def __str__(self):\n        print(\"inner\")\n        return \"S\"\n\nprint(\"outer\")\nprint(C())\n": {
+    "stdout": "outer\ninner\nS\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        raise ValueError(\"nope\")\n\nprint(C())\n": {
+    "err": "ValueError: nope",
+    "exnType": "ValueError",
+    "exnMsg": "nope"
+   },
+
+"class C:\n    def __str__(self):\n        raise ValueError(\"nope\")\n\nprint(str(C()))\n": {
+    "err": "ValueError: nope",
+    "exnType": "ValueError",
+    "exnMsg": "nope"
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\n    def __repr__(self):\n        return \"R\"\n\nprint(C())\n": {
+    "stdout": "S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\n    def __repr__(self):\n        return \"R\"\n\nx = C()\nprint(f\"{x!r}\")\n": {
+    "stdout": "R\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\n    def __repr__(self):\n        return \"R\"\n\nx = C()\nprint(f\"{x!s}\")\n": {
+    "stdout": "S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nclass D:\n    def __str__(self):\n        return \"D\"\n\nprint(C(), D())\n": {
+    "stdout": "S D\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(C())\n": {
+    "stdout": "S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(f\"[{str(C())}]\")\n": {
+    "stdout": "[S]\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nprint(str(C()))\n": {
+    "stdout": "S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nx = C()\nprint(f\"v={x}\")\n": {
+    "stdout": "v=S\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nx = C()\nprint(str(x) + \"!\")\n": {
+    "stdout": "S!\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return \"S\"\n\nx = C()\nprint(str(x) == \"S\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return 7\n\nprint(C())\n": {
+    "err": "TypeError: __str__ returned non-string (type int)",
+    "exnType": "TypeError",
+    "exnMsg": "__str__ returned non-string (type int)"
+   },
+
+"class C:\n    def __str__(self):\n        return 7\n\ntry:\n    print(C())\nexcept TypeError as e:\n    print(str(e))\n": {
+    "stdout": "__str__ returned non-string (type int)\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return 7\n\ntry:\n    print(C())\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"class C:\n    def __str__(self):\n        return None\n\nprint(str(C()))\n": {
+    "err": "TypeError: __str__ returned non-string (type NoneType)",
+    "exnType": "TypeError",
+    "exnMsg": "__str__ returned non-string (type NoneType)"
+   },
+
+"class C:\n    def __str__(self):\n        return True\n\nprint(C())\n": {
+    "err": "TypeError: __str__ returned non-string (type bool)",
+    "exnType": "TypeError",
+    "exnMsg": "__str__ returned non-string (type bool)"
+   },
+
+"class C:\n    def __str__(self):\n        return [1]\n\nprint(C())\n": {
+    "err": "TypeError: __str__ returned non-string (type list)",
+    "exnType": "TypeError",
+    "exnMsg": "__str__ returned non-string (type list)"
+   },
+
+"class C:\n    def label(self):\n        return \"L\"\n\n    def __str__(self):\n        return f\"S:{self.label()}\"\n\nprint(C())\n": {
+    "stdout": "S:L\n",
+    "hasStdout": true
+   },
 "# The class OBJECT — roadmap L12.4 (Gap R.56, Gap R.66), ADR 0446.\n# What a class body binds is an attribute of the class, an instance reads it, and the read walks\n# EVERY base in the reference's resolution order. Before this row the four `print`s marked\n# (was 0) answered the digit 0 and the two marked (was refused) stopped the build in words.\n\nclass Color:\n    RED = 1\n    BLUE = 2\n\nprint(Color.RED, Color.BLUE)                  # the enum idiom, read through the class name\nprint(Color().RED)                            # (was 0) the same member, read through an instance\n\nclass Counter:\n    START = 10\n\n    def step(self):\n        return self.START + 1\n\nprint(Counter.START)                          # a member used as a number\nprint(Counter().step())                       # (was 0) a method reading its class's member\n\nclass Base:\n    NAME = \"base\"\n    LIMIT = 4\n\nclass Middle(Base):\n    pass\n\nclass Deep(Middle):\n    pass\n\nprint(Deep().NAME, Deep.NAME)                 # (was 0 / refused) a member inherited two bases deep\nprint(Deep().LIMIT == 4, Deep.LIMIT \u003c 5)      # a numeric member compared through the chain\n\nclass Over(Base):\n    NAME = \"over\"\n\nprint(Over().NAME, Over.NAME, Base().NAME)    # the nearer binding wins\n\nclass Left:\n    pass\n\nclass Right:\n    TAG = 7\n\nclass Both(Left, Right):\n    pass\n\nprint(Both().TAG, Both.TAG)                   # (was refused) a member found in the SECOND base\n\nclass A:\n    V = 1\n\nclass B:\n    V = 2\n\nclass BothAB(A, B):\n    pass\n\nprint(BothAB().V, BothAB.V)                    # the first of two bases wins when both bind it\n\nclass AA:\n    W = 1\n\nclass BA(AA):\n    W = 2\n\nclass CA(AA):\n    W = 3\n\nclass DA(BA, CA):\n    pass\n\nprint(DA().W, DA.W)                            # (was refused) a diamond resolves in the linearized order\n\nclass Shadow:\n    X = 1\n\none = Shadow()\ntwo = Shadow()\ntwo.X = 9\nprint(one.X, two.X, Shadow().X)                # (was 0 0) the object's own word wins, per object\n\nclass Written:\n    LABEL = \"class\"\n\n    def __init__(self):\n        self.LABEL = \"object\"\n\nprint(Written().LABEL, Written.LABEL)          # (was 0) an object that writes what the class also binds\nprint([Base.LIMIT, Deep.LIMIT], {\"k\": Color.RED})   # members in container slots\n": {
     "stdout": "1 2\n1\n10\n11\nbase base\nTrue True\nover over base\n7 7\n1 1\n2 2\n1 9 1\nobject class\n[4, 4] {'k': 1}\n",
     "hasStdout": true

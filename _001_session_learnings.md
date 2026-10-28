@@ -16644,3 +16644,71 @@ the condition and `bool()` ask `rt_heap_len`.
    counter idiom stays unwritable while the read walks every base (**Gap R.506**); and a class with no docstring prints the
    empty text where the reference holds the void, which is a wrong answer at exit 0 sitting under a row that says the
    feature is `DONE` (**Gap R.507**). A `DONE` row is not evidence about the neighbours.
+
+## ADR 0447 — an instance prints the way its own CLASS says, and there are TWO questions, not one
+
+**Row**: **L12.3** / **Gap R.55** (`print`, `str()` and `repr()` consult the class's `__str__` / `__repr__` before the
+value-form table). **Parent measured**: `c0972a4` (**ADR 0446**). **Witnesses**: the record leg and the reference leg,
+never a second engine.
+
+**What the survey's one-line complaint was hiding.** `Gap R.55` said "an instance prints `<instance>` interpreted and
+`0` compiled". The `0` was the interesting half: an interned-string index reaching `%d`, **Gap R.22**'s mechanism
+arriving at the printer. But the row's real shape only appeared when the sweep asked the same question four ways —
+`print(v)`, `str(v)`, `print([v])`, `print(f"{v}")` — and got FOUR different wrong answers, because the backend had
+four renderers and no rule. A single "consult the class" door would have kept three of them wrong, which is the lesson
+of the cycle: **the reference has two questions, and only one of them falls through.** `str()`/`print` ask `__str__`,
+and `object.__str__` hands the question to `__repr__`; `repr()` and every container element ask `__repr__` and nothing
+else. The row that punishes a one-door design is `print([C()])` for a class binding only `__str__`: the reference prints
+the IDENTITY form, and a door that consulted `__str__` for elements prints the `__str__` answer. That row is in the test
+table with the reference's bytes, and it failed the first draft.
+
+**Key the table by the object, not the expression.** The tempting key was the static class the expression names
+(`g.receiverClassOf`, which **ADR 0446** needed for attribute reads). It is right for `print(C())` and silently wrong
+wherever the expression cannot name the value — a name bound to an instance, a container slot, a parameter. The class id
+is already IN the object (`@rt_inst_get(h, 0)`, the slot **ADR 0325**'s constructor writes), so the runtime table is
+indexed by that and the question "which class?" is answered where the answer lives. **Gap R.37**'s family (an instance
+reached through a binding prints the identity form because the *expression* forgot what the *value* knows) is the
+counterfactual: keying by the expression re-creates it by construction.
+
+**A door is permission, so a row needs a proof — and the proof has three outcomes, not two.** `renderAnswerKind`
+returns a tag only for a body it can read. Provable-text installs a live row; provable-non-text installs a row that
+RAISES the reference's own sentence (`__str__ returned non-string (type int)`) at the reference's exit class; unreadable
+keeps the row DEAD so **ADR 0325**'s identity form answers. The middle outcome is the one worth defending: the tempting
+version prints the identity form there too, because it is quieter, and the reference raises. **Gap R.503**'s lesson —
+a wrong answer that replaces an honest refusal is worse than the refusal — applies to a renderer exactly as it applies
+to a fold, and the third outcome exists so an unreadable body never prints a number.
+
+**Rendering is a call, so it inherits the whole calling discipline.** It needs a frame (`rt_frame_push` with the
+dunder's display name and line, so `File "prog", line N, in __str__` appears), it needs the module's frames put back
+afterwards, and it needs the standing `@exn_flag` check in the block that made the call — not in a sibling block that
+happens to dominate it (**ADR 0166**'s shape, and the same trap **ADR 0258** documents for the float door). The
+consequence nobody predicted: a container element can now RAISE, which had never been possible, so a `print` whose list
+element traps printed `[]` — a complete-looking empty container — and kept going. The fix (check the flag after each
+member and leave) is cheap and removes the second wrong answer; the bytes already written are **Gap R.508**, and the
+reason they stay is that `rt_out_snapshot` does not exist and **ADR 0258** already states the same limitation for the
+float door. The rejected alternative — pre-run each member's dunder to see if it raises — runs the program's side
+effects twice, and a `__str__` that prints would be caught doing it in the test that pins `side` before `S`.
+
+**The oracle's address rule is what makes the identity rows testable at all.** `oracle.go`'s `instanceIdentityRe`
+normalises `<X object at 0x…>`; without it, two runs of one program disagree about its own output. That is also why 8
+shapes were deliberately LEFT OFF the record: an answer containing an allocation address is not an answer, and a record
+that stored one would be storing the allocator. The identity shapes are judged where the address can be folded (the unit
+file), and the CLI file carries only rows whose bytes are stable across processes.
+
+**File then pay, and assert the absence too.** `programAsksToBeRendered` gates every byte: the 266-program corpus is
+byte-identical parent to child (`0 moved`), and the module-shape test asserts a program whose classes bind no dunder
+emits NO table, NO indirect call and NO frame push, while the program that asks emits both doors and exactly one
+`rt_print_mixed_value` (**ADR 0258**'s one printer, re-guarded from a new direction).
+
+**Textual-IR lessons, recorded because both are silent until `llc` speaks.** (1) An inline `getelementptr` whose index is
+a function-local register compiles to a use that does not post-dominate its definition — split it into an address GEP
+plus a load. (2) A `phi` naming a block that does not branch to it is a malformed PHI even when the block exists; the
+real predecessors were the blocks that branch to it. (3) A runtime module declares `@exn_flag` as `i32`, so a check has to
+`load i32` + `icmp ne … 0`; `load i1, ptr @exn_flag` is a verifier error, not a stylistic choice.
+
+**Filed by this cycle**: **Gap R.508** (a raise out of a dunder deep in a container leaves the walk's bytes), **Gap
+R.509** (an instance reaching `print` through a parameter or a loop variable prints the handle it was stored as —
+reproduced BYTE-IDENTICAL on the parent, so the test says "inherited" in its own words), **Gap R.510** (a dunder that
+CONCATENATES a literal with a method call keeps the identity form while the f-string spelling of the same body answers —
+the tell that it is a door gap and not a language gap). **46 record entries** were written (10197 → 10243) from
+reference/compiled agreements; nothing was refused.

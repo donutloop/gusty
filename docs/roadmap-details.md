@@ -3797,7 +3797,7 @@ object is the blocker.
 
 <a id="l12-3"></a>
 
-### L12.3 — `print` renders by protocol
+### L12.3 — `print` renders by protocol (✅ DONE, closed by **ADR 0447** on 2026-10-29)
 
 `print(C())` printing `0` in the compiled backend is not a rendering bug; it is an untagged handle
 being fed to `%d`, i.e. Gap R.22's disease showing up at the printer. The interpreter's
@@ -3808,6 +3808,29 @@ per backend) with one extra lookup in front of it: does the class define `__str_
 `repr` also has to become a real built-in — it is absent from `predeclared.go`, so the idiom that
 debuggers, tracebacks and every container's rendering depends on is currently unwritable. Order
 matters: L11.2 defines the pair, this item puts the class in front of it.
+
+**How it was paid.** Two doors, not one flag, because the reference has two questions and only one of them falls
+through: the *str* question (`print`, `str()`, an f-string field, `!s`) asks `__str__`, then `__repr__` exactly the way
+`object.__str__` hands the question down, then **ADR 0446**'s identity form; the *repr* question (`repr()`, every
+container element, `!r`) asks `__repr__` and NOTHING else, then the identity form. Getting the split wrong is visible,
+not theoretical: `print([C()])` for a class binding only `__str__` prints the identity form in the reference, so a door
+that consulted `__str__` for elements would print the `__str__` answer there. Both doors find the member through
+**ADR 0446**'s C3 linearization, and both are keyed by the class id the instance CARRIES (`@rt_inst_get(h, 0)`, the slot
+**ADR 0325**'s constructor writes) rather than by the expression's static spelling — which is the difference between
+answering `print(C())` and answering a value the expression cannot name. A row is installed only on a PROOF
+(`renderAnswerKind`): a body the compiler reads as handing back a text gets a live row, a body it reads as handing back
+a number gets a row that RAISES the reference's own `TypeError: __str__ returned non-string (type int)`, and a body it
+cannot read stays dead so the identity form answers — **ADR 0446**'s "a gate is permission, not a hint", asked of a
+renderer, and **Gap R.503**'s lesson that a wrong answer replacing an honest fallback is a regression. Rendering is a
+CALL, so it pushes a frame (`rt_frame_push`, naming `__str__` with the line of its `def`) and it raises: a raise out of
+a dunder arrives with the reference's traceback, and the container walks STOP at the raise rather than printing a
+container the program never finished building. `programAsksToBeRendered` is the file-then-pay gate: the 266-program
+corpus is byte-identical parent to child (`0 moved`), and a module-shape row asserts a program whose classes bind no
+dunder carries no table, no indirect call and no frame push. What the sweep found that this row does not own is filed
+as **Gap R.508** (a container's already-written bytes), **Gap R.509** (an instance reaching `print` through a
+parameter or loop variable prints the handle it was stored as — inherited, byte-identical on the parent) and
+**Gap R.510** (a dunder body that CONCATENATES a literal with a method call is not provable text, while the f-string
+spelling of the SAME body answers).
 
 <a id="l12-4"></a>
 
@@ -4056,7 +4079,7 @@ that can hang a CI job rather than fail it. Owner L12.2.
 
 <a id="gap-r-55"></a>
 
-### Gap R.55 — `print` ignores `__str__` / `__repr__` (found by the 2026-10-01 surface survey)
+### Gap R.55 — `print` ignores `__str__` / `__repr__` (✅ DONE, closed by **ADR 0447**; found by the 2026-10-01 surface survey)
 
 ```
 class C:
@@ -4071,6 +4094,12 @@ The interpreter's `<instance>` is a placeholder, which makes it *safer* than the
 and no more correct. `repr` being absent from the built-in table is the deeper half: containers,
 tracebacks and debuggers all render through a name the language does not have. Owner L12.3, on
 top of L11.2's `str`/`repr` pair.
+
+**Closed 2026-10-29.** The `0` was the intern table's index reaching `%d`, exactly as diagnosed; the printer now asks
+the class first, and the `__str__` half — "defined by the program and called by nothing" — is called by `print`, `str()`,
+the f-string renderer and the `!s` conversion, while `__repr__` is called by `repr()`, every container element and the
+`!r` conversion. `repr` was already a real builtin by the time this row came (**ADR 0368** closed **Gap R.451**), so the
+deeper half the survey filed had been paid earlier in the same phase.
 
 <a id="gap-r-56"></a>
 
@@ -21651,3 +21680,75 @@ That is a wrong answer at the exit code of success, which is the class this repo
 an edit to a `DONE` one (**Gap R.204**'s rule about a claim a reader can re-measure: `print(C.__doc__)` is four lines). The
 void word is the same missing tagged-word family **Gap R.431** owns, which is why the fix may be that door arriving rather
 than a special case for `__doc__`.
+
+<a id="gap-r-508"></a>
+
+### Gap R.508 — a raise out of a dunder inside a container leaves the bytes the walk wrote (⏳ OPEN, filed by **ADR 0447**)
+
+```
+$ gustyc --eval 'class C:
+    def __repr__(self):
+        return 1.5
+try:
+    print([C()])
+except TypeError as e:
+    print(str(e))'
+[__repr__ returned non-string (type float)      reference: __repr__ returned non-string (type float)
+```
+
+The raise is right, the class is right, the sentence is right, and the handler runs — but a `[` is on stdout that the
+reference never writes. `print` in the reference builds the WHOLE text of its arguments before writing a byte; our
+container walk writes as it walks, so the opening bracket is already out when the member's `__repr__` raises. Before
+**ADR 0447** a container element could not raise at all, so this is not an old bug re-filed — it is the new door's
+residue, which is why it is a row and not a footnote. What the cycle DID fix is the worse half: the walk now STOPS at
+the raise, so a `[1, C(), 2]` neither prints the members after the raise nor closes the bracket, and no container the
+program never finished building reaches stdout looking complete. What it cannot fix is the buffer: `rt_out_snapshot`
+does not exist, and **ADR 0258** already states the same limitation plainly for the float door ("the bytes it already
+put out stay out"). The rejected alternative is pre-running each member's dunder to probe whether it will raise — which
+runs the program's own side effects twice, and a `__repr__` that prints, counts or mutates would be caught doing it.
+
+<a id="gap-r-509"></a>
+
+### Gap R.509 — an instance reaching `print` through a parameter or loop variable prints the handle (⏳ OPEN, filed by **ADR 0447**)
+
+```
+$ gustyc --eval 'class C:
+    def __repr__(self):
+        return "R"
+def show(o):
+    print(o)
+show(C())'
+0                                                reference: R
+```
+
+The render door is ready for this: it reads the class id off the OBJECT, so it does not care how the handle arrived.
+What is missing is the WORD. The parameter-binding position stores an instance handle with no kind beside it, and
+`print`'s tag-reading arm never learns the value is an instance to ask about — so the number the handle happens to be
+goes to `%d`, which is **Gap R.22**'s signature arriving through a door this cycle did not build. **ADR 0445** fixed
+exactly this shape for a hand-off CALL (a callee that returns its own parameter learns the kind from the CALLER's
+argument); these are the same positions reached without a call in between. Reproduced BYTE-IDENTICAL on the parent
+`c0972a4` before this cycle's code existed, which is what makes it inherited rather than this cycle's damage — the
+test that pins it says so in its `owner` cell.
+
+<a id="gap-r-510"></a>
+
+### Gap R.510 — a dunder concatenating a literal with a method call keeps the identity form (⏳ OPEN, filed by **ADR 0447**)
+
+```
+$ gustyc --eval 'class Loud:
+    def tag(self):
+        return "loud"
+    def __str__(self):
+        return "Loud<" + self.tag() + ">"
+print(Loud())'
+<__main__.Loud object at 0x…>                    reference: Loud<loud>
+```
+
+The proof that installs a render row reads a literal, an interpolation, a repetition, a verdict, a number, a container
+and a plain call whose returns are provable — and stops at a concatenation whose operand is a method call. The tell
+that this is a DOOR gap and not a language gap is the sibling row in the same test file: `return f"Loud<{self.tag()}>"`,
+the same body spelled as an interpolation, ANSWERS. The fix is to widen `renderLiteralKind` over a `+` whose operands
+are each provable texts, resolving a `self.m()` callee with the `methodReturnsStr` predicate the print road already
+owns — behind a visited set, because a dunder that calls itself must not be proved, and a door that hangs the program
+is worse than a door that keeps the identity form. Until then the identity form answers, which is honest fallback
+(**ADR 0325**) rather than the `0` this row was created to close.

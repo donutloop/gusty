@@ -3768,6 +3768,37 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **An instance prints the way its own CLASS says, and there are TWO questions, not one (**L12.3**, **Gap R.55**,
+  **ADR 0447**)** — `class C:` / `    def __str__(self): return "S"` / `    def __repr__(self): return "R"` /
+  `print(C())` printed `0` at the exit code of success (the intern table's index going to `%d`, **Gap R.22**'s
+  signature at the printer), `str(C())` and `repr(C())` were refused in words, `print([C()])` printed
+  `<__main__.C object at 0x…>` and `print(f"v={x}")` printed `v=0`. Four spellings of one question, four wrong answers,
+  because each had its own renderer. The reference has two questions and only one fallthrough, so the backend now has
+  two doors: the *str* question (`print`, `str()`, an f-string field, `!s`) asks `__str__`, then `__repr__` the way
+  `object.__str__` hands it down, then **ADR 0325**'s identity form; the *repr* question (`repr()`, every container
+  element, `!r`) asks `__repr__` and NOTHING else — a class binding only `__str__` prints the identity form inside a
+  list, which is the row that punishes a door that consulted `__str__` for elements. Both are keyed by the class id the
+  instance CARRIES (`@rt_inst_get(h, 0)`), not by the expression's static spelling, and both walk **ADR 0446**'s C3
+  order, so a dunder a base owns is found on the base that owns it. A row is installed only on a PROOF
+  (`renderAnswerKind`): a body the compiler reads as returning a text gets a live row; a body it reads as returning a
+  number gets a row that RAISES the reference's own `TypeError: __str__ returned non-string (type int)` and prints
+  nothing; a body it cannot read keeps the honest identity form rather than inventing an answer (**Gap R.503**'s
+  lesson, asked of a renderer). Rendering is a CALL — it pushes a frame, so a raise out of a dunder reports
+  `File "prog", line N, in __str__`, and `try`/`except` around a `print` catches it — and a container walk that sees a
+  raise STOPS rather than printing a container the program never finished building. `programAsksToBeRendered` is the
+  file-then-pay gate: 266 corpus programs byte-identical parent to child (`0 moved`), and a module-shape row asserts a
+  program whose classes bind no dunder carries no table, no indirect call and no frame push. 25 answer rows + 7
+  identity rows + 6 trap rows + 2 caught rows on both witness legs, 4 module-shape rows, 8 filed rows, the two doors
+  asked directly, 21 CLI programs on both execution legs, and `integration/programs/class_render.gy` joined the corpus
+  byte-identical (the parent refuses it at exit 1); **46 record entries (10197 → 10243)** were written from
+  reference/compiled agreements, and 8 shapes whose reference answer carries an unstable address were left off the
+  record on purpose — the address is an allocation accident, and a record that stored it would be storing the allocator.
+  Filed beside it: **Gap R.508** (a raise out of a dunder deep in a container leaves the bytes the walk already wrote —
+  `rt_out_snapshot` does not exist, and **ADR 0258** says the same of the float door), **Gap R.509** (an instance
+  reaching `print` through a parameter or loop variable prints the handle it was stored as — reproduced byte-identical
+  on the parent, so it is inherited and not this cycle's damage), **Gap R.510** (a dunder body that CONCATENATES a
+  literal with a method call is not provable text, while the f-string spelling of the SAME body answers).
+
 - **An attribute read asks the class OBJECT, and the walk goes through EVERY base in the reference's resolution order
   (**L12.4**, **Gap R.56** + **Gap R.66**, **ADR 0446**)** — `class C:` / `    X = 1` / `print(C().X)` printed `0` at the
   exit code of success, `print(Sub.NAME)` for a member only a base binds was refused in words (`the class names no member

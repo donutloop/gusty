@@ -146,6 +146,9 @@ func (g *irGen) instanceRuntimeIR() string {
 	fmt.Fprintf(&out, "  %%f0 = select i1 %%c0, i8* %s, i8* %%f1\n", fmt0)
 	out.WriteString("  call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 192, i8* %f0, i8* %name)\n")
 	out.WriteString("  ret i8* %buf\n}\n\n")
+	// The two render doors sit beside the class-name table they share an index with: both are keyed on
+	// the class id the object carries in slot 0 (roadmap Gap R.55, row L12.3).
+	out.WriteString(g.instanceRenderIR())
 	return out.String()
 }
 

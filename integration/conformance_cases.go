@@ -116,6 +116,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `self.NAME` printed the intern table's index, and two objects of one class were read with one word
 		// (roadmap row **L12.4**, **Gap R.56** + **Gap R.66**, **ADR 0446**).
 		"class_object",
+		// The class speaks for how its instances PRINT: `print`, `str()`, `repr()`, an f-string field and every
+		// container element consult the instance's OWN class `__str__` / `__repr__` before the value-form table,
+		// found on the base that owns it through ADR 0446's resolution order. `print(C())` for a class that had
+		// said what it prints printed `<__main__.C object at 0x…>`, `str(C())` and `repr(C())` were refused in
+		// words, `print([C()])` printed the handle, and `print(f"{C()}")` printed the intern table's index
+		// (roadmap row **L12.3**, **Gap R.55**, **ADR 0447**).
+		"class_render",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

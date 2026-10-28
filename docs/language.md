@@ -7515,6 +7515,80 @@ which prints the empty text where the reference holds `None` (`Gap R.507`). A na
 class in the chain binds still answers the digit `0` instead of raising `AttributeError` — that one is `Gap R.19`,
 older than the class object, and the presence row the read now asks is where its raise will live.
 
+### An instance prints the way its own CLASS says (Gap R.55, ADR 0447)
+
+`print`, `str()`, `repr()`, an f-string field and every container element ask the instance's class before they ask the
+value-form table. There are TWO questions, and only one of them falls through:
+
+```gy
+class Greeting:
+    def __str__(self):
+        return "hello"
+    def __repr__(self):
+        return "Greeting()"
+
+g = Greeting()
+print(g)             # hello       — __str__ answers
+print(str(g))        # hello       — the same text, and a text the program can work on
+print(repr(g))       # Greeting()  — the repr question asks __repr__
+print(g, g)          # hello hello
+print("say: " + str(g) + "!")      # say: hello!
+print(str(g) == "hello")           # True
+print(f"{g}")        # hello       — an interpolated field asks the str question
+print(f"{g!r}")      # Greeting()  — !r asks the repr question
+
+class OnlyRepr:
+    def __repr__(self):
+        return "<repr-only>"
+
+r = OnlyRepr()
+print(r)             # <repr-only> — print falls through to __repr__, the way object.__str__ does
+print([r])           # [<repr-only>] — a container element is the repr answer, unquoted
+print([1, r, "t", None, 2.5])      # [1, <repr-only>, 't', None, 2.5]
+print({"k": r})      # {'k': <repr-only>} — a dict value too
+print({r})           # {<repr-only>} — and a set member
+
+class Base:
+    def __repr__(self):
+        return "Base()"
+class Over(Base):
+    def __repr__(self):
+        return "Over()"
+print([Base(), Over()])            # [Base(), Over()] — a base's member is found on the base that owns it
+```
+
+The split is the reference's, and it is visible: a class that binds only `__str__` prints that text with `print`, and
+prints the **identity form** inside a container — because the container asks `__repr__`, and `object.__repr__` does not
+consult `__str__`. A class that binds NEITHER keeps **ADR 0325**'s identity form
+`<__main__.C object at 0x…>`; the address is an allocation accident and the oracle's own rule normalises it, so a test
+that pinned the digits would be pinning the allocator.
+
+Two things the compiler must be able to PROVE before a class gets an answer of its own, and what happens when it cannot:
+
+* **The body's answer must be a text the backend can read.** A literal, an interpolation, a concatenation or repetition
+  of texts, a verdict, a number, a container, or a plain call whose returns are all provably texts. A body that hands
+  back a number the compiler can read — `def __str__(self): return 7` — does not print `7` and does not print `0`: it
+  raises the reference's own `TypeError: __str__ returned non-string (type int)`, and prints nothing. A body the
+  compiler cannot read at all (`return self.v`, a concatenation whose operand is a method call) keeps the identity form
+  rather than inventing an answer; that fallback is filed as **Gap R.510**, and it is a fallback, not a wrong number.
+* **A raise out of a dunder is the program's raise.** The body runs with a frame pushed, so an uncaught raise reports
+  `File "prog", line N, in __str__` beside the caller's, and `try`/`except` around a `print` catches it:
+
+```gy
+class Broken:
+    def __str__(self):
+        return 7
+
+try:
+    print(Broken())
+except TypeError as e:
+    print("caught:", str(e))       # caught: __str__ returned non-string (type int)
+```
+
+A container walk that sees a raise STOPS there: the members after it and the brace that would close them are not
+written, so no container the program never finished building reaches stdout looking complete. The bytes already written
+before the raise are the residue, and **Gap R.508** owns them.
+
 ### A method and a helper may share a name
 
 The words that describe what a class does are usually the words that describe a helper, so this

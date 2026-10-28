@@ -520,6 +520,27 @@
     },
     {
       "case": {
+        "id": "programs/class_render",
+        "name": "class_render.gy",
+        "source": "# The class speaks for how its instances print — roadmap L12.3 (Gap R.55), ADR 0447.\n# `print`, `str()`, `repr()` and every container element consult the instance's OWN class\n# `__str__` / `__repr__` before the value-form table. Before this row the lines marked\n# (was …) printed the handle, the intern table's index or `0`, or stopped the build in words.\n\nclass Greeting:\n    def __str__(self):\n        return \"hello\"\n\n    def __repr__(self):\n        return \"Greeting()\"\n\ng = Greeting()\nprint(g)                                      # (was \u003c__main__.Greeting object at 0x…\u003e) __str__ answers\nprint(str(g))                                 # (was refused) the same text, through str()\nprint(repr(g))                                # (was refused) __repr__ answers the repr question\nprint(g, g)                                   # two arguments, one answer, one separator\nprint(\"say: \" + str(g) + \"!\")                 # the answer is a text the program can work on\nprint(str(g) == \"hello\")                      # and a text the program can compare\nprint(f\"{g}\")                                 # (was the intern table's index) the field asks the class\nprint(f\"{g!r}\")                               # (was refused) the !r conversion asks the repr door\nprint(f\"g={g}|\")                              # the text around a rendered field survives\n\nclass OnlyRepr:\n    def __repr__(self):\n        return \"\u003crepr-only\u003e\"\n\nr = OnlyRepr()\nprint(r)                                      # (was the identity form) print falls through to __repr__\nprint(str(r))                                 # object.__str__ hands the question to __repr__\nprint([r])                                    # (was [\u003c…at 0x…\u003e]) a container element is the repr answer\nprint([1, r, \"t\", None, 2.5])                 # mixed, and the element is unquoted\nprint({\"k\": r})                               # a dict value too\nprint({r})                                    # and a set member\nprint(r, [r], {\"k\": r})                        # one print, three renderings\n\nclass Base:\n    def __repr__(self):\n        return \"Base()\"\n\nclass Sub(Base):\n    pass\n\nclass Over(Base):\n    def __repr__(self):\n        return \"Over()\"\n\nprint([Sub()])                                # (was the identity form) the member a base owns is found\nprint([Over()])                               # and the override wins over the base's\nprint([Base(), Sub(), Over()])                # one container, three classes, three answers\n\nclass Broken:\n    def __str__(self):\n        return 7                              # the reference REFUSES to print a number here\n\ntry:\n    print(Broken())\nexcept TypeError as e:\n    print(\"caught:\", str(e))                  # (was refused) the raise is the reference's own sentence\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "hello\nhello\nGreeting()\nhello hello\nsay: hello!\nTrue\nhello\nGreeting()\ng=hello|\n\u003crepr-only\u003e\n\u003crepr-only\u003e\n[\u003crepr-only\u003e]\n[1, \u003crepr-only\u003e, 't', None, 2.5]\n{'k': \u003crepr-only\u003e}\n{\u003crepr-only\u003e}\n\u003crepr-only\u003e [\u003crepr-only\u003e] {'k': \u003crepr-only\u003e}\n[Base()]\n[Over()]\n[Base(), Base(), Over()]\ncaught: __str__ returned non-string (type int)\n",
+      "python_ok": true,
+      "python_stdout": "hello\nhello\nGreeting()\nhello hello\nsay: hello!\nTrue\nhello\nGreeting()\ng=hello|\n\u003crepr-only\u003e\n\u003crepr-only\u003e\n[\u003crepr-only\u003e]\n[1, \u003crepr-only\u003e, 't', None, 2.5]\n{'k': \u003crepr-only\u003e}\n{\u003crepr-only\u003e}\n\u003crepr-only\u003e [\u003crepr-only\u003e] {'k': \u003crepr-only\u003e}\n[Base()]\n[Over()]\n[Base(), Base(), Over()]\ncaught: __str__ returned non-string (type int)\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5920,11 +5941,11 @@
       ]
     }
   ],
-  "rows": 252,
+  "rows": 253,
   "skipped": 29,
-  "pass": 223,
+  "pass": 224,
   "fail": 0,
-  "oracle_match": 209,
+  "oracle_match": 210,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

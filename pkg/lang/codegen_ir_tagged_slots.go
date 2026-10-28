@@ -273,9 +273,23 @@ sepd:
   br label %emit
 emit:
   call void @rt_print_mixed_value(i32 %k, i32 %keyTag, i32 1)
+  ; A rendering element RAISES when its __repr__ handed back something the reference will not print, and
+  ; a raise out of a dunder outranks the rest of this container: the loop stops here rather than printing
+  ; the entries after it and the brace that closes them, which would show a dict the program never
+  ; finished building. The bytes already on stdout cannot be recalled — rt_out_snapshot does not exist —
+  ; and ADR 0258 already says that plainly about the float door (roadmap Gap R.55, Gap R.508).
+  %ek = load i32, i32* @exn_flag
+  %bk = icmp ne i32 %ek, 0
+  br i1 %bk, label %bail, label %colon
+colon:
   call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
   call void @rt_print_mixed_value(i32 %v, i32 %valTag, i32 1)
-  br label %cont
+  %ev = load i32, i32* @exn_flag
+  %bv = icmp ne i32 %ev, 0
+  br i1 %bv, label %bail, label %cont
+bail:
+  ; The raise is the answer; the print stops mid-container and the module's own check reports it.
+  ret void
 cont:
   %next = add i32 %i, 1
   br label %loop
@@ -321,7 +335,12 @@ sepd:
   br label %emit
 emit:
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
-  br label %cont
+  ; The member's own class may raise on the way to its answer; see rt_dict_print_mixed's note.
+  %em = load i32, i32* @exn_flag
+  %bm = icmp ne i32 %em, 0
+  br i1 %bm, label %bail, label %cont
+bail:
+  ret void
 cont:
   %next = add i32 %i, 1
   br label %loop

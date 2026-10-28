@@ -134,6 +134,30 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 		return t, true, nil
 	}
 
+	// An instance asks its OWN class how it reads. The class id the object carries in slot 0 picks the
+	// row of the two render tables (roadmap Gap R.55, row L12.3): __str__ under str, __repr__ under
+	// repr, and the identity form ADR 0325 built when the class binds neither. The door opens wherever
+	// the expression names a class this program declared, because these two builtins refuse every kind
+	// whose name they cannot read (Gap R.171's rule: a missing rendering may not become a number) — and
+	// the renderer they go to is the module's ONE printer, so `print(x)`, `str(x)`, `repr(x)` and a slot
+	// of a container cannot disagree about what C() says about itself (ADR 0258's rule, asked of the
+	// class rather than of the value).
+	if g.receiverClassOf(e) != "" {
+		g.heapUsed = true
+		v, verr := g.value(b, e)
+		if verr != nil {
+			return "", true, verr
+		}
+		g.renderDoorPositions(b, sp)
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %d, i32 %d)\n", t, v, int(TagInstance), quote))
+		// Rendering an instance may run the class's own __str__ / __repr__, so this is a call and takes
+		// the standing check every call in the module takes — the door that catches the reference's
+		// `TypeError: __str__ returned non-string (type int)` the render arm raises (roadmap Gap R.55).
+		g.checkExn(b)
+		return t, true, nil
+	}
+
 	// The void writes its one name, and it is the same name under both halves. The argument
 	// is still evaluated: a None that arrived from a call must have run.
 	if g.isNoneExpr(e) {

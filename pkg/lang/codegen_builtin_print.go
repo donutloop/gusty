@@ -54,6 +54,12 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 	// lowering is recorded so the statement's writes can be threaded past the whole argument
 	// list — a call that prints is an *evaluation*, and the caller's own bytes must not be on
 	// the stream before it runs (roadmap Gap L.5, ADR 0355; `pkg/lang/print_atomic.go`).
+	// A print may run the program's own code: an instance argument renders itself through its
+	// class's __str__ / __repr__ (roadmap Gap R.55). A raise out of that render names the PRINT line —
+	// the reference's `TypeError: __str__ returned non-string` points at the print, not at the def — so
+	// the door positions the traceback before any argument runs. A module with no render door in it
+	// emits none of this.
+	g.renderDoorPositions(b, c.Span())
 	argMarks := make([]int, 0, len(args)+1)
 	for i, a := range args {
 		// The separator is written *after* the argument it follows, so it belongs to that
@@ -401,6 +407,11 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 			}
 			g.heapUsed = true
 			b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %d, i32 0)\n", h, int(TagInstance)))
+			// The renderer may have run the class's own __str__ / __repr__, and a method body can raise —
+			// including the reference's own `TypeError: __str__ returned non-string`, which the render arm
+			// raises on the class's behalf. A print that reaches into user code is a call, and every call
+			// in this module is followed by the standing check (ADR 0166's arrangement; roadmap Gap R.55).
+			g.checkExn(b)
 			continue
 		}
 		if printed, perr := g.pairCallPrint(b, a); perr != nil {
@@ -801,6 +812,14 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 	if rewritten, moved, _ := deferPrintLineWrites(b.String(), argMarks); moved {
 		b.Reset()
 		b.WriteString(rewritten)
+	}
+	// A print that reached user code — a class's own __str__ / __repr__, through the render table, from
+	// inside the container printer as often as from the top-level arm — may leave the program holding an
+	// exception with the line half-written. The check runs before the newline so the traceback replaces
+	// the rest of the line rather than following it (roadmap Gap R.55; ADR 0166's arrangement after every
+	// call). A module with no render door in it emits neither the check nor the tables.
+	if g.programAsksToBeRendered() {
+		g.checkExn(b)
 	}
 	emitText(end)
 	return last, nil
