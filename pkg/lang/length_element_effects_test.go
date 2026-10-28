@@ -83,6 +83,113 @@ func TestTheCountDoorPerformsTheElementsItCounts(t *testing.T) {
 	}
 }
 
+// theDoubleFn is the element this family builds its runtime comprehensions with: a call the folder
+// cannot see, so the comprehension takes the builder road rather than the fold.
+const theDoubleFn = "def g(v):\n    return v * 2\n"
+
+// countDoorBuiltComprehensions are the comprehensions the RUN TIME BUILDS — an element, a key, a
+// value or a filter the folder cannot write down — whose count the door used to load out of the
+// fold's static global. There is no global: `runtimeCompList`, `runtimeCompSetDict`, `runtimeCompLoop`
+// and `nestedCompRuntimeList` hand back a heap object in a register, so the emitted instruction named
+// a function-local register as a global and `llc` rejected the module — **ADR 0166**'s exit **2** spent
+// by a program the reference answers with a digit (**roadmap Gap R.496**, **ADR 0442**).
+//
+// The count is a word INSIDE the object now, asked through the same `rt_heap_len` a container
+// variable's length asks. The two rows that collapse duplicates are the ones that prove it: a set
+// built from `[1, 1, 2]` holds two members, and a count read off the iterable would say three.
+var countDoorBuiltComprehensions = []struct {
+	name string
+	src  string
+	want string // what CPython prints, stdout only
+}{
+	{"the row as filed: a call the folder cannot see", theDoubleFn + "print(len([g(x) for x in [1, 2, 3]]))", "3"},
+	{"the element prints on the way", "def f(v):\n    print(\"side\")\n    return v\nprint(len([f(x) for x in [1, 2, 3]]))", "side\nside\nside\n3"},
+	{"a filter the folder cannot see", theDoubleFn + "print(len([g(x) for x in [1, 2, 3] if g(x) > 2]))", "2"},
+	{"a dict comprehension", theDoubleFn + "print(len({g(x): 1 for x in [1, 2, 3]}))", "3"},
+	{"a set comprehension", theDoubleFn + "print(len({g(x) for x in [1, 2, 3]}))", "3"},
+	{"a set comprehension that COLLAPSES members — the object's count, not the iterable's", theDoubleFn + "print(len({g(x) for x in [1, 1, 2]}))", "2"},
+	{"a dict comprehension whose keys the folder cannot see, all distinct", theDoubleFn + "print(len({g(x) // 2: 1 for x in [1, 2, 3]}))", "3"},
+	{"a dict comprehension that COLLAPSES keys — the object's count, not the iterable's", theDoubleFn + "print(len({g(x) // 4: 1 for x in [1, 2, 3]}))", "2"},
+	{"a nested comprehension", theDoubleFn + "print(len([[g(y) for y in [1, 2]] for x in [1, 2]]))", "2"},
+	{"a comprehension over a container variable (the loop road, not the unrolled one)", "xs = [1, 2, 3]\n" + theDoubleFn + "print(len([g(x) for x in xs]))", "3"},
+	{"a comprehension over range()", theDoubleFn + "print(len([g(x) for x in range(4)]))", "4"},
+	{"the count is used, not just printed", theDoubleFn + "print(len([g(x) for x in [1, 2, 3]]) + 1)", "4"},
+	{"the comprehension is bound first, and named", theDoubleFn + "xs = [g(x) for x in [1, 2, 3]]\nprint(len(xs))", "3"},
+	{"the count is taken inside a function body", theDoubleFn + "def h():\n    return len([g(x) for x in [1, 2, 3]])\nprint(h())", "3"},
+	{"the element is a method call", "class C:\n    def m(self, v):\n        return v * 2\nprint(len([C().m(x) for x in [1, 2, 3]]))", "3"},
+}
+
+// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuilds is the answering half of the door
+// that used to reject the module. `compiledOut` runs the program through `llc`/`lli`, so the shape
+// this row is filed for — an instruction `llc` refuses — cannot pass as an answer here; the record leg
+// is asked for every source, and the record holds these because both legs now agree.
+func TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuilds(t *testing.T) {
+	t.Parallel()
+	for _, tt := range countDoorBuiltComprehensions {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := strings.TrimRight(compiledOut(t, tt.src), "\n"); got != tt.want {
+				t.Fatalf("printed %q, the reference prints %q", got, tt.want)
+			}
+			rec, err := runGoldenStdout(t, tt.src)
+			if err != nil {
+				t.Fatalf("the record does not answer a program both legs agree on: %v", err)
+			}
+			if strings.TrimRight(rec, "\n") != tt.want {
+				t.Fatalf("the record says %q and the compiled leg says %q for the same source", rec, tt.want)
+			}
+		})
+	}
+}
+
+// The instruction shape is the other half of the claim: the built comprehension asks the OBJECT, and
+// the comprehension the FOLD answered keeps its compile-time global — no builder, no allocation, no
+// `rt_heap_len` — because **ADR 0192**'s rule is that a comprehension which folds IS the literal it
+// folds to, and this commit did not widen that, it narrowed the door that read a table the fold never
+// filled.
+func TestTheCountDoorChoosesTheObjectOrTheGlobalByWhoBuiltTheComprehension(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name      string
+		src       string
+		mustHave  string
+		mustNot   string
+		roadLabel string
+	}{
+		{
+			"a comprehension the run time builds asks the object",
+			theDoubleFn + "print(len([g(x) for x in [1, 2, 3]]))",
+			"call i32 @rt_heap_len(", "getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %",
+			"the object's road",
+		},
+		{
+			"a folded comprehension keeps the global it was written into",
+			"print(len([x * 2 for x in [1, 2, 3]]))",
+			"load i32, i32* getelementptr({i32, [3 x i32]}", "call i32 @rt_heap_len(",
+			"the fold's road",
+		},
+		{
+			"a comprehension over a container variable asks the object",
+			"xs = [1, 2, 3]\n" + theDoubleFn + "print(len([g(x) for x in xs]))",
+			"call i32 @rt_heap_len(", "",
+			"the runtime loop's road",
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ir := mustCompileIR(t, tt.src)
+			if !strings.Contains(ir, tt.mustHave) {
+				t.Fatalf("the module does not take %s (%q is missing):\n%s", tt.roadLabel, tt.mustHave, ir)
+			}
+			if tt.mustNot != "" && strings.Contains(ir, tt.mustNot) {
+				t.Fatalf("the module takes %s and still carries %q:\n%s", tt.roadLabel, tt.mustNot, ir)
+			}
+		})
+	}
+}
+
 // lengthElementTraps are the elements that RAISE. A count door that skips a raising element does not
 // merely lose a line of output — it answers a program that, in the reference, never reaches an answer
 // at all, at the exit code of success.
@@ -348,22 +455,45 @@ func TestTheElementAsksToBeRunPredicateIsAskedDirectly(t *testing.T) {
 var countDoorFiledRows = []struct {
 	name      string
 	src       string
-	kind      string // "assemble" — the module never becomes a program — or "refusal"
+	kind      string // "assemble" — the module never becomes a program — "refusal", or "trap" (the program runs and raises what the reference does not)
 	names     string // the substring today's failure has to carry, so a new bug cannot inherit the row
 	reference string // what CPython does with the same source
 	row       string
 }{
 	{
-		// The door loads the count field out of the FOLD's static global, and the fold did not answer
-		// this one: the container is a heap object `%h1`, so the load names a function-local register as
-		// a global and the assembler rejects the module. `pkg/lang/codegen_comp*.go` builds these and
-		// `builtinLen`'s `*Comp` road still reads `g.compLen`/`g.compEls` — the fold's tables — for a
-		// comprehension the run time built.
-		"a comprehension the run time builds has its count read out of a global that is not there",
-		"def g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]))",
-		"assemble", "invalid use of function-local name",
-		"prints 3",
-		"roadmap Gap R.496",
+		// **Gap R.496**'s own row MOVED with the fix: it lives in `countDoorBuiltComprehensions` above,
+		// answered on both legs (`TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuilds`) and
+		// pinned in the module by its instruction shape. It is not deleted — a row that is answered is
+		// asserted, not forgotten.
+		//
+		// What is left of that door's family is the same object, asked by the three doors beside the
+		// count: they were measured by the same sweep, and none of them reaches an answer.
+		"a `for` over a comprehension the run time builds walks the COUNTER, not the object (the loop road's row)",
+		theDoubleFn + "for v in [g(x) for x in [1, 2, 3]]:\n    print(v)",
+		"answer", "0",
+		"prints 2, 4, 6",
+		"roadmap Gap R.500",
+	},
+	{
+		"the truth test over a comprehension the run time builds is false (the same road's row)",
+		theDoubleFn + "if [g(x) for x in [1, 2, 3]]:\n    print(\"yes\")",
+		"answer", "",
+		"prints yes",
+		"roadmap Gap R.500",
+	},
+	{
+		"`bool` of a comprehension the run time builds is False (the same road's row)",
+		theDoubleFn + "print(bool([g(x) for x in [1, 2, 3]]))",
+		"answer", "False",
+		"prints True",
+		"roadmap Gap R.500",
+	},
+	{
+		"a subscript of a comprehension the run time builds reads a slot the builder never filled (the subscript door's row)",
+		theDoubleFn + "print([g(x) for x in [1, 2, 3]][1])",
+		"trap", "IndexError: list index out of range",
+		"prints 4",
+		"roadmap Gap R.501",
 	},
 	{
 		// Found by the same sweep, and NOT this door's debt: this program has no `len` in it. A `def`

@@ -1,5 +1,82 @@
 {
  "entries": {
+"# A comprehension the run time BUILDS — an element, a key, a value or a filter the compiler cannot\n# write down — is a heap object, and its length is a WORD INSIDE that object: `len` asks the object,\n# where it used to load a count out of the fold's static global for a comprehension the fold never\n# answered, and `llc` rejected the module at exit 2 (roadmap Gap R.496, ADR 0442).\n# The two COLLAPSE lines are the ones that prove the number came from the object and not from the\n# iterable the comprehension walked; the last four lines are the fold's control — a comprehension the\n# compiler CAN write down still answers from the global the fold filled, with no builder in the module.\ndef g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]))\nprint(len([g(x) for x in [1, 2, 3] if g(x) \u003e 2]))\nprint(len({g(x): 1 for x in [1, 2, 3]}))\nprint(len({g(x) for x in [1, 2, 3]}))\nprint(len({g(x) for x in [1, 1, 2]}))\nprint(len({g(x) // 4: 1 for x in [1, 2, 3]}))\nprint(len([[g(y) for y in [1, 2]] for x in [1, 2]]))\nxs = [1, 2, 3]\nprint(len([g(x) for x in xs]))\nprint(len([g(x) for x in range(4)]))\nprint(len([g(x) for x in [1, 2, 3]]) + 1)\ndef f(v):\n    print(\"side\")\n    return v\nprint(len([f(x) for x in [1, 2, 3]]))\nprint(len([x * 2 for x in [1, 2, 3]]))\nprint(len([1, 2, 3]))\nprint(len([[1, 2], [3, 4]]))\n": {
+    "stdout": "3\n2\n3\n3\n2\n2\n2\n3\n4\n4\nside\nside\nside\n3\n3\n3\n2\n",
+    "hasStdout": true
+   },
+"def g(v):\n    return v * 2\nprint(len({g(x) // 4: 1 for x in [1, 2, 3]}))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+"class C:\n    def m(self, v):\n        return v * 2\nprint(len([C().m(x) for x in [1, 2, 3]]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def f(v):\n    print(\"side\")\n    return v\nprint(len([f(x) for x in [1, 2, 3]]))": {
+    "stdout": "side\nside\nside\n3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\ndef h():\n    return len([g(x) for x in [1, 2, 3]])\nprint(h())": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len([[g(y) for y in [1, 2]] for x in [1, 2]]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3] if g(x) \u003e 2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]) + 1)": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len([g(x) for x in range(4)]))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len({g(x) // 2: 1 for x in [1, 2, 3]}))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len({g(x) for x in [1, 1, 2]}))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len({g(x) for x in [1, 2, 3]}))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nprint(len({g(x): 1 for x in [1, 2, 3]}))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def g(v):\n    return v * 2\nxs = [g(x) for x in [1, 2, 3]]\nprint(len(xs))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\ndef g(v):\n    return v * 2\nprint(len([g(x) for x in xs]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
 "# The count door PERFORMS the elements whose count it takes: `len` of a container the program spelled\n# out is the number the spelling states, and every element that acts — a call that prints, a read the\n# subscript door raises, a division that raises — acts first, in the order the reference evaluates them.\n# roadmap Gap R.494, ADR 0441. The last three lines are the same elements as raises the program catches,\n# and the last four are the controls: a container of spellings keeps answering its count with no builder.\ndef f():\n    print(\"side\")\n    return 1\nprint(len([f()]))\nprint(len([1, f(), 3]))\nprint(len([1, [f(), 2], 3]))\nprint(len([[f(), 2], 3]))\nprint(len({\"a\": f()}))\nprint(len(sorted([f(), 2])))\nprint(len([f(), f()]))\ntry:\n    print(len([[1, 2][0][0], 1]))\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print(len([[1, 2][5]]))\nexcept IndexError as e:\n    print(\"caught\", e)\ntry:\n    print(len([1 // 0]))\nexcept ZeroDivisionError as e:\n    print(\"caught\", e)\nprint(len([1, 2, 3]))\nprint(len([1, [2, 3], 4]))\nprint(len({\"a\": 1, \"b\": 2}))\nprint(len([1, 2]) + len([3, 4]))\n": {
     "stdout": "side\n1\nside\n3\nside\n3\nside\n2\nside\n1\nside\n2\nside\nside\n2\ncaught 'int' object is not subscriptable\ncaught list index out of range\ncaught integer division or modulo by zero\n3\n3\n2\n4\n",
     "hasStdout": true

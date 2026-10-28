@@ -21101,7 +21101,7 @@ where the pair-element residue lives (`pkg/lang/pair_element_read_test.go`), so 
 fails instead of quietly disappearing. `print([[[1, 2], [3, 4]][1][0], 9])` printing `[3, 9]` on both builds is
 the control that keeps the two shapes from being merged into one row.
 
-### Gap R.496 — `len` of a comprehension the run time builds reads a count field out of a global that is not there (⏳ OPEN, found by **ADR 0441**)
+### Gap R.496 — `len` of a comprehension the run time builds reads a count field out of a global that is not there (✅ DONE, closed by **ADR 0442**)
 
 ```
 $ gustyc --eval 'def g(v):
@@ -21129,6 +21129,95 @@ knows how to materialise (**ADR 0439**'s rule for the slot doors, **ADR 0188**'s
 operand). **Gap R.490** is the same root at the loop head, the condition door and the truth door; this row is the
 length door, and the sweep that closed **Gap R.494** measured it identically on `94a1458` and on its own build —
 which is the only reason it is a row and not a regression from that commit.
+
+**Closed by ADR 0442.** The door asks who built the comprehension, and asks the party that built it. `g.comp` still
+emits — the fold's global name or the builder's heap register, whichever road the node took — and the count question
+then splits on `g.rtComps`, the map the four runtime builders (`runtimeCompList`, `runtimeCompSetDict`,
+`runtimeCompLoop`, `nestedCompRuntimeList`) write and nothing else writes:
+
+* **built** → `heapLenOf`, the same `call i32 @rt_heap_len(i32 %hN)` a container VARIABLE's length asks. One helper
+  for the three kinds, because the count is one word at the same offset in a list, a dict and a set and the object's
+  own kind word decides which — the door never claims a kind, which is the mistake that put the fold's `[%d x i32]`
+  into the operand type in the first place;
+* **folded** → the `load i32, i32* getelementptr({i32, [N x i32]}, …)` **ADR 0192** wrote, unchanged, with no
+  builder, no allocation and no runtime call in the module, because a comprehension that folds IS the literal it
+  folds to and `min`/`max`/`sum` read those folded elements.
+
+Three measurements made the shape of the fix. (1) **The predicate is the builders' own record.** `g.rtComps` was
+already written by every runtime road and read, until this commit, only by **ADR 0439**'s slot doors — which is how
+the fold's tables could be consulted for a built container for as long as the runtime road existed without anything
+noticing. A door that re-derived "is this one built?" from the brace and the element would have been a second opinion
+with a second chance to be wrong, which is the defect **ADR 0438** removed one door earlier. (2) **The count must be
+asked, not inferred.** Two rows in the table prove it: `print(len({g(x) for x in [1, 1, 2]}))` answers `2` and
+`print(len({g(x) // 4: 1 for x in [1, 2, 3]}))` answers `2`, and any number the COMPILER could have stated is `3`.
+They are the reason the `assemble` rows below are answered rather than merely no longer broken. (3) **The parent
+build was asked first.** A detached worktree at `3b13229` measured all fifteen programs: thirteen moved from exit **2**
+to the reference's bytes at exit **0**; `xs = [g(x) for x in [1, 2, 3]]` / `print(len(xs))` and the count taken inside a
+function body already answered, because the assignment road and the container-answer road (**ADR 0333**) had each been
+taught this question while the door beside them was not — the control that says this commit closed one door rather than
+lucky-ing into three.
+
+What the commit did NOT reach, said rather than smoothed: the three sibling doors of the SAME object — the loop head,
+the truth test and `bool()` — answer the numeric counter and the handle instead of walking the built object, all three
+at the exit code of SUCCESS (**Gap R.500**), and a subscript of that object reads a slot the builder never filled, so
+`print([g(x) for x in [1, 2, 3]][1])` dies of `IndexError` where the reference prints `4` (**Gap R.501**). Both were
+re-measured on the parent build and on this one, byte for byte identical, so they are rows and not damage. The rows
+this one closed left the two filed tables (they fail on the fix) for the answering tables of
+`pkg/lang/length_element_effects_test.go` and its CLI twin, and the record holds all fifteen sources now
+(`tools/recmerge`: **16 entries, 10035 → 10051, none refused**) — which it could not while the compiled leg never
+became a program.
+
+### Gap R.500 — the loop head, the truth test and `bool()` read a comprehension the run time builds as a repeat count (⏳ OPEN, found by **ADR 0442**)
+
+```
+$ gustyc --eval 'def g(v):
+    return v * 2
+for v in [g(x) for x in [1, 2, 3]]:
+    print(v)'
+    0                                                                        → exit 0
+$ python3   (same source)                             reference: 2, 4, 6
+$ gustyc --eval '… if [g(x) for x in [1, 2, 3]]:\n    print("yes")'   nothing at exit 0    (reference: yes)
+$ gustyc --eval '… print(bool([g(x) for x in [1, 2, 3]]))'            False at exit 0      (reference: True)
+```
+
+**Gap R.490**'s three doors, the other comprehension. Over a FOLDED one, `isContainerExpr` says "not a container", the
+`for` road takes the numeric counter and compares it against a container GLOBAL — `%t3 = icmp slt i32 %_ctr1.ld1,
+@.lst2` — and `llc` rejects the module at exit **2**. Over a BUILT one the compiler is holding a heap handle in a
+register, the comparison succeeds, and the loop walks a counter that reaches its bound once: `0` printed once, at the
+exit code that means the program succeeded. Three shapes, one missing question: none of the doors asks its iterable
+what it is, which is **ADR 0339**'s rule for the `for` road ("ask the iterable, at the top of the arm, before any road
+is chosen") arriving at the one road that still does not.
+
+They are one row and not three because the fix is one door: `containerHandleOf`'s `*Comp` arm already knows how to
+materialise the object (**ADR 0188**'s rule included), and **Gap R.490** measured that the `isContainerExpr`/
+`staticContainerKind` arm ALONE is not the fix — a deciding door that says "container" without a handle to hand leaves
+all three modules rejected. Give the handle first, then the arms, and the three shapes answer together; the row's own
+gate is that the counter road never again sees a container at either altitude, asserted by the instruction shape
+beside it.
+
+### Gap R.501 — a subscript of a comprehension the run time builds reads a slot the builder never filled (⏳ OPEN, found by **ADR 0442**)
+
+```
+$ gustyc --eval 'def g(v):
+    return v * 2
+print([g(x) for x in [1, 2, 3]][1])'
+    IndexError: list index out of range                                              → exit 3
+$ python3   (same source)                             reference: 4
+```
+
+The base is a container the run time built, so the fold cannot answer it and the pair door owns the read — and
+`runtimeSlotPairDeep` has an arm for a container a NAME holds and for a container a CALL answers and none for a
+container a BUILT COMPREHENSION answers. The subscript road therefore goes in with a payload where it should go in with
+a `(payload, tag)` pair, meets the ordinary bounds check, and reports a position that is not there for an object it
+never asked for. The program dies of an accident it did not write, which is worse than a refusal: it looks like the
+author's bug.
+
+`containerHandleOf`'s `*Comp` case is where the handle lives — the same arm **Gap R.495** needs for the FOLDED base and
+**ADR 0439** needed for the slot doors — so the two rows are the same hand-off asked at two bases, and they are filed
+apart because the two bases take different roads to get there (`[[x for x in [1]][0][0]` refuses at exit 1; this one
+traps at exit 3). Pinned with today's bytes at both legs, including the `trap`/`trap3` kinds the filed tables grew for
+exactly this shape: a program that RUNS and raises what the reference does not raise is neither an exit-0 answer nor a
+build that never finished, and a filed table that can only say "it broke" cannot pin it.
 
 ### Gap R.497 — a `def` inside a `try:` block emits its body into the enclosing block, and `llc` rejects the module (⏳ OPEN, found by **ADR 0441**)
 

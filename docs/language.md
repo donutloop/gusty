@@ -984,17 +984,31 @@ try:
 except ZeroDivisionError as e:
     print("caught", e)
 print(len([1, 2, 3]))                   # 3, with no container built: a spelling performs nothing
+def g(v):
+    return v * 2
+print(len([g(x) for x in [1, 2, 3]]))   # 3 — and the object is asked, not the spelling
+print(len({g(x) for x in [1, 1, 2]}))   # 2: a comprehension the run time builds IS an object
 ```
 
 The rule is the one the two operators that choose an operand already follow (**ADR 0275**): the operand a door does
 not use is still evaluated (**roadmap Gap R.149**, arriving at the length door as **Gap R.494**, closed by
 **ADR 0441**). A container whose every part is a spelling — a number, a text, a verdict, the void, a name, a literal
 of those — performs nothing and emits no builder, so the count stays the constant the spelling states.
-Three shapes are still owed, stated rather than smoothed: a subscript of a read out of a comprehension still refuses
-(**Gap R.495**), `len` of a comprehension the RUN TIME builds is rejected by the assembler (**Gap R.496**), and an
-element that reads a verdict, a double or the void out of a container the fold answered is claimed by the numeric-slot
-road and answers a number — `print(len([[True][0][0]]))` prints `1` where the reference raises, and
-`x = [[True][0][0]]` / `print("ok")` prints `ok` too, which is what puts it on the subscript door (**Gap R.499**).
+
+There are two comprehensions in this backend, and the count door asks which one it is looking at (**ADR 0442**). One
+the compiler can write down — `[x for x in [1, 2, 3]]`, `[x * 2 for x in range(4)]` — IS the literal it folds to
+(**ADR 0192**), and its length is loaded out of the global the fold filled. One the run time BUILDS — an element, a
+key, a value or a filter the compiler cannot see, as above — is a heap object, and its length is a word inside that
+object: the door calls the same `rt_heap_len` a container variable's length calls, which is why a set comprehension
+that collapses members answers `2` and not `3`. Two shapes of that same object are still owed, stated rather than
+smoothed: the loop head, the truth test and `bool()` read it as a repeat count (**Gap R.500**), and a subscript of it
+reads a slot the builder never filled (**Gap R.501**).
+
+Three further shapes are still owed: a subscript of a read out of a comprehension still refuses
+(**Gap R.495**), and an element that reads a verdict, a double or the void out of a container the fold answered is
+claimed by the numeric-slot road and answers a number — `print(len([[True][0][0]]))` prints `1` where the reference
+raises, and `x = [[True][0][0]]` / `print("ok")` prints `ok` too, which is what puts it on the subscript door
+(**Gap R.499**).
 
 ### What a comprehension written as an ELEMENT is (LLVM codegen)
 

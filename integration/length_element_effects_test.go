@@ -183,6 +183,78 @@ func TestTheCountDoorControlsStillAnswerThroughTheCLI(t *testing.T) {
 	})
 }
 
+// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI is the door that used to
+// spend **ADR 0166**'s exit **2** on a program the reference answers with a digit (**roadmap Gap R.496**,
+// **ADR 0442**): `len` of a comprehension the run time BUILDS read the count out of the fold's static
+// global, and the fold had never answered that comprehension, so `llc` rejected a load whose pointer was
+// a function-local register. The count is a word inside the object now.
+//
+// Every expectation is what `python3` prints for the same source, asked live; the two rows that COLLAPSE
+// duplicates are the ones that prove the number came from the object and not from the iterable.
+func TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI(t *testing.T) {
+	t.Parallel()
+	const cliDoubleFn = "def g(v):\n    return v * 2\n"
+	for _, src := range []string{
+		cliDoubleFn + `print(len([g(x) for x in [1, 2, 3]]))`,
+		"def f(v):\n    print(\"side\")\n    return v\n" + `print(len([f(x) for x in [1, 2, 3]]))`,
+		cliDoubleFn + `print(len([g(x) for x in [1, 2, 3] if g(x) > 2]))`,
+		cliDoubleFn + `print(len({g(x): 1 for x in [1, 2, 3]}))`,
+		cliDoubleFn + `print(len({g(x) for x in [1, 2, 3]}))`,
+		cliDoubleFn + `print(len({g(x) for x in [1, 1, 2]}))`,
+		cliDoubleFn + `print(len({g(x) // 4: 1 for x in [1, 2, 3]}))`,
+		cliDoubleFn + `print(len([[g(y) for y in [1, 2]] for x in [1, 2]]))`,
+		"xs = [1, 2, 3]\n" + cliDoubleFn + `print(len([g(x) for x in xs]))`,
+		cliDoubleFn + `print(len([g(x) for x in range(4)]))`,
+		cliDoubleFn + `print(len([g(x) for x in [1, 2, 3]]) + 1)`,
+		cliDoubleFn + "xs = [g(x) for x in [1, 2, 3]]\nprint(len(xs))",
+		cliDoubleFn + "def h():\n    return len([g(x) for x in [1, 2, 3]])\nprint(h())",
+		"class C:\n    def m(self, v):\n        return v * 2\nprint(len([C().m(x) for x in [1, 2, 3]]))",
+		// The fold's road, kept: a comprehension the compiler CAN write down still answers its count
+		// from the global the fold filled — asserted by the module row below.
+		`print(len([x * 2 for x in [1, 2, 3]]))`,
+	} {
+		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
+			want := pythonOutput(t, src+"\n")
+			stdout, stderr, code := cliStreams(t, "--eval", src)
+			if code == 2 {
+				t.Fatalf("the toolchain failed on its own program (exit 2 — ADR 0166's own code):\n%s", stderr)
+			}
+			if code != 0 {
+				t.Fatalf("exit %d, want 0: the reference answers this program\nstderr %q", code, stderr)
+			}
+			if got := strings.TrimSpace(stdout); got != strings.TrimSpace(want) {
+				t.Fatalf("printed %q, the reference prints %q", got, strings.TrimSpace(want))
+			}
+		})
+	}
+	// The instruction shape, through the machine door an agent reads: the built comprehension asks the
+	// object, the folded one keeps its global and asks nothing.
+	t.Run("module/the object answers a built comprehension, the fold keeps its global", func(t *testing.T) {
+		t.Parallel()
+		ir, stderr, code := cliStreams(t, "--emit-llvm", cliDoubleFn+`print(len([g(x) for x in [1, 2, 3]]))`)
+		if code != 0 {
+			t.Fatalf("--emit-llvm failed on a program the reference answers: %s", stderr)
+		}
+		if !strings.Contains(ir, "call i32 @rt_heap_len(") {
+			t.Fatalf("the module never asked the object how many slots it holds:\n%s", ir)
+		}
+		if strings.Contains(ir, "getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %") {
+			t.Fatalf("the module still loads a count out of a register named as a global (the instruction llc rejected):\n%s", ir)
+		}
+		folded, stderr, code := cliStreams(t, "--emit-llvm", `print(len([x * 2 for x in [1, 2, 3]]))`)
+		if code != 0 {
+			t.Fatalf("--emit-llvm failed on the fold's control: %s", stderr)
+		}
+		if strings.Contains(folded, "call i32 @rt_heap_len(") {
+			t.Fatalf("the fold's comprehension asked the runtime a question the compile time already answered:\n%s", folded)
+		}
+		if !strings.Contains(folded, "load i32, i32* getelementptr({i32, [3 x i32]}") {
+			t.Fatalf("the fold's comprehension no longer reads the global the fold filled:\n%s", folded)
+		}
+	})
+}
+
 // TestWhatTheCountDoorStillOwesThroughTheCLI pins the residue of the same sweep with today's exit code
 // beside the reference's: a divergence is a row only while both legs still disagree, and a row that
 // stops being true fails rather than quietly disappearing (**Gap R.204**'s rule, **ADR 0440**'s
@@ -198,10 +270,32 @@ func TestWhatTheCountDoorStillOwesThroughTheCLI(t *testing.T) {
 		row       string
 	}{
 		{
-			"len of a comprehension the run time builds is rejected by the assembler",
-			"def g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]))",
-			"exit2", "invalid use of function-local name", "3",
-			"roadmap Gap R.496",
+			// **Gap R.496**'s own row MOVED with the fix — it is answered above, in
+			// TestTheCountDoorAsksTheObjectForAComprehensionTheRunTimeBuildsThroughTheCLI, and pinned in the
+			// module by its instruction shape. What is left of that door's family is the same object asked
+			// by the doors BESIDE the count, measured by the same sweep and answered by none of them.
+			"a `for` over a comprehension the run time builds walks the COUNTER (the loop road's row)",
+			"def g(v):\n    return v * 2\nfor v in [g(x) for x in [1, 2, 3]]:\n    print(v)",
+			"answer:0", "", "2\n4\n6",
+			"roadmap Gap R.500",
+		},
+		{
+			"the truth test over a comprehension the run time builds is false (the same road's row)",
+			"def g(v):\n    return v * 2\nif [g(x) for x in [1, 2, 3]]:\n    print(\"yes\")",
+			"answer:", "", "yes",
+			"roadmap Gap R.500",
+		},
+		{
+			"`bool` of a comprehension the run time builds is False (the same road's row)",
+			"def g(v):\n    return v * 2\nprint(bool([g(x) for x in [1, 2, 3]]))",
+			"answer:False", "", "True",
+			"roadmap Gap R.500",
+		},
+		{
+			"a subscript of a comprehension the run time builds reads a slot the builder never filled (the subscript door's row)",
+			"def g(v):\n    return v * 2\nprint([g(x) for x in [1, 2, 3]][1])",
+			"trap3", "IndexError: list index out of range", "4",
+			"roadmap Gap R.501",
 		},
 		{
 			"a def inside a `try:` block lands its body inside the enclosing block (the def road's row)",
@@ -278,6 +372,12 @@ func TestWhatTheCountDoorStillOwesThroughTheCLI(t *testing.T) {
 			case "refusal":
 				if code != 1 {
 					t.Fatalf("%q exited %d, where this row is filed for a refusal at exit 1 (%s):\n%s", tt.src, code, tt.row, joined)
+				}
+			case "trap3":
+				// The program RUNS and raises what the reference does not raise — a wrong answer wearing a
+				// traceback, which is neither the exit-0 answer above nor a build that never finished.
+				if code != 3 {
+					t.Fatalf("%q exited %d, where this row is filed because the program raises where the reference answers %q (%s):\n%s", tt.src, code, tt.reference, tt.row, joined)
 				}
 			}
 			if !strings.Contains(joined, tt.contains) {

@@ -415,6 +415,27 @@
     },
     {
       "case": {
+        "id": "programs/built_comp_len",
+        "name": "built_comp_len.gy",
+        "source": "# A comprehension the run time BUILDS — an element, a key, a value or a filter the compiler cannot\n# write down — is a heap object, and its length is a WORD INSIDE that object: `len` asks the object,\n# where it used to load a count out of the fold's static global for a comprehension the fold never\n# answered, and `llc` rejected the module at exit 2 (roadmap Gap R.496, ADR 0442).\n# The two COLLAPSE lines are the ones that prove the number came from the object and not from the\n# iterable the comprehension walked; the last four lines are the fold's control — a comprehension the\n# compiler CAN write down still answers from the global the fold filled, with no builder in the module.\ndef g(v):\n    return v * 2\nprint(len([g(x) for x in [1, 2, 3]]))\nprint(len([g(x) for x in [1, 2, 3] if g(x) \u003e 2]))\nprint(len({g(x): 1 for x in [1, 2, 3]}))\nprint(len({g(x) for x in [1, 2, 3]}))\nprint(len({g(x) for x in [1, 1, 2]}))\nprint(len({g(x) // 4: 1 for x in [1, 2, 3]}))\nprint(len([[g(y) for y in [1, 2]] for x in [1, 2]]))\nxs = [1, 2, 3]\nprint(len([g(x) for x in xs]))\nprint(len([g(x) for x in range(4)]))\nprint(len([g(x) for x in [1, 2, 3]]) + 1)\ndef f(v):\n    print(\"side\")\n    return v\nprint(len([f(x) for x in [1, 2, 3]]))\nprint(len([x * 2 for x in [1, 2, 3]]))\nprint(len([1, 2, 3]))\nprint(len([[1, 2], [3, 4]]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "3\n2\n3\n3\n2\n2\n2\n3\n4\n4\nside\nside\nside\n3\n3\n3\n2\n",
+      "python_ok": true,
+      "python_stdout": "3\n2\n3\n3\n2\n2\n2\n3\n4\n4\nside\nside\nside\n3\n3\n3\n2\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_method_text_answer",
         "name": "probe_method_text_answer.gy",
         "source": "# Gap R.315 — a text that a METHOD's body BUILDS used to print the number underneath it. It is an asserted\n# parity program now, because the census that decides what a parameter holds reads methods as well as\n# functions (ADR 0366), and every line below is the reference's answer.\n#\n# Before that row a method that TOOK A PARAMETER and returned a text its body built printed the @str_tab\n# POSITION of the text: `x0` for `\"x%s\" % s`, `0` for `s * 2`, `2` for `s + \"!\"`. The bodies that returned the\n# same texts answered correctly everywhere else the doors knew about — at module level, as a plain function, as\n# a method with no parameter, and as a method whose body returns a text literal — because `funcDef` registers a\n# text parameter in the table the print, `len`, `in`, `==` and char-method roads ask, and the method road never\n# did. The formatting (ADR 0360) and the repeat (ADR 0365) answer ONE predicate, so the road that registered\n# one and not the other showed up as two wrong lines rather than one.\n#\n# The fifth line is the control: a method whose multiplier is a literal needed nothing from the census and was\n# right all along. A program whose parameter is handed a number somewhere else keeps the road it had — the\n# census marks a position only when no call site contradicts it — which is what the last two lines measure.\n#\n# CPython prints `ab`, `xhi`, `abab`, `hihi`, `abab`, `ab!`, `5`.\nclass C:\n    def plain(self, s):\n        return \"ab\"\n\n    def rep_no_param(self):\n        return \"ab\" * 2\n\n    def fmt(self, s):\n        return \"x%s\" % s\n\n    def rep_of_param(self, s):\n        return s * 2\n\n    def rep(self, s):\n        return \"ab\" * 2\n\n    def cat(self, s):\n        return s + \"!\"\n\n    def counted(self, s, n):\n        return n\n\n\nprint(C().plain(\"hi\"))\nprint(C().fmt(\"hi\"))\nprint(C().rep_no_param())\nprint(C().rep_of_param(\"hi\"))\nprint(C().rep(\"hi\"))\nprint(C().cat(\"ab\"))\nprint(C().counted(\"ab\", 5))\n",
@@ -5815,11 +5836,11 @@
       ]
     }
   ],
-  "rows": 247,
+  "rows": 248,
   "skipped": 29,
-  "pass": 218,
+  "pass": 219,
   "fail": 0,
-  "oracle_match": 204,
+  "oracle_match": 205,
   "oracle_debt": 21,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

@@ -16337,3 +16337,68 @@ spelling?* — performs the operations in the reference's order, and discards th
    including the two programs **ADR 0440**'s run *refused*, which record now precisely because the legs agree. A
    recording run that used to refuse a source and now accepts it is the cheapest possible proof of a closed row, and
    the cheapest possible proof that a row was really about both legs rather than my own expectation.
+
+---
+
+## ADR 0442 — a comprehension the run time BUILDS is an OBJECT: `len` asks it instead of loading a field out of the fold's global (roadmap Gap R.496 closed; ADR 0442; Gaps R.500, R.501 filed, 2026-10-28)
+
+**Change**: `builtinLen`'s `*Comp` road emitted the comprehension fold's static global and loaded the count field out
+of it — for every comprehension, including the ones the fold never answered. A comprehension whose element, key, value
+or filter the compiler cannot see is built at run time into a heap object in a register, so the door emitted
+`load i32, i32* getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %h1, i32 0, i32 0)` and `llc-20` rejected the module:
+**exit 2**, **ADR 0166**'s own code, on `print(len([g(x) for x in [1, 2, 3]]))`, a program CPython answers with `3`.
+The door now asks `g.rtComps` — the map the four runtime builders keep of themselves — and sends the question to the
+object through `heapLenOf` (`call i32 @rt_heap_len`, the same helper a container variable's length asks), leaving the
+fold's load for the comprehension the fold actually answered.
+
+1. **A table nobody reads is a table nobody notices is empty.** `g.rtComps` has been written since the runtime
+   comprehension road existed and, until this cycle, was read in exactly one place — **ADR 0439**'s slot doors. The
+   length door read `g.compLen` for every comprehension instead, and got `0` plus an element-type of `[0 x i32]` for a
+   built one. The failure mode of a whole-program table is not a stale value, it is the reader that never asks for it:
+   the value that would have caught this (`0`, i.e. "the fold said nothing") is indistinguishable from the value the
+   fold writes for an empty comprehension. When I add a record to a door, the next question is which doors read it —
+   and a door that reads the OTHER table is the bug.
+
+2. **Exit 2 rows have to be measured on the parent, or they are your bug.** Thirteen of my fifteen programs moved from
+   **2** to the reference's bytes; two — `xs = [g(x) for x in [1, 2, 3]]` / `print(len(xs))` and the count taken inside
+   a function body — already answered on `3b13229`, because the assignment road and the container-answer road had each
+   been taught this question. Without the detached worktree I would have written "fifteen programs fixed" and the two
+   controls would have been a claim nobody could falsify. Same measurement is what let me file **Gap R.500** and
+   **Gap R.501** as rows instead of folding them into the commit: identical bytes on both builds, so they are the
+   language's debt, not my damage.
+
+3. **The count that came from the object is the count you have to test.** My answering table would have passed with a
+   count read off the iterable, because `[1, 2, 3]` collapses to nothing. The two rows that make this an object-story —
+   `print(len({g(x) for x in [1, 1, 2]}))` → `2`, `print(len({g(x) // 4: 1 for x in [1, 2, 3]}))` → `2` — came from
+   asking CPython for shapes where the compiler's answer and the object's answer differ, not from reading my own road
+   map. Every "the object answers it now" row owes at least one program where the two answers are different numbers.
+
+4. **The first draft of my answering table was wrong and the recorder was the referee.** I wrote
+   `len({g(x) // 2: 1 for x in [1, 2, 3]})` with an expected `2`, lifted from an identity-function probe; with the
+   doubling helper the keys are `1, 2, 3` and the answer is `3`. `tools/recmerge` — which records the reference's answer
+   and cross-checks the compiled leg — accepted the source while my test failed it. A test that expects the wrong bytes
+   and a recorder that refuses to write them is the cheapest possible referee; the fix was to make the expectation come
+   from `python3` and to keep BOTH rows, the collapsing one and the non-collapsing one, because the pair is what makes
+   the assertion mean something.
+
+5. **A record leg with `err == nil` tolerance cannot witness a closed row.** The existing families ask
+   `if rec, err := runGoldenStdout(...); err == nil`, which is right for a source the recorder may never have seen and
+   wrong for one that must have: a missing record passed as agreement, so a closed row could be un-recorded by deleting
+   an entry and the case would go green. The new table asks the record with NO tolerance — `t.Fatalf` on a missing
+   entry — which is only affordable once `recmerge` has written the entries, and is the machine check that the two legs
+   really do agree. If a family is "closed on both legs", the test has to be unable to pass on one.
+
+6. **A filed table that can only say "it broke" cannot pin a program that runs.** The residue I left behind is three
+   exit-**0** wrong answers (the loop head prints `0`, the truth test prints nothing, `bool` prints `False`) and one
+   program that raises a trap the reference does not raise (`IndexError` where the answer is `4`). The existing kinds
+   were `assemble`, `refusal` and `answer:<bytes>`; none of them can say "exit 3 with THIS sentence", so both twins grew
+   a `trap`/`trap3` kind. The exit code contract (**ADR 0006**, **ADR 0166**) distinguishes five events at the top
+   level; a filed table that collapses three of them into "failed" will happily pin a regression as if it were the bug
+   it replaced.
+
+7. **One door closed, two doors named, and none of them the loop's.** This row is a *measuring* door. The loop head,
+   the truth test and `bool()` (**Gap R.500**) and the subscript (**Gap R.501**) are *deciding* doors over the same
+   object, and **Gap R.490** already measured that giving them the `isContainerExpr` arm without a handle to hand leaves
+   all three modules rejected. Keeping the commit to the measuring door is not just **AGENTS.md**'s one-feature rule:
+   the fix I could prove in this cycle is `g.rtComps` at one call site, and the fix they need is a handle threaded
+   through a deciding predicate, which is a different change with a different gate.

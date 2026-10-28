@@ -1,0 +1,27 @@
+# A comprehension the run time BUILDS — an element, a key, a value or a filter the compiler cannot
+# write down — is a heap object, and its length is a WORD INSIDE that object: `len` asks the object,
+# where it used to load a count out of the fold's static global for a comprehension the fold never
+# answered, and `llc` rejected the module at exit 2 (roadmap Gap R.496, ADR 0442).
+# The two COLLAPSE lines are the ones that prove the number came from the object and not from the
+# iterable the comprehension walked; the last four lines are the fold's control — a comprehension the
+# compiler CAN write down still answers from the global the fold filled, with no builder in the module.
+def g(v):
+    return v * 2
+print(len([g(x) for x in [1, 2, 3]]))
+print(len([g(x) for x in [1, 2, 3] if g(x) > 2]))
+print(len({g(x): 1 for x in [1, 2, 3]}))
+print(len({g(x) for x in [1, 2, 3]}))
+print(len({g(x) for x in [1, 1, 2]}))
+print(len({g(x) // 4: 1 for x in [1, 2, 3]}))
+print(len([[g(y) for y in [1, 2]] for x in [1, 2]]))
+xs = [1, 2, 3]
+print(len([g(x) for x in xs]))
+print(len([g(x) for x in range(4)]))
+print(len([g(x) for x in [1, 2, 3]]) + 1)
+def f(v):
+    print("side")
+    return v
+print(len([f(x) for x in [1, 2, 3]]))
+print(len([x * 2 for x in [1, 2, 3]]))
+print(len([1, 2, 3]))
+print(len([[1, 2], [3, 4]]))

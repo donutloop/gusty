@@ -3753,6 +3753,39 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **A comprehension the run time BUILDS is an OBJECT, and `len` asks it (Gap R.496, **ADR 0442**)** —
+  `def g(v):` / `    return v * 2` / `print(len([g(x) for x in [1, 2, 3]]))` never became a program at all:
+  `%t15 = load i32, i32* getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %h1, i32 0, i32 0)`,
+  `llc-20: error: invalid use of function-local name`, **exit 2** — the code **ADR 0166** reserves for the toolchain's
+  own failure, spent by a program CPython answers with a digit. There are two comprehensions in this backend and the
+  length door knew only one of them: **ADR 0192**'s fold writes an unrolled global and records the count in `g.compLen`,
+  while the four runtime builders write a heap object into a register and record themselves in `g.rtComps`; the door read
+  the FOLD's table for both, so for a built comprehension it emitted the fold's load with the fold's type — `[0 x i32]`,
+  because the table was empty — against the object's register. The road now asks who built it: `g.rtComps` is set →
+  `call i32 @rt_heap_len`, the same helper a container VARIABLE's length asks (one helper for a list, a dict and a set,
+  because the count is one word and the object's own kind word decides the rest); the fold answered → the compile-time
+  load, unchanged, with no builder and no allocation, because **ADR 0192**'s rule that a comprehension which folds IS
+  the literal it folds to is what still lets `min`/`max`/`sum` read folded elements. Two rows prove the number came from
+  the object and not from the iterable the comprehension walked:
+  `print(len({g(x) for x in [1, 1, 2]}))` answers **`2`** and `print(len({g(x) // 4: 1 for x in [1, 2, 3]}))` answers
+  **`2`**, and any number the compiler could have stated is `3`. Measured against a build of `3b13229` in a detached
+  worktree, **thirteen** of the fifteen programs of the family moved from exit **2** to the reference's bytes at exit
+  **0**, and two (`xs = [g(x) for x in [1, 2, 3]]` / `print(len(xs))`, and the count taken inside a function) already
+  answered — the control that this commit closed one door rather than three by luck. Fifteen answered sources on the
+  compiled leg AND the record leg (asked with **no** tolerance for a missing record — `tools/recmerge` wrote **16
+  entries, 10035 → 10051**, none refused), three module rows that pin which instruction the door emits (`rt_heap_len`
+  present for the built one and ABSENT for the folded one, and the `[0 x i32]` load forbidden outright), the same fifteen
+  through `--eval` beside a live `python3` with exit **2** forbidden on every row, and
+  `integration/programs/built_comp_len.gy` joined the corpus as a line-for-line `match`. What the door still does not
+  reach is FILED with today's bytes, not folded in: **Gap R.500** — the loop head, the truth test and `bool()` standing
+  over the same built object answer the numeric counter, so `for v in [g(x) for x in [1, 2, 3]]:` prints **`0`**, `if
+  [g(x) for x in [1, 2, 3]]:` prints nothing and `print(bool([g(x) for x in [1, 2, 3]]))` prints **`False`**, all three
+  at the exit code of success (**Gap R.490**'s three doors over the other comprehension) — and **Gap R.501** —
+  `print([g(x) for x in [1, 2, 3]][1])` dies of `IndexError: list index out of range` where the reference prints `4`,
+  because `runtimeSlotPairDeep` has an arm for a container a NAME and a CALL answer and none for one a BUILT
+  COMPREHENSION answers (**Gap R.495**'s hand-off at the second base). Both are byte-identical on the parent build and
+  on this one, which is what keeps them rows.
+
 - **The count door PERFORMS the elements whose count it takes: `len` of a spelled-out container evaluates them
   first (Gap R.494, **ADR 0441**)** — `print(len([f()]))` printed **`1`** and never called `f`, and
   `print(len([[1, 2][0][0], 1]))` printed **`2`** at the exit code that means the program ran, where the reference

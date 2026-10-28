@@ -330,11 +330,26 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
 		return v, nil
 	case *Comp:
-		// lowered comprehension result: same global shape as a list literal,
-		// so len loads the stored count field.
+		// TWO comprehensions, one door (roadmap **Gap R.496**, **ADR 0442**).
+		// A comprehension the FOLD answered is the literal it folds to (ADR 0192): an unrolled
+		// `{i32, [N x i32]}` global whose stored count field `len` loads, and it still does.
+		// A comprehension the RUN time BUILDS is a heap object in a register (`runtimeCompList`,
+		// `runtimeCompSetDict`, `runtimeCompLoop`, `nestedCompRuntimeList` hand back `%hN`), there is no
+		// global to load from, and reading `g.compLen` for it emits a load whose type comes from a table
+		// the fold never filled — `{i32, [0 x i32]}`, the count it never wrote, against a register:
+		// `llc` rejects the module
+		// and the toolchain spends ADR 0166's exit 2 on a program the reference answers with a digit.
+		// The predicate is the builders' own record, `g.rtComps`, and the answer goes to the object —
+		// the same `rt_heap_len` a container variable's length asks, whose own kind word covers a list,
+		// a dict and a set (ADR 0439's handle for the slot doors, ADR 0188's rule about what may sit in
+		// an operand). The doors BESIDE this one that still read the counter rather than the object are
+		// roadmap Gap R.500 (the loop head, the truth test, `bool()`) and Gap R.501 (the subscript).
 		name, err := g.comp(b, lit)
 		if err != nil {
 			return "", err
+		}
+		if g.rtComps[lit] {
+			return g.heapLenOf(b, name), nil
 		}
 		n := g.compLen[lit]
 		v := g.newTmp()

@@ -87,6 +87,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// raises — so the raises are the ones the program catches from its own `except`, and a container of
 		// spellings still answers with no builder in the module (roadmap **Gap R.494**, **ADR 0441**).
 		"length_element_effects",
+		// A comprehension the run time BUILDS is a heap object, and its length is a word inside that
+		// object: `len` asks the object where it used to load the fold's static count for a comprehension
+		// the fold never answered, and `llc` rejected the module at exit 2 — the program is line-for-line
+		// CPython, the two COLLAPSE lines say the count came from the object, and the last four are the
+		// fold's control (roadmap **Gap R.496**, paid by **ADR 0442**).
+		"built_comp_len",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the
