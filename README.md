@@ -3145,8 +3145,9 @@ falls back to dynamic dispatch.
   pinned beside the reference's: **Gap R.437** (the void through a frame's front door — a parameter, or the
   module's name read from inside a body: the gate asks the FRAME's records), **Gap R.438** (`sum([None])` is `0`
   and `sorted([1, None])` produces an order the reference refuses to compute — the fold and the comparator ask the
-  payload, never the kind), **Gap R.439** (`xs = [1]` / `print([xs, 2])` writes `[0, 2]` — the gate's container arm
-  is a spelling test while the door has had the container-NAME arm since **ADR 0189**) and **Gap R.440** (a loop
+  payload, never the kind), **Gap R.439** (`xs = [1]` / `print([xs, 2])` wrote `[0, 2]` — the gate's container arm
+  was a spelling test while the door has had the container-NAME arm since **ADR 0189**; **paid by ADR 0438
+  below**) and **Gap R.440** (a loop
   item's own kind, which `print(k)` reads from the unroll's record and the literal beside it does not).
 
 
@@ -3724,6 +3725,33 @@ falls back to dynamic dispatch.
   literal elements, a dict in a list, a comprehension over a literal of containers) went to the record — **9878 →
   9886** — and `tools/recmerge` refused the refusals, which have no answer to cross-check; the four shapes the same
   sweep found wrong are **Gaps R.485**–**R.488**, filed with today's bytes at both legs and unfixed.
+
+- **A literal element's kind is asked ONCE, from the tag road: a container the program NAMED travels tagged, and a
+  loop item is its item, not its name's history (Gaps R.486, R.439, R.489, **ADR 0438**)** —
+  `xs = [1]` / `print([xs, 2])` printed **`[0, 2]`** and `sa = {1: "a", "b": 2}` / `print([sa, 1])` printed
+  **`[1, 1]`**, both at the exit code that means the program ran, because a container slot is a pair (a word and the
+  tag that says what the word is) and the two halves were asked of two different things. The word and the tag were
+  right — `heapElemKind` stored the handle and `elemKindTag` wrote `TagList` beside it — while the object's header,
+  written by `literalNeedsTags`, asked the element's SPELLING and stopped at `isContainerLiteral`; a name has no
+  spelling, so `rt_print_list` (the single-kind printer) printed the handle as the integer the allocator handed out.
+  The census now asks `elemKindTag`, the same question the tag asks — **ADR 0232**'s "the slots the builder wrote are
+  the truth", and **ADR 0359**'s fix for the interpolation element applied to the container element — so the object
+  says its slots are the truth (`rt_mark_estr(o, 8)`) and `rt_print_list_mixed` walks the pair: `[[1], 2]`,
+  `[{1: 'a', 'b': 2}, 1]`, `[{1: 'a'}, {2: 'b'}]`, and the roads that READ the slot (`[xs, 1][0]`, `[xs] ==
+  [[1, 2]]`, `for v in [xs, [3]]`, `{"a": xs}`) share the answer, which is why a print-time fix was rejected.
+  Asking the tag road once also exposed the defect that had been hiding behind it: the tag's *Name arm consulted the
+  container TABLES — cumulative, never unenrolled — after the iteration's record, and the iteration's record
+  answers only for a kind it can name, which an integer is not. So `xs = [7]` / `for xs in [1, 2]:` /
+  `print([xs, 1.5])` stored the integer 1 tagged `TagList` and printed **`[, 1.5]`**, with `print([xs] == [1])`
+  answering `False` (**Gap R.489**, found by landing the census fix and fixed in the same commit, because the fix is
+  unsafe without it): the tag road asks the ITEM first now, **ADR 0233**/**Gap R.358**'s per-iteration record asked
+  of the name the unroll replaced. Two roads still owed, and pinned rather than papered over: a COMPREHENSION
+  written as an element answers the slot (**Gap R.487**) and the same shape one level deeper hands `llc` an
+  `i32 @.lst1` operand and exits **2** (**Gap R.488**). Eighteen answered sources — 12 unit (compiled leg + record
+  leg + four IR rows) and the same family plus 7 through the CLI beside a live CPython — with `tools/recmerge`
+  writing 19 record entries from the reference and the compiled leg cross-checked (**9886 → 9905**, none refused);
+  the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
+  what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
 ## Modern front-end (lexer & parser)
 

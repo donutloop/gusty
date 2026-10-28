@@ -104,10 +104,11 @@ func TestTheVoidSlotRoadsAnswerWrongArePinnedBesideTheReference(t *testing.T) {
 			"Gap R.438 (the reference raises TypeError for `int` + `NoneType`; the fold added the void's payload)"},
 		{"a_sort_over_the_void_and_a_number", "print(sorted([1, None]))\n", 0, "[None, 1]\n", "",
 			"Gap R.438 (the comparator asked the payloads and never asked the kinds)"},
-		{"a_container_the_program_named_beside_a_number", "xs = [1]\nprint([xs, 2])\n", 0, "[0, 2]\n", "[[1], 2]\n",
-			"Gap R.439 (the gate's element census stops at the spelled container and never asks the name)"},
-		{"two_containers_the_program_named_in_one_literal", "xs = [1]\nys = [2]\nprint([xs, ys])\n", 0, "[0, 1]\n", "[[1], [2]]\n",
-			"Gap R.439 (the two heap handles printed as the two numbers the allocator handed out)"},
+		// `xs = [1]` / `print([xs, 2])` and `xs = [1]` / `ys = [2]` / `print([xs, ys])` left this table with
+		// **ADR 0438**: they answer the reference's bytes at the CLI now, pinned beside CPython in
+		// `TestAContainerTheProgramNamedAnswersAsAnElementAtTheCLI`. The void rows below stay: the reference
+		// still disagrees with this backend about the void a body receives, and about a fold and a sort over
+		// the void.
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,26 +1,29 @@
-// Four shapes measured while landing ADR 0437, filed and NOT fixed: a container that arrives as an
-// element of a literal, and a container that arrives as a member of a set literal. Each row is pinned with
-// today's bytes beside the reference's, in this file and in `integration/container_element_and_member_test.go`,
-// and each byte below was re-measured on a build of the commit before this one (`4fdb87c`) as well as on
-// this one — the sentences changed in that commit, these answers did not.
+// Shapes measured while landing ADR 0437 and still NOT fixed: a COMPREHENSION that arrives as an element of a
+// literal, and a container that arrives as a member of a set literal. Each row is pinned with today's bytes
+// beside the reference's, in this file and in `integration/container_element_and_member_test.go`, and each byte
+// below was re-measured on a build of the commit before the family was filed (`4fdb87c`) as well as on this
+// one — the sentences changed in that commit, these answers did not.
 //
-// The four are one family with two doors:
+// The family had four doors and one has been paid: the ELEMENT door also refused to describe a container held
+// in a NAME (`sa = {1: "a", "b": 2}` / `print([sa, 1])` printed `[1, 1]`), and that one is closed by **ADR
+// 0438** — the census that labels the object now asks the tag road's answer, so a named container travels as a
+// tagged pair (**Gap R.486**, paid, and its rows moved to `named_container_element_test.go`). What is left here:
 //
-//   - the ELEMENT door. `heapListFrom` builds a literal list one slot at a time, and a slot is a word plus a
-//     tag. When the element is a container the compiler can read — a literal — the pair comes from the
-//     builder that made the object (**ADR 0332**, **ADR 0384**). When the element is a NAME holding a
-//     container, or a COMPREHENSION, or a comprehension over a call, the road keeps one word and calls it
-//     the value, and the word is the allocator's slot: `sa = {1: "a", "b": 2}` / `print([sa, 1])` prints
-//     `[1, 1]` at exit **0** where the reference prints `[{1: 'a', 'b': 2}, 1]` (**Gap R.486**, **Gap R.487**);
-//     and the same shape one level deeper — `print([[[x for x in [1]]]])` — puts the compile-time global
-//     `@.lst1` in an operand position and `llc` rejects the module, which is exit **2**, the code
-//     **ADR 0166** reserves for a compiler bug (**Gap R.488**); and
+//   - the ELEMENT door, comprehension half. `heapListFrom` builds a literal list one slot at a time, and a slot
+//     is a word plus a tag. When the element is a container the compiler can read — a literal, or a name the
+//     container tables describe — the pair comes from the builder that made the object (**ADR 0332**,
+//     **ADR 0384**, **ADR 0438**). When the element is a COMPREHENSION, or a comprehension over a call, the road
+//     keeps one word and calls it the value, and the word is the allocator's slot: `print([[{"a": 1} for x in
+//     range(1)], 1])` prints `[1, 1]` at exit **0** where the reference prints `[[{'a': 1}], 1]`
+//     (**Gap R.487**); and the same shape one level deeper — `print([[[x for x in [1]]]])` — puts the
+//     compile-time global `@.lst1` in an operand position and `llc` rejects the module, which is exit **2**, the
+//     code **ADR 0166** reserves for a compiler bug (**Gap R.488**); and
 //   - the MEMBER door. A set literal's members are hashed. A list, a dict or a set has no hash in the
 //     reference, which raises `TypeError: unhashable type: 'list'`; this backend files the handle as a member
 //     and prints `{[1], [2]}` at exit **0** — **Gap R.81**'s rule (`sa.add([1])` adds what cannot be a member)
 //     at the literal door rather than the `add` one (**Gap R.485**).
 //
-// None of the eight sources is on the record, and `tools/recmerge` refuses each: the compiled leg's bytes
+// None of these sources is on the record, and `tools/recmerge` refuses each: the compiled leg's bytes
 // are not the reference's, which is the recorder's cross-check earning its keep and the reason a row exists
 // rather than a record.
 package lang
@@ -51,22 +54,6 @@ func containerElementFiledRows() []struct {
 		reference string
 		row       string
 	}{
-		{
-			name:      "a container variable as an element answers the slot",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint([sa, 1])\n",
-			kind:      "answer",
-			today:     "[1, 1]\n",
-			reference: "[{1: 'a', 'b': 2}, 1]",
-			row:       "Gap R.486",
-		},
-		{
-			name:      "a container variable alone in the element list answers the slot",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint([sa])\n",
-			kind:      "answer",
-			today:     "[1]\n",
-			reference: "[{1: 'a', 'b': 2}]",
-			row:       "Gap R.486",
-		},
 		{
 			name:      "a comprehension as an element answers the slot",
 			src:       "print([[{\"a\": 1} for x in range(1)], 1])\n",

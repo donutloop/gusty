@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// The four shapes ADR 0437 measured and filed, at the command line (roadmap Gaps R.485, R.486, R.487,
-// R.488). Each row is the compiled backend's answer beside a live CPython's, in one case, and the exit code
+// The shapes ADR 0437 measured and filed, at the command line (roadmap Gaps R.485, R.487, R.488 — its
+// R.486 half is paid by **ADR 0438** and answers in `integration/named_container_element_test.go`). Each row is
+// the compiled backend's answer beside a live CPython's, in one case, and the exit code
 // is asserted rather than inferred — these are rows whose wrongness is that they exit **0**, and the one
 // whose wrongness is that it exits **2** (ADR 0166's own-bug code) is pinned at 2 so that the day it becomes
 // a wrong number at 0, this case says so.
@@ -24,22 +25,6 @@ func TestWhatTheContainerElementAndMemberDoorsOweAtTheCLI(t *testing.T) {
 		reference string // what CPython prints (or raises) for the same file
 		row       string
 	}{
-		{
-			name:      "a container variable as an element answers the slot",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint([sa, 1])\n",
-			wantOut:   "[1, 1]\n",
-			wantCode:  0,
-			reference: "[{1: 'a', 'b': 2}, 1]",
-			row:       "Gap R.486",
-		},
-		{
-			name:      "a container variable alone in the element list answers the slot",
-			src:       "sa = {1: \"a\", \"b\": 2}\nprint([sa])\n",
-			wantOut:   "[1]\n",
-			wantCode:  0,
-			reference: "[{1: 'a', 'b': 2}]",
-			row:       "Gap R.486",
-		},
 		{
 			name:      "a comprehension as an element answers the slot",
 			src:       "print([[{\"a\": 1} for x in range(1)], 1])\n",

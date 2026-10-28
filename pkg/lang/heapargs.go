@@ -1219,7 +1219,7 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	slotsItself := func(x Expr) bool {
 		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
 			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x) ||
-			g.loopItemIsContainer(x)
+			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x)
 	}
 	switch n := e.(type) {
 	case *ListLit:
@@ -1809,6 +1809,21 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	// beside it ask too, so the two cannot keep two readings of one record (roadmap Gap R.440).
 	if t, ok := g.loopItemKindTag(e); ok {
 		return t, true
+	}
+	// A name the ITERATION rebound is its OWN ITEM, not the kind the name's earlier binding gave it.
+	// The container tables below are cumulative — `xs = [7]` puts `xs` in `listVars` for the rest of the
+	// module — and asking them about a loop variable is how `xs = [7]` / `for xs in [1, 2]:` /
+	// `print([xs, 1.5])` printed `[, 1.5]` where the reference prints `[1, 1.5]`: the slot stored the
+	// integer 1 and was tagged TagList, so the tag-reading printer went looking for a container at
+	// address 1 and printed nothing (roadmap **Gap R.489**; the same per-iteration record ADR 0233 and
+	// **Gap R.358** read for the tag table, asked here of the name the unroll replaced). Asked of the
+	// ITEM and not of the name, because the item is what the body of this copy walks.
+	if nm, isName := e.(*Name); isName && g != nil {
+		if item, isItem := g.loopItemExpr(nm); isItem {
+			if t, ok := g.elemKindTag(item); ok {
+				return t, true
+			}
+		}
 	}
 	// A variable the compiler built as a container holds a handle, and the slot that copies it
 	// needs the container's tag: appending a list variable to another list stored the handle and
@@ -7865,4 +7880,30 @@ func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 	// builds — closes the door for the container and for nothing else (ADR 0265, re-keyed by ADR 0322
 	// over roadmap Gap R.191).
 	return g.numChains.numeric(nm.Value, depth)
+}
+
+// nameHoldsContainer is the element that is a container the builder cannot SEE but the compiler
+// knows: a NAME whose last binding was a container, which the slot stores as the object's handle and
+// whose tag `elemKindTag` already reads off the runtime tables. The census asked the element's
+// SPELLING, and a name has none, so `sa = {1: "a"}` / `print([sa, 1])` built an object whose slots
+// carried (handle, TagDict) and whose header claimed one element kind — and rt_print_list printed the
+// handle as a number: `[1, 1]` at exit 0 where the reference prints `[{1: 'a'}, 1]` (roadmap
+// **Gap R.486**, beside **ADR 0359**'s identical fix for the interpolation element and **ADR 0232**'s
+// rule that the slots the builder wrote are the truth about the object). The same reading the tag
+// takes, asked once, so the tag and the census cannot disagree about one element.
+func (g *irGen) elementNameHoldsContainer(x Expr) bool {
+	nm, isName := x.(*Name)
+	if !isName || g == nil {
+		return false
+	}
+	// The tag road's own answer, asked once. Reading the container TABLES here instead would claim the
+	// slot of a name the ITERATION rebound: `xs = [7]` / `for xs in [1, 2]:` / `print([xs])` is a list of
+	// two integers, and a census that kept believing the first binding printed `[]` for it — so the
+	// census asks `elemKindTag`, which reads the loop item first and the name's container history only
+	// after it (roadmap Gap R.358, ADR 0232's one question).
+	t, ok := g.elemKindTag(nm)
+	if !ok {
+		return false
+	}
+	return t == int32(TagList) || t == int32(TagDict) || t == int32(TagSet)
 }

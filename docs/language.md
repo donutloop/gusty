@@ -1650,9 +1650,13 @@ Rules that the compiled backend implement:
   reaches a slot is a `TagNone` slot: the builder forces its payload to `0`, the object says its slots are the truth,
   and the mixed printer walks the pair — the static `int` array the numeric literal still folds from is left alone,
   so `sum`, `min` and `max` kept **ADR 0239**'s fold. What the arm still cannot see is a void that arrives through a
-  frame's front door and a container the program NAMED sitting beside a number — **R.437** and **R.439**, each
-  pinned with today's bytes beside the reference's; and the fold that adds a void's
-  payload instead of raising is **R.438**.
+  frame's front door — **R.437**, pinned with today's bytes beside the reference's — and the fold that adds a void's
+  payload instead of raising is **R.438**. The container the program NAMED sitting beside a number (**R.439**,
+  and the same shape spelled `sa = {1: "a", "b": 2}` / `print([sa, 1])` as **R.486**) answers now — **ADR 0438**
+  gave the census the container-NAME arm the tag door has had since **ADR 0189**, so `print([xs, 2])` writes
+  `[[1], 2]` and `print([sa, 1])` writes `[{1: 'a', 'b': 2}, 1]`, the object labelling its own slots and
+  `rt_print_list_mixed` walking the pair. What a literal's element still cannot do is carry a COMPREHENSION
+  (**R.487**) or a nested comprehension without a `llc` rejection (**R.488**).
 
   **A loop item's own kind is the item's, not the name's** (**R.440**, **ADR 0424**). The unrolled `for` road
   records what each item is once per iteration (`loopElemTag`, beside the interned-text record **ADR 0233**

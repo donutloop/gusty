@@ -407,25 +407,15 @@ func TestWhatTheVoidSlotRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 			dossier: "**Gap R.131** — the reference prints `True`; `bool()` over a container has no length " +
 				"door in this backend, and the row that owns it is not this one",
 		},
-		{
-			// The gate's other missing record, measured beside this row's and left to its own one: a
-			// CONTAINER held by a NAME, put in a literal beside a number, is built as though the gate had
-			// never been told what the name is. `print([1, [2]])` — the spelled literal — answers, and
-			// `print([[xs], 2])` answers, so the door is sound; it is the gate's element census that stops
-			// at `isContainerLiteral`.
-			name:     "a container the program named, beside a number",
-			src:      "xs = [1]\nprint([xs, 2])\n",
-			wantExit: 0, wantOut: "[0, 2]\n",
-			dossier: "**Gap R.439** — the reference prints `[[1], 2]`; the literal's handle is the payload " +
-				"the name carries, printed as the number it is",
-		},
-		{
-			name:     "two containers the program named, in one literal",
-			src:      "xs = [1]\nys = [2]\nprint([xs, ys])\n",
-			wantExit: 0, wantOut: "[0, 1]\n",
-			dossier: "**Gap R.439** — the reference prints `[[1], [2]]`; the two handles are the two heap " +
-				"slots, printed as the numbers the allocator handed out",
-		},
+		// The two rows this file used to pin for **Gap R.439** — `xs = [1]` / `print([xs, 2])` answering
+		// `[0, 2]`, and `xs = [1]` / `ys = [2]` / `print([xs, ys])` answering `[0, 1]` — MOVED with **ADR
+		// 0438** to `TestAContainerTheProgramNamedAnswersAsAnElement` in `named_container_element_test.go`,
+		// where both legs answer the reference's bytes. The census that labels the object now asks the same
+		// question the tag beside the slot asks, which is the half this gate did not have: the pair was being
+		// written correctly (`rt_tag_elem` carried TagList) and the header still claimed one element kind, so
+		// `rt_print_list` printed the handle as the number it is. What the void family still owes is below:
+		// the void a body RECEIVES is **Gap R.437**'s, the fold and the comparator over a void are **Gap
+		// R.438**'s.
 		// The row that used to sit at the end of this table — `for k in [None, 1.5]:` `print([k])`, the loop
 		// item whose own kind the print road read and the literal standing beside it did not — MOVED with
 		// **ADR 0424** to `TestALoopItemPutIntoALiteralAnswersWhatTheItemIs` in `loop_item_literal_test.go`,

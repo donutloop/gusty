@@ -18951,7 +18951,7 @@ single-element sort, whose answer is `[None]` — already matches the reference 
 row, so the row's boundary is the ORDER, not the print.
 
 <a id="gap-r-439"></a>
-### Gap R.439 — a container the program NAMED, put into a literal beside a number, prints its allocator's slot (⏳ OPEN, found by **ADR 0421**)
+### Gap R.439 — a container the program NAMED, put into a literal beside a number, prints its allocator's slot (✅ DONE, found by **ADR 0421**, closed by **ADR 0438**)
 
 ```
 xs = [1]
@@ -18973,6 +18973,14 @@ It is the same one line of the gate **ADR 0421** widened for the void, one arm f
 separately because it is not free: a name the compiler believes holds a container has to stop being an `i32`
 to the fold, and `sum`/`min`/`max` read that fold (**ADR 0239**). The row's own gate is the two programs
 above answered as the reference answers them, plus `len`, `in`, a subscript of the inner list and `==`.
+
+**Closed by ADR 0438 (2026-10-28), on this row's own prescription.** The row asked for "the container-name arm
+`elemKindTag` already has"; that is exactly what landed — the gate's element census now calls the tag road
+instead of re-deriving the question from spellings, and both programs answer the reference's bytes:
+`print([xs, 2])` → `[[1], 2]`, `print([xs, ys])` → `[[1], [2]]`. The two rows left
+`void_slot_literal_test.go`'s wrong-answer table (both suites) for the answered tables in
+`named_container_element_test.go`, and are on the record. What the void family still owes is untouched: the
+void a body RECEIVES is **Gap R.437**'s, and a fold or a sort over a void is **Gap R.438**'s.
 
 <a id="gap-r-440"></a>
 ### Gap R.440 — a loop item's own kind is asked by the print and not by the literal beside it (✅ CLOSED by **ADR 0424**, found by **ADR 0421**)
@@ -20565,7 +20573,7 @@ Pinned with today's bytes at both legs in `pkg/lang/container_element_and_member
 `integration/container_element_and_member_test.go`. No record: `tools/recmerge` refuses a source whose compiled
 bytes are not the reference's, which is the cross-check doing its job rather than an obstacle.
 
-### Gap R.486 — a container held in a NAME, written as the element of a literal, answers the slot's first word (⏳ OPEN, found by **ADR 0437**)
+### Gap R.486 — a container held in a NAME, written as the element of a literal, answers the slot's first word (✅ DONE, found by **ADR 0437**, closed by **ADR 0438**)
 
 ```
 $ printf 'sa = {1: "a", "b": 2}\nprint([sa, 1])\n' | gustyc --file -   ; echo "exit=$?"
@@ -20609,6 +20617,41 @@ and the element whose kind was never asked is exactly the case that must set it.
 (the last four are among the eight sources **ADR 0437** added, 9878 → 9886) and are pinned as controls in
 `TestTheContainerDoorsStillSayWhatTheyAnsweredBefore`. A literal element the builder can see must keep taking the
 road it takes now.
+
+**Closed by ADR 0438 (2026-10-28), one commit after it was filed.** The census that labels a literal's object
+now asks the question the tag beside the slot already asked. `literalNeedsTags`' `slotsItself` gained
+`elementNameHoldsContainer`, which is `elemKindTag` read once: a `*Name` whose element tag comes back
+`TagList`, `TagDict` or `TagSet` is a container element, and the object says its slots are the truth
+(`rt_mark_estr(o, 8)`), which is the road `rt_print_list_mixed` takes. The pair was being written correctly all
+along — this is the finding worth keeping — and only the header was missing:
+
+```
+; before (84a552c): the tag is right, the header is silent, the wrong printer is chosen
+call void @rt_tag_elem(i32 %t2, i32 0, i32 5)      ; TagList
+call void @rt_set_elem(i32 %t2, i32 0, i32 %t4)    ; the handle, in a register
+call void @rt_print_list(i32 %t2, i32 0)            ; the single-kind printer → "1"
+
+; after (ADR 0438)
+call void @rt_tag_elem(i32 %t2, i32 0, i32 5)
+call void @rt_set_elem(i32 %t2, i32 0, i32 %t4)
+call void @rt_mark_estr(i32 %t2, i32 8)             ; the object describes its own slots
+call void @rt_print_list_mixed(i32 %t2, i32 0)      ; → {1: 'a', 'b': 2}
+```
+
+Why the fix is the census and not the print call: `[xs, 1][0]`, `[xs] == [[1, 2]]`, `for v in [xs, [3]]` and
+`{"a": xs}` all read the same header, and a header the print road set for itself would leave every one of them
+wrong while the print looked fixed. The numeric-literal IR row (`print([1, 2, 3])` still takes
+`rt_print_list`, no bit 8) is what keeps **ADR 0239**'s static array — and with it `sum`/`min`/`max` — from
+being paid for this.
+
+The landing exposed a second defect, which is **Gap R.489** below: with the census honest, `elemKindTag`'s
+stale-table reading of a rebound loop variable stopped being invisible. The two rows went from *pinned with
+today's bytes* to *recorded*: `tools/recmerge` wrote 19 entries from the reference with the compiled leg
+cross-checked (**9886 → 9905**, none refused), and the family now answers in
+`pkg/lang/named_container_element_test.go` (compiled leg, record leg, IR) and
+`integration/named_container_element_test.go` (the CLI beside a live CPython, exit asserted).
+`print([[{"a": 1} for x in range(1)], 1])` printing `[1, 1]` is still owed — that road is **Gap R.487**, a
+comprehension rather than a name — and one level deeper is **Gap R.488**'s exit 2.
 
 ### Gap R.487 — a COMPREHENSION written as the element of a literal answers the slot's first word (⏳ OPEN, found by **ADR 0437**)
 
@@ -20681,3 +20724,69 @@ that should be a raise, two wrong numbers at exit 0 that come from two different
 assembles. All eight of their sources are pinned in `pkg/lang/container_element_and_member_test.go` and
 `integration/container_element_and_member_test.go`, none of them is on the record, and none of them is on the
 conformance matrix.
+
+### Gap R.489 — the loop item a container NAME was used for keeps the container's tag (✅ DONE, found and closed by **ADR 0438**)
+
+Found by landing **Gap R.486**'s fix, and unfixable separately from it:
+
+```
+$ printf 'xs = [7]\nfor xs in [1, 2]:\n    print([xs, 1.5])\n' | gustyc --file -   # at 84a552c AND before it
+[, 1.5]
+[, 1.5]
+$ python3 -c 'xs = [7]
+for xs in [1, 2]:
+    print([xs, 1.5])'
+[1, 1.5]
+[2, 1.5]
+```
+
+Nothing about the wrongness was new — the pre-change build printed the same blank, as did the build before it;
+what was new was that anyone could see it. Until the census (`literalNeedsTags`) learned to ask a NAME
+anything, no object carrying a stale tag was ever read through its tags, so the tag could be wrong forever
+inside a container that was printed by its single static kind. The siblings, all measured at `84a552c`:
+
+| program after `xs = [7]` / `for xs in [1, 2]:` | this backend | reference |
+|---|---|---|
+| `print([xs, 1.5])` | **`[, 1.5]`** ×2 | `[1, 1.5]`, `[2, 1.5]` |
+| `print([xs, "a"])` | **`[, 'a']`** ×2 | `[1, 'a']`, `[2, 'a']` |
+| `print([xs] == [1])` | **`False`**, `False` | `True`, `False` |
+| `print([xs])` | `[1]`, `[2]` ✓ | same |
+
+The last line is the trap: the shape answers correctly whenever the object never claims per-element tags, so
+the suite had nothing to complain about while the emitter wrote — verifiably, in the module — `call void
+@rt_tag_elem(i32 %t2, i32 0, i32 5)` beside the integer 1.
+
+**Root cause.** `elemKindTag`'s `*Name` arm reads two sources in the wrong precedence for this case:
+
+1. `loopItemKindTag(e)` — the unroll's own record of what THIS copy of the body walks — but it answers only
+   when the item's kind is one `slotTagSelfDescribing` accepts, and a plain integer is not; and then
+2. the container tables `listVars` / `mixedLists` / `runtimeDicts` / `runtimeSets`, which are
+   **cumulative and never unenrolled**: `xs = [7]` enrolls `xs` for the rest of the module.
+
+For an int item, (1) declines and (2) lies: `TagList` beside a payload of `1`. (The tag was right for
+**Gap R.358**'s and **Gap R.440**'s cases because those items were `None`/float/text, which (1) does name.)
+
+**The fix, and why not the tables.** The tag road asks the ITEM before the tables:
+
+```go
+if nm, isName := e.(*Name); isName && g != nil {
+    if item, isItem := g.loopItemExpr(nm); isItem {
+        if t, ok := g.elemKindTag(item); ok {
+            return t, true
+        }
+    }
+}
+```
+
+…falling through when the item's own kind cannot be asked, so no shape that answers today starts refusing.
+Unenrolling a name from the tables when a `for` rebinds it was rejected: the tables are program-scoped facts
+that roads *earlier than the loop* consult (the fold gates, the copy door, the escape census), and a name that
+was a list is still a list to those questions. The defect was never that the table remembers; it is that the
+table got the last word about an element the iteration owns — **ADR 0232**'s one question, asked of the wrong
+witness.
+
+**The control that keeps the fix honest.** `for xs in [[1], [2]]:` after `xs = [7]` — an item that IS a
+container — still stores the handle and the `TagList`, and prints `[[1], 1]`: the IR row pins
+`rt_tag_elem(%t4, 0, 5)` there and `rt_tag_elem(%t2, 0, 0)` (never `5`) for the int item. Eight sources answer
+on both witness legs in `pkg/lang/named_container_element_test.go::TestTheLoopItemOverAContainerNameKeepsItsOwnKind`
+and are recorded; the CLI leg is `integration/named_container_element_test.go`.

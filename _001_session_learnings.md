@@ -16090,3 +16090,58 @@ documentation column that had been telling readers to do something impossible fo
    `capability_docs_test.go` failed the hand-typed code table until I regenerated it with `go run ./tools/captable`.
    A document that is generated and guarded is a document that cannot drift; a document that is typed is a rumour
    with nice formatting.
+
+## ADR 0438 — a literal element's kind is asked once: the container the program NAMED, and the loop item that a container name was used for (Gaps R.486, R.439 closed; R.489 filed and paid, 2026-10-28)
+
+The row was filed yesterday by **ADR 0437** and closed today, which is the shortest life a gap has had in this
+tracker for a while — and the reason is instructive: it was filed by a *measurement sweep*, and a sweep that is
+re-run as a test suite turns a filed defect into a paid one the moment someone looks at the road instead of the
+number.
+
+1. **A pair written by two questions is a bug that hides in whichever question nobody asks.** A container slot is
+   (word, tag). The word came from `heapElemKind`, the tag from `elemKindTag`, and whether the object must be read
+   through those tags from `literalNeedsTags` — which asks the element's SPELLING. The first two were right for
+   `sa = {1: "a", "b": 2}` / `print([sa, 1])`: the IR shows `rt_tag_elem(%t2, 0, 5)` beside the handle. The third
+   said "no tags needed", and the single-kind printer printed the handle as `1`. The fix is one arm of one
+   predicate calling the function that already had the answer — and the reason it took three cycles to see it is
+   that the wrong answer and the right answer differed in ONE cell of the output, which is the shape of bug a
+   green suite is best at hiding.
+
+2. **The same gate has been widened three times, one question at a time.** **ADR 0359** fixed this census for the
+   interpolation element and its comment stated the rule in print ("the slots are the truth", **ADR 0232**) — and
+   nobody applied the rule to the container arm. When a fix is "give gate X the arm that door Y already has", the
+   next cycle should ask which OTHER arms of gate X are still spelling-tests. That question is what turned a
+   one-line change into this cycle.
+
+3. **A fix that makes a hidden wrong answer visible is a regression you authored, even when the bytes predate
+   you.** Adding the census arm changed `xs = [7]` / `for xs in [1, 2]:` / `print([xs, 1.5])` from "wrong quietly"
+   to "wrong loudly" (`[, 1.5]`). The bytes were identical on the pre-change build — I checked, with both
+   binaries side by side — so it was not damage; but shipping the census without the tag fix would have left the
+   suite redder and the language no better. The right move was to fix both, file the second as its own row
+   (**Gap R.489**) with the byte-equality evidence, and say in the ADR why they could not be split. The lesson is
+   the pre-change binary: measure the same program on `HEAD~` and on your build before you call anything a
+   regression or a fix.
+
+4. **The precedence was wrong, not the memory.** `elemKindTag` asked the iteration first and the container tables
+   second — which looked right until you noticed the first question only answers for kinds it can name, so for an
+   integer item control fell through to a cumulative table where `xs = [7]` had enrolled `xs` forever. Two
+   lessons: a "try the specific source, fall back to the general one" chain is only correct if the specific source
+   answers for EVERY case it owns; and the tempting wrong fix — unenrol the name when a `for` rebinds it — breaks
+   roads that read the tables *before* the loop, so the fix is precedence, not memory.
+
+5. **A pinned row that starts answering must MOVE, and the suite is built to make that visible.** Both filed
+   tables fail when their program answers, and the failure text says "DELETE this row and close the named one".
+   Four rows left two files for `named_container_element_test.go`, and 19 sources went from pinned-wrong to
+   recorded-right (`tools/recmerge`, 9886 → 9905, none refused). A record written from the reference with the
+   compiled leg cross-checked is the transition the whole artifact design exists to make.
+
+6. **The regression check that mattered was not the new test.** Twenty-seven programs, run against both builds and
+   CPython: five mismatched, all five identical on both builds, so they are pre-existing gaps — and two of them
+   (`print([xs + [3]])` → `[3]`, and a text loop item beside a number) are new candidates for rows, written into
+   this file so they are not lost. A test that starts passing proves nothing on its own; a sweep that changes
+   nothing proves a lot.
+
+7. **The count guards caught me again, three files deep.** 9886 → 9905 had to land in `AGENTS.md`,
+   `docs/operations.md`'s artifact table and `roadmap.md`'s Snapshot, and `TestTheRoadmapSnapshot…` recomputed the
+   ADR pair (`427/0437 → 428/0438`) and the owed tally (`237/392 → 235/393`) at the same time. Write the prose
+   count last, from the guard's output, never from memory.
