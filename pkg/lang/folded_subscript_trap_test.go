@@ -221,71 +221,18 @@ func TestTheFoldedSubscriptPredicateIsAskedDirectly(t *testing.T) {
 	}
 }
 
-// Two shapes the sweep surfaced, pinned with today's answer beside the reference's rather than papered over.
-// Neither is this commit's damage: both measure identically on `b276ddf` and on this build, which is what keeps
-// them rows rather than part of the fix.
-func TestWhatTheFoldedSubscriptSweepStillOwesIsFiledNotFixed(t *testing.T) {
-	t.Parallel()
-	for _, tt := range []struct {
-		name    string
-		src     string
-		today   string // what this backend does today, byte for byte
-		oracle  string // what CPython answers
-		gap     string
-		noExit2 bool
-		refusal bool
-	}{
-		{
-			// `len` of a literal takes the literal's COUNT and never lowers the elements, so an element
-			// whose read raises is skipped: the call inside the literal never runs either.
-			"len of a literal whose element raises",
-			"print(len([[1, 2][0][0], 1]))",
-			"2", "TypeError: 'int' object is not subscriptable",
-			"roadmap Gap R.494 (the count door never evaluates the spelled-out elements)", true, false,
-		},
-		{
-			"len of a literal whose element calls",
-			"def f():\n    print(\"side\")\n    return 1\nprint(len([f()]))",
-			"1", "side\n1",
-			"roadmap Gap R.494 (the same door, the effect the reference performs)", true, false,
-		},
-		// The fourth shape the sweep found — a subscript of a read out of a COMPREHENSION, Gap R.495 —
-		// is filed beside its own door, where the pair-element residue lives:
-		// pkg/lang/pair_element_read_test.go::TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed.
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			out, refused := compiledOutOrRefusal(t, tt.src)
-			if tt.refusal {
-				if !refused {
-					t.Fatalf("%q answered %q where this row records a refusal and the reference answers %q — the door grew, so move the row", tt.src, out, tt.oracle)
-				}
-				if !strings.Contains(out, "list/dict/set literal") {
-					t.Fatalf("%q refused without the sentence this row pins: %s", tt.src, out)
-				}
-				return
-			}
-			if refused {
-				if strings.Contains(out, "codegen: internal invariant") || strings.Contains(out, "global variable reference") {
-					t.Fatalf("%q failed as a compiler bug rather than a refusal: %s", tt.src, out)
-				}
-			}
-			got := strings.TrimRight(out, "\n")
-			if refused {
-				got = "refusal: " + strings.TrimPrefix(strings.TrimRight(out, "\n"), "gustyc: jit: codegen: ")
-			}
-			if strings.Contains(tt.today, "object is not subscriptable") && !refused {
-				// A trap row: the answer today is the raise, which compiledOut reports as a failure, so the
-				// row is asserted through jitTrap instead.
-				class, message := jitTrap(t, tt.src)
-				if got2 := class + ": " + message; got2 != tt.oracle {
-					t.Fatalf("raised %q where this row pins %q", got2, tt.today)
-				}
-				return
-			}
-			if got != tt.today {
-				t.Fatalf("today's answer is %q, not the %q this row pins; the reference answers %q", got, tt.today, tt.oracle)
-			}
-		})
-	}
-}
+// This family's residue is FILED, not folded in — and it lives beside the door that owes each row,
+// which is why nothing is pinned here (**ADR 0440**'s row-hygiene rule: a row that starts answering
+// moves, and a table that empties itself proves nothing except that nobody looks at it).
+//
+//   - **Gap R.494** — `len` of a literal took the literal's COUNT and never performed its elements,
+//     so `print(len([[1, 2][0][0], 1]))` printed `2` at the exit code of success where this file's own
+//     subscript raises `TypeError: 'int' object is not subscriptable`, and `print(len([f()]))` skipped
+//     the call inside the literal. CLOSED by **ADR 0441**; both rows moved to
+//     pkg/lang/length_element_effects_test.go's answering tables and their CLI twins to
+//     integration/length_element_effects_test.go, where they fail on any regression to the count.
+//   - **Gap R.495** — a subscript of a read out of a COMPREHENSION still refuses. Pinned in
+//     pkg/lang/pair_element_read_test.go::TestWhatThePairElementDoorStillCannotReachIsFiledNotFixed,
+//     where the pair-element residue lives.
+//   - **Gap R.496** — `len` of a comprehension the run time builds is rejected by the assembler
+//     (exit 2). Pinned in pkg/lang/length_element_effects_test.go's filed table, beside its door.

@@ -81,6 +81,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// sentence about an inline literal; the inner read's own accident (a position that is not there) still
 		// wins the order, because it is the one the program wrote first (roadmap **Gap R.227**, **ADR 0440**).
 		"folded_subscript_trap",
+		// The count door performs the elements whose count it takes: `len` of a container the program spelled
+		// out is the number the spelling states, AND every element that acts runs first — the call that prints
+		// `side`, the read whose accident the subscript door raises (**Gap R.227**'s road), the division that
+		// raises — so the raises are the ones the program catches from its own `except`, and a container of
+		// spellings still answers with no builder in the module (roadmap **Gap R.494**, **ADR 0441**).
+		"length_element_effects",
 		// A text a METHOD's body builds, in a method that takes a parameter, is the text the door rendered:
 		// `return "x%s" % s` answers `xhi` and `return s * 2` answers `hihi`, line-for-line the reference. This is
 		// the promotion ADR 0186 asks for — the probe was filed by ADR 0365 with both wrong lines pinned, and the

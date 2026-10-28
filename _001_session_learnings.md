@@ -16275,3 +16275,65 @@ number.
    subscript do not meet" would have hidden the exit-0 case (the loudest defect this house recognises) inside two
    honest-looking ones, so the length door and the built-container door each got a row with its own today-bytes
    beside the reference's, and both fail their own tests on the day they close.
+
+## ADR 0441 — the count door PERFORMS the elements whose count it takes (roadmap Gap R.494 closed; ADR 0441; Gaps R.496–R.499 filed, 2026-10-28)
+
+**Change**: `builtinLen` answered a spelled-out container from its element list and never lowered the elements, so
+`print(len([f()]))` printed `1` without calling `f` and `print(len([[1, 2][0][0], 1]))` printed `2` at the exit code
+of success where the subscript door beside it has raised `TypeError: 'int' object is not subscriptable` catchably
+since **ADR 0440**. `(*irGen).lowerLiteralElementsForEffect` (new file
+`pkg/lang/length_element_effects.go`) now asks each element one pure question — *is this an operation, or a
+spelling?* — performs the operations in the reference's order, and discards their words.
+
+1. **"It printed the right number" is not a witness, and the count door is the proof.** Every wrong answer in this
+   family exited **0** — including the one the previous cycle had just fixed everywhere else. `print([[1, 2][0][0],
+   1])` raises, `print(len([[1, 2][0][0], 1]))` prints `2`: one program, two stories, and the difference was which
+   door happened to read the container. When a door reads a container's SHAPE off its spelling, the elements it did
+   not use are still the program's operations — **Gap R.149**'s rule (**ADR 0275**, written for `and`/`or`) arrived
+   at the length door from the other side, and it is worth asking of every "the compiler can read this off the
+   literal" optimisation in the tree, not only this one.
+
+2. **Handing an element to `value` was wrong, and only the negative control caught it.** My first draft called
+   `g.value` on every acting element. `[f(), 2]` reads as an int list to the checker, so the container takes the
+   *static element* road, whose emitter refuses anything but an `IntLit`; the refusal hit the door's own
+   "keep the count you answer today" fallback and `print(len([1, [f(), 2], 3]))` printed `3` with no `side` — the
+   defect I was fixing, reproduced inside the fix, at exit 0. The container's element road is a decision about its
+   CONTENT; a shape door that inherits it silently loses the effects it exists to perform. The door now walks a
+   container literal to its PARTS and builds nothing. Had I only run the answering table I would have shipped it:
+   the row that caught it (`the call is inside a nested literal`) exists because I wrote the nested shapes from
+   CPython's behaviour rather than from my own road map.
+
+3. **A trap ends a block, and the count still has to be printed.** Lowering `1 // 0` emits a raise, and a raise is a
+   terminator: the `try:`-wrapped version of the same row died in `llc` with `expected instruction opcode` because
+   the print of the count was emitted after the branch to the landing pad. The trap roads here open a fresh label as
+   they raise (`constantTrap`, `emitBadNegation`) — I had to learn that by reading two doors, and the scratch-buffer
+   commit rule is what makes the whole family safe. **ADR 0166**'s exit 2 is spent by the compiler, never by a
+   program, and this is the second cycle in a row where a "wrong answer" fix produced one until the emission order
+   was fixed.
+
+4. **Two neighbours fell out of the sweep and both are exit 2, which is why they are rows and not this commit.** A
+   `def` inside a `try:` has its whole `define` emitted into the enclosing block (`expected instruction opcode`,
+   **Gap R.497**) and the same statement in an `if`/`for`/`while` refuses to call the function it just bound
+   (**Gap R.498**); `len` of a comprehension the run time builds reads its count out of a global that is not there
+   (**Gap R.496**). I measured each on a detached worktree at `94a1458` before believing them — and the
+   `try:`-def one nearly became my own regression: the first draft of a catch row bound its helper *inside* the
+   block, so exit 2 looked like damage from this commit until the parent said otherwise. Every row whose repro needs
+   a handler now binds its helper before the `try:` instead, and says why in the comment.
+
+5. **`print(len([[True][0][0]]))` printing `1` is the subscript door's fault, and the shape with no `len` in it is
+   how I know.** `x = [[True][0][0]]` / `print("ok")` prints `ok` at exit 0 as well, identically at the parent — so
+   there was no raise for my new lowering to perform, and "make the row pass" would have meant duplicating a
+   subscript-door decision inside a length door. Filed as **Gap R.499** with today's `1` pinned at both legs. The
+   general lesson: when a row's fix is a decision that belongs to another door, the test for it belongs in the filed
+   table, and the roadmap row has to name the door that owns the decision — not the door where the symptom printed.
+
+6. **Filed tables move, and an empty one is a hole in the suite.** The two **Gap R.494** rows left
+   `pkg/lang/folded_subscript_trap_test.go` and its CLI twin for the new answering tables; the tables were then
+   empty loops that would pass forever, so they became comments naming where each row went (and the residue —
+   **Gap R.496** and friends — went into a filed table beside the door that owes it). **ADR 0440**'s lesson 5 in the
+   other direction: a row that starts answering must move, and a ledger must still hold something to be a ledger.
+
+7. **The recorder is the wrong-answer detector, again.** Thirty entries went in, `10005 → 10035`, none refused —
+   including the two programs **ADR 0440**'s run *refused*, which record now precisely because the legs agree. A
+   recording run that used to refuse a source and now accepts it is the cheapest possible proof of a closed row, and
+   the cheapest possible proof that a row was really about both legs rather than my own expectation.

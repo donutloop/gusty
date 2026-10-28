@@ -285,7 +285,11 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 		return "", fmt.Errorf("len of a non-string variable")
 
 	case *ListLit:
-		// len of a list literal is the element count; no element lowering needed.
+		// len of a list literal is the element count — but the COUNT is not the whole of what the
+		// program wrote: the reference evaluated every element to build the container it then
+		// measured, so every element that acts (a call that prints, a read that raises, a division
+		// that raises) acts here too, in the order the program wrote them (roadmap Gap R.494, ADR 0441).
+		g.lowerLiteralElementsForEffect(b, lit.Elems)
 		return fmt.Sprintf("%d", len(lit.Elems)), nil
 	case *DictLit:
 		// A dict literal with strings is a heap object (its keys/values are interned),
@@ -338,9 +342,15 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 		return v, nil
 	case *Call:
 		if elems, ok := g.dictMethodElems(c.Args[0]); ok {
+			// The same door, one spelling over: `len("a b".split())` counts elements the program
+			// wrote into the call that produced them (roadmap Gap R.494, ADR 0441).
+			g.lowerLiteralElementsForEffect(b, elems)
 			return fmt.Sprintf("%d", len(elems)), nil
 		}
 		if elems, ok := listCallElems(c.Args[0]); ok {
+			// `len(sorted([f()]))` preserves the element SET, and the reference still evaluated
+			// every one of them to build the list it sorted (roadmap Gap R.494, ADR 0441).
+			g.lowerLiteralElementsForEffect(b, elems)
 			return fmt.Sprintf("%d", len(elems)), nil
 		}
 		if n, ok := g.listLen(c.Args[0]); ok {

@@ -1,0 +1,31 @@
+# The count door PERFORMS the elements whose count it takes: `len` of a container the program spelled
+# out is the number the spelling states, and every element that acts — a call that prints, a read the
+# subscript door raises, a division that raises — acts first, in the order the reference evaluates them.
+# roadmap Gap R.494, ADR 0441. The last three lines are the same elements as raises the program catches,
+# and the last four are the controls: a container of spellings keeps answering its count with no builder.
+def f():
+    print("side")
+    return 1
+print(len([f()]))
+print(len([1, f(), 3]))
+print(len([1, [f(), 2], 3]))
+print(len([[f(), 2], 3]))
+print(len({"a": f()}))
+print(len(sorted([f(), 2])))
+print(len([f(), f()]))
+try:
+    print(len([[1, 2][0][0], 1]))
+except TypeError as e:
+    print("caught", e)
+try:
+    print(len([[1, 2][5]]))
+except IndexError as e:
+    print("caught", e)
+try:
+    print(len([1 // 0]))
+except ZeroDivisionError as e:
+    print("caught", e)
+print(len([1, 2, 3]))
+print(len([1, [2, 3], 4]))
+print(len({"a": 1, "b": 2}))
+print(len([1, 2]) + len([3, 4]))

@@ -962,9 +962,39 @@ the sentence is written once — `notSubscriptableSentence` — which the run-ti
 fold and the object cannot report one accident two ways (**roadmap Gap R.227**, **ADR 0440**). A TEXT is the
 exception the language keeps: a text is a container of one-character texts, so `print(["ab"[0][0]])` answers
 `['a']`, and chains the fold or the pair door already answer (`[[[1, 2], [3, 4]][1][0], 9]` → `[3, 9]`) keep
-answering. Two shapes are still owed, stated rather than smoothed: `len` of a literal counts without evaluating
-its elements, so `print(len([[1, 2][0][0], 1]))` prints `2` where the reference raises (**Gap R.494**), and a
-subscript of a read out of a comprehension still refuses (**Gap R.495**).
+answering.
+
+An element of a container the program spelled out is an OPERATION, not only a value, and a door that reads the
+container's SHAPE still has to perform it. `len` answers a spelled-out literal from its element list and never
+builds the object — that is an optimisation, not the meaning — so every element that acts is evaluated first, in
+the order the reference evaluates them, and its value thrown away:
+
+```
+def f():
+    print("side")
+    return 1
+print(len([f()]))                       # side            (this printed 1 — the call never ran)
+                                        # 1
+print(len([1, f(), 3]))                 # side then 3
+print(len([[1, 2][0][0], 1]))           # TypeError: 'int' object is not subscriptable  (this printed 2)
+print(len([[1, 2][5]]))                 # IndexError: list index out of range
+print(len([1 // 0]))                    # ZeroDivisionError: integer division or modulo by zero
+try:
+    print(len([f(), 1 // 0]))           # side, then the raise — the FIRST element's accident wins
+except ZeroDivisionError as e:
+    print("caught", e)
+print(len([1, 2, 3]))                   # 3, with no container built: a spelling performs nothing
+```
+
+The rule is the one the two operators that choose an operand already follow (**ADR 0275**): the operand a door does
+not use is still evaluated (**roadmap Gap R.149**, arriving at the length door as **Gap R.494**, closed by
+**ADR 0441**). A container whose every part is a spelling — a number, a text, a verdict, the void, a name, a literal
+of those — performs nothing and emits no builder, so the count stays the constant the spelling states.
+Three shapes are still owed, stated rather than smoothed: a subscript of a read out of a comprehension still refuses
+(**Gap R.495**), `len` of a comprehension the RUN TIME builds is rejected by the assembler (**Gap R.496**), and an
+element that reads a verdict, a double or the void out of a container the fold answered is claimed by the numeric-slot
+road and answers a number — `print(len([[True][0][0]]))` prints `1` where the reference raises, and
+`x = [[True][0][0]]` / `print("ok")` prints `ok` too, which is what puts it on the subscript door (**Gap R.499**).
 
 ### What a comprehension written as an ELEMENT is (LLVM codegen)
 

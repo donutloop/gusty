@@ -3,8 +3,6 @@ package integration
 import (
 	"strings"
 	"testing"
-
-	"github.com/donutloop/gusty/pkg/lang"
 )
 
 // The subscript that stands on a read the compiler answered at compile time, through the CLI (roadmap
@@ -141,58 +139,10 @@ func TestTheFoldedSubscriptControlsStillAnswerThroughTheCLI(t *testing.T) {
 	}
 }
 
-// What the sweep left owed, pinned with today's bytes beside the reference's rather than papered over. Both
-// rows measure identically on the build before the fix (`b276ddf`) and on this one, which is what keeps them
-// rows rather than part of this commit.
-func TestWhatTheFoldedSubscriptSweepStillOwesThroughTheCLI(t *testing.T) {
-	t.Parallel()
-	for _, tt := range []struct {
-		name   string
-		src    string
-		today  string // what this backend does today, at this altitude
-		python string // what the reference does
-		gap    string
-	}{
-		{
-			"len of a literal never evaluates the literal's elements",
-			"print(len([[1, 2][0][0], 1]))",
-			"2", "TypeError: 'int' object is not subscriptable",
-			"roadmap Gap R.494",
-		},
-		{
-			"and so the call inside the literal never runs either",
-			"def f():\n    print(\"side\")\n    return 1\nprint(len([f()]))",
-			"1", "side\n1",
-			"roadmap Gap R.494",
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
-			if code == 2 {
-				t.Fatalf("the toolchain failed on its own program:\n%s", stderr)
-			}
-			if got := strings.TrimSpace(stdout); got != tt.today {
-				t.Fatalf("today's answer is %q, not the %q this row pins (the reference answers %q)", got, tt.today, tt.python)
-			}
-			// The reference is asked through the same door the oracle uses, and the row fails if its side of
-			// the pair has stopped being what this row records: a divergence is only a row while both legs
-			// still disagree (roadmap Gap R.204's rule about claims that cannot be re-measured).
-			pyOut, pyErr, runErr := lang.PythonRun(tt.src + "\n")
-			ref := strings.TrimSpace(pyOut)
-			if runErr != nil {
-				lines := strings.Split(strings.TrimSpace(pyErr), "\n")
-				ref = lines[len(lines)-1]
-			}
-			if ref == "" {
-				t.Fatalf("the reference gave no verdict for this program")
-			}
-			if ref != tt.python {
-				t.Fatalf("the reference's answer is not what this row records: got %q, the row says %q (out %q err %q)", ref, tt.python, pyOut, pyErr)
-			}
-			if code != 0 {
-				t.Fatalf("gusty exited %d on a program whose answer this row pins as %q:\n%s", code, tt.today, stderr)
-			}
-		})
-	}
-}
+// What the sweep left owed is FILED, and it lives beside the door that owes it, so nothing is pinned
+// here (**ADR 0440**'s row-hygiene rule). **Gap R.494** — `len` of a literal counted without performing
+// its elements — is CLOSED by **ADR 0441** and its two CLI rows moved to
+// integration/length_element_effects_test.go, where they now pin the reference's answer rather than
+// today's; the `len` rows that are still wrong (`len` of a comprehension the run time builds, exit 2,
+// **Gap R.496**) are pinned there too, and **Gap R.495**'s refusal stays pinned in
+// pkg/lang/pair_element_read_test.go's filed table.

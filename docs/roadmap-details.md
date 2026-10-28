@@ -21024,7 +21024,7 @@ The filed row left `pkg/lang/pair_element_read_test.go`'s residue table for the 
 residue table stayed populated with **Gap R.495** — a row that stops refusing moves; it does not disappear, and a
 filed table that empties itself proves nothing either.
 
-### Gap R.494 — `len` of a literal counts without evaluating the literal's elements (⏳ OPEN, found by **ADR 0440**)
+### Gap R.494 — `len` of a literal counts without evaluating the literal's elements (✅ DONE, closed by **ADR 0441**)
 
 ```
 $ gustyc --eval 'print(len([[1, 2][0][0], 1]))'      this backend: 2   at exit 0
@@ -21047,6 +21047,38 @@ subtracts one road's marks from another's, which is the precedent for a door tha
 building the container. A literal whose elements cannot be lowered stays the count it answers today; `sum`,
 `min` and `max` are separate doors with their own static-array fold (**ADR 0239**) and are not claimed here.
 
+**Closed by ADR 0441.** The door is `(*irGen).lowerLiteralElementsForEffect`, reached from `builtinLen`'s
+`*ListLit` road and from the two roads that answer a count off an element list a CALL produced
+(`"a b".split()`, a list-taking builtin). Three decisions, all measured first:
+
+* **The gate is a pure question, not a lowering.** `literalElementAsksToBeRun` answers *is this element an
+  operation, or a spelling?* — a number, a text, a verdict, the void, a name, or a literal of inert parts is a
+  spelling; a call, a read, an arithmetic node, a comprehension is an operation. Asked of the whole element list
+  before the door touches a builder, it is what keeps the row's negative control honest: `len([1, 2, 3])` still
+  emits no instruction, no allocation and no builder, because no element asked to be run. A `Name` is inert
+  because an undefined name is a front-end error in this language, so a slot read cannot raise the reference's
+  `NameError` from here.
+* **A container element is walked, not lowered.** Handing `[f(), 2]` to `value` was the first attempt and it is
+  wrong: the element road a container takes is picked from what it HOLDS, and the checker reads `f()`'s answer as
+  an int, so the static element road claims the literal and refuses anything but an `IntLit` outright — the door
+  swallowed the refusal with its own "leave the count alone" fallback and printed `3` for
+  `print(len([1, [f(), 2], 3]))` with no `side`. The door now goes through a container literal to its PARTS and
+  performs those, building nothing, which is also why the nested object costs nothing: its existence has no answer
+  any program can read once the container holding it is itself discarded for a count.
+* **Scratch, then commit.** The elements are emitted into a buffer and committed only when every one of them
+  lowered. An element whose read raises emits a trap that ENDS a block, and the rest of the program (the print of
+  the count) still has to be emitted: the trap roads here open a fresh label as they raise (`constantTrap`,
+  `emitBadNegation`), which is what makes the discarded count harmless instead of an instruction after a
+  terminator — the module the compiler hands `llc` is the one place **ADR 0166** refuses to spend exit 2.
+
+What the commit did NOT reach, and says so rather than claiming it: `len` of a comprehension the run time builds
+(**Gap R.496**), and an element that reads a verdict, a double or the void, which the numeric-element road answers
+with a number before the subscript door asks its kind question (**Gap R.499** — the shape with no `len` in it,
+`x = [[True][0][0]]` / `print("ok")`, prints `ok` at exit 0, which is what puts it on the subscript door and not
+here). Both are pinned with today's bytes in `pkg/lang/length_element_effects_test.go`'s filed table and its CLI
+twin, and the two rows this one closed left `folded_subscript_trap_test.go`'s filed tables on both sides for the
+answering tables, so a regression to the count goes red rather than silently re-opening a filed row.
+
 ### Gap R.495 — a subscript of a read out of a COMPREHENSION still refuses where the reference raises (⏳ OPEN, found by **ADR 0440**)
 
 ```
@@ -21068,3 +21100,110 @@ built container — which is why it is a row rather than part of that commit, an
 where the pair-element residue lives (`pkg/lang/pair_element_read_test.go`), so the day the door grows, the row
 fails instead of quietly disappearing. `print([[[1, 2], [3, 4]][1][0], 9])` printing `[3, 9]` on both builds is
 the control that keeps the two shapes from being merged into one row.
+
+### Gap R.496 — `len` of a comprehension the run time builds reads a count field out of a global that is not there (⏳ OPEN, found by **ADR 0441**)
+
+```
+$ gustyc --eval 'def g(v):
+    return v * 2
+print(len([g(x) for x in [1, 2, 3]]))'
+    llc-20: error: invalid use of function-local name
+      %t15 = load i32, i32* getelementptr({i32, [0 x i32]}, {i32, [0 x i32]}* %h1, i32 0, i32 0)   → exit 2
+$ python3   (same source)                             reference: 3
+```
+
+`builtinLen`'s `*Comp` road does what the comprehension fold has always let it do: emit the literal's static global
+and load the count field out of it (**ADR 0192**'s fold). That is right for a comprehension the fold ANSWERED —
+`print(len([x for x in [1, 2, 3]]))` prints `3` and always did — and wrong for one the run time builds, where there
+is no global: the container is a heap object in `%h1`, so the load names a function-local register in a global
+position, and the count it would have read is `[0 x i32]` — the fold's table has nothing for this node, so the
+element count in the emitted type is zero. `llc` rejects the module, which is **exit 2**, the code **ADR 0166**
+reserves for the toolchain's own failure, on a program CPython answers with a digit.
+
+Three sibling doors of the SAME comprehension answer wrongly rather than failing to assemble, which is how the row
+was written up as one: `print([g(x) for x in [1, 2, 3]][1])` traps `IndexError: list index out of range` where the
+reference prints `4`, and `for v in [g(x) for x in [1, 2, 3]]:` / `    print(v)` prints `0` where the reference
+prints `2`, `4`, `6`. All four are `g.compLen`/`g.compEls`/`g.compKeys` — the fold's tables — being consulted for a
+comprehension the run time built instead of `g.rtComps`, whose handle `containerHandleOf`'s `*Comp` arm already
+knows how to materialise (**ADR 0439**'s rule for the slot doors, **ADR 0188**'s rule about what may sit in an
+operand). **Gap R.490** is the same root at the loop head, the condition door and the truth door; this row is the
+length door, and the sweep that closed **Gap R.494** measured it identically on `94a1458` and on its own build —
+which is the only reason it is a row and not a regression from that commit.
+
+### Gap R.497 — a `def` inside a `try:` block emits its body into the enclosing block, and `llc` rejects the module (⏳ OPEN, found by **ADR 0441**)
+
+```
+$ gustyc --eval 'try:
+    def f():
+        return 1
+    print("ok")
+except ZeroDivisionError as e:
+    print("caught", e)'
+    llc-20: error: expected instruction opcode
+      define i32 @gy_f() {            ← in the middle of @main's entry block    → exit 2
+$ python3   (same source)                             reference: ok
+```
+
+The function is never called and the program has no `len`, no comprehension and no closure in it: the defect is
+purely where the DEFINITION is emitted. The block road wrote the whole `define i32 @gy_f() { … }` into the same
+buffer the block's instructions were going into, so `llc` meets a top-level entity where it expects an instruction.
+It is **Gap R.474**'s instruction shape (`a CONTAINER LITERAL written into a METHOD body has its global emitted
+inside the define`) arriving at a statement rather than a global, and it is what the sweep for **Gap R.494** hit
+when it tried to write a catchable raise around an element that prints — the helper had to be bound BEFORE the
+`try:`, which is the shape that measures two doors at once, so the rows that need a handler do it that way and this
+shape is filed instead of smuggled in.
+
+Pinned at both legs with today's exit code in `pkg/lang/length_element_effects_test.go::TestWhatTheCountDoorStillOwesIsFiledNotFixed`
+and `integration/length_element_effects_test.go::TestWhatTheCountDoorStillOwesThroughTheCLI`. **Gap R.498** is the
+same statement in an `if`/`for`/`while` rather than a `try:` — a refusal instead of an assembler rejection, and
+therefore its own row rather than one cell: a wrong answer, a refusal and a module that never assembles are three
+different events to the exit-code contract (**ADR 0006**, **ADR 0166**) and this house files them apart.
+
+### Gap R.498 — a `def` inside an `if`, `for` or `while` block binds a name the call road does not know (⏳ OPEN, found by **ADR 0441**)
+
+```
+$ gustyc --eval 'if 1:
+    def f():
+        return 1
+print(f())'
+    codegen: "f" is called but is not a function this backend can build a call to: … (roadmap L11.1, ADR 0166)  → exit 1
+$ python3   (same source)                             reference: 1
+```
+
+The checker resolves the name — **ADR 0197**'s deferred-def rule exists precisely so a `def` below or beside its use
+is not an `undefined name` — and the emitter lowers the body and binds the name, and then the call road meets a
+callee it does not believe is a function. It is a REFUSAL, so no wrong answer is printed; but the sentence blames
+the VALUE's kind (`'int' object is not callable`, L11.1's own missing word) for a program whose name resolved to a
+`def`, which is **ADR 0166**'s complaint about a refusal that describes a program the author did not write. The
+`for` and `while` bodies answer the same, and `try:` answers **Gap R.497**'s exit 2 instead of this refusal — the
+same statement, three blocks, two different exit codes, one missing record of "this name is a function".
+
+### Gap R.499 — a subscript whose base the fold answered with a verdict, a double or the void is claimed by the numeric-element road first (⏳ OPEN, found by **ADR 0441**)
+
+```
+$ gustyc --eval 'print(len([[True][0][0]]))'    this backend: 1  at exit 0
+$ python3    -c 'print(len([[True][0][0]]))'    reference:  TypeError: 'bool' object is not subscriptable
+$ gustyc --eval 'print(len([[None][0][0]]))'    this backend: 1  at exit 0     (reference: 'NoneType' …)
+$ gustyc --eval 'print(len([[1.5][0][0]]))'     this backend: 1  at exit 0     (reference: 'float' …)
+$ gustyc --eval 'x = [[True][0][0]]
+print("ok")'                                    this backend: ok at exit 0     ← no `len` anywhere in it
+```
+
+**Gap R.227** closed the `int` spelling of this chain: `[1, 2][0]` IS `2`, so `[[1, 2][0][0], 1]` has written `1[0]`
+and the door raises. The walk that names it, `constantSubscriptKind`, reaches the element through
+`foldedLiteralElemOf`, which asks `listLiteralFoldAnswers` — the same question `valueIndex` asks before folding —
+and that predicate says a literal is readable at compile time when every element is an INTEGER. A `BoolLit`, a
+`FloatLit` or a `NoneLit` element is therefore not a constant the fold answered, the walk answers "no", and
+`valueIndex`'s `numericElemUse` arm — **ADR 0243**, "a literal number in a slot of a container the program spelled
+out and never changed *is* that number" — has already been asked and hands back `1` for a slot holding a verdict.
+There is no raise to perform, which is why **Gap R.494**'s fix does not reach it: performing an element that emitted
+no trap changes nothing, and the last repro above proves the defect is not the count door's — the same read with no
+`len` in it prints `ok` at the exit code of success too, identically on `94a1458` and on the **ADR 0441** build.
+
+The fix is the fold's own answer and the order of two questions, not a new census: since **ADR 0438** the element
+KIND is asked once from the tag road, so `listLiteralFoldAnswers` can name a verdict, a double and the void the way
+it names an integer, and `valueIndex`'s default arms must ask `constantSubscriptKind` BEFORE `numericElemUse` —
+a read whose base the fold answered with something that has no slots is the reference's `TypeError`, not a number.
+The pair door and the bounds check keep their arms: a position out of range and a slot the compiler cannot see are
+different questions, and `print([True][0])` printing `True` is the control that keeps the widening honest. Until
+then four rows pin today's `1`/`2` at both legs in the filed table beside this door.

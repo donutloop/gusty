@@ -3753,6 +3753,44 @@ falls back to dynamic dispatch.
   the numeric-literal IR row asserts `print([1, 2, 3])` still takes `rt_print_list` with no census bit, which is
   what keeps **ADR 0239**'s static array, and therefore `sum`/`min`/`max`, from being paid for this.
 
+- **The count door PERFORMS the elements whose count it takes: `len` of a spelled-out container evaluates them
+  first (Gap R.494, **ADR 0441**)** — `print(len([f()]))` printed **`1`** and never called `f`, and
+  `print(len([[1, 2][0][0], 1]))` printed **`2`** at the exit code that means the program ran, where the reference
+  raises `TypeError: 'int' object is not subscriptable` — the same element the subscript door beside it has raised
+  catchably since **ADR 0440**, so one program told two stories depending on whether a `len` was reading the
+  container. `len` answers a spelled-out literal from its element list and never builds the object, and that is an
+  optimisation, not the meaning: the reference evaluates every element, builds the container, then asks it how many
+  slots it holds. `(*irGen).lowerLiteralElementsForEffect` now asks each element one pure question — *is this an
+  operation, or a spelling?* — performs the operations in the order the reference evaluates them, and throws their
+  values away. Inert is a number, a text, a verdict, the void, a name or a literal of inert parts, so
+  `len([1, 2, 3])` still emits no instruction and no builder (the row's own negative control, asserted in the
+  module at both altitudes); a call, a read, a division or a comprehension is an operation, so
+  `print(len([1, f(), 3]))` prints `side` then `3`, `print(len([[1, 2][5]]))` dies with `IndexError: list index out
+  of range`, and `print(len([f(), 1 // 0]))` prints `side` and THEN takes the `ZeroDivisionError` — the first
+  element's accident wins, which is the row that proves the walk is in order and not just in place. Two rules kept
+  it a door and not a broom: a container element is WALKED to its parts rather than handed to `value` (the element
+  road a container takes is chosen from what it HOLDS — `[f(), 2]` reads as an int list, the static road refuses
+  anything but an `IntLit`, and the door was silently keeping the count), and everything is built into a scratch
+  buffer and committed only when every element lowered, because an element that raises ends a block and an
+  instruction after a terminator is **ADR 0166**'s exit **2** paid by the compiler. The rule is **Gap R.149**'s
+  (**ADR 0275**) arriving at the length door from the literal side. Eleven answered shapes and five traps on the
+  compiled leg AND the record leg, the trap's ORDER asserted on the JIT's split streams (stdout is exactly `side`,
+  the raise on the other channel), every raise caught by the program's own `except … as e:`, seven controls plus
+  five module rows that fail if a builder returns or the call disappears, 21 asks of the gate directly; through the
+  CLI 12 answers, 6 raises, 5 catches, 9 controls and the `--emit-llvm` builder row, every one beside a live
+  `python3`. `tools/recmerge` wrote 30 entries (**10005 → 10035**), none refused — among them the two programs
+  **ADR 0440**'s run refused, which record now because the legs agree — and
+  `integration/programs/length_element_effects.gy` joined the corpus as a line-for-line `match`. The residue is
+  FILED, not folded in, and each row sits beside the door that owes it: **Gap R.496** (`len` of a comprehension the
+  run time builds reads its count out of a global that is not there — `llc` rejects the module at exit **2**),
+  **Gap R.497** (a `def` inside a `try:` emits its whole `define` into the enclosing block — exit **2**, no `len` in
+  the program at all) and **Gap R.498** (the same statement in an `if`/`for`/`while` refuses its own call) are the
+  sweep's neighbours, and **Gap R.499** is the one face of this family the count door cannot reach —
+  `print(len([[True][0][0]]))` prints `1`, and `x = [[True][0][0]]` / `print("ok")` prints `ok` too, which is what
+  puts it on the subscript door. The two filed rows this commit paid MOVED to the answering tables, and the emptied
+  tables carry a comment naming where every row went (**ADR 0440**'s rule: a row that starts answering moves, and a
+  filed table that empties itself proves nothing).
+
 - **A subscript stands on what the FOLD already answered, and the door raises instead of refusing (Gap R.227,
   **ADR 0440**)** — `print([[1, 2][0][0], 1])` and `print([[1][0][0], 1])` stopped the build at exit **1** with
   `codegen: index requires an inline list/dict/set literal`, where the reference raises
