@@ -76,6 +76,16 @@ func generatorBufferKindFamily() []struct{ name, src, want string } {
 		},
 		// Every kind the untagged word could not carry.
 		{
+			// The mixed literal, asked a membership question: the payload-only scan used to take the integer 0
+			// for the interned index of `"a"` (**Gap R.478**'s literal half). The spelled-literal haystack now
+			// asks its slots' (payload, kind) pairs (**ADR 0456**, paying **Gap R.523**), so the answer is the
+			// reference's — and the generator row below, which asks the SAME question of a buffer and still
+			// prints `True`, is the measurement that says the remaining defect belongs to the buffer's door.
+			name: "a mixed literal asked a membership question asks its slots' kinds",
+			src:  "print(0 in [\"a\", 2])\n",
+			want: "False\n",
+		},
+		{
 			name: "a verdict keeps its word",
 			src:  "class C():\n    def m(self):\n        yield True\n        yield False\nc = C()\nfor v in c.m():\n    print(v)\n",
 			want: "True\nFalse\n",
@@ -594,23 +604,16 @@ func TestWhatAYieldedKindStillCannotReachIsFiledNotFixed(t *testing.T) {
 		},
 		{
 			// The membership test compares the payload word; the tag is what tells an interned index from
-			// the integer that happens to have the same number. The literal twin below is the measurement that
-			// makes the DOOR the owner rather than this row's buffer.
+			// the integer that happens to have the same number. The literal twin NOW answers `False` — the door
+			// that asks a spelled list literal its slots' (payload, kind) pairs was landed for **Gap R.523** by
+			// **ADR 0456** — which is what makes this row's claim about the DOOR rather than about membership:
+			// the same question at the same exit code, one road apart, answers right at the literal and wrong at
+			// the buffer, and the buffer built that road itself.
 			name:     "membership asks an untagged question and takes an integer for a text",
 			src:      "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\nc = C()\nprint(0 in c.m())\n",
 			wantExit: 0,
 			wantOut:  "True\n",
-			dossier:  "**Gap R.478** — the reference prints `False`: `\"a\"` interns to slot 0 and the membership scan compares the payload against the integer 0 with nobody asking the tag beside it; `rt_slot_eq`/the tagged compare the container roads use is the door, and `\"a\" in c.m()` already answers `True` correctly on this build",
-		},
-		{
-			// No class, no generator, one literal — the same verdict at the same exit code, byte-identical on
-			// this commit's parent. It is the row's own control: the buffer inherited this door, it did not
-			// build it.
-			name:     "the mixed-list twin of that question, asked of a literal",
-			src:      "print(0 in [\"a\", 2])\n",
-			wantExit: 0,
-			wantOut:  "True\n",
-			dossier:  "**Gap R.478**'s other half — the reference prints `False`, and this is the shape that says the untagged membership door is older than the generator road that walked into it; it is here, and not in a container suite, because a row is only falsifiable where its own bytes are pinned",
+			dossier:  "**Gap R.478** — the reference prints `False`: `\"a\"` interns to slot 0 and the membership scan compares the payload against the integer 0 with nobody asking the tag beside it; `rt_slot_eq`/the tagged compare the container roads use is the door, and `\"a\" in c.m()` already answers `True` correctly on this build. The literal twin (`print(0 in [\"a\", 2])`) printed the same wrong `True` until **ADR 0456** gave the spelled-literal haystack the tagged scan; it is in the answered family now, and the pair of rows is what localises this one to the buffer's own door",
 		},
 		{
 			// The join **ADR 0432** refused for a SPLIT yield census (**Gap R.467**) has the same hole one

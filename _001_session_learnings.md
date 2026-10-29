@@ -17175,3 +17175,93 @@ this one: **Gap R.528** (`global` honoured by the plain binding and ignored by t
 where CPython prints `ok` — an arm the condition rejects is checked as if it ran, which is **ADR 0451**'s
 short-circuit argument applied to the front end's name census). Both filed with their measurements, neither
 smoothed into a table as if it were correct behaviour.
+
+## ADR 0456 — membership asked of a container the SOURCE spells asks the door that builds it, not the road that folds it (roadmap Gap R.523 closed; Gaps R.530, R.531 filed; 2026-11-02)
+
+**A refusal is a claim about one road, and the bug was that the road was chosen by the operator.** `print([x])`,
+`print(len([x]))` and `print(1 in [x])` are one literal at three doors, and two of them asked the container door
+while the third asked the number door — which answered a literal with a folded `{i32, [N x i32]}` global and had
+no word for a name. The fix is not a new capability: it is asking the door that already existed. When a defect
+looks like "this construct is unsupported", the first question is what the SAME construct costs at the door next
+to it, because a construct that is legal at one door and a build failure at another is never a missing feature —
+it is two roads that were allowed to disagree (**ADR 0232**, applied to a literal's element shape).
+
+**The row I was handed named the refusal and missed the wrong answers, which were worth more.** Gap R.523 was
+filed as "a list literal asked for an element kind a NAME does not hand it". True, and the smaller half. Once the
+haystack stopped going through the fold I could ask the fold what it had been answering, and it had been
+comparing payloads alone: `None in [0]` printed **`True`** at exit 0 (the void's word is `0`), `1 in [1.0]`
+printed `False`, and `1.0 in [1]`, `1.5 in [1, 2]` and `[1] in [1, 2]` were exit 2 — the last one in `llc`, with
+`global variable reference must have pointer type` on `%t3 = icmp eq i32 @.lst1, 1`. Nobody had asked, because
+the file that pinned the refusal was written by the cycle that filed the row and nobody re-read the fold beside
+it. The general form: **when a row tells you a road refuses, ask what that road does when it doesn't.**
+
+**A fast path needs a permission for every operand, not one.** The folded unroll's right to answer had always
+been "the elements are constants"; it silently also needed "and the needle is a kind `icmp eq i32` can name",
+which is why a double reached the ordering door above and got refused there instead of being answered. I first
+wrote `if intMembershipValues serves → decline`, which left three of the five wrong answers above wrong, and it
+took the exit-2 case to make me ask why a road that cannot name a needle's kind thinks it may answer about it.
+`foldNamesNeedle` reads `elemKindTag` — the slot builder's own table — so the fold and the door cannot disagree
+about which needles are which. The economy survived where it is sound: `x in [1, 2, 3]` still emits no allocation
+and no call, and a row fails if `@main` grows a builder for a literal the fold serves. A fix that quietly makes
+every membership test allocate is how a correct row becomes a slower language.
+
+**The claim of unity is a call count, not a sentence.** "One literal, one builder" is asserted by comparing the
+`@rt_alloc(`/`@rt_set_elem(`/`@rt_tag_elem(` counts of the module that PRINTS `[x]` with the counts of the module
+that asks MEMBERSHIP of `[x]`, and by failing if `@rt_contains(` — the payload-only scan the door replaces —
+appears in a program the door answers. That is the fourth cycle running where I have learned the same thing: any
+"the two roads agree" in this repo that is not enforced by a count, a diff or a shared function is a claim about
+my reading of the code, and my reading is what produced the bug (**ADR 0332**, **ADR 0365**, **ADR 0454**,
+**ADR 0455**).
+
+**Where a door declines, the refusal must stay the one that names its owner.** The new door returns "not mine"
+when `containerOperand` cannot build the haystack, and the ordinary road below then prints its own sentence —
+which is how **Gap R.530** (`[f()]`, an element whose answer is a container) and **Gap R.531** (`math.sqrt(4)`,
+`lambda: 1`) stayed visible with their own messages instead of being absorbed into a door-level "unsupported
+literal". One of those messages ends in `not ` and a space: `exprTyName` has no word for a lambda, so the
+compiler tells you the element must be an integer and does not say what the element is — **ADR 0166**'s second
+clause, measured rather than believed because the test asserts the message's own bytes.
+
+**The filing's expected reference answer can be wrong, and both legs will happily aim at it.** The row said
+`x = 5` / `print(1 in [x])` owes `TypeError: … 'int' is not iterable`. It does not: the haystack is a LIST
+holding the name, lists have members, and the reference prints `False`. `print(1 in x)` is the raising shape, and
+**ADR 0453** paid that one. Had I implemented the expectation instead of the reference I would have turned a
+refusal into a trap at exit 3 — which is worse than the bug on the tracker's own ladder. I re-derived every
+expected answer from `python3` before writing a single row, and corrected the row's measurement narrative in
+`docs/roadmap-details.md` alongside the payment.
+
+**Two control rows came back as record entries, and the ledger's count is a test.** 43 entries (10386 → 10459)
+via `tools/recmerge`, eight of them the sources `pkg/lang/membership_name_test.go` had pinned as this row's
+refusals, and one a source `pkg/lang/generator_buffer_kind_test.go` had pinned as **Gap R.478**'s wrong answer
+(`print(0 in ["a", 2])`) — a row only ever pinned against the compiled leg, which is how a `True` nobody asked the
+reference about stayed in a table.
+
+**A pinned wrong answer is a claim about a DOOR, and paying it somewhere else turns the pin into evidence.** That
+row's literal twin was in the owes table precisely so that nobody could blame the generator for a bug the literal
+road also had. When my door fixed the literal, the guard fired exactly as designed — "the day it prints the
+reference's bytes, delete this row and move the program into the answered family" — and moving it left the pair
+stronger than it was: same question, same exit code, correct at the literal and wrong at the buffer, so the
+remaining defect is provably the generator's own membership arm. When you retire a pin, do not delete it into the
+void: move it to the family that proves the neighbour is the last one holding the bug. The decline table is written to FAIL when a pinned shape starts compiling, so paying a row moves its
+rows into the answered family; had I edited the answered tables only, the record leg would have gone quiet on
+sources that no longer refused anywhere, and `golden_artifact_counts_test.go` is what makes "went quiet" loud
+(**ADR 0302**, **Gap R.204**).
+
+
+**A rule that nobody asks is a rule that is quietly false — and my own new corpus program found the hole.** AGENTS.md
+says a missing record FAILS a case (**ADR 0302**), and I believed it until my conformance program tripped the GC
+corpus case for having no record. Asking the question properly — does every asserted program under
+`integration/programs/` have an entry? — found **24** that did not, including one the previous cycle shipped in a
+docs-only commit. The reason nothing noticed is structural: the missing-entry rule fires only inside a case that
+asks, and the only case that asks a whole corpus program for its record is the garbage-collector case. The matrix's
+two legs are the compiled binary and CPython; the record is neither. So the cycle gained
+`TestEveryAssertedCorpusProgramIsOnTheRecord`, which reads the registry rather than a hand-kept list, exempts
+`not_applicable` rows by the LEDGER's declaration rather than by my judgement (a reference that cannot run a
+gusty-only program has no answer to record), and reports the whole batch in one run because a cycle that adds three
+should learn about three. 32 entries went in (10427 → 10459). The transferable rule: when a document says "a missing
+X is a failure", the next question is *which case asks* — and if the answer is "one whose subject is something else",
+the rule is documentation, not a test.
+
+**The docs-only commit is a gate hole too, and I nearly repeated it.** The unrecorded program arrived in the commit
+after the feature, whose message said `docs(...)`: a follow-up commit that touches an artifact is not a docs commit.
+So this cycle moves each artifact and the counts that describe it in the same commit, and the snapshot guard
+(`pkg/lang/roadmap_snapshot_test.go`) is what makes that checkable rather than aspirational.

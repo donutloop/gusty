@@ -1851,6 +1851,44 @@ inside an arm, a copy binding (`y = x`), a call that forwards its parameter, a b
 kinds, and any value that arrives as a `(payload, tag) pair` — the last is **L11.1**'s tagged value word
 (**Gap R.146**), and each of them is pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`.
 
+**A haystack the SOURCE spells is built by the door that builds it, and the object answers** (**ADR 0456**, paying
+**Gap R.523**). A membership test written against a list, set or dict LITERAL whose elements are names, calls or
+expressions is not a question about constants, and it used to be refused for that while the same literal printed,
+measured and nested happily:
+
+```python
+x = 5
+print([x])            # [5]        always worked
+print(len([x]))       # 1          always worked
+print(1 in [x])       # False      was: exit 1, `list literal elements must be integers, not int`
+y = "a"
+print("a" in [y])     # True       was: the same refusal, `not str`
+def f():
+    return 5
+
+print(5 in [f()])     # True       was: the same refusal
+print(5 in [x + 1])   # False      an arithmetic element, refused the same way
+print(5 in {x})       # True       a set element too; a dict answers its KEYS: `5 in {x: "v"}` is True
+```
+
+The haystack is now built once by the container door the printer asks, and the question goes to the object's slots
+(`rt_contains_tagged`), the needle arriving as a `(payload, kind)` pair — the shape **ADR 0365** set for
+`2 in [1] + [3]`, applied to the literal a program writes rather than the sequence an operator builds. Two
+consequences are worth stating to a reader, because both are claims about other roads:
+
+* The **folded** road (`1 in [1, 2, 3]`) survives, and keeps its economy — a literal of constant whole numbers with
+  a needle the fold can name still compiles to an `icmp` chain that allocates nothing and calls nothing. It kept
+  that road only where it can name **both** sides, though: it compares payloads alone, and a payload without its
+  kind is how `None in [0]` used to answer `True` (the void's word is `0`), `1 in [1.0]` used to answer `False`,
+  and `1.0 in [1]`, `1.5 in [1, 2]` and `[1] in [1, 2]` used to reach **exit 2** — the last of them in `llc`, with
+  `global variable reference must have pointer type`. All five now answer what the reference answers, because
+  `rt_payload_eq` (**ADR 0233**) is asked the pair: `print(None in [0])` is `False`, `print(1.0 in [1])` is `True`,
+  `print([1] in [1, 2])` is `False`, `print(True in [1])` is `True` and `print(True in [0])` is `False`.
+* A needle the door cannot name a kind for, or an element no builder covers, **declines** — and declines into the
+  refusal that already names its owner, not into a new one. What still refuses is a literal element whose answer IS
+  a container (`[f()]` where `f` returns a list — **Gap R.530**) and an element whose kind no table records
+  (`math.sqrt(4)`, `lambda: 1` — **Gap R.531**), each pinned with its own message.
+
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
 > does not have is `KeyError: not in set`. CPython rejects the shape outright with

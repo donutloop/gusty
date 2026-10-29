@@ -276,6 +276,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// program mutates through BOTH names, swaps a container against a number and a dict against a list,
 		// and reads the result back inside a frame, because the defect was a claim that stayed behind.
 		"unpack_container_claims",
+		// Membership asked of a container the SOURCE spells is asked of the OBJECT: a haystack whose elements
+		// are NAMES, CALLS and EXPRESSIONS was lowered through the number road, whose answer for a literal is a
+		// folded `@.lstN` global with `i32` slots — so `1 in [x]` was refused (`list literal elements must be
+		// integers, not int`) while `print([x])` printed `[5]` beside it (**roadmap Gap R.523**, **ADR 0456**).
+		// The program carries the half that makes this more than a refusal fixed: the needles the folded
+		// payload-only compare answered WRONG at exit 0 — the void a member of `[0]`, a double a member of
+		// nothing, a container needle in a shape `llc` rejected (exit 2).
+		"membership_literal_haystack",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's

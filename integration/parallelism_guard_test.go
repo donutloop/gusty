@@ -98,6 +98,12 @@ var artifactWritingVars = []string{
 	// subprocess of the suite inheriting it would have N processes each overwrite the file with their own
 	// subset, and the recorder is worth nothing if the list it writes is whichever shard finished last.
 	"GUSTY_RECORD_MEMBERSHIP=",
+	// … and its twin one row further down the tracker (`pkg/lang/membership_literal_test.go::TestTheRecordSourcesTheLiteralHaystackRowAsksFor`),
+	// the recorder for the membership question asked of a spelled container literal (**Gap R.523** / **ADR 0456**).
+	"GUSTY_RECORD_MEMBERSHIP_LITERAL=",
+	// The corpus recorder (`integration/corpus_record_test.go::TestTheRecordSourcesTheCorpusRecordRowAsksFor`),
+	// which dumps every ASSERTED conformance program the record leg owes an answer for (**Gap R.532** / **ADR 0456**).
+	"GUSTY_RECORD_CORPUS=",
 	// The unpacking row's recorder (`pkg/lang/unpack_container_test.go::TestTheUnpackingRecordSourcesTheTableAsks`),
 	// the same shape one row further down the tracker — and the reason the list below is now checked against the
 	// documents that describe it (`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed`).

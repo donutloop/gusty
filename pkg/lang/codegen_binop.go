@@ -62,6 +62,17 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 		} else if ok {
 			return res, nil
 		}
+		// `1 in [x]`, `"a" in [y]`, `5 in [f()]`, `2.5 in [x]`: the haystack is a container the SOURCE spells,
+		// whose slots this door fills itself — so the haystack never goes through the number road, which is the
+		// road that refuses a name, a call or an arithmetic expression for want of an `i32` word to write into a
+		// folded global (**roadmap Gap R.523**, **ADR 0456**). Asked here, beside the door above and for the
+		// same reason: below this line the operands are lowered, and the ordinary lowering of a container the
+		// program spelled is the thing that refuses.
+		if res, okM, mErr := g.membershipOfLiteralContainer(b, n); mErr != nil {
+			return "", mErr
+		} else if okM {
+			return res, nil
+		}
 	}
 	// `if x == "a":` where x came from a loop over a container that mixes kinds: the
 	// comparison is between a (payload, tag) pair and a value whose kind the compiler

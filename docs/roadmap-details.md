@@ -20408,13 +20408,18 @@ day the buffer becomes classifiable as mixed, that road must not start answering
 | `class C():` / `    def m(self):` / `        yield "a"` / `        yield 2` / `c = C()` / `print(0 in c.m())` | exit 0 — `True` | `False` |
 | the same buffer bound first (`ys = c.m()` / `print(0 in ys)`) | exit 0 — `True` | `False` |
 | `print("a" in c.m())` on the same class | exit 0 — `True` | `True` |
-| `print(0 in ["a", 2])` — no class, no generator | exit 0 — `True` | `False` |
+| `print(0 in ["a", 2])` — no class, no generator | exit 0 — `False` **= the reference**, since **ADR 0456** | `False` |
 
 A buffer's slots now carry (payload, tag) pairs, and the membership scan added by **ADR 0432** compares the payload
 word against the needle. A text's payload IS an index into `@str_tab`, and `"a"` is the first text this program
-interns, so the integer `0` matches it. The last row is the one that keeps this honest: the same verdict, at the same
-exit code, on a program with no generator and no class in it — the door is older than this row, which is why the row
-owns both shapes and why the fix is the door's and not the buffer's. **ADR 0247**'s `rt_payload_eq` is the one
+interns, so the integer `0` matches it. The last row used to be the one that kept this honest: the same verdict, at
+the same exit code, on a program with no generator and no class in it — the door was older than this row, which is
+why the row owned both shapes and why the fix was the door's and not the buffer's. **ADR 0456** paid that half while
+closing **Gap R.523**: a spelled list literal is now built by the container door and asked of the object, so
+`print(0 in ["a", 2])` prints the reference's `False`. What is left of this row is the buffer's own arm, and the pair
+of rows is now the sharper measurement rather than the diluted one — the same question, at the same exit code, one
+road apart, answers correctly at the literal and wrongly at the buffer, and the buffer built that road itself
+(**ADR 0432**'s membership arm). **ADR 0247**'s `rt_payload_eq` is the one
 equality the container roads already ask with the tag beside the payload; **ADR 0324**/**Gap R.211** is the paid twin
 ("the needle read the way the haystack is") for a slot read out of another container. The cross-kind answer is
 `False`, and a coincidence between an intern index and an integer is not a match.
@@ -22326,12 +22331,12 @@ table this row ships is `TestWhatTheMembershipDoorStillDeclines`, in the same fi
 old rows.
 
 <a id="gap-r-523"></a>
-### Gap R.523 — a list literal asked for an element kind a NAME does not hand it (⏳ OPEN, filed by **ADR 0453**)
+### Gap R.523 — a list literal asked for an element kind a NAME does not hand it (✅ DONE, filed by **ADR 0453**, paid by **ADR 0456**)
 
 ```
 $ gustyc --eval 'x = 5
 print(1 in [x])'
-codegen: list literal elements must be integers, not int      reference: TypeError: … 'int' is not iterable
+codegen: list literal elements must be integers, not int      reference: False
 $ gustyc --eval 'x = 5
 print([x])'
 [5]                                                            compiles, prints, no complaint
@@ -22339,6 +22344,12 @@ $ gustyc --eval 'y = "a"
 print("a" in [y])'
 codegen: list literal elements must be integers, not str      reference: True
 ```
+
+(The first pair's reference answer was corrected while this row was paid. It was filed as
+`TypeError: … 'int' is not iterable`, which is what the SAME text answers when the haystack is the bare name —
+`print(1 in x)` — and not what it answers when the haystack is a LIST holding the name: the haystack has
+members, so the reference prints `False` and the compiled leg owed an answer, not a trap. A row whose expected
+reference answer is wrong is worse than a row nobody read, because both legs get aimed at it.)
 
 The third pair is **ADR 0454**'s sweep adding itself to this row: the road is untagged for every element origin, not
 only for the number-holding one, and a message that names `str` as the offending element kind while the literal is
@@ -22355,7 +22366,39 @@ sentence. The message is a second defect inside the first: **ADR 0166**'s second
 thing that is missing, and this names an operand and a kind that are both present.
 
 Pinned with its own refusal words in `pkg/lang/membership_name_test.go::TestWhatTheMembershipDoorStillDeclines`,
-in the subtable that fails when the shape starts compiling — so the row cannot be paid and quietly stay.
+in the subtable that fails when the shape starts compiling — so the row cannot be paid and quietly stay. That is
+what happened: the two rows moved into `membershipControlRows` and the answered tables of
+`pkg/lang/membership_literal_test.go` when **ADR 0456** paid the door, and both legs answer them.
+
+**What paid it.** `membershipOfLiteralContainer` (`pkg/lang/membership_literal.go`) joins the membership doors at
+the head of `valueBinOp`, above every operand lowering, beside `mixedMembership` and `membershipOfBuiltSequence`
+— the position **ADR 0365** fixed for a haystack whose operands cannot be lowered before the question is asked,
+because the ordinary lowering of the haystack IS the thing that refuses. It asks `containerOperand` — the same
+door `print([x])` asks, which decides tagged-or-flat and fills the slots — and then puts one question to the
+object: `rt_contains_tagged(hay, payload, kind)`, the needle arriving as a `(payload, kind)` pair from
+`taggedOperand`. The one-door claim is asserted in the module's bytes: the program that prints `[x]` and the
+program that asks membership of `[x]` emit the same `@rt_alloc(`/`@rt_set_elem(`/`@rt_tag_elem(` counts, and the
+membership module asks `@rt_contains_tagged` exactly once and never the payload-only `@rt_contains`.
+
+**The half that was not in the row.** The folded unroll kept its fast path only where it can answer BOTH halves
+of its own question — the elements are constants it can write into a global, *and* the needle is a kind `icmp eq
+i32` can name. The second half had never been asked, and the answers it had been producing at exit 0 were that
+of a road which compares payloads alone: `None in [0]` was `True` (the void's word is `0`), `1.0 in [1]` and
+`1.5 in [1, 2]` were exit 2 refusals from the ordering door above (a double's word is a `@float_box` handle, and
+the numeric cross-kind arm lives in `rt_payload_eq`, not in the fold), `1 in [1.0]` was `False`, and
+`[1] in [1, 2]` was exit 2 with `llc: global variable reference must have pointer type` — `%t3 = icmp eq i32
+@.lst1, 1`, a folded global in an `i32` slot, **ADR 0226**'s shape. So a refusal the row never mentions was
+paying for five answers this row files as its own, and `foldNamesNeedle` reads the very kind table the slot
+builder reads (`elemKindTag`) so the fold and the door cannot disagree about which needles are which (**ADR
+0232**). The fold's economy survives where it is sound: `x in [1, 2, 3]` still costs the program no object and no
+runtime call at all, asserted by a row that fails if `@main` grows a builder for a literal the fold serves.
+
+**What remains, and why the door walks past it.** An element whose answer IS a container (`[f()]` where `f`
+returns a list) and an element no door names an answer for (`math.sqrt(4)`, kind `any`) still reach `emitList`'s
+refusal: `containerOperand` declines them, the door returns "not mine", and the road below says the sentence that
+already names its owner — **Gap R.530** and **Gap R.531**, pinned with their own words in
+`TestWhatTheLiteralHaystackDoorStillDeclines` and at the CLI, each row leaving when the named row pays. A door
+that minted its own vaguer refusal for a shape it declined would hide the row that owns it.
 
 <a id="gap-r-524"></a>
 ### Gap R.524 — a tuple-unpacking target storing a spelled container emits IR `llc` rejects (✅ DONE, filed by **ADR 0453**, paid by **ADR 0454**)
@@ -22625,3 +22668,108 @@ name that is read only in such an arm has no more claim to be a compile-time err
 **ADR 0451** stopped evaluating. The fix is to move the question from the census to the read — raise the
 reference's `NameError` where the read happens, catchable, and say nothing about the arm that never runs — while
 keeping the module's sound definite-assignment questions (**ADR 0228**'s flag) exactly where they are.
+
+<a id="gap-r-530"></a>
+### Gap R.530 — a literal element whose answer IS a container is still refused under `in` (⏳ OPEN, filed by **ADR 0456**)
+
+```
+$ gustyc --eval 'def f():
+    return [1, 2]
+
+print([1, 2] in [f()])'
+codegen: list literal elements must be integers, not list[int]      reference: True
+$ gustyc --eval 'def f():
+    return [1, 2]
+
+print(1 in [f()])'
+codegen: list literal elements must be integers, not list[int]      reference: False
+$ gustyc --eval 'def f():
+    return [1, 2]
+
+print(len([f()]))'
+1                                                                   compiles, exit 0
+```
+
+**ADR 0456**'s membership door asks `containerOperand` for the haystack and walks away when that declines — and
+this is one of the shapes it declines: the element is not a container the SOURCE spells but one a CALLEE hands
+back, so the folded road has no word for it and the tagged builder is not reached. The refusal then comes from
+`emitList`, and it names an element kind where the missing thing is the callee's answer: the same program's
+`len([f()])` compiles, so the road that refuses is a road that could have asked the container-answer scan
+(**ADR 0333**'s `containerAnswerOf`) and did not. `print([f()])` is refused too, by a different door and with
+**Gap R.67**'s own words — which is the useful half of this row's evidence: the element's container-ness IS
+known to a table somewhere, and the literal's builder is not the door that reads it.
+
+**ADR 0166**'s second clause is inside the first defect here as it was inside the parent row's: a refusal names
+the missing thing, and `not list[int]` names an element that is present, in a literal the program asked a
+question about. The fix belongs to the literal's builder, not to the membership door — a `[e]` whose element `e`
+the container-answer scan proves a container must take the tagged path (the way **ADR 0332** taught the READ
+element to bring its `(payload, tag)` pair), after which the door **ADR 0456** added answers the membership
+question with no further work. Until then the shapes are pinned with their own refusal words in
+`pkg/lang/membership_literal_test.go::TestWhatTheLiteralHaystackDoorStillDeclines` and
+`integration/membership_literal_test.go::TestWhatTheLiteralHaystackDoorStillRefusesAtTheCLI`, in the tables that
+fail when a shape starts compiling.
+
+<a id="gap-r-531"></a>
+### Gap R.531 — a literal element no door names an answer for is refused, and its message names no kind at all (⏳ OPEN, filed by **ADR 0456**)
+
+```
+$ gustyc --eval 'import math
+
+print(1 in [math.sqrt(4)])'
+codegen: list literal elements must be integers, not any            reference: False
+$ gustyc --eval 'print(1 in [lambda: 1])'
+codegen: list literal elements must be integers, not
+                                                            here ^ — no kind named at all
+```
+
+Two element origins reach `emitList`'s refusal because no door names an answer for them: an ATTRIBUTE call
+(`math.sqrt(4)` — `exprTyName` answers `any`) and a `lambda` (`exprTyName` answers nothing whatever, so the
+sentence ends in `not ` and a reader is told neither what the element is nor what the slot needs). The parent
+row's door asks the container door and declines what it cannot build; these are two of the shapes it declines,
+and unlike **Gap R.530** they are not containers — they are values whose kind no table records, which is
+**L11.1**'s tagged word arriving one construct earlier than the container slots.
+
+Two defects, one row each way. The capability gap is that an element whose answer the compiler cannot name is not
+buildable, so an ordinary program is refused: `print(1 in [math.sqrt(4)])` is a question the reference answers
+`False` in one line. The message is inside it — **ADR 0166**'s second clause, as above. A `lambda` sitting in a
+list literal is also **L11.7**'s function-value surface arriving at a container slot: a lambda used as a VALUE is
+**Gap R.150**/**Gap R.151** territory already (the same refusal, in full sentences, meets `print([lambda: 1] ==
+[])` at the equality door), so the row that lands a representation for such a value should take both shapes at
+once and retire both messages.
+
+Pinned with their own refusal words in `TestWhatTheLiteralHaystackDoorStillDeclines` and its CLI twin, in the
+tables that fail when a shape starts compiling, so paying the row moves the row rather than deleting a guard.
+
+<a id="gap-r-532"></a>
+### Gap R.532 — an asserted conformance program can ship with no record leg, because only the GC case ever asked a corpus program for one (✅ DONE, filed and paid by **ADR 0456**)
+
+```
+$ go test -tags=llvm20 ./integration/ -run TestGCCorpusCollectsAndAgrees
+gc_stress_test.go:56: programs/unpack_container_claims: no recorded answer for this corpus program —
+                      the retired engine's answer is the expectation, so record it:
+$ # …and asking the whole asserted corpus, 24 programs were in that state.
+```
+
+**ADR 0302** retires the AST interpreter and leaves the record (`pkg/lang/testdata/interpreter-golden.json`) as one
+of the two witnesses a compiled answer is judged against; its rule is that a **missing** entry fails the case, which
+is what keeps coverage from being deleted by deleting a record (**Gap R.204**). The rule has a hole you can only see
+from the artifact's side: it bites where a case **asks**. Every source written inline in a test table is asked about
+by that table. A whole program under `integration/programs/` is asked about by exactly one case in the suite —
+`TestGCCorpusCollectsAndAgrees`, whose subject is the garbage collector. So a corpus program can be added, the matrix
+can record its `match`, the oracle ledger can declare it, the parity census can pass, and nothing in the tree holds
+the answer the record leg would give for it. That is how `integration/programs/unpack_container_claims.gy` shipped —
+in the documentation-only commit that followed the feature it belongs to, on the theory that a docs commit cannot
+break a test, with no record and no case that would notice.
+
+The fix is the question the artifact never had asked of it: `TestEveryAssertedCorpusProgramIsOnTheRecord` reads the
+registry (`integration/conformance_cases.go`) and demands an entry for every asserted program, exempting only what the
+ledger itself declares `not_applicable` — a reference that cannot RUN a gusty-only program (the set-subscript
+extension among them) has no answer to record, and `tools/recmerge`'s own `-check` mode exists for that class. The
+guard reports the whole batch at once, because a cycle that adds three programs should learn about three, not burn
+three runs. Its recorder (`GUSTY_RECORD_CORPUS=<path>`) reads the same registry, so the list cannot drift from the
+claim, and it is scrubbed from every subprocess the suite starts (**Gap R.410** / **ADR 0409**).
+
+**32 corpus entries** went into the record from the reference with the compiled leg cross-checked (the artifact
+10427 → **10459**), 24 of them this row's first finding. The general lesson is not about the GC case: when a rule
+says "a missing X is a failure", the question is which case asks the question, and a rule nobody asks is a rule that
+is quietly false.

@@ -3768,6 +3768,50 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **Membership asked of a container the SOURCE SPELLS asks the OBJECT (**Gap R.523**, **ADR 0456**)** — one literal,
+  three roads, two answers: `x = 5` / `print([x])` printed `[5]`, `print(len([x]))` printed `1`, and
+  `print(1 in [x])` stopped the build with `codegen: list literal elements must be integers, not int` — a sentence
+  about an element kind the literal was not asking about, for a program the reference answers with `False`. The
+  membership road lowered its haystack through the **number** road, whose answer for a literal is a folded `@.lstN`
+  global with `i32` element slots, so a name, a call or an expression had no word to write into one. The door now
+  asks the **container** door the printer asks — `containerOperand` builds the object once, `rt_contains_tagged`
+  asks it, the needle arriving as a `(payload, kind)` pair — and it is hoisted above every operand lowering, the
+  position **ADR 0365** fixed for exactly this reason: the ordinary lowering of the operand IS the thing that
+  refuses. The folded road kept its fast path and its zero allocation, but only where it can name **both** sides,
+  and that second half had never been asked of it: the unroll compares payloads alone, so `None in [0]` answered
+  **`True`** (the void's word is `0`), `1 in [1.0]` answered `False`, and `1.0 in [1]`, `1.5 in [1, 2]` and
+  `[1] in [1, 2]` were **exit 2** — the last in `llc`, with `global variable reference must have pointer type`
+  (`%t3 = icmp eq i32 @.lst1, 1`). All five answer what the reference answers, because `rt_payload_eq` (**ADR
+  0233**) is asked the pair rather than the word, and `foldNamesNeedle` reads the slot builder's own kind table so
+  the fold and the door cannot disagree about which needles are which (**ADR 0232**). `x in [1, 2, 3]` still
+  compiles to an `icmp` chain that allocates nothing, asserted by a row that fails if `@main` grows a builder for a
+  literal the fold serves; and the unity claim is asserted too — printing `[x]` and asking membership of `[x]`
+  emit the SAME `@rt_alloc(`/`@rt_set_elem(`/`@rt_tag_elem(` counts. Thirty-eight answered rows on the compiled leg
+  AND the record leg (`print`, a condition, a `while` test, a `for` iterable, `len`, inside a body, a module name
+  read from a body), the same rows at the CLI with every expectation read out of a live `python3` inside the case,
+  two `--emit-llvm` rows, and `integration/programs/membership_literal_haystack.gy` as a `match` row (corpus 282 →
+  **283**, matrix 268 → **269**, parity-asserted 232 → **233**, oracle `match` 218 → **219**); **43 record entries
+  (10386 → 10459)** from `tools/recmerge`, reference-answered with the compiled leg cross-checked, eight of them the
+  control rows `pkg/lang/membership_name_test.go` had pinned as this row's refusals — that table is written to fail
+  when a pinned refusal starts compiling, so a paid row moves rather than vanishing — and a recorder
+  (`GUSTY_RECORD_MEMBERSHIP_LITERAL=<path>`) that dumps this row's own sources so a case cannot ship without a
+  record under it (**ADR 0302**). The door also took **Gap R.478**'s literal half on the way out:
+  `print(0 in ["a", 2])` printed **`True`** — the integer `0` matching the interned index of `"a"` with nobody asked
+  the tag — at exit 0, pinned as a known-bad answer in `pkg/lang/generator_buffer_kind_test.go` and its CLI twin; it
+  prints the reference's `False` now and those rows moved into the answered family, leaving the GENERATOR's own arm
+  (`print(0 in c.m())`, still `True`) as that row's remaining half — one question, two doors, and only one of them
+  still wrong. The same cycle found a hole in the record leg itself (**Gap R.532**, paid here): **ADR 0302**'s rule
+  that a missing record FAILS a case only bites where a case asks, and the only case that ever asked a whole
+  `integration/programs/` file for its record was the garbage-collector case — so **24** asserted corpus programs, one
+  of them shipped by **ADR 0455** in a docs-only commit, had no entry at all. A guard over the registry now asks the
+  question directly (`integration/corpus_record_test.go::TestEveryAssertedCorpusProgramIsOnTheRecord`), exempting
+  only what the ledger itself declares `not_applicable`, and 32 corpus entries went into the record with the compiled
+  leg cross-checked. What the door declines it does not answer: a literal element whose answer IS a
+  container (`[f()]` where `f` returns a list) and an element whose kind no table records (`math.sqrt(4)`,
+  `lambda: 1` — the latter refused with a message that ends in `not ` and names nothing) still refuse, filed as
+  **Gap R.530** and **Gap R.531** and pinned with their own words in the tables that fail when a shape starts
+  compiling.
+
 - **A container that TRAVELS through an unpacking keeps its claims (**Gap R.527**, **ADR 0455**)** — `xs = [1, 2]` /
   `a, b = xs, 5` / `print(a)` printed **`0`** — the handle, as a number — at the exit code that means the program ran,
   and `len(a)` of the same binding refused the build with `len of a non-string variable`; `s = {1, 2}` /

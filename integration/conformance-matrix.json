@@ -1087,6 +1087,27 @@
     },
     {
       "case": {
+        "id": "programs/membership_literal_haystack",
+        "name": "membership_literal_haystack.gy",
+        "source": "# Membership asked of a container the SOURCE spells — roadmap Gap R.523 (ADR 0456).\n#\n# One literal, three roads, two answers:\n#\n#   x = 5\n#   print([x])        -\u003e  [5]      the container door builds it\n#   print(len([x]))   -\u003e  1        the same door\n#   print(1 in [x])   -\u003e  exit 1: codegen: list literal elements must be integers, not int\n#\n# The membership road lowered its haystack through the NUMBER road, whose answer for a literal is a folded\n# `@.lstN` global with `i32` element slots. A name, a call or an arithmetic expression has no word to write\n# into one of those, so the whole program was refused — with a sentence about an element kind the literal was\n# not asking about. The door these lines pin asks the haystack the printer asks: built once by the container\n# door, and the question goes to the object's own slots.\n#\n# The second half of this program is worth more than the first. The folded unroll compares payloads ALONE, so\n# the void was a member of a list of whole numbers, a double was a member of nothing at all, and a container\n# needle reached the untagged scan in a shape `llc` rejected. Those are answers, not refusals, and they are\n# the reference's answers now.\n\nx = 5\n\n# The element that filed the row: a NAME, in both verdicts and negated.\nprint(1 in [x])\nprint(5 in [x])\nprint(1 not in [x])\n\n# The other element kind the refusal named: a TEXT.\ny = \"a\"\nprint(\"a\" in [y])\nprint(\"b\" in [y])\n\n# An element that is an EVALUATION. The call's own effect happens first — it is the program's print, not the\n# door's.\ndef answer():\n    print(\"needle\")\n\n    return 5\n\nprint(5 in [answer()])\n\n# A mixed literal: one object holding a number, a text and a name, each slot carrying its kind beside its\n# payload.\nprint(5 in [1, \"a\", x])\nprint(2 in [1, \"a\", x])\n\na = 1\nb = 2\nprint(b in [a, b])\nprint(9 in [a, b])\n\n# The SET and DICT spellings — and a dict answers its KEYS.\nprint(5 in {x})\nprint(1 in {x})\nprint(b in {a, b})\nprint(5 in {x: \"value\"})\nprint(7 in {x: \"value\"})\nkey = \"key\"\nprint(\"key\" in {key: 1})\n\n# A CONTAINER element, and a needle that is one.\ninner = [1]\nprint(inner in [inner])\nprint([1] in [[1], [2]])\n\n# The positions a membership test stands in, each lowering through a different road.\nif 1 in [x]:\n    print(\"yes\")\nelse:\n    print(\"no\")\n\ncount = 0\nwhile count in [0, 1]:\n    print(count)\n    count = count + 1\n\nfor item in [x]:\n    print(item)\n\n# A body asks the same door about its own frame's name, and about the module's.\ndef body():\n    local = 5\n    print(1 in [local])\n\nbody()\n\ndef reads_module():\n    print(5 in [x])\n\nreads_module()\n\n# The needles the folded payload-only compare could not name. Every one of these is an ANSWER the compiler\n# used to get wrong or refuse: the void read as a 0, a double refused outright, a container needle that died\n# in the assembler.\nprint(None in [0])\nprint(None in [1])\nprint(1.0 in [1])\nprint(1.5 in [1, 2])\nhalf = 2.5\nprint(half in [1, 3])\nprint(half in [1, 2.5])\nprint(\"a\" in [1, 2])\nprint([1] in [1, 2])\nprint(True in [1])\nprint(True in [0])\n\n# The haystack the fold still serves costs the program no object: constant whole numbers, a needle the fold\n# can name, answered by the unroll it always had.\nprint(1 in [1, 2, 3])\nprint(4 not in [1, 2, 3])\nprint(x in [1, 2, 3])\nprint(len([x, 1]))\n\n# The ordinary answers, untouched by the door.\nwords = [1, 2]\nprint(1 in words)\nprint(3 not in words)\nprint(\"ell\" in \"hello\")\nprint(1 in (1, 2))\nbuilt = []\nbuilt.append(3)\nprint(3 in built)\n\nprint(\"done\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "False\nTrue\nTrue\nTrue\nFalse\nneedle\nTrue\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nno\n0\n1\n5\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nTrue\nTrue\nFalse\n2\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
+      "python_ok": true,
+      "python_stdout": "False\nTrue\nTrue\nTrue\nFalse\nneedle\nTrue\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nno\n0\n1\n5\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nFalse\nTrue\nFalse\nTrue\nTrue\nFalse\n2\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6364,11 +6385,11 @@
       ]
     }
   ],
-  "rows": 268,
+  "rows": 269,
   "skipped": 36,
-  "pass": 232,
+  "pass": 233,
   "fail": 0,
-  "oracle_match": 218,
+  "oracle_match": 219,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

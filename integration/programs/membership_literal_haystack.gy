@@ -1,0 +1,124 @@
+# Membership asked of a container the SOURCE spells — roadmap Gap R.523 (ADR 0456).
+#
+# One literal, three roads, two answers:
+#
+#   x = 5
+#   print([x])        ->  [5]      the container door builds it
+#   print(len([x]))   ->  1        the same door
+#   print(1 in [x])   ->  exit 1: codegen: list literal elements must be integers, not int
+#
+# The membership road lowered its haystack through the NUMBER road, whose answer for a literal is a folded
+# `@.lstN` global with `i32` element slots. A name, a call or an arithmetic expression has no word to write
+# into one of those, so the whole program was refused — with a sentence about an element kind the literal was
+# not asking about. The door these lines pin asks the haystack the printer asks: built once by the container
+# door, and the question goes to the object's own slots.
+#
+# The second half of this program is worth more than the first. The folded unroll compares payloads ALONE, so
+# the void was a member of a list of whole numbers, a double was a member of nothing at all, and a container
+# needle reached the untagged scan in a shape `llc` rejected. Those are answers, not refusals, and they are
+# the reference's answers now.
+
+x = 5
+
+# The element that filed the row: a NAME, in both verdicts and negated.
+print(1 in [x])
+print(5 in [x])
+print(1 not in [x])
+
+# The other element kind the refusal named: a TEXT.
+y = "a"
+print("a" in [y])
+print("b" in [y])
+
+# An element that is an EVALUATION. The call's own effect happens first — it is the program's print, not the
+# door's.
+def answer():
+    print("needle")
+
+    return 5
+
+print(5 in [answer()])
+
+# A mixed literal: one object holding a number, a text and a name, each slot carrying its kind beside its
+# payload.
+print(5 in [1, "a", x])
+print(2 in [1, "a", x])
+
+a = 1
+b = 2
+print(b in [a, b])
+print(9 in [a, b])
+
+# The SET and DICT spellings — and a dict answers its KEYS.
+print(5 in {x})
+print(1 in {x})
+print(b in {a, b})
+print(5 in {x: "value"})
+print(7 in {x: "value"})
+key = "key"
+print("key" in {key: 1})
+
+# A CONTAINER element, and a needle that is one.
+inner = [1]
+print(inner in [inner])
+print([1] in [[1], [2]])
+
+# The positions a membership test stands in, each lowering through a different road.
+if 1 in [x]:
+    print("yes")
+else:
+    print("no")
+
+count = 0
+while count in [0, 1]:
+    print(count)
+    count = count + 1
+
+for item in [x]:
+    print(item)
+
+# A body asks the same door about its own frame's name, and about the module's.
+def body():
+    local = 5
+    print(1 in [local])
+
+body()
+
+def reads_module():
+    print(5 in [x])
+
+reads_module()
+
+# The needles the folded payload-only compare could not name. Every one of these is an ANSWER the compiler
+# used to get wrong or refuse: the void read as a 0, a double refused outright, a container needle that died
+# in the assembler.
+print(None in [0])
+print(None in [1])
+print(1.0 in [1])
+print(1.5 in [1, 2])
+half = 2.5
+print(half in [1, 3])
+print(half in [1, 2.5])
+print("a" in [1, 2])
+print([1] in [1, 2])
+print(True in [1])
+print(True in [0])
+
+# The haystack the fold still serves costs the program no object: constant whole numbers, a needle the fold
+# can name, answered by the unroll it always had.
+print(1 in [1, 2, 3])
+print(4 not in [1, 2, 3])
+print(x in [1, 2, 3])
+print(len([x, 1]))
+
+# The ordinary answers, untouched by the door.
+words = [1, 2]
+print(1 in words)
+print(3 not in words)
+print("ell" in "hello")
+print(1 in (1, 2))
+built = []
+built.append(3)
+print(3 in built)
+
+print("done")

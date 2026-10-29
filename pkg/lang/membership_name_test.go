@@ -241,36 +241,21 @@ func TestWhatTheMembershipDoorStillDeclines(t *testing.T) {
 			})
 		}
 	})
-	t.Run("three shapes that refuse today, each on a row that is not this one's", func(t *testing.T) {
+	t.Run("shapes that refuse today, each on a row that is not this one's", func(t *testing.T) {
 		t.Parallel()
 		// These programs print a verdict in the reference and are refused HERE, for reasons that have nothing
-		// to do with membership — a module slot that needs the tagged value word (L11.1, Gap R.48 / R.22), and
-		// a list literal asked for an element kind a NAME does not hand it, in two element spellings
-		// (Gap R.523). They are pinned here, with the refusal's own words, because a control table that claims
+		// to do with membership — a module slot that needs the tagged value word (L11.1, Gap R.48 / R.22).
+		// They are pinned here, with the refusal's own words, because a control table that claims
 		// them would claim an answer neither leg gives; each row leaves this file when the row that owns it
 		// pays — the tuple-unpacking row that used to sit here made exactly that move when **ADR 0454** paid
-		// **Gap R.524**, and it is in `membershipControlRows` now.
+		// **Gap R.524**, and it is in `membershipControlRows` now. So did the two literal-haystack rows that
+		// sat here for **Gap R.523**, when **ADR 0456** paid it.
 		rows := []struct{ name, src, contains, owner string }{
 			{
 				"a module name another frame writes through global",
 				"x = 5\ndef h():\n    global x\n\n    x = \"abc\"\n\nh()\nprint(\"b\" in x)\n",
 				"`global x` names a module binding written as a text",
 				"L11.1, Gap R.48 and Gap R.22",
-			},
-			{
-				"a haystack the source builds from a name",
-				"x = 5\nx = 5\nx += 1\nprint(1 in [x])\n",
-				"list literal elements must be integers",
-				"Gap R.523",
-			},
-			{
-				// The same door, the other element kind: the reference prints `True` here, and the road answers
-				// `list literal elements must be integers, not str` — the message names an element kind the
-				// literal is not asking about, which is ADR 0166's second clause inside Gap R.523's first.
-				"a haystack the source builds from a text",
-				"y = \"a\"\nprint(\"a\" in [y])\n",
-				"list literal elements must be integers",
-				"Gap R.523",
 			},
 		}
 		for _, r := range rows {
@@ -558,6 +543,55 @@ func membershipControlRows() []struct{ name, src, want string } {
 		// answer both legs give, because the recorder reads this list and the record has no entry for a program
 		// that never ran (ADR 0302).
 		//
+		// The two haystacks that used to sit in the refusal table below belong here again. Their element was a
+		// NAME in one and a TEXT in the other, and the literal road asked the element for a word an `i32`
+		// slot cannot hold — `list literal elements must be integers, not int`, of a list the program had just
+		// printed as `[5]`. **ADR 0455**'s sibling door pays it (**Gap R.523**): the haystack the SOURCE spells
+		// is built by the container door the printer already uses, and the question goes to the object's slots.
+		// So both rows are ordinary control rows now, recorded and all — and the recorder reads this list, so
+		// the record has to hold them (ADR 0302).
+		{
+			"a haystack the source builds from a name",
+			"x = 5\nx = 5\nx += 1\nprint(1 in [x])\n",
+			"False\n",
+		},
+		{
+			// The other element kind the same door refused: the message named an element kind the literal was
+			// not asking about (**ADR 0166**'s second clause inside **Gap R.523**'s first).
+			"a haystack the source builds from a text",
+			"y = \"a\"\nprint(\"a\" in [y])\n",
+			"True\n",
+		},
+		{
+			"a haystack the source builds from a call's answer",
+			"def f():\n    return 5\n\nprint(5 in [f()])\n",
+			"True\n",
+		},
+		{
+			"a haystack the source builds from an expression",
+			"x = 4\nprint(5 in [x + 1])\n",
+			"True\n",
+		},
+		{
+			"a set the source builds from a name",
+			"x = 5\nprint(1 in {x})\n",
+			"False\n",
+		},
+		{
+			"the negated question, asked of a spelled list",
+			"x = 5\nprint(1 not in [x])\n",
+			"True\n",
+		},
+		{
+			"a dict the source builds from a name key",
+			"x = 5\nprint(5 in {x: \"v\"})\n",
+			"True\n",
+		},
+		{
+			"the folded haystack, which the door leaves alone",
+			"print(1 in [1, 2, 3])\n",
+			"True\n",
+		},
 		// The ordinary answers, untouched by the gate.
 		{"a list", "x = [1, 2]\nprint(1 in x)\n", "True\n"},
 		{"a text", "x = \"hello\"\nprint(\"ell\" in x)\n", "True\n"},

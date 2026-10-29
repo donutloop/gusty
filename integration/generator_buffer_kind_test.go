@@ -56,6 +56,12 @@ func generatorBufferKindFamily() []struct{ name, src, want string } {
 		{"a buffer forwarded through the class door keeps the kinds", "class C():\n    def gen(self):\n        yield \"a\"\n        yield 2\n    def outer(self):\n        yield from self.gen()\n        yield None\nc = C()\nfor v in c.outer():\n    print(v)\n", "a\n2\nNone\n"},
 		{"a forwarded integer buffer still sums", "def gen(n):\n    for i in range(n):\n        yield i * i\ndef outer():\n    yield from gen(3)\n    yield 99\ns = 0\nfor x in outer():\n    s = s + x\nprint(s)\n", "104\n"},
 		{"membership finds the yielded text", "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\nc = C()\nprint(\"a\" in c.m())\nprint(\"b\" in c.m())\n", "True\nFalse\n"},
+		// The mixed literal, asked a membership question: the payload-only scan took the integer 0 for the
+		// interned index of `"a"` (**Gap R.478**'s literal half), and the spelled-literal haystack now asks its
+		// slots' (payload, kind) pairs (**ADR 0456**, paying **Gap R.523**). The generator row in the owes table
+		// asks the SAME question of a buffer and still prints `True`, which is what keeps that row about the
+		// buffer's door.
+		{"a mixed literal asked a membership question asks its slots' kinds", "print(0 in [\"a\", 2])\n", "False\n"},
 		{"an inherited generator keeps the kinds", "class B():\n    def m(self):\n        yield None\n        yield \"z\"\nclass D(B):\n    pass\nd = D()\nfor v in d.m():\n    print(v)\n", "None\nz\n"},
 		{"super() keeps the kinds", "class Base():\n    def gen(self):\n        yield \"b\"\n        yield 1\nclass Child(Base):\n    def drain(self):\n        for v in super().gen():\n            print(v)\n        return None\nc = Child()\nprint(c.drain())\n", "b\n1\nNone\n"},
 		{"a call through self keeps the kinds", "class C():\n    def m(self):\n        yield \"s\"\n        yield 1\n    def n(self):\n        for v in self.m():\n            print(v)\n        return None\nc = C()\nprint(c.n())\n", "s\n1\nNone\n"},
@@ -222,19 +228,12 @@ func TestWhatTheYieldedKindStillOwesAtTheCLI(t *testing.T) {
 		},
 		{
 			// The membership scan compares the payload word: `"a"` interns to slot 0 and the integer 0 walks
-			// in as a match. The tagged compare the container roads use is the door — and the literal road
-			// walks the SAME untagged door, which is why the row below is in this table too: this is not a
-			// bug the generator brought, it is a bug the generator inherited.
+			// in as a match. The tagged compare the container roads use is the door. The literal twin used to sit
+			// in this table beside it — same question, same wrong verdict — until **ADR 0456** gave the spelled
+			// literal haystack the tagged scan (**Gap R.523**); it is in `generatorBufferKindFamily` now, and the
+			// pair of rows is what makes this one the BUFFER's door rather than a membership door both roads share.
 			name: "membership takes an integer for a text", gap: "Gap R.478",
 			src:    "class C():\n    def m(self):\n        yield \"a\"\n        yield 2\nc = C()\nprint(0 in c.m())\n",
-			python: "False\n", compiled: "True\n",
-		},
-		{
-			// The control that makes the door, and not this row's buffer, the owner of the shape above: no
-			// generator, no class, one literal list — and the same wrong verdict at the exit code of success,
-			// byte-identical on this commit's parent.
-			name: "the mixed-list twin of that question, asked of a literal", gap: "Gap R.478",
-			src:    "print(0 in [\"a\", 2])\n",
 			python: "False\n", compiled: "True\n",
 		},
 		{
