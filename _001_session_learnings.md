@@ -1,5 +1,60 @@
 # Session Learnings
 
+## Round 18 — an unpacking that spells a container asks the one binding road that already refused to store the global (roadmap Gap R.524 closed; ADR 0454; Gaps R.526, R.527, R.528 filed)
+
+**The invalid-IR bug was in my own control table, one row over from the feature I was testing.** `x = [1]` printed
+`[1]`; `x, y = [1], 2` emitted `store i32 @.lst1, i32* %_x` and `llc-20` refused the module
+(`global variable reference must have pointer type`). A program the reference prints in one line died in the
+toolchain at **exit 2**, which the exit-code contract (**ADR 0166**) reserves for the compiler's own bug. The row was
+filed last cycle by the same accident **ADR 0453** reported — a control row, the kind nobody re-reads against the
+reference — and this cycle paid it. Lesson kept: a control table is a set of CLAIMS, and I now run every row of one
+through `python3` before it is written down, because a control row that was never checked becomes a bug report about
+something else entirely.
+
+**The fix was a delegation, and the guard is that it stayed one.** Copying the heap-building block out of
+`stmtAssign` would have been a smaller diff and a permanent fork: one literal, two lowerings, and the second one
+silently missing the thirteenth container claim whenever the first grows one (**Gap Q.1** exists because twelve
+claims used to be written in three places). So the unpacking marks the element and calls `stmtAssign` with a
+synthesised one-name assignment. The claim "there is still one feature" is not a comment: the same literal through
+the two roads must ask `@rt_alloc(`, `@rt_set_elem(` and `@rt_tag_elem(` the SAME number of times. A reviewer cannot
+tell a delegation from a copy; an equal-count assertion can.
+
+**Where a bind runs is a correctness question when the bind performs a store.** An unpacking reads every value
+before naming any of them (**ADR 0367**); the plain road I delegated to writes a slot. Running it in the read loop
+would have made `a, b = b, a` stop being a swap; running it after the stores would have built containers from
+already-overwritten names. It runs between — after every element is read, before any element is stored — and the two
+swap rows in the table are the witness rather than my sentence. The shape outside that window
+(`b, a = [b], [a]`) is refused with the row that owns it (**Gap R.526**) instead of answered: measured, that shape
+built a self-referential literal and printed `[[[[[[…` until the process segfaulted, which is the worst of the three
+outcomes available to me and the one a refusal exists to replace.
+
+**A fix that makes a shape compile also makes its neighbours testable — and they were broken too.** The swap rows
+could not be measured at all before, because the statement did not compile. The moment they did: `a = [1]` /
+`b = 2` / `a, b = b, a` prints `[]` and `0` where CPython prints `2` and `[1]`, and `xs = [1, 2]` /
+`a, b = xs, 5` / `print(a)` prints `0` at the exit code of success. Same cause as **ADR 0412**'s plain-road finding
+— "the handle travels and the notebook claims do not" — different road: the unpacking's bind loop asks none of those
+doors, so the receiving name is a number wearing another object's bits and the displaced name keeps claiming a
+container it no longer holds. Filed as **Gap R.527**, not absorbed: `len(a)` refuses with
+`len of a non-string variable` while `print(a)` prints nonsense, so one program is refused at one door and lies at
+the next. `global` gave the same lesson in miniature (`x = 0` / `def f():` / `    global x` / `    x, y = 1, 2` /
+`f()` / `print(x)` says `0`), filed as **Gap R.528** beside the plain-road row **ADR 0448** paid. A row about
+containers has to be measured against the SWAP rows and not only the literal rows.
+
+**I fixed a lie in my own documentation while I was writing it.** `docs/operations.md` gained a row for the new
+recorder (`GUSTY_RECORD_UNPACK=<file>`) claiming it is "scrubbed from every subprocess of the suite" — which was
+false until I added it to `artifactWritingVars`. Nothing in the suite cross-reads the docs table against the scrub
+list, so the claim would have shipped as decoration: the next person to run the suite with a recorder set would lose
+a ledger exactly the way **Gap R.410** describes. The fix is a guard, not a checklist item —
+`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed` reads the documents table as the SOURCE OF TRUTH for what counts
+as a recording knob and fails on any name `parifyEnv` still hands down, and it caught a second hole the same day
+(`GUSTY_GAP_LEDGER`). A promise in a doc is a test that has not been written yet.
+
+**An IR defect needs an IR witness, because stdout did not exist to be read.** No printed byte can distinguish
+"fixed" from "the failure moved" when the broken build produced no image at all. So the module is asked directly:
+no `store i32 @`/`ret i32 @` anywhere, the heap door actually called inside `@main` for each of the three kinds, and
+`--verify-llvm-file` at the CLI. The `store i32 @` negative is the one that would have caught the original bug; the
+verifier row is the one that stops "it prints right now" from being the whole story.
+
 ## Round 17 — the answer direction gets its METHOD round: a carried method keeps the arm that ran, and a container answer is built before it answers (roadmap Gap R.453 closed; ADR 0430; Gaps R.458, R.459 filed)
 
 **Change (the plan's second round)**: `answerKindPlanOf` walked `prog.Stmts` for `*FuncDef` and never entered a
@@ -17042,3 +17097,39 @@ made it the claim I meant — and the same fix, applied to the CLI file, turned 
 (`inCLIMain`), because two files making the same claim in two ways is the drift the rest of this suite exists to catch.
 Matters like `f = lambda: [1]` (a lambda returning a container) also can't be compiled today, so a negative row has to
 be written in a shape that survives the toolchain, and `--emit-llvm` is where I found that out.
+
+## ADR 0454 — an unpacking that spells a container asks the ONE binding road that already refused to store the global (roadmap Gap R.524 closed; Gaps R.526, R.527, R.528 filed; 2026-11-02)
+
+**"Load the global's value instead" is not a fix when the global is a struct.** The tracker's own `How to fix` cell
+for this row suggested loading the value or copying the heap builder. `@.lst1` is `{ i32 <len>, [N x i32] }` — there
+is no word to load, and the copy would have forked the one literal into two lowerings. The decision that survived is
+the boring one: the unpacking calls the road that already met this global (**Gap J.2** / **ADR 0234**), so the
+element is built by the same code that builds `x = [1]`, and the ADR's claim of unity is enforced by equal
+`@rt_alloc(` / `@rt_set_elem(` / `@rt_tag_elem(` call counts between the two bindings rather than by my saying so.
+Every "it's easier to copy" moment in this repo is a future divergence with a head start.
+
+**A refusal that names the missing half beats an answer, and here it beat a segfault.** The one shape the delegation
+cannot build — `b, a = [b], [a]`, a container element mentioning a name the same statement re-binds — printed
+`[[[[[[…` until the process died before this row refused it. That is the scale **ADR 0166** is written on: wrong
+answer < named refusal < correct answer, and a SIGSEGV at the end of a print loop is below all three. The refusal
+text carries the name, the binding, what the reference does, and the roadmap row (**Gap R.526**); the pinned test
+fails when the shape starts COMPILING, which is what turns a refusal into a debt with a due date rather than a
+permanent excuse.
+
+**Timing is semantics when the road you delegate to performs a store.** Reading first and storing after is what an
+unpacking IS (**ADR 0367**), and a bind that stores in the middle of the reads silently un-swaps a swap. The window
+— all reads, then container binds, then scalar stores — is the whole design, and it is defended by rows (swap
+rows, a container-and-scalar rebound in one statement) rather than by a comment saying "order matters".
+
+**Two of the three things this row measured were found by testing the row's own neighbours.** The swap rows became
+testable only when the statement compiled, and they were wrong: a container behind a NAME binds the handle as a word
+(**Gap R.527**, the plain road's **ADR 0412** alias door never asked by the unpacking), and `global` on an unpacking
+target binds locally while the plain road writes the module (**Gap R.528**, **ADR 0448**'s twin). Both at exit 0. The
+general form: when a fix makes a program run for the first time, the program beside it also runs for the first time,
+and nobody has ever asked it anything.
+
+**A documentation sentence is a test I have not written yet.** The new recorder's row in `docs/operations.md`
+promised it was scrubbed from every subprocess; it was not. Now the documents table is the source of truth for what
+counts as a recording knob, and a guard fails any knob `parifyEnv` still passes down — which found a second one
+(`GUSTY_GAP_LEDGER`) the same day. This is **ADR 0232** applied to prose: one question ("is this knob scrubbed?"),
+asked once, against the artifact that describes it.

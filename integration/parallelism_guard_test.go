@@ -98,6 +98,14 @@ var artifactWritingVars = []string{
 	// subprocess of the suite inheriting it would have N processes each overwrite the file with their own
 	// subset, and the recorder is worth nothing if the list it writes is whichever shard finished last.
 	"GUSTY_RECORD_MEMBERSHIP=",
+	// The unpacking row's recorder (`pkg/lang/unpack_container_test.go::TestTheUnpackingRecordSourcesTheTableAsks`),
+	// the same shape one row further down the tracker — and the reason the list below is now checked against the
+	// documents that describe it (`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed`).
+	"GUSTY_RECORD_UNPACK=",
+	// The gap ledger (`integration/parity_test.go`) dumps every refusal a run took, for filing as roadmap rows. A
+	// refusal dump is an artifact like any other: `-check`'s own subset would otherwise overwrite the run's ledger
+	// with the handful of refusals its four cases happen to take.
+	"GUSTY_GAP_LEDGER=",
 }
 
 func parifyEnv() []string {
@@ -177,6 +185,85 @@ func TestTheGuardsSubprocessCarriesNoArtifactWritingMode(t *testing.T) {
 	if env := strings.Join(parifyEnv(), "\n"); !strings.Contains(env, "GOFLAGS=-tags=llvm20") {
 		t.Fatalf("parifyEnv must always carry the suite's build tag:\n%s", env)
 	}
+}
+
+// TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed keeps the DOCUMENT honest.
+//
+// docs/operations.md's "Recording knobs" table is the contract a person reads before setting one of these: every
+// row there says the mode is "scrubbed from every subprocess of the suite". That sentence was true of the four
+// ledgers it was written for and false of the two recorders added later — the unpacking row shipped a recorder and
+// a documentation row claiming the scrubbing, and nothing cross-read them, so the claim would have gone stale in
+// the quiet direction (a knob that is not scrubbed is invisible until someone runs the suite with it set and loses
+// a ledger, which is Gap R.410's accident waiting to happen again).
+//
+// The exemption is data, not prose: the source of truth for what counts as a recording knob is the documents table
+// itself, read here, so adding a knob without scrubbing it fails this case rather than shipping a lie. Reads only;
+// like every guard over a file outside the package holding the test, it depends on the gate's `-count=1` (ADR 0317)
+// to run at all after an edit.
+func TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed(t *testing.T) {
+	t.Parallel()
+	root := repoRootForParify(t)
+	body, err := os.ReadFile(filepath.Join(root, "docs", "operations.md"))
+	if err != nil {
+		t.Fatalf("read docs/operations.md: %v", err)
+	}
+	var knobs []string
+	start := -1
+	lines := strings.Split(string(body), "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "Recording knobs") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatal("docs/operations.md no longer has a \"Recording knobs\" table — this guard reads nothing")
+	}
+	for _, line := range lines[start:] {
+		if len(knobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "|") {
+			break // the table ended
+		}
+		knobs = append(knobs, gustyKnobNames(line)...)
+	}
+	if len(knobs) < 5 {
+		t.Fatalf("found %d recording knobs in docs/operations.md — the table moved or emptied, and this guard "+
+			"reads nothing (roadmap Gap R.205's vacuity rule)", len(knobs))
+	}
+	scrubbed := map[string]bool{}
+	for _, kv := range artifactWritingVars {
+		scrubbed[strings.TrimSuffix(kv, "=")] = true
+	}
+	for _, k := range knobs {
+		if !scrubbed[k] {
+			t.Errorf("docs/operations.md documents %s as a recording knob, but parifyEnv hands it to a `go test `"+
+				"subprocess: N shards would each overwrite the artifact with their own subset (Gap R.410). Add it to "+
+				"artifactWritingVars, or delete the documentation row that promises the scrubbing.", k)
+		}
+	}
+}
+
+// gustyKnobNames pulls every `GUSTY_…` knob name out of one line: an env-var name in these documents is always
+// spelled as an identifier, and the table writes them bare, with a trailing `=1`, or inside backticks — so the
+// scan takes the identifier characters and stops at anything that is not one.
+func gustyKnobNames(line string) []string {
+	var out []string
+	for i := 0; i+6 <= len(line); i++ {
+		if !strings.HasPrefix(line[i:], "GUSTY_") {
+			continue
+		}
+		j := i + 6
+		for j < len(line) {
+			c := line[j]
+			if (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+				j++
+				continue
+			}
+			break
+		}
+		out = append(out, line[i:j])
+		i = j
+	}
+	return out
 }
 
 // overlapParents names the families the overlap measurement runs: four cases in pkg/lang whose every subtest

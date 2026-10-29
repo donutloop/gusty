@@ -1,0 +1,80 @@
+# A container the SOURCE spells, unpacked to a tuple target, binds the object — roadmap Gap R.524 (ADR 0454).
+#
+# `x = [1]` compiles, prints `[1]`, and has for a long time. `x, y = [1], 2` — the same literal one binding
+# position over — emitted `store i32 @.lst1, i32* %_x`, and `llc` refused the module with
+# `global variable reference must have pointer type`: an ordinary program dying in the toolchain, at the exit
+# class the contract reserves for a compiler bug (ADR 0166). The unpacking now hands every spelled container
+# element to the SAME plain binding road the ordinary assignment walks — the same `rt_alloc`, the same per-slot
+# tags, the same container claims, the same rooting store — and hands it over after every element has been read
+# out of its slot and before any element is stored, which is what keeps an unpacking simultaneous. The blocks
+# below ask each of that in the ordinary way: print, measure, index, append, assign an entry, loop, ask
+# membership, and compare.
+
+xs, n = [1], 2
+print(xs)
+print(n)
+print(len(xs))
+print(xs[0])
+
+a, b = {1, 2}, {"k": 1}
+print(a)
+print(b)
+print(len(a))
+print(1 in a)
+print("k" in b)
+
+empty_list, empty_dict = [], {}
+print(empty_list)
+print(empty_dict)
+empty_list.append(7)
+empty_dict["z"] = 8
+print(empty_list)
+print(empty_dict)
+print(len(empty_list), len(empty_dict))
+
+# The slots describe themselves: each carries its own kind, and the printer asks the slot rather than the list.
+mixed, count = [1, "a", None, 2.5, True], 0
+print(mixed)
+print(len(mixed))
+print(mixed[1])
+print(str(mixed))
+
+# A container inside a container, read all the way down.
+inner, lookup = [[1], {"a": [1, 2]}]
+print(inner)
+print(lookup)
+print(lookup["a"])
+print(inner[0])
+
+# Texts intern; they were never a pointer to store.
+words, first = ["alpha", "beta"], 0
+print(words)
+print(words[0])
+print(len(words))
+for w in words:
+    print(w)
+
+# The swap is the simultaneity claim, and the containers are the reason it had to be re-checked.
+left, right = [1], [2]
+print(left)
+print(right)
+left, right = right, left
+print(left)
+print(right)
+
+# A name the unpacking opened is written like any other binding.
+d, key = {}, "a"
+d[key] = 1
+print(d)
+d[key] = 2
+print(d)
+print(len(d))
+
+# A tuple element was already an object, and stays one.
+t, u = (1, 2), "x"
+print(t)
+print(u)
+print(len(t))
+print(t[1])
+
+print("done")

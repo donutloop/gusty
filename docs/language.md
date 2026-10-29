@@ -1509,6 +1509,43 @@ payload alone: `print(a + b)` over two pair-bound names, `if a:`, `print(a[0])` 
 where the tag they cannot hold came from (roadmap Gap R.323, and Gap R.321 for binding a pair-bound
 name to a second name or unpacking one collection — `a, b = xs[0]`).
 
+### A container the source **spells**, unpacked, is the object (Gap R.524, ADR 0454)
+
+`x, y = [1], 2` binds the same object `x = [1]` binds. It used to emit
+
+```llvm
+store i32 @.lst1, i32* %_x        ; llc: global variable reference must have pointer type
+```
+
+— the compile-time container global's **name** written into a value slot, so `llc` rejected the module and an
+ordinary program paid the compiler-bug exit class (**ADR 0166**). There is no second builder: the unpacking marks
+the element and hands it to the **same plain binding road** the ordinary assignment walks (`rt_alloc`, the per-slot
+tags, the twelve container claims, the rooting store), so one literal has one lowering and the two bindings emit one
+shape — asserted as equal call counts, not as a comment (**ADR 0232**).
+
+```python
+a, b = {1, 2}, {"k": 1}
+print(a)            # {1, 2}
+print("k" in b)     # True
+p, q = [], {}
+p.append(1)
+q["z"] = 3
+print(p, q)         # [1] {'z': 3}
+```
+
+Where the container is built is not a layout question: the bind runs **after every element has been read out of its
+slot and before any element is stored**, which is the only window in which an unpacking stays simultaneous and a
+container element can still be built from names the statement has not overwritten. Outside that window the backend
+**refuses rather than pretends**: `b, a = [b], [a]` needs the literal built from the value the name *HAD*, and
+answering it from the slot as the binding left it printed a self-referential list until the process died. The
+refusal names the name, the binding and the row that owns the snapshot (**Gap R.526**).
+
+Two shapes beside this one are owed and are named here rather than hidden: an element that is a **name** holding a
+container still binds the handle as a word (`xs = [1, 2]` / `a, b = xs, 5` / `print(a)` says `0`), because the
+container's claims travel with the object on the plain road and not on this one (**Gap R.527**, cf. **ADR 0412**);
+and a target a body declares `global` is still written locally by an unpacking that the plain binding would have
+written in the module (**Gap R.528**, cf. **ADR 0448**).
+
 ## None
 
 `None` is a real value — a singleton with its own dynamic type (`None`, value tag

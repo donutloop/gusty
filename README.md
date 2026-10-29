@@ -3768,6 +3768,39 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A container the source SPELLS, unpacked, binds the object (**Gap R.524**, **ADR 0454**)** — `x = [1]` compiles and
+  prints `[1]`, and still does; `x, y = [1], 2` — the same literal one binding position over — emitted
+  `store i32 @.lst1, i32* %_x`, and `llc-20` refused the module with `global variable reference must have pointer
+  type`. That is not a wrong answer or a refusal but an **invalid module**: an ordinary program the reference runs,
+  dying in the toolchain at the exit class the contract reserves for a compiler bug (**ADR 0166**). It arrived from
+  **ADR 0453**'s *control* table — the rows that were supposed to be a formality. The fix is a delegation, not a
+  second builder: the unpacking hands every spelled `ListLit`/`SetLit`/`DictLit` element to the **same plain binding
+  road** `x = [1]` walks — the same `rt_alloc`, the same per-slot tags, the same twelve container claims
+  (**Gap Q.1**), the same rooting store (**ADR 0163**, **Gap J.2** / **ADR 0234**) — and the claim that there is one
+  feature and not two is asserted as equal `@rt_alloc(` / `@rt_set_elem(` / `@rt_tag_elem(` call counts between the
+  two bindings, because two roads that "should" agree are the drift this suite exists to catch (**ADR 0232**). Where
+  the bind runs is correctness, not layout: it runs **after every element has been read out of its slot and before
+  any element is stored**, which is what keeps an unpacking simultaneous (**ADR 0367**) while a container may still
+  mention a name the statement has not overwritten. Outside that window the backend refuses in words instead of
+  pretending — `b, a = [b], [a]` used to build a self-referential literal and print `[[[[[[…` until the process died
+  with a segfault, and now names the name, the binding and **Gap R.526**, the row that owns the snapshot. The IR is
+  asked at the altitude the defect lived on: no `store i32 @`/`ret i32 @` anywhere, the heap door called inside
+  `@main` for each of the three kinds, and `--verify-llvm-file` at the CLI, because reading printed bytes cannot
+  tell "fixed" from "the failure moved" when the broken build printed nothing at all. Fourteen answer rows (list,
+  set, dict, both empty and then written to, nested three deep, a text element, membership, a `for`, an entry write,
+  a tuple element, containers swapped through names, a container and a scalar rebound together) on the compiled leg
+  AND the record leg, the same fourteen at the CLI beside a live `python3`, two refusal rows that fail when the shape
+  starts compiling, and `integration/programs/unpack_container.gy` as a `match` row (corpus 280 → **281**, matrix
+  266 → **267**, parity-asserted 230 → **231**, oracle `match` 216 → **217**); **16 record entries (10352 → 10368)**
+  from `tools/recmerge`, reference-answered with the compiled leg cross-checked, and a recorder
+  (`GUSTY_RECORD_UNPACK=<path>`) that dumps this row's own sources so a case cannot ship without a record under it
+  (**ADR 0302**). Checking this row's swap rows against the reference found two defects the delegation does not pay,
+  filed rather than absorbed: **Gap R.527** (an element that is a NAME holding a container binds the handle as a word
+  — `a, b = xs, 5` prints `0`, and the mixed swap `a = [1]` / `b = 2` / `a, b = b, a` prints `[]` `0` where the
+  reference prints `2` `[1]`, because the container's claims travel with the object on the plain road and not here,
+  cf. **ADR 0412**) and **Gap R.528** (`global` is honoured by the plain binding — **ADR 0448** — and ignored by the
+  unpacking, which binds the module's name locally and prints the old value at exit 0).
+
 - **Membership asked of a kind the SOURCE PROMISES raises (**Gap R.522**, **ADR 0453**)** — ADR 0452 paid the
   haystack the source spells; this pays the haystack the source only NAMES. `x = 5` / `print(1 in x)` printed
   **`False`** at the exit code that means the program ran, where CPython ends it with

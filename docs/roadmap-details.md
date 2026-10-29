@@ -22335,7 +22335,15 @@ codegen: list literal elements must be integers, not int      reference: TypeErr
 $ gustyc --eval 'x = 5
 print([x])'
 [5]                                                            compiles, prints, no complaint
+$ gustyc --eval 'y = "a"
+print("a" in [y])'
+codegen: list literal elements must be integers, not str      reference: True
 ```
+
+The third pair is **ADR 0454**'s sweep adding itself to this row: the road is untagged for every element origin, not
+only for the number-holding one, and a message that names `str` as the offending element kind while the literal is
+asking a membership question is **ADR 0166**'s second clause inside the first defect — it names an operand and a kind
+that are both present.
 
 One element shape, two doors, two verdicts. `print([x])`, `print(len([x]))` and `print([[x]])` all build the
 list; the membership road for the same literal reaches an untagged int-list fast path, asks the element's kind,
@@ -22350,7 +22358,7 @@ Pinned with its own refusal words in `pkg/lang/membership_name_test.go::TestWhat
 in the subtable that fails when the shape starts compiling — so the row cannot be paid and quietly stay.
 
 <a id="gap-r-524"></a>
-### Gap R.524 — a tuple-unpacking target storing a spelled container emits IR `llc` rejects (⏳ OPEN, filed by **ADR 0453**)
+### Gap R.524 — a tuple-unpacking target storing a spelled container emits IR `llc` rejects (✅ DONE, filed by **ADR 0453**, paid by **ADR 0454**)
 
 ```
 $ gustyc --eval 'x, y = [1], 2
@@ -22370,6 +22378,42 @@ which are the pair-road shapes of the same assignment. Found while checking a co
 the reference: the table had a `True` written for it that neither leg had ever given.
 
 Pinned with `llc`'s own words in `pkg/lang/membership_name_test.go::TestWhatTheMembershipDoorStillDeclines`.
+
+### What was paid, and by what delegation
+
+**ADR 0454** closed this the cycle after it was filed, and refused to write a second container builder to do it. The
+unpacking marks an element whose value is a spelled `ListLit`/`SetLit`/`DictLit` and hands it, in the bind phase, to
+`g.stmtAssign` as a synthesised one-name assignment — the same road `x = [1]` has walked since **Gap J.2** /
+**ADR 0234** stopped storing `@.set1` into a word and started building the object: same `rt_alloc`, same per-slot
+tags, same twelve container claims (**Gap Q.1**), same rooting store (**ADR 0163**). The claim that there is still
+ONE feature here is asserted, not argued: the same literal through the two bindings must ask `@rt_alloc(`,
+`@rt_set_elem(` and `@rt_tag_elem(` the same number of times, so a thirteenth claim cannot be added to one road and
+missed by the other.
+
+Where the bind runs is a correctness question, because the plain road performs a store: it runs after every element
+has been read out of its slot and before any element is written, which is the only window in which an unpacking is
+still simultaneous (**ADR 0367**) and a container element can still be built from names the statement has not
+overwritten. The shape outside that window — a container element mentioning a name the same statement re-binds — is
+refused in words naming **Gap R.526** rather than answered, which is what **ADR 0166** asks for and what the segfault
+before this row was not.
+
+The witnesses are at the altitude the defect lived on: no `store i32 @`/`ret i32 @` anywhere in the module, the heap
+door asked inside `@main` for each of the three kinds, and `--verify-llvm-file` at the CLI, because reading printed
+bytes cannot tell "fixed" from "the failure moved" when the failing build printed nothing at all.
+
+### What the row found on the way (filed, not absorbed)
+
+Checking this row's own swap rows against the reference turned up two defects the delegation does not pay, both at
+the exit code of success, both in the same bind loop:
+
+- **Gap R.527** — an element that is a NAME holding a container still binds the handle as a word, because the
+  container's claims travel with the object only on the plain road (`ys = xs`, **ADR 0412**). `a = [1]` /
+  `b = 2` / `a, b = b, a` prints `[]` `0` where the reference prints `2` `[1]`.
+- **Gap R.528** — `global` is honoured by the plain binding and ignored by the unpacking: `x = 0` /
+  `def f():` / `    global x` / `    x, y = 1, 2` / `f()` / `print(x)` prints `0` where the reference prints `1`.
+
+Both are pinned in the tracker rather than written into an expectations table: a table that asserts a wrong answer
+as expected is how a defect becomes a feature.
 
 <a id="gap-r-525"></a>
 ### Gap R.525 — `except … as name` leaves the name bound where the reference unbinds it (⏳ OPEN, filed by **ADR 0453**)
@@ -22397,3 +22441,111 @@ The fix is the handler's exit roads: clear the exception name on the normal end 
 `break`/`return` that leaves it, and let the binding underneath reappear. Until then no conformance program and no
 record entry claims an answer for it, and the sweep that found it left it unabsorbed rather than writing its
 behaviour into a table as if it were correct.
+
+<a id="gap-r-526"></a>
+### Gap R.526 — an unpacking cannot build a container from a value it is about to overwrite (⏳ OPEN, filed by **ADR 0454**)
+
+```
+$ gustyc --eval 'a, b = 1, 2
+b, a = [b], [a]
+print(a)
+print(b)'            # before ADR 0454
+[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[   … until the process died (SIGSEGV)
+                                                 reference: [1] then [2]
+$ gustyc --eval 'a, b = 1, 2
+b, a = [b], [a]'     # today
+jit: codegen: unpacking a container that mentions a name the same statement re-binds (b appears on
+both sides of b = the list literal `[b]`) — the reference builds the container from the value the
+name HAD, and this road builds it from the slot as the binding left it; the snapshot that keeps the
+two is roadmap Gap R.526                                                  exit 1, no module reached
+```
+
+An unpacking reads every value before naming any of them (**ADR 0367**), so the reference builds `[b]` from the `2`
+that `b` held when the statement began and `[a]` from the `1` that `a` held, and then writes both names. The
+**ADR 0454** delegation builds the literal through the plain binding road, which reads the name's SLOT — and by the
+time the second container is built, the first container's store has already re-written part of the statement. What
+came out was a container whose element is the container: a self-referential literal the printer walked until the
+stack or the process gave up.
+
+The window that makes the delegation safe is the same window that makes this shape impossible for it: the container
+bind runs after the reads and before the stores, so a literal may mention any name EXCEPT one this statement is
+about to overwrite. Fixing it means snapshotting — read each mentioned name into a word the literal's lowering can
+consume without losing the container claims that make the name print right — while keeping one store per target.
+Until then the refusal is the artifact, and it names itself: the message carries the row, and
+`pkg/lang/unpack_container_test.go::TestWhatTheUnpackingStillRefusesToPretend` fails when the shape starts
+compiling, so paying the row moves the row instead of deleting a guard.
+
+<a id="gap-r-527"></a>
+### Gap R.527 — an unpacking element that is a NAME holding a container binds the handle as a word (⏳ OPEN, filed by **ADR 0454**)
+
+```
+$ gustyc --eval 'xs = [1, 2]
+a, b = xs, 5
+print(a)'
+0                                                              reference: [1, 2]
+$ gustyc --eval 'd = {"k": 1}
+a, b = d, 2
+print(a)'
+1                                                              reference: {'k': 1}
+$ gustyc --eval 'a = [1]
+b = 2
+a, b = b, a
+print(a)
+print(b)'
+[]
+0                                                              reference: 2 then [1]
+```
+
+All three at the **exit code of success**. A container is not its handle: what makes `print(xs)` print a list is a
+dozen compile-time claims recorded against the NAME (`listVars`, the element notebook, the mixed-slot bit, the
+immutable-spelling bit — the twelve that **Gap Q.1** settled into one door). The plain binding road has always
+carried them across a copy: `ys = xs` records an alias (**Gap R.415** / **ADR 0412**) because "the handle travels
+and the notebook claims do not" was that row's whole finding. The unpacking's bind loop writes the payload word and
+asks none of those doors, so the receiving name is a number wearing another object's bits, and the name it displaced
+keeps claiming a container it no longer holds — which is why the mixed swap prints `[]` (`a`, still recorded as a
+list, reading the handle `2`) and `0` (`b`, still recorded as an `int`, reading a handle).
+
+`len(a)` on the same binding refuses with `codegen: len of a non-string variable`, so one program is refused at one
+door and answered wrongly at the next — **ADR 0232**'s one-question rule, in the same shape as **Gap R.523** two
+constructs over. The pair road (`assignPairWords`, **ADR 0367**) has a door for every read that carries a tag and no
+door for a container claim, and the alias door cannot simply be called with the source name for a swap: a live link
+from `a` to `b` beside a live link from `b` to `a` describes a circle, so the claims have to be SNAPSHOT from the
+source's state before any of this statement's bindings land.
+
+Measured 2026-11-02 while checking **ADR 0454**'s swap rows against the reference — the row that made spelled
+containers bindable is the row that can name the name-shaped hole beside them.
+
+<a id="gap-r-528"></a>
+### Gap R.528 — `global` is honoured by the plain binding and ignored by the unpacking (⏳ OPEN, filed by **ADR 0454**)
+
+```
+$ gustyc --eval 'x = 0
+def f():
+    global x
+    x, y = 1, 2
+
+f()
+print(x)'
+0                                                              reference: 1
+$ gustyc --eval 'x = 0
+def f():
+    global x
+    x = 1
+
+f()
+print(x)'
+1                                                              the plain road, since **ADR 0448**
+```
+
+**ADR 0448** made a body that DECLARES a name write the MODULE's binding, one statement at a time, and the unpacking
+is the same statement shape one road over: its targets get fresh local allocas and the module's word is never asked.
+The program above runs, exits 0, and leaves `x` at the value it had before the call — the binding the program asked
+for happened somewhere the printer cannot see. The container form at least says so: `x, y = [1], 2` under a
+`global x` is refused today by the module-slot rule **Gap R.22** / **L11.1** already write ("the module's scalar
+word is an int-sized handle"), which is the honest half of a defect the scalar form does not have the decency to
+announce.
+
+This is **Gap R.48**'s twin, filed beside it rather than into it: the plain road's row is paid and its table is
+unmoved, and the unpacking needs the same door asked per target — before the alloca, not after the store. The
+membership sweep (**ADR 0453**) already had to READ `global` declarations to keep a promise honest; this is the same
+road discovered to be silent where it BINDS.

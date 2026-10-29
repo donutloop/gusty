@@ -301,6 +301,11 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			hadSlot bool
 			payload string
 			rhs     Expr
+			// container marks an element the one-word road has no word for — a spelled list, set or dict —
+			// which the bind phase below hands to the plain binding road instead of storing. The mark is set
+			// where the element is read, so nothing about it is stored before every element has been read
+			// (roadmap **Gap R.524**).
+			container bool
 		}
 		elems := make([]unpackedElem, len(tup.Elems))
 		for i := range tup.Elems {
@@ -337,14 +342,65 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				elems[i] = unpackedElem{name: nm.Value, payload: payload, rhs: valElems[i]}
 				continue
 			}
+			// A spelled container is not a word the ordinary road can hand back. `g.value` folds it to the
+			// compile-time global `@.lst1` / `@.set1` / `@.dict1` — a length beside an array, whose NAME cannot
+			// be stored into an `i32` slot — so `x, y = [1], 2` emitted `store i32 @.lst1, i32* %_x` and `llc`
+			// rejected the module with `global variable reference must have pointer type`: an ordinary program,
+			// charged to the compiler by the exit-code contract (**ADR 0166**), while the same literal bound by
+			// `x = [1]` compiles and prints `[1]`. The element is marked and bound below, by the plain road that
+			// already met this global (**Gap J.2** / **ADR 0234**): same `rt_alloc`, same per-slot tags, same
+			// twelve container claims, same rooting store (ADR 0163's rule).
+			switch valElems[i].(type) {
+			case *ListLit, *SetLit, *DictLit:
+				elems[i] = unpackedElem{name: nm.Value, rhs: valElems[i], container: true}
+				continue
+			}
 			val, err := g.value(b, valElems[i])
 			if err != nil {
 				return err
 			}
 			elems[i] = unpackedElem{name: nm.Value, payload: val, rhs: valElems[i]}
 		}
+		// Every element has now been READ — every slot loaded, every pair door asked — so the names a
+		// container's own elements mention still hold what the program had before this statement, and the
+		// container bindings can run through the plain road without stealing a swap: the store that would
+		// otherwise have overwritten `a` before `b`'s value was read has not happened yet.
+		//
+		// That argument holds only while the container says nothing about a name THIS statement binds. If it
+		// does — `b, a = [b], [a]` — the literal must be built from the value the name HAD, and the plain road
+		// would build it from the slot as it is by then, which produced a self-referential literal, printed
+		// `[[[[…` until the process died, and cost the exit code of a segfault for a program the reference ends
+		// with `[1]` and `[2]`. Nothing in this road can hand the literal a value that is already gone, so the
+		// shape is refused in the words that name the missing half rather than answered: roadmap **Gap R.526**.
+		targets := map[string]bool{}
+		for _, tgt := range tup.Elems {
+			if nm2, isName := tgt.(*Name); isName {
+				targets[nm2.Value] = true
+			}
+		}
+		for i := range elems {
+			if !elems[i].container {
+				continue
+			}
+			mentioned := map[string]bool{}
+			collectNames(valElems[i], mentioned)
+			for nm2 := range mentioned {
+				if targets[nm2] {
+					return fmt.Errorf("codegen: unpacking a container that mentions a name the same statement re-binds (%s appears on both sides of %s = %s) — the reference builds the container from the value the name HAD, and this road builds it from the slot as the binding left it; the snapshot that keeps the two is roadmap Gap R.526", nm2, elems[i].name, nodeSurface(valElems[i]))
+				}
+			}
+			synth := &AssignStmt{Target: &Name{Value: elems[i].name}, Value: valElems[i]}
+			if sp := valElems[i].Span(); !sp.IsZero() {
+				synth.Src = sp
+			} else if sp := st.Span(); !sp.IsZero() {
+				synth.Src = sp
+			}
+			if err := g.stmtAssign(b, st, synth); err != nil {
+				return err
+			}
+		}
 		for _, el := range elems {
-			if el.name == "" {
+			if el.name == "" || el.container {
 				continue
 			}
 			if el.isPair {

@@ -1,5 +1,81 @@
 {
  "entries": {
+"x = 5\nx, y = [1], 2\nprint(1 in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+"# A container the SOURCE spells, unpacked to a tuple target, binds the object — roadmap Gap R.524 (ADR 0454).\n#\n# `x = [1]` compiles, prints `[1]`, and has for a long time. `x, y = [1], 2` — the same literal one binding\n# position over — emitted `store i32 @.lst1, i32* %_x`, and `llc` refused the module with\n# `global variable reference must have pointer type`: an ordinary program dying in the toolchain, at the exit\n# class the contract reserves for a compiler bug (ADR 0166). The unpacking now hands every spelled container\n# element to the SAME plain binding road the ordinary assignment walks — the same `rt_alloc`, the same per-slot\n# tags, the same container claims, the same rooting store — and hands it over after every element has been read\n# out of its slot and before any element is stored, which is what keeps an unpacking simultaneous. The blocks\n# below ask each of that in the ordinary way: print, measure, index, append, assign an entry, loop, ask\n# membership, and compare.\n\nxs, n = [1], 2\nprint(xs)\nprint(n)\nprint(len(xs))\nprint(xs[0])\n\na, b = {1, 2}, {\"k\": 1}\nprint(a)\nprint(b)\nprint(len(a))\nprint(1 in a)\nprint(\"k\" in b)\n\nempty_list, empty_dict = [], {}\nprint(empty_list)\nprint(empty_dict)\nempty_list.append(7)\nempty_dict[\"z\"] = 8\nprint(empty_list)\nprint(empty_dict)\nprint(len(empty_list), len(empty_dict))\n\n# The slots describe themselves: each carries its own kind, and the printer asks the slot rather than the list.\nmixed, count = [1, \"a\", None, 2.5, True], 0\nprint(mixed)\nprint(len(mixed))\nprint(mixed[1])\nprint(str(mixed))\n\n# A container inside a container, read all the way down.\ninner, lookup = [[1], {\"a\": [1, 2]}]\nprint(inner)\nprint(lookup)\nprint(lookup[\"a\"])\nprint(inner[0])\n\n# Texts intern; they were never a pointer to store.\nwords, first = [\"alpha\", \"beta\"], 0\nprint(words)\nprint(words[0])\nprint(len(words))\nfor w in words:\n    print(w)\n\n# The swap is the simultaneity claim, and the containers are the reason it had to be re-checked.\nleft, right = [1], [2]\nprint(left)\nprint(right)\nleft, right = right, left\nprint(left)\nprint(right)\n\n# A name the unpacking opened is written like any other binding.\nd, key = {}, \"a\"\nd[key] = 1\nprint(d)\nd[key] = 2\nprint(d)\nprint(len(d))\n\n# A tuple element was already an object, and stays one.\nt, u = (1, 2), \"x\"\nprint(t)\nprint(u)\nprint(len(t))\nprint(t[1])\n\nprint(\"done\")\n": {
+    "stdout": "[1]\n2\n1\n1\n{1, 2}\n{'k': 1}\n2\nTrue\nTrue\n[]\n{}\n[7]\n{'z': 8}\n1 1\n[1, 'a', None, 2.5, True]\n5\na\n[1, 'a', None, 2.5, True]\n[1]\n{'a': [1, 2]}\n[1, 2]\n1\n['alpha', 'beta']\nalpha\n2\nalpha\nbeta\n[1]\n[2]\n[2]\n[1]\n{'a': 1}\n{'a': 2}\n1\n(1, 2)\nx\n2\n2\ndone\n",
+    "hasStdout": true
+   },
+"a, b = {1, 2}, {\"k\": 1}\nprint(a)\nprint(b)\nprint(len(a))\nprint(\"k\" in b)\n": {
+    "stdout": "{1, 2}\n{'k': 1}\n2\nTrue\n",
+    "hasStdout": true
+   },
+"a, b = [1, [2, [3]]], 4\nprint(a)\nprint(a[1][1][0])\n": {
+    "stdout": "[1, [2, [3]]]\n3\n",
+    "hasStdout": true
+   },
+
+"a, b = [1], [2]\na, b = b, a\nprint(a)\nprint(b)\n": {
+    "stdout": "[2]\n[1]\n",
+    "hasStdout": true
+   },
+
+"d, k = {}, \"a\"\nd[k] = 1\nprint(d)\nprint(len(d))\n": {
+    "stdout": "{'a': 1}\n1\n",
+    "hasStdout": true
+   },
+
+"m, n = [[1], {\"a\": [1, 2]}]\nprint(m)\nprint(n)\nprint(n[\"a\"])\nprint(m[0])\nprint(len(n))\n": {
+    "stdout": "[1]\n{'a': [1, 2]}\n[1, 2]\n1\n1\n",
+    "hasStdout": true
+   },
+
+"p, q = [], {}\nprint(p)\nprint(q)\np.append(1)\nprint(p)\nq[\"z\"] = 3\nprint(q)\nprint(len(p), len(q))\n": {
+    "stdout": "[]\n{}\n[1]\n{'z': 3}\n1 1\n",
+    "hasStdout": true
+   },
+
+"t, u = (1, 2), \"x\"\nprint(t)\nprint(u)\nprint(len(t))\nprint(t[1])\n": {
+    "stdout": "(1, 2)\nx\n2\n2\n",
+    "hasStdout": true
+   },
+
+"x, y = [1], 2\nprint(1 in x)\nprint(3 in x)\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"x, y = [1], 2\nprint(x)\nprint(y)\n": {
+    "stdout": "[1]\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [0]\nn = 0\nxs, n = [4, 5], 9\nprint(xs)\nprint(n)\nprint(len(xs))\n": {
+    "stdout": "[4, 5]\n9\n2\n",
+    "hasStdout": true
+   },
+
+"xs, n = [7, 8], 0\nfor v in xs:\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
+
+"xs, ys = [\"a\", \"b\"], 1\nprint(xs)\nprint(xs[0])\nprint(str(xs))\nprint(repr(xs))\n": {
+    "stdout": "['a', 'b']\na\n['a', 'b']\n['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs, ys = [1, \"a\", None], [2.5]\nprint(xs)\nprint(ys)\nprint(xs[0])\nprint(xs[1])\nprint(len(xs))\n": {
+    "stdout": "[1, 'a', None]\n[2.5]\n1\na\n3\n",
+    "hasStdout": true
+   },
+
+"xs, ys = [1, 2], [3]\nxs.append(9)\nprint(xs)\nprint(len(xs))\nprint(ys)\n": {
+    "stdout": "[1, 2, 9]\n3\n[3]\n",
+    "hasStdout": true
+   },
 "# Membership asked of a kind the SOURCE promises raises — roadmap Gap R.522 (ADR 0453).\n#\n# ADR 0452 paid the haystack the source spells — `1 in 5`. This program is the haystack the source only\n# PROMISES: a NAME whose one and only binder is a top-level assignment of a literal with no members, and a\n# CALL every `return` road of which answers such a literal. Both used to print `False` at the exit code that\n# means the program ran, where the reference ends it with `argument of type 'int' is not iterable`:\n#\n#   x = 5            def f():\n#   print(1 in x)        return 5\n#   False, at exit 0     print(1 in f())\n#                        False, at exit 0\n#\n# A promise is the whole gate: where the program writes the name again, binds it in a loop, hands it a\n# parameter, or lets one road of a body answer a different kind, the door has nothing to read and asks the\n# object instead. The raises below are catchable, the call under a raise still runs, and every haystack with\n# members — including the ones below that a body, an arm or a loop also writes — keeps its answer.\n\n# A name whose one binder is a spelled literal.\nnum = 5\ntry:\n    print(1 in num)\nexcept TypeError as e:\n    print(str(e))\n\nvoid = None\ntry:\n    print(1 in void)\nexcept TypeError as e:\n    print(str(e))\n\ndbl = 1.5\ntry:\n    print(\"a\" in dbl)\nexcept TypeError as e:\n    print(str(e))\n\nverdict = True\ntry:\n    print(1 in verdict)\nexcept TypeError as e:\n    print(str(e))\n\n# The negated question asks the same door.\ntry:\n    print(1 not in num)\nexcept TypeError as e:\n    print(str(e))\n\n# A call whose every road answers the same kind.\ndef answer():\n    return 5\n\ntry:\n    print(1 in answer())\nexcept TypeError as e:\n    print(str(e))\n\ndef both_arms(chosen):\n    if chosen:\n        return 1\n\n    return 2\n\ntry:\n    print(1 in both_arms(1))\nexcept TypeError as e:\n    print(str(e))\n\n# A body that writes no `return` answers the void, and the side effect it performs still happens.\ndef quiet():\n    print(\"quiet ran\")\n\ntry:\n    print(1 in quiet())\nexcept TypeError:\n    print(\"caught after the call ran\")\n\n# A name bound from such a call is the same promise, read a step later.\nfrom_call = answer()\ntry:\n    print(1 in from_call)\nexcept TypeError as e:\n    print(str(e))\n\n# A builtin's answer, and a conversion's.\nitems = [1, 2]\ntry:\n    print(1 in len(items))\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in int(\"5\"))\nexcept TypeError as e:\n    print(str(e))\n\n# A module name read from inside a body is read in the frame that owns it.\nshared = 5\n\ndef reader():\n    try:\n        print(1 in shared)\n    except TypeError as e:\n        print(str(e))\n\nreader()\n\n# Where the program writes the name again, the promise is gone and the answer comes back.\nrebound = 5\nrebound = [1, 2]\nprint(1 in rebound)\n\nmaybe = [1]\nif 1 \u003e 2:\n    maybe = 5\n\nprint(1 in maybe)\n\n# A body that answers two different kinds settles nothing: the door has no promise to read, and the object\n# answers. The reference raises here (`mixed(1)` hands back a number), which is the residue this row leaves to\n# L11.1's tagged word — pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`, not in this\n# program, because a conformance row may only carry a line both legs give the same way.\n\n# The ordinary answers, untouched by the door.\nwords = \"hello\"\nprint(\"ell\" in words)\nprint(\"zz\" in words)\nprint(\"a\" in {\"a\": 1})\nprint(1 in {1, 2})\nprint(1 in (1, 2))\nbuilt = []\nbuilt.append(3)\nprint(3 in built)\nprint(5 in [5])\n# A chain link asks the same door through the ordinary comparison road (ADR 0288), and a name whose promise\n# the program retired keeps its answer.\nones = [1]\nprint(1 == 1 in ones)\n\nprint(\"done\")\n": {
     "stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nquiet ran\ncaught after the call ran\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
     "hasStdout": true

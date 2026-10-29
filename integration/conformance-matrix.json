@@ -1045,6 +1045,27 @@
     },
     {
       "case": {
+        "id": "programs/unpack_container",
+        "name": "unpack_container.gy",
+        "source": "# A container the SOURCE spells, unpacked to a tuple target, binds the object — roadmap Gap R.524 (ADR 0454).\n#\n# `x = [1]` compiles, prints `[1]`, and has for a long time. `x, y = [1], 2` — the same literal one binding\n# position over — emitted `store i32 @.lst1, i32* %_x`, and `llc` refused the module with\n# `global variable reference must have pointer type`: an ordinary program dying in the toolchain, at the exit\n# class the contract reserves for a compiler bug (ADR 0166). The unpacking now hands every spelled container\n# element to the SAME plain binding road the ordinary assignment walks — the same `rt_alloc`, the same per-slot\n# tags, the same container claims, the same rooting store — and hands it over after every element has been read\n# out of its slot and before any element is stored, which is what keeps an unpacking simultaneous. The blocks\n# below ask each of that in the ordinary way: print, measure, index, append, assign an entry, loop, ask\n# membership, and compare.\n\nxs, n = [1], 2\nprint(xs)\nprint(n)\nprint(len(xs))\nprint(xs[0])\n\na, b = {1, 2}, {\"k\": 1}\nprint(a)\nprint(b)\nprint(len(a))\nprint(1 in a)\nprint(\"k\" in b)\n\nempty_list, empty_dict = [], {}\nprint(empty_list)\nprint(empty_dict)\nempty_list.append(7)\nempty_dict[\"z\"] = 8\nprint(empty_list)\nprint(empty_dict)\nprint(len(empty_list), len(empty_dict))\n\n# The slots describe themselves: each carries its own kind, and the printer asks the slot rather than the list.\nmixed, count = [1, \"a\", None, 2.5, True], 0\nprint(mixed)\nprint(len(mixed))\nprint(mixed[1])\nprint(str(mixed))\n\n# A container inside a container, read all the way down.\ninner, lookup = [[1], {\"a\": [1, 2]}]\nprint(inner)\nprint(lookup)\nprint(lookup[\"a\"])\nprint(inner[0])\n\n# Texts intern; they were never a pointer to store.\nwords, first = [\"alpha\", \"beta\"], 0\nprint(words)\nprint(words[0])\nprint(len(words))\nfor w in words:\n    print(w)\n\n# The swap is the simultaneity claim, and the containers are the reason it had to be re-checked.\nleft, right = [1], [2]\nprint(left)\nprint(right)\nleft, right = right, left\nprint(left)\nprint(right)\n\n# A name the unpacking opened is written like any other binding.\nd, key = {}, \"a\"\nd[key] = 1\nprint(d)\nd[key] = 2\nprint(d)\nprint(len(d))\n\n# A tuple element was already an object, and stays one.\nt, u = (1, 2), \"x\"\nprint(t)\nprint(u)\nprint(len(t))\nprint(t[1])\n\nprint(\"done\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1]\n2\n1\n1\n{1, 2}\n{'k': 1}\n2\nTrue\nTrue\n[]\n{}\n[7]\n{'z': 8}\n1 1\n[1, 'a', None, 2.5, True]\n5\na\n[1, 'a', None, 2.5, True]\n[1]\n{'a': [1, 2]}\n[1, 2]\n1\n['alpha', 'beta']\nalpha\n2\nalpha\nbeta\n[1]\n[2]\n[2]\n[1]\n{'a': 1}\n{'a': 2}\n1\n(1, 2)\nx\n2\n2\ndone\n",
+      "python_ok": true,
+      "python_stdout": "[1]\n2\n1\n1\n{1, 2}\n{'k': 1}\n2\nTrue\nTrue\n[]\n{}\n[7]\n{'z': 8}\n1 1\n[1, 'a', None, 2.5, True]\n5\na\n[1, 'a', None, 2.5, True]\n[1]\n{'a': [1, 2]}\n[1, 2]\n1\n['alpha', 'beta']\nalpha\n2\nalpha\nbeta\n[1]\n[2]\n[2]\n[1]\n{'a': 1}\n{'a': 2}\n1\n(1, 2)\nx\n2\n2\ndone\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6322,11 +6343,11 @@
       ]
     }
   ],
-  "rows": 266,
+  "rows": 267,
   "skipped": 36,
-  "pass": 230,
+  "pass": 231,
   "fail": 0,
-  "oracle_match": 216,
+  "oracle_match": 217,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

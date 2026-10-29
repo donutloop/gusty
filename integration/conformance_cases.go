@@ -264,6 +264,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// or lets one road of a body answer another kind, the promise is gone and the answer comes back — so a
 		// door that starts raising at those would stop this program at the wrong exit code.
 		"membership_promised_kind",
+		// A container the source spells, bound by an unpacking, is the object — not the compile-time
+		// global's name stored into an `i32`, which is the IR `llc` rejected for `x, y = [1], 2` (roadmap
+		// **Gap R.524**, **ADR 0454**). The program asks each of that through the doors that read the name
+		// afterwards — print, `len`, index, `append`, an entry write, a `for`, membership, a swap — because
+		// the defect was not in building the object but in binding a name to it.
+		"unpack_container",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's
