@@ -1,0 +1,81 @@
+# The count door performs the elements whose count it takes, when an element's answer
+# IS a container (roadmap Gap R.534, ADR 0460).
+#
+# `len([probe()])` is a number the spelling states, and that is exactly the trap: the length door
+# answers the digit from the literal and asked the ONE-WORD value road for the element, which refuses
+# a call handing back a container (Gap R.67) — and the effects door treated the refusal as "nothing
+# to do". `print(len([probe()]))` wrote `1` at exit 0 where the reference writes `built` then `1`, and
+# a raise written inside the callee was skipped just as quietly. The element is now lowered by the
+# same door the print road uses (containerOperand's *Call arm, ADR 0333) and the handle is dropped: a
+# position that keeps no word has no reason to repeat a refusal about a word.
+
+def list_probe():
+    print("built-list")
+
+    return [1]
+
+def dict_probe():
+    print("built-dict")
+
+    return {"k": 1}
+
+def set_probe():
+    print("built-set")
+
+    return {7}
+
+def tuple_probe():
+    print("built-tuple")
+
+    return (1, 2)
+
+def forwarding():
+    return list_probe()
+
+def undescribed(x):
+    print("built-arms")
+
+    z = 5
+    return [x, z]
+
+# The row as filed: the line inside the callee is the program's, and the count door had eaten it.
+print(len([list_probe()]))
+print(len([list_probe(), 2]))
+print(len([[list_probe()], 2]))
+print(len([list_probe(), list_probe()]))
+
+# The answer's kind is the callee's; the door performs the call whatever it is. The tuple is the one
+# ADR 0457 declines at the SLOTS door — this position has no slot to make a claim about.
+print(len([dict_probe()]))
+print(len([set_probe()]))
+print(len([tuple_probe()]))
+
+# A body the answer scan can prove but not describe, and a body that only forwards another call.
+print(len([undescribed(1)]))
+print(len([forwarding()]))
+
+# The positions that ask the count door: bound, tested, looped, added, and asked beside the print of the
+# same literal. (`str(len([f()]))` inside a concatenation is NOT in this program: the str/concat roads
+# lower their argument twice — roadmap Gap R.544, pinned in the owed tables — and a corpus row that
+# printed the callee's line four times would be a pin for that row, not a witness of this one.)
+n = len([list_probe()])
+print(n)
+if len([list_probe()]) > 0:
+    print("counted")
+
+for i in range(2):
+    print(len([list_probe(), 1]))
+
+print(len([list_probe()]) + len([dict_probe()]))
+print(len([list_probe()]))
+print([list_probe()])
+print(len(sorted([list_probe()])))
+print(len({"a": list_probe(), "b": 2}))
+print(len((list_probe(), 1)))
+
+# The negative control beside every row above: a container of SPELLINGS still answers its count with
+# no builder, no allocation and no call — the fold's fast path survived the commit that made the door
+# perform the elements that act.
+print(len([1, 2, 3]))
+print(len([[1, 2], [3, 4]]))
+print(len([]))

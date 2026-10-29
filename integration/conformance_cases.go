@@ -1123,6 +1123,20 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `append`, the dict's entry store, and the static-array fold ADR 0239 leaves for `sum`. Every line
 		// is what CPython prints for it.
 		"item_stores_say_themselves",
+
+		// The COUNT door performs the elements whose count it takes, when an element's answer IS a container:
+		// `len([probe()])` answered the digit off the literal and asked the ONE-WORD value road for the element,
+		// which refuses a call handing back a container (**Gap R.67**), and the effects door read that refusal
+		// as "nothing to do" — so `print(len([probe()]))` wrote `1` where the reference writes `built` then `1`,
+		// and a raise written inside the callee was skipped at the **exit code of success** (roadmap **Gap
+		// R.534**, **ADR 0460**). The program puts a list-, dict-, set- and tuple-answering callee in a counted
+		// literal, a call inside a call inside a counted literal, a body the answer scan can prove but not
+		// describe and a body that only forwards another call, and asks the count from the four positions that
+		// reach the door — bound, tested, looped and added — beside the print of the same literal, a
+		// comprehension element, `sorted` and a dict value; and it keeps the fold's own control, the container
+		// of SPELLINGS that still costs no builder, no allocation and no call. Every line is what CPython
+		// prints for it.
+		"count_answer_effect",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

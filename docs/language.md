@@ -1081,6 +1081,44 @@ not use is still evaluated (**roadmap Gap R.149**, arriving at the length door a
 **ADR 0441**). A container whose every part is a spelling — a number, a text, a verdict, the void, a name, a literal
 of those — performs nothing and emits no builder, so the count stays the constant the spelling states.
 
+An element whose answer IS a container is performed by the same door that prints one, and the handle it hands back is
+thrown away. `len` keeps no word of what it counts, so the only reason a call handing back a list, a dict, a set or a
+tuple has no ONE-WORD answer (**Gap R.67**) has nothing to bite on at this position — and reading that refusal as
+"this element does nothing" was what made `print(len([probe()]))` write `1` where the reference writes `built` then
+`1`, and made a `raise` written inside such a callee answer `1` at the exit code of success (**roadmap Gap R.534**,
+**ADR 0460**). The permission is the whole-program answer scan's, not a table this door keeps: a callee the scan names
+is performed by the print road's own door (**ADR 0333**), once per literal, and a callee it does not name keeps the
+ordinary road:
+
+```
+def probe():
+    print("built")
+    return [1]
+print(len([probe()]))                    # built then 1     (this printed 1, and the line was lost)
+print(len([probe(), probe()]))           # built, built, then 2
+print(len([{"k": 1}, probe(), (3, 4)]))  # built then 3: the answer's KIND is the callee's business, not this one's
+def boom():
+    raise ValueError("boom")
+    return [1]
+print(len([boom()]))                     # ValueError: boom, exit 1  (this printed 1 at the exit code of success)
+n = len([probe()])                       # built then 1: the position that asks is the position that runs
+def k():
+    print("k")
+    return [9]
+def f(x):
+    print("f")
+    return [1]
+print(len([f(k())]))                     # 1 — owed: an argument that is itself a container is the pair road's,
+                                         # and this door stops at the CALL (**Gap R.542**)
+```
+
+The two shapes that stay wrong stay filed: an element whose ARGUMENT is a container answer skips that argument's
+effects (**Gap R.542**, and its float-answering sibling reaches `llc` with a `double` in an `i32` argument — **Gap
+R.543**), and a `str()` or `+` wrapped around the count lowers its argument more than once, so the callee's line is
+printed twice or four times where the reference prints it once (**Gap R.544**). What is NOT owed is the count of a
+spelling: `len([1, 2, 3])`, `len([[1, 2], [3, 4]])` and `len([])` still answer from the literal, and a module that
+grows a builder for one of them fails a test.
+
 There are two comprehensions in this backend, and the count door asks which one it is looking at (**ADR 0442**). One
 the compiler can write down — `[x for x in [1, 2, 3]]`, `[x * 2 for x in range(4)]` — IS the literal it folds to
 (**ADR 0192**), and its length is loaded out of the global the fold filled. One the run time BUILDS — an element, a

@@ -1,5 +1,168 @@
 {
  "entries": {
+"# The count door performs the elements whose count it takes, when an element's answer\n# IS a container (roadmap Gap R.534, ADR 0460).\n#\n# `len([probe()])` is a number the spelling states, and that is exactly the trap: the length door\n# answers the digit from the literal and asked the ONE-WORD value road for the element, which refuses\n# a call handing back a container (Gap R.67) — and the effects door treated the refusal as \"nothing\n# to do\". `print(len([probe()]))` wrote `1` at exit 0 where the reference writes `built` then `1`, and\n# a raise written inside the callee was skipped just as quietly. The element is now lowered by the\n# same door the print road uses (containerOperand's *Call arm, ADR 0333) and the handle is dropped: a\n# position that keeps no word has no reason to repeat a refusal about a word.\n\ndef list_probe():\n    print(\"built-list\")\n\n    return [1]\n\ndef dict_probe():\n    print(\"built-dict\")\n\n    return {\"k\": 1}\n\ndef set_probe():\n    print(\"built-set\")\n\n    return {7}\n\ndef tuple_probe():\n    print(\"built-tuple\")\n\n    return (1, 2)\n\ndef forwarding():\n    return list_probe()\n\ndef undescribed(x):\n    print(\"built-arms\")\n\n    z = 5\n    return [x, z]\n\n# The row as filed: the line inside the callee is the program's, and the count door had eaten it.\nprint(len([list_probe()]))\nprint(len([list_probe(), 2]))\nprint(len([[list_probe()], 2]))\nprint(len([list_probe(), list_probe()]))\n\n# The answer's kind is the callee's; the door performs the call whatever it is. The tuple is the one\n# ADR 0457 declines at the SLOTS door — this position has no slot to make a claim about.\nprint(len([dict_probe()]))\nprint(len([set_probe()]))\nprint(len([tuple_probe()]))\n\n# A body the answer scan can prove but not describe, and a body that only forwards another call.\nprint(len([undescribed(1)]))\nprint(len([forwarding()]))\n\n# The positions that ask the count door: bound, tested, looped, added, and asked beside the print of the\n# same literal. (`str(len([f()]))` inside a concatenation is NOT in this program: the str/concat roads\n# lower their argument twice — roadmap Gap R.544, pinned in the owed tables — and a corpus row that\n# printed the callee's line four times would be a pin for that row, not a witness of this one.)\nn = len([list_probe()])\nprint(n)\nif len([list_probe()]) \u003e 0:\n    print(\"counted\")\n\nfor i in range(2):\n    print(len([list_probe(), 1]))\n\nprint(len([list_probe()]) + len([dict_probe()]))\nprint(len([list_probe()]))\nprint([list_probe()])\nprint(len(sorted([list_probe()])))\nprint(len({\"a\": list_probe(), \"b\": 2}))\nprint(len((list_probe(), 1)))\n\n# The negative control beside every row above: a container of SPELLINGS still answers its count with\n# no builder, no allocation and no call — the fold's fast path survived the commit that made the door\n# perform the elements that act.\nprint(len([1, 2, 3]))\nprint(len([[1, 2], [3, 4]]))\nprint(len([]))\n": {
+    "stdout": "built-list\n1\nbuilt-list\n2\nbuilt-list\n2\nbuilt-list\nbuilt-list\n2\nbuilt-dict\n1\nbuilt-set\n1\nbuilt-tuple\n1\nbuilt-arms\n1\nbuilt-list\n1\nbuilt-list\n1\nbuilt-list\ncounted\nbuilt-list\n2\nbuilt-list\n2\nbuilt-list\nbuilt-dict\n2\nbuilt-list\n1\nbuilt-list\n[[1]]\nbuilt-list\n1\nbuilt-list\n2\nbuilt-list\n2\n3\n2\n0\n",
+    "hasStdout": true
+   },
+"class C:\n    def m(self):\n        print(\"m\")\n\n        return [1]\n\nc = C()\nprint(len([c.m()]))\n": {
+    "stdout": "m\n1\n",
+    "hasStdout": true
+   },
+
+"def boom():\n    raise ValueError(\"first\")\n\n    return [1]\n\ndef other():\n    raise ValueError(\"second\")\n\n    return [2]\n\nprint(len([boom(), other()]))\n": {
+    "err": "ValueError: first",
+    "exnType": "ValueError",
+    "exnMsg": "first"
+   },
+
+"def g(x):\n    print(\"g\")\n\n    z = 5\n\n    return [x, z]\n\nprint(len([g(1)]))\n": {
+    "stdout": "g\n1\n",
+    "hasStdout": true
+   },
+
+"def g(x):\n    z = 5\n\n    raise ValueError(\"boom\")\n\n    return [x, z]\n\nprint(len([g(1)]))\n": {
+    "err": "ValueError: boom",
+    "exnType": "ValueError",
+    "exnMsg": "boom"
+   },
+
+"def inner():\n    print(\"in\")\n\n    return [1, 2]\n\ndef f():\n    return inner()\n\nprint(len([f()]))\n": {
+    "stdout": "in\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    raise ValueError(\"boom\")\n\n    return [1]\n\nprint(len([probe()]))\n": {
+    "err": "ValueError: boom",
+    "exnType": "ValueError",
+    "exnMsg": "boom"
+   },
+
+"def probe():\n    print(\"built\")\n\n    return (1, 2)\nprint(len([probe()]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\ndef h():\n    print(\"h\")\n\n    return len([probe(), 1])\n\nprint(h())\n": {
+    "stdout": "h\nbuilt\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nfor i in range(2):\n    print(len([probe()]))\n": {
+    "stdout": "built\n1\nbuilt\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nif len([probe()]) \u003e 0:\n    print(\"yes\")\n\nelse:\n    print(\"no\")\n": {
+    "stdout": "built\nyes\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nn = len([probe()])\nprint(n)\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(f\"n={len([probe()])}\")\n": {
+    "stdout": "built\nn=1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len((probe(), 1)))\n": {
+    "stdout": "built\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([[[probe()]]]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([[probe()], 2]))\n": {
+    "stdout": "built\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([]))\nprint(len([probe()]))\n": {
+    "stdout": "0\nbuilt\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe(), 2]))\n": {
+    "stdout": "built\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe(), [7][0]]))\n": {
+    "stdout": "built\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe(), probe()]))\n": {
+    "stdout": "built\nbuilt\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe()]) + len([probe()]))\n": {
+    "stdout": "built\nbuilt\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe()]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([probe()]))\nprint([probe()])\n": {
+    "stdout": "built\n1\nbuilt\n[[1]]\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len([{\"k\": probe()}]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len(sorted([probe()])))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len({\"a\": probe(), \"b\": 2}))\n": {
+    "stdout": "built\n2\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\nprint(len({\"a\": probe()}))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return {\"k\": 1}\nprint(len([probe()]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return {1}\nprint(len([probe()]))\n": {
+    "stdout": "built\n1\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    x = 1 // 0\n\n    return [x]\n\nprint(len([probe()]))\n": {
+    "err": "ZeroDivisionError: integer division or modulo by zero",
+    "exnType": "ZeroDivisionError",
+    "exnMsg": "integer division or modulo by zero"
+   },
+
+"def probe():\n    xs = [1]\n\n    y = xs[7]\n\n    return [y]\n\nprint(len([probe()]))\n": {
+    "err": "IndexError: list index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "list index out of range"
+   },
+
+"print(len([1, 2, 3]))\nprint(len([[1, 2], [3]]))\n": {
+    "stdout": "3\n2\n",
+    "hasStdout": true
+   },
 "d = {None: [1, 2, 3]}\nprint(d[None][1:])\n": {
     "stdout": "[2, 3]\n",
     "hasStdout": true

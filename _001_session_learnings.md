@@ -17455,3 +17455,72 @@ first hook landed in the wrong part of `callMethod` because the file I was readi
 built). Two habits from the previous session, both load-bearing again: rebuild the probe binary from the tree
 you just read (`go build -o /tmp/gustyc ./cmd/gustyc` before every measurement round), and trust the test
 harness's entry point (`JIT`/`Compile`) over `gustyc --eval` when they disagree.
+
+## ADR 0460 — a number the spelling states is still a program around the elements it counts (roadmap Gap R.534 closed; Gaps R.542, R.543, R.544, R.545 filed; 2026-10-29)
+
+**The gate was right and the door under it was wrong, and only the second is a fix.** `len([probe()])` where
+`probe` hands back a list printed `1` and lost `built`. The instinct was to widen the gate —
+`literalElementAsksToBeRun` "clearly" doesn't see a container-answering call — but that predicate answers every
+non-spelling with `default: return true`, so a call element was already `true` and the pass was already entering
+the literal. One call below it, `lowerLiteralElementForEffect` had arms for the four container spellings and none
+for a call, so the element fell to `default: g.value(b, el)`; the value road refuses a container answer (**Gap
+R.67**), the error went back up, and the caller kept its own promise — commit nothing of a literal whose elements
+did not all lower — so the door answered the count from the spelling and the program around it went unperformed.
+**ADR 0321** again: find the root by reading downward, not by widening a gate; and **ADR 0294**'s reason for
+keeping one gate, because widening that predicate would have `len([1, 2, 3])` build a container in order to count
+it. Lesson kept: when "the effects were skipped" is the symptom, ask which of two questions answered wrongly —
+*must anything run here?* (the gate) and *how is this element lowered?* (the door). They are different functions,
+and the rule above them ("all the elements or none") is what made the second one's refusal silent.
+
+**A fold that discards a value must still perform it, and "discard" is the reason the second door is
+affordable.** The reason a container-answering call has no one-word answer (**Gap R.67**) is that its word is a
+heap object whose slots carry their own tags. The count position keeps no word at all: the number comes off the
+literal, so there is no slot for a pair's tag to be wrong about, and no root either — `rt_gc` is a worklist over
+the root stack that frees what nothing holds, so an object the frame never rooted is the collector's to take.
+Asking `containerOperand` — the print door's own arm, **ADR 0333** — and throwing the handle away costs the module
+nothing and inherits the print's semantics for free. The refusal that had been standing in for a permission was
+not even a type test: the element had no arm, fell to the value road, and the road said *no one-word answer here*
+— a sentence about a word, answered at a position that keeps none. Lesson kept: when a fold throws a value away,
+the value's shape stops being a constraint and becomes a hint — check which assertions exist only because a
+*later* consumer needed them.
+
+**The scratch buffers are correctness devices, and the exactly-once claim has to be read out of the module.** The
+arm lowers its trial into a builder of its own and copies it into the pass's buffer only on an answer; a refusal
+drops the trial whole and asks the ordinary road. Both failure directions are cheap to introduce: a trial that
+writes into the shared buffer leaves a half-emitted call behind for the road below to duplicate, and an element
+lowered by both the trial and the real road *prints twice while still answering `2`*. So
+`TestThePerformedAnswerIsPerformedExactlyOnce` asserts stdout AND
+`strings.Count(main, "call i32 @gy_probe(")`. Lesson kept: a fold that "tried and then did" needs one witness per
+direction, and stdout alone witnesses only the answer, never the number of times the world was touched.
+
+**Build the wide version, measure it, and let the measurement — not taste — decide what ships.** The
+pair-argument version of this door (`pairCallPair` over the element's arguments) was implemented. It turned a
+silent wrong answer into `llc` **exit 2** on `def g(): return 2.5` / `print(len([f(g())]))` —
+`call i32 @gy_f(i32 %t10)` over `%t10 = fadd double 0.0, 2.5` — which **ADR 0166** counts as the compiler's own
+bug, and it routed one shape onto the pair road that prints `[[[[` forever. The commit shipped the narrow door and
+filed the rest with their bytes (**Gap R.542**, **Gap R.543**, **Gap R.545**). Lesson kept: "I can make it work" is
+not the test; *exit 2 is worse than exit 1, and a hang is worse than exit 2*. Measure the wide fix, and if the
+measurement is a new failure class, ship the narrow one and give the failure an ID.
+
+**Duplicated effects are a stranger failure than skipped ones, and they point at the caller.**
+`print(str(len([probe()])))` printed `built` twice; `print("f" + str(len([probe()])))` printed it four times. Not
+this door's defect — it performs its element once — but the `str` and concat roads each lower their argument
+again, and the scratch buffer is per door. The control that localised it: the same double-lowering happens with an
+INTEGER-answering element on the build *before* this commit (**Gap R.544**). Lesson kept: when an element runs N
+times, ask who asked N times; per-door buffers make sharing someone else's work impossible, so a door's
+correctness claim ends at its own buffer.
+
+**A corpus row can certify a defect you did not know you had.** The conformance program was going to contain
+`print(str(len([list_probe()])))`. It did for one run — and printed the callee's line four times, which would have
+become the matrix's own answer for a **Gap R.544** shape. It is out of the program, and the owed tables carry that
+shape instead. Lesson kept: a corpus row is an assertion about whatever it contains, and including a shape whose
+answer you have not adjudicated is how a defect gets a green checkmark.
+
+**The record leg cannot be retrofitted by re-running the program.** 32 sources went in through `tools/recmerge`
+(record **10594 → 10626**), which asks CPython and refuses an entry the compiled leg will not agree to. Recording
+the corpus program required teaching its recorder to read the file itself (with the same relative path the heap
+guard's glob uses), because a corpus row's key is the whole file — comments and blank lines included. And the
+record carries no stdout for a program that traps, which is a fact about the retired engine and not about this
+one: `pkg/lang/golden.go`'s `runGoldenStdout` says so, and a case that expects stdout from a raising program is
+testing the wrong witness. Lesson kept: ask each leg the question it can answer — the record for the exception
+class and message, the compiled leg and the reference for the stdout that came before it.

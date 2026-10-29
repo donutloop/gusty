@@ -22943,7 +22943,112 @@ forward to the callee's callee for the contents question. Both are bigger than a
 rows and not this cycle.
 
 <a id="gap-r-534"></a>
-### Gap R.534 — the COUNT door does not perform a literal element's effects (⏳ OPEN, filed by **ADR 0457**)
+### Gap R.534 — the COUNT door did not perform a literal element's effects (✅ DONE, filed by **ADR 0457**, closed by **ADR 0460**)
+
+```
+$ python3 -c 'def probe():
+      print("built")
+      return [1]
+  print(len([probe()]))'
+built
+1
+$ gustyc --eval '…the same program…'          # before ADR 0460
+1                                            # the callee's print never ran, at the exit code of success
+$ gustyc --eval '…the same program…'          # after
+built
+1
+```
+
+**ADR 0337**'s count fold lowers `len` of a literal without building the object — which was sound the day a literal's
+element could only be a literal, and stopped being sound the day an element could be a call. The shape is older than
+**ADR 0457** (measured on the parent commit's binary, where the same program printed `1` because the element refused
+outright — so the fold skipped the effect then too, and the row was invisible behind the refusal).
+
+**The gate was never the bug, and that is why the row took a cycle to see.** `literalElementAsksToBeRun` — the
+question the pass asks before it decides a literal is acted in — answers everything that is not a spelling with
+`default: return true`, so for `len([probe()])` it said *yes, run the elements* and the program still printed
+nothing. One call below it, `lowerLiteralElementForEffect` had arms for the four container spellings and a
+`default` for everything else — no arm for a call at all — so the element went to the one-word value road:
+
+```go
+// the element is a *Call, and fell here:
+default:
+    _, err := g.value(b, el)        // the ONE-WORD value road
+    return err                      // …which refuses a container answer (Gap R.67)
+```
+
+The error travelled back to `lowerLiteralElementsForEffect`, which keeps the promise its own header makes —
+*nothing of this container is committed*, because a half-performed container is a program no one wrote — and the
+door answered the count off the literal anyway. So the literal was counted, the elements were skipped, and the only
+witness was missing output. **ADR 0324** had already taught the membership door this same shape for a raise; the
+count door never got the lesson because it never believed it was printing anything — it was only counting.
+
+**What the fold actually loses.** Six programs, the live reference beside them, every one at exit `0`:
+
+| program | before | CPython |
+|---|---|---|
+| `def probe(): print("built"); return [1]` / `print(len([probe()]))` | `1` | `built`⏎`1` |
+| `def p(): print("p"); raise ValueError("boom"); return [1]` / `print(len([p()]))` | `1`, exit **0** | `ValueError: boom`, exit **1** |
+| the same raise inside `try/except ValueError` | `no trap` | `caught ValueError` |
+| `def f(x): print("f"); return [x]` / `print(len([f(1)]))` | *(nothing)* | `f`⏎`1` |
+| `def f(x): print("f"); return [x, x]` / `print(len([f(1)]))` | *(nothing)* | `f`⏎`1` |
+| `def h(): return len([probe(), 1])` / `print(h())` | `2` | `built`⏎`2` |
+
+The raise rows are the ones that set the severity. A count door that skips a raising element does not lose a line of
+output — it answers, at the exit code that means the program ran, a program the reference never lets reach an answer
+at all, and the program's own `except` never fires. That is **Gap R.266**'s and **Gap R.126**'s class in a door the
+membership door (**ADR 0324**) had already been taught about.
+
+**The fix is one arm, and it asks a question that already has an owner.** `literalElementAsksToBeRun` — the element's
+request to be run — carried exactly one permission, **ADR 0457**'s (`a.b()`-shaped calls stay out), and the same
+arm now consults the compiler's own scan before choosing a road:
+
+```go
+if nm, isName := n.Fn.(*Name); isName {
+    if _, named := g.containerAnswerOf(nm.Value); named {
+        var inner strings.Builder
+        if _, err := g.containerOperand(&inner, n); err == nil {   // the PRINT road's door (ADR 0333)
+            b.WriteString(inner.String())
+            return nil
+        }
+    }
+}
+```
+
+The handle is dropped where it dies. The position keeps no word, so there is no slot for the pair's tag to be
+wrong about (**ADR 0307**, **ADR 0333**), and no root either: `rt_gc` is a worklist over the root stack that
+frees what nothing holds, so an object the frame never rooted is reclaimed by the next collection — the same
+arrangement the print road has with the handle it hands to `rt_print_container_value`. That is what makes the
+arm cheap rather than merely correct: nothing here opens a window in which a container must survive a call
+(**ADR 0163**, **ADR 0347**).
+
+Three things the row holds rather than asserts:
+
+- **The two buffers are the whole no-double-print guarantee, and they are measured twice.** The arm lowers its
+  trial into a `strings.Builder` of its own and copies it into the pass's builder only when the door answers; a
+  refusal drops the trial whole and asks the ordinary road instead, so no half-lowered call survives to be
+  emitted twice. One level up, `lowerLiteralElementsForEffect` commits all of a literal's elements or none of
+  them — the rule that made the refusal silent, and the rule that keeps this door from ever emitting a call
+  after a terminator (**ADR 0166**). `TestThePerformedAnswerIsPerformedExactlyOnce` reads stdout *and* counts
+  `call i32 @gy_probe(` in `@main`, because an element lowered by both the trial and the real road prints twice while
+  still answering `2` — and only the module claim sees that.
+- **The permission is asked, not inferred.** `TestTheCountDoorAsksTheContainerDoorAndNotItself` builds the
+  `containerAnswerScan` table by hand (opaque / forwarding / arms-answering / int-answering callees) and fails if the
+  count door and the print door ever disagree about a callee (**ADR 0294**'s one gate).
+- **The fold's free answers survive, as behaviour.** `len([1, 2, 3])`, `len([[1, 2], [3, 4]])` and `len([])` answer
+  from the literal; a row fails the day one of them grows a builder (**ADR 0288**'s theorem, **ADR 0294**'s gate).
+
+**The pair road was built for the two shapes that stay wrong, and the measurement refused it.** Asking
+`pairCallPair` about the element's arguments makes `len([f(k())])` perform `k` — and was measured to spend **ADR
+0166**'s exit 2 on `def g(): return 2.5` / `print(len([f(g())]))`: `call i32 @gy_f(i32 %t10)` over
+`%t10 = fadd double 0.0, 2.5`, the same `double`-in-`i32` class **ADR 0443**/0444 spent their rows on, reached from a
+door whose only job is a digit. Identical on the build before this commit. A row that turns a silent wrong answer
+into an assembler failure is not a fix, so the gate keeps the pair road out and the shapes stay pinned with their
+bytes: **Gap R.542** (the container-answering argument still skipped), **Gap R.543** (the float-answering argument
+that reaches `llc`), **Gap R.545** (the element door's self-referential container, which walks `[[[[` until the run is killed —
+pre-existing and identical on the parent commit). **Gap R.544** belongs to the roads around this door: `str` and `+`
+lower their argument more than once, so a counted element is performed twice — or four times.
+
 
 ```
 $ python3 -c 'def probe():
@@ -23153,3 +23258,121 @@ Two judgements are part of the row, not footnotes:
   the newest handle, so a loop that copies a thousand times keeps one container alive rather than a thousand,
   and `rt_root_put` dedups by address inside a frame (`gcRegKey`'s rule). That is what
   `TestACopyInsideALoopRootsOneSlotPerSite` asks of the module.
+
+<a id="gap-r-542"></a>
+### Gap R.542 — an element whose ARGUMENT is itself a container answer is still not performed (⏳ OPEN, filed by **ADR 0460**)
+
+```python
+def k():
+    print("k")
+    return [9]
+
+def f(x):
+    print("f")
+    return [1]
+
+print(len([f(k())]))
+#   CPython:  k / f / 1        (the callee of the element runs, and so does its argument's)
+#   before:   1                                                     — exit 0
+#   after ADR 0460:  1                                               — exit 0, unchanged
+```
+
+**ADR 0460**'s door performs an element whose callee the answer scan names, and it stops exactly there: it asks
+`containerOperand` about the *call*, never about the call's *arguments*. An argument that is itself a container cannot
+cross as a one-word value (**Gap R.67**), so the door declines, the value road declines, and the element is skipped
+whole — the number is right, `k`'s line is gone, and nothing says so.
+
+This is the half of **ADR 0333**'s pair road the count door does not own. The argument must arrive as a (payload, tag)
+pair written by `pairCallPair`, which is the road **Gap R.543** measures and **Gap R.545** refuses: the two rows are
+one road and close together or not at all. Pinned in
+`pkg/lang/count_answer_effect_test.go::TestWhatTheCountDoorStillSkipsIsFiledNotFixed` with today's bytes beside the
+reference's, and again at the CLI in `integration/count_answer_effect_test.go`, so the shape fails the day either
+door grows (**ADR 0343**).
+
+<a id="gap-r-543"></a>
+### Gap R.543 — an element whose argument answers a FLOAT reaches `llc` with a double in an `i32` argument (⏳ OPEN, filed by **ADR 0460**)
+
+```python
+def f(x):
+    print("f")
+    return [x]
+
+def g():
+    return 2.5
+
+print(len([f(g())]))
+#   CPython:  f / 1
+#   this toolchain: llc exits 2 —
+#     %t10 = fadd double 0.0, 2.5
+#     %t11 = call i32 @gy_f(i32 %t10)
+```
+
+**ADR 0166** reserves exit 2 for the compiler's own bug, and this is that bug in a program whose only demand was a
+count: the pair road lowers the argument at the callee's parameter type taken from the lowered value's own register
+kind rather than from the parameter table, so a `double` arrives in an `i32` slot. It is **ADR 0443**'s and **ADR
+0444**'s class one door further along, and it is why **ADR 0460**'s measurement — the fix was BUILT, with
+`pairCallPair` called over the element's arguments — did not ship: a row that turns a *silent wrong answer* into an
+*assembler failure* is a worse row, not a better one. Identical on the build before **ADR 0460**, which is what keeps
+this a finding and not damage from that commit. The pinned form is the refusal-shaped sibling of
+**Gap R.542**'s, in the same owed tables.
+
+<a id="gap-r-544"></a>
+### Gap R.544 — the `str` and concatenation roads lower their argument twice, so a counted element is performed twice (⏳ OPEN, filed by **ADR 0460**)
+
+```python
+def probe():
+    print("built")
+    return [1]
+
+print(str(len([probe()])))            # CPython: built / 1
+                                      # this toolchain: built / built / 1
+print("f" + str(len([probe()])))      # CPython: built / f1
+                                      # this toolchain: built ×4 / f1
+```
+
+An effect performed twice is as wrong as an effect skipped (**ADR 0312**), and here the doubling is not the count
+door's: `lowerLiteralElementForEffect` is asked once per element, and it performs the element once. The roads around
+it — the `str` builtin's argument, and a concatenation's operand — each lower their argument again to find a word, so
+the element is emitted once per road and the scratch buffer is per door. The 4× case is the composition of the two.
+
+What makes it the roads' row and not this door's is the control measured beside it: with an INTEGER-answering element
+(`def p(): print("built")` / `return 1`) the two programs print twice and four times on the build **before** **ADR
+0460** as well, and the count door cannot see either of them — it is the roads that ask the door twice. **ADR 0460**
+therefore leaves `str(len([f()]))` OUT of its corpus program (a row that printed the callee's line four times would
+certify this defect as if it were that row's answer) and pins both spellings in its owed tables instead.
+
+<a id="gap-r-545"></a>
+### Gap R.545 — two bodies answering the SAME container literal leave an element slot holding the object being built, and the printer walks it forever (⏳ OPEN, filed by **ADR 0460**)
+
+```python
+def f():
+    return [1]
+
+def g():
+    return [1]
+
+print([g()])
+#   CPython:  [[1]]
+#   this toolchain: `[` written until the run is KILLED   (identical on the parent commit's binary)
+```
+
+The two bodies answer the same literal, so the second one's answer shares the module global the first wrote; the
+element door then fills a slot of the object being built with that shared handle, and the object ends up containing
+itself. Nothing raises and nothing refuses — the printer walks the cycle without ever arriving at a closing bracket,
+and the harness reports **`gustyc: the compiled program was killed …`**. The class twin (`def p(): return [3]`
+beside a `class C` with a method) runs the same way, which is what says the defect is the element door's slot write
+and not one body's body.
+
+This is the row that bounded **ADR 0460**'s door. That door asks `containerOperand` about the element's CALL and
+never about the call's PAIR arguments, precisely because the pair road is where a payload gets written into a slot
+somebody else owns; reached from a counted literal it would have turned that row's silent wrong answer into a hang,
+and a hang is worse than the wrong answer it replaced.
+
+Pre-existing and identical on the parent commit — measured with the CLI before any of **ADR 0460**'s code was
+written. The fix is in the write and not in a depth guard on the print: a road that lands an answer's payload in the
+slot it was allocated for cannot make a value contain itself, while an `rt_print` that gave up at depth 64 would
+only hide the corruption until the next reader — the membership test, the equality door, `len` — walked the same
+circle. Both shapes are pinned by
+`pkg/lang/count_answer_effect_test.go::TestWhatTheElementDoorStillOwesIsFiledNotFixed` (the case FAILS the day the
+run finishes, which is the only witness a non-terminating program can be given) and are deliberately kept out of the
+corpus, because the corpus cannot survive them either.

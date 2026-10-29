@@ -104,6 +104,10 @@ var artifactWritingVars = []string{
 	// The corpus recorder (`integration/corpus_record_test.go::TestTheRecordSourcesTheCorpusRecordRowAsksFor`),
 	// which dumps every ASSERTED conformance program the record leg owes an answer for (**Gap R.532** / **ADR 0456**).
 	"GUSTY_RECORD_CORPUS=",
+	// The count-door row's recorder (`pkg/lang/count_answer_effect_test.go::TestTheRecordSourcesTheCountAnswerEffectRowAsksFor`),
+	// the same shape again: the sources the answered tables ask, plus the corpus program this row registered,
+	// dumped for `tools/recmerge` (**Gap R.534** / **ADR 0460**).
+	"GUSTY_RECORD_COUNT_ANSWER_EFFECT=",
 	// The unpacking row's recorder (`pkg/lang/unpack_container_test.go::TestTheUnpackingRecordSourcesTheTableAsks`),
 	// the same shape one row further down the tracker — and the reason the list below is now checked against the
 	// documents that describe it (`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed`).

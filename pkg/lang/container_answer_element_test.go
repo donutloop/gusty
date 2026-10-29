@@ -376,29 +376,26 @@ func TestWhatTheContainerAnswerElementStillOwesIsFiledNotFixed(t *testing.T) {
 		name, src, actual, reference, row string
 	}{
 		{
-			// The count door performs an element's effects (**ADR 0441**, roadmap **Gap R.494**) — but an element
-			// whose answer is a container performs none of them: the number is stated and the call is not made,
-			// so neither the `print` below nor a raise inside the callee reaches the program.
-			"the count door still skips a container answer's effect",
+			// **Gap R.534** MOVED with **ADR 0460**: an element whose answer is a container is now performed by
+			// the door the print road uses (`containerOperand`'s `*Call` arm, **ADR 0333**), whose handle is
+			// dropped here — a position that keeps no word has no reason to repeat a refusal about a word. The
+			// two rows this entry replaces (the `print` inside the callee, and the `IndexError` the callee
+			// raised) are ASSERTED as answers in `pkg/lang/count_answer_effect_test.go`
+			// (`TestTheCountDoorPerformsACallThatHandsBackAContainer`,
+			// `TestTheCountDoorsContainerAnsweringElementRaises`) and at the CLI in
+			// `integration/count_answer_effect_test.go`. A row that is answered is asserted, not deleted.
+			"the count door performs a container answer now (moved to the answered tables)",
 			"def probe():\n    print(\"built\")\n\n    return [1]\n\nprint(len([probe()]))\n",
-			"1\n", "built\n1\n", "Gap R.534",
+			"built\n1\n", "built\n1\n", "Gap R.534 (paid by ADR 0460)",
 		},
 		{
-			// The same door, the accident half — and the accident is skipped too, which is the half that makes
-			// this the priority-1 class rather than a lost line of output: the element raises `IndexError`, and
-			// the program states the count as if the call had never been written.
-			"the count door still skips a container answer's raise",
-			"def probe():\n    xs = [1]\n\n    y = xs[7]\n\n    return [y]\n\nprint(len([probe()]))\n",
-			"1\n", "Traceback (most recent call last): IndexError: list index out of range\n", "Gap R.534",
-		},
-		{
-			// The count door's own negative control, run beside the two rows above: an element whose answer is
-			// an INTEGER is performed by **ADR 0441**'s door today. The difference is this row's defect, and it
-			// is the answer's kind — so the fix belongs to the element road that asks the container-answer scan,
-			// not to the count door's own table.
+			// The count door's own negative control, run beside the row above: an element whose answer is
+			// an INTEGER is performed by **ADR 0441**'s door already. The difference was the answer's kind —
+			// which is why the fix belongs to the element road that asks the container-answer scan, and not to
+			// the count door's own table.
 			"an integer answer's element IS performed (the control)",
 			"def probe():\n    print(\"built\")\n\n    return 5\n\nprint(len([probe()]))\n",
-			"built\n1\n", "built\n1\n", "Gap R.494 (paid — the control that localises Gap R.534)",
+			"built\n1\n", "built\n1\n", "Gap R.494 (paid — the control that localised Gap R.534)",
 		},
 	} {
 		tc := tc
