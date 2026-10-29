@@ -1,0 +1,71 @@
+# A container that TRAVELS through an unpacking is still the object — roadmap Gap R.527 (ADR 0455).
+#
+# `x = [1]` binds the object; `a, b = xs, 5`, where `xs` is a name holding one, used to bind the HANDLE —
+# `print(a)` said `0`, `len(a)` refused the build, and the mixed swap `a = [1]` / `b = 2` / `a, b = b, a`
+# printed `[]` and `0` where CPython prints `2` and `[1]`. The plain binding road carries a container's
+# compile-time claims across a copy (ADR 0412); the unpacking's bind loop wrote the payload word and asked
+# none of them. It asks them now, from a snapshot taken before any of the statement's own bindings land.
+#
+# The blocks below are the ordinary programs that shape makes possible: print, measure, index, loop, ask
+# membership, mutate from either name, swap, swap again, and read it back inside a frame.
+
+xs = [1, 2]
+a, n = xs, 0
+print(a)
+print(n)
+print(len(a))
+print(a[1])
+print(2 in a)
+for v in a:
+    print(v)
+
+# The handle is shared, so a mutation is one event on one object whichever name writes it.
+grow = [1]
+g, z = grow, 0
+g.append(9)
+print(grow)
+grow.append("z")
+print(g)
+print(z)
+
+# The mixed swap: the container and the number change places, and the claims change with them.
+one = [1]
+two = 2
+one, two = two, one
+print(one)
+print(two)
+
+# A list against a dict, and a rotate that carries two containers.
+lst = [7]
+dic = {"k": 1}
+lst, dic = dic, lst
+print(lst)
+print(dic)
+p, q, r = [1], [2], 3
+p, q, r = r, p, q
+print(p)
+print(q)
+print(r)
+
+# A name stops being a container when the element says so — a double carries its own kind.
+was = [1]
+was, more = 1.5, 2
+print(was)
+print(more)
+
+# A container the run time built, received by an unpacking inside a frame, swapped there, and read back.
+def walk():
+    built = []
+    built.append(3)
+    other = [4, 5]
+    x, y = built, other
+    print(x)
+    print(y)
+    x, y = y, x
+    print(x)
+    print(y)
+    print(len(x))
+
+walk()
+
+print("done")

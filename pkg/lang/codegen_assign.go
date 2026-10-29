@@ -301,6 +301,9 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 			hadSlot bool
 			payload string
 			rhs     Expr
+			// srcName is the name an element was read OUT OF when the element is a name with a slot — the
+			// position that loads a word and, until Gap R.527, loaded a container's handle as one.
+			srcName string
 			// container marks an element the one-word road has no word for — a spelled list, set or dict —
 			// which the bind phase below hands to the plain binding road instead of storing. The mark is set
 			// where the element is read, so nothing about it is stored before every element has been read
@@ -339,7 +342,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				// read (roadmap L11.1, Gap R.144, ADR 0367).
 				payload := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", payload, "_"+src.Value))
-				elems[i] = unpackedElem{name: nm.Value, payload: payload, rhs: valElems[i]}
+				elems[i] = unpackedElem{name: nm.Value, payload: payload, rhs: valElems[i], srcName: src.Value}
 				continue
 			}
 			// A spelled container is not a word the ordinary road can hand back. `g.value` folds it to the
@@ -378,6 +381,20 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				targets[nm2.Value] = true
 			}
 		}
+		// … and the notebook is read the SAME way, before anything settles. An element that loads a handle out
+		// of another name's slot binds the OBJECT, and the twelve claims that make an object printable,
+		// measurable and iterable are keyed by NAME (**ADR 0412**'s finding, **Gap Q.1**'s door) — so they are
+		// read here, from the state the program had before this statement, and written in the bind phase below.
+		// A swap makes that ordering load-bearing: `a, b = b, a` reads `a` while settling `b` and settles `a`
+		// with what `b` was, and a claim read after the first settle would describe the object that moved
+		// (roadmap **Gap R.527**).
+		held := make([]containerClaims, len(elems))
+		for i := range elems {
+			if elems[i].srcName == "" {
+				continue
+			}
+			held[i] = g.containerClaimsOf(elems[i].srcName)
+		}
 		for i := range elems {
 			if !elems[i].container {
 				continue
@@ -399,7 +416,7 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				return err
 			}
 		}
-		for _, el := range elems {
+		for i, el := range elems {
 			if el.name == "" || el.container {
 				continue
 			}
@@ -408,11 +425,23 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				continue
 			}
 			if el.isFloat {
+				// A double is not a container, and a name that held one stops being one here: the box the
+				// float road stores beside the name carries its own kind, and the notebook must stop saying
+				// `list` about it (`a = [1]` / `a, b = 1.5, 2` / `print(a)` printed `[1]` where the reference
+				// prints `1.5` — roadmap **Gap R.527**'s float face).
+				g.settleUnpackedClaims(b, el.name, "", containerClaims{}, false)
 				g.bindFloatValue(b, el.name, el.payload, el.hadSlot)
 				g.markBound(b, el.name)
 				continue
 			}
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", el.payload, el.name))
+			// The claims travel with the object, or the receiving name is a number wearing another object's
+			// bits: `xs = [1, 2]` / `a, b = xs, 5` / `print(a)` printed `0`, and `a = [1]` / `b = 2` /
+			// `a, b = b, a` printed `[]` `0` where the reference prints `2` `[1]`. The shared-handle link is
+			// kept only while the source is not also a target of this statement — a swap that aliased itself
+			// would resolve a later read into the record of an object that has since moved
+			// (roadmap **Gap R.527**, **ADR 0412**).
+			g.settleUnpackedClaims(b, el.name, el.srcName, held[i], !targets[el.srcName])
 			// The records the plain binding leaves behind, asked of the element this name took over:
 			// print, truthiness and the folds all read them, and an unpacking that stored the word and
 			// recorded nothing answered `None` as `0` and a text as its intern-table index (ADR 0172's

@@ -22406,9 +22406,10 @@ bytes cannot tell "fixed" from "the failure moved" when the failing build printe
 Checking this row's own swap rows against the reference turned up two defects the delegation does not pay, both at
 the exit code of success, both in the same bind loop:
 
-- **Gap R.527** — an element that is a NAME holding a container still binds the handle as a word, because the
-  container's claims travel with the object only on the plain road (`ys = xs`, **ADR 0412**). `a = [1]` /
-  `b = 2` / `a, b = b, a` prints `[]` `0` where the reference prints `2` `[1]`.
+- **Gap R.527** — an element that is a NAME holding a container still bound the handle as a word, because the
+  container's claims travelled with the object only on the plain road (`ys = xs`, **ADR 0412**). `a = [1]` /
+  `b = 2` / `a, b = b, a` printed `[]` `0` where the reference prints `2` `[1]`. **Paid the next cycle by
+  **ADR 0455**, which asks the notebook per element from a snapshot; see that row's section.
 - **Gap R.528** — `global` is honoured by the plain binding and ignored by the unpacking: `x = 0` /
   `def f():` / `    global x` / `    x, y = 1, 2` / `f()` / `print(x)` prints `0` where the reference prints `1`.
 
@@ -22476,7 +22477,7 @@ Until then the refusal is the artifact, and it names itself: the message carries
 compiling, so paying the row moves the row instead of deleting a guard.
 
 <a id="gap-r-527"></a>
-### Gap R.527 — an unpacking element that is a NAME holding a container binds the handle as a word (⏳ OPEN, filed by **ADR 0454**)
+### Gap R.527 — an unpacking element that is a NAME holding a container binds the handle as a word (✅ DONE, filed by **ADR 0454**, paid by **ADR 0455**)
 
 ```
 $ gustyc --eval 'xs = [1, 2]
@@ -22515,6 +22516,42 @@ source's state before any of this statement's bindings land.
 Measured 2026-11-02 while checking **ADR 0454**'s swap rows against the reference — the row that made spelled
 containers bindable is the row that can name the name-shaped hole beside them.
 
+### What was paid, and by what door
+
+**ADR 0455** paid it by asking the unpacking the question **ADR 0412** had already answered for the plain copy —
+*whose record describes the object this name now holds?* `container_alias.go` gained one record type and two
+readers of it: `containerClaimsOf` lifts a name's kind, its "my slots describe themselves" bit and its
+single-kind claims (resolving the shared-handle link the way the read doors do), and `writeContainerClaims`
+writes them onto another name; `recordContainerAlias` is now the link plus those two, so the plain road and the
+unpacking cannot spell the fifteen fields differently (**ADR 0232**). Above them, `settleUnpackedClaims` settles
+the kind the element arrived in through **Gap Q.1**'s one door — which owns the retirement as well, and needed for
+the float face too (`a = [1]` / `a, b = 1.5, 2` / `print(a)` printed `[1]`) — copies the record, and roots the
+handle (**ADR 0163**).
+
+**The record is read before any of the statement's bindings land.** That is not tidiness, it is the swap:
+`a, b = b, a` reads `a` while settling `b` and settles `a` with what `b` was, so a claim read after the first
+settle describes the object that already moved. **ADR 0367**'s "an unpacking reads every value before naming any
+of them" had reached the payload and not the notebook; this row is that rule carried the rest of the way.
+
+**The link is per element, and a swap does not get one.** `xs = [1]` / `a, n = xs, 0` / `xs.append("z")` prints
+`[1, 'z']` because the unpacking keeps the live link the plain copy keeps. A swap may not: `a → b` beside `b → a`
+describes two objects that have already exchanged places, and a read resolving through the circle lands on the
+wrong record. `containerAliasTarget` and `containerSharers` are cycle-guarded already, which keeps such a program
+from hanging — it does not make the answer right, which is why the link is a decision and not a default.
+
+**The witness is the door multiset.** `TestTheUnpackedContainerAsksTheSameDoorsAsThePlainCopy` requires
+`b = xs` and `a, b = xs, 0` to ask the same `@rt_print*` doors in `@main`, and requires the swapped program to ask
+the doors the plain bindings ask. stdout could not carry this: the buggy build's `[]` was a plausible list,
+rendered through a door the value had no business reaching, and a row that compared the two bindings to each
+other — rather than each to a remembered string — is what fails when a notebook goes stale.
+
+Eighteen sources answered on the compiled leg AND the record leg (**18 entries, 10368 → 10386**, written from the
+reference by `tools/recmerge` with the compiled leg cross-checked), the same family at the CLI against a live
+`python3`, and `integration/programs/unpack_container_claims.gy` as a `match` row (corpus 281 → 282, matrix
+267 → 268, parity-asserted 231 → 232). The pair-bound residue stays pinned with its owner (**L11.1**,
+**Gap R.146**) in `TestWhatTheUnpackingStillBindsAsAWord` rather than being guessed from a tag the compiler does
+not have (**ADR 0299**).
+
 <a id="gap-r-528"></a>
 ### Gap R.528 — `global` is honoured by the plain binding and ignored by the unpacking (⏳ OPEN, filed by **ADR 0454**)
 
@@ -22549,3 +22586,42 @@ This is **Gap R.48**'s twin, filed beside it rather than into it: the plain road
 unmoved, and the unpacking needs the same door asked per target — before the alloca, not after the store. The
 membership sweep (**ADR 0453**) already had to READ `global` declarations to keep a promise honest; this is the same
 road discovered to be silent where it BINDS.
+
+<a id="gap-r-529"></a>
+### Gap R.529 — an arm the condition rejects is checked as if it ran (⏳ OPEN, filed by **ADR 0455**)
+
+```
+$ gustyc --eval 'n = 0
+if n:
+    print(zzz)
+
+print("ok")'
+jit: 1 error(s) in source
+  - error at 3:11: undefined name "zzz"                        exit 1   reference: ok   exit 0
+$ gustyc --eval 'print(zzz if False else 2)'
+jit: 1 error(s) in source
+  - error at 1:7: undefined name "zzz"                         exit 1   reference: 2   exit 0
+$ gustyc --eval 'xs = [1, 2]
+a, b, c = b if False else xs, 1, "t"
+print(a, b, c)'
+jit: 1 error(s) in source
+  - error at 2:11: undefined name "b"                          exit 1   reference: [1, 2] 1 t   exit 0
+```
+
+The reference needs a name to EXIST only if the road that reads it runs. `n = 0` never enters the arm, the false
+ternary arm is never evaluated, and all three programs print and exit 0. This backend decides statically that the
+name must exist at all, at the parser/checker census, and stops the build: exit 1 for a program the reference runs
+to completion, which is **ADR 0166**'s wrong-artifact class, and — because the refusal happens before the program
+exists — it also cannot be caught by the program's own `except NameError:`.
+
+The third shape is the one the sweep tripped over: an unpacking whose own element reads a name another target of
+the SAME statement binds. Inside a `def` that body answers correctly (`def f():` / `    a, b = b if False else 1, 2`
+returns `2` as CPython does), which localises the refusal to the module's name census rather than to the
+ternary or the unpacking.
+
+This is **ADR 0451**'s argument one construct over: a chain link the verdict rejects is never lowered, so its
+effects never happen and its accidents never arrive. An arm the test rejects deserves the same treatment, and a
+name that is read only in such an arm has no more claim to be a compile-time error than the `1 // 0` that
+**ADR 0451** stopped evaluating. The fix is to move the question from the census to the read — raise the
+reference's `NameError` where the read happens, catchable, and say nothing about the arm that never runs — while
+keeping the module's sound definite-assignment questions (**ADR 0228**'s flag) exactly where they are.

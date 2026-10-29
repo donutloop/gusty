@@ -102,6 +102,9 @@ var artifactWritingVars = []string{
 	// the same shape one row further down the tracker — and the reason the list below is now checked against the
 	// documents that describe it (`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed`).
 	"GUSTY_RECORD_UNPACK=",
+	// … and its twin one row further down the tracker (`pkg/lang/unpack_claims_test.go::TestTheUnpackingClaimsRecordSourcesTheTableAsks`),
+	// the recorder for the container that TRAVELS through an unpacking (**Gap R.527** / **ADR 0455**).
+	"GUSTY_RECORD_UNPACK_CLAIMS=",
 	// The gap ledger (`integration/parity_test.go`) dumps every refusal a run took, for filing as roadmap rows. A
 	// refusal dump is an artifact like any other: `-check`'s own subset would otherwise overwrite the run's ledger
 	// with the handful of refusals its four cases happen to take.

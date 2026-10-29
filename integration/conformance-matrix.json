@@ -1066,6 +1066,27 @@
     },
     {
       "case": {
+        "id": "programs/unpack_container_claims",
+        "name": "unpack_container_claims.gy",
+        "source": "# A container that TRAVELS through an unpacking is still the object — roadmap Gap R.527 (ADR 0455).\n#\n# `x = [1]` binds the object; `a, b = xs, 5`, where `xs` is a name holding one, used to bind the HANDLE —\n# `print(a)` said `0`, `len(a)` refused the build, and the mixed swap `a = [1]` / `b = 2` / `a, b = b, a`\n# printed `[]` and `0` where CPython prints `2` and `[1]`. The plain binding road carries a container's\n# compile-time claims across a copy (ADR 0412); the unpacking's bind loop wrote the payload word and asked\n# none of them. It asks them now, from a snapshot taken before any of the statement's own bindings land.\n#\n# The blocks below are the ordinary programs that shape makes possible: print, measure, index, loop, ask\n# membership, mutate from either name, swap, swap again, and read it back inside a frame.\n\nxs = [1, 2]\na, n = xs, 0\nprint(a)\nprint(n)\nprint(len(a))\nprint(a[1])\nprint(2 in a)\nfor v in a:\n    print(v)\n\n# The handle is shared, so a mutation is one event on one object whichever name writes it.\ngrow = [1]\ng, z = grow, 0\ng.append(9)\nprint(grow)\ngrow.append(\"z\")\nprint(g)\nprint(z)\n\n# The mixed swap: the container and the number change places, and the claims change with them.\none = [1]\ntwo = 2\none, two = two, one\nprint(one)\nprint(two)\n\n# A list against a dict, and a rotate that carries two containers.\nlst = [7]\ndic = {\"k\": 1}\nlst, dic = dic, lst\nprint(lst)\nprint(dic)\np, q, r = [1], [2], 3\np, q, r = r, p, q\nprint(p)\nprint(q)\nprint(r)\n\n# A name stops being a container when the element says so — a double carries its own kind.\nwas = [1]\nwas, more = 1.5, 2\nprint(was)\nprint(more)\n\n# A container the run time built, received by an unpacking inside a frame, swapped there, and read back.\ndef walk():\n    built = []\n    built.append(3)\n    other = [4, 5]\n    x, y = built, other\n    print(x)\n    print(y)\n    x, y = y, x\n    print(x)\n    print(y)\n    print(len(x))\n\nwalk()\n\nprint(\"done\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n0\n2\n2\nTrue\n1\n2\n[1, 9]\n[1, 9, 'z']\n0\n2\n[1]\n{'k': 1}\n[7]\n3\n[1]\n[2]\n1.5\n2\n[3]\n[4, 5]\n[4, 5]\n[3]\n2\ndone\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n0\n2\n2\nTrue\n1\n2\n[1, 9]\n[1, 9, 'z']\n0\n2\n[1]\n{'k': 1}\n[7]\n3\n[1]\n[2]\n1.5\n2\n[3]\n[4, 5]\n[4, 5]\n[3]\n2\ndone\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6343,11 +6364,11 @@
       ]
     }
   ],
-  "rows": 267,
+  "rows": 268,
   "skipped": 36,
-  "pass": 231,
+  "pass": 232,
   "fail": 0,
-  "oracle_match": 217,
+  "oracle_match": 218,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

@@ -1,5 +1,93 @@
 {
  "entries": {
+"xs = [[1, 2]]\na, n = xs[0], 0\nprint(a)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [[7]]\na = [1]\na, n = xs[0], 2\nprint(a)\n": {
+    "stdout": "[7]\n",
+    "hasStdout": true
+   },
+"a = [1]\na, n = 1.5, 2\nprint(a)\nprint(n)\n": {
+    "stdout": "1.5\n2\n",
+    "hasStdout": true
+   },
+
+"a = [1]\nb = 2\na, b = b, a\na = 7\nprint(a)\nprint(b)\n": {
+    "stdout": "7\n[1]\n",
+    "hasStdout": true
+   },
+
+"a = [1]\nb = 2\na, b = b, a\nprint(a)\nprint(b)\n": {
+    "stdout": "2\n[1]\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nx, y = d, 0\nx[\"b\"] = 2\nprint(d)\nprint(len(d))\n": {
+    "stdout": "{'a': 1, 'b': 2}\n2\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nxs = [1]\nd, xs = xs, d\nprint(d)\nprint(xs)\n": {
+    "stdout": "[1]\n{'a': 1}\n",
+    "hasStdout": true
+   },
+
+"def f():\n    xs = [1, 2]\n    ys = [3]\n    a, b = xs, ys\n    print(a)\n    print(b)\n    a, b = b, a\n    print(a)\n    print(b)\n\nf()\n": {
+    "stdout": "[1, 2]\n[3]\n[3]\n[1, 2]\n",
+    "hasStdout": true
+   },
+
+"m = [[1]]\np, q = m, 0\nprint(p[0])\nprint(p)\nprint(str(p))\n": {
+    "stdout": "[1]\n[[1]]\n[[1]]\n",
+    "hasStdout": true
+   },
+
+"p, q, r = [1], [2], 3\np, q, r = r, p, q\nprint(p)\nprint(q)\nprint(r)\n": {
+    "stdout": "3\n[1]\n[2]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nd = {\"k\": 1}\na, b = s, d\nprint(a)\nprint(b)\nprint(len(a))\nprint(\"k\" in b)\n": {
+    "stdout": "{1, 2}\n{'k': 1}\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\na, n = xs, 0\nprint(len(a))\nprint(a[1])\nprint(2 in a)\n": {
+    "stdout": "3\n2\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\na, b = xs, 5\nprint(a)\nprint(b)\n": {
+    "stdout": "[1, 2]\n5\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nys = [1, 2]\na, b = xs, ys\nprint(a == b)\nprint(a is a)\n": {
+    "stdout": "True\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\na, n = xs, 0\na.append(9)\nprint(xs)\nprint(a)\n": {
+    "stdout": "[1, 9]\n[1, 9]\n",
+    "hasStdout": true
+   },
+
+"xs = [1]\na, n = xs, 0\nxs.append(\"z\")\nprint(a)\nprint(xs)\n": {
+    "stdout": "[1, 'z']\n[1, 'z']\n",
+    "hasStdout": true
+   },
+
+"xs = [5]\na = [1]\na, n = xs[0], 2\nprint(a)\nprint(n)\n": {
+    "stdout": "5\n2\n",
+    "hasStdout": true
+   },
+
+"xs = [7, 8]\na, n = xs, 0\nfor v in a:\n    print(v)\n": {
+    "stdout": "7\n8\n",
+    "hasStdout": true
+   },
 "x = 5\nx, y = [1], 2\nprint(1 in x)\n": {
     "stdout": "True\n",
     "hasStdout": true

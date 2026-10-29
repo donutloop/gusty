@@ -48,6 +48,8 @@
 // comparing the payload and not the pair).
 package lang
 
+import "strings"
+
 // containerKindHeld answers which container the notebook says a name holds — the question the alias
 // door asks before it copies anything. A name is a dict to the notebook when the binding that settled
 // its kind said dict, or when a mixed record (the slots describe themselves) names it: either half is
@@ -80,28 +82,112 @@ func (g *irGen) recordContainerAlias(to, from string) {
 	if to == "" || from == "" || to == from {
 		return
 	}
-	switch g.containerKindHeld(from) {
-	case containerKindList:
-		g.noteContainerAlias(to, from)
-		g.listVars[to] = true
-		g.mixedLists[to] = g.mixedLists[from]
-		g.listElemStr[to] = g.listElemStr[from]
-		g.listElemInt[to] = g.listElemInt[from]
-	case containerKindDict:
-		g.noteContainerAlias(to, from)
-		g.runtimeDicts[to] = true
-		g.mixedDicts[to] = g.mixedDicts[from]
-		g.dictKeyStr[to] = g.dictKeyStr[from]
-		g.dictKeyInt[to] = g.dictKeyInt[from]
-		g.dictValStr[to] = g.dictValStr[from]
-		g.dictValInt[to] = g.dictValInt[from]
-	case containerKindSet:
-		g.noteContainerAlias(to, from)
-		g.runtimeSets[to] = true
-		g.mixedSets[to] = g.mixedSets[from]
-		g.setElemStr[to] = g.setElemStr[from]
-		g.setElemInt[to] = g.setElemInt[from]
+	c := g.containerClaimsOf(from)
+	if c.kind == containerKindScalar {
+		return
 	}
+	g.noteContainerAlias(to, from)
+	g.writeContainerClaims(to, c)
+}
+
+// containerClaims is one name's whole container record: which kind the notebook says it holds, whether
+// the slots describe themselves, and the single-kind claims the roads read before they ask the object.
+// It is the SHAPE the alias door copies, named so that the two roads which copy it — `ys = xs` and an
+// unpacking element that reads a handle out of a name's slot (**Gap R.527**) — take it from one reader
+// rather than from two spellings of fifteen map fields (**ADR 0232**).
+type containerClaims struct {
+	kind string
+
+	mixedList, elemStr, elemInt  bool
+	dictMixed                    bool
+	dictKeyStr, dictKeyInt       bool
+	dictValStr, dictValInt       bool
+	setMixed, setElemStr, setInt bool
+}
+
+// containerClaimsOf reads a name's record, following the shared-handle link when the name has no record
+// of its own — the same question `listElementClaims` asks, asked once for every kind so that the copy an
+// alias performs and the copy an unpacking performs cannot resolve the link differently (roadmap
+// L11.1, Gap R.415, Gap R.527).
+func (g *irGen) containerClaimsOf(name string) containerClaims {
+	if k := g.containerKindHeld(name); k != containerKindScalar {
+		return g.ownClaims(name, k)
+	}
+	if owner := g.containerAliasTarget(name); owner != name {
+		if k := g.containerKindHeld(owner); k != containerKindScalar {
+			return g.ownClaims(owner, k)
+		}
+	}
+	return containerClaims{kind: containerKindScalar}
+}
+
+// ownClaims lifts the fifteen fields one name owns for one kind. The kind gates which fields are read,
+// so a record for another kind cannot leak into the copy.
+func (g *irGen) ownClaims(name, kind string) containerClaims {
+	c := containerClaims{kind: kind}
+	switch kind {
+	case containerKindList:
+		c.mixedList, c.elemStr, c.elemInt = g.mixedLists[name], g.listElemStr[name], g.listElemInt[name]
+	case containerKindDict:
+		c.dictMixed = g.mixedDicts[name]
+		c.dictKeyStr, c.dictKeyInt = g.dictKeyStr[name], g.dictKeyInt[name]
+		c.dictValStr, c.dictValInt = g.dictValStr[name], g.dictValInt[name]
+	case containerKindSet:
+		c.setMixed, c.setElemStr, c.setInt = g.mixedSets[name], g.setElemStr[name], g.setElemInt[name]
+	}
+	return c
+}
+
+// writeContainerClaims writes the record an alias door took from another name onto this one. The kind is
+// settled by the caller's door (**Gap Q.1**), which owns the twelve claims this writes as its own set;
+// writing the fields directly here is the copy **ADR 0412** measured as necessary — the mutation doors
+// read the maps themselves, and a door handed an empty record for the alias stores an untagged payload
+// into a tagged container.
+func (g *irGen) writeContainerClaims(to string, c containerClaims) {
+	switch c.kind {
+	case containerKindList:
+		g.mixedLists[to], g.listElemStr[to], g.listElemInt[to] = c.mixedList, c.elemStr, c.elemInt
+	case containerKindDict:
+		g.mixedDicts[to] = c.dictMixed
+		g.dictKeyStr[to], g.dictKeyInt[to] = c.dictKeyStr, c.dictKeyInt
+		g.dictValStr[to], g.dictValInt[to] = c.dictValStr, c.dictValInt
+	case containerKindSet:
+		g.mixedSets[to], g.setElemStr[to], g.setElemInt[to] = c.setMixed, c.setElemStr, c.setInt
+	}
+}
+
+// settleUnpackedClaims is the unpacking's half of the same door (roadmap **Gap R.527**). An element that
+// read a handle out of another name's slot binds the OBJECT, and the claims that make an object printable,
+// measurable, iterable and comparable are keyed by NAME — so they have to arrive here too, or the receiving
+// name is a number wearing another object's bits and the name it displaced keeps claiming a container it no
+// longer holds (`a = [1]` / `b = 2` / `a, b = b, a` printing `[]` `0` where the reference prints `2` `[1]`).
+//
+// `c` is a SNAPSHOT taken before any of this statement's bindings landed: a swap reads a name this same
+// statement is about to settle, and a claim read after the first settle describes the wrong object.
+//
+// `shared` says whether the new name may keep resolving into the source name's record — the plain road's
+// `ys = xs` may, and an unpacking may NOT when the same statement re-binds the source, because the link
+// would be a circle this statement created and the object it describes has moved.
+func (g *irGen) settleUnpackedClaims(b *strings.Builder, to, from string, c containerClaims, shared bool) {
+	if to == "" {
+		return
+	}
+	if c.kind == containerKindScalar {
+		// Nothing was carried: the binding ends the container-hood the name had (**ADR 0172**'s
+		// latest-binding rule, **Gap Q.1**'s door), so no later read of it is measured as a container read.
+		if g.containerKindHeld(to) != containerKindScalar {
+			g.settleContainerKind(to, containerKindScalar)
+		}
+		return
+	}
+	g.settleContainerKind(to, c.kind)
+	g.writeContainerClaims(to, c)
+	if shared && from != "" && from != to {
+		g.noteContainerAlias(to, from)
+	}
+	// The payload the store wrote is a heap handle, and a handle that is not a root is one collection away
+	// from the segfault ADR 0181's rooting exists to prevent.
+	g.gcReg(b, to)
 }
 
 // noteContainerAlias keeps the link that says which name's record describes the shared object. The

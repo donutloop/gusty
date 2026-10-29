@@ -270,6 +270,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// afterwards — print, `len`, index, `append`, an entry write, a `for`, membership, a swap — because
 		// the defect was not in building the object but in binding a name to it.
 		"unpack_container",
+		// A container that TRAVELS through an unpacking — read out of another name's slot — is still the
+		// object: the twelve claims that make it printable, measurable, iterable and comparable are keyed by
+		// NAME, and the unpacking's bind loop asked none of them (roadmap **Gap R.527**, **ADR 0455**). The
+		// program mutates through BOTH names, swaps a container against a number and a dict against a list,
+		// and reads the result back inside a frame, because the defect was a claim that stayed behind.
+		"unpack_container_claims",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's

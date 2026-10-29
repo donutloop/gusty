@@ -3768,6 +3768,38 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A container that TRAVELS through an unpacking keeps its claims (**Gap R.527**, **ADR 0455**)** — `xs = [1, 2]` /
+  `a, b = xs, 5` / `print(a)` printed **`0`** — the handle, as a number — at the exit code that means the program ran,
+  and `len(a)` of the same binding refused the build with `len of a non-string variable`; `s = {1, 2}` /
+  `a, b = s, 2` printed `0`, `d = {"k": 1}` / `a, b = d, 2` printed `1`, and the mixed swap `a = [1]` / `b = 2` /
+  `a, b = b, a` printed **`[]` `0`** where CPython prints `2` and `[1]`. A container is not its handle: what makes
+  `print(xs)` print a list is a dozen compile-time claims keyed by the NAME (**Gap Q.1**'s twelve), and the plain
+  binding road has always carried them across a copy — "the handle travels and the notebook claims do not" is
+  **ADR 0412**'s own finding — while the unpacking's bind loop wrote the payload word and asked none of them, so the
+  receiving name was a number wearing another object's bits and the name it displaced kept claiming a container it no
+  longer held (which is the half that made the swap print `[]`: the number `2` rendered through the list door). The
+  fix asks the SAME door per element: `containerClaimsOf` / `writeContainerClaims` in `container_alias.go`, with
+  `recordContainerAlias` refactored onto them so the two binding roads cannot spell fifteen map fields differently
+  (**ADR 0232**), and `settleUnpackedClaims` on top — settle the kind (**Gap Q.1** owns the retirement too: the float
+  face, `a = [1]` / `a, b = 1.5, 2` / `print(a)` printing `[1]`, goes through the same door), copy the record, keep
+  the shared-handle link, root the handle (**ADR 0163**). Two rules make it a door rather than a broom. The record is
+  read **before any of the statement's own bindings land**: `a, b = b, a` reads `a` while settling `b` and settles
+  `a` with what `b` was, so **ADR 0367**'s "an unpacking reads every value before naming any of them" had to be
+  carried from the payload into the notebook. And the live link is kept **only when the source is not also a target**
+  — `a → b` beside `b → a` describes two objects that have already exchanged places, and the existing cycle guards
+  prevent a hang, not a lie. The witness is the DOOR multiset, not the stdout: `b = xs` and `a, b = xs, 0` must ask
+  the same `@rt_print*` doors in `@main`, and the swapped program must ask the doors the plain bindings ask — the
+  stdout could not carry that claim, because the buggy build's `[]` was a plausible list rendered through a door the
+  value had no business reaching. Eighteen answer rows on the compiled leg AND the record leg (**18 record entries,
+  10368 → 10386**, from `tools/recmerge` with the compiled leg cross-checked), the same family at the CLI against a
+  live `python3`, and `integration/programs/unpack_container_claims.gy` as a `match` row (corpus 281 → **282**,
+  matrix 267 → **268**, parity-asserted 231 → **232**, oracle `match` 217 → **218**); the pair-bound residue stays
+  pinned with its owner (**L11.1** / **Gap R.146**) rather than being guessed from a tag the compiler does not have
+  (**ADR 0299**). Measured while writing this row's own table: **Gap R.529** — an arm the condition rejects is
+  checked for undefined names as if it ran (`n = 0` / `if n:` / `    print(zzz)` / `print("ok")` is refused
+  `undefined name "zzz"` at exit 1 where the reference prints `ok`), and **Gap R.528** (`global` honoured by the
+  plain binding, ignored by the unpacking) stays open beside it.
+
 - **A container the source SPELLS, unpacked, binds the object (**Gap R.524**, **ADR 0454**)** — `x = [1]` compiles and
   prints `[1]`, and still does; `x, y = [1], 2` — the same literal one binding position over — emitted
   `store i32 @.lst1, i32* %_x`, and `llc-20` refused the module with `global variable reference must have pointer

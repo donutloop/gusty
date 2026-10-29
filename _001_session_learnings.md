@@ -17133,3 +17133,45 @@ promised it was scrubbed from every subprocess; it was not. Now the documents ta
 counts as a recording knob, and a guard fails any knob `parifyEnv` still passes down — which found a second one
 (`GUSTY_GAP_LEDGER`) the same day. This is **ADR 0232** applied to prose: one question ("is this knob scrubbed?"),
 asked once, against the artifact that describes it.
+
+## ADR 0455 — a container that TRAVELS through an unpacking asks the container notebook per element (roadmap Gap R.527 closed; Gaps R.528, R.529 filed; 2026-11-02)
+
+**A fix that makes a program compile makes its neighbour measurable, and the neighbour was the real bug.**
+**ADR 0454** could not test the mixed swap because `a, b = [1], 2` did not compile; the moment it did,
+`a = [1]` / `b = 2` / `a, b = b, a` printed `[]` and `0` at exit 0. The general form is worth writing down: a
+green table of newly-compiling programs is a table of programs nobody has ever asked anything, and the row beside
+the one you tested is in the same condition. I now assume a defect in the neighbour of anything a commit makes
+runnable, and go looking before I call the row paid.
+
+**"The handle travels and the notebook claims do not" is a sentence that applies to every binding road, twice.**
+**ADR 0412** wrote it for `ys = xs`, and the fix lived there. The unpacking had its own bind loop, asked none of
+those doors, and no guard connected them — so the language answered one question two ways depending on whether the
+binding wore commas. The repair was not a second door: `containerClaimsOf` / `writeContainerClaims` are now read by
+`recordContainerAlias` AND by `settleUnpackedClaims`, so fifteen map fields are spelled once (**ADR 0232**). A
+reviewer cannot tell a shared door from two lookalike doors; a compile-time type can.
+
+**Read-order inside a statement is semantics, and a swap is the test.** The record has to be read before any of
+the statement's own bindings land, because `a, b = b, a` settles `b` and `a` against each other's former states.
+That is **ADR 0367**'s "an unpacking reads every value before naming any of them" — a rule I had only ever applied
+to payloads. The notebook is part of the value's meaning, so it moves with it, or the print renders `2` through
+the list door and calls the result `[]`.
+
+**A guard that prevents a hang is not a guard that prevents a lie.** `containerAliasTarget` and
+`containerSharers` are cycle-guarded, so recording `a → b` beside `b → a` would not loop; it would just quietly
+resolve a read into the record of an object that has already moved. The link is therefore a decision the door takes
+per element (`shared`), and the claim the swap keeps is the snapshot's copy. Cycle-freedom and truth are different
+properties and I nearly confused them.
+
+**Compare two programs to each other when the wrong answer is plausible.** `print(a)` printing `[]` looked like a
+list. What distinguishes it from a correct `[1]` is WHICH DOOR the module asked, so
+`TestTheUnpackedContainerAsksTheSameDoorsAsThePlainCopy` extracts the `@rt_print*` multiset from `@main` and
+requires the comma'd binding to ask the doors the plain one asks. Against a remembered string, the buggy build
+would have passed half these rows; against its twin road, it cannot.
+
+**The table for a row is where the row's neighbours get found.** Two more defects fell out of writing rows for
+this one: **Gap R.528** (`global` honoured by the plain binding and ignored by the unpacking — the same road,
+`x = 0` / `def f():` / `    global x` / `    x, y = 1, 2` printing the module's OLD value at exit 0) and
+**Gap R.529** (`n = 0` / `if n:` / `    print(zzz)` / `print("ok")` refused as `undefined name "zzz"` at exit 1
+where CPython prints `ok` — an arm the condition rejects is checked as if it ran, which is **ADR 0451**'s
+short-circuit argument applied to the front end's name census). Both filed with their measurements, neither
+smoothed into a table as if it were correct behaviour.

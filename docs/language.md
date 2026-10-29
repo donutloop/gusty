@@ -1540,11 +1540,36 @@ container element can still be built from names the statement has not overwritte
 answering it from the slot as the binding left it printed a self-referential list until the process died. The
 refusal names the name, the binding and the row that owns the snapshot (**Gap R.526**).
 
-Two shapes beside this one are owed and are named here rather than hidden: an element that is a **name** holding a
-container still binds the handle as a word (`xs = [1, 2]` / `a, b = xs, 5` / `print(a)` says `0`), because the
-container's claims travel with the object on the plain road and not on this one (**Gap R.527**, cf. **ADR 0412**);
-and a target a body declares `global` is still written locally by an unpacking that the plain binding would have
-written in the module (**Gap R.528**, cf. **ADR 0448**).
+### A container that **travels** through an unpacking keeps its claims (Gap R.527, ADR 0455)
+
+`a, b = xs, 5`, where `xs` is a name holding a list, binds the same **object** `b = xs` binds. A container is not
+its handle: what makes `print(xs)` print a list is a dozen compile-time claims keyed by the name, and they have to
+arrive at the name that receives the handle —
+
+```python
+xs = [1, 2]
+a, n = xs, 0
+print(a)          # [1, 2]   (this used to print 0 — the handle, as a number)
+print(len(a))     # 2        (and this used to refuse the build)
+a.append(9)
+print(xs)         # [1, 2, 9] — one object, whichever name writes it
+
+one, two = [1], 2
+one, two = two, one
+print(one)        # 2        (used to print [] — the number through the list door)
+print(two)        # [1]
+```
+
+A swap makes the order of the bookkeeping load-bearing: an unpacking reads every value before naming any of them
+(**ADR 0367**), and this row carries that rule from the payload into the notebook — the record each element's
+source name owned is read into a snapshot before any of the statement's bindings land, and written afterwards. The
+shared-handle link (the one that lets `xs.append("z")` reach a name bound from `xs`) is kept except across a swap,
+where it would describe an object that has already moved.
+
+What is still owed here is named rather than hidden: a target a body declares `global` is written locally by an
+unpacking that the plain binding would have written in the module (**Gap R.528**, cf. **ADR 0448**), a container
+element that mentions a name the same statement re-binds is refused (**Gap R.526**), and an arm the condition
+rejects is checked for undefined names as if it ran (**Gap R.529**).
 
 ## None
 
